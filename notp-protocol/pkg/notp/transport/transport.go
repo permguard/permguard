@@ -26,12 +26,13 @@ import (
 )
 
 const (
-	// MaxPacketSize is the maximum allowed packet size in bytes (16 MB).
-	MaxPacketSize = 16 * 1024 * 1024
+	// DefaultMaxPacketSize is the default maximum allowed packet size in bytes (16 MB).
+	DefaultMaxPacketSize = 16 * 1024 * 1024
 )
 
 // TransportLayer represents the transport layer responsible for packet transmission in the NOTP protocol.
 type TransportLayer struct {
+	maxPacketSize  int
 	inspector      *PacketInspector
 	packetSender   PacketSender
 	packetReceiver PacketReceiver
@@ -62,8 +63,8 @@ func (t *TransportLayer) TransmitPacket(packetables []aznotppackets.Packetable) 
 		return err
 	}
 	packet.Data = compressedData
-	if len(packet.Data) > MaxPacketSize {
-		return fmt.Errorf("notp: packet size %d exceeds maximum allowed size %d", len(packet.Data), MaxPacketSize)
+	if len(packet.Data) > t.maxPacketSize {
+		return fmt.Errorf("notp: packet size %d exceeds maximum allowed size %d", len(packet.Data), t.maxPacketSize)
 	}
 	err = t.packetSender(&packet)
 	if err != nil {
@@ -87,8 +88,8 @@ func (t *TransportLayer) ReceivePacket() ([]aznotppackets.Packetable, error) {
 	if packet == nil {
 		return nil, errors.New("notp: received a nil packet")
 	}
-	if len(packet.Data) > MaxPacketSize {
-		return nil, fmt.Errorf("notp: received packet size %d exceeds maximum allowed size %d", len(packet.Data), MaxPacketSize)
+	if len(packet.Data) > t.maxPacketSize {
+		return nil, fmt.Errorf("notp: received packet size %d exceeds maximum allowed size %d", len(packet.Data), t.maxPacketSize)
 	}
 	decompressedData, err := data.DecompressData(packet.Data)
 	if err != nil {
@@ -129,7 +130,10 @@ func (t *TransportLayer) ReceivePacket() ([]aznotppackets.Packetable, error) {
 }
 
 // NewTransportLayer creates and initializes a new transport layer.
-func NewTransportLayer(packetSender PacketSender, packetReceiver PacketReceiver, inspector *PacketInspector) (*TransportLayer, error) {
+func NewTransportLayer(maxPacketSize int, packetSender PacketSender, packetReceiver PacketReceiver, inspector *PacketInspector) (*TransportLayer, error) {
+	if maxPacketSize <= 0 {
+		maxPacketSize = DefaultMaxPacketSize
+	}
 	if packetSender == nil {
 		return nil, errors.New("notp: PacketSender cannot be nil")
 	}
@@ -137,6 +141,7 @@ func NewTransportLayer(packetSender PacketSender, packetReceiver PacketReceiver,
 		return nil, errors.New("notp: PacketReceiver cannot be nil")
 	}
 	return &TransportLayer{
+		maxPacketSize:  maxPacketSize,
 		inspector:      inspector,
 		packetSender:   packetSender,
 		packetReceiver: packetReceiver,
