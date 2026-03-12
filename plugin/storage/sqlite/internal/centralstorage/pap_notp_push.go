@@ -140,7 +140,7 @@ func (s SQLiteCentralStoragePAP) markTxFailed(ctx context.Context, txid string) 
 			zap.Error(err))
 		return
 	}
-	logger.Warn("Transaction marked as failed",
+	logger.Info("Transaction marked as failed",
 		zap.String("txid", txid))
 }
 

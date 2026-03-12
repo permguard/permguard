@@ -123,10 +123,12 @@ func (h *Host) Serve(ctx context.Context) (bool, error) {
 	logger.Debug("Host is starting")
 	factories := make([]services.ServiceFactory, len(h.config.ServicesFactories()))
 	count := 0
-	for _, servicesFactory := range h.config.ServicesFactories() {
+	for svcKind, servicesFactory := range h.config.ServicesFactories() {
 		factory, err := servicesFactory.CreateFactory()
 		if err != nil {
-			logger.Error("Error creating the service factory", zap.Error(err))
+			logger.Error("Error creating the service factory",
+				zap.String("service", svcKind.String()),
+				zap.Error(err))
 			return false, err
 		}
 		factories[count] = factory

@@ -45,7 +45,7 @@ func mapStorageError(err error) error {
 	case errors.Is(err, azstorage.ErrInvalidInput):
 		return status.Errorf(codes.InvalidArgument, "%v", err)
 	default:
-		return status.Errorf(codes.Internal, "%v", err)
+		return status.Errorf(codes.Internal, "internal error")
 	}
 }
 
