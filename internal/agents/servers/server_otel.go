@@ -48,7 +48,9 @@ func initOTelProviders(ctx context.Context, serviceName string, config *ServerCo
 	endpoint := config.OTelEndpoint()
 	sampleRate := config.OTelSampleRate()
 
-	logger.Info(fmt.Sprintf("Initializing OpenTelemetry (endpoint: %s, sample-rate: %.2f)", endpoint, sampleRate))
+	logger.Info("Initializing OpenTelemetry",
+		zap.String("endpoint", endpoint),
+		zap.Float64("sample_rate", sampleRate))
 
 	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

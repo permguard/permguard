@@ -84,15 +84,15 @@ type Endpoint struct {
 	grpcServer *grpc.Server
 }
 
-// newEndpoint creates a new grpcendpoint.
+// newEndpoint creates a new gRPC endpoint.
 func newEndpoint(endpointCfg *EndpointConfig, serviceCtx *services.ServiceContext) (*Endpoint, error) {
-	grpcendpointCtx, err := services.NewEndpointContext(serviceCtx, endpointCfg.port)
+	grpcEndpointCtx, err := services.NewEndpointContext(serviceCtx, endpointCfg.port)
 	if err != nil {
 		return nil, err
 	}
 	return &Endpoint{
 		config: endpointCfg,
-		ctx:    grpcendpointCtx,
+		ctx:    grpcEndpointCtx,
 	}, nil
 }
 
@@ -101,7 +101,7 @@ func (e *Endpoint) logger() *zap.Logger {
 	return e.ctx.Logger()
 }
 
-// Serve starts the grpcendpoint.
+// Serve starts the gRPC endpoint.
 func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContext) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is starting")
@@ -151,7 +151,7 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 	return true, nil
 }
 
-// GracefulStop stops the grpcendpoint.
+// GracefulStop stops the gRPC endpoint.
 func (e *Endpoint) GracefulStop(_ context.Context) (bool, error) {
 	logger := e.logger()
 	logger.Debug("Endpoint is stopping")
