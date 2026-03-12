@@ -18,6 +18,7 @@ package centralstorage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -44,6 +45,22 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 // readObject reads the object and verifies OID integrity.
 func (s SQLiteCentralStoragePAP) readObject(ctx context.Context, db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
 	keyValue, errkey := s.sqlRepo.KeyValue(ctx, db, zoneID, oid)
+	if errkey != nil || keyValue == nil || keyValue.Value == nil {
+		return nil, nil
+	}
+	if err := objects.VerifyOID(oid, keyValue.Value); err != nil {
+		return nil, fmt.Errorf("storage: corrupted object %s: %w", oid, err)
+	}
+	obj, err := objects.NewObject(keyValue.Value)
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// readObjectTx reads the object within a transaction and verifies OID integrity.
+func (s SQLiteCentralStoragePAP) readObjectTx(ctx context.Context, tx *sql.Tx, zoneID int64, oid string) (*objects.Object, error) {
+	keyValue, errkey := s.sqlRepo.KeyValueTx(ctx, tx, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
 	}

@@ -138,7 +138,7 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 			return nil, rollback(tx, err)
 		}
 		if err := objMng.VerifyCommitGraphIntegrity(req.RemoteCommitID, func(oid string) (*objects.Object, error) {
-			return s.readObject(ctx, db, req.ZoneID, oid)
+			return s.readObjectTx(ctx, tx, req.ZoneID, oid)
 		}); err != nil {
 			return nil, rollback(tx, fmt.Errorf("storage: graph integrity check failed: %w", err))
 		}

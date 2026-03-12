@@ -121,3 +121,13 @@ func (m *MockSqliteRepo) KeyValue(_ context.Context, db *sqlx.DB, zoneID int64, 
 	}
 	return r0, args.Error(1)
 }
+
+// KeyValueTx retrieves a key-value pair by key within a transaction.
+func (m *MockSqliteRepo) KeyValueTx(_ context.Context, tx *sql.Tx, zoneID int64, key string) (*azrepos.KeyValue, error) {
+	args := m.Called(tx, zoneID, key)
+	var r0 *azrepos.KeyValue
+	if val, ok := args.Get(0).(*azrepos.KeyValue); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}

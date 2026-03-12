@@ -47,8 +47,10 @@ type SqliteRepo interface {
 
 	// UpsertKeyValue creates or updates a key value.
 	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue) (*azrepos.KeyValue, error)
-	// DeleteKeyValue deletes a key value.
+	// KeyValue retrieves a key value.
 	KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*azrepos.KeyValue, error)
+	// KeyValueTx retrieves a key value within a transaction.
+	KeyValueTx(ctx context.Context, tx *sql.Tx, zoneID int64, key string) (*azrepos.KeyValue, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.
