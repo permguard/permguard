@@ -44,7 +44,7 @@ func (m *Manager) execRemotePull(headCtx *currentHeadContext, out common.Printer
 	if err != nil {
 		return nil, fmt.Errorf("cli: failed to create PAP client: %w", err)
 	}
-	defer papClient.Close()
+	defer func() { _ = papClient.Close() }()
 
 	localCommitID := headCtx.remoteCommitID
 

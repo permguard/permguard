@@ -320,20 +320,28 @@ func ScanAndFilterFiles(rootDir string, exts []string, ignorePatterns []string) 
 // CSV
 
 // WriteCSVStream writes a CSV stream.
-func WriteCSVStream(filename string, header []string, records any, rowFunc func(any) []string, compressed bool) error {
+func WriteCSVStream(filename string, header []string, records any, rowFunc func(any) []string, compressed bool) (retErr error) {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil && retErr == nil {
+			retErr = cerr
+		}
+	}()
 	var writer io.Writer = file
+	var zlibWriter *zlib.Writer
 	if compressed {
-		zlibWriter := zlib.NewWriter(file)
-		defer zlibWriter.Close()
+		zlibWriter = zlib.NewWriter(file)
+		defer func() {
+			if cerr := zlibWriter.Close(); cerr != nil && retErr == nil {
+				retErr = cerr
+			}
+		}()
 		writer = zlibWriter
 	}
 	csvWriter := csv.NewWriter(writer)
-	defer csvWriter.Flush()
 	if header == nil {
 		if err := csvWriter.Write(header); err != nil {
 			return err
@@ -349,6 +357,10 @@ func WriteCSVStream(filename string, header []string, records any, rowFunc func(
 		if err := csvWriter.Write(row); err != nil {
 			return err
 		}
+	}
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		return err
 	}
 	return nil
 }

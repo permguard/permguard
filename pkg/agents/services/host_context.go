@@ -36,17 +36,30 @@ type hostCtxKey struct{}
 
 // HostContext is the host context.
 type HostContext struct {
-	ctx context.Context
+	ctx         context.Context
+	displayName string
+	logger      *zap.Logger
+	cfgReader   runtime.HostConfigReader
+	hostable    Hostable
 }
 
 // NewHostContext creates a new host context.
-func NewHostContext(displayName string, hostable Hostable, logger *zap.Logger, configReader runtime.HostConfigReader) (*HostContext, error) {
+func NewHostContext(displayName string, hostable Hostable, logger *zap.Logger, configReader runtime.HostConfigReader, parentCtx ...context.Context) (*HostContext, error) {
 	newLogger := logger.With(zap.String("host", displayName))
 	data := map[string]any{ctxHostHostkey: displayName, ctxHostServerkey: hostable, ctxHostLoggerkey: newLogger, ctxHostCfgReader: configReader}
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, hostCtxKey{}, data)
+	var baseCtx context.Context
+	if len(parentCtx) > 0 && parentCtx[0] != nil {
+		baseCtx = parentCtx[0]
+	} else {
+		baseCtx = context.Background()
+	}
+	ctx := context.WithValue(baseCtx, hostCtxKey{}, data)
 	return &HostContext{
-		ctx: ctx,
+		ctx:         ctx,
+		displayName: displayName,
+		logger:      newLogger,
+		cfgReader:   configReader,
+		hostable:    hostable,
 	}, nil
 }
 
@@ -57,22 +70,22 @@ func (h *HostContext) Context() context.Context {
 
 // DisplayName returns the display name of the host.
 func (h *HostContext) DisplayName() string {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostHostkey].(string)
+	return h.displayName
 }
 
 // Logger returns the logger.
 func (h *HostContext) Logger() *zap.Logger {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostLoggerkey].(*zap.Logger)
+	return h.logger
 }
 
 // HostConfigReader returns the host configuration reader.
 func (h *HostContext) HostConfigReader() (runtime.HostConfigReader, error) {
-	return h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostCfgReader].(runtime.HostConfigReader), nil
+	return h.cfgReader, nil
 }
 
 // Shutdown shuts down the service.
 func (h *HostContext) Shutdown(ctx context.Context) {
-	h.ctx.Value(hostCtxKey{}).(map[string]any)[ctxHostServerkey].(Hostable).Shutdown(ctx)
+	h.hostable.Shutdown(ctx)
 }
 
 // ParentLoggerMessage returns the parent logger message.

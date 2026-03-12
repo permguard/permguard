@@ -30,7 +30,7 @@ func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	zone, err := client.CreateZone(ctx, &azzapv1.ZoneCreateRequest{Name: name})
@@ -49,7 +49,7 @@ func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	updatedZone, err := client.UpdateZone(ctx, &azzapv1.ZoneUpdateRequest{
@@ -68,7 +68,7 @@ func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*zap.Zone, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	zone, err := client.DeleteZone(ctx, &azzapv1.ZoneDeleteRequest{ZoneID: zoneID})
@@ -99,7 +99,7 @@ func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, n
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	zoneFetchRequest := &azzapv1.ZoneFetchRequest{}
 	zoneFetchRequest.Page = &page
 	zoneFetchRequest.PageSize = &pageSize

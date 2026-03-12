@@ -36,6 +36,8 @@ type endpointCtxKey struct{}
 type EndpointContext struct {
 	ctx       context.Context
 	parentCtx *ServiceContext
+	logger    *zap.Logger
+	port      int
 }
 
 // NewEndpointContext creates a new endpoint context.
@@ -46,6 +48,8 @@ func NewEndpointContext(serviceContext *ServiceContext, port int) (*EndpointCont
 	return &EndpointContext{
 		ctx:       ctx,
 		parentCtx: serviceContext,
+		logger:    newLogger,
+		port:      port,
 	}, nil
 }
 
@@ -56,12 +60,12 @@ func (e *EndpointContext) Context() context.Context {
 
 // Logger returns the logger.
 func (e *EndpointContext) Logger() *zap.Logger {
-	return e.ctx.Value(endpointCtxKey{}).(map[string]any)[ctxEndLoggerKey].(*zap.Logger)
+	return e.logger
 }
 
-// Port returns
+// Port returns the port.
 func (e *EndpointContext) Port() int {
-	return e.ctx.Value(endpointCtxKey{}).(map[string]any)[ctxEndpPortKey].(int)
+	return e.port
 }
 
 // ParentLoggerMessage returns the parent logger message.

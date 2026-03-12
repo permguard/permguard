@@ -14,11 +14,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package transport implements the transport layer of the NOTP protocol.
 package transport
 
 import (
+	"context"
 	"errors"
+	"sync"
 	"time"
 
 	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
@@ -26,6 +27,7 @@ import (
 
 // InMemoryStream simulates an in-memory stream for packet transmission with a fixed timeout.
 type InMemoryStream struct {
+	mu       sync.Mutex
 	packets  []aznotppackets.Packet
 	packetCh chan aznotppackets.Packet
 	timeout  time.Duration
@@ -36,17 +38,21 @@ func (t *InMemoryStream) TransmitPacket(packet *aznotppackets.Packet) error {
 	if packet == nil {
 		return errors.New("notp: cannot transmit a nil packet")
 	}
+	t.mu.Lock()
 	t.packets = append(t.packets, *packet)
+	t.mu.Unlock()
 	t.packetCh <- *packet
 	return nil
 }
 
 // ReceivePacket retrieves the oldest packet from the in-memory stream, with a fixed timeout.
 func (t *InMemoryStream) ReceivePacket() (*aznotppackets.Packet, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), t.timeout)
+	defer cancel()
 	select {
 	case packet := <-t.packetCh:
 		return &packet, nil
-	case <-time.After(t.timeout):
+	case <-ctx.Done():
 		return nil, errors.New("notp: timeout waiting for packet")
 	}
 }

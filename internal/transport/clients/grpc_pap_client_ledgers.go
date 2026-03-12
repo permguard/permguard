@@ -30,7 +30,7 @@ func (c *GrpcPAPClient) CreateLedger(zoneID int64, kind string, name string) (*p
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	ledger, err := client.CreateLedger(ctx, &azpapv1.LedgerCreateRequest{ZoneID: zoneID, Name: name, Kind: kind})
@@ -49,7 +49,7 @@ func (c *GrpcPAPClient) UpdateLedger(ledger *pap.Ledger) (*pap.Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	updatedLedger, err := client.UpdateLedger(ctx, &azpapv1.LedgerUpdateRequest{
@@ -70,7 +70,7 @@ func (c *GrpcPAPClient) DeleteLedger(zoneID int64, ledgerID string) (*pap.Ledger
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	ledger, err := client.DeleteLedger(ctx, &azpapv1.LedgerDeleteRequest{ZoneID: zoneID, LedgerID: ledgerID})
@@ -101,7 +101,7 @@ func (c *GrpcPAPClient) FetchLedgersBy(page int32, pageSize int32, zoneID int64,
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	ledgerFetchRequest := &azpapv1.LedgerFetchRequest{}
 	ledgerFetchRequest.Page = &page
 	ledgerFetchRequest.PageSize = &pageSize

@@ -40,8 +40,12 @@ const (
 
 // ServiceConfig holds the configuration for the server.
 type ServiceConfig struct {
-	serviceKind services.ServiceKind
-	config      map[string]any
+	serviceKind           services.ServiceKind
+	config                map[string]any
+	port                  int
+	storageCentralEngine  storage.Kind
+	dataFetchMaxPageSize  int
+	enableDefaultCreation bool
 }
 
 // NewServiceConfig creates a new server factory configuration.
@@ -70,6 +74,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("zap-service: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
+	c.port = grpcPort
 	// retrieve the data fetch max page size
 	flagName = options.FlagName(flagServerZAPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
@@ -78,6 +83,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.Join(errors.New("zap-service: invalid central storage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
+	c.storageCentralEngine = storageCEng
 	// retrieve the data fetch max page size
 	flagName = options.FlagName(flagServerZAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -85,10 +91,12 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("zap-service: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
+	c.dataFetchMaxPageSize = dataFetchMaxPageSize
 	// retrieve the enable default creation
 	flagName = options.FlagName(flagServerZAPPrefix, flagEnableDefaultCreation)
 	enableDefaultCreation := v.GetBool(flagName)
 	c.config[flagEnableDefaultCreation] = enableDefaultCreation
+	c.enableDefaultCreation = enableDefaultCreation
 	return nil
 }
 
@@ -99,22 +107,22 @@ func (c *ServiceConfig) ConfigData() map[string]any {
 
 // Port returns the port.
 func (c *ServiceConfig) Port() int {
-	return c.config[flagSuffixGrpcPort].(int)
+	return c.port
 }
 
 // StorageCentralEngine returns the storage central engine.
 func (c *ServiceConfig) StorageCentralEngine() storage.Kind {
-	return c.config[flagCentralEngine].(storage.Kind)
+	return c.storageCentralEngine
 }
 
 // DataFetchMaxPageSize returns the maximum number of items to fetch per request.
 func (c *ServiceConfig) DataFetchMaxPageSize() int {
-	return c.config[flagDataFetchMaxPageSize].(int)
+	return c.dataFetchMaxPageSize
 }
 
 // EnabledDefaultCreation return if the default creation is enabled.
 func (c *ServiceConfig) EnabledDefaultCreation() bool {
-	return c.config[flagEnableDefaultCreation].(bool)
+	return c.enableDefaultCreation
 }
 
 // Service returns the service kind.

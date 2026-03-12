@@ -36,6 +36,8 @@ type storageCtxKey struct{}
 type Context struct {
 	ctx       context.Context
 	parentCtx runtime.Context
+	storage   Kind
+	logger    *zap.Logger
 }
 
 // NewStorageContext creates a new storage context.
@@ -46,6 +48,8 @@ func NewStorageContext(runtimeContext runtime.Context, storage Kind) (*Context, 
 	return &Context{
 		ctx:       ctx,
 		parentCtx: runtimeContext,
+		storage:   storage,
+		logger:    newLogger,
 	}, nil
 }
 
@@ -56,12 +60,12 @@ func (s *Context) Context() context.Context {
 
 // Storage returns the storage.
 func (s *Context) Storage() Kind {
-	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgStorageKey].(Kind)
+	return s.storage
 }
 
 // Logger returns the logger.
 func (s *Context) Logger() *zap.Logger {
-	return s.ctx.Value(storageCtxKey{}).(map[string]any)[ctxStgLoggerKey].(*zap.Logger)
+	return s.logger
 }
 
 // ParentLoggerMessage returns the parent logger message.

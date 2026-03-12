@@ -27,7 +27,7 @@ func (c *GrpcPDPClient) AuthorizationCheck(request *pdp.AuthorizationCheckWithDe
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	req, err := azpdpv1.MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request)
 	if err != nil {
 		return nil, err

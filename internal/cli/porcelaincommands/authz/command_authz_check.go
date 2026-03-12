@@ -64,7 +64,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		if err != nil {
 			return handleInputError(ctx, printer, err, "invalid input for the authz check.")
 		}
-		defer input.Close()
+		defer func() { _ = input.Close() }()
 	} else {
 		input = os.Stdin
 	}

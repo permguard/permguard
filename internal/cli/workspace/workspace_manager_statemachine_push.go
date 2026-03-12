@@ -91,7 +91,7 @@ func (m *Manager) execPush(headCtx *currentHeadContext, commitObj *objects.Objec
 	if err != nil {
 		return nil, fmt.Errorf("cli: failed to create PAP client: %w", err)
 	}
-	defer papClient.Close()
+	defer func() { _ = papClient.Close() }()
 
 	// Step 1: PushAdvertise
 	advResp, err := papClient.PushAdvertise(&pap.PushAdvertiseRequest{

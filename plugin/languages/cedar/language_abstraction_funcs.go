@@ -46,7 +46,11 @@ func verifyUIDType(uidType string) (bool, error) {
 // verifyUIDTypeFromEntityMap verifies the UID type from the entity map.
 func verifyUIDTypeFromEntityMap(entityMap []map[string]any) (bool, error) {
 	for _, entity := range entityMap {
-		uidType, ok := entity["uid"].(map[string]any)["type"].(string)
+		uidMap, ok := entity["uid"].(map[string]any)
+		if !ok {
+			continue
+		}
+		uidType, ok := uidMap["type"].(string)
 		if !ok {
 			continue
 		}

@@ -23,6 +23,7 @@ import (
 	"flag"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/viper"
@@ -103,7 +104,7 @@ func (p *StorageProvisioner) InitFromViper(v *viper.Viper) error {
 }
 
 // setup sets up the database.
-func (p *StorageProvisioner) setup() (*sql.DB, error) {
+func (p *StorageProvisioner) setup(ctx context.Context) (*sql.DB, error) {
 	dbDir := p.dbDir
 	dbName := p.config.DBName()
 	if !strings.HasSuffix(dbName, ".db") {
@@ -114,7 +115,7 @@ func (p *StorageProvisioner) setup() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = db.PingContext(context.Background())
+	err = db.PingContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -134,12 +135,14 @@ func (p *StorageProvisioner) Up() error {
 		return nil
 	}
 	p.logger.Debug("Provisioning database")
-	db, err := p.setup()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	db, err := p.setup(ctx)
 	if err != nil {
 		p.logger.Error("Database provisioning failed", zap.Error(err))
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := goose.Up(db, "migrations"); err != nil {
 		p.logger.Error("Database provisioning failed", zap.Error(err))
 		return err
@@ -155,12 +158,14 @@ func (p *StorageProvisioner) Down() error {
 		return nil
 	}
 	p.logger.Debug("Deprovisioning database")
-	db, err := p.setup()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	db, err := p.setup(ctx)
 	if err != nil {
 		p.logger.Error("Database deprovisioning failed", zap.Error(err))
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for err == nil {
 		err = goose.Down(db, "migrations")
 	}

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -130,14 +131,18 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("Endpoint generated a panic", zap.Any("panic", r))
-				e.config.Hostable().Shutdown(context.Background())
+				shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer shutdownCancel()
+				e.config.Hostable().Shutdown(shutdownCtx)
 			}
 		}()
 		lgr := serviceCtx.Logger()
 		lgr.Info(serviceCtx.LogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
 		if err := grpcServer.Serve(lis); err != nil {
 			lgr.Error(serviceCtx.LogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
-			e.config.Hostable().Shutdown(context.Background())
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer shutdownCancel()
+			e.config.Hostable().Shutdown(shutdownCtx)
 		}
 	}()
 	logger.Debug("Endpoint is started")

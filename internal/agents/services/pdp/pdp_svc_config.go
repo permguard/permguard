@@ -41,8 +41,12 @@ const (
 
 // ServiceConfig holds the configuration for the server.
 type ServiceConfig struct {
-	service services.ServiceKind
-	config  map[string]any
+	service              services.ServiceKind
+	config               map[string]any
+	port                 int
+	storageCentralEngine storage.Kind
+	dataFetchMaxPageSize int
+	decisionLog          decisions.DecisionLogKind
 }
 
 // NewServiceConfig creates a new server factory configuration.
@@ -71,6 +75,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pdp-service: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
+	c.port = grpcPort
 	// retrieve the central storage engine
 	flagName = options.FlagName(flagServerPDPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
@@ -79,6 +84,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.Join(errors.New("pdp-service: invalid central storage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
+	c.storageCentralEngine = storageCEng
 	// retrieve the data fetch max page size
 	flagName = options.FlagName(flagServerPDPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -86,6 +92,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pdp-service: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
+	c.dataFetchMaxPageSize = dataFetchMaxPageSize
 	// retrieve the decision log
 	flagName = options.FlagName(flagServerPDPPrefix, flagSuffixDecisionLog)
 	decisionLog := v.GetString(flagName)
@@ -94,6 +101,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.Join(errors.New("pdp-service: invalid decision log"), err)
 	}
 	c.config[flagSuffixDecisionLog] = decisionLogType
+	c.decisionLog = decisionLogType
 	return nil
 }
 
@@ -104,22 +112,22 @@ func (c *ServiceConfig) ConfigData() map[string]any {
 
 // Port returns the port.
 func (c *ServiceConfig) Port() int {
-	return c.config[flagSuffixGrpcPort].(int)
+	return c.port
 }
 
 // StorageCentralEngine returns the storage central engine.
 func (c *ServiceConfig) StorageCentralEngine() storage.Kind {
-	return c.config[flagCentralEngine].(storage.Kind)
+	return c.storageCentralEngine
 }
 
 // DataFetchMaxPageSize returns the maximum number of items to fetch per request.
 func (c *ServiceConfig) DataFetchMaxPageSize() int {
-	return c.config[flagDataFetchMaxPageSize].(int)
+	return c.dataFetchMaxPageSize
 }
 
 // DecisionLog returns the decision log.
 func (c *ServiceConfig) DecisionLog() string {
-	return c.config[flagSuffixDecisionLog].(string)
+	return string(c.decisionLog)
 }
 
 // Service returns the service kind.

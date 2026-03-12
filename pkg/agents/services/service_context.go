@@ -37,6 +37,9 @@ type serviceCtxKey struct{}
 type ServiceContext struct {
 	ctx       context.Context
 	parentCtx *HostContext
+	service   ServiceKind
+	logger    *zap.Logger
+	cfgReader runtime.ServiceConfigReader
 }
 
 // NewServiceContext creates a new service context.
@@ -47,6 +50,9 @@ func NewServiceContext(hostContext *HostContext, service ServiceKind, configRead
 	return &ServiceContext{
 		ctx:       ctx,
 		parentCtx: hostContext,
+		service:   service,
+		logger:    newLogger,
+		cfgReader: configReader,
 	}, nil
 }
 
@@ -57,12 +63,12 @@ func (s *ServiceContext) Context() context.Context {
 
 // Service returns the service.
 func (s *ServiceContext) Service() ServiceKind {
-	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcServiceKey].(ServiceKind)
+	return s.service
 }
 
 // Logger returns the logger.
 func (s *ServiceContext) Logger() *zap.Logger {
-	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcLoggerKey].(*zap.Logger)
+	return s.logger
 }
 
 // ParentLoggerMessage returns the parent logger message.
@@ -83,5 +89,5 @@ func (s *ServiceContext) HostConfigReader() (runtime.HostConfigReader, error) {
 
 // ServiceConfigReader returns the service configuration reader.
 func (s *ServiceContext) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
-	return s.ctx.Value(serviceCtxKey{}).(map[string]any)[ctxSvcCfgReader].(runtime.ServiceConfigReader), nil
+	return s.cfgReader, nil
 }
