@@ -19,6 +19,7 @@ package pap
 import (
 	"errors"
 	"flag"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -36,6 +37,9 @@ const (
 	flagCentralEngine         = "engine-central"
 	flagDataFetchMaxPageSize  = "data-fetch-maxpagesize"
 	flagAuthstarMaxObjectSize = "authstar-max-object-size"
+	flagTxCleanupEnabled      = "tx-cleanup-enabled"
+	flagTxCleanupInterval     = "tx-cleanup-interval"
+	flagTxMaxLifetime         = "tx-max-lifetime"
 )
 
 // ServiceConfig holds the configuration for the server.
@@ -46,6 +50,9 @@ type ServiceConfig struct {
 	storageCentralEngine storage.Kind
 	dataFetchMaxPageSize int
 	authstarMaxObjSize   int
+	txCleanupEnabled     bool
+	txCleanupInterval    time.Duration
+	txMaxLifetime        time.Duration
 }
 
 // NewServiceConfig creates a new server factory configuration.
@@ -62,6 +69,9 @@ func (c *ServiceConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.String(options.FlagName(flagStoragePAPPrefix, flagCentralEngine), "", "data storage engine to be used for central data; this overrides the --storage-engine-central option")
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize), 10000, "maximum number of items to fetch per request")
 	flagSet.Int(options.FlagName(flagServerPAPPrefix, flagAuthstarMaxObjectSize), 5242880, "authstar maximum object size in bytes for push/pull operations (default 5MB)")
+	flagSet.Bool(options.FlagName(flagServerPAPPrefix, flagTxCleanupEnabled), true, "enable background cleanup of stale transactions")
+	flagSet.Duration(options.FlagName(flagServerPAPPrefix, flagTxCleanupInterval), 5*time.Minute, "how often the transaction cleanup job runs")
+	flagSet.Duration(options.FlagName(flagServerPAPPrefix, flagTxMaxLifetime), 5*time.Minute, "maximum lifetime for a pending transaction before cleanup")
 	return nil
 }
 
@@ -100,6 +110,19 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 	}
 	c.config[flagAuthstarMaxObjectSize] = maxObjectSize
 	c.authstarMaxObjSize = maxObjectSize
+	// retrieve the transaction cleanup settings
+	c.txCleanupEnabled = v.GetBool(options.FlagName(flagServerPAPPrefix, flagTxCleanupEnabled))
+	c.txCleanupInterval = v.GetDuration(options.FlagName(flagServerPAPPrefix, flagTxCleanupInterval))
+	if c.txCleanupEnabled && c.txCleanupInterval <= 0 {
+		return errors.New("pap-service: invalid transaction cleanup interval")
+	}
+	c.txMaxLifetime = v.GetDuration(options.FlagName(flagServerPAPPrefix, flagTxMaxLifetime))
+	if c.txCleanupEnabled && c.txMaxLifetime <= 0 {
+		return errors.New("pap-service: invalid transaction max lifetime")
+	}
+	c.config[flagTxCleanupEnabled] = c.txCleanupEnabled
+	c.config[flagTxCleanupInterval] = c.txCleanupInterval
+	c.config[flagTxMaxLifetime] = c.txMaxLifetime
 	return nil
 }
 
@@ -126,6 +149,21 @@ func (c *ServiceConfig) DataFetchMaxPageSize() int {
 // AuthstarMaxObjectSize returns the authstar maximum object size in bytes.
 func (c *ServiceConfig) AuthstarMaxObjectSize() int {
 	return c.authstarMaxObjSize
+}
+
+// TxCleanupEnabled returns whether transaction cleanup is enabled.
+func (c *ServiceConfig) TxCleanupEnabled() bool {
+	return c.txCleanupEnabled
+}
+
+// TxCleanupInterval returns how often the transaction cleanup job runs.
+func (c *ServiceConfig) TxCleanupInterval() time.Duration {
+	return c.txCleanupInterval
+}
+
+// TxMaxLifetime returns the maximum lifetime for a pending transaction before cleanup.
+func (c *ServiceConfig) TxMaxLifetime() time.Duration {
+	return c.txMaxLifetime
 }
 
 // Service returns the service kind.

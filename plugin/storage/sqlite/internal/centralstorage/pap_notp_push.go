@@ -81,7 +81,7 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 		isUpToDate = headCommitID == req.RefCommit
 	}
 
-	// If push is allowed (no conflicts and not up-to-date), create a push transaction.
+	// If push is allowed (no conflicts and not up-to-date), create a transaction.
 	var txid string
 	if !hasConflicts && !isUpToDate {
 		txid = azrepos.GenerateUUID()
@@ -93,12 +93,12 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 		if err != nil {
 			return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 		}
-		pushTx := &azrepos.PushTransaction{
+		txn := &azrepos.Transaction{
 			TxID:     txid,
 			LedgerID: req.LedgerID,
 			ZoneID:   req.ZoneID,
 		}
-		if err := s.sqlRepo.CreatePushTransaction(ctx, tx, pushTx); err != nil {
+		if err := s.sqlRepo.CreateTransaction(ctx, tx, txn); err != nil {
 			return nil, rollback(tx, err)
 		}
 		if err := tx.Commit(); err != nil {
@@ -116,8 +116,8 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 	}, nil
 }
 
-// markPushFailed marks a push transaction as failed. It is best-effort and logs errors.
-func (s SQLiteCentralStoragePAP) markPushFailed(ctx context.Context, txid string) {
+// markTxFailed marks a transaction as failed. It is best-effort and logs errors.
+func (s SQLiteCentralStoragePAP) markTxFailed(ctx context.Context, txid string) {
 	if txid == "" {
 		return
 	}
@@ -125,9 +125,9 @@ func (s SQLiteCentralStoragePAP) markPushFailed(ctx context.Context, txid string
 	if err != nil {
 		return
 	}
-	_ = s.sqlRepo.UpdatePushTransactionStatusNoTx(ctx, db, txid, azrepos.PushTxStatusFailed)
+	_ = s.sqlRepo.UpdateTransactionStatusNoTx(ctx, db, txid, azrepos.TxStatusFailed)
 	logger := s.ctx.Logger()
-	logger.Info(fmt.Sprintf("Push session failed (txid: %s)", txid))
+	logger.Info(fmt.Sprintf("Transaction failed (txid: %s)", txid))
 }
 
 // PushTransfer handles the push transfer step.
@@ -147,12 +147,12 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
-	pushTx, err := s.sqlRepo.GetPushTransaction(ctx, db, req.TxID)
+	txn, err := s.sqlRepo.GetTransaction(ctx, db, req.TxID)
 	if err != nil {
-		return nil, fmt.Errorf("storage: invalid push transaction (txid: %s): %w", req.TxID, azstorage.ErrInvalidInput)
+		return nil, fmt.Errorf("storage: invalid transaction (txid: %s): %w", req.TxID, azstorage.ErrInvalidInput)
 	}
-	if pushTx.Status != azrepos.PushTxStatusPending {
-		return nil, fmt.Errorf("storage: push transaction is not pending (txid: %s, status: %s): %w", req.TxID, pushTx.Status, azstorage.ErrInvalidInput)
+	if txn.Status != azrepos.TxStatusPending {
+		return nil, fmt.Errorf("storage: transaction is not pending (txid: %s, status: %s): %w", req.TxID, txn.Status, azstorage.ErrInvalidInput)
 	}
 
 	// Validate transfer rate limits.
@@ -161,22 +161,22 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		totalSize += int64(len(obj.Content))
 	}
 	if err := objects.ValidateTransferLimits(len(req.Objects), totalSize, 0, 0); err != nil {
-		s.markPushFailed(ctx, req.TxID)
+		s.markTxFailed(ctx, req.TxID)
 		return nil, fmt.Errorf("storage: %w", err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		s.markPushFailed(ctx, req.TxID)
+		s.markTxFailed(ctx, req.TxID)
 		return nil, azrepos.WrapSqliteError(errorMessageCannotBeginTransaction, err)
 	}
 	for _, obj := range req.Objects {
 		if err := objects.VerifyOID(obj.OID, obj.Content); err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, fmt.Errorf("storage: received corrupted object %s: %w", obj.OID, err))
 		}
 		if err := objects.ValidateObjectSize(obj.Content, objects.DefaultMaxObjectSize); err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, fmt.Errorf("storage: received oversized object %s: %w", obj.OID, err))
 		}
 		keyValue := &azrepos.KeyValue{
@@ -186,41 +186,41 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		}
 		_, err = s.sqlRepo.UpsertKeyValue(ctx, tx, keyValue, req.TxID)
 		if err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, err)
 		}
 	}
 	committed := false
 	if req.IsLast {
 		if req.ExpectedServerCommit == "" {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, fmt.Errorf("storage: expected server commit is required for final transfer: %w", azstorage.ErrInvalidInput))
 		}
 		// Verify graph integrity of the final commit before updating the ledger ref.
 		objMng, err := objects.NewObjectManager()
 		if err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, err)
 		}
 		if err := objMng.VerifyCommitGraphIntegrity(req.RemoteCommitID, func(oid string) (*objects.Object, error) {
 			return s.readObjectTx(ctx, tx, req.ZoneID, oid)
 		}); err != nil {
 			_ = rollback(tx, nil)
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, fmt.Errorf("storage: graph integrity check failed: %w", err)
 		}
 		// Atomic commit: update key_values ref, update ledger ref+txid, mark push committed.
 		err = s.sqlRepo.UpdateLedgerRef(ctx, tx, req.ZoneID, req.LedgerID, req.ExpectedServerCommit, req.RemoteCommitID, req.TxID)
 		if err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err))
 		}
-		if err := s.sqlRepo.UpdatePushTransactionStatus(ctx, tx, req.TxID, azrepos.PushTxStatusCommitted); err != nil {
-			s.markPushFailed(ctx, req.TxID)
+		if err := s.sqlRepo.UpdateTransactionStatus(ctx, tx, req.TxID, azrepos.TxStatusCommitted); err != nil {
+			s.markTxFailed(ctx, req.TxID)
 			return nil, rollback(tx, err)
 		}
 		if err := tx.Commit(); err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		committed = true
@@ -228,7 +228,7 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		logger.Info(fmt.Sprintf("Push session committed (txid: %s, ledger: %s, zone: %d)", req.TxID, req.LedgerID, req.ZoneID))
 	} else {
 		if err := tx.Commit(); err != nil {
-			s.markPushFailed(ctx, req.TxID)
+			s.markTxFailed(ctx, req.TxID)
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 	}

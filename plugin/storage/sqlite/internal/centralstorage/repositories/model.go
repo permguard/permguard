@@ -72,8 +72,8 @@ func LogKeyValueEntry(keyValue *KeyValue) string {
 	return fmt.Sprintf("keyvalue key: %s", keyValue.Key)
 }
 
-// PushTransaction is the model for the push_transactions table.
-type PushTransaction struct {
+// Transaction is the model for the transactions table.
+type Transaction struct {
 	TxID      string    `db:"txid"`
 	LedgerID  string    `db:"ledger_id"`
 	ZoneID    int64     `db:"zone_id"`
@@ -81,9 +81,9 @@ type PushTransaction struct {
 	Status    string    `db:"status"`
 }
 
-// Push transaction status constants.
+// Transaction status constants.
 const (
-	PushTxStatusPending   = "pending"
-	PushTxStatusCommitted = "committed"
-	PushTxStatusFailed    = "failed"
+	TxStatusPending   = "pending"
+	TxStatusCommitted = "committed"
+	TxStatusFailed    = "failed"
 )

@@ -15,7 +15,7 @@
 -- SPDX-License-Identifier: Apache-2.0
 
 -- +goose Up
-CREATE TABLE push_transactions (
+CREATE TABLE transactions (
     txid TEXT NOT NULL PRIMARY KEY,
     ledger_id TEXT NOT NULL,
     zone_id INTEGER NOT NULL REFERENCES zones(zone_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -23,8 +23,8 @@ CREATE TABLE push_transactions (
     status TEXT NOT NULL DEFAULT 'pending'
 );
 
-CREATE INDEX push_transactions_status_started_idx ON push_transactions(status, started_at);
-CREATE INDEX push_transactions_zoneid_idx ON push_transactions(zone_id);
+CREATE INDEX transactions_status_started_idx ON transactions(status, started_at);
+CREATE INDEX transactions_zoneid_idx ON transactions(zone_id);
 
 ALTER TABLE key_values ADD COLUMN txid TEXT NOT NULL DEFAULT '';
 ALTER TABLE ledgers ADD COLUMN txid TEXT NOT NULL DEFAULT '';
@@ -32,6 +32,6 @@ ALTER TABLE ledgers ADD COLUMN txid TEXT NOT NULL DEFAULT '';
 -- +goose Down
 ALTER TABLE ledgers DROP COLUMN txid;
 ALTER TABLE key_values DROP COLUMN txid;
-DROP INDEX IF EXISTS push_transactions_status_started_idx;
-DROP INDEX IF EXISTS push_transactions_zoneid_idx;
-DROP TABLE IF EXISTS push_transactions;
+DROP INDEX IF EXISTS transactions_status_started_idx;
+DROP INDEX IF EXISTS transactions_zoneid_idx;
+DROP TABLE IF EXISTS transactions;
