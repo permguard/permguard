@@ -24,7 +24,7 @@ import (
 
 // SamplePacket represents a sample packet.
 type SamplePacket struct {
-	Text string
+	Text string `cbor:"1,keyasint"`
 }
 
 // Type returns the type of the packet.
@@ -34,18 +34,12 @@ func (p *SamplePacket) Type() uint64 {
 
 // Serialize serializes the packet.
 func (p *SamplePacket) Serialize() ([]byte, error) {
-	data := SerializeString(nil, p.Text, PacketNullByte)
-	return data, nil
+	return SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet.
 func (p *SamplePacket) Deserialize(data []byte) error {
-	var err error
-	p.Text, _, err = DeserializeString(data, PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return DeserializeCBOR(data, p)
 }
 
 func TestPacketWriterAndReader(t *testing.T) {

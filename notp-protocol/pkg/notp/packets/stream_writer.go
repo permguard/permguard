@@ -75,7 +75,7 @@ func (w *PacketWriter) AppendDataPacket(packet Packetable) error {
 	if err != nil {
 		return err
 	}
-	data = EncodeByteArray(data)
+	// CBOR payloads are binary-safe, no base64 encoding needed.
 	if w.streamEndIndex == -1 {
 		streamSize := uint64(1)
 		if w.packet.Data, err = writeStreamDataPacket(w.packet.Data, dataType, &streamSize, data); err != nil {

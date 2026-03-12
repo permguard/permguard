@@ -23,11 +23,11 @@ import (
 // ObjectStatePacket is object state description packet.
 type ObjectStatePacket struct {
 	// OID is the OID.
-	OID string
+	OID string `cbor:"1,keyasint"`
 	// OType is the object type.
-	OType string
+	OType string `cbor:"2,keyasint"`
 	// Content is the object content.
-	Content []byte
+	Content []byte `cbor:"3,keyasint"`
 }
 
 // Type returns the type of the packet.
@@ -37,26 +37,10 @@ func (p *ObjectStatePacket) Type() uint64 {
 
 // Serialize serializes the packet.
 func (p *ObjectStatePacket) Serialize() ([]byte, error) {
-	data := aznotppackets.SerializeString(nil, p.OID, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeString(data, p.OType, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeBytes(data, p.Content, aznotppackets.PacketNullByte)
-	return data, nil
+	return aznotppackets.SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet.
 func (p *ObjectStatePacket) Deserialize(data []byte) error {
-	var err error
-	p.OID, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.OType, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.Content, _, err = aznotppackets.DeserializeBytes(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return aznotppackets.DeserializeCBOR(data, p)
 }

@@ -66,9 +66,9 @@ const (
 
 // StatePacket encapsulates the data structure for a base packet used in the protocol.
 type StatePacket struct {
-	MessageCode  uint16
-	MessageValue uint64
-	ErrorCode    uint16
+	MessageCode  uint16 `cbor:"1,keyasint"`
+	MessageValue uint64 `cbor:"2,keyasint"`
+	ErrorCode    uint16 `cbor:"3,keyasint"`
 }
 
 // Type returns the packet type.
@@ -98,26 +98,10 @@ func (p *StatePacket) HasError() bool {
 
 // Serialize serializes the packet into bytes.
 func (p *StatePacket) Serialize() ([]byte, error) {
-	data := aznotppackets.SerializeUint16(nil, p.MessageCode, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeUint64(data, p.MessageValue, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeUint16(data, p.ErrorCode, aznotppackets.PacketNullByte)
-	return data, nil
+	return aznotppackets.SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet from bytes.
 func (p *StatePacket) Deserialize(data []byte) error {
-	var err error
-	p.MessageCode, data, err = aznotppackets.DeserializeUint16(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.MessageValue, data, err = aznotppackets.DeserializeUint64(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.ErrorCode, _, err = aznotppackets.DeserializeUint16(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return aznotppackets.DeserializeCBOR(data, p)
 }

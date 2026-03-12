@@ -23,11 +23,11 @@ import (
 // RemoteRefStatePacket is the packet to advertise the remote ref state.
 type RemoteRefStatePacket struct {
 	// RefPrevCommit is the previous commit of the remote ref.
-	RefPrevCommit string
+	RefPrevCommit string `cbor:"1,keyasint"`
 	// RefCommit is the commit of the remote ref.
-	RefCommit string
+	RefCommit string `cbor:"2,keyasint"`
 	// OpCode is the operation code of the packet.
-	OpCode uint16
+	OpCode uint16 `cbor:"3,keyasint"`
 }
 
 // Type returns the type of the packet.
@@ -37,26 +37,10 @@ func (p *RemoteRefStatePacket) Type() uint64 {
 
 // Serialize serializes the packet.
 func (p *RemoteRefStatePacket) Serialize() ([]byte, error) {
-	data := aznotppackets.SerializeString(nil, p.RefPrevCommit, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeString(data, p.RefCommit, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeUint16(data, p.OpCode, aznotppackets.PacketNullByte)
-	return data, nil
+	return aznotppackets.SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet.
 func (p *RemoteRefStatePacket) Deserialize(data []byte) error {
-	var err error
-	p.RefPrevCommit, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.RefCommit, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.OpCode, _, err = aznotppackets.DeserializeUint16(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return aznotppackets.DeserializeCBOR(data, p)
 }

@@ -95,8 +95,8 @@ func (m *Manager) codeSourceConfigFile() string {
 }
 
 // codeSourceObjectDir returns the code source object directory.
-// It shards objects into subdirectories using the last two characters of the OID
-// to ensure even distribution regardless of the OID format (hex SHA256 or CID).
+// It shards objects into subdirectories using the last two characters of the OID (CID format)
+// to ensure even distribution (base32 suffix provides uniform hashing across 1024 buckets).
 func (m *Manager) codeSourceObjectDir(oid string, basePath string) (string, string) {
 	basePath = filepath.Join(basePath, m.objectsDir())
 	folder := oid[len(oid)-2:]

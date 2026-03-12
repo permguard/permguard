@@ -23,15 +23,15 @@ import (
 // LocalRefStatePacket is the packet to advertise the local ref state.
 type LocalRefStatePacket struct {
 	// RefCommit is the commit of the local ref.
-	RefCommit string
+	RefCommit string `cbor:"1,keyasint"`
 	// HasConflicts is true if the local ref has conflicts with the remote ref.
-	HasConflicts bool
+	HasConflicts bool `cbor:"2,keyasint"`
 	// IsUpToDate is true if the local ref is up to date with the remote ref.
-	IsUpToDate bool
+	IsUpToDate bool `cbor:"3,keyasint"`
 	// NumberOfCommits is the number of commits between the local ref and the remote ref.
-	NumberOfCommits uint32
+	NumberOfCommits uint32 `cbor:"4,keyasint"`
 	// OpCode is the operation code of the packet.
-	OpCode uint16
+	OpCode uint16 `cbor:"5,keyasint"`
 }
 
 // Type returns the type of the packet.
@@ -41,36 +41,10 @@ func (p *LocalRefStatePacket) Type() uint64 {
 
 // Serialize serializes the packet.
 func (p *LocalRefStatePacket) Serialize() ([]byte, error) {
-	data := aznotppackets.SerializeString(nil, p.RefCommit, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeBool(data, p.HasConflicts, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeBool(data, p.IsUpToDate, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeUint32(data, p.NumberOfCommits, aznotppackets.PacketNullByte)
-	data = aznotppackets.SerializeUint16(data, p.OpCode, aznotppackets.PacketNullByte)
-	return data, nil
+	return aznotppackets.SerializeCBOR(p)
 }
 
 // Deserialize deserializes the packet.
 func (p *LocalRefStatePacket) Deserialize(data []byte) error {
-	var err error
-	p.RefCommit, data, err = aznotppackets.DeserializeString(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.HasConflicts, data, err = aznotppackets.DeserializeBool(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.IsUpToDate, data, err = aznotppackets.DeserializeBool(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.NumberOfCommits, data, err = aznotppackets.DeserializeUint32(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	p.OpCode, _, err = aznotppackets.DeserializeUint16(data, aznotppackets.PacketNullByte)
-	if err != nil {
-		return err
-	}
-	return nil
+	return aznotppackets.DeserializeCBOR(data, p)
 }

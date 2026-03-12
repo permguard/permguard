@@ -101,7 +101,7 @@ func CreateCommandForWorkspaceObjectsCat(deps cli.DependenciesProvider, v *viper
 
 Examples:
   # print the object content
-  permguard objects cat 4d5f28519a7e1174ced863971b7db039299ff34560aed145c9f50bbb2481cc0c -p`),
+  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy -p`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForObjectsCatWorkspace(deps, cmd, v, args[0])
 		},

@@ -100,7 +100,7 @@ func (w *PacketReader) ReadNextDataPacket(state *DataPacketState) ([]byte, *Data
 			packetStreamSize:  packetStreamSize,
 			packetStreamIndex: uint64(0),
 		}
-		return DecodeByteArray(packetData), state, nil
+		return packetData, state, nil
 	}
 	offset := state.offeset + state.size
 	payload, offset, size, packetType, err := readDataPacket(offset, data)
@@ -111,5 +111,5 @@ func (w *PacketReader) ReadNextDataPacket(state *DataPacketState) ([]byte, *Data
 	state.packetType = packetType
 	state.size = size
 	state.packetStreamIndex++
-	return DecodeByteArray(payload), state, nil
+	return payload, state, nil
 }
