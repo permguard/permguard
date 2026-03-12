@@ -20,10 +20,12 @@ import (
 	"context"
 	"encoding/json"
 
+	otelcodes "go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
@@ -52,6 +54,9 @@ type PDPServer struct {
 
 // AuthorizationCheck checks the authorization.
 func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pdp.AuthorizationCheck")
+	defer span.End()
+	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pdp.AuthorizationCheck"))
 	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")
@@ -63,10 +68,12 @@ func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *Authorizati
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
+		span.SetStatus(otelcodes.Error, "nil request")
 		return nil, status.Errorf(codes.InvalidArgument, "pdp-endpoint: request cannot be nil: %v", err)
 	}
 	authzResponse, err := s.service.AuthorizationCheck(ctx, req)
 	if err != nil {
+		span.SetStatus(otelcodes.Error, err.Error())
 		authzResponse = &pdp.AuthorizationCheckResponse{
 			RequestID: req.RequestID,
 			Decision:  false,

@@ -21,8 +21,10 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
@@ -63,6 +65,9 @@ func authorizationCheckReadBytes(ctx context.Context, s *SQLiteCentralStoragePDP
 
 // authorizationCheckReadTree reads the tree object for the authorization check.
 func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, commitID string) (*objects.Tree, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadPolicyTree")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("commit_id", commitID))
 	ocontent, err := authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, commitID)
 	if err != nil {
 		return nil, err
@@ -80,6 +85,9 @@ func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP,
 
 // LoadPolicyStore loads the policy store for a given zone ID and store ID.
 func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int64, storeID string) (*authzen.PolicyStore, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.LoadPolicyStore")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("store_id", storeID))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -109,7 +117,9 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 	if err != nil {
 		return nil, fmt.Errorf("storage: server couldn't read the tree: %w", err)
 	}
-	for _, entry := range treeObj.Entries() {
+	entries := treeObj.Entries()
+	span.SetAttributes(attribute.Int("policy_entries", len(entries)))
+	for _, entry := range entries {
 		entryID := entry.OID()
 		value, err2 := authorizationCheckReadKeyValue(ctx, &s, db, objMng, zoneID, entryID)
 		if err2 != nil {

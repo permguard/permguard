@@ -22,7 +22,7 @@ import (
 )
 
 // mapZoneToAgentZone maps a zone to a model Zone.
-func mapZoneToAgentZone(zone *azrepos.Zone) (*zap.Zone, error) {
+func mapZoneToAgentZone(zone *azrepos.Zone) (*zap.Zone, error) { //nolint:unparam // error kept for API consistency with mapLedgerToAgentLedger
 	return &zap.Zone{
 		ZoneID:    zone.ZoneID,
 		CreatedAt: zone.CreatedAt,

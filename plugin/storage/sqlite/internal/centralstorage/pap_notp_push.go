@@ -22,9 +22,12 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -41,6 +44,9 @@ func rollback(tx *sql.Tx, origErr error) error {
 // PushAdvertise handles the push advertise step.
 // On success (no conflicts, not up-to-date), it generates a txid and creates a pending push transaction.
 func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.PushAdvertiseRequest) (*pap.PushAdvertiseResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.PushAdvertise")
+	defer span.End()
+	telemetry.PushAdvertiseTotal.Add(ctx, 1)
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -83,6 +89,10 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 		isUpToDate = headCommitID == req.RefCommit
 	}
 
+	if hasConflicts {
+		telemetry.PushConflictsTotal.Add(ctx, 1)
+		span.SetAttributes(attribute.Bool("has_conflicts", true))
+	}
 	// If push is allowed (no conflicts and not up-to-date), create a transaction.
 	var txid string
 	if !hasConflicts && !isUpToDate {
@@ -107,6 +117,8 @@ func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.Pus
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		logger := s.ctx.Logger()
+		telemetry.TxCreatedTotal.Add(ctx, 1)
+		span.SetAttributes(attribute.String("txid", txid))
 		logger.Info("Push session started",
 			zap.String("txid", txid),
 			zap.String("ledger_id", req.LedgerID),
@@ -140,12 +152,16 @@ func (s SQLiteCentralStoragePAP) markTxFailed(ctx context.Context, txid string) 
 			zap.Error(err))
 		return
 	}
+	telemetry.TxFailedTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("txid", txid)))
 	logger.Info("Transaction marked as failed",
 		zap.String("txid", txid))
 }
 
 // PushTransfer handles the push transfer step.
 func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.PushTransferRequest) (*pap.PushTransferResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.PushTransfer")
+	defer span.End()
+	telemetry.PushTransferTotal.Add(ctx, 1)
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -169,11 +185,14 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 		return nil, fmt.Errorf("storage: transaction is not pending (txid: %s, status: %s): %w", req.TxID, txn.Status, azstorage.ErrInvalidInput)
 	}
 
+	span.SetAttributes(attribute.String("txid", req.TxID), attribute.Int("objects_count", len(req.Objects)))
 	// Validate transfer rate limits.
 	var totalSize int64
 	for _, obj := range req.Objects {
 		totalSize += int64(len(obj.Content))
 	}
+	telemetry.PushObjectsCount.Record(ctx, int64(len(req.Objects)))
+	telemetry.PushBytesTotal.Add(ctx, totalSize)
 	if err := objects.ValidateTransferLimits(len(req.Objects), totalSize, 0, 0); err != nil {
 		s.markTxFailed(ctx, req.TxID)
 		return nil, fmt.Errorf("storage: %w", err)
@@ -238,6 +257,7 @@ func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.Push
 			return nil, azrepos.WrapSqliteError(errorMessageCannotCommitTransaction, err)
 		}
 		committed = true
+		telemetry.TxCommittedTotal.Add(ctx, 1)
 		logger := s.ctx.Logger()
 		logger.Info("Push session committed",
 			zap.String("txid", req.TxID),

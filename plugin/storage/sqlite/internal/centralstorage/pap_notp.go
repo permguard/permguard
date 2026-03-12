@@ -22,8 +22,10 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -44,6 +46,9 @@ func GetObjectForType[T any](objMng *objects.ObjectManager, obj *objects.Object)
 
 // readObject reads the object and verifies OID integrity.
 func (s SQLiteCentralStoragePAP) readObject(ctx context.Context, db *sqlx.DB, zoneID int64, oid string) (*objects.Object, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadObject")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("oid", oid))
 	keyValue, errkey := s.sqlRepo.KeyValue(ctx, db, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
@@ -60,6 +65,9 @@ func (s SQLiteCentralStoragePAP) readObject(ctx context.Context, db *sqlx.DB, zo
 
 // readObjectTx reads the object within a transaction and verifies OID integrity.
 func (s SQLiteCentralStoragePAP) readObjectTx(ctx context.Context, tx *sql.Tx, zoneID int64, oid string) (*objects.Object, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadObjectTx")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("oid", oid))
 	keyValue, errkey := s.sqlRepo.KeyValueTx(ctx, tx, zoneID, oid)
 	if errkey != nil || keyValue == nil || keyValue.Value == nil {
 		return nil, nil
@@ -76,6 +84,9 @@ func (s SQLiteCentralStoragePAP) readObjectTx(ctx context.Context, tx *sql.Tx, z
 
 // readLedger reads the ledger by zone ID and ledger ID.
 func (s SQLiteCentralStoragePAP) readLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadLedger")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("ledger_id", ledgerID))
 	fields := map[string]any{
 		pap.FieldLedgerLedgerID: ledgerID,
 	}

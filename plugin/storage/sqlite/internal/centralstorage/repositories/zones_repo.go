@@ -26,9 +26,11 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 	_ "modernc.org/sqlite" // SQLite driver
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -48,6 +50,13 @@ func GenerateZoneID() int64 {
 
 // UpsertZone creates or updates a zone.
 func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, zone *Zone) (*Zone, error) {
+	action := "update"
+	if isCreate {
+		action = "create"
+	}
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpsertZone")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.operation", action))
 	if zone == nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone data is missing or malformed (%s): %w", LogZoneEntry(zone), azstorage.ErrInvalidInput)
 	}
@@ -60,6 +69,7 @@ func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, 
 
 	zoneID := zone.ZoneID
 	zoneName := zone.Name
+	span.SetAttributes(attribute.String("db.zone_name", zoneName))
 	var result sql.Result
 	var err error
 	if isCreate {
@@ -69,10 +79,6 @@ func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, 
 		result, err = tx.ExecContext(ctx, "UPDATE zones SET name = ? WHERE zone_id = ?", zoneName, zoneID)
 	}
 	if err != nil || result == nil {
-		action := "update"
-		if isCreate {
-			action = "create"
-		}
 		return nil, WrapSqliteError(fmt.Sprintf("failed to %s zone - operation '%s-zone' encountered an issue (%s)", action, action, LogZoneEntry(zone)), err)
 	}
 
@@ -86,11 +92,15 @@ func (r *Repository) UpsertZone(ctx context.Context, tx *sql.Tx, isCreate bool, 
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("storage: failed to retrieve zone - operation 'retrieve-created-zone' encountered an issue (%s)", LogZoneEntry(zone)), err)
 	}
+	span.SetAttributes(attribute.Int64("db.zone_id", dbZone.ZoneID))
 	return &dbZone, nil
 }
 
 // DeleteZone deletes a zone.
 func (r *Repository) DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (*Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.DeleteZone")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID))
 	if err := validators.ValidateCodeID("zone", zoneID); err != nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone id is not valid (id: %d): %w", zoneID, azstorage.ErrInvalidInput)
 	}
@@ -118,6 +128,8 @@ func (r *Repository) DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (
 
 // FetchZones retrieves zones.
 func (r *Repository) FetchZones(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, filterID *int64, filterName *string) ([]Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.FetchZones")
+	defer span.End()
 	if page <= 0 || pageSize <= 0 {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
@@ -163,5 +175,6 @@ func (r *Repository) FetchZones(ctx context.Context, db *sqlx.DB, page int32, pa
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve zones - operation 'retrieve-zones' encountered an issue with parameters %v", args), err)
 	}
 
+	span.SetAttributes(attribute.Int("db.result_count", len(dbZones)))
 	return dbZones, nil
 }

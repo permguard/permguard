@@ -22,9 +22,11 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 	_ "modernc.org/sqlite" // SQLite driver
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
@@ -32,6 +34,8 @@ import (
 // On conflict (existing row), only kv_value is updated; txid is NOT overwritten
 // so that pre-existing objects retain their original txid.
 func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *KeyValue, txid string) (*KeyValue, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpsertKeyValue")
+	defer span.End()
 	if keyValue == nil {
 		return nil, fmt.Errorf("storage: invalid client input - key-value data is missing or malformed: %w", azstorage.ErrInvalidInput)
 	}
@@ -45,6 +49,7 @@ func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *K
 	zoneID := keyValue.ZoneID
 	key := keyValue.Key
 	value := keyValue.Value
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.key", key))
 	var result sql.Result
 	var err error
 
@@ -75,9 +80,12 @@ func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *K
 
 // KeyValue retrieves the value for a given key from the key-value store.
 func (r *Repository) KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*KeyValue, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.KeyValue")
+	defer span.End()
 	if key == "" {
 		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.key", key))
 
 	var dbKeyValue KeyValue
 	err := db.QueryRowContext(ctx, "SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(
@@ -97,9 +105,12 @@ func (r *Repository) KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, ke
 
 // KeyValueTx retrieves the value for a given key from the key-value store within a transaction.
 func (r *Repository) KeyValueTx(ctx context.Context, tx *sql.Tx, zoneID int64, key string) (*KeyValue, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.KeyValueTx")
+	defer span.End()
 	if key == "" {
 		return nil, fmt.Errorf("storage: invalid client input - key is missing or empty: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.key", key))
 
 	var dbKeyValue KeyValue
 	err := tx.QueryRowContext(ctx, "SELECT zone_id, kv_key, kv_value FROM key_values WHERE zone_id = ? and kv_key = ?", zoneID, key).Scan(

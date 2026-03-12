@@ -23,9 +23,11 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 	_ "modernc.org/sqlite" // SQLite driver
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/core/validators"
 )
 
@@ -68,6 +70,13 @@ func ConvertLedgerKindToString(id int16) (string, error) {
 
 // UpsertLedger creates or updates a ledger.
 func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool, ledger *Ledger) (*Ledger, error) {
+	action := "update"
+	if isCreate {
+		action = "create"
+	}
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpsertLedger")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.operation", action))
 	if ledger == nil {
 		return nil, fmt.Errorf("storage: invalid client input - ledger data is missing or malformed (%s): %w", LogLedgerEntry(ledger), azstorage.ErrInvalidInput)
 	}
@@ -85,6 +94,7 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 	ledgerID := ledger.LedgerID
 	ledgerName := ledger.Name
 	ledgerKind := ledger.Kind
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.ledger_name", ledgerName))
 	var result sql.Result
 	var err error
 	if isCreate {
@@ -94,10 +104,6 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 		result, err = tx.ExecContext(ctx, "UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
 	}
 	if err != nil || result == nil {
-		action := "update"
-		if isCreate {
-			action = "create"
-		}
 		params := map[string]string{WrapSqliteParamForeignKey: "zone id"}
 		return nil, WrapSqliteErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
 	}
@@ -116,11 +122,15 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledger - operation 'retrieve-created-ledger' encountered an issue (%s)", LogLedgerEntry(ledger)), err)
 	}
+	span.SetAttributes(attribute.String("db.ledger_id", dbLedger.LedgerID))
 	return &dbLedger, nil
 }
 
 // UpdateLedgerRef updates the ref and txid of a ledger.
 func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef, txid string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpdateLedgerRef")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.ledger_id", ledgerID))
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
@@ -164,6 +174,9 @@ func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int
 
 // DeleteLedger deletes a ledger.
 func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*Ledger, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.DeleteLedger")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID), attribute.String("db.ledger_id", ledgerID))
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return nil, fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
@@ -198,6 +211,9 @@ func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64,
 
 // FetchLedgers retrieves ledgers.
 func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]Ledger, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.FetchLedgers")
+	defer span.End()
+	span.SetAttributes(attribute.Int64("db.zone_id", zoneID))
 	if page <= 0 || pageSize <= 0 {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
@@ -250,5 +266,6 @@ func (r *Repository) FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, 
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledgers - operation 'retrieve-ledgers' encountered an issue with parameters %v", args), err)
 	}
 
+	span.SetAttributes(attribute.Int("db.result_count", len(dbLedgers)))
 	return dbLedgers, nil
 }
