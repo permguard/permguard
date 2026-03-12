@@ -40,8 +40,12 @@ const (
 
 // ServiceConfig holds the configuration for the server.
 type ServiceConfig struct {
-	service services.ServiceKind
-	config  map[string]any
+	service              services.ServiceKind
+	config               map[string]any
+	port                 int
+	storageCentralEngine storage.Kind
+	dataFetchMaxPageSize int
+	authstarMaxObjSize   int
 }
 
 // NewServiceConfig creates a new server factory configuration.
@@ -70,7 +74,8 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pap-service: invalid port")
 	}
 	c.config[flagSuffixGrpcPort] = grpcPort
-	// retrieve the data fetch max page size
+	c.port = grpcPort
+	// retrieve the central storage engine
 	flagName = options.FlagName(flagServerPAPPrefix, flagCentralEngine)
 	centralStorageEngine := v.GetString(flagName)
 	storageCEng, err := storage.NewStorageKindFromString(centralStorageEngine)
@@ -78,6 +83,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.Join(errors.New("pap-service: invalid central sotrage engine"), err)
 	}
 	c.config[flagCentralEngine] = storageCEng
+	c.storageCentralEngine = storageCEng
 	// retrieve the data fetch max page size
 	flagName = options.FlagName(flagServerPAPPrefix, flagDataFetchMaxPageSize)
 	dataFetchMaxPageSize := v.GetInt(flagName)
@@ -85,6 +91,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pap-service: invalid data fetch max page size")
 	}
 	c.config[flagDataFetchMaxPageSize] = dataFetchMaxPageSize
+	c.dataFetchMaxPageSize = dataFetchMaxPageSize
 	// retrieve the authstar max object size
 	flagName = options.FlagName(flagServerPAPPrefix, flagAuthstarMaxObjectSize)
 	maxObjectSize := v.GetInt(flagName)
@@ -92,6 +99,7 @@ func (c *ServiceConfig) InitFromViper(v *viper.Viper) error {
 		return errors.New("pap-service: invalid authstar max object size")
 	}
 	c.config[flagAuthstarMaxObjectSize] = maxObjectSize
+	c.authstarMaxObjSize = maxObjectSize
 	return nil
 }
 
@@ -102,22 +110,22 @@ func (c *ServiceConfig) ConfigData() map[string]any {
 
 // Port returns the port.
 func (c *ServiceConfig) Port() int {
-	return c.config[flagSuffixGrpcPort].(int)
+	return c.port
 }
 
 // StorageCentralEngine returns the storage central engine.
 func (c *ServiceConfig) StorageCentralEngine() storage.Kind {
-	return c.config[flagCentralEngine].(storage.Kind)
+	return c.storageCentralEngine
 }
 
 // DataFetchMaxPageSize returns the maximum number of items to fetch per request.
 func (c *ServiceConfig) DataFetchMaxPageSize() int {
-	return c.config[flagDataFetchMaxPageSize].(int)
+	return c.dataFetchMaxPageSize
 }
 
 // AuthstarMaxObjectSize returns the authstar maximum object size in bytes.
 func (c *ServiceConfig) AuthstarMaxObjectSize() int {
-	return c.config[flagAuthstarMaxObjectSize].(int)
+	return c.authstarMaxObjSize
 }
 
 // Service returns the service kind.

@@ -14,10 +14,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package transport implements the transport layer of the NOTP protocol.
 package transport
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -40,29 +40,27 @@ type WireStream struct {
 
 // TransmitPacket appends a packet to the in-wire stream.
 func (t *WireStream) TransmitPacket(packet *aznotppackets.Packet) error {
-	errCh := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), t.timeout)
+	defer cancel()
 
+	errCh := make(chan error, 1)
 	go func() {
-		if err := t.sender(packet); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
+		errCh <- t.sender(packet)
 	}()
 
 	select {
 	case err := <-errCh:
-		if err != nil {
-			return err
-		}
-		return nil
-	case <-time.After(t.timeout):
+		return err
+	case <-ctx.Done():
 		return errors.New("notp: timeout sending packet")
 	}
 }
 
 // ReceivePacket retrieves the oldest packet from the in-wire stream, with a fixed timeout.
 func (t *WireStream) ReceivePacket() (*aznotppackets.Packet, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), t.timeout)
+	defer cancel()
+
 	packetCh := make(chan *aznotppackets.Packet, 1)
 	errCh := make(chan error, 1)
 
@@ -84,7 +82,7 @@ func (t *WireStream) ReceivePacket() (*aznotppackets.Packet, error) {
 		return packet, nil
 	case err := <-errCh:
 		return nil, err
-	case <-time.After(t.timeout):
+	case <-ctx.Done():
 		return nil, errors.New("notp: timeout waiting for packet")
 	}
 }

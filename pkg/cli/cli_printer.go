@@ -186,7 +186,10 @@ func (cp *PrinterTerminal) printTerminal(output map[string]any, isError bool, ne
 	sort.Strings(keys)
 	for _, k := range keys {
 		if isError {
-			errMsg := output[k].(string)
+			errMsg, ok := output[k].(string)
+			if !ok {
+				continue
+			}
 			lines := strings.Split(strings.ReplaceAll(errMsg, "\r\n", "\n"), "\n")
 			if len(lines) == 0 {
 				continue

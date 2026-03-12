@@ -183,7 +183,10 @@ func (m *Manager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 	}
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	rowFunc := func(record any) []string {
-		codeFile := record.(CodeFile)
+		codeFile, ok := record.(CodeFile)
+		if !ok {
+			return nil
+		}
 		return []string{
 			codeFile.Path,
 			codeFile.OID,
@@ -359,7 +362,10 @@ func (m *Manager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObje
 // saveCodeObjectStates saves the code objs states.
 func (m *Manager) saveCodeObjectStates(path string, codeObjects []CodeObjectState) error {
 	rowFunc := func(record any) []string {
-		codeObject := record.(CodeObjectState)
+		codeObject, ok := record.(CodeObjectState)
+		if !ok {
+			return nil
+		}
 		return []string{
 			codeObject.State,
 			codeObject.Partition,
@@ -626,7 +632,10 @@ func (m *Manager) Commit(commitID string) (*objects.Commit, error) {
 	if objInfo.Type() != objects.ObjectTypeCommit {
 		return nil, fmt.Errorf("cli: oid %s is not a valid commit", commitID)
 	}
-	commit := objInfo.Instance().(*objects.Commit)
+	commit, ok := objInfo.Instance().(*objects.Commit)
+	if !ok {
+		return nil, fmt.Errorf("cli: oid %s has unexpected object instance type", commitID)
+	}
 	return commit, nil
 }
 

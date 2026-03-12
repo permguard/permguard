@@ -271,7 +271,10 @@ func (abs *LanguageAbstraction) AuthorizationCheck(_ *azmanifests.Language, cont
 	ps := cedar.NewPolicySet()
 	for _, policy := range policyStore.Policies() {
 		objInfo := policy.ObjectInfo()
-		policyBytes := objInfo.Instance().([]byte)
+		policyBytes, ok := objInfo.Instance().([]byte)
+		if !ok {
+			return nil, errors.New("cedar: policy object instance is not a byte slice")
+		}
 		var policy cedar.Policy
 		if err := policy.UnmarshalJSON(policyBytes); err != nil {
 			return nil, errors.Join(errors.New("cedar: policy could not be unmarshalled"), err)

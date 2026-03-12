@@ -98,7 +98,11 @@ func (c *CommunityServerInitializer) StoragesFactories(centralStorageEngine stor
 		if storageKind == storage.StorageSQLite {
 			fFactCfg := func() (storage.FactoryConfig, error) { return sqlite.NewStorageFactoryConfig() }
 			fFact := func(config storage.FactoryConfig) (storage.Factory, error) {
-				return sqlite.NewStorageFactory(config.(*sqlite.StorageFactoryConfig))
+				sqliteCfg, ok := config.(*sqlite.StorageFactoryConfig)
+				if !ok {
+					return nil, errors.New("server: invalid sqlite storage factory config type")
+				}
+				return sqlite.NewStorageFactory(sqliteCfg)
 			}
 			fcty, err := storage.NewStorageFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -124,7 +128,11 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 		case services.ServiceZAP:
 			fFactCfg := func() (services.ServiceFactoryConfig, error) { return zap.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return zap.NewServiceFactory(config.(*zap.ServiceFactoryConfig))
+				zapCfg, ok := config.(*zap.ServiceFactoryConfig)
+				if !ok {
+					return nil, errors.New("server: invalid zap service factory config type")
+				}
+				return zap.NewServiceFactory(zapCfg)
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -135,7 +143,11 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 		case services.ServicePAP:
 			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pap.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return pap.NewServiceFactory(config.(*pap.ServiceFactoryConfig))
+				papCfg, ok := config.(*pap.ServiceFactoryConfig)
+				if !ok {
+					return nil, errors.New("server: invalid pap service factory config type")
+				}
+				return pap.NewServiceFactory(papCfg)
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
@@ -148,7 +160,11 @@ func (c *CommunityServerInitializer) ServicesFactories() (map[services.ServiceKi
 		case services.ServicePDP:
 			fFactCfg := func() (services.ServiceFactoryConfig, error) { return pdp.NewServiceFactoryConfig() }
 			fFact := func(config services.ServiceFactoryConfig) (services.ServiceFactory, error) {
-				return pdp.NewServiceFactory(config.(*pdp.ServiceFactoryConfig))
+				pdpCfg, ok := config.(*pdp.ServiceFactoryConfig)
+				if !ok {
+					return nil, errors.New("server: invalid pdp service factory config type")
+				}
+				return pdp.NewServiceFactory(pdpCfg)
 			}
 			fcty, err := services.NewServiceFactoryProvider(fFactCfg, fFact)
 			if err != nil {
