@@ -19,36 +19,15 @@ package v1
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
-	azstorage "github.com/permguard/permguard/pkg/agents/storage"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
 	"go.uber.org/zap"
 )
-
-// mapStorageError maps storage sentinel errors to gRPC status codes.
-func mapStorageError(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, azstorage.ErrNotFound):
-		return status.Errorf(codes.NotFound, "%v", err)
-	case errors.Is(err, azstorage.ErrAlreadyExists):
-		return status.Errorf(codes.AlreadyExists, "%v", err)
-	case errors.Is(err, azstorage.ErrConflict):
-		return status.Errorf(codes.Aborted, "%v", err)
-	case errors.Is(err, azstorage.ErrInvalidInput):
-		return status.Errorf(codes.InvalidArgument, "%v", err)
-	default:
-		return status.Errorf(codes.Internal, "%v", err)
-	}
-}
 
 // PDPService is the service for the PDP.
 type PDPService interface {
@@ -79,12 +58,12 @@ func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *Authorizati
 		if err == nil {
 			logger.Debug("AuthorizationCheck request", zap.String("request", string(jsonData)))
 		} else {
-			logger.Error("AuthorizationCheck request", zap.String("request", err.Error()))
+			logger.Error("Failed to marshal AuthorizationCheck request for logging", zap.Error(err))
 		}
 	}
 	req, err := MapGrpcAuthorizationCheckRequestToAgentAuthorizationCheckRequest(request)
 	if req == nil {
-		return nil, mapStorageError(errors.Join(errors.New("pdp-endpoint: request cannot be nil"), err))
+		return nil, status.Errorf(codes.InvalidArgument, "pdp-endpoint: request cannot be nil: %v", err)
 	}
 	authzResponse, err := s.service.AuthorizationCheck(ctx, req)
 	if err != nil {

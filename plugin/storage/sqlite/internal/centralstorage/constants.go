@@ -17,10 +17,10 @@
 package centralstorage
 
 const (
-	// errorMessageCannotConnect is the error message cannot connect.
-	errorMessageCannotConnect = "cannot connect"
-	// errorMessageCannotBeginTransaction is the error message cannot begin the transaction.
-	errorMessageCannotBeginTransaction = "cannot begin the transaction"
-	// errorMessageCannotCommitTransaction is the error message cannot commit the transaction.
-	errorMessageCannotCommitTransaction = "cannot commit the transaction"
+	// errorMessageCannotConnect is the error message for database connection failures.
+	errorMessageCannotConnect = "cannot connect to the sqlite database"
+	// errorMessageCannotBeginTransaction is the error message for transaction begin failures.
+	errorMessageCannotBeginTransaction = "cannot begin database transaction"
+	// errorMessageCannotCommitTransaction is the error message for transaction commit failures.
+	errorMessageCannotCommitTransaction = "cannot commit database transaction"
 )

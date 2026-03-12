@@ -18,7 +18,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"runtime/debug"
 	"time"
 
@@ -35,15 +34,22 @@ func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServ
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request generated a panic: %v stacktrace:%s", err, debug.Stack())))
+				logger.Error(serviceCtx.LogMessage("Request generated a panic"),
+					zap.Any("panic", err),
+					zap.String("stacktrace", string(debug.Stack())))
 			}
 		}()
 		start := time.Now()
 		h, err := handler(ctx, req)
 		if err != nil {
-			logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Request failed to be served - method:%s duration:%s error:%v", info.FullMethod, time.Since(start), err)), zap.Error(err))
+			logger.Error(serviceCtx.LogMessage("Request failed"),
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", time.Since(start)),
+				zap.Error(err))
 		} else {
-			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
+			logger.Debug(serviceCtx.LogMessage("Request served"),
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", time.Since(start)))
 		}
 		return h, err
 	}
@@ -55,15 +61,22 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Stream request generated a panic: %v stacktrace:%s", err, debug.Stack())))
+				logger.Error(serviceCtx.LogMessage("Stream request generated a panic"),
+					zap.Any("panic", err),
+					zap.String("stacktrace", string(debug.Stack())))
 			}
 		}()
 		start := time.Now()
 		err := handler(srv, ss)
 		if err != nil {
-			logger.Error(serviceCtx.LogMessage(fmt.Sprintf("Stream request failed to be served - method:%s duration:%s error:%v", info.FullMethod, time.Since(start), err)), zap.Error(err))
+			logger.Error(serviceCtx.LogMessage("Stream request failed"),
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", time.Since(start)),
+				zap.Error(err))
 		} else {
-			logger.Debug(serviceCtx.LogMessage(fmt.Sprintf("Stream request - method:%s duration:%s", info.FullMethod, time.Since(start))), zap.Duration("duration", time.Since(start)))
+			logger.Debug(serviceCtx.LogMessage("Stream request served"),
+				zap.String("method", info.FullMethod),
+				zap.Duration("duration", time.Since(start)))
 		}
 		return err
 	}

@@ -104,7 +104,11 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 		authzPolicyStore, err2 := s.storage.LoadPolicyStore(ctx, authzModel.ZoneID, authzModel.PolicyStore.ID)
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
-				logger.Error("authorization check has failed", zap.Error(err2))
+				logger.Error("Failed to load policy store for authorization check",
+					zap.Int64("zone_id", authzModel.ZoneID),
+					zap.String("policy_store_id", authzModel.PolicyStore.ID),
+					zap.String("request_id", requestID),
+					zap.Error(err2))
 			}
 			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -112,7 +116,11 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 		cedarLanguageAbs, err2 := cedar.NewCedarLanguageAbstraction()
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
-				logger.Error("authorization check has failed", zap.Error(err2))
+				logger.Error("Failed to create Cedar language abstraction",
+					zap.Int64("zone_id", authzModel.ZoneID),
+					zap.String("policy_store_id", authzModel.PolicyStore.ID),
+					zap.String("request_id", requestID),
+					zap.Error(err2))
 			}
 			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -212,7 +220,11 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 			decision, _ := json.Marshal(decisionLog)
 			switch decisionKind {
 			case decisions.DecisionLogFile:
-				_, _ = files.AppendToFile(decisionLogsPath, append(decision, '\n'), false)
+				if _, err := files.AppendToFile(decisionLogsPath, append(decision, '\n'), false); err != nil {
+					logger.Warn("Failed to write decision log to file",
+						zap.String("path", decisionLogsPath),
+						zap.Error(err))
+				}
 			case decisions.DecisionLogStdOut:
 				logger.Info("DECISION-LOG", zap.String("decision", string(decision)))
 			}

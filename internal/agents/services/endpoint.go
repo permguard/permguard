@@ -136,9 +136,12 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 			}
 		}()
 		lgr := serviceCtx.Logger()
-		lgr.Info(serviceCtx.LogMessage(fmt.Sprintf("Service is serving on port: %d", port)))
+		lgr.Info(serviceCtx.LogMessage("Service is serving"),
+			zap.Int("port", port))
 		if err := grpcServer.Serve(lis); err != nil {
-			lgr.Error(serviceCtx.LogMessage(fmt.Sprintf("Service failed to serve on port: %d", port)), zap.Error(err))
+			lgr.Error(serviceCtx.LogMessage("Service failed to serve"),
+				zap.Int("port", port),
+				zap.Error(err))
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer shutdownCancel()
 			e.config.Hostable().Shutdown(shutdownCtx)
