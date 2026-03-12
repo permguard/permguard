@@ -51,11 +51,13 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = zapClient.Close() }()
 	pppServer := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
 	papClient, err := clients.NewGrpcPAPClient(pppServer)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = papClient.Close() }()
 	zoneID := ledgerInfo.ZoneID()
 	ledger := ledgerInfo.Ledger()
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)

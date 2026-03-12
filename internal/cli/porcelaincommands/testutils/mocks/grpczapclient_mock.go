@@ -97,6 +97,11 @@ func (m *GrpcZAPClientMock) FetchZonesBy(page int32, pageSize int32, zoneID int6
 	return r0, args.Error(1)
 }
 
+// Close closes the client connection.
+func (m *GrpcZAPClientMock) Close() error {
+	return nil
+}
+
 // NewGrpcZAPClientMock creates a new GrpcZAPClientMock.
 func NewGrpcZAPClientMock() *GrpcZAPClientMock {
 	return &GrpcZAPClientMock{}

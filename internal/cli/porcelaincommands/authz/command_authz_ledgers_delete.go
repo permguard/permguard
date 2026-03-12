@@ -60,6 +60,7 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		}
 	}
+	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)

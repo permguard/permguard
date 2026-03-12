@@ -62,6 +62,7 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 
 	page := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))

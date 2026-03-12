@@ -145,6 +145,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 	authzResp, err := client.AuthorizationCheck(&authzReq)
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {

@@ -36,4 +36,6 @@ type GrpcZAPClient interface {
 	FetchZonesByName(page int32, pageSize int32, name string) ([]zap.Zone, error)
 	// FetchZonesBy fetches zones by.
 	FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error)
+	// Close closes the client connection.
+	Close() error
 }
