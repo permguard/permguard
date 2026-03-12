@@ -61,6 +61,7 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 	page := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))

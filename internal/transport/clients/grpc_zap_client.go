@@ -26,11 +26,10 @@ import (
 
 // CreateZone creates a new zone.
 func (c *GrpcZAPClient) CreateZone(name string) (*zap.Zone, error) {
-	client, conn, err := c.createGRPCClient()
+	client, err := c.getClient()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	zone, err := client.CreateZone(ctx, &azzapv1.ZoneCreateRequest{Name: name})
@@ -45,11 +44,10 @@ func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 	if zone == nil {
 		return nil, errors.New("grpc-client: invalid zone instance")
 	}
-	client, conn, err := c.createGRPCClient()
+	client, err := c.getClient()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	updatedZone, err := client.UpdateZone(ctx, &azzapv1.ZoneUpdateRequest{
@@ -64,11 +62,10 @@ func (c *GrpcZAPClient) UpdateZone(zone *zap.Zone) (*zap.Zone, error) {
 
 // DeleteZone deletes a zone.
 func (c *GrpcZAPClient) DeleteZone(zoneID int64) (*zap.Zone, error) {
-	client, conn, err := c.createGRPCClient()
+	client, err := c.getClient()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 	ctx, cancel := grpcContext()
 	defer cancel()
 	zone, err := client.DeleteZone(ctx, &azzapv1.ZoneDeleteRequest{ZoneID: zoneID})
@@ -95,11 +92,10 @@ func (c *GrpcZAPClient) FetchZonesByName(page int32, pageSize int32, name string
 
 // FetchZonesBy returns all zones filtering by zone id and name.
 func (c *GrpcZAPClient) FetchZonesBy(page int32, pageSize int32, zoneID int64, name string) ([]zap.Zone, error) {
-	client, conn, err := c.createGRPCClient()
+	client, err := c.getClient()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 	zoneFetchRequest := &azzapv1.ZoneFetchRequest{}
 	zoneFetchRequest.Page = &page
 	zoneFetchRequest.PageSize = &pageSize

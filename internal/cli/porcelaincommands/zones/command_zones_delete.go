@@ -63,6 +63,7 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID))
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {

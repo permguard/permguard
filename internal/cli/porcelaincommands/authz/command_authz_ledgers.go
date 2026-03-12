@@ -73,6 +73,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	ledger := &pap.Ledger{

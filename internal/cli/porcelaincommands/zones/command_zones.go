@@ -69,6 +69,7 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		}
 		return common.ErrCommandSilent
 	}
+	defer func() { _ = client.Close() }()
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	var zone *zap.Zone
 	if isCreate {

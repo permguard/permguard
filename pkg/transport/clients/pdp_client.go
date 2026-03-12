@@ -24,4 +24,6 @@ import (
 type GrpcPDPClient interface {
 	// AuthorizationCheck checks the authorization.
 	AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error)
+	// Close closes the client connection.
+	Close() error
 }

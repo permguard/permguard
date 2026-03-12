@@ -97,6 +97,11 @@ func (m *GrpcPAPClientMock) FetchLedgersBy(page int32, pageSize int32, zoneID in
 	return r0, args.Error(1)
 }
 
+// Close closes the client connection.
+func (m *GrpcPAPClientMock) Close() error {
+	return nil
+}
+
 // NewGrpcPAPClientMock creates a new GrpcPAPClientMock.
 func NewGrpcPAPClientMock() *GrpcPAPClientMock {
 	return &GrpcPAPClientMock{}

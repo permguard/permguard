@@ -17,6 +17,8 @@
 package clients
 
 import (
+	"sync"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -26,6 +28,9 @@ import (
 // GrpcPDPClient is a gRPC client for the PDP service.
 type GrpcPDPClient struct {
 	endpoint string
+	mu       sync.Mutex
+	conn     *grpc.ClientConn
+	client   azpdpv1.V1PDPServiceClient
 }
 
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
@@ -39,12 +44,31 @@ func NewGrpcPDPClient(endpoint string) (*GrpcPDPClient, error) {
 	}, nil
 }
 
-// createGRPCClient creates a new gRPC client.
-func (c *GrpcPDPClient) createGRPCClient() (azpdpv1.V1PDPServiceClient, *grpc.ClientConn, error) {
+// getClient returns a gRPC client, creating the connection on first use.
+func (c *GrpcPDPClient) getClient() (azpdpv1.V1PDPServiceClient, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn != nil {
+		return c.client, nil
+	}
 	conn, err := grpc.NewClient(c.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	client := azpdpv1.NewV1PDPServiceClient(conn)
-	return client, conn, nil
+	c.conn = conn
+	c.client = azpdpv1.NewV1PDPServiceClient(conn)
+	return c.client, nil
+}
+
+// Close closes the persistent gRPC connection.
+func (c *GrpcPDPClient) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn != nil {
+		err := c.conn.Close()
+		c.conn = nil
+		c.client = nil
+		return err
+	}
+	return nil
 }

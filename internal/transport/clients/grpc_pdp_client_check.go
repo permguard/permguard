@@ -23,11 +23,10 @@ import (
 
 // AuthorizationCheck checks the authorization request.
 func (c *GrpcPDPClient) AuthorizationCheck(request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
-	client, conn, err := c.createGRPCClient()
+	client, err := c.getClient()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 	req, err := azpdpv1.MapAgentAuthorizationCheckRequestToGrpcAuthorizationCheckRequest(request)
 	if err != nil {
 		return nil, err
