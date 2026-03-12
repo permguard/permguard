@@ -18,6 +18,7 @@ package statemachines
 
 import (
 	"errors"
+	"fmt"
 
 	aznotppackets "github.com/permguard/permguard/notp-protocol/pkg/notp/packets"
 	aznotpsmpackets "github.com/permguard/permguard/notp-protocol/pkg/notp/statemachines/packets"
@@ -276,6 +277,9 @@ func (m *StateMachine) Run(bag map[string]any, inputValue FlowType) (*StateMachi
 		}
 		stateID = nextStateInfo.StateID
 		state = m.runtime.statemap[nextStateInfo.StateID]
+		if state == nil {
+			return nil, fmt.Errorf("notp: unknown state transition to state ID %d", stateID)
+		}
 	}
 	return runtime, nil
 }

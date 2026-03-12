@@ -38,10 +38,11 @@ func (t *InMemoryStream) TransmitPacket(packet *aznotppackets.Packet) error {
 	if packet == nil {
 		return errors.New("notp: cannot transmit a nil packet")
 	}
+	p := *packet
 	t.mu.Lock()
-	t.packets = append(t.packets, *packet)
+	t.packets = append(t.packets, p)
 	t.mu.Unlock()
-	t.packetCh <- *packet
+	t.packetCh <- p
 	return nil
 }
 
