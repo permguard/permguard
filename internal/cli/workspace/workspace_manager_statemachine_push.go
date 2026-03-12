@@ -113,6 +113,7 @@ func (m *Manager) execPush(headCtx *currentHeadContext, commitObj *objects.Objec
 	if advResp.HasConflicts {
 		return nil, errors.New("cli: remote ledger has diverged, run 'pull' to sync your workspace then retry")
 	}
+	txid := advResp.TxID
 	remoteCommitID := advResp.ServerCommit
 
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -161,6 +162,7 @@ func (m *Manager) execPush(headCtx *currentHeadContext, commitObj *objects.Objec
 			return nil, err
 		}
 		_, err = papClient.PushTransfer(&pap.PushTransferRequest{
+			TxID:     txid,
 			ZoneID:   headCtx.ZoneID(),
 			LedgerID: headCtx.LedgerID(),
 			Objects:  objs,
@@ -177,6 +179,7 @@ func (m *Manager) execPush(headCtx *currentHeadContext, commitObj *objects.Objec
 		return nil, err
 	}
 	transferResp, err := papClient.PushTransfer(&pap.PushTransferRequest{
+		TxID:                 txid,
 		ZoneID:               headCtx.ZoneID(),
 		LedgerID:             headCtx.LedgerID(),
 		Objects:              codeObjs,

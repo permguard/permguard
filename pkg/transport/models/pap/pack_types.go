@@ -33,6 +33,7 @@ type PushAdvertiseRequest struct {
 
 // PushAdvertiseResponse is the response for the push advertise step.
 type PushAdvertiseResponse struct {
+	TxID         string `json:"txid"`
 	ServerCommit string `json:"server_commit"`
 	HasConflicts bool   `json:"has_conflicts"`
 	IsUpToDate   bool   `json:"is_up_to_date"`
@@ -40,6 +41,7 @@ type PushAdvertiseResponse struct {
 
 // PushTransferRequest is the request for the push transfer step.
 type PushTransferRequest struct {
+	TxID                 string        `json:"txid"`
 	ZoneID               int64         `json:"zone_id"`
 	LedgerID             string        `json:"ledger_id"`
 	Objects              []ObjectState `json:"objects"`

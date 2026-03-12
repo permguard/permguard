@@ -287,15 +287,15 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		codeBlocks := map[string][][]byte{}
 		for _, entry := range tree.Entries() {
 			codeEntries = append(codeEntries, map[string]any{
-				"partition":         entry.Partition(),
-				"oid":               entry.OID(),
-				"oname":             entry.OName(),
-				"type":              entry.Type(),
-				"code_id":           entry.CodeID(),
-				"code_type":         entry.CodeType(),
-				"language":          entry.Language(),
-				"lanaguage_version": entry.LanguageVersion(),
-				"language_type":     entry.LanguageType(),
+				"partition":        entry.Partition(),
+				"oid":              entry.OID(),
+				"oname":            entry.OName(),
+				"type":             entry.Type(),
+				"code_id":          entry.CodeID(),
+				"code_type":        entry.CodeType(),
+				"language":         entry.Language(),
+				"language_version": entry.LanguageVersion(),
+				"language_type":    entry.LanguageType(),
 			})
 			if _, ok := codeMapIDs[entry.OID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.OID())

@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -42,15 +43,28 @@ type SqliteRepo interface {
 	DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID string) (*azrepos.Ledger, error)
 	// FetchLedgers fetches ledgers.
 	FetchLedgers(ctx context.Context, db *sqlx.DB, page int32, pageSize int32, zoneID int64, filterID *string, filterName *string) ([]azrepos.Ledger, error)
-	// UpdateLedgerRef updates the ledger ref.
-	UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error
+	// UpdateLedgerRef updates the ledger ref and txid.
+	UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef, txid string) error
 
-	// UpsertKeyValue creates or updates a key value.
-	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue) (*azrepos.KeyValue, error)
+	// UpsertKeyValue creates or updates a key value with txid association.
+	UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue, txid string) (*azrepos.KeyValue, error)
 	// KeyValue retrieves a key value.
 	KeyValue(ctx context.Context, db *sqlx.DB, zoneID int64, key string) (*azrepos.KeyValue, error)
 	// KeyValueTx retrieves a key value within a transaction.
 	KeyValueTx(ctx context.Context, tx *sql.Tx, zoneID int64, key string) (*azrepos.KeyValue, error)
+
+	// CreatePushTransaction inserts a new push transaction with status pending.
+	CreatePushTransaction(ctx context.Context, tx *sql.Tx, pushTx *azrepos.PushTransaction) error
+	// UpdatePushTransactionStatus updates the status of a push transaction.
+	UpdatePushTransactionStatus(ctx context.Context, tx *sql.Tx, txid string, status string) error
+	// UpdatePushTransactionStatusNoTx updates the status without a transaction.
+	UpdatePushTransactionStatusNoTx(ctx context.Context, db *sqlx.DB, txid string, status string) error
+	// GetPushTransaction retrieves a push transaction by txid.
+	GetPushTransaction(ctx context.Context, db *sqlx.DB, txid string) (*azrepos.PushTransaction, error)
+	// FetchStalePushTransactions retrieves pending push transactions older than the given threshold.
+	FetchStalePushTransactions(ctx context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.PushTransaction, error)
+	// DeleteKeyValuesByTxID deletes all key-value pairs associated with the given txid and zone.
+	DeleteKeyValuesByTxID(ctx context.Context, tx *sql.Tx, zoneID int64, txid string) (int64, error)
 }
 
 // SqliteExecutor is the interface for executing sqlite commands.

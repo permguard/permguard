@@ -19,6 +19,7 @@ package mocks
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	mock "github.com/stretchr/testify/mock"
@@ -77,8 +78,8 @@ func (m *MockSqliteRepo) UpsertLedger(_ context.Context, tx *sql.Tx, isCreate bo
 }
 
 // UpdateLedgerRef creates or updates a ledger.
-func (m *MockSqliteRepo) UpdateLedgerRef(_ context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
-	args := m.Called(tx, zoneID, ledgerID, currentRef, newRef)
+func (m *MockSqliteRepo) UpdateLedgerRef(_ context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef, txid string) error {
+	args := m.Called(tx, zoneID, ledgerID, currentRef, newRef, txid)
 	return args.Error(1)
 }
 
@@ -103,8 +104,8 @@ func (m *MockSqliteRepo) FetchLedgers(_ context.Context, db *sqlx.DB, page int32
 }
 
 // UpsertKeyValue creates or updates a key-value pair.
-func (m *MockSqliteRepo) UpsertKeyValue(_ context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue) (*azrepos.KeyValue, error) {
-	args := m.Called(tx, keyValue)
+func (m *MockSqliteRepo) UpsertKeyValue(_ context.Context, tx *sql.Tx, keyValue *azrepos.KeyValue, txid string) (*azrepos.KeyValue, error) {
+	args := m.Called(tx, keyValue, txid)
 	var r0 *azrepos.KeyValue
 	if val, ok := args.Get(0).(*azrepos.KeyValue); ok {
 		r0 = val
@@ -130,4 +131,48 @@ func (m *MockSqliteRepo) KeyValueTx(_ context.Context, tx *sql.Tx, zoneID int64,
 		r0 = val
 	}
 	return r0, args.Error(1)
+}
+
+// CreatePushTransaction inserts a new push transaction.
+func (m *MockSqliteRepo) CreatePushTransaction(_ context.Context, tx *sql.Tx, pushTx *azrepos.PushTransaction) error {
+	args := m.Called(tx, pushTx)
+	return args.Error(0)
+}
+
+// UpdatePushTransactionStatus updates the status of a push transaction.
+func (m *MockSqliteRepo) UpdatePushTransactionStatus(_ context.Context, tx *sql.Tx, txid string, status string) error {
+	args := m.Called(tx, txid, status)
+	return args.Error(0)
+}
+
+// UpdatePushTransactionStatusNoTx updates the status without a transaction.
+func (m *MockSqliteRepo) UpdatePushTransactionStatusNoTx(_ context.Context, db *sqlx.DB, txid string, status string) error {
+	args := m.Called(db, txid, status)
+	return args.Error(0)
+}
+
+// GetPushTransaction retrieves a push transaction by txid.
+func (m *MockSqliteRepo) GetPushTransaction(_ context.Context, db *sqlx.DB, txid string) (*azrepos.PushTransaction, error) {
+	args := m.Called(db, txid)
+	var r0 *azrepos.PushTransaction
+	if val, ok := args.Get(0).(*azrepos.PushTransaction); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// FetchStalePushTransactions retrieves pending push transactions older than the given threshold.
+func (m *MockSqliteRepo) FetchStalePushTransactions(_ context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.PushTransaction, error) {
+	args := m.Called(db, olderThan)
+	var r0 []azrepos.PushTransaction
+	if val, ok := args.Get(0).([]azrepos.PushTransaction); ok {
+		r0 = val
+	}
+	return r0, args.Error(1)
+}
+
+// DeleteKeyValuesByTxID deletes all key-value pairs associated with the given txid and zone.
+func (m *MockSqliteRepo) DeleteKeyValuesByTxID(_ context.Context, tx *sql.Tx, zoneID int64, txid string) (int64, error) {
+	args := m.Called(tx, zoneID, txid)
+	return args.Get(0).(int64), args.Error(1)
 }

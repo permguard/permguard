@@ -28,7 +28,10 @@ import (
 )
 
 // UpsertKeyValue creates or updates a key-value pair.
-func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *KeyValue) (*KeyValue, error) {
+// The txid parameter associates the key-value with a push transaction.
+// On conflict (existing row), only kv_value is updated; txid is NOT overwritten
+// so that pre-existing objects retain their original txid.
+func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *KeyValue, txid string) (*KeyValue, error) {
 	if keyValue == nil {
 		return nil, fmt.Errorf("storage: invalid client input - key-value data is missing or malformed: %w", azstorage.ErrInvalidInput)
 	}
@@ -46,11 +49,11 @@ func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *K
 	var err error
 
 	result, err = tx.ExecContext(ctx, `
-		INSERT INTO key_values (zone_id, kv_key, kv_value)
-		VALUES (?, ?, ?)
+		INSERT INTO key_values (zone_id, kv_key, kv_value, txid)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(zone_id, kv_key)
 		DO UPDATE SET kv_value = excluded.kv_value`,
-		zoneID, key, value,
+		zoneID, key, value, txid,
 	)
 
 	if err != nil || result == nil {
