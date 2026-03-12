@@ -20,12 +20,15 @@ import (
 	"context"
 	"errors"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
+	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -36,15 +39,15 @@ func mapStorageError(err error) error {
 	}
 	switch {
 	case errors.Is(err, azstorage.ErrNotFound):
-		return status.Errorf(codes.NotFound, "%v", err)
+		return status.Errorf(grpccodes.NotFound, "%v", err)
 	case errors.Is(err, azstorage.ErrAlreadyExists):
-		return status.Errorf(codes.AlreadyExists, "%v", err)
+		return status.Errorf(grpccodes.AlreadyExists, "%v", err)
 	case errors.Is(err, azstorage.ErrConflict):
-		return status.Errorf(codes.Aborted, "%v", err)
+		return status.Errorf(grpccodes.Aborted, "%v", err)
 	case errors.Is(err, azstorage.ErrInvalidInput):
-		return status.Errorf(codes.InvalidArgument, "%v", err)
+		return status.Errorf(grpccodes.InvalidArgument, "%v", err)
 	default:
-		return status.Errorf(codes.Internal, "internal error")
+		return status.Errorf(grpccodes.Internal, "internal error")
 	}
 }
 
@@ -79,8 +82,12 @@ type ZAPServer struct {
 
 // CreateZone creates a new zone.
 func (s *ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateRequest) (*ZoneResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.CreateZone")
+	defer span.End()
+	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.CreateZone"))
 	zone, err := s.service.CreateZone(ctx, &zap.Zone{Name: zoneRequest.Name})
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
@@ -88,8 +95,13 @@ func (s *ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateReque
 
 // UpdateZone updates a zone.
 func (s *ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateRequest) (*ZoneResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.UpdateZone")
+	defer span.End()
+	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.UpdateZone"))
+	span.SetAttributes(attribute.Int64("zone_id", zoneRequest.ZoneID))
 	zone, err := s.service.UpdateZone(ctx, (&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
@@ -97,8 +109,13 @@ func (s *ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateReque
 
 // DeleteZone deletes a zone.
 func (s *ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteRequest) (*ZoneResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.DeleteZone")
+	defer span.End()
+	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.DeleteZone"))
+	span.SetAttributes(attribute.Int64("zone_id", zoneRequest.ZoneID))
 	zone, err := s.service.DeleteZone(ctx, zoneRequest.ZoneID)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return nil, mapStorageError(err)
 	}
 	return MapAgentZoneToGrpcZoneResponse(zone)
@@ -107,6 +124,9 @@ func (s *ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteReque
 // FetchZones returns all zones.
 func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.ServerStreamingServer[ZoneResponse]) error {
 	ctx := stream.Context()
+	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.FetchZones")
+	defer span.End()
+	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.FetchZones"))
 	fields := map[string]any{}
 	if zoneRequest.ZoneID != nil {
 		fields[zap.FieldZoneZoneID] = *zoneRequest.ZoneID
@@ -124,15 +144,17 @@ func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Server
 	}
 	zones, err := s.service.FetchZones(ctx, page, pageSize, fields)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return mapStorageError(err)
 	}
+	span.SetAttributes(attribute.Int("result_count", len(zones)))
 	for _, zone := range zones {
 		cvtedZone, err := MapAgentZoneToGrpcZoneResponse(&zone)
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to map zone response: %v", err)
+			return status.Errorf(grpccodes.Internal, "failed to map zone response: %v", err)
 		}
 		if err := stream.SendMsg(cvtedZone); err != nil {
-			return status.Errorf(codes.Internal, "failed to send zone response: %v", err)
+			return status.Errorf(grpccodes.Internal, "failed to send zone response: %v", err)
 		}
 	}
 	return nil

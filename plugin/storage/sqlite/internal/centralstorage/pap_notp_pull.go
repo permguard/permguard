@@ -20,7 +20,10 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -28,6 +31,9 @@ import (
 
 // PullState handles the pull state step.
 func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullStateRequest) (*pap.PullStateResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullState")
+	defer span.End()
+	telemetry.PullTotal.Add(ctx, 1)
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -79,6 +85,8 @@ func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullSta
 	if err != nil {
 		return nil, err
 	}
+	telemetry.PullCommitsCount.Record(ctx, int64(len(commits)))
+	span.SetAttributes(attribute.Int("commits_count", len(commits)), attribute.Bool("has_conflicts", hasConflicts))
 	return &pap.PullStateResponse{
 		ServerCommit:    headCommitID,
 		NumberOfCommits: uint32(len(commits)),
@@ -89,6 +97,9 @@ func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullSta
 
 // PullNegotiate handles the pull negotiate step.
 func (s SQLiteCentralStoragePAP) PullNegotiate(ctx context.Context, req *pap.PullNegotiateRequest) (*pap.PullNegotiateResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullNegotiate")
+	defer span.End()
+	telemetry.PullNegotiateTotal.Add(ctx, 1)
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -119,6 +130,7 @@ func (s SQLiteCentralStoragePAP) PullNegotiate(ctx context.Context, req *pap.Pul
 			commitIDs = append(commitIDs, obj.OID())
 		}
 	}
+	span.SetAttributes(attribute.Int("commits_count", len(commitIDs)))
 	return &pap.PullNegotiateResponse{
 		CommitIDs: commitIDs,
 	}, nil
@@ -180,6 +192,8 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 
 // PullObjects handles the pull objects step.
 func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullObjectsRequest) (*pap.PullObjectsResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullObjects")
+	defer span.End()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -198,6 +212,8 @@ func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullO
 	if err := objects.ValidateTransferLimits(len(objs), totalSize, 0, 0); err != nil {
 		return nil, fmt.Errorf("storage: response exceeds transfer limits: %w", err)
 	}
+	telemetry.PullObjectsCount.Record(ctx, int64(len(objs)))
+	span.SetAttributes(attribute.Int("objects_count", len(objs)))
 	return &pap.PullObjectsResponse{
 		Objects: objs,
 	}, nil

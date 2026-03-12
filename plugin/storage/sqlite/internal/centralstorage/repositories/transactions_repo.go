@@ -23,16 +23,21 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"go.opentelemetry.io/otel/attribute"
 	_ "modernc.org/sqlite" // SQLite driver
 
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 )
 
 // CreateTransaction inserts a new transaction with status pending.
 func (r *Repository) CreateTransaction(ctx context.Context, tx *sql.Tx, txn *Transaction) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.CreateTransaction")
+	defer span.End()
 	if txn == nil || txn.TxID == "" {
 		return fmt.Errorf("storage: invalid transaction: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("db.txid", txn.TxID), attribute.Int64("db.zone_id", txn.ZoneID))
 	_, err := tx.ExecContext(ctx,
 		"INSERT INTO transactions (txid, ledger_id, zone_id, status) VALUES (?, ?, ?, ?)",
 		txn.TxID, txn.LedgerID, txn.ZoneID, TxStatusPending,
@@ -45,9 +50,12 @@ func (r *Repository) CreateTransaction(ctx context.Context, tx *sql.Tx, txn *Tra
 
 // UpdateTransactionStatus updates the status of a transaction.
 func (r *Repository) UpdateTransactionStatus(ctx context.Context, tx *sql.Tx, txid string, status string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpdateTransactionStatus")
+	defer span.End()
 	if txid == "" {
 		return fmt.Errorf("storage: invalid txid: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("db.txid", txid), attribute.String("db.status", status))
 	result, err := tx.ExecContext(ctx,
 		"UPDATE transactions SET status = ? WHERE txid = ?",
 		status, txid,
@@ -67,9 +75,12 @@ func (r *Repository) UpdateTransactionStatus(ctx context.Context, tx *sql.Tx, tx
 
 // UpdateTransactionStatusNoTx updates the status of a transaction without a transaction.
 func (r *Repository) UpdateTransactionStatusNoTx(ctx context.Context, db *sqlx.DB, txid string, status string) error {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.UpdateTransactionStatusNoTx")
+	defer span.End()
 	if txid == "" {
 		return fmt.Errorf("storage: invalid txid: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("db.txid", txid), attribute.String("db.status", status))
 	result, err := db.ExecContext(ctx,
 		"UPDATE transactions SET status = ? WHERE txid = ?",
 		status, txid,
@@ -89,9 +100,12 @@ func (r *Repository) UpdateTransactionStatusNoTx(ctx context.Context, db *sqlx.D
 
 // GetTransaction retrieves a transaction by txid.
 func (r *Repository) GetTransaction(ctx context.Context, db *sqlx.DB, txid string) (*Transaction, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.GetTransaction")
+	defer span.End()
 	if txid == "" {
 		return nil, fmt.Errorf("storage: invalid txid: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("db.txid", txid))
 	var txn Transaction
 	err := db.QueryRowContext(ctx,
 		"SELECT txid, ledger_id, zone_id, started_at, status FROM transactions WHERE txid = ?",
@@ -108,6 +122,8 @@ func (r *Repository) GetTransaction(ctx context.Context, db *sqlx.DB, txid strin
 
 // FetchStaleTransactions retrieves pending transactions older than the given threshold.
 func (r *Repository) FetchStaleTransactions(ctx context.Context, db *sqlx.DB, olderThan time.Time) ([]Transaction, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.FetchStaleTransactions")
+	defer span.End()
 	var txs []Transaction
 	err := db.SelectContext(ctx, &txs,
 		"SELECT txid, ledger_id, zone_id, started_at, status FROM transactions WHERE status = ? AND started_at < ?",
@@ -116,14 +132,18 @@ func (r *Repository) FetchStaleTransactions(ctx context.Context, db *sqlx.DB, ol
 	if err != nil {
 		return nil, WrapSqliteError("failed to fetch stale transactions", err)
 	}
+	span.SetAttributes(attribute.Int("db.result_count", len(txs)))
 	return txs, nil
 }
 
 // DeleteKeyValuesByTxID deletes all key-value pairs associated with the given txid and zone.
 func (r *Repository) DeleteKeyValuesByTxID(ctx context.Context, tx *sql.Tx, zoneID int64, txid string) (int64, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "db.DeleteKeyValuesByTxID")
+	defer span.End()
 	if txid == "" {
 		return 0, fmt.Errorf("storage: invalid txid: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("db.txid", txid), attribute.Int64("db.zone_id", zoneID))
 	result, err := tx.ExecContext(ctx,
 		"DELETE FROM key_values WHERE zone_id = ? AND txid = ?",
 		zoneID, txid,
@@ -135,5 +155,6 @@ func (r *Repository) DeleteKeyValuesByTxID(ctx context.Context, tx *sql.Tx, zone
 	if err != nil {
 		return 0, WrapSqliteError("failed to get rows affected for key values delete", err)
 	}
+	span.SetAttributes(attribute.Int64("db.rows_affected", rows))
 	return rows, nil
 }

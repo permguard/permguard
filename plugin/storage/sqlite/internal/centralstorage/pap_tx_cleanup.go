@@ -20,14 +20,19 @@ import (
 	"context"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CleanupStaleTransactions cleans up stale pending transactions older than maxAge.
 // Returns the number of transactions cleaned and total objects deleted.
 func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, maxAge time.Duration) (int, int64, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.CleanupStaleTransactions")
+	defer span.End()
+	telemetry.CleanupRunsTotal.Add(ctx, 1)
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return 0, 0, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -87,5 +92,8 @@ func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, m
 		cleaned++
 		totalDeleted += deleted
 	}
+	telemetry.CleanupTxCleanedTotal.Add(ctx, int64(cleaned))
+	telemetry.CleanupObjDeletedTotal.Add(ctx, totalDeleted)
+	span.SetAttributes(attribute.Int("cleaned", cleaned), attribute.Int64("deleted", totalDeleted))
 	return cleaned, totalDeleted, nil
 }

@@ -27,10 +27,14 @@ import (
 	"github.com/permguard/permguard/pkg/agents/runtime"
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/core/files"
 	"github.com/permguard/permguard/pkg/transport/models/pdp"
 	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar/pkg/authzen"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -61,6 +65,9 @@ func NewPDPController(serviceContext *services.ServiceContext, storage storage.P
 
 // AuthorizationCheck checks if the request is authorized.
 func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "pdp.AuthorizationCheck")
+	defer span.End()
+	telemetry.AuthzCheckTotal.Add(ctx, 1)
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -101,7 +108,13 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 	authzCheckEvaluations := []pdp.EvaluationResponse{}
 	if reqEvaluationsSize > 0 {
 		authzModel := expReq.AuthorizationModel
-		authzPolicyStore, err2 := s.storage.LoadPolicyStore(ctx, authzModel.ZoneID, authzModel.PolicyStore.ID)
+		loadCtx, loadSpan := telemetry.Tracer().Start(ctx, "pdp.LoadPolicyStore",
+			trace.WithAttributes(
+				attribute.Int64("zone_id", authzModel.ZoneID),
+				attribute.String("policy_store_id", authzModel.PolicyStore.ID)))
+		telemetry.AuthzPolicyLoadTotal.Add(ctx, 1)
+		authzPolicyStore, err2 := s.storage.LoadPolicyStore(loadCtx, authzModel.ZoneID, authzModel.PolicyStore.ID)
+		loadSpan.End()
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
 				logger.Error("Failed to load policy store for authorization check",
@@ -125,6 +138,9 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
 		}
+		telemetry.AuthzEvaluationsCount.Record(ctx, int64(reqEvaluationsSize))
+		_, evalSpan := telemetry.Tracer().Start(ctx, "pdp.PolicyEvaluations",
+			trace.WithAttributes(attribute.Int("evaluations_count", reqEvaluationsSize)))
 		authzCheckEvaluations = []pdp.EvaluationResponse{}
 		for _, expandedRequest := range expReq.Evaluations {
 			authzCtx := authzen.AuthorizationModel{}
@@ -196,6 +212,7 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 			}
 			authzCheckEvaluations = append(authzCheckEvaluations, *evaluation)
 		}
+		evalSpan.End()
 		if len(authzCheckEvaluations) != reqEvaluationsSize {
 			errMsg := fmt.Sprintf("%s: invalid authorization check response size for evaluations", authzen.AuthzErrInternalErrorMessage)
 			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -230,6 +247,12 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 		}
 		authzCheckResp.Decision = allTrue
 	}
+	decision := "deny"
+	if authzCheckResp.Decision {
+		decision = "allow"
+	}
+	telemetry.AuthzDecisionTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("decision", decision)))
+	span.SetAttributes(attribute.String("authz.decision", decision), attribute.Int("authz.evaluations", len(authzCheckResp.Evaluations)))
 	decisionLog, err := runtime.GetTypedValue[string](cfgReader.Value, "decision-log")
 	if err != nil {
 		return nil, errors.Join(errors.New("pdp-service: failed to get decision logs configuration"), err)

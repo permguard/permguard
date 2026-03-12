@@ -20,16 +20,23 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	azstorage "github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 	azrepos "github.com/permguard/permguard/plugin/storage/sqlite/internal/centralstorage/repositories"
 )
 
 // CreateZone creates a new zone.
 func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.CreateZone")
+	defer span.End()
+	telemetry.ZoneCreateTotal.Add(ctx, 1)
 	if zone == nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.String("zone_name", zone.Name))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -63,9 +70,13 @@ func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone)
 
 // UpdateZone updates a zone.
 func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.UpdateZone")
+	defer span.End()
+	telemetry.ZoneUpdateTotal.Add(ctx, 1)
 	if zone == nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
+	span.SetAttributes(attribute.Int64("zone_id", zone.ZoneID), attribute.String("zone_name", zone.Name))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -90,6 +101,10 @@ func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone)
 
 // DeleteZone deletes a zone.
 func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.DeleteZone")
+	defer span.End()
+	telemetry.ZoneDeleteTotal.Add(ctx, 1)
+	span.SetAttributes(attribute.Int64("zone_id", zoneID))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
@@ -110,6 +125,9 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 
 // FetchZones returns all zones.
 func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.FetchZones")
+	defer span.End()
+	telemetry.ZoneFetchTotal.Add(ctx, 1)
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}
@@ -145,5 +163,6 @@ func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pag
 		}
 		zones[i] = *zone
 	}
+	span.SetAttributes(attribute.Int("result_count", len(zones)))
 	return zones, nil
 }

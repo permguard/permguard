@@ -138,7 +138,7 @@ func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePa
 	return includedFiles, ignoredFiles, nil
 }
 
-// blobifyPermSchemaFile processes a PermGuard schema file.
+// blobifyPermSchemaFile processes a Permguard schema file.
 // It enforces that only one schema file is allowed per workspace.
 func (m *Manager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile, data []byte, file cosp.CodeFile) ([]cosp.CodeFile, error) {
 	absLang, err := langPvd.AbstractLanguage(file.Partition)
@@ -169,7 +169,7 @@ func (m *Manager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, parti
 	return append(blobifiedCodeFiles, codeFile), nil
 }
 
-// blobifyLanguageFile processes a PermGuard policy file containing multiple logical sections.
+// blobifyLanguageFile processes a Permguard policy file containing multiple logical sections.
 func (m *Manager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
 	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile,
 ) ([]cosp.CodeFile, error) {
