@@ -103,7 +103,7 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 	}
 
 	var dbLedger Ledger
-	err = tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err = tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref, txid FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -111,6 +111,7 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 		&dbLedger.Kind,
 		&dbLedger.Name,
 		&dbLedger.Ref,
+		&dbLedger.TxID,
 	)
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledger - operation 'retrieve-created-ledger' encountered an issue (%s)", LogLedgerEntry(ledger)), err)
@@ -118,8 +119,8 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 	return &dbLedger, nil
 }
 
-// UpdateLedgerRef updates the ref of a ledger.
-func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef string) error {
+// UpdateLedgerRef updates the ref and txid of a ledger.
+func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int64, ledgerID, currentRef, newRef, txid string) error {
 	if err := validators.ValidateCodeID(LedgerType, zoneID); err != nil {
 		return fmt.Errorf(errorMessageLedgerInvalidZoneID+": %w", zoneID, azstorage.ErrInvalidInput)
 	}
@@ -146,7 +147,7 @@ func (r *Repository) UpdateLedgerRef(ctx context.Context, tx *sql.Tx, zoneID int
 		return fmt.Errorf("current ref mismatch (expected: %s, got: %s): %w", dbCurrentRef, currentRef, azstorage.ErrConflict)
 	}
 
-	result, err := tx.ExecContext(ctx, "UPDATE ledgers SET ref = ? WHERE zone_id = ? AND ledger_id = ?", newRef, zoneID, ledgerID)
+	result, err := tx.ExecContext(ctx, "UPDATE ledgers SET ref = ?, txid = ? WHERE zone_id = ? AND ledger_id = ?", newRef, txid, zoneID, ledgerID)
 	if err != nil {
 		return WrapSqliteError("failed to update ledger ref", err)
 	}
@@ -171,7 +172,7 @@ func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64,
 	}
 
 	var dbLedger Ledger
-	err := tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
+	err := tx.QueryRowContext(ctx, "SELECT zone_id, ledger_id, created_at, updated_at, kind, name, ref, txid FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID).Scan(
 		&dbLedger.ZoneID,
 		&dbLedger.LedgerID,
 		&dbLedger.CreatedAt,
@@ -179,6 +180,7 @@ func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64,
 		&dbLedger.Kind,
 		&dbLedger.Name,
 		&dbLedger.Ref,
+		&dbLedger.TxID,
 	)
 	if err != nil {
 		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)

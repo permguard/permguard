@@ -46,6 +46,7 @@ type Ledger struct {
 	Kind      int16     `db:"kind"`
 	Name      string    `db:"name"`
 	Ref       string    `db:"ref"`
+	TxID      string    `db:"txid"`
 }
 
 // LogLedgerEntry returns a string representation of the ledger.
@@ -70,3 +71,19 @@ func LogKeyValueEntry(keyValue *KeyValue) string {
 	}
 	return fmt.Sprintf("keyvalue key: %s", keyValue.Key)
 }
+
+// PushTransaction is the model for the push_transactions table.
+type PushTransaction struct {
+	TxID      string    `db:"txid"`
+	LedgerID  string    `db:"ledger_id"`
+	ZoneID    int64     `db:"zone_id"`
+	StartedAt time.Time `db:"started_at"`
+	Status    string    `db:"status"`
+}
+
+// Push transaction status constants.
+const (
+	PushTxStatusPending   = "pending"
+	PushTxStatusCommitted = "committed"
+	PushTxStatusFailed    = "failed"
+)
