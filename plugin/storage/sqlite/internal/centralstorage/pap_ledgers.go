@@ -128,7 +128,7 @@ func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, p
 	}
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
-		return nil, err
+		return nil, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
 	}
 	var filterID *string
 	if _, ok := fields[pap.FieldLedgerLedgerID]; ok {

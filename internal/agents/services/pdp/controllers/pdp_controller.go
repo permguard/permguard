@@ -129,20 +129,50 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 		for _, expandedRequest := range expReq.Evaluations {
 			authzCtx := authzen.AuthorizationModel{}
 			if err := authzCtx.SetSubject(expandedRequest.Subject.Type, expandedRequest.Subject.ID, expandedRequest.Subject.Source, expandedRequest.Subject.Properties); err != nil {
+				if logger := s.ctx.Logger(); logger != nil {
+					logger.Error("Failed to set authorization subject",
+						zap.String("request_id", requestID),
+						zap.Int64("zone_id", authzModel.ZoneID),
+						zap.Error(err))
+				}
 				return nil, err
 			}
 			if err := authzCtx.SetResource(expandedRequest.Resource.Type, expandedRequest.Resource.ID, expandedRequest.Resource.Properties); err != nil {
+				if logger := s.ctx.Logger(); logger != nil {
+					logger.Error("Failed to set authorization resource",
+						zap.String("request_id", requestID),
+						zap.Int64("zone_id", authzModel.ZoneID),
+						zap.Error(err))
+				}
 				return nil, err
 			}
 			if err := authzCtx.SetAction(expandedRequest.Action.Name, expandedRequest.Action.Properties); err != nil {
+				if logger := s.ctx.Logger(); logger != nil {
+					logger.Error("Failed to set authorization action",
+						zap.String("request_id", requestID),
+						zap.Int64("zone_id", authzModel.ZoneID),
+						zap.Error(err))
+				}
 				return nil, err
 			}
 			if err := authzCtx.SetContext(expandedRequest.Context); err != nil {
+				if logger := s.ctx.Logger(); logger != nil {
+					logger.Error("Failed to set authorization context",
+						zap.String("request_id", requestID),
+						zap.Int64("zone_id", authzModel.ZoneID),
+						zap.Error(err))
+				}
 				return nil, err
 			}
 			entities := expReq.AuthorizationModel.Entities
 			if entities != nil {
 				if err := authzCtx.SetEntities(entities.Schema, entities.Items); err != nil {
+					if logger := s.ctx.Logger(); logger != nil {
+						logger.Error("Failed to set authorization entities",
+							zap.String("request_id", requestID),
+							zap.Int64("zone_id", authzModel.ZoneID),
+							zap.Error(err))
+					}
 					return nil, err
 				}
 			}
@@ -217,12 +247,19 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 		decisionLogs := s.buildDecisionLogs(expReq, authzCheckResp)
 		logger := s.ctx.Logger()
 		for _, decisionLog := range decisionLogs {
-			decision, _ := json.Marshal(decisionLog)
+			decision, err := json.Marshal(decisionLog)
+			if err != nil {
+				logger.Warn("Failed to marshal decision log entry",
+					zap.String("request_id", requestID),
+					zap.Error(err))
+				continue
+			}
 			switch decisionKind {
 			case decisions.DecisionLogFile:
 				if _, err := files.AppendToFile(decisionLogsPath, append(decision, '\n'), false); err != nil {
 					logger.Warn("Failed to write decision log to file",
 						zap.String("path", decisionLogsPath),
+						zap.String("request_id", requestID),
 						zap.Error(err))
 				}
 			case decisions.DecisionLogStdOut:

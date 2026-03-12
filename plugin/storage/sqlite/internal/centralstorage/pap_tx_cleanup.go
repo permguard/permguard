@@ -49,7 +49,12 @@ func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, m
 		}
 		deleted, err := s.sqlRepo.DeleteKeyValuesByTxID(ctx, tx, staleTx.ZoneID, staleTx.TxID)
 		if err != nil {
-			_ = tx.Rollback()
+			if rbErr := tx.Rollback(); rbErr != nil {
+				s.ctx.Logger().Warn("Cleanup: rollback failed after delete error",
+					zap.String("txid", staleTx.TxID),
+					zap.Int64("zone_id", staleTx.ZoneID),
+					zap.Error(rbErr))
+			}
 			logger := s.ctx.Logger()
 			logger.Error("Cleanup: failed to delete objects",
 				zap.String("txid", staleTx.TxID),
@@ -58,7 +63,12 @@ func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, m
 			continue
 		}
 		if err := s.sqlRepo.UpdateTransactionStatus(ctx, tx, staleTx.TxID, azrepos.TxStatusFailed); err != nil {
-			_ = tx.Rollback()
+			if rbErr := tx.Rollback(); rbErr != nil {
+				s.ctx.Logger().Warn("Cleanup: rollback failed after status update error",
+					zap.String("txid", staleTx.TxID),
+					zap.Int64("zone_id", staleTx.ZoneID),
+					zap.Error(rbErr))
+			}
 			logger := s.ctx.Logger()
 			logger.Error("Cleanup: failed to mark transaction as failed",
 				zap.String("txid", staleTx.TxID),

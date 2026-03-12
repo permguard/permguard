@@ -66,7 +66,7 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 			}
 			controller, err := azzapctrl.NewZAPController(srvCtx, zapCentralStorage)
 			if err != nil {
-				return nil
+				return err
 			}
 			err = controller.Setup()
 			if err != nil {
