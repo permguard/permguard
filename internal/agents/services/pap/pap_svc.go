@@ -17,6 +17,11 @@
 package pap
 
 import (
+	"context"
+	"fmt"
+	"time"
+
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
 	azpapctrl "github.com/permguard/permguard/internal/agents/services/pap/controllers"
@@ -81,6 +86,57 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 	}
 	endpoints := []services.EndpointInitializer{endpoint}
 	return endpoints, nil
+}
+
+// Jobs returns the service background jobs.
+func (f *Service) Jobs() ([]services.JobInitializer, error) {
+	if !f.config.TxCleanupEnabled() {
+		return nil, nil
+	}
+	interval := f.config.TxCleanupInterval()
+	maxLifetime := f.config.TxMaxLifetime()
+	job, err := services.NewJobInitializer(
+		f.config.Service(),
+		"tx-cleanup",
+		func(ctx context.Context, srvCtx *services.ServiceContext, storageConnector *storage.Connector) error {
+			logger := srvCtx.Logger()
+			storageKind := f.config.StorageCentralEngine()
+			centralStorage, err := storageConnector.CentralStorage(storageKind, srvCtx)
+			if err != nil {
+				return err
+			}
+			papStorage, err := centralStorage.PAPCentralStorage()
+			if err != nil {
+				return err
+			}
+			runCleanup := func() {
+				cleaned, deleted, err := papStorage.CleanupStaleTransactions(ctx, maxLifetime)
+				if err != nil {
+					logger.Error("Transaction cleanup failed", zap.Error(err))
+					return
+				}
+				if cleaned > 0 {
+					logger.Info(fmt.Sprintf("Transaction cleanup: cleaned %d stale session(s), deleted %d object(s)", cleaned, deleted))
+				}
+			}
+			// Run immediately on startup.
+			runCleanup()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-ticker.C:
+					runCleanup()
+				}
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return []services.JobInitializer{job}, nil
 }
 
 // ServiceConfigReader returns the service configuration reader.

@@ -18,6 +18,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	azmpap "github.com/permguard/permguard/pkg/transport/models/pap"
 )
@@ -42,4 +43,7 @@ type PAPCentralStorage interface {
 	PullNegotiate(ctx context.Context, req *azmpap.PullNegotiateRequest) (*azmpap.PullNegotiateResponse, error)
 	// PullObjects handles the pull objects step (returns objects for a commit).
 	PullObjects(ctx context.Context, req *azmpap.PullObjectsRequest) (*azmpap.PullObjectsResponse, error)
+	// CleanupStaleTransactions cleans up stale pending transactions older than maxAge.
+	// Returns the number of transactions cleaned and total objects deleted.
+	CleanupStaleTransactions(ctx context.Context, maxAge time.Duration) (int, int64, error)
 }

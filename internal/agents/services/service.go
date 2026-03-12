@@ -62,6 +62,7 @@ type Service struct {
 	config    *ServiceConfig
 	ctx       *services.ServiceContext
 	endpoints []*Endpoint
+	jobs      []*Job
 }
 
 // newService creates a new service.
@@ -114,6 +115,27 @@ func (s *Service) Serve(ctx context.Context) (bool, error) {
 		}
 		hasStarted = hasStarted && started
 	}
+	// Start background jobs.
+	jbs, err := s.config.serviceable.Jobs()
+	if err != nil {
+		logger.Error("Service cannot retrieve jobs", zap.Error(err))
+		return false, err
+	}
+	jobs := make([]*Job, 0, len(jbs))
+	for _, jb := range jbs {
+		jobCfg := newJobConfig(s.config.Hostable(), jb.Service(), s.config.Connector(), jb.Name(), jb.Run())
+		job := newJob(jobCfg, logger)
+		jobs = append(jobs, job)
+	}
+	s.jobs = jobs
+	for _, job := range s.jobs {
+		started, err := job.Serve(ctx, s.ctx)
+		if err != nil {
+			logger.Error("Service cannot start job", zap.Error(err))
+			return false, err
+		}
+		hasStarted = hasStarted && started
+	}
 	if hasStarted {
 		logger.Debug("Service has started")
 	} else {
@@ -127,6 +149,15 @@ func (s *Service) GracefulStop(ctx context.Context) (bool, error) {
 	logger := s.logger()
 	logger.Debug("Service is stopping")
 	hasStopped := true
+	// Stop jobs first.
+	for _, job := range s.jobs {
+		stop, err := job.GracefulStop(ctx)
+		if err != nil {
+			logger.Error("Service cannot stop job", zap.Error(err))
+			return false, err
+		}
+		hasStopped = hasStopped && stop
+	}
 	for _, edpt := range s.endpoints {
 		stop, err := edpt.GracefulStop(ctx)
 		if err != nil {

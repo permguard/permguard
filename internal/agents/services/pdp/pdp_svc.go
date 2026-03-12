@@ -83,6 +83,11 @@ func (f *Service) Endpoints() ([]services.EndpointInitializer, error) {
 	return endpoints, nil
 }
 
+// Jobs returns the service background jobs.
+func (f *Service) Jobs() ([]services.JobInitializer, error) {
+	return nil, nil
+}
+
 // ServiceConfigReader returns the service configuration reader.
 func (f *Service) ServiceConfigReader() (runtime.ServiceConfigReader, error) {
 	return f.configReader, nil

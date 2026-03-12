@@ -133,39 +133,39 @@ func (m *MockSqliteRepo) KeyValueTx(_ context.Context, tx *sql.Tx, zoneID int64,
 	return r0, args.Error(1)
 }
 
-// CreatePushTransaction inserts a new push transaction.
-func (m *MockSqliteRepo) CreatePushTransaction(_ context.Context, tx *sql.Tx, pushTx *azrepos.PushTransaction) error {
-	args := m.Called(tx, pushTx)
+// CreateTransaction inserts a new transaction.
+func (m *MockSqliteRepo) CreateTransaction(_ context.Context, tx *sql.Tx, txn *azrepos.Transaction) error {
+	args := m.Called(tx, txn)
 	return args.Error(0)
 }
 
-// UpdatePushTransactionStatus updates the status of a push transaction.
-func (m *MockSqliteRepo) UpdatePushTransactionStatus(_ context.Context, tx *sql.Tx, txid string, status string) error {
+// UpdateTransactionStatus updates the status of a transaction.
+func (m *MockSqliteRepo) UpdateTransactionStatus(_ context.Context, tx *sql.Tx, txid string, status string) error {
 	args := m.Called(tx, txid, status)
 	return args.Error(0)
 }
 
-// UpdatePushTransactionStatusNoTx updates the status without a transaction.
-func (m *MockSqliteRepo) UpdatePushTransactionStatusNoTx(_ context.Context, db *sqlx.DB, txid string, status string) error {
+// UpdateTransactionStatusNoTx updates the status without a transaction.
+func (m *MockSqliteRepo) UpdateTransactionStatusNoTx(_ context.Context, db *sqlx.DB, txid string, status string) error {
 	args := m.Called(db, txid, status)
 	return args.Error(0)
 }
 
-// GetPushTransaction retrieves a push transaction by txid.
-func (m *MockSqliteRepo) GetPushTransaction(_ context.Context, db *sqlx.DB, txid string) (*azrepos.PushTransaction, error) {
+// GetTransaction retrieves a transaction by txid.
+func (m *MockSqliteRepo) GetTransaction(_ context.Context, db *sqlx.DB, txid string) (*azrepos.Transaction, error) {
 	args := m.Called(db, txid)
-	var r0 *azrepos.PushTransaction
-	if val, ok := args.Get(0).(*azrepos.PushTransaction); ok {
+	var r0 *azrepos.Transaction
+	if val, ok := args.Get(0).(*azrepos.Transaction); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)
 }
 
-// FetchStalePushTransactions retrieves pending push transactions older than the given threshold.
-func (m *MockSqliteRepo) FetchStalePushTransactions(_ context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.PushTransaction, error) {
+// FetchStaleTransactions retrieves pending transactions older than the given threshold.
+func (m *MockSqliteRepo) FetchStaleTransactions(_ context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.Transaction, error) {
 	args := m.Called(db, olderThan)
-	var r0 []azrepos.PushTransaction
-	if val, ok := args.Get(0).([]azrepos.PushTransaction); ok {
+	var r0 []azrepos.Transaction
+	if val, ok := args.Get(0).([]azrepos.Transaction); ok {
 		r0 = val
 	}
 	return r0, args.Error(1)

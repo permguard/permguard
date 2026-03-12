@@ -53,16 +53,16 @@ type SqliteRepo interface {
 	// KeyValueTx retrieves a key value within a transaction.
 	KeyValueTx(ctx context.Context, tx *sql.Tx, zoneID int64, key string) (*azrepos.KeyValue, error)
 
-	// CreatePushTransaction inserts a new push transaction with status pending.
-	CreatePushTransaction(ctx context.Context, tx *sql.Tx, pushTx *azrepos.PushTransaction) error
-	// UpdatePushTransactionStatus updates the status of a push transaction.
-	UpdatePushTransactionStatus(ctx context.Context, tx *sql.Tx, txid string, status string) error
-	// UpdatePushTransactionStatusNoTx updates the status without a transaction.
-	UpdatePushTransactionStatusNoTx(ctx context.Context, db *sqlx.DB, txid string, status string) error
-	// GetPushTransaction retrieves a push transaction by txid.
-	GetPushTransaction(ctx context.Context, db *sqlx.DB, txid string) (*azrepos.PushTransaction, error)
-	// FetchStalePushTransactions retrieves pending push transactions older than the given threshold.
-	FetchStalePushTransactions(ctx context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.PushTransaction, error)
+	// CreateTransaction inserts a new transaction with status pending.
+	CreateTransaction(ctx context.Context, tx *sql.Tx, txn *azrepos.Transaction) error
+	// UpdateTransactionStatus updates the status of a transaction.
+	UpdateTransactionStatus(ctx context.Context, tx *sql.Tx, txid string, status string) error
+	// UpdateTransactionStatusNoTx updates the status without a transaction.
+	UpdateTransactionStatusNoTx(ctx context.Context, db *sqlx.DB, txid string, status string) error
+	// GetTransaction retrieves a transaction by txid.
+	GetTransaction(ctx context.Context, db *sqlx.DB, txid string) (*azrepos.Transaction, error)
+	// FetchStaleTransactions retrieves pending transactions older than the given threshold.
+	FetchStaleTransactions(ctx context.Context, db *sqlx.DB, olderThan time.Time) ([]azrepos.Transaction, error)
 	// DeleteKeyValuesByTxID deletes all key-value pairs associated with the given txid and zone.
 	DeleteKeyValuesByTxID(ctx context.Context, tx *sql.Tx, zoneID int64, txid string) (int64, error)
 }

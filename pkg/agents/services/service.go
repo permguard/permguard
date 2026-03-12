@@ -26,6 +26,8 @@ type Serviceable interface {
 	Service() ServiceKind
 	// Endpoints returns the service endpoints.
 	Endpoints() ([]EndpointInitializer, error)
+	// Jobs returns the service background jobs.
+	Jobs() ([]JobInitializer, error)
 	// ServiceConfigReader returns the service configuration reader.
 	ServiceConfigReader() (runtime.ServiceConfigReader, error)
 }
