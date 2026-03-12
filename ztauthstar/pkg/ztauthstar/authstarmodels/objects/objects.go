@@ -32,8 +32,10 @@ const (
 	ObjectTypeTree = "tree"
 	// ObjectTypeBlob is the object type for a blob.
 	ObjectTypeBlob = "blob"
-	// ZeroOID  represents the zero oid
-	ZeroOID = "0000000000000000000000000000000000000000000000000000000000000000"
+	// ZeroOID represents the zero oid.
+	// It is a CIDv1 with dag-cbor codec and an all-zero SHA2-256 digest,
+	// used as a sentinel value representing the absence of content.
+	ZeroOID = "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
 
 // ObjectHeader represents the object header.
@@ -116,8 +118,12 @@ func NewObject(content []byte) (*Object, error) {
 	if content == nil {
 		return nil, errors.New("objects: object content is nil")
 	}
+	oid, err := crypto.ComputeCID(content)
+	if err != nil {
+		return nil, err
+	}
 	return &Object{
-		oid:     crypto.ComputeSHA256(content),
+		oid:     oid,
 		content: content,
 	}, nil
 }
