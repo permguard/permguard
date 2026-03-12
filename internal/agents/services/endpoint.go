@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -120,6 +121,7 @@ func (e *Endpoint) Serve(ctx context.Context, serviceCtx *services.ServiceContex
 	hs := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, hs)
 	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	reflection.Register(grpcServer)
 
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))

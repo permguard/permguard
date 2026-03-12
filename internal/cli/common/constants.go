@@ -54,6 +54,8 @@ const (
 	FlagCommonCurrentWorkspace      = "current-workspace"
 	FlagPrefixAuthstar              = "authstar"
 	FlagSuffixAuthstarMaxObjectSize = "max-object-size"
+	FlagPrefixNOTP                  = "notp"
+	FlagSuffixNOTPMaxPacketSize     = "max-packet-size"
 )
 
 //go:embed "art.txt"

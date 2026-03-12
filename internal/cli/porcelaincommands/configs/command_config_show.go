@@ -57,12 +57,18 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	if err == nil {
 		authstarMaxObjectSizeStr = strconv.Itoa(authstarMaxObjectSize)
 	}
+	notpMaxPacketSize, err := ctx.NOTPMaxPacketSize()
+	notpMaxPacketSizeStr := "not set"
+	if err == nil {
+		notpMaxPacketSizeStr = strconv.Itoa(notpMaxPacketSize)
+	}
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pap: %s", papEndpoint))
 		printer.Println(fmt.Sprintf("endpoints.pdp: %s", pdpEndpoint))
 		printer.Println(fmt.Sprintf("language: %s", language))
 		printer.Println(fmt.Sprintf("authstar.max-object-size: %s", authstarMaxObjectSizeStr))
+		printer.Println(fmt.Sprintf("notp.max-packet-size: %s", notpMaxPacketSizeStr))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
 			"endpoints": map[string]any{
@@ -73,6 +79,9 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 			"language": language,
 			"authstar": map[string]any{
 				"max_object_size": authstarMaxObjectSize,
+			},
+			"notp": map[string]any{
+				"max_packet_size": notpMaxPacketSize,
 			},
 		}
 		printer.PrintlnMap(output)

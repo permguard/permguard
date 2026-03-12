@@ -244,6 +244,67 @@ permguard config set authstar-max-object-size 10485760
 	return command
 }
 
+// runECommandForNOTPMaxPacketSizeSet runs the command for setting the notp max packet size.
+func runECommandForNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, args []string) error {
+	ctx, printer, err := common.CreateContextAndPrinter(deps, cmd, v)
+	if err != nil {
+		color.Red(fmt.Sprintf("%s", err))
+		return common.ErrCommandSilent
+	}
+	if len(args) == 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the notp max packet size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	size, err := strconv.Atoi(args[0])
+	if err != nil || size <= 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the notp max packet size: value must be a positive integer.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.New("cli: notp-max-packet-size must be a positive integer"))
+		}
+		return common.ErrCommandSilent
+	}
+	key := options.FlagName(common.FlagPrefixNOTP, common.FlagSuffixNOTPMaxPacketSize)
+	valueMap := map[string]interface{}{
+		key: size,
+	}
+	err = options.OverrideViperFromConfig(v, valueMap)
+	if err != nil {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to set the notp max packet size.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
+		}
+		return common.ErrCommandSilent
+	}
+	return nil
+}
+
+// createCommandForConfigNOTPMaxPacketSizeSet creates the command for setting the notp max packet size.
+func createCommandForConfigNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "notp-max-packet-size",
+		Short: "Set the notp max packet size",
+		Long: common.BuildCliLongTemplate(`This command sets the notp max packet size in bytes.
+
+Examples:
+# set the notp max packet size to 16MB
+permguard config set notp-max-packet-size 16777216
+		`),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runECommandForNOTPMaxPacketSizeSet(deps, cmd, v, args)
+		},
+	}
+	return command
+}
+
 func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "set",
@@ -257,5 +318,6 @@ func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *c
 	command.AddCommand(createCommandForConfigPAPSet(deps, v))
 	command.AddCommand(createCommandForConfigPDPSet(deps, v))
 	command.AddCommand(createCommandForConfigAuthstarMaxObjectSizeSet(deps, v))
+	command.AddCommand(createCommandForConfigNOTPMaxPacketSizeSet(deps, v))
 	return command
 }
