@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -48,6 +49,18 @@ func tlsVersionName(v uint16) string {
 	}
 }
 
+// hasSpiffeID checks if any peer certificate contains a SPIFFE URI SAN.
+func hasSpiffeID(state tls.ConnectionState) bool {
+	for _, cert := range state.PeerCertificates {
+		for _, uri := range cert.URIs {
+			if strings.HasPrefix(uri.String(), "spiffe://") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // recordTLSMetrics extracts TLS info from the gRPC peer context and records metrics.
 func recordTLSMetrics(ctx context.Context) {
 	p, ok := peer.FromContext(ctx)
@@ -63,6 +76,9 @@ func recordTLSMetrics(ctx context.Context) {
 	version := tlsVersionName(tlsInfo.State.Version)
 	hasClientCert := len(tlsInfo.State.PeerCertificates) > 0
 	telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(true, version, hasClientCert))
+	if hasClientCert && hasSpiffeID(tlsInfo.State) {
+		telemetry.TLSSpiffeAuthTotal.Add(ctx, 1)
+	}
 }
 
 // serverUnaryInterceptor returns a unary interceptor for logging and panic recovery.
