@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -30,10 +31,15 @@ import (
 )
 
 // PullState handles the pull state step.
-func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullStateRequest) (*pap.PullStateResponse, error) {
+func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullStateRequest) (_ *pap.PullStateResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullState")
 	defer span.End()
-	telemetry.PullTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.PullTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.PullDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("state"), telemetry.StatusAttr(st))
+	}()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -96,10 +102,15 @@ func (s SQLiteCentralStoragePAP) PullState(ctx context.Context, req *pap.PullSta
 }
 
 // PullNegotiate handles the pull negotiate step.
-func (s SQLiteCentralStoragePAP) PullNegotiate(ctx context.Context, req *pap.PullNegotiateRequest) (*pap.PullNegotiateResponse, error) {
+func (s SQLiteCentralStoragePAP) PullNegotiate(ctx context.Context, req *pap.PullNegotiateRequest) (_ *pap.PullNegotiateResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullNegotiate")
 	defer span.End()
-	telemetry.PullNegotiateTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.PullNegotiateTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.PullDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("negotiate"), telemetry.StatusAttr(st))
+	}()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -191,9 +202,14 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 }
 
 // PullObjects handles the pull objects step.
-func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullObjectsRequest) (*pap.PullObjectsResponse, error) {
+func (s SQLiteCentralStoragePAP) PullObjects(ctx context.Context, req *pap.PullObjectsRequest) (_ *pap.PullObjectsResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.PullObjects")
 	defer span.End()
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.PullDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("objects"), telemetry.StatusAttr(st))
+	}()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}

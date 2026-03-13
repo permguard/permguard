@@ -19,6 +19,7 @@ package telemetry
 
 import (
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -103,6 +104,21 @@ var (
 	TLSModeInfo metric.Int64UpDownCounter
 	// TLSSpiffeAuthTotal counts gRPC requests authenticated via SPIFFE (peer cert has spiffe:// URI SAN).
 	TLSSpiffeAuthTotal metric.Int64Counter
+
+	// PushDuration records push operation duration in seconds.
+	PushDuration metric.Float64Histogram
+	// PullDuration records pull operation duration in seconds.
+	PullDuration metric.Float64Histogram
+	// CleanupDuration records cleanup operation duration in seconds.
+	CleanupDuration metric.Float64Histogram
+	// ZoneOpDuration records zone operation duration in seconds.
+	ZoneOpDuration metric.Float64Histogram
+	// LedgerOpDuration records ledger operation duration in seconds.
+	LedgerOpDuration metric.Float64Histogram
+	// AuthzCheckDuration records authorization check duration in seconds.
+	AuthzCheckDuration metric.Float64Histogram
+	// GRPCRequestDuration records gRPC request duration in seconds.
+	GRPCRequestDuration metric.Float64Histogram
 )
 
 func init() {
@@ -185,6 +201,28 @@ func Init() {
 			metric.WithDescription("Configured server TLS mode (1 = active)"))
 		TLSSpiffeAuthTotal, _ = meter.Int64Counter("permguard.grpc.tls.spiffe.auth.total",
 			metric.WithDescription("Total gRPC requests authenticated via SPIFFE"))
+
+		PushDuration, _ = meter.Float64Histogram("permguard.pap.push.duration",
+			metric.WithDescription("Push operation duration in seconds"),
+			metric.WithUnit("s"))
+		PullDuration, _ = meter.Float64Histogram("permguard.pap.pull.duration",
+			metric.WithDescription("Pull operation duration in seconds"),
+			metric.WithUnit("s"))
+		CleanupDuration, _ = meter.Float64Histogram("permguard.pap.cleanup.duration",
+			metric.WithDescription("Cleanup operation duration in seconds"),
+			metric.WithUnit("s"))
+		ZoneOpDuration, _ = meter.Float64Histogram("permguard.zap.zone.op.duration",
+			metric.WithDescription("Zone operation duration in seconds"),
+			metric.WithUnit("s"))
+		LedgerOpDuration, _ = meter.Float64Histogram("permguard.pap.ledger.op.duration",
+			metric.WithDescription("Ledger operation duration in seconds"),
+			metric.WithUnit("s"))
+		AuthzCheckDuration, _ = meter.Float64Histogram("permguard.pdp.authz.check.duration",
+			metric.WithDescription("Authorization check duration in seconds"),
+			metric.WithUnit("s"))
+		GRPCRequestDuration, _ = meter.Float64Histogram("permguard.grpc.request.duration",
+			metric.WithDescription("gRPC request duration in seconds"),
+			metric.WithUnit("s"))
 	})
 }
 
@@ -194,12 +232,12 @@ func Tracer() trace.Tracer {
 }
 
 // MethodAttr returns a metric option with a "method" attribute.
-func MethodAttr(method string) metric.AddOption {
+func MethodAttr(method string) metric.MeasurementOption {
 	return metric.WithAttributes(attribute.String("method", method))
 }
 
 // TLSAttrs returns metric attributes for TLS request tracking.
-func TLSAttrs(tlsEnabled bool, tlsVersion string, clientCert bool) metric.AddOption {
+func TLSAttrs(tlsEnabled bool, tlsVersion string, clientCert bool) metric.MeasurementOption {
 	return metric.WithAttributes(
 		attribute.Bool("tls_enabled", tlsEnabled),
 		attribute.String("tls_version", tlsVersion),
@@ -208,6 +246,29 @@ func TLSAttrs(tlsEnabled bool, tlsVersion string, clientCert bool) metric.AddOpt
 }
 
 // TLSModeAttr returns a metric option with a "tls_mode" attribute.
-func TLSModeAttr(mode string) metric.AddOption {
+func TLSModeAttr(mode string) metric.MeasurementOption {
 	return metric.WithAttributes(attribute.String("tls_mode", mode))
+}
+
+// StatusAttr returns a metric option with a "status" attribute ("success" or "error").
+func StatusAttr(status string) metric.MeasurementOption {
+	return metric.WithAttributes(attribute.String("status", status))
+}
+
+// OpAttr returns a metric option with an "op" attribute.
+func OpAttr(op string) metric.MeasurementOption {
+	return metric.WithAttributes(attribute.String("op", op))
+}
+
+// StatusFromErr returns "success" if err is nil, "error" otherwise.
+func StatusFromErr(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "success"
+}
+
+// ElapsedSeconds returns the elapsed time in seconds since start.
+func ElapsedSeconds(start time.Time) float64 {
+	return time.Since(start).Seconds()
 }

@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -43,10 +44,15 @@ func rollback(tx *sql.Tx, origErr error) error {
 
 // PushAdvertise handles the push advertise step.
 // On success (no conflicts, not up-to-date), it generates a txid and creates a pending push transaction.
-func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.PushAdvertiseRequest) (*pap.PushAdvertiseResponse, error) {
+func (s SQLiteCentralStoragePAP) PushAdvertise(ctx context.Context, req *pap.PushAdvertiseRequest) (_ *pap.PushAdvertiseResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.PushAdvertise")
 	defer span.End()
-	telemetry.PushAdvertiseTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.PushAdvertiseTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.PushDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("advertise"), telemetry.StatusAttr(st))
+	}()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}
@@ -158,10 +164,15 @@ func (s SQLiteCentralStoragePAP) markTxFailed(ctx context.Context, txid string) 
 }
 
 // PushTransfer handles the push transfer step.
-func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.PushTransferRequest) (*pap.PushTransferResponse, error) {
+func (s SQLiteCentralStoragePAP) PushTransfer(ctx context.Context, req *pap.PushTransferRequest) (_ *pap.PushTransferResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.PushTransfer")
 	defer span.End()
-	telemetry.PushTransferTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.PushTransferTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.PushDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("transfer"), telemetry.StatusAttr(st))
+	}()
 	if req == nil {
 		return nil, fmt.Errorf("storage: nil request: %w", azstorage.ErrInvalidInput)
 	}

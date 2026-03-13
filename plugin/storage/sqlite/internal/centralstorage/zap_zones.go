@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -29,10 +30,15 @@ import (
 )
 
 // CreateZone creates a new zone.
-func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone) (_ *zap.Zone, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.CreateZone")
 	defer span.End()
-	telemetry.ZoneCreateTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.ZoneCreateTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.ZoneOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("create"), telemetry.StatusAttr(st))
+	}()
 	if zone == nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
@@ -69,10 +75,15 @@ func (s SQLiteCentralStorageZAP) CreateZone(ctx context.Context, zone *zap.Zone)
 }
 
 // UpdateZone updates a zone.
-func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone) (_ *zap.Zone, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.UpdateZone")
 	defer span.End()
-	telemetry.ZoneUpdateTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.ZoneUpdateTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.ZoneOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("update"), telemetry.StatusAttr(st))
+	}()
 	if zone == nil {
 		return nil, fmt.Errorf("storage: invalid client input - zone is nil: %w", azstorage.ErrInvalidInput)
 	}
@@ -100,10 +111,15 @@ func (s SQLiteCentralStorageZAP) UpdateZone(ctx context.Context, zone *zap.Zone)
 }
 
 // DeleteZone deletes a zone.
-func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (*zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (_ *zap.Zone, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.DeleteZone")
 	defer span.End()
-	telemetry.ZoneDeleteTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.ZoneDeleteTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.ZoneOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("delete"), telemetry.StatusAttr(st))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", zoneID))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -124,10 +140,15 @@ func (s SQLiteCentralStorageZAP) DeleteZone(ctx context.Context, zoneID int64) (
 }
 
 // FetchZones returns all zones.
-func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) ([]zap.Zone, error) {
+func (s SQLiteCentralStorageZAP) FetchZones(ctx context.Context, page int32, pageSize int32, fields map[string]any) (_ []zap.Zone, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.FetchZones")
 	defer span.End()
-	telemetry.ZoneFetchTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.ZoneFetchTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.ZoneOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("fetch"), telemetry.StatusAttr(st))
+	}()
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
 	}

@@ -19,6 +19,7 @@ package centralstorage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -34,10 +35,15 @@ const (
 )
 
 // CreateLedger creates a new ledger.
-func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.Ledger) (_ *pap.Ledger, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.CreateLedger")
 	defer span.End()
-	telemetry.LedgerCreateTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.LedgerCreateTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.LedgerOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("create"), telemetry.StatusAttr(st))
+	}()
 	if ledger == nil {
 		return nil, fmt.Errorf("storage: invalid client input - ledger is nil: %w", azstorage.ErrInvalidInput)
 	}
@@ -73,10 +79,15 @@ func (s SQLiteCentralStoragePAP) CreateLedger(ctx context.Context, ledger *pap.L
 }
 
 // UpdateLedger updates a ledger.
-func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.Ledger) (_ *pap.Ledger, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.UpdateLedger")
 	defer span.End()
-	telemetry.LedgerUpdateTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.LedgerUpdateTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.LedgerOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("update"), telemetry.StatusAttr(st))
+	}()
 	if ledger == nil {
 		return nil, fmt.Errorf("storage: invalid client input - ledger is nil: %w", azstorage.ErrInvalidInput)
 	}
@@ -113,10 +124,15 @@ func (s SQLiteCentralStoragePAP) UpdateLedger(ctx context.Context, ledger *pap.L
 }
 
 // DeleteLedger deletes a ledger.
-func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (*pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64, ledgerID string) (_ *pap.Ledger, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.DeleteLedger")
 	defer span.End()
-	telemetry.LedgerDeleteTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.LedgerDeleteTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.LedgerOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("delete"), telemetry.StatusAttr(st))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("ledger_id", ledgerID))
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
@@ -137,10 +153,15 @@ func (s SQLiteCentralStoragePAP) DeleteLedger(ctx context.Context, zoneID int64,
 }
 
 // FetchLedgers returns all ledgers.
-func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) ([]pap.Ledger, error) {
+func (s SQLiteCentralStoragePAP) FetchLedgers(ctx context.Context, page int32, pageSize int32, zoneID int64, fields map[string]any) (_ []pap.Ledger, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.FetchLedgers")
 	defer span.End()
-	telemetry.LedgerFetchTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.LedgerFetchTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.LedgerOpDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.OpAttr("fetch"), telemetry.StatusAttr(st))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", zoneID))
 	if page <= 0 || pageSize <= 0 || pageSize > s.config.DataFetchMaxPageSize() {
 		return nil, fmt.Errorf("storage: invalid client input - page number %d or page size %d is not valid: %w", page, pageSize, azstorage.ErrInvalidInput)
