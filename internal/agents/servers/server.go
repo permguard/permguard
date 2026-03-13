@@ -18,6 +18,7 @@ package servers
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 
 	azservices "github.com/permguard/permguard/internal/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
@@ -121,7 +123,13 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 	if tlsCfg.Mode == grpctls.ModeTLS && tlsCfg.CertFile == "" && tlsCfg.KeyFile == "" && tlsCfg.AutoCertDir == "" {
 		tlsCfg.AutoCertDir = filepath.Join(s.config.AppData(), "certs")
 	}
-	grpcCreds, err := grpctls.NewServerCredentials(tlsCfg)
+	var grpcCreds credentials.TransportCredentials
+	var spiffeCloser io.Closer
+	if tlsCfg.Mode == grpctls.ModeSpiffe {
+		grpcCreds, spiffeCloser, err = grpctls.NewSpiffeServerCredentials(ctx, tlsCfg.SpiffeSocketPath)
+	} else {
+		grpcCreds, err = grpctls.NewServerCredentials(tlsCfg)
+	}
 	if err != nil {
 		logger.Error("Bootstrapper cannot initialize TLS credentials", zap.Error(err))
 		shutdownOTelProviders(ctx, otelProviders, logger)
@@ -159,6 +167,11 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 	}
 
 	stop := func() {
+		if spiffeCloser != nil {
+			if err := spiffeCloser.Close(); err != nil {
+				logger.Error("Bootstrapper could not close SPIFFE source", zap.Error(err))
+			}
+		}
 		shutdownOTelProviders(ctx, otelProviders, logger)
 		serveExecStop(ctx, logger, hasStarted, host, onShutdown, s)
 	}
