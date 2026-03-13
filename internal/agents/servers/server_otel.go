@@ -61,6 +61,7 @@ func initOTelProviders(ctx context.Context, serviceName string, config *ServerCo
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
 		),
+		resource.WithFromEnv(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("server: failed to create otel resource: %w", err)
