@@ -68,7 +68,10 @@ func (c *GrpcPDPClient) getClient() (azpdpv1.V1PDPServiceClient, error) {
 	} else {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
-	conn, err := grpc.NewClient(c.endpoint, dialOpt)
+	conn, err := grpc.NewClient(c.endpoint, dialOpt,
+		grpc.WithUnaryInterceptor(tlsHintUnaryInterceptor()),
+		grpc.WithStreamInterceptor(tlsHintStreamInterceptor()),
+	)
 	if err != nil {
 		return nil, err
 	}

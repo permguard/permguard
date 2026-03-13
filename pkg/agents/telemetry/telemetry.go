@@ -96,6 +96,11 @@ var (
 	AuthzEvaluationsCount metric.Int64Histogram
 	// AuthzPolicyLoadTotal counts total policy store loads.
 	AuthzPolicyLoadTotal metric.Int64Counter
+
+	// TLSRequestTotal counts gRPC requests by TLS status (tls_enabled, tls_version, client_cert).
+	TLSRequestTotal metric.Int64Counter
+	// TLSModeInfo reports the configured server TLS mode as a gauge (tls_mode attribute).
+	TLSModeInfo metric.Int64UpDownCounter
 )
 
 func init() {
@@ -171,6 +176,11 @@ func Init() {
 			metric.WithDescription("Number of evaluations per authorization check"))
 		AuthzPolicyLoadTotal, _ = meter.Int64Counter("permguard.pdp.policy.load.total",
 			metric.WithDescription("Total policy store loads"))
+
+		TLSRequestTotal, _ = meter.Int64Counter("permguard.grpc.tls.request.total",
+			metric.WithDescription("Total gRPC requests by TLS status"))
+		TLSModeInfo, _ = meter.Int64UpDownCounter("permguard.server.tls.mode.info",
+			metric.WithDescription("Configured server TLS mode (1 = active)"))
 	})
 }
 
@@ -182,4 +192,18 @@ func Tracer() trace.Tracer {
 // MethodAttr returns a metric option with a "method" attribute.
 func MethodAttr(method string) metric.AddOption {
 	return metric.WithAttributes(attribute.String("method", method))
+}
+
+// TLSAttrs returns metric attributes for TLS request tracking.
+func TLSAttrs(tlsEnabled bool, tlsVersion string, clientCert bool) metric.AddOption {
+	return metric.WithAttributes(
+		attribute.Bool("tls_enabled", tlsEnabled),
+		attribute.String("tls_version", tlsVersion),
+		attribute.Bool("client_cert", clientCert),
+	)
+}
+
+// TLSModeAttr returns a metric option with a "tls_mode" attribute.
+func TLSModeAttr(mode string) metric.AddOption {
+	return metric.WithAttributes(attribute.String("tls_mode", mode))
 }

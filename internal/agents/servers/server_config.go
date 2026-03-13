@@ -19,6 +19,7 @@ package servers
 import (
 	"errors"
 	"flag"
+	"path/filepath"
 
 	"github.com/spf13/viper"
 
@@ -214,6 +215,9 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.tlsKeyFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSKeyFile))
 	c.tlsCAFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSCAFile))
 	c.tlsAutoCertDir = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSAutoCertDir))
+	if c.tlsMode == string(grpctls.ModeTLS) && c.tlsCertFile == "" && c.tlsKeyFile == "" && c.tlsAutoCertDir == "" {
+		c.tlsAutoCertDir = filepath.Join(c.appData, "certs")
+	}
 	if err := c.TLSConfig().Validate(); err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ package services
 
 import (
 	"context"
+	"crypto/tls"
 	"runtime/debug"
 	"time"
 
@@ -25,9 +26,44 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 
 	"github.com/permguard/permguard/pkg/agents/services"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 )
+
+// tlsVersionName maps tls.Version constants to human-readable strings.
+func tlsVersionName(v uint16) string {
+	switch v {
+	case tls.VersionTLS10:
+		return "1.0"
+	case tls.VersionTLS11:
+		return "1.1"
+	case tls.VersionTLS12:
+		return "1.2"
+	case tls.VersionTLS13:
+		return "1.3"
+	default:
+		return "unknown"
+	}
+}
+
+// recordTLSMetrics extracts TLS info from the gRPC peer context and records metrics.
+func recordTLSMetrics(ctx context.Context) {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
+		return
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
+		return
+	}
+	version := tlsVersionName(tlsInfo.State.Version)
+	hasClientCert := len(tlsInfo.State.PeerCertificates) > 0
+	telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(true, version, hasClientCert))
+}
 
 // serverUnaryInterceptor returns a unary interceptor for logging and panic recovery.
 func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServerInterceptor {
@@ -40,6 +76,7 @@ func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServ
 					zap.String("stacktrace", string(debug.Stack())))
 			}
 		}()
+		recordTLSMetrics(ctx)
 		start := time.Now()
 		h, err := handler(ctx, req)
 		if err != nil {
@@ -67,6 +104,7 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 					zap.String("stacktrace", string(debug.Stack())))
 			}
 		}()
+		recordTLSMetrics(ss.Context())
 		start := time.Now()
 		err := handler(srv, ss)
 		if err != nil {

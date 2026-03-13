@@ -44,7 +44,12 @@
         "PERMGUARD_LOG_LEVEL": "DEBUG",
         // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
         "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
-        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT"
+        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT",
+		"PERMGUARD_SERVER_TLS_MODE": "tls",
+		"PERMGUARD_SERVER_TLS_CERT_FILE": "/tmp/permguard-mtls/server-cert.pem",
+		"PERMGUARD_SERVER_TLS_KEY_FILE": "/tmp/permguard-mtls/server-key.pem",
+		"PERMGUARD_SERVER_TLS_CA_FILE": "/tmp/permguard-mtls/ca-cert.pem",
+	// 	"PERMGUARD_SERVER_TLS_AUTO_CERT_DIR": ""
       }
     }
   ]
