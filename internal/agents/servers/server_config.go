@@ -32,17 +32,18 @@ import (
 )
 
 const (
-	flagPrefixServer            = "server"
-	flagSuffixAppData           = "appdata"
-	flagSuffixNOTPMaxPacketSize = "notp-max-packet-size"
-	flagSuffixOTelEnabled       = "otel-enabled"
-	flagSuffixOTelEndpoint      = "otel-endpoint"
-	flagSuffixOTelSampleRate    = "otel-sample-rate"
-	flagSuffixTLSMode           = "tls-mode"
-	flagSuffixTLSCertFile       = "tls-cert-file"
-	flagSuffixTLSKeyFile        = "tls-key-file"
-	flagSuffixTLSCAFile         = "tls-ca-file"
-	flagSuffixTLSAutoCertDir    = "tls-auto-cert-dir"
+	flagPrefixServer              = "server"
+	flagSuffixAppData             = "appdata"
+	flagSuffixNOTPMaxPacketSize   = "notp-max-packet-size"
+	flagSuffixOTelEnabled         = "otel-enabled"
+	flagSuffixOTelEndpoint        = "otel-endpoint"
+	flagSuffixOTelSampleRate      = "otel-sample-rate"
+	flagSuffixTLSMode             = "tls-mode"
+	flagSuffixTLSCertFile         = "tls-cert-file"
+	flagSuffixTLSKeyFile          = "tls-key-file"
+	flagSuffixTLSCAFile           = "tls-ca-file"
+	flagSuffixTLSAutoCertDir      = "tls-auto-cert-dir"
+	flagSuffixTLSSpiffeSocketPath = "tls-spiffe-socket-path"
 )
 
 // ServerConfig holds the configuration for the server.
@@ -60,6 +61,7 @@ type ServerConfig struct {
 	tlsKeyFile           string
 	tlsCAFile            string
 	tlsAutoCertDir       string
+	tlsSpiffeSocketPath  string
 	centralStorageEngine storage.Kind
 	storages             []storage.Kind
 	storagesFactories    map[storage.Kind]storage.FactoryProvider
@@ -141,11 +143,12 @@ func (c *ServerConfig) OTelSampleRate() float64 {
 func (c *ServerConfig) TLSConfig() *grpctls.ServerConfig {
 	mode, _ := grpctls.ParseMode(c.tlsMode)
 	return &grpctls.ServerConfig{
-		Mode:        mode,
-		CertFile:    c.tlsCertFile,
-		KeyFile:     c.tlsKeyFile,
-		CAFile:      c.tlsCAFile,
-		AutoCertDir: c.tlsAutoCertDir,
+		Mode:             mode,
+		CertFile:         c.tlsCertFile,
+		KeyFile:          c.tlsKeyFile,
+		CAFile:           c.tlsCAFile,
+		AutoCertDir:      c.tlsAutoCertDir,
+		SpiffeSocketPath: c.tlsSpiffeSocketPath,
 	}
 }
 
@@ -160,11 +163,12 @@ func (c *ServerConfig) AddFlags(flagSet *flag.FlagSet) error {
 	flagSet.Bool(options.FlagName(flagPrefixServer, flagSuffixOTelEnabled), false, "enable OpenTelemetry tracing and metrics")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixOTelEndpoint), "localhost:4317", "OpenTelemetry collector gRPC endpoint")
 	flagSet.Float64(options.FlagName(flagPrefixServer, flagSuffixOTelSampleRate), 0.1, "OpenTelemetry trace sample rate (0.0 to 1.0)")
-	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSMode), "none", "TLS mode: none, tls, mtls, external")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSMode), "none", "TLS mode: none, tls, mtls, external, spiffe")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSCertFile), "", "path to TLS server certificate file (PEM)")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSKeyFile), "", "path to TLS server private key file (PEM)")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSCAFile), "", "path to CA certificate for client verification (PEM)")
 	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSAutoCertDir), "", "directory for auto-generated TLS certificates (mode=tls only)")
+	flagSet.String(options.FlagName(flagPrefixServer, flagSuffixTLSSpiffeSocketPath), "", "SPIFFE Workload API socket path (mode=spiffe only, defaults to SPIFFE_ENDPOINT_SOCKET env)")
 	for _, fcty := range c.storagesFactories {
 		config, _ := fcty.FactoryConfig()
 		err = config.AddFlags(flagSet)
@@ -215,6 +219,7 @@ func (c *ServerConfig) InitFromViper(v *viper.Viper) error {
 	c.tlsKeyFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSKeyFile))
 	c.tlsCAFile = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSCAFile))
 	c.tlsAutoCertDir = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSAutoCertDir))
+	c.tlsSpiffeSocketPath = v.GetString(options.FlagName(flagPrefixServer, flagSuffixTLSSpiffeSocketPath))
 	if c.tlsMode == string(grpctls.ModeTLS) && c.tlsCertFile == "" && c.tlsKeyFile == "" && c.tlsAutoCertDir == "" {
 		c.tlsAutoCertDir = filepath.Join(c.appData, "certs")
 	}

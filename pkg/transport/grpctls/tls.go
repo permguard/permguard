@@ -49,6 +49,8 @@ const (
 	ModeMTLS Mode = "mtls"
 	// ModeExternal uses externally provided certificates (SPIRE, Vault, cert-manager).
 	ModeExternal Mode = "external"
+	// ModeSpiffe enables native SPIFFE-based mTLS via the Workload API.
+	ModeSpiffe Mode = "spiffe"
 )
 
 // ParseMode parses a string into a TLS Mode.
@@ -62,18 +64,21 @@ func ParseMode(s string) (Mode, error) {
 		return ModeMTLS, nil
 	case string(ModeExternal):
 		return ModeExternal, nil
+	case string(ModeSpiffe):
+		return ModeSpiffe, nil
 	default:
-		return "", fmt.Errorf("tls: invalid mode %q, must be one of: none, tls, mtls, external", s)
+		return "", fmt.Errorf("tls: invalid mode %q, must be one of: none, tls, mtls, external, spiffe", s)
 	}
 }
 
 // ServerConfig holds TLS configuration for the gRPC server.
 type ServerConfig struct {
-	Mode        Mode
-	CertFile    string
-	KeyFile     string
-	CAFile      string
-	AutoCertDir string
+	Mode             Mode
+	CertFile         string
+	KeyFile          string
+	CAFile           string
+	AutoCertDir      string
+	SpiffeSocketPath string
 }
 
 // Validate checks the server TLS configuration for consistency.
@@ -103,6 +108,8 @@ func (c *ServerConfig) Validate() error {
 		if c.CAFile == "" {
 			return errors.New("tls: mode=external requires ca-file for client certificate verification")
 		}
+		return nil
+	case ModeSpiffe:
 		return nil
 	default:
 		return fmt.Errorf("tls: unsupported mode %q", c.Mode)
@@ -153,10 +160,12 @@ func NewServerCredentials(cfg *ServerConfig) (credentials.TransportCredentials, 
 
 // ClientConfig holds TLS configuration for the gRPC client.
 type ClientConfig struct {
-	CAFile     string
-	CertFile   string
-	KeyFile    string
-	SkipVerify bool
+	CAFile           string
+	CertFile         string
+	KeyFile          string
+	SkipVerify       bool
+	Spiffe           bool
+	SpiffeSocketPath string
 }
 
 // HasTLS returns true if any TLS configuration is set.
@@ -164,7 +173,7 @@ func (c *ClientConfig) HasTLS() bool {
 	if c == nil {
 		return false
 	}
-	return c.CAFile != "" || c.CertFile != "" || c.SkipVerify
+	return c.CAFile != "" || c.CertFile != "" || c.SkipVerify || c.Spiffe
 }
 
 // NewClientCredentials builds gRPC transport credentials for the client.

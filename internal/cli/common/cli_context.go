@@ -219,9 +219,11 @@ func (c *CliCommandContext) NOTPMaxPacketSize() (int, error) {
 // TLSClientConfig returns the TLS client configuration from CLI flags.
 func (c *CliCommandContext) TLSClientConfig() *grpctls.ClientConfig {
 	return &grpctls.ClientConfig{
-		CAFile:     c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCAFile)),
-		CertFile:   c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCertFile)),
-		KeyFile:    c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSKeyFile)),
-		SkipVerify: c.v.GetBool(options.FlagName(FlagPrefixTLS, FlagSuffixTLSSkipVerify)),
+		CAFile:           c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCAFile)),
+		CertFile:         c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSCertFile)),
+		KeyFile:          c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSKeyFile)),
+		SkipVerify:       c.v.GetBool(options.FlagName(FlagPrefixTLS, FlagSuffixTLSSkipVerify)),
+		Spiffe:           c.v.GetBool(options.FlagName(FlagPrefixSpiffe, FlagSuffixSpiffeEnabled)),
+		SpiffeSocketPath: c.v.GetString(options.FlagName(FlagPrefixSpiffe, FlagSuffixSpiffeEndpoint)),
 	}
 }

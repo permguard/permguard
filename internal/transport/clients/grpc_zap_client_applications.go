@@ -17,6 +17,8 @@
 package clients
 
 import (
+	"context"
+	"io"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -29,11 +31,12 @@ import (
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
 type GrpcZAPClient struct {
-	endpoint string
-	creds    credentials.TransportCredentials
-	mu       sync.Mutex
-	conn     *grpc.ClientConn
-	client   azzapv1.V1ZAPServiceClient
+	endpoint     string
+	creds        credentials.TransportCredentials
+	spiffeCloser io.Closer
+	mu           sync.Mutex
+	conn         *grpc.ClientConn
+	client       azzapv1.V1ZAPServiceClient
 }
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
@@ -43,15 +46,22 @@ func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcZAPCl
 		return nil, err
 	}
 	var creds credentials.TransportCredentials
-	if useTLS || tlsCfg.HasTLS() {
+	var spiffeCloser io.Closer
+	if tlsCfg != nil && tlsCfg.Spiffe {
+		creds, spiffeCloser, err = grpctls.NewSpiffeClientCredentials(context.Background(), tlsCfg.SpiffeSocketPath)
+		if err != nil {
+			return nil, err
+		}
+	} else if useTLS || tlsCfg.HasTLS() {
 		creds, err = grpctls.NewClientCredentials(tlsCfg)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return &GrpcZAPClient{
-		endpoint: hostPort,
-		creds:    creds,
+		endpoint:     hostPort,
+		creds:        creds,
+		spiffeCloser: spiffeCloser,
 	}, nil
 }
 
@@ -84,6 +94,9 @@ func (c *GrpcZAPClient) getClient() (azzapv1.V1ZAPServiceClient, error) {
 func (c *GrpcZAPClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.spiffeCloser != nil {
+		_ = c.spiffeCloser.Close()
+	}
 	if c.conn != nil {
 		err := c.conn.Close()
 		c.conn = nil

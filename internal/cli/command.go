@@ -89,6 +89,8 @@ func Run(cliInitializer cli.Initializer) {
 	command.PersistentFlags().String(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSCertFile), "", "path to client certificate for mTLS (PEM)")
 	command.PersistentFlags().String(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSKeyFile), "", "path to client private key for mTLS (PEM)")
 	command.PersistentFlags().Bool(options.FlagName(common.FlagPrefixTLS, common.FlagSuffixTLSSkipVerify), false, "skip server certificate verification (insecure, dev only)")
+	command.PersistentFlags().Bool(options.FlagName(common.FlagPrefixSpiffe, common.FlagSuffixSpiffeEnabled), false, "enable native SPIFFE mTLS via Workload API")
+	command.PersistentFlags().String(options.FlagName(common.FlagPrefixSpiffe, common.FlagSuffixSpiffeEndpoint), "", "SPIFFE Workload API socket path (defaults to SPIFFE_ENDPOINT_SOCKET env)")
 	_ = v.BindPFlags(command.PersistentFlags())
 
 	command.AddCommand(azcmds.CreateCommandForVersion(depsProvider, v))

@@ -61,6 +61,9 @@ const (
 	FlagSuffixTLSCertFile           = "cert-file"
 	FlagSuffixTLSKeyFile            = "key-file"
 	FlagSuffixTLSSkipVerify         = "skip-verify"
+	FlagPrefixSpiffe                = "spiffe"
+	FlagSuffixSpiffeEnabled         = "enabled"
+	FlagSuffixSpiffeEndpoint        = "endpoint"
 )
 
 //go:embed "art.txt"

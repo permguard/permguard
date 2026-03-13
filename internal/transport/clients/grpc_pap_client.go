@@ -17,6 +17,8 @@
 package clients
 
 import (
+	"context"
+	"io"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -29,11 +31,12 @@ import (
 
 // GrpcPAPClient is a gRPC client for the PAP service.
 type GrpcPAPClient struct {
-	endpoint string
-	creds    credentials.TransportCredentials
-	mu       sync.Mutex
-	conn     *grpc.ClientConn
-	client   azpapv1.V1PAPServiceClient
+	endpoint     string
+	creds        credentials.TransportCredentials
+	spiffeCloser io.Closer
+	mu           sync.Mutex
+	conn         *grpc.ClientConn
+	client       azpapv1.V1PAPServiceClient
 }
 
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
@@ -43,15 +46,22 @@ func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPAPCl
 		return nil, err
 	}
 	var creds credentials.TransportCredentials
-	if useTLS || tlsCfg.HasTLS() {
+	var spiffeCloser io.Closer
+	if tlsCfg != nil && tlsCfg.Spiffe {
+		creds, spiffeCloser, err = grpctls.NewSpiffeClientCredentials(context.Background(), tlsCfg.SpiffeSocketPath)
+		if err != nil {
+			return nil, err
+		}
+	} else if useTLS || tlsCfg.HasTLS() {
 		creds, err = grpctls.NewClientCredentials(tlsCfg)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return &GrpcPAPClient{
-		endpoint: hostPort,
-		creds:    creds,
+		endpoint:     hostPort,
+		creds:        creds,
+		spiffeCloser: spiffeCloser,
 	}, nil
 }
 
@@ -84,6 +94,9 @@ func (c *GrpcPAPClient) getClient() (azpapv1.V1PAPServiceClient, error) {
 func (c *GrpcPAPClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.spiffeCloser != nil {
+		_ = c.spiffeCloser.Close()
+	}
 	if c.conn != nil {
 		err := c.conn.Close()
 		c.conn = nil
