@@ -101,6 +101,8 @@ var (
 	TLSRequestTotal metric.Int64Counter
 	// TLSModeInfo reports the configured server TLS mode as a gauge (tls_mode attribute).
 	TLSModeInfo metric.Int64UpDownCounter
+	// TLSSpiffeAuthTotal counts gRPC requests authenticated via SPIFFE (peer cert has spiffe:// URI SAN).
+	TLSSpiffeAuthTotal metric.Int64Counter
 )
 
 func init() {
@@ -181,6 +183,8 @@ func Init() {
 			metric.WithDescription("Total gRPC requests by TLS status"))
 		TLSModeInfo, _ = meter.Int64UpDownCounter("permguard.server.tls.mode.info",
 			metric.WithDescription("Configured server TLS mode (1 = active)"))
+		TLSSpiffeAuthTotal, _ = meter.Int64Counter("permguard.grpc.tls.spiffe.auth.total",
+			metric.WithDescription("Total gRPC requests authenticated via SPIFFE"))
 	})
 }
 
