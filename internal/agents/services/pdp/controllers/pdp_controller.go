@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/permguard/permguard/internal/agents/decisions"
 	"github.com/permguard/permguard/pkg/agents/runtime"
@@ -64,10 +65,15 @@ func NewPDPController(serviceContext *services.ServiceContext, storage storage.P
 }
 
 // AuthorizationCheck checks if the request is authorized.
-func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (*pdp.AuthorizationCheckResponse, error) {
+func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.AuthorizationCheckWithDefaultsRequest) (_ *pdp.AuthorizationCheckResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "pdp.AuthorizationCheck")
 	defer span.End()
-	telemetry.AuthzCheckTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.AuthzCheckTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.AuthzCheckDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.StatusAttr(st))
+	}()
 	if request == nil {
 		errMsg := fmt.Sprintf("%s: received nil request", authzen.AuthzErrBadRequestMessage)
 		return pdp.NewAuthorizationCheckErrorResponse(nil, "", authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
@@ -112,9 +118,9 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 			trace.WithAttributes(
 				attribute.Int64("zone_id", authzModel.ZoneID),
 				attribute.String("policy_store_id", authzModel.PolicyStore.ID)))
-		telemetry.AuthzPolicyLoadTotal.Add(ctx, 1)
 		authzPolicyStore, err2 := s.storage.LoadPolicyStore(loadCtx, authzModel.ZoneID, authzModel.PolicyStore.ID)
 		loadSpan.End()
+		telemetry.AuthzPolicyLoadTotal.Add(ctx, 1, telemetry.StatusAttr(telemetry.StatusFromErr(err2)))
 		if err2 != nil {
 			if logger := s.ctx.Logger(); logger != nil {
 				logger.Error("Failed to load policy store for authorization check",

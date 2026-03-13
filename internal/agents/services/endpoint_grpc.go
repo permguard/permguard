@@ -95,6 +95,9 @@ func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServ
 		recordTLSMetrics(ctx)
 		start := time.Now()
 		h, err := handler(ctx, req)
+		status := telemetry.StatusFromErr(err)
+		elapsed := telemetry.ElapsedSeconds(start)
+		telemetry.GRPCRequestDuration.Record(ctx, elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(status))
 		if err != nil {
 			logger.Error(serviceCtx.LogMessage("Request failed"),
 				zap.String("method", info.FullMethod),
@@ -123,6 +126,9 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 		recordTLSMetrics(ss.Context())
 		start := time.Now()
 		err := handler(srv, ss)
+		status := telemetry.StatusFromErr(err)
+		elapsed := telemetry.ElapsedSeconds(start)
+		telemetry.GRPCRequestDuration.Record(ss.Context(), elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(status))
 		if err != nil {
 			logger.Error(serviceCtx.LogMessage("Stream request failed"),
 				zap.String("method", info.FullMethod),

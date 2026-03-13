@@ -53,10 +53,10 @@ type PDPServer struct {
 }
 
 // AuthorizationCheck checks the authorization.
-func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (*AuthorizationCheckResponse, error) {
+func (s *PDPServer) AuthorizationCheck(ctx context.Context, request *AuthorizationCheckRequest) (_ *AuthorizationCheckResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pdp.AuthorizationCheck")
 	defer span.End()
-	telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pdp.AuthorizationCheck"))
+	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pdp.AuthorizationCheck"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
 	logger := s.ctx.Logger()
 	if request != nil {
 		jsonData, err := json.MarshalIndent(request, "", "  ")

@@ -29,10 +29,15 @@ import (
 
 // CleanupStaleTransactions cleans up stale pending transactions older than maxAge.
 // Returns the number of transactions cleaned and total objects deleted.
-func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, maxAge time.Duration) (int, int64, error) {
+func (s SQLiteCentralStoragePAP) CleanupStaleTransactions(ctx context.Context, maxAge time.Duration) (_ int, _ int64, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "storage.CleanupStaleTransactions")
 	defer span.End()
-	telemetry.CleanupRunsTotal.Add(ctx, 1)
+	start := time.Now()
+	defer func() {
+		st := telemetry.StatusFromErr(retErr)
+		telemetry.CleanupRunsTotal.Add(ctx, 1, telemetry.StatusAttr(st))
+		telemetry.CleanupDuration.Record(ctx, telemetry.ElapsedSeconds(start), telemetry.StatusAttr(st))
+	}()
 	db, err := s.sqlExec.Connect(s.ctx, s.sqliteConnector)
 	if err != nil {
 		return 0, 0, azrepos.WrapSqliteError(errorMessageCannotConnect, err)
