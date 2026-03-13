@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 
@@ -27,6 +28,7 @@ import (
 
 	azservices "github.com/permguard/permguard/internal/agents/services"
 	"github.com/permguard/permguard/pkg/agents/storage"
+	"github.com/permguard/permguard/pkg/agents/telemetry"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/grpctls"
 )
@@ -116,6 +118,9 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 	}
 
 	tlsCfg := s.config.TLSConfig()
+	if tlsCfg.Mode == grpctls.ModeTLS && tlsCfg.CertFile == "" && tlsCfg.KeyFile == "" && tlsCfg.AutoCertDir == "" {
+		tlsCfg.AutoCertDir = filepath.Join(s.config.AppData(), "certs")
+	}
 	grpcCreds, err := grpctls.NewServerCredentials(tlsCfg)
 	if err != nil {
 		logger.Error("Bootstrapper cannot initialize TLS credentials", zap.Error(err))
@@ -123,6 +128,7 @@ func (s *Server) Serve(ctx context.Context, onShutdown func()) (bool, error) {
 		s.startLock.Unlock()
 		return false, err
 	}
+	telemetry.TLSModeInfo.Add(ctx, 1, telemetry.TLSModeAttr(string(tlsCfg.Mode)))
 	if tlsCfg.Mode != grpctls.ModeNone {
 		logger.Info("TLS enabled", zap.String("mode", string(tlsCfg.Mode)))
 	}

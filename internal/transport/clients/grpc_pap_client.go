@@ -68,7 +68,10 @@ func (c *GrpcPAPClient) getClient() (azpapv1.V1PAPServiceClient, error) {
 	} else {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
-	conn, err := grpc.NewClient(c.endpoint, dialOpt)
+	conn, err := grpc.NewClient(c.endpoint, dialOpt,
+		grpc.WithUnaryInterceptor(tlsHintUnaryInterceptor()),
+		grpc.WithStreamInterceptor(tlsHintStreamInterceptor()),
+	)
 	if err != nil {
 		return nil, err
 	}
