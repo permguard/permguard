@@ -84,7 +84,9 @@ type ZAPServer struct {
 func (s *ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateRequest) (_ *ZoneResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.CreateZone")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.CreateZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.CreateZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	zone, err := s.service.CreateZone(ctx, &zap.Zone{Name: zoneRequest.Name})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -97,7 +99,9 @@ func (s *ZAPServer) CreateZone(ctx context.Context, zoneRequest *ZoneCreateReque
 func (s *ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateRequest) (_ *ZoneResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.UpdateZone")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.UpdateZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.UpdateZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", zoneRequest.ZoneID))
 	zone, err := s.service.UpdateZone(ctx, (&zap.Zone{ZoneID: zoneRequest.ZoneID, Name: zoneRequest.Name}))
 	if err != nil {
@@ -111,7 +115,9 @@ func (s *ZAPServer) UpdateZone(ctx context.Context, zoneRequest *ZoneUpdateReque
 func (s *ZAPServer) DeleteZone(ctx context.Context, zoneRequest *ZoneDeleteRequest) (_ *ZoneResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.DeleteZone")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.DeleteZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.DeleteZone"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", zoneRequest.ZoneID))
 	zone, err := s.service.DeleteZone(ctx, zoneRequest.ZoneID)
 	if err != nil {
@@ -126,7 +132,9 @@ func (s *ZAPServer) FetchZones(zoneRequest *ZoneFetchRequest, stream grpc.Server
 	ctx := stream.Context()
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.zap.FetchZones")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.FetchZones"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("zap.FetchZones"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	fields := map[string]any{}
 	if zoneRequest.ZoneID != nil {
 		fields[zap.FieldZoneZoneID] = *zoneRequest.ZoneID
