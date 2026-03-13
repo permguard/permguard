@@ -94,7 +94,9 @@ type PAPServer struct {
 func (s *PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreateRequest) (_ *LedgerResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.CreateLedger")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.CreateLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.CreateLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", ledgerRequest.ZoneID))
 	ledger, err := s.service.CreateLedger(ctx, &pap.Ledger{ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name, Kind: ledgerRequest.Kind})
 	if err != nil {
@@ -108,7 +110,9 @@ func (s *PAPServer) CreateLedger(ctx context.Context, ledgerRequest *LedgerCreat
 func (s *PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdateRequest) (_ *LedgerResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.UpdateLedger")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.UpdateLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.UpdateLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", ledgerRequest.ZoneID), attribute.String("ledger_id", ledgerRequest.LedgerID))
 	ledger, err := s.service.UpdateLedger(ctx, (&pap.Ledger{LedgerID: ledgerRequest.LedgerID, ZoneID: ledgerRequest.ZoneID, Name: ledgerRequest.Name}))
 	if err != nil {
@@ -122,7 +126,9 @@ func (s *PAPServer) UpdateLedger(ctx context.Context, ledgerRequest *LedgerUpdat
 func (s *PAPServer) DeleteLedger(ctx context.Context, ledgerRequest *LedgerDeleteRequest) (_ *LedgerResponse, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.DeleteLedger")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.DeleteLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.DeleteLedger"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", ledgerRequest.ZoneID), attribute.String("ledger_id", ledgerRequest.LedgerID))
 	ledger, err := s.service.DeleteLedger(ctx, ledgerRequest.ZoneID, ledgerRequest.LedgerID)
 	if err != nil {
@@ -137,7 +143,9 @@ func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.
 	ctx := stream.Context()
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.FetchLedgers")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.FetchLedgers"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.FetchLedgers"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	span.SetAttributes(attribute.Int64("zone_id", ledgerRequest.ZoneID))
 	fields := map[string]any{}
 	fields[pap.FieldLedgerZoneID] = ledgerRequest.ZoneID
@@ -180,7 +188,9 @@ func (s *PAPServer) FetchLedgers(ledgerRequest *LedgerFetchRequest, stream grpc.
 func (s *PAPServer) PushAdvertise(ctx context.Context, in *PackMessage) (_ *PackMessage, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.PushAdvertise")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PushAdvertise"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PushAdvertise"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	var req pap.PushAdvertiseRequest
 	if err := json.Unmarshal(in.Data, &req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
@@ -201,7 +211,9 @@ func (s *PAPServer) PushAdvertise(ctx context.Context, in *PackMessage) (_ *Pack
 func (s *PAPServer) PushTransfer(ctx context.Context, in *PackMessage) (_ *PackMessage, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.PushTransfer")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PushTransfer"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PushTransfer"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	var req pap.PushTransferRequest
 	if err := json.Unmarshal(in.Data, &req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
@@ -222,7 +234,9 @@ func (s *PAPServer) PushTransfer(ctx context.Context, in *PackMessage) (_ *PackM
 func (s *PAPServer) PullState(ctx context.Context, in *PackMessage) (_ *PackMessage, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.PullState")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullState"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullState"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	var req pap.PullStateRequest
 	if err := json.Unmarshal(in.Data, &req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
@@ -243,7 +257,9 @@ func (s *PAPServer) PullState(ctx context.Context, in *PackMessage) (_ *PackMess
 func (s *PAPServer) PullNegotiate(ctx context.Context, in *PackMessage) (_ *PackMessage, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.PullNegotiate")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullNegotiate"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullNegotiate"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	var req pap.PullNegotiateRequest
 	if err := json.Unmarshal(in.Data, &req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
@@ -264,7 +280,9 @@ func (s *PAPServer) PullNegotiate(ctx context.Context, in *PackMessage) (_ *Pack
 func (s *PAPServer) PullObjects(ctx context.Context, in *PackMessage) (_ *PackMessage, retErr error) {
 	ctx, span := telemetry.Tracer().Start(ctx, "grpc.pap.PullObjects")
 	defer span.End()
-	defer func() { telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullObjects"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr))) }()
+	defer func() {
+		telemetry.GRPCRequestTotal.Add(ctx, 1, telemetry.MethodAttr("pap.PullObjects"), telemetry.StatusAttr(telemetry.StatusFromErr(retErr)))
+	}()
 	var req pap.PullObjectsRequest
 	if err := json.Unmarshal(in.Data, &req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
