@@ -106,8 +106,8 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 	}
 	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagZAP))
 	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagPAP))
-	scheme := v.GetString(options.FlagName(commandNameForWorkspacesClone, flagScheme))
-	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, scheme, outFunc(ctx, printer))
+	flagScheme := v.GetString(options.FlagName(commandNameForWorkspacesClone, flagScheme))
+	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, flagScheme, outFunc(ctx, printer))
 	if err != nil {
 		return fail(err)
 	}

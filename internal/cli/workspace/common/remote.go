@@ -32,6 +32,31 @@ type RemoteInfo struct {
 	scheme  string
 }
 
+// ParseServerScheme extracts an optional scheme prefix from the server string.
+// Supported formats: "grpc:host", "grpcs:host", or plain "host".
+// Returns the parsed scheme (empty if none) and the server without the prefix.
+func ParseServerScheme(server string) (string, string) {
+	if strings.HasPrefix(server, "grpcs:") {
+		return "grpcs", strings.TrimPrefix(server, "grpcs:")
+	}
+	if strings.HasPrefix(server, "grpc:") {
+		return "grpc", strings.TrimPrefix(server, "grpc:")
+	}
+	return "", server
+}
+
+// ResolveScheme determines the final scheme from the server prefix and the --scheme flag.
+// The --scheme flag always takes priority. If neither is set, defaults to "grpc".
+func ResolveScheme(serverScheme, flagScheme string) string {
+	if flagScheme != "" {
+		return flagScheme
+	}
+	if serverScheme != "" {
+		return serverScheme
+	}
+	return "grpc"
+}
+
 // NewRemoteInfo creates a new remote info.
 func NewRemoteInfo(server string, zapPort, papPort int, scheme string) (*RemoteInfo, error) {
 	if server == "" {
