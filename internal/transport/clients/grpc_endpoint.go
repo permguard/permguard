@@ -25,23 +25,23 @@ import (
 // parseGrpcEndpoint validates the endpoint has a grpc:// or grpcs:// scheme and returns the host:port and whether TLS is indicated.
 func parseGrpcEndpoint(endpoint string) (string, bool, error) {
 	if endpoint == "" {
-		return "", false, errors.New("client: endpoint is required")
+		return "", false, errors.New("client: endpoint is required (e.g., grpc://localhost:9091 or grpcs://localhost:9091)")
 	}
 	const grpcScheme = "grpc://"
 	const grpcsScheme = "grpcs://"
 	if strings.HasPrefix(endpoint, grpcsScheme) {
 		hostPort := strings.TrimPrefix(endpoint, grpcsScheme)
 		if hostPort == "" {
-			return "", false, errors.New("client: endpoint host:port is required after grpcs://")
+			return "", false, errors.New("client: endpoint host:port is required after grpcs:// (e.g., grpcs://localhost:9091)")
 		}
 		return hostPort, true, nil
 	}
 	if strings.HasPrefix(endpoint, grpcScheme) {
 		hostPort := strings.TrimPrefix(endpoint, grpcScheme)
 		if hostPort == "" {
-			return "", false, errors.New("client: endpoint host:port is required after grpc://")
+			return "", false, errors.New("client: endpoint host:port is required after grpc:// (e.g., grpc://localhost:9091)")
 		}
 		return hostPort, false, nil
 	}
-	return "", false, fmt.Errorf("client: endpoint scheme must be grpc:// or grpcs://, got %s", endpoint)
+	return "", false, fmt.Errorf("client: endpoint scheme must be grpc:// or grpcs://, got %q (use grpc:// for plaintext or grpcs:// for TLS)", endpoint)
 }

@@ -28,6 +28,7 @@ type currentHeadContext struct {
 	remoteCommitID string
 	server         string
 	serverPAPPort  int
+	scheme         string
 }
 
 // Remote returns the remote.
@@ -83,4 +84,9 @@ func (h *currentHeadContext) Server() string {
 // ServerPAPPort returns the server PAP port.
 func (h *currentHeadContext) ServerPAPPort() int {
 	return h.serverPAPPort
+}
+
+// Scheme returns the remote gRPC scheme.
+func (h *currentHeadContext) Scheme() string {
+	return h.scheme
 }

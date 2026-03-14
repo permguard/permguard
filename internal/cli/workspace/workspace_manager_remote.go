@@ -61,6 +61,7 @@ func (m *Manager) currentHeadContext() (*currentHeadContext, error) {
 		remoteCommitID: remoteRefCommitID,
 		server:         remoteInfo.Server(),
 		serverPAPPort:  remoteInfo.PAPPort(),
+		scheme:         remoteInfo.Scheme(),
 	}
 	ledgerID, err := m.rfsMgr.RefLedgerID(headRef)
 	if err != nil {

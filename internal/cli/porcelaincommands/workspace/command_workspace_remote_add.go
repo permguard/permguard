@@ -38,6 +38,8 @@ const (
 	flagZAP = "zap"
 	// flagPAP is the flag name for the PAP port.
 	flagPAP = "pap"
+	// flagScheme is the flag name for the gRPC scheme.
+	flagScheme = "scheme"
 )
 
 // runECommandForRemoteAddWorkspace runs the command for adding a workspace remote.
@@ -78,7 +80,8 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 	server := args[1]
 	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP))
 	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
-	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, outFunc(ctx, printer))
+	scheme := v.GetString(options.FlagName(commandNameForWorkspacesRemoteAdd, flagScheme))
+	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, scheme, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
 			printer.Println("Failed to add the remote.")
@@ -113,5 +116,7 @@ Examples:
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
+	command.Flags().String(flagScheme, "", "specify the gRPC scheme: 'grpc' (plaintext) or 'grpcs' (TLS)")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagScheme), command.Flags().Lookup(flagScheme))
 	return command
 }

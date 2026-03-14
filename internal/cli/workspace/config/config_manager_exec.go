@@ -38,7 +38,7 @@ func (m *Manager) ExecInitialize() error {
 }
 
 // ExecAddRemote adds a remote.
-func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, scheme string, output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {
 		output = map[string]any{}
 	}
@@ -63,6 +63,7 @@ func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, 
 		Server:  server,
 		ZAPPort: zap,
 		PAPPort: pap,
+		Scheme:  scheme,
 	}
 	cfg.Remotes[remote] = cfgRemote
 	if err := m.saveConfig(true, cfg); err != nil {
@@ -78,6 +79,7 @@ func (m *Manager) ExecAddRemote(remote string, server string, zap int, pap int, 
 			"zap_port":   cfgRemote.ZAPPort,
 			"pap_server": cfgRemote.Server,
 			"pap_port":   cfgRemote.PAPPort,
+			"scheme":     cfgRemote.Scheme,
 		}
 		remotes = append(remotes, remoteObj)
 		output = out(output, "remotes", remotes, nil, true)

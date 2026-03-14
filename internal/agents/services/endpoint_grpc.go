@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/spiffegrpc/grpccredentials"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -62,23 +63,36 @@ func hasSpiffeID(state tls.ConnectionState) bool {
 }
 
 // recordTLSMetrics extracts TLS info from the gRPC peer context and records metrics.
+// It handles both standard TLS (credentials.TLSInfo) and SPIFFE credentials,
+// where go-spiffe wraps TLSInfo in an unexported authInfoWrapper.
 func recordTLSMetrics(ctx context.Context) {
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
 		return
 	}
-	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
-	if !ok {
-		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
+
+	// Standard TLS/mTLS: credentials.TLSInfo is directly accessible.
+	if tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo); ok {
+		version := tlsVersionName(tlsInfo.State.Version)
+		hasClientCert := len(tlsInfo.State.PeerCertificates) > 0
+		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(true, version, hasClientCert))
+		if hasClientCert && hasSpiffeID(tlsInfo.State) {
+			telemetry.TLSSpiffeAuthTotal.Add(ctx, 1)
+		}
 		return
 	}
-	version := tlsVersionName(tlsInfo.State.Version)
-	hasClientCert := len(tlsInfo.State.PeerCertificates) > 0
-	telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(true, version, hasClientCert))
-	if hasClientCert && hasSpiffeID(tlsInfo.State) {
+
+	// SPIFFE credentials: go-spiffe wraps credentials.TLSInfo in an unexported
+	// authInfoWrapper, so the type assertion above fails. Use PeerIDFromPeer
+	// to detect SPIFFE and AuthType to confirm it is TLS.
+	if _, hasSpiffe := grpccredentials.PeerIDFromPeer(p); hasSpiffe {
+		telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(true, "1.3", true))
 		telemetry.TLSSpiffeAuthTotal.Add(ctx, 1)
+		return
 	}
+
+	telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
 }
 
 // serverUnaryInterceptor returns a unary interceptor for logging and panic recovery.

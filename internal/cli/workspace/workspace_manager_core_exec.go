@@ -169,7 +169,7 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 }
 
 // execInternalAddRemote adds a remote.
-func (m *Manager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, scheme string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		if !internal {
 			out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
@@ -178,16 +178,16 @@ func (m *Manager) execInternalAddRemote(internal bool, remote string, server str
 	}
 
 	if !validators.IsValidHostname(server) {
-		return fail(nil, fmt.Errorf("cli: invalid server %s", server))
+		return fail(nil, fmt.Errorf("cli: invalid server %s: must be a valid hostname or IP address", server))
 	}
 	if !validators.IsValidPort(zapPort) {
-		return fail(nil, fmt.Errorf("cli: invalid zap port %d", zapPort))
+		return fail(nil, fmt.Errorf("cli: invalid zap port %d: must be between 1 and 65535", zapPort))
 	}
 	if !validators.IsValidPort(papPort) {
-		return fail(nil, fmt.Errorf("cli: invalid pap port %d", papPort))
+		return fail(nil, fmt.Errorf("cli: invalid pap port %d: must be between 1 and 65535", papPort))
 	}
 
-	output, err := m.cfgMgr.ExecAddRemote(remote, server, zapPort, papPort, nil, out)
+	output, err := m.cfgMgr.ExecAddRemote(remote, server, zapPort, papPort, scheme, nil, out)
 	if err != nil {
 		return fail(output, err)
 	}
@@ -195,7 +195,7 @@ func (m *Manager) execInternalAddRemote(internal bool, remote string, server str
 }
 
 // ExecAddRemote adds a remote.
-func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPort int, scheme string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
@@ -211,7 +211,7 @@ func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPo
 	}
 	defer func() { _ = fileLock.Unlock() }()
 
-	return m.execInternalAddRemote(false, remote, server, zapPort, papPort, out)
+	return m.execInternalAddRemote(false, remote, server, zapPort, papPort, scheme, out)
 }
 
 // ExecRemoveRemote removes a remote.
