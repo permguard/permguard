@@ -23,8 +23,34 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/transport/clients"
+	"github.com/permguard/permguard/pkg/transport/grpctls"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
+
+// hasTLSFlags returns true if any TLS-related client flag is set.
+func hasTLSFlags(tlsCfg *grpctls.ClientConfig) bool {
+	return tlsCfg != nil && (tlsCfg.SkipVerify || tlsCfg.CAFile != "" || tlsCfg.CertFile != "" || tlsCfg.Spiffe)
+}
+
+// grpcEndpoint builds a gRPC endpoint string using the remote's configured scheme.
+// If the scheme is empty (backward compatibility), it falls back to auto-detect from TLS config.
+// If the scheme conflicts with the TLS flags, it returns an error.
+func grpcEndpoint(tlsCfg *grpctls.ClientConfig, remoteScheme string, host string, port int) (string, error) {
+	tls := hasTLSFlags(tlsCfg)
+	scheme := remoteScheme
+	if scheme == "" {
+		// Backward compatibility: auto-detect from TLS config.
+		scheme = "grpc"
+		if tls {
+			scheme = "grpcs"
+		}
+	} else if scheme == "grpc" && tls {
+		return "", fmt.Errorf("cli: remote scheme is 'grpc' (plaintext) but TLS flags are set — update the remote scheme to 'grpcs' with 'permguard remote add' or remove TLS flags")
+	} else if scheme == "grpcs" && !tls {
+		return "", fmt.Errorf("cli: remote scheme is 'grpcs' (TLS) but no TLS flags are set — add --tls-skip-verify or other TLS flags, or update the remote scheme to 'grpc'")
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, host, port), nil
+}
 
 // Manager implements the internal manager for the remote file.
 type Manager struct {
@@ -41,20 +67,26 @@ func NewManager(ctx *common.CliCommandContext) (*Manager, error) {
 // ServerRemoteLedger gets the remote ledger from the server.
 func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerInfo *azwkscommon.LedgerInfo) (*pap.Ledger, error) {
 	if remoteInfo == nil {
-		return nil, errors.New("cli: remote info is nil")
+		return nil, errors.New("cli: remote info is nil — ensure a remote is configured with 'permguard workspace remote add'")
 	}
 	if ledgerInfo == nil {
-		return nil, errors.New("cli: ledger info is nil")
+		return nil, errors.New("cli: ledger info is nil — ensure a ledger is checked out with 'permguard checkout'")
 	}
 	tlsCfg := m.ctx.TLSClientConfig()
-	zoneerver := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.ZAPPort())
-	zapClient, err := clients.NewGrpcZAPClient(zoneerver, tlsCfg)
+	zapEndpoint, err := grpcEndpoint(tlsCfg, remoteInfo.Scheme(), remoteInfo.Server(), remoteInfo.ZAPPort())
+	if err != nil {
+		return nil, err
+	}
+	zapClient, err := clients.NewGrpcZAPClient(zapEndpoint, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = zapClient.Close() }()
-	pppServer := fmt.Sprintf("grpc://%s:%d", remoteInfo.Server(), remoteInfo.PAPPort())
-	papClient, err := clients.NewGrpcPAPClient(pppServer, tlsCfg)
+	papEndpoint, err := grpcEndpoint(tlsCfg, remoteInfo.Scheme(), remoteInfo.Server(), remoteInfo.PAPPort())
+	if err != nil {
+		return nil, err
+	}
+	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -76,10 +108,13 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 }
 
 // NewPAPClientSession creates a new gRPC PAP client session with a reusable connection.
-func (m *Manager) NewPAPClientSession(server string, papPort int) (*clients.GrpcPAPClientSession, error) {
+func (m *Manager) NewPAPClientSession(server string, papPort int, scheme string) (*clients.GrpcPAPClientSession, error) {
 	tlsCfg := m.ctx.TLSClientConfig()
-	pppServer := fmt.Sprintf("grpc://%s:%d", server, papPort)
-	papClient, err := clients.NewGrpcPAPClient(pppServer, tlsCfg)
+	papEndpoint, err := grpcEndpoint(tlsCfg, scheme, server, papPort)
+	if err != nil {
+		return nil, err
+	}
+	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg)
 	if err != nil {
 		return nil, err
 	}

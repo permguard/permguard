@@ -106,7 +106,8 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 	}
 	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagZAP))
 	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesClone, flagPAP))
-	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, outFunc(ctx, printer))
+	scheme := v.GetString(options.FlagName(commandNameForWorkspacesClone, flagScheme))
+	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, scheme, outFunc(ctx, printer))
 	if err != nil {
 		return fail(err)
 	}
@@ -135,5 +136,7 @@ Examples:
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagPAP), command.Flags().Lookup(flagPAP))
+	command.Flags().String(flagScheme, "", "specify the gRPC scheme: 'grpc' (plaintext) or 'grpcs' (TLS)")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesClone, flagScheme), command.Flags().Lookup(flagScheme))
 	return command
 }

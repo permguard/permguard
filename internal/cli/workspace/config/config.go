@@ -34,6 +34,7 @@ type remoteConfig struct {
 	Server  string `toml:"server"`
 	ZAPPort int    `toml:"zapport"`
 	PAPPort int    `toml:"papport"`
+	Scheme  string `toml:"scheme,omitempty"`
 }
 
 // ledgerConfig represents the configuration for the ledger.

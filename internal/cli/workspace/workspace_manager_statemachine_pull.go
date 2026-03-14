@@ -40,7 +40,7 @@ func (m *Manager) execRemotePull(headCtx *currentHeadContext, out common.Printer
 		out(nil, "pull", "Advertising - Initiating request for ledger state.", nil, true)
 	}
 
-	papClient, err := m.rmSrvtMgr.NewPAPClientSession(headCtx.Server(), headCtx.ServerPAPPort())
+	papClient, err := m.rmSrvtMgr.NewPAPClientSession(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.Scheme())
 	if err != nil {
 		return nil, fmt.Errorf("cli: failed to create PAP client: %w", err)
 	}

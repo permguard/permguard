@@ -416,7 +416,7 @@ func (m *Manager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
 }
 
 // ExecCloneLedger clones a ledger.
-func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, scheme string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		out(nil, "", fmt.Sprintf("Failed to clone the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
@@ -446,7 +446,7 @@ func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, out co
 			return fail(nil, err)
 		}
 		defer func() { _ = fileLock.Unlock() }()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, out)
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, scheme, out)
 		if err == nil {
 			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
 			output, err = m.execInternalCheckoutLedger(true, ledgerURI, out)

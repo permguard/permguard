@@ -155,7 +155,7 @@ func (c *CliCommandContext) WorkDir() string {
 func (c *CliCommandContext) ZAPEndpoint() (string, error) {
 	endpoint := c.v.Get(options.FlagName(FlagPrefixZAP, FlagSuffixZAPEndpoint))
 	if endpoint == nil {
-		return "", errors.New("cli: zap endpoint is not set")
+		return "", errors.New("cli: zap endpoint is not set — use 'permguard config set zap-endpoint grpc://host:port' to configure it")
 	}
 	return endpoint.(string), nil
 }
@@ -164,7 +164,7 @@ func (c *CliCommandContext) ZAPEndpoint() (string, error) {
 func (c *CliCommandContext) PAPEndpoint() (string, error) {
 	endpoint := c.v.Get(options.FlagName(FlagPrefixPAP, FlagSuffixPAPEndpoint))
 	if endpoint == nil {
-		return "", errors.New("cli: pap endpoint is not set")
+		return "", errors.New("cli: pap endpoint is not set — use 'permguard config set pap-endpoint grpc://host:port' to configure it")
 	}
 	return endpoint.(string), nil
 }
@@ -173,7 +173,7 @@ func (c *CliCommandContext) PAPEndpoint() (string, error) {
 func (c *CliCommandContext) PDPEndpoint() (string, error) {
 	endpoint := c.v.Get(options.FlagName(FlagPrefixPDP, FlagSuffixPDPEndpoint))
 	if endpoint == nil {
-		return "", errors.New("cli: pdp endpoint is not set")
+		return "", errors.New("cli: pdp endpoint is not set — use 'permguard config set pdp-endpoint grpc://host:port' to configure it")
 	}
 	return endpoint.(string), nil
 }

@@ -29,23 +29,28 @@ type RemoteInfo struct {
 	server  string
 	zapPort int
 	papPort int
+	scheme  string
 }
 
 // NewRemoteInfo creates a new remote info.
-func NewRemoteInfo(server string, zapPort, papPort int) (*RemoteInfo, error) {
+func NewRemoteInfo(server string, zapPort, papPort int, scheme string) (*RemoteInfo, error) {
 	if server == "" {
-		return nil, errors.New("cli: invalid server")
+		return nil, errors.New("cli: invalid server: must be a non-empty hostname or IP address")
 	}
 	if zapPort <= 0 {
-		return nil, errors.New("cli: invalid zap port")
+		return nil, fmt.Errorf("cli: invalid zap port %d: must be between 1 and 65535", zapPort)
 	}
 	if papPort <= 0 {
-		return nil, errors.New("cli: invalid pap port")
+		return nil, fmt.Errorf("cli: invalid pap port %d: must be between 1 and 65535", papPort)
+	}
+	if scheme != "" && scheme != "grpc" && scheme != "grpcs" {
+		return nil, fmt.Errorf("cli: invalid scheme %q: must be 'grpc' (plaintext) or 'grpcs' (TLS)", scheme)
 	}
 	return &RemoteInfo{
 		server:  server,
 		zapPort: zapPort,
 		papPort: papPort,
+		scheme:  scheme,
 	}, nil
 }
 
@@ -64,14 +69,19 @@ func (i *RemoteInfo) PAPPort() int {
 	return i.papPort
 }
 
+// Scheme returns the remote scheme (grpc or grpcs). Empty string means auto-detect.
+func (i *RemoteInfo) Scheme() string {
+	return i.scheme
+}
+
 // SanitizeRemote sanitizes the remote name.
 func SanitizeRemote(remote string) (string, error) {
 	if len(remote) == 0 {
-		return "", errors.New("cli: invalid remote name")
+		return "", errors.New("cli: invalid remote name: remote name cannot be empty")
 	}
 	remote = strings.ToLower(remote)
 	if !validators.ValidateSimpleName(remote) {
-		return "", fmt.Errorf("cli: invalid remote name %s", remote)
+		return "", fmt.Errorf("cli: invalid remote name %s: must contain only lowercase letters, numbers, hyphens, and underscores", remote)
 	}
 	return remote, nil
 }

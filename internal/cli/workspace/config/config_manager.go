@@ -90,7 +90,7 @@ func (m *Manager) RemoteInfo(remote string) (*azwkscommon.RemoteInfo, error) {
 		return nil, fmt.Errorf("cli: remote %s does not exist", remote)
 	}
 	cfgRemote := cfg.Remotes[remote]
-	return azwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort)
+	return azwkscommon.NewRemoteInfo(cfgRemote.Server, cfgRemote.ZAPPort, cfgRemote.PAPPort, cfgRemote.Scheme)
 }
 
 // LedgerInfo gets the ref info.

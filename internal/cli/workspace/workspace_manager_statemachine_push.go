@@ -87,7 +87,7 @@ func (m *Manager) execPush(headCtx *currentHeadContext, commitObj *objects.Objec
 		out(nil, "push", "Advertising - Initiating ledger state notification.", nil, true)
 	}
 
-	papClient, err := m.rmSrvtMgr.NewPAPClientSession(headCtx.Server(), headCtx.ServerPAPPort())
+	papClient, err := m.rmSrvtMgr.NewPAPClientSession(headCtx.Server(), headCtx.ServerPAPPort(), headCtx.Scheme())
 	if err != nil {
 		return nil, fmt.Errorf("cli: failed to create PAP client: %w", err)
 	}
