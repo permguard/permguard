@@ -434,9 +434,12 @@ func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, scheme
 		return fail(output, errors.New("cli: invalid ledger URI"))
 	}
 
-	uriServer := elements[0]
+	rawServer := elements[0]
 	uriZoneID := elements[1]
 	uriLedger := elements[2]
+
+	serverScheme, uriServer := azwkscommon.ParseServerScheme(rawServer)
+	resolvedScheme := azwkscommon.ResolveScheme(serverScheme, scheme)
 
 	output, err := m.ExecInitWorkspace(nil, out)
 	aborted := false
@@ -446,7 +449,7 @@ func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, scheme
 			return fail(nil, err)
 		}
 		defer func() { _ = fileLock.Unlock() }()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, scheme, out)
+		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, resolvedScheme, out)
 		if err == nil {
 			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
 			output, err = m.execInternalCheckoutLedger(true, ledgerURI, out)

@@ -26,6 +26,7 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace"
+	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
 )
@@ -77,10 +78,12 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 		return common.ErrCommandSilent
 	}
 	remote := args[0]
-	server := args[1]
+	rawServer := args[1]
+	serverScheme, server := azwkscommon.ParseServerScheme(rawServer)
 	zapPort := v.GetInt(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP))
 	papPort := v.GetInt(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP))
-	scheme := v.GetString(options.FlagName(commandNameForWorkspacesRemoteAdd, flagScheme))
+	flagScheme := v.GetString(options.FlagName(commandNameForWorkspacesRemoteAdd, flagScheme))
+	scheme := azwkscommon.ResolveScheme(serverScheme, flagScheme)
 	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, scheme, outFunc(ctx, printer))
 	if err != nil {
 		if ctx.IsNotVerboseTerminalOutput() {
@@ -116,7 +119,7 @@ Examples:
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagZAP), command.Flags().Lookup(flagZAP))
 	command.Flags().Int(flagPAP, 9092, "specify the port number for the PAP")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagPAP), command.Flags().Lookup(flagPAP))
-	command.Flags().String(flagScheme, "", "specify the gRPC scheme: 'grpc' (plaintext) or 'grpcs' (TLS)")
+	command.Flags().String(flagScheme, "", "specify the gRPC scheme: 'grpc' (plaintext) or 'grpcs' (TLS), overrides scheme prefix in server")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesRemoteAdd, flagScheme), command.Flags().Lookup(flagScheme))
 	return command
 }
