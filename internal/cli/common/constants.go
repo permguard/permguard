@@ -52,6 +52,7 @@ const (
 	FlagSuffixWorkspaceInitLanguage = "language"
 	FlagCommonPolicyStoreID         = "policy-store-id"
 	FlagCommonCurrentWorkspace      = "current-workspace"
+	FlagCommonCurrentWorkspaceShort = "W"
 	FlagPrefixAuthstar              = "authstar"
 	FlagSuffixAuthstarMaxObjectSize = "max-object-size"
 	FlagPrefixNOTP                  = "notp"

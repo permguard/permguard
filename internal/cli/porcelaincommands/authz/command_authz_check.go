@@ -230,7 +230,7 @@ Examples:
 	command.PersistentFlags().String(common.FlagCommonPolicyStoreID, "", "override authorization_model.policy_store.id")
 	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonPolicyStoreID), command.PersistentFlags().Lookup(common.FlagCommonPolicyStoreID))
 
-	command.PersistentFlags().Bool(common.FlagCommonCurrentWorkspace, false, "resolve zone-id and policy-store-id from the current workspace")
+	command.PersistentFlags().BoolP(common.FlagCommonCurrentWorkspace, common.FlagCommonCurrentWorkspaceShort, false, "resolve zone-id and policy-store-id from the current workspace")
 	_ = v.BindPFlag(options.FlagName(commandNameForCheck, common.FlagCommonCurrentWorkspace), command.PersistentFlags().Lookup(common.FlagCommonCurrentWorkspace))
 
 	return command
