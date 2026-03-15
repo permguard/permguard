@@ -109,7 +109,7 @@ func CreateCommandForWorkspaceRemoteAdd(deps cli.DependenciesProvider, v *viper.
 
 Examples:
   # add a new remote ledger to track and interact with
-  permguard remote add origin 273165098782/pharmaauthzflow `),
+  permguard remote add origin localhost`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForRemoteAddWorkspace(args, deps, cmd, v)
 		},

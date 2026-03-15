@@ -96,6 +96,9 @@ func ValidateIdentityUserName(entity string, name string) error {
 
 // ValidateName validates a name.
 func ValidateName(entity string, name string) error {
+	if len(name) > 255 {
+		return fmt.Errorf("validators: %s name is too long (max 255 characters)", entity)
+	}
 	sanitized := strings.ToLower(strings.TrimSpace(name))
 	if strings.HasPrefix(name, "permguard") {
 		return fmt.Errorf("validators: %s name %s is not valid. it cannot have 'permguard' as a prefix", entity, name)

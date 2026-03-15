@@ -47,9 +47,9 @@ func WrapSqliteErrorWithParams(msg string, err error, params map[string]string) 
 		for k, v := range params {
 			parts = append(parts, k+"="+v)
 		}
-		return fmt.Errorf("storage: %s (%s): %w: %w", msg, strings.Join(parts, ", "), sentinel, err)
+		return fmt.Errorf("storage: %s (%s): %w", msg, strings.Join(parts, ", "), sentinel)
 	}
-	return fmt.Errorf("storage: %s: %w: %w", msg, sentinel, err)
+	return fmt.Errorf("storage: %s: %w", msg, sentinel)
 }
 
 // classifyError maps a raw error to the appropriate sentinel error.

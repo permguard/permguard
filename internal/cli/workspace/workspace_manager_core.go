@@ -154,7 +154,7 @@ func (m *Manager) tryLock() (*flock.Flock, error) {
 func (m *Manager) printFiles(action string, files []string, out common.PrinterOutFunc) {
 	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
 	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- '%s'", common.FileText(common.FileText(file))), nil, true)
+		out(nil, "", fmt.Sprintf("	  	- '%s'", common.FileText(file)), nil, true)
 	}
 }
 

@@ -59,7 +59,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New(strings.ToLower(opGetErroMessage(isCreate))), err))
+			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -70,7 +70,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New(strings.ToLower(opGetErroMessage(isCreate))), err))
+			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		}
 		return common.ErrCommandSilent
 	}
@@ -93,7 +93,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
 		}
 		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New(strings.ToLower(opGetErroMessage(isCreate))), err))
+			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		}
 		return common.ErrCommandSilent
 	}

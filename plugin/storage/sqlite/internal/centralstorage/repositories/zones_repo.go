@@ -113,7 +113,10 @@ func (r *Repository) DeleteZone(ctx context.Context, tx *sql.Tx, zoneID int64) (
 		&dbZone.Name,
 	)
 	if err != nil {
-		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - zone id is not valid (id: %d)", zoneID), err)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("storage: zone not found (id: %d): %w", zoneID, azstorage.ErrNotFound)
+		}
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve zone (id: %d)", zoneID), err)
 	}
 	res, err := tx.ExecContext(ctx, "DELETE FROM zones WHERE zone_id = ?", zoneID)
 	if err != nil || res == nil {
