@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Mode represents the TLS mode for the server.
@@ -177,33 +176,33 @@ func (c *ClientConfig) HasTLS() bool {
 }
 
 // NewClientCredentials builds gRPC transport credentials for the client.
+// This should only be called when TLS is required (grpcs:// scheme).
+// With no explicit config, it uses the system CA pool for certificate verification.
 func NewClientCredentials(cfg *ClientConfig) (credentials.TransportCredentials, error) {
-	if cfg == nil || !cfg.HasTLS() {
-		return insecure.NewCredentials(), nil
-	}
-
 	tlsCfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}
 
-	if cfg.SkipVerify {
-		tlsCfg.InsecureSkipVerify = true
-	}
-
-	if cfg.CAFile != "" {
-		caPool, err := loadCAPool(cfg.CAFile)
-		if err != nil {
-			return nil, err
+	if cfg != nil {
+		if cfg.SkipVerify {
+			tlsCfg.InsecureSkipVerify = true
 		}
-		tlsCfg.RootCAs = caPool
-	}
 
-	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("tls: failed to load client certificate: %w", err)
+		if cfg.CAFile != "" {
+			caPool, err := loadCAPool(cfg.CAFile)
+			if err != nil {
+				return nil, err
+			}
+			tlsCfg.RootCAs = caPool
 		}
-		tlsCfg.Certificates = []tls.Certificate{cert}
+
+		if cfg.CertFile != "" && cfg.KeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("tls: failed to load client certificate: %w", err)
+			}
+			tlsCfg.Certificates = []tls.Certificate{cert}
+		}
 	}
 
 	return credentials.NewTLS(tlsCfg), nil
