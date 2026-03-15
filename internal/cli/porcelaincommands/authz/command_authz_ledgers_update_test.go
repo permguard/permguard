@@ -99,6 +99,7 @@ func TestCliLedgersUpdateWithSuccess(t *testing.T) {
 		v := viper.New()
 		v.Set("output", outputType)
 		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "localhost:9092")
+		v.Set(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), int64(581616507495))
 
 		depsMocks := mocks.NewCliDependenciesMock()
 		cmd := createCommandForLedgerUpdate(depsMocks, v)
