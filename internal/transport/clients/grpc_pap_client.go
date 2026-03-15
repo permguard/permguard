@@ -47,12 +47,12 @@ func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPAPCl
 	}
 	var creds credentials.TransportCredentials
 	var spiffeCloser io.Closer
-	if tlsCfg != nil && tlsCfg.Spiffe {
+	if useTLS && tlsCfg != nil && tlsCfg.Spiffe {
 		creds, spiffeCloser, err = grpctls.NewSpiffeClientCredentials(context.Background(), tlsCfg.SpiffeSocketPath)
 		if err != nil {
 			return nil, err
 		}
-	} else if useTLS || tlsCfg.HasTLS() {
+	} else if useTLS {
 		creds, err = grpctls.NewClientCredentials(tlsCfg)
 		if err != nil {
 			return nil, err

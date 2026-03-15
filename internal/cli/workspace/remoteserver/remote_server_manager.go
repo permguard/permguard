@@ -47,8 +47,6 @@ func grpcEndpoint(tlsCfg *grpctls.ClientConfig, remoteScheme string, host string
 		}
 	case scheme == "grpc" && tls:
 		return "", errors.New("cli: remote scheme is 'grpc' (plaintext) but TLS flags are set — update the remote scheme to 'grpcs' with 'permguard remote add' or remove TLS flags")
-	case scheme == "grpcs" && !tls:
-		return "", errors.New("cli: remote scheme is 'grpcs' (TLS) but no TLS flags are set — add --tls-skip-verify or other TLS flags, or update the remote scheme to 'grpc'")
 	}
 	return fmt.Sprintf("%s://%s:%d", scheme, host, port), nil
 }
