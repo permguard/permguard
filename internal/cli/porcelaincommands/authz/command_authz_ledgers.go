@@ -76,6 +76,15 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
+	if zoneID == 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.New("cli: --zone-id is required"))
+		}
+		return common.ErrCommandSilent
+	}
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	ledger := &pap.Ledger{
 		ZoneID: zoneID,

@@ -63,6 +63,15 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
+	if zoneID == 0 {
+		if ctx.IsNotVerboseTerminalOutput() {
+			printer.Println("Failed to delete the ledger.")
+		}
+		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
+			printer.Error(errors.New("cli: --zone-id is required"))
+		}
+		return common.ErrCommandSilent
+	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
