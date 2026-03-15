@@ -34,7 +34,7 @@ import (
 // viperWriteEndpoint writes the setting to the viper configuration.
 func viperWriteEndpoint(v *viper.Viper, key string, value string) error {
 	if !validators.IsValidEndpoint(value) {
-		return errors.New("invalid endpoint: must be in the format scheme://hostname:port where scheme is grpc, http, or https")
+		return errors.New("invalid endpoint: must be in the format scheme://hostname:port where scheme is grpc or grpcs")
 	}
 	valueMap := map[string]interface{}{
 		key: value,

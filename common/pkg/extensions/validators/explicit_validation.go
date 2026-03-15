@@ -59,12 +59,12 @@ func IsValidHostnamePort(hostnamePath string) bool {
 	return isValid && err == nil
 }
 
-// IsValidEndpoint validates that the value is a valid endpoint with scheme (grpc://, http://, https://).
+// IsValidEndpoint validates that the value is a valid endpoint with scheme (grpc://, grpcs://).
 func IsValidEndpoint(value string) bool {
 	if value == "" {
 		return false
 	}
-	allowedSchemes := []string{"grpc://", "grpcs://", "http://", "https://"}
+	allowedSchemes := []string{"grpc://", "grpcs://"}
 	var hostPort string
 	matched := false
 	for _, scheme := range allowedSchemes {
