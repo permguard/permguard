@@ -94,7 +94,7 @@ func TestCliZonesUpdateWithSuccess(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"zones", "update", "mycorporate", "--output", outputType}
+		args := []string{"zones", "update", "mycorporate", "--zone-id", "581616507495", "--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
