@@ -196,7 +196,10 @@ func (r *Repository) DeleteLedger(ctx context.Context, tx *sql.Tx, zoneID int64,
 		&dbLedger.TxID,
 	)
 	if err != nil {
-		return nil, WrapSqliteError(fmt.Sprintf("invalid client input - ledger id is not valid (id: %s)", ledgerID), err)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("storage: ledger not found (id: %s): %w", ledgerID, azstorage.ErrNotFound)
+		}
+		return nil, WrapSqliteError(fmt.Sprintf("failed to retrieve ledger (id: %s)", ledgerID), err)
 	}
 	res, err := tx.ExecContext(ctx, "DELETE FROM ledgers WHERE zone_id = ? and ledger_id = ?", zoneID, ledgerID)
 	if err != nil || res == nil {

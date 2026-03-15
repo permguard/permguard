@@ -269,7 +269,6 @@ func (m *Manager) ExecListRemotes(out common.PrinterOutFunc) (map[string]any, er
 // ExecListLedgers lists the ledgers.
 func (m *Manager) ExecListLedgers(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list ledgers.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)

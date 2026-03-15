@@ -75,13 +75,13 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		builder.WriteString(scanner.Text())
 	}
 	if err2 := scanner.Err(); err2 != nil {
-		return handleInputError(ctx, printer, err2, "Invalid input for the authz check.")
+		return handleInputError(ctx, printer, err2, "invalid input for the authz check.")
 	}
 	jsonString := builder.String()
 	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
-		return handleInputError(ctx, printer, err, "Invalid input for the authz check.")
+		return handleInputError(ctx, printer, err, "invalid input for the authz check.")
 	}
 
 	// Apply --current-workspace override (medium priority).

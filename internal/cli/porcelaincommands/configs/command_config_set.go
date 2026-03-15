@@ -68,6 +68,9 @@ func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		}
 		return common.ErrCommandSilent
 	}
+	if ctx.IsTerminalOutput() {
+		printer.Println(fmt.Sprintf("zap_endpoint has been set to %s.", args[0]))
+	}
 	return nil
 }
 
@@ -97,6 +100,9 @@ func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		}
 		return common.ErrCommandSilent
 	}
+	if ctx.IsTerminalOutput() {
+		printer.Println(fmt.Sprintf("pap_endpoint has been set to %s.", args[0]))
+	}
 	return nil
 }
 
@@ -125,6 +131,9 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 			printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		}
 		return common.ErrCommandSilent
+	}
+	if ctx.IsTerminalOutput() {
+		printer.Println(fmt.Sprintf("pdp_endpoint has been set to %s.", args[0]))
 	}
 	return nil
 }
@@ -223,6 +232,9 @@ func runECommandForAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, cmd *
 		}
 		return common.ErrCommandSilent
 	}
+	if ctx.IsTerminalOutput() {
+		printer.Println(fmt.Sprintf("authstar_max_object_size has been set to %d.", size))
+	}
 	return nil
 }
 
@@ -284,6 +296,9 @@ func runECommandForNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, cmd *cobr
 		}
 		return common.ErrCommandSilent
 	}
+	if ctx.IsTerminalOutput() {
+		printer.Println(fmt.Sprintf("notp_max_packet_size has been set to %d.", size))
+	}
 	return nil
 }
 
@@ -310,7 +325,10 @@ func createCommandForConfigSet(deps cli.DependenciesProvider, v *viper.Viper) *c
 		Use:   "set",
 		Short: "Set configuration items",
 		Long:  common.BuildCliLongTemplate(`This command sets configuration items.`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				color.Red(fmt.Sprintf("unknown config key %q; available keys: zap-endpoint, pap-endpoint, pdp-endpoint, authstar-max-object-size, notp-max-packet-size", args[0]))
+			}
 			return cmd.Help()
 		},
 	}

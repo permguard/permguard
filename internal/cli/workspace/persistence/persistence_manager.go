@@ -68,7 +68,7 @@ func (p *Manager) RelativeDir(relative RelativeDir, name string) string {
 // Context gets the context.
 func (p *Manager) Context() map[string]string {
 	absRootDir, _ := filepath.Abs(p.rootDir)
-	absPermguardDir, _ := filepath.Abs(p.permguardDir)
+	absPermguardDir := filepath.Join(absRootDir, p.permguardDir)
 
 	return map[string]string{
 		"root path":               p.rootDir,

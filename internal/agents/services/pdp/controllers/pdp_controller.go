@@ -130,7 +130,7 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 					zap.Error(err2))
 			}
 			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
-			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
+			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrInternalErrorCode, errMsg, authzen.AuthzErrInternalErrorMessage), nil
 		}
 		cedarLanguageAbs, err2 := cedar.NewCedarLanguageAbstraction()
 		if err2 != nil {
@@ -142,7 +142,7 @@ func (s PDPController) AuthorizationCheck(ctx context.Context, request *pdp.Auth
 					zap.Error(err2))
 			}
 			errMsg := fmt.Sprintf("%s: authorization check has failed", authzen.AuthzErrInternalErrorMessage)
-			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrBadRequestCode, errMsg, authzen.AuthzErrBadRequestMessage), nil
+			return pdp.NewAuthorizationCheckErrorResponse(nil, requestID, authzen.AuthzErrInternalErrorCode, errMsg, authzen.AuthzErrInternalErrorMessage), nil
 		}
 		telemetry.AuthzEvaluationsCount.Record(ctx, int64(reqEvaluationsSize))
 		_, evalSpan := telemetry.Tracer().Start(ctx, "pdp.PolicyEvaluations",

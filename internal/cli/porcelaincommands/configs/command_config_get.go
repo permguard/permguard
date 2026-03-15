@@ -203,7 +203,10 @@ func createCommandForConfigGet(deps cli.DependenciesProvider, v *viper.Viper) *c
 		Use:   "get",
 		Short: "Get configuration items",
 		Long:  common.BuildCliLongTemplate(`This command gets configuration items.`),
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				color.Red(fmt.Sprintf("unknown config key %q; available keys: zap-endpoint, pap-endpoint, pdp-endpoint, authstar-max-object-size, notp-max-packet-size", args[0]))
+			}
 			return cmd.Help()
 		},
 	}
