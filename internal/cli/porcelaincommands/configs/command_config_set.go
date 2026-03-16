@@ -50,22 +50,12 @@ func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), args[0])
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the zap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
@@ -82,22 +72,12 @@ func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), args[0])
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
@@ -114,22 +94,12 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pdp endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint), args[0])
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the pdp endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
@@ -200,22 +170,12 @@ func runECommandForAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, cmd *
 		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the authstar max object size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
 		return common.ErrCommandSilent
 	}
 	size, err := strconv.Atoi(args[0])
 	if err != nil || size <= 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the authstar max object size: value must be a positive integer.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.New("cli: authstar-max-object-size must be a positive integer"))
-		}
+		printer.Error(errors.New("cli: authstar-max-object-size must be a positive integer"))
 		return common.ErrCommandSilent
 	}
 	key := options.FlagName(common.FlagPrefixAuthstar, common.FlagSuffixAuthstarMaxObjectSize)
@@ -224,12 +184,7 @@ func runECommandForAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, cmd *
 	}
 	err = options.OverrideViperFromConfig(v, valueMap)
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the authstar max object size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {
@@ -264,22 +219,12 @@ func runECommandForNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, cmd *cobr
 		return common.ErrCommandSilent
 	}
 	if len(args) == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the notp max packet size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
 		return common.ErrCommandSilent
 	}
 	size, err := strconv.Atoi(args[0])
 	if err != nil || size <= 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the notp max packet size: value must be a positive integer.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.New("cli: notp-max-packet-size must be a positive integer"))
-		}
+		printer.Error(errors.New("cli: notp-max-packet-size must be a positive integer"))
 		return common.ErrCommandSilent
 	}
 	key := options.FlagName(common.FlagPrefixNOTP, common.FlagSuffixNOTPMaxPacketSize)
@@ -288,12 +233,7 @@ func runECommandForNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, cmd *cobr
 	}
 	err = options.OverrideViperFromConfig(v, valueMap)
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to set the notp max packet size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {

@@ -107,7 +107,7 @@ tasks:
   local:up:
     desc: Start local environment
     cmds:
-      - task: local:playground-init
+      - mkdir -p ./playground/volume
       - go run ./cmd/provisioner-db-sqlite/main.go --up --dbdir ./playground/volume --debug
 
   local:down:

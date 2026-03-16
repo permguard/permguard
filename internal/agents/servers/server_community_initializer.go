@@ -52,7 +52,7 @@ Copyright © 2022 Nitro Agility S.r.l.
 
 %s
 
-  Find more information at: https://community.permguard.com/docs/0.0.x/devops/authz-server/configuration-options/`
+  Find more information at: https://docs.permguard.com/docs/0.0.x/devops/authz-server/configuration-options/`
 	hostInfo := &services.HostInfo{
 		Name:  displayName,
 		Use:   strings.ToLower(strings.ReplaceAll(displayName, " ", "-")),

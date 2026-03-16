@@ -31,16 +31,18 @@ import (
 
 // GrpcZAPClient is a gRPC client for the ZAP service.
 type GrpcZAPClient struct {
-	endpoint     string
-	creds        credentials.TransportCredentials
-	spiffeCloser io.Closer
-	mu           sync.Mutex
-	conn         *grpc.ClientConn
-	client       azzapv1.V1ZAPServiceClient
+	endpoint        string
+	displayEndpoint string
+	verbose         bool
+	creds           credentials.TransportCredentials
+	spiffeCloser    io.Closer
+	mu              sync.Mutex
+	conn            *grpc.ClientConn
+	client          azzapv1.V1ZAPServiceClient
 }
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
-func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcZAPClient, error) {
+func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (*GrpcZAPClient, error) {
 	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -59,9 +61,11 @@ func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcZAPCl
 		}
 	}
 	return &GrpcZAPClient{
-		endpoint:     hostPort,
-		creds:        creds,
-		spiffeCloser: spiffeCloser,
+		endpoint:        hostPort,
+		displayEndpoint: endpoint,
+		verbose:         verbose,
+		creds:           creds,
+		spiffeCloser:    spiffeCloser,
 	}, nil
 }
 
@@ -79,8 +83,8 @@ func (c *GrpcZAPClient) getClient() (azzapv1.V1ZAPServiceClient, error) {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 	conn, err := grpc.NewClient(c.endpoint, dialOpt,
-		grpc.WithUnaryInterceptor(tlsHintUnaryInterceptor()),
-		grpc.WithStreamInterceptor(tlsHintStreamInterceptor()),
+		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.verbose, c.displayEndpoint), tlsHintUnaryInterceptor()),
+		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.verbose, c.displayEndpoint), tlsHintStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, err

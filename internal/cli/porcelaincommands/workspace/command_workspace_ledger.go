@@ -56,12 +56,7 @@ func runECommandForLedgerWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 	}
 	output, err := wksMgr.ExecListLedgers(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

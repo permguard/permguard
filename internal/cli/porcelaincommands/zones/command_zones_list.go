@@ -44,23 +44,13 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list zones.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list zones.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
@@ -71,12 +61,7 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 
 	zones, err := client.FetchZonesBy(page, pageSize, zoneID, "")
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list zones.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}

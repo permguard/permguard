@@ -361,23 +361,25 @@ func (abs *LanguageAbstraction) AuthorizationCheck(_ *azmanifests.Language, cont
 	}
 
 	// Build the entities.
+	// Always include subject/action/resource properties so that Cedar `when`
+	// conditions can access attributes (e.g. resource.status) even when no
+	// explicit entity set is provided in the request.
 	var entities cedar.EntityMap
+	authzEntitiesItems := []map[string]any{subjectProperties, actionProperties, resourceProperties}
 	authzEntities := authzCtx.Entities()
 	if authzEntities != nil {
-		authzEntitiesItems := authzEntities.Items()
-		if _, err = verifyUIDTypeFromEntityMap(authzEntitiesItems); err != nil {
+		extraItems := authzEntities.Items()
+		if _, err = verifyUIDTypeFromEntityMap(extraItems); err != nil {
 			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err)
 		}
-		authzEntitiesItems = append(authzEntitiesItems, subjectProperties)
-		authzEntitiesItems = append(authzEntitiesItems, actionProperties)
-		authzEntitiesItems = append(authzEntitiesItems, resourceProperties)
-		jsonEntities, err2 := json.Marshal(authzEntitiesItems)
-		if err2 != nil {
-			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err2)
-		}
-		if err = json.Unmarshal(jsonEntities, &entities); err != nil {
-			return nil, errors.Join(errors.New("cedar: bad request for the entities"), err)
-		}
+		authzEntitiesItems = append(extraItems, authzEntitiesItems...)
+	}
+	jsonEntities, err2 := json.Marshal(authzEntitiesItems)
+	if err2 != nil {
+		return nil, errors.Join(errors.New("cedar: bad request for the entities"), err2)
+	}
+	if err = json.Unmarshal(jsonEntities, &entities); err != nil {
+		return nil, errors.Join(errors.New("cedar: bad request for the entities"), err)
 	}
 
 	// Create the request.

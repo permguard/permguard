@@ -56,12 +56,7 @@ func runECommandForRemoteWorkspace(deps cli.DependenciesProvider, cmd *cobra.Com
 	}
 	output, err := wksMgr.ExecListRemotes(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list remotes.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list remote"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list remote"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

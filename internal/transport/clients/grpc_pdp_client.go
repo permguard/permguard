@@ -31,16 +31,18 @@ import (
 
 // GrpcPDPClient is a gRPC client for the PDP service.
 type GrpcPDPClient struct {
-	endpoint     string
-	creds        credentials.TransportCredentials
-	spiffeCloser io.Closer
-	mu           sync.Mutex
-	conn         *grpc.ClientConn
-	client       azpdpv1.V1PDPServiceClient
+	endpoint        string
+	displayEndpoint string
+	verbose         bool
+	creds           credentials.TransportCredentials
+	spiffeCloser    io.Closer
+	mu              sync.Mutex
+	conn            *grpc.ClientConn
+	client          azpdpv1.V1PDPServiceClient
 }
 
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
-func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPDPClient, error) {
+func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (*GrpcPDPClient, error) {
 	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -59,9 +61,11 @@ func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPDPCl
 		}
 	}
 	return &GrpcPDPClient{
-		endpoint:     hostPort,
-		creds:        creds,
-		spiffeCloser: spiffeCloser,
+		endpoint:        hostPort,
+		displayEndpoint: endpoint,
+		verbose:         verbose,
+		creds:           creds,
+		spiffeCloser:    spiffeCloser,
 	}, nil
 }
 
@@ -79,8 +83,8 @@ func (c *GrpcPDPClient) getClient() (azpdpv1.V1PDPServiceClient, error) {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 	conn, err := grpc.NewClient(c.endpoint, dialOpt,
-		grpc.WithUnaryInterceptor(tlsHintUnaryInterceptor()),
-		grpc.WithStreamInterceptor(tlsHintStreamInterceptor()),
+		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.verbose, c.displayEndpoint), tlsHintUnaryInterceptor()),
+		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.verbose, c.displayEndpoint), tlsHintStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, err

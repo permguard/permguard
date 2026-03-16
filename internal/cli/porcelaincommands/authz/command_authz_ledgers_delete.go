@@ -44,43 +44,29 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to delete the ledger.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
+		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to delete the ledger.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
+		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to delete the ledger.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.New("cli: --zone-id is required"))
-		}
+		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
+	if ledgerID == "" {
+		printer.Error(errors.New("cli: --ledger-id is required"))
+		return common.ErrCommandSilent
+	}
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to delete the ledger.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}

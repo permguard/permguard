@@ -56,12 +56,7 @@ func runECommandForPlanWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	output, err := wksMgr.ExecPlan(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed execute the plan.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to execute the plan"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to execute the plan"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

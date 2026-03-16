@@ -43,23 +43,13 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
@@ -67,24 +57,14 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	pageSize := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.New("cli: --zone-id is required"))
-		}
+		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list ledgers.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}

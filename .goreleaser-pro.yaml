@@ -68,7 +68,7 @@ homebrew_casks:
     alternative_names:
       - cli@{{ .Version }}
       - cli@{{ .Major }}
-    homepage: "https://community.permguard.com/"
+    homepage: "https://docs.permguard.com/"
     description: "Permguard CLI"
     commit_author:
       name: Permguard Team

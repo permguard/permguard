@@ -56,12 +56,7 @@ func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	output, err := wksMgr.ExecPull(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed execute the pull.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to execute the pull"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to execute the pull"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

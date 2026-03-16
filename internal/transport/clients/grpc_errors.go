@@ -19,8 +19,11 @@ package clients
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
+	"github.com/fatih/color"
 	"google.golang.org/grpc"
 )
 
@@ -72,4 +75,79 @@ type wrappedClientStream struct {
 // RecvMsg wraps the underlying RecvMsg with TLS error hints.
 func (w *wrappedClientStream) RecvMsg(m any) error {
 	return wrapGrpcErr(w.ClientStream.RecvMsg(m))
+}
+
+// grpcShortMethod extracts the RPC name from a full gRPC method path.
+// e.g. "/zap.V1ZAPService/CreateZone" → "CreateZone"
+func grpcShortMethod(fullMethod string) string {
+	if idx := strings.LastIndex(fullMethod, "/"); idx >= 0 {
+		return fullMethod[idx+1:]
+	}
+	return fullMethod
+}
+
+// verboseLoggingUnaryInterceptor prints endpoint, method name, and elapsed time when verbose is enabled.
+func verboseLoggingUnaryInterceptor(verbose bool, displayEndpoint string) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if !verbose {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+		short := grpcShortMethod(method)
+		color.HiBlack("[verbose] → %s  endpoint=%s\n", short, displayEndpoint)
+		start := time.Now()
+		err := invoker(ctx, method, req, reply, cc, opts...)
+		elapsed := time.Since(start).Round(time.Millisecond)
+		if err != nil {
+			color.HiBlack("[verbose] ✗ %s  %s\n", short, elapsed)
+		} else {
+			color.HiBlack("[verbose] ✓ %s  %s\n", short, elapsed)
+		}
+		return err
+	}
+}
+
+// verboseLoggingStreamInterceptor prints endpoint, method name, and elapsed time for streams when verbose is enabled.
+func verboseLoggingStreamInterceptor(verbose bool, displayEndpoint string) grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		if !verbose {
+			stream, err := streamer(ctx, desc, cc, method, opts...)
+			if err != nil {
+				return nil, wrapGrpcErr(err)
+			}
+			return &wrappedClientStream{ClientStream: stream}, nil
+		}
+		short := grpcShortMethod(method)
+		color.HiBlack("[verbose] → %s (stream)  endpoint=%s\n", short, displayEndpoint)
+		start := time.Now()
+		stream, err := streamer(ctx, desc, cc, method, opts...)
+		if err != nil {
+			elapsed := time.Since(start).Round(time.Millisecond)
+			color.HiBlack("[verbose] ✗ %s  %s\n", short, elapsed)
+			return nil, wrapGrpcErr(err)
+		}
+		return &verboseClientStream{ClientStream: stream, short: short, start: start}, nil
+	}
+}
+
+// verboseClientStream wraps a grpc.ClientStream to log TLS errors and stream completion.
+type verboseClientStream struct {
+	grpc.ClientStream
+	short string
+	start time.Time
+	done  bool
+}
+
+// RecvMsg logs stream completion on EOF or failure, then delegates to the underlying stream.
+func (w *verboseClientStream) RecvMsg(m any) error {
+	err := w.ClientStream.RecvMsg(m)
+	if err != nil && !w.done {
+		w.done = true
+		elapsed := time.Since(w.start).Round(time.Millisecond)
+		if err == io.EOF {
+			color.HiBlack("[verbose] ✓ %s  %s\n", w.short, elapsed)
+		} else {
+			color.HiBlack("[verbose] ✗ %s  %s\n", w.short, elapsed)
+		}
+	}
+	return wrapGrpcErr(err)
 }

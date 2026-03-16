@@ -31,16 +31,18 @@ import (
 
 // GrpcPAPClient is a gRPC client for the PAP service.
 type GrpcPAPClient struct {
-	endpoint     string
-	creds        credentials.TransportCredentials
-	spiffeCloser io.Closer
-	mu           sync.Mutex
-	conn         *grpc.ClientConn
-	client       azpapv1.V1PAPServiceClient
+	endpoint        string
+	displayEndpoint string
+	verbose         bool
+	creds           credentials.TransportCredentials
+	spiffeCloser    io.Closer
+	mu              sync.Mutex
+	conn            *grpc.ClientConn
+	client          azpapv1.V1PAPServiceClient
 }
 
 // NewGrpcPAPClient creates a new gRPC client for the PAP service.
-func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPAPClient, error) {
+func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (*GrpcPAPClient, error) {
 	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -59,9 +61,11 @@ func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig) (*GrpcPAPCl
 		}
 	}
 	return &GrpcPAPClient{
-		endpoint:     hostPort,
-		creds:        creds,
-		spiffeCloser: spiffeCloser,
+		endpoint:        hostPort,
+		displayEndpoint: endpoint,
+		verbose:         verbose,
+		creds:           creds,
+		spiffeCloser:    spiffeCloser,
 	}, nil
 }
 
@@ -79,8 +83,8 @@ func (c *GrpcPAPClient) getClient() (azpapv1.V1PAPServiceClient, error) {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 	conn, err := grpc.NewClient(c.endpoint, dialOpt,
-		grpc.WithUnaryInterceptor(tlsHintUnaryInterceptor()),
-		grpc.WithStreamInterceptor(tlsHintStreamInterceptor()),
+		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.verbose, c.displayEndpoint), tlsHintUnaryInterceptor()),
+		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.verbose, c.displayEndpoint), tlsHintStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, err
