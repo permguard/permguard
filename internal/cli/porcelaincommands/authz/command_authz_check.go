@@ -48,7 +48,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	handleInputError := func(ctx *common.CliCommandContext, printer cli.Printer, err error, message string) error {
+	handleInputError := func(_ *common.CliCommandContext, printer cli.Printer, err error, message string) error {
 		printer.Error(errors.Join(fmt.Errorf("cli: %s", message), err))
 		return common.ErrCommandSilent
 	}

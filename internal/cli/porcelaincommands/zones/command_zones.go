@@ -64,7 +64,7 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 	defer func() { _ = client.Close() }()
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	if err := validators.ValidateName("zone", name); err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: invalid zone name"), err))
+		printer.Error(errors.Join(errors.New("cli: invalid zone name"), err))
 		return common.ErrCommandSilent
 	}
 	var zone *zap.Zone
