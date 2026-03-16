@@ -378,6 +378,16 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 
 	_, _ = m.cospMgr.CleanCodeSource()
 
+	// Sync ledger name metadata from the server — non-blocking: any error is silently ignored
+	// so that a rename on the server never breaks an otherwise successful pull.
+	if remoteInfo, remoteInfoErr := m.cfgMgr.RemoteInfo(headCtx.remoteRefInfo.Remote()); remoteInfoErr == nil {
+		if srvLedger, _ := m.rmSrvtMgr.ServerRemoteLedgerByID(remoteInfo, headCtx.ZoneID(), headCtx.LedgerID()); srvLedger != nil {
+			if renamed, renameErr := m.cfgMgr.ExecSyncLedgerName(headCtx.ZoneID(), headCtx.LedgerID(), srvLedger.Name); renameErr == nil && renamed && m.ctx.IsTerminalOutput() {
+				out(nil, "", fmt.Sprintf("Ledger renamed on server: local workspace updated to %s.", common.KeywordText(srvLedger.Name)), nil, true)
+			}
+		}
+	}
+
 	if !internal {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, logs.LogActionPull, "The pull has been completed successfully.", nil, true)
