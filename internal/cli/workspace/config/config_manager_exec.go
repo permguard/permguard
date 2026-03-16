@@ -225,6 +225,39 @@ func (m *Manager) ExecAddLedger(ledgerURI, ref, remote, ledger, ledgerID string,
 	return output, nil
 }
 
+// ExecSyncLedgerName syncs the ledger name in the local config with the name from the server.
+// It finds the entry by ledger ID and zone ID, and if the name has changed it renames the map
+// key and updates the LedgerName field. Returns true if the config was actually updated.
+func (m *Manager) ExecSyncLedgerName(zoneID int64, ledgerID, serverLedgerName string) (bool, error) {
+	cfg, err := m.readConfig()
+	if err != nil {
+		return false, err
+	}
+	var oldURI string
+	var cfgLedger ledgerConfig
+	for uri, l := range cfg.Ledgers {
+		if l.LedgerID == ledgerID && l.ZoneID == zoneID {
+			oldURI = uri
+			cfgLedger = l
+			break
+		}
+	}
+	if oldURI == "" || cfgLedger.LedgerName == serverLedgerName {
+		return false, nil
+	}
+	newURI, err := azwkscommon.GetLedgerURI(cfgLedger.Remote, cfgLedger.ZoneID, serverLedgerName)
+	if err != nil {
+		return false, err
+	}
+	cfgLedger.LedgerName = serverLedgerName
+	delete(cfg.Ledgers, oldURI)
+	cfg.Ledgers[newURI] = cfgLedger
+	if err := m.saveConfig(true, cfg); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ExecListLedgers lists the ledgers.
 func (m *Manager) ExecListLedgers(output map[string]any, out common.PrinterOutFunc) (map[string]any, error) {
 	if output == nil {

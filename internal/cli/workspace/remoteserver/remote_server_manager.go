@@ -106,6 +106,29 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	return &srvLedger[0], nil
 }
 
+// ServerRemoteLedgerByID gets the remote ledger from the server using the ledger ID.
+// Returns nil, nil if the ledger is not found — callers must treat this as non-fatal.
+func (m *Manager) ServerRemoteLedgerByID(remoteInfo *azwkscommon.RemoteInfo, zoneID int64, ledgerID string) (*pap.Ledger, error) {
+	if remoteInfo == nil {
+		return nil, errors.New("cli: remote info is nil")
+	}
+	tlsCfg := m.ctx.TLSClientConfig()
+	papEndpoint, err := grpcEndpoint(tlsCfg, remoteInfo.Scheme(), remoteInfo.Server(), remoteInfo.PAPPort())
+	if err != nil {
+		return nil, err
+	}
+	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg, m.ctx.IsVerbose())
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = papClient.Close() }()
+	srvLedgers, err := papClient.FetchLedgersByID(1, 1, zoneID, ledgerID)
+	if err != nil || len(srvLedgers) == 0 {
+		return nil, nil
+	}
+	return &srvLedgers[0], nil
+}
+
 // NewPAPClientSession creates a new gRPC PAP client session with a reusable connection.
 func (m *Manager) NewPAPClientSession(server string, papPort int, scheme string) (*clients.GrpcPAPClientSession, error) {
 	tlsCfg := m.ctx.TLSClientConfig()
