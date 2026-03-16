@@ -98,11 +98,16 @@ func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp
 		scanIgnoredFiles = append(scanIgnoredFiles, schemaIgnored...)
 	}
 
-	// Deduplicate ignored files by path: a file can appear in both the code
-	// scan's and the schema scan's ignored list, but should only be reported once.
+	includedPaths := make(map[string]struct{}, len(scanIncludedFiles))
+	for _, f := range scanIncludedFiles {
+		includedPaths[f.Path] = struct{}{}
+	}
 	seen := make(map[string]struct{}, len(scanIgnoredFiles))
 	deduped := scanIgnoredFiles[:0]
 	for _, f := range scanIgnoredFiles {
+		if _, ok := includedPaths[f.Path]; ok {
+			continue
+		}
 		if _, ok := seen[f.Path]; !ok {
 			seen[f.Path] = struct{}{}
 			deduped = append(deduped, f)

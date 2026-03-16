@@ -47,6 +47,11 @@ func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose boo
 	if err != nil {
 		return nil, err
 	}
+	if useTLS && tlsCfg != nil {
+		if err = tlsCfg.Validate(); err != nil {
+			return nil, err
+		}
+	}
 	var creds credentials.TransportCredentials
 	var spiffeCloser io.Closer
 	if useTLS && tlsCfg != nil && tlsCfg.Spiffe {

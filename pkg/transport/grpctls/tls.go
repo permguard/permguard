@@ -167,6 +167,20 @@ type ClientConfig struct {
 	SpiffeSocketPath string
 }
 
+// Validate checks the client TLS configuration for consistency.
+func (c *ClientConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	if (c.CertFile != "") != (c.KeyFile != "") {
+		return errors.New("tls: both cert-file and key-file must be provided together for mTLS")
+	}
+	if c.Spiffe && c.SpiffeSocketPath == "" {
+		return errors.New("tls: spiffe-enabled requires spiffe-socket-path")
+	}
+	return nil
+}
+
 // HasTLS returns true if any TLS configuration is set.
 func (c *ClientConfig) HasTLS() bool {
 	if c == nil {
@@ -179,6 +193,9 @@ func (c *ClientConfig) HasTLS() bool {
 // This should only be called when TLS is required (grpcs:// scheme).
 // With no explicit config, it uses the system CA pool for certificate verification.
 func NewClientCredentials(cfg *ClientConfig) (credentials.TransportCredentials, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	tlsCfg := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}

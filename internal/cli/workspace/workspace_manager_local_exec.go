@@ -80,7 +80,6 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *Manager, out common.P
 // ExecRefresh scans source files in the current directory and synchronizes the local state,
 func (m *Manager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to refresh the current workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -100,9 +99,6 @@ func (m *Manager) ExecRefresh(out common.PrinterOutFunc) (map[string]any, error)
 // execInternalRefresh scans source files in the current directory and synchronizes the local state,
 func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", "Failed to refresh the current workspace.", nil, true)
-		}
 		return output, err
 	}
 
@@ -192,7 +188,6 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 // ExecValidate validates the local state.
 func (m *Manager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to validate the current workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -212,9 +207,6 @@ func (m *Manager) ExecValidate(out common.PrinterOutFunc) (map[string]any, error
 // execInternalValidate validates the local state.
 func (m *Manager) execInternalValidate(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", "Failed to validate the current workspace.", nil, true)
-		}
 		return output, err
 	}
 

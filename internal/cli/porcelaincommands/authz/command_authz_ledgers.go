@@ -71,6 +71,10 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
+	if zoneID < 0 {
+		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+		return common.ErrCommandSilent
+	}
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	if err := validators.ValidateName("ledger", name); err != nil {
 		printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
@@ -119,6 +123,12 @@ func createCommandForLedgers(deps cli.DependenciesProvider, v *viper.Viper) *cob
 
 	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "zone id")
 	_ = v.BindPFlag(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), command.PersistentFlags().Lookup(common.FlagCommonZoneID))
+	command.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		if strings.Contains(err.Error(), "zone-id") {
+			return errors.New("cli: --zone-id must be a valid positive integer")
+		}
+		return err
+	})
 
 	command.AddCommand(createCommandForLedgerCreate(deps, v))
 	command.AddCommand(createCommandForLedgerUpdate(deps, v))

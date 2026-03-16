@@ -59,6 +59,10 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
+	if zoneID < 0 {
+		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+		return common.ErrCommandSilent
+	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	if ledgerID == "" {
 		printer.Error(errors.New("cli: --ledger-id is required"))

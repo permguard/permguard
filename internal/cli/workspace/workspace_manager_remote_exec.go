@@ -41,11 +41,8 @@ const (
 )
 
 // execInternalCheckoutLedger checks out a ledger.
-func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) execInternalCheckoutLedger(_ bool, ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to check out the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
-		}
 		return output, err
 	}
 	if m.ctx.IsVerboseTerminalOutput() {
@@ -140,7 +137,6 @@ func (m *Manager) execInternalCheckoutLedger(internal bool, ledgerURI string, ou
 // ExecCheckoutLedger checks out a ledger.
 func (m *Manager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to checkout the ledger %s.", common.KeywordText(ledgerURI)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -160,9 +156,6 @@ func (m *Manager) ExecCheckoutLedger(ledgerURI string, out common.PrinterOutFunc
 // execInternalPull executes an internal pull.
 func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
-		}
 		return nil, err
 	}
 
@@ -398,7 +391,6 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 // ExecPull fetches the latest changes from the remote ledger and constructs the remote state.
 func (m *Manager) ExecPull(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to pull changes from the remote ledger.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)

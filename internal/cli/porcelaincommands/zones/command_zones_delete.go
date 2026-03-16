@@ -60,6 +60,10 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
+	if zoneID < 0 {
+		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+		return common.ErrCommandSilent
+	}
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))

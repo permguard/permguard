@@ -76,6 +76,10 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 			printer.Error(errors.New("cli: --zone-id is required"))
 			return common.ErrCommandSilent
 		}
+		if zoneID < 0 {
+			printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+			return common.ErrCommandSilent
+		}
 		inputZone := &zap.Zone{
 			ZoneID: zoneID,
 			Name:   name,
@@ -113,6 +117,12 @@ func CreateCommandForZones(deps cli.DependenciesProvider, v *viper.Viper) *cobra
 
 	command.PersistentFlags().Int64(common.FlagCommonZoneID, 0, "filter results by zone ID across all subcommands")
 	_ = v.BindPFlag(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
+	command.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		if strings.Contains(err.Error(), "zone-id") {
+			return errors.New("cli: --zone-id must be a valid positive integer")
+		}
+		return err
+	})
 
 	command.AddCommand(createCommandForZoneCreate(deps, v))
 	command.AddCommand(createCommandForZoneUpdate(deps, v))

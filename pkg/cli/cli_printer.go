@@ -196,8 +196,9 @@ func (cp *PrinterTerminal) printTerminal(output map[string]any, isError bool, ne
 			}
 			color.Red("%s: %s\n", k, strings.TrimPrefix(lines[0], "cli: "))
 			for _, line := range lines[1:] {
-				if cp.verbose || !isInternalErrorLine(line) {
-					color.Red("  - %s\n", sanitizeErrorMessage(line))
+				sanitized := sanitizeErrorMessage(line)
+				if cp.verbose || !isInternalErrorLine(sanitized) {
+					color.Red("  - %s\n", sanitized)
 				}
 			}
 		} else {
@@ -254,10 +255,9 @@ func sanitizeErrorMessage(msg string) string {
 }
 
 // isInternalErrorLine returns true for error lines that contain internal
-// implementation details (gRPC, storage, sql) not suitable for end users.
+// implementation details (gRPC, sql) not suitable for end users.
 func isInternalErrorLine(line string) bool {
 	return strings.HasPrefix(line, "rpc error:") ||
-		strings.HasPrefix(line, "storage:") ||
 		strings.HasPrefix(line, "sql:")
 }
 

@@ -59,7 +59,6 @@ type InitParms struct {
 // ExecInitWorkspace initializes the workspace.
 func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to initialize the workspace.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -177,6 +176,9 @@ func (m *Manager) execInternalAddRemote(internal bool, remote string, server str
 		return output, err
 	}
 
+	if scheme != "" && scheme != "grpc" && scheme != "grpcs" {
+		return fail(nil, fmt.Errorf("cli: invalid scheme %q: must be 'grpc' (plaintext) or 'grpcs' (TLS)", scheme))
+	}
 	if !validators.IsValidHostname(server) {
 		return fail(nil, fmt.Errorf("cli: invalid server %s: must be a valid hostname or IP address", server))
 	}
@@ -197,7 +199,6 @@ func (m *Manager) execInternalAddRemote(internal bool, remote string, server str
 // ExecAddRemote adds a remote.
 func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPort int, scheme string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -217,7 +218,6 @@ func (m *Manager) ExecAddRemote(remote string, server string, zapPort int, papPo
 // ExecRemoveRemote removes a remote.
 func (m *Manager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", fmt.Sprintf("Failed to remove remote %s.", common.KeywordText(remote)), nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
@@ -248,7 +248,6 @@ func (m *Manager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (ma
 // ExecListRemotes lists the remotes.
 func (m *Manager) ExecListRemotes(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to list remotes.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
