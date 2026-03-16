@@ -73,7 +73,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 	if err := validators.ValidateName("ledger", name); err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: invalid ledger name"), err))
+		printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
 		return common.ErrCommandSilent
 	}
 	ledger := &pap.Ledger{
