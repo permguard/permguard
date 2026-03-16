@@ -54,7 +54,12 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	}
 	var input *os.File
 	if len(args) > 0 {
-		jsonPath := filepath.Join(ctx.WorkDir(), args[0])
+		var jsonPath string
+		if filepath.IsAbs(args[0]) {
+			jsonPath = args[0]
+		} else {
+			jsonPath = filepath.Join(ctx.WorkDir(), args[0])
+		}
 		input, err = os.Open(jsonPath)
 		if err != nil {
 			return handleInputError(ctx, printer, err, "invalid input for the authz check.")

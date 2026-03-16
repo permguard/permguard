@@ -31,7 +31,6 @@ import (
 // ExecObjects list the objects.
 func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
 	}
 	output := m.ExecPrintContext(nil, out)
@@ -247,7 +246,6 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 // ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
 func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to access objects in the current workspace.", nil, true)
 		return output, err
 	}
 
@@ -350,7 +348,6 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 // ExecHistory shows the commit history of the current workspace.
 func (m *Manager) ExecHistory(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to access history in the current workspace.", nil, true)
 		return output, err
 	}
 

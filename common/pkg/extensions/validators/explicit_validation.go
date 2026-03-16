@@ -77,6 +77,10 @@ func IsValidEndpoint(value string) bool {
 	if !matched {
 		return false
 	}
+	// Reject endpoints with an empty hostname (e.g. grpc://:9091).
+	if strings.HasPrefix(hostPort, ":") {
+		return false
+	}
 	return IsValidHostnamePort(hostPort)
 }
 

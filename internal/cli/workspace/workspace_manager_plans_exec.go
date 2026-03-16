@@ -30,7 +30,6 @@ import (
 // ExecPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 func (m *Manager) ExecPlan(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to build the plan.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -50,9 +49,6 @@ func (m *Manager) ExecPlan(out common.PrinterOutFunc) (map[string]any, error) {
 // execInternalPlan generates a plan of changes to apply to the remote ledger based on the differences between the local and remote states.
 func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", "Failed to build the plan.", nil, true)
-		}
 		return output, err
 	}
 
@@ -200,7 +196,6 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 // ExecApply applies the plan to the remote ledger
 func (m *Manager) ExecApply(out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		out(nil, "", "Failed to apply the plan.", nil, true)
 		return output, err
 	}
 	m.ExecPrintContext(nil, out)
@@ -220,9 +215,6 @@ func (m *Manager) ExecApply(out common.PrinterOutFunc) (map[string]any, error) {
 // execInternalApply applies the plan to the remote ledger
 func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", "Failed to apply the plan.", nil, true)
-		}
 		return output, err
 	}
 

@@ -60,6 +60,10 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
+	if zoneID < 0 {
+		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+		return common.ErrCommandSilent
+	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")

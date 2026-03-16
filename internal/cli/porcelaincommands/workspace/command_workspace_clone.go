@@ -60,14 +60,21 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 		}
 	}
 
-	// Set up working directory if validation passed.
+	// Set up working directory and create target directory before creating context,
+	// because CreateContextAndPrinter validates that the working directory exists.
 	if validationErr == nil {
 		workDir, err := cmd.Flags().GetString(common.FlagWorkingDirectory)
 		if err != nil {
 			validationErr = err
 		} else {
 			ledgerFolder = filepath.Join(workDir, folder)
-			_ = cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
+			if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
+				validationErr = fmt.Errorf("cli: the ledger %s already exists", ledgerFolder)
+			} else if _, err := files.CreateDirIfNotExists(ledgerFolder); err != nil {
+				validationErr = err
+			} else {
+				_ = cmd.Flags().Set(common.FlagWorkingDirectory, ledgerFolder)
+			}
 		}
 	}
 
@@ -83,12 +90,6 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 
 	if validationErr != nil {
 		return fail(validationErr)
-	}
-	if ok, _ := files.CheckPathIfExists(ledgerFolder); ok {
-		return fail(fmt.Errorf("cli: the ledger %s already exists", ledgerFolder))
-	}
-	if _, err := files.CreateDirIfNotExists(ledgerFolder); err != nil {
-		return fail(err)
 	}
 
 	langFct, err := deps.LanguageFactory()
