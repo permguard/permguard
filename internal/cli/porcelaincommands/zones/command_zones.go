@@ -29,6 +29,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/core/validators"
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
@@ -51,39 +52,28 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	if err := validators.ValidateName("zone", name); err != nil {
+		printer.Error(errors.Join(fmt.Errorf("cli: invalid zone name"), err))
+		return common.ErrCommandSilent
+	}
 	var zone *zap.Zone
 	if isCreate {
 		zone, err = client.CreateZone(name)
 	} else {
 		zoneID := v.GetInt64(options.FlagName(flagPrefix, common.FlagCommonZoneID))
 		if zoneID == 0 {
-			if ctx.IsNotVerboseTerminalOutput() {
-				printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-			}
-			if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-				printer.Error(errors.New("cli: --zone-id is required"))
-			}
+			printer.Error(errors.New("cli: --zone-id is required"))
 			return common.ErrCommandSilent
 		}
 		inputZone := &zap.Zone{
@@ -93,12 +83,7 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		zone, err = client.UpdateZone(inputZone)
 	}
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}

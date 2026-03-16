@@ -38,12 +38,7 @@ func runECommandReset(deps cli.DependenciesProvider, cmd *cobra.Command, v *vipe
 	}
 	configFile, err := options.ResetViperConfig(v)
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to reset the cli config file.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to reset the cli config file"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to reset the cli config file"), err))
 		return common.ErrCommandSilent
 	}
 	var output map[string]any

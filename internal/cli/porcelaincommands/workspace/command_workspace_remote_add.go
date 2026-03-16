@@ -51,12 +51,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 		return common.ErrCommandSilent
 	}
 	if len(args) < 2 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to add the remote.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
 		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.LanguageFactory()
@@ -86,12 +81,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 	scheme := azwkscommon.ResolveScheme(serverScheme, flagScheme)
 	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, scheme, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to add the remote.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

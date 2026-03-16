@@ -49,12 +49,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		return common.ErrCommandSilent
 	}
 	handleInputError := func(ctx *common.CliCommandContext, printer cli.Printer, err error, message string) error {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to check the authorization request.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", message), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", message), err))
 		return common.ErrCommandSilent
 	}
 	var input *os.File
@@ -127,34 +122,19 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 
 	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to check the authorization request.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPDPClient(pdpEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcPDPClient(pdpEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to check the authorization request.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
 	authzResp, err := client.AuthorizationCheck(&authzReq)
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to check the authorization request.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsTerminalOutput() {

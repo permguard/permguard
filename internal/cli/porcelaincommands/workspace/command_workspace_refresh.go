@@ -56,12 +56,7 @@ func runECommandForRefreshWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 	}
 	output, err := wksMgr.ExecRefresh(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed execute the refresh.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to execute the refresh"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to execute the refresh"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

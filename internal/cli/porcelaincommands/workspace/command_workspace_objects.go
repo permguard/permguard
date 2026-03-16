@@ -92,12 +92,7 @@ func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 
 	output, err := wksMgr.ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to list objects.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to list objects"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to list objects"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

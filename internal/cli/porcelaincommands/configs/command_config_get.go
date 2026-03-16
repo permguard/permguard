@@ -37,12 +37,7 @@ func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the zap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the zap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to get the zap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"zap_endpoint": zapEndpoint})
@@ -58,12 +53,7 @@ func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the pap endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the pap endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to get the pap endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"pap_endpoint": papEndpoint})
@@ -79,12 +69,7 @@ func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 	}
 	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the pdp endpoint.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the pdp endpoint"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to get the pdp endpoint"), err))
 		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"pdp_endpoint": pdpEndpoint})
@@ -139,12 +124,7 @@ func runECommandForAuthstarMaxObjectSizeGet(deps cli.DependenciesProvider, cmd *
 	}
 	maxObjectSize, err := ctx.AuthstarMaxObjectSize()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the authstar max object size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the authstar max object size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to get the authstar max object size"), err))
 		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"authstar_max_object_size": maxObjectSize})
@@ -173,12 +153,7 @@ func runECommandForNOTPMaxPacketSizeGet(deps cli.DependenciesProvider, cmd *cobr
 	}
 	maxPacketSize, err := ctx.NOTPMaxPacketSize()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to get the notp max packet size.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to get the notp max packet size"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to get the notp max packet size"), err))
 		return common.ErrCommandSilent
 	}
 	printer.PrintlnMap(map[string]any{"notp_max_packet_size": maxPacketSize})

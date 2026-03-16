@@ -78,12 +78,7 @@ func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra
 
 	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to cat the object.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to cat the object"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to cat the object"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

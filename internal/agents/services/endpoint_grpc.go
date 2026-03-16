@@ -27,8 +27,10 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 
 	"github.com/permguard/permguard/pkg/agents/services"
 	"github.com/permguard/permguard/pkg/agents/telemetry"
@@ -95,13 +97,47 @@ func recordTLSMetrics(ctx context.Context) {
 	telemetry.TLSRequestTotal.Add(ctx, 1, telemetry.TLSAttrs(false, "none", false))
 }
 
+// grpcServiceName extracts the short service name from a full gRPC method path.
+// e.g. "/zap.V1ZAPService/CreateZone" → "V1ZAPService"
+func grpcServiceName(fullMethod string) string {
+	s := strings.TrimPrefix(fullMethod, "/")
+	parts := strings.SplitN(s, "/", 2)
+	if len(parts) == 0 {
+		return fullMethod
+	}
+	svcParts := strings.Split(parts[0], ".")
+	return svcParts[len(svcParts)-1]
+}
+
+// grpcMethodName extracts the RPC method name from a full gRPC method path.
+// e.g. "/zap.V1ZAPService/CreateZone" → "CreateZone"
+func grpcMethodName(fullMethod string) string {
+	if idx := strings.LastIndex(fullMethod, "/"); idx >= 0 {
+		return fullMethod[idx+1:]
+	}
+	return fullMethod
+}
+
+// grpcStatusCode returns the gRPC status code string from an error.
+func grpcStatusCode(err error) string {
+	if err == nil {
+		return codes.OK.String()
+	}
+	if s, ok := status.FromError(err); ok {
+		return s.Code().String()
+	}
+	return codes.Unknown.String()
+}
+
 // serverUnaryInterceptor returns a unary interceptor for logging and panic recovery.
 func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.LogMessage("Request generated a panic"),
+				logger.Error(serviceCtx.LogMessage("grpc unary panic"),
+					zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+					zap.String("grpc.method", grpcMethodName(info.FullMethod)),
 					zap.Any("panic", err),
 					zap.String("stacktrace", string(debug.Stack())))
 			}
@@ -109,18 +145,22 @@ func serverUnaryInterceptor(serviceCtx *services.EndpointContext) grpc.UnaryServ
 		recordTLSMetrics(ctx)
 		start := time.Now()
 		h, err := handler(ctx, req)
-		status := telemetry.StatusFromErr(err)
+		telStat := telemetry.StatusFromErr(err)
 		elapsed := telemetry.ElapsedSeconds(start)
-		telemetry.GRPCRequestDuration.Record(ctx, elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(status))
+		telemetry.GRPCRequestDuration.Record(ctx, elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(telStat))
 		if err != nil {
-			logger.Error(serviceCtx.LogMessage("Request failed"),
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", time.Since(start)),
+			logger.Error(serviceCtx.LogMessage("grpc unary request failed"),
+				zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+				zap.String("grpc.method", grpcMethodName(info.FullMethod)),
+				zap.String("grpc.status_code", grpcStatusCode(err)),
+				zap.Duration("grpc.duration", time.Since(start)),
 				zap.Error(err))
 		} else {
-			logger.Debug(serviceCtx.LogMessage("Request served"),
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", time.Since(start)))
+			logger.Debug(serviceCtx.LogMessage("grpc unary request completed"),
+				zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+				zap.String("grpc.method", grpcMethodName(info.FullMethod)),
+				zap.String("grpc.status_code", grpcStatusCode(nil)),
+				zap.Duration("grpc.duration", time.Since(start)))
 		}
 		return h, err
 	}
@@ -132,7 +172,9 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 		logger := serviceCtx.Logger()
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error(serviceCtx.LogMessage("Stream request generated a panic"),
+				logger.Error(serviceCtx.LogMessage("grpc stream panic"),
+					zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+					zap.String("grpc.method", grpcMethodName(info.FullMethod)),
 					zap.Any("panic", err),
 					zap.String("stacktrace", string(debug.Stack())))
 			}
@@ -140,18 +182,22 @@ func serverStreamInterceptor(serviceCtx *services.EndpointContext) grpc.StreamSe
 		recordTLSMetrics(ss.Context())
 		start := time.Now()
 		err := handler(srv, ss)
-		status := telemetry.StatusFromErr(err)
+		telStat := telemetry.StatusFromErr(err)
 		elapsed := telemetry.ElapsedSeconds(start)
-		telemetry.GRPCRequestDuration.Record(ss.Context(), elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(status))
+		telemetry.GRPCRequestDuration.Record(ss.Context(), elapsed, telemetry.MethodAttr(info.FullMethod), telemetry.StatusAttr(telStat))
 		if err != nil {
-			logger.Error(serviceCtx.LogMessage("Stream request failed"),
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", time.Since(start)),
+			logger.Error(serviceCtx.LogMessage("grpc stream request failed"),
+				zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+				zap.String("grpc.method", grpcMethodName(info.FullMethod)),
+				zap.String("grpc.status_code", grpcStatusCode(err)),
+				zap.Duration("grpc.duration", time.Since(start)),
 				zap.Error(err))
 		} else {
-			logger.Debug(serviceCtx.LogMessage("Stream request served"),
-				zap.String("method", info.FullMethod),
-				zap.Duration("duration", time.Since(start)))
+			logger.Debug(serviceCtx.LogMessage("grpc stream request completed"),
+				zap.String("grpc.service", grpcServiceName(info.FullMethod)),
+				zap.String("grpc.method", grpcMethodName(info.FullMethod)),
+				zap.String("grpc.status_code", grpcStatusCode(nil)),
+				zap.Duration("grpc.duration", time.Since(start)))
 		}
 		return err
 	}

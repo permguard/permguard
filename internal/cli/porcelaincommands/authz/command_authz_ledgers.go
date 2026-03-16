@@ -28,6 +28,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
 	"github.com/permguard/permguard/pkg/cli/options"
+	"github.com/permguard/permguard/pkg/core/validators"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
 )
 
@@ -55,37 +56,26 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg)
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.New("cli: --zone-id is required"))
-		}
+		printer.Error(errors.New("cli: --zone-id is required"))
 		return common.ErrCommandSilent
 	}
 	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+	if err := validators.ValidateName("ledger", name); err != nil {
+		printer.Error(errors.Join(fmt.Errorf("cli: invalid ledger name"), err))
+		return common.ErrCommandSilent
+	}
 	ledger := &pap.Ledger{
 		ZoneID: zoneID,
 		Name:   name,
@@ -98,12 +88,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println(fmt.Sprintf("%s.", opGetErroMessage(isCreate)))
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		}
+		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}

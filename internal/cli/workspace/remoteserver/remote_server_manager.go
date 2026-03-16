@@ -76,7 +76,7 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	if err != nil {
 		return nil, err
 	}
-	zapClient, err := clients.NewGrpcZAPClient(zapEndpoint, tlsCfg)
+	zapClient, err := clients.NewGrpcZAPClient(zapEndpoint, tlsCfg, m.ctx.IsVerbose())
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	if err != nil {
 		return nil, err
 	}
-	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg)
+	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg, m.ctx.IsVerbose())
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (m *Manager) NewPAPClientSession(server string, papPort int, scheme string)
 	if err != nil {
 		return nil, err
 	}
-	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg)
+	papClient, err := clients.NewGrpcPAPClient(papEndpoint, tlsCfg, m.ctx.IsVerbose())
 	if err != nil {
 		return nil, err
 	}

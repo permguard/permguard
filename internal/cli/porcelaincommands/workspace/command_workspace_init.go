@@ -52,20 +52,12 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
+		printer.Error(err)
 		return common.ErrCommandSilent
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
+		printer.Error(err)
 		return common.ErrCommandSilent
 	}
 
@@ -87,9 +79,7 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to initialize the workspace"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to initialize the workspace"), err))
 		return common.ErrCommandSilent
 	}
 	if createManifest {

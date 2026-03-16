@@ -37,12 +37,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.DependenciesPro
 		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to remove the remote.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
 		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.LanguageFactory()
@@ -66,12 +61,7 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.DependenciesPro
 	remote := args[0]
 	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to remove the remote.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to remove the remote"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

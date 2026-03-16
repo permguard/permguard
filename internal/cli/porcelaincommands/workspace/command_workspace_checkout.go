@@ -37,12 +37,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to checkout the workspace.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
 		return common.ErrCommandSilent
 	}
 	langFct, err := deps.LanguageFactory()
@@ -66,12 +61,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to checkout the workspace.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {

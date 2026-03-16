@@ -56,12 +56,7 @@ func runECommandForApplyWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comm
 	}
 	output, err := wksMgr.ExecApply(outFunc(ctx, printer))
 	if err != nil {
-		if ctx.IsNotVerboseTerminalOutput() {
-			printer.Println("Failed to apply workspace changes.")
-		}
-		if ctx.IsVerboseTerminalOutput() || ctx.IsJSONOutput() {
-			printer.Error(errors.Join(errors.New("cli: failed to apply workspace changes"), err))
-		}
+		printer.Error(errors.Join(errors.New("cli: failed to apply workspace changes"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
