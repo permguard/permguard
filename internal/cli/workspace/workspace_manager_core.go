@@ -159,7 +159,7 @@ func (m *Manager) printFiles(action string, files []string, out common.PrinterOu
 }
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
-func (m *Manager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
+func (m *Manager) raiseWrongWorkspaceDirError(_ common.PrinterOutFunc) error {
 	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.homeHiddenDir())
 }
 
@@ -170,29 +170,29 @@ func (m *Manager) hasValidManifestWorkspaceDir() (*azmanifests.Manifest, error) 
 		return nil, errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)
 	}
 	manifest, err := azmanifests.ConvertBytesToManifest(manifestData)
-	manifestErr := errors.New("cli: invalid manifest in the workspace directory")
+	errMft := errors.New("cli: invalid manifest in the workspace directory")
 	if err != nil {
-		return nil, errors.Join(manifestErr, err)
+		return nil, errors.Join(errMft, err)
 	}
 	ok, err := azmanifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, errors.Join(manifestErr, err)
+		return nil, errors.Join(errMft, err)
 	}
 	if !ok {
-		return nil, errors.Join(manifestErr, err)
+		return nil, errors.Join(errMft, err)
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
 		absLang, err := m.langFct.LanguageAbstraction(lang.Name, lang.Version)
 		if err != nil {
-			return nil, errors.Join(manifestErr, err)
+			return nil, errors.Join(errMft, err)
 		}
 		ok, err = absLang.ValidateManifest(manifest)
 		if err != nil {
-			return nil, errors.Join(manifestErr, err)
+			return nil, errors.Join(errMft, err)
 		}
 		if !ok {
-			return nil, errors.Join(manifestErr, err)
+			return nil, errors.Join(errMft, err)
 		}
 	}
 	return manifest, nil
