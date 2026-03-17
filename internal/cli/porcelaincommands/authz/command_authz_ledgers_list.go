@@ -64,6 +64,26 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
 		return common.ErrCommandSilent
 	}
+	zapEndpoint, err := ctx.ZAPEndpoint()
+	if err != nil {
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
+		return common.ErrCommandSilent
+	}
+	zapClient, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
+	if err != nil {
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
+		return common.ErrCommandSilent
+	}
+	defer func() { _ = zapClient.Close() }()
+	existingZones, err := zapClient.FetchZonesBy(1, 1, zoneID, "")
+	if err != nil {
+		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
+		return common.ErrCommandSilent
+	}
+	if len(existingZones) == 0 {
+		printer.Error(fmt.Errorf("cli: zone %d not found", zoneID))
+		return common.ErrCommandSilent
+	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")

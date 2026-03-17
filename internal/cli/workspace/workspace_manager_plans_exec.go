@@ -183,6 +183,9 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 		}
 	}
 	if m.ctx.IsJSONOutput() {
+		if output == nil {
+			output = map[string]any{}
+		}
 		changes := map[string]any{}
 		changes["unchanged"] = unchangedItems
 		changes["create"] = createdItems

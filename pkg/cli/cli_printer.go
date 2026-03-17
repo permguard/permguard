@@ -199,6 +199,10 @@ func (cp *PrinterTerminal) printTerminal(output map[string]any, isError bool, ne
 				sanitized := sanitizeErrorMessage(line)
 				if cp.verbose || !isInternalErrorLine(sanitized) {
 					color.Red("  - %s\n", sanitized)
+				} else {
+					if friendly := extractUserFriendlySubError(sanitized); friendly != "" {
+						color.Red("  - %s\n", friendly)
+					}
 				}
 			}
 		} else {
@@ -255,11 +259,27 @@ func sanitizeErrorMessage(msg string) string {
 }
 
 // isInternalErrorLine returns true for error lines that contain internal
-// implementation details (gRPC, sql) not suitable for end users.
+// implementation details (gRPC, sql, storage) not suitable for end users.
 func isInternalErrorLine(line string) bool {
 	return strings.HasPrefix(line, "rpc error:") ||
 		strings.HasPrefix(line, "sql:") ||
-		(strings.HasPrefix(line, "storage:") && strings.Contains(line, "encountered an issue"))
+		strings.HasPrefix(line, "storage:")
+}
+
+// extractUserFriendlySubError returns a user-friendly version of an internal error
+// line, stripping storage-layer prefixes. Returns empty string if nothing useful.
+func extractUserFriendlySubError(line string) string {
+	if strings.HasPrefix(line, "storage:") {
+		// Extract leaf error from chains like:
+		// "storage: ... encountered an issue (...): storage: resource already exists"
+		if idx := strings.LastIndex(line, "): "); idx != -1 {
+			leaf := line[idx+3:]
+			return strings.TrimPrefix(leaf, "storage: ")
+		}
+		// Simple storage message like "storage: resource not found"
+		return strings.TrimPrefix(line, "storage: ")
+	}
+	return ""
 }
 
 // createOutputWithputError creates the output with the error.

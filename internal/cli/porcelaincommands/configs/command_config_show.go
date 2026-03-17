@@ -26,7 +26,6 @@ import (
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/pkg/cli"
-	"github.com/permguard/permguard/pkg/cli/options"
 )
 
 // runECommandForConfigShow runs the command for showing the current config.
@@ -48,10 +47,6 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 	if err != nil {
 		pdpEndpoint = "not set"
 	}
-	language := v.GetString(options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage))
-	if len(language) == 0 {
-		language = "not set"
-	}
 	authstarMaxObjectSize, err := ctx.AuthstarMaxObjectSize()
 	authstarMaxObjectSizeStr := "not set"
 	if err == nil {
@@ -63,26 +58,18 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 		notpMaxPacketSizeStr = strconv.Itoa(notpMaxPacketSize)
 	}
 	if ctx.IsTerminalOutput() {
-		printer.Println(fmt.Sprintf("endpoints.zap: %s", zapEndpoint))
-		printer.Println(fmt.Sprintf("endpoints.pap: %s", papEndpoint))
-		printer.Println(fmt.Sprintf("endpoints.pdp: %s", pdpEndpoint))
-		printer.Println(fmt.Sprintf("language: %s", language))
-		printer.Println(fmt.Sprintf("authstar.max-object-size: %s", authstarMaxObjectSizeStr))
-		printer.Println(fmt.Sprintf("notp.max-packet-size: %s", notpMaxPacketSizeStr))
+		printer.Println(fmt.Sprintf("zap-endpoint: %s", zapEndpoint))
+		printer.Println(fmt.Sprintf("pap-endpoint: %s", papEndpoint))
+		printer.Println(fmt.Sprintf("pdp-endpoint: %s", pdpEndpoint))
+		printer.Println(fmt.Sprintf("authstar-max-object-size: %s", authstarMaxObjectSizeStr))
+		printer.Println(fmt.Sprintf("notp-max-packet-size: %s", notpMaxPacketSizeStr))
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{
-			"endpoints": map[string]any{
-				"zap": zapEndpoint,
-				"pap": papEndpoint,
-				"pdp": pdpEndpoint,
-			},
-			"language": language,
-			"authstar": map[string]any{
-				"max_object_size": authstarMaxObjectSize,
-			},
-			"notp": map[string]any{
-				"max_packet_size": notpMaxPacketSize,
-			},
+			"zap_endpoint":             zapEndpoint,
+			"pap_endpoint":             papEndpoint,
+			"pdp_endpoint":             pdpEndpoint,
+			"authstar_max_object_size": authstarMaxObjectSize,
+			"notp_max_packet_size":     notpMaxPacketSize,
 		}
 		printer.PrintlnMap(output)
 	}

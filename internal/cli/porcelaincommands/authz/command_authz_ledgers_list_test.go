@@ -29,6 +29,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/porcelaincommands/testutils/mocks"
 	"github.com/permguard/permguard/pkg/cli/options"
 	"github.com/permguard/permguard/pkg/transport/models/pap"
+	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
 // TestListCommandForLedgersList tests the listCommandForLedgersList function.
@@ -98,7 +99,8 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 
 		v := viper.New()
 		v.Set("output", outputType)
-		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "localhost:9092")
+		v.Set(options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), "grpc://localhost:9091")
+		v.Set(options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), "grpc://localhost:9092")
 		v.Set(options.FlagName(commandNameForLedger, common.FlagCommonZoneID), int64(581616507495))
 
 		depsMocks := mocks.NewCliDependenciesMock()
@@ -106,6 +108,10 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		cmd.PersistentFlags().StringP(common.FlagWorkingDirectory, common.FlagWorkingDirectoryShort, ".", "work directory")
 		cmd.PersistentFlags().StringP(common.FlagOutput, common.FlagOutputShort, outputType, "output format")
 		cmd.PersistentFlags().BoolP(common.FlagVerbose, common.FlagVerboseShort, true, "true for verbose output")
+
+		zapClient := mocks.NewGrpcZAPClientMock()
+		zones := []zap.Zone{{ZoneID: 581616507495, Name: "test-zone"}}
+		zapClient.On("FetchZonesBy", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(zones, nil)
 
 		papClient := mocks.NewGrpcPAPClientMock()
 		ledgers := []pap.Ledger{
@@ -141,6 +147,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 		printerMock.On("PrintlnMap", outputPrinter).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
+		depsMocks.On("CreateGrpcZAPClient", mock.Anything, mock.Anything, mock.Anything).Return(zapClient, nil)
 		depsMocks.On("CreateGrpcPAPClient", mock.Anything, mock.Anything, mock.Anything).Return(papClient, nil)
 
 		testutils.BaseCommandWithParamsTest(t, v, cmd, args, false, outputs)

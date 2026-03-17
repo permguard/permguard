@@ -18,6 +18,7 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 
@@ -50,6 +51,9 @@ func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose boo
 	if tlsCfg != nil {
 		if err = tlsCfg.Validate(); err != nil {
 			return nil, err
+		}
+		if !useTLS && tlsCfg.HasTLS() {
+			return nil, errors.New("cli: TLS flags (--tls-*) require the grpcs:// scheme")
 		}
 	}
 	var creds credentials.TransportCredentials

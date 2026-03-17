@@ -208,6 +208,9 @@ permguard config set authstar-max-object-size 10485760
 			return runECommandForAuthstarMaxObjectSizeSet(deps, cmd, v, args)
 		},
 	}
+	command.SetFlagErrorFunc(func(_ *cobra.Command, _ error) error {
+		return errors.New("cli: authstar-max-object-size must be a positive integer")
+	})
 	return command
 }
 
@@ -257,6 +260,9 @@ permguard config set notp-max-packet-size 16777216
 			return runECommandForNOTPMaxPacketSizeSet(deps, cmd, v, args)
 		},
 	}
+	command.SetFlagErrorFunc(func(_ *cobra.Command, _ error) error {
+		return errors.New("cli: notp-max-packet-size must be a positive integer")
+	})
 	return command
 }
 
