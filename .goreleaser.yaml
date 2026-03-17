@@ -205,10 +205,24 @@ archives:
 
 changelog:
   sort: asc
+  use: github
+  groups:
+    - title: "Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Refactor"
+      regexp: "^refactor"
+      order: 2
+    - title: "Other"
+      order: 999
   filters:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^chore:"
 
 release:
   # extra_files:
