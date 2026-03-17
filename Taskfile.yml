@@ -19,6 +19,7 @@ version: '3'
 includes:
   push:
     taskfile: ../../tools/taskfiles/push.yml
+    optional: true
 
 tasks:
 
