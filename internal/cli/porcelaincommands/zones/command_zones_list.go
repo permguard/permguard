@@ -68,6 +68,10 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
 		return common.ErrCommandSilent
 	}
+	if cmd.Flags().Changed(common.FlagCommonZoneID) && zoneID > 0 && len(zones) == 0 {
+		printer.Error(fmt.Errorf("cli: zone %d not found", zoneID))
+		return common.ErrCommandSilent
+	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
 		for _, zone := range zones {

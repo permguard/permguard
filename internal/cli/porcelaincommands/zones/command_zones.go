@@ -62,13 +62,13 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
-	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
-	if err := validators.ValidateName("zone", name); err != nil {
-		printer.Error(errors.Join(errors.New("cli: invalid zone name"), err))
-		return common.ErrCommandSilent
-	}
 	var zone *zap.Zone
 	if isCreate {
+		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+		if err := validators.ValidateName("zone", name); err != nil {
+			printer.Error(errors.Join(errors.New("cli: invalid zone name"), err))
+			return common.ErrCommandSilent
+		}
 		zone, err = client.CreateZone(name)
 	} else {
 		zoneID := v.GetInt64(options.FlagName(flagPrefix, common.FlagCommonZoneID))
@@ -78,6 +78,11 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		}
 		if zoneID < 0 {
 			printer.Error(errors.New("cli: --zone-id must be a positive integer"))
+			return common.ErrCommandSilent
+		}
+		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+		if err := validators.ValidateName("zone", name); err != nil {
+			printer.Error(errors.Join(errors.New("cli: invalid zone name"), err))
 			return common.ErrCommandSilent
 		}
 		inputZone := &zap.Zone{

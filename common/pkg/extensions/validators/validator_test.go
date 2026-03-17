@@ -49,15 +49,23 @@ func TestIsName(t *testing.T) {
 	validate.RegisterValidation("name", isName)
 
 	// Test 1: Valid name
-	err := validate.Var("abc-123.name", "name")
+	err := validate.Var("abc-123-name", "name")
 	assert.NoError(err)
 
 	// Test 2: Invalid name (starts with uppercase)
-	err = validate.Var("Abc-123.name", "name")
+	err = validate.Var("Abc-123-name", "name")
 	assert.NotNil(err)
 
 	// Test 3: Invalid name (contains invalid character)
-	err = validate.Var("abc@123.name", "name")
+	err = validate.Var("abc@123-name", "name")
+	assert.NotNil(err)
+
+	// Test 4: Invalid name (dot is not allowed)
+	err = validate.Var("abc.123", "name")
+	assert.NotNil(err)
+
+	// Test 5: Invalid name (underscore is not allowed)
+	err = validate.Var("abc_123", "name")
 	assert.NotNil(err)
 }
 
@@ -108,7 +116,7 @@ func TestValidateInstance(t *testing.T) {
 	// Test 1: Valid instance
 	instance := TestStruct{
 		SimpleName:   "abc123",
-		Name:         "abc-123.name",
+		Name:         "abc-123-name",
 		WildcardName: "*abc123",
 		UUID:         "550e8400-e29b-41d4-a716-446655440000",
 	}

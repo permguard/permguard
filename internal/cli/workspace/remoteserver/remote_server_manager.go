@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 
+	extvalidators "github.com/permguard/permguard/common/pkg/extensions/validators"
 	"github.com/permguard/permguard/internal/cli/common"
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/transport/clients"
@@ -95,6 +96,13 @@ func (m *Manager) ServerRemoteLedger(remoteInfo *azwkscommon.RemoteInfo, ledgerI
 	srvZones, err := zapClient.FetchZonesByID(1, 1, zoneID)
 	if err != nil || srvZones == nil || len(srvZones) == 0 {
 		return nil, errors.Join(fmt.Errorf("cli: zone %d does not exist", zoneID), err)
+	}
+	if extvalidators.ValidateUUID(ledger) {
+		srvLedgers, err := papClient.FetchLedgersByID(1, 1, zoneID, ledger)
+		if err != nil || len(srvLedgers) == 0 {
+			return nil, fmt.Errorf("cli: ledger %s does not exist", ledger)
+		}
+		return &srvLedgers[0], nil
 	}
 	srvLedger, err := papClient.FetchLedgersByName(1, 1, zoneID, ledger)
 	if err != nil || srvLedger == nil || len(srvLedger) == 0 {

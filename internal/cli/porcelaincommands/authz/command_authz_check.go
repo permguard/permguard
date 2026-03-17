@@ -108,7 +108,15 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 
 	// Apply --zone-id and --policy-store-id overrides (highest priority).
 	flagZoneID := v.GetInt64(options.FlagName(commandNameForCheck, common.FlagCommonZoneID))
-	if flagZoneID != 0 {
+	if cmd.Flags().Changed(common.FlagCommonZoneID) {
+		if flagZoneID <= 0 {
+			return handleInputError(ctx, printer, nil, "--zone-id must be a positive integer.")
+		}
+		if authzReq.AuthorizationModel == nil {
+			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
+		}
+		authzReq.AuthorizationModel.ZoneID = flagZoneID
+	} else if flagZoneID != 0 {
 		if authzReq.AuthorizationModel == nil {
 			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
 		}

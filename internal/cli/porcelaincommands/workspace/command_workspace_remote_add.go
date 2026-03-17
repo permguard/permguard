@@ -51,7 +51,7 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 		return common.ErrCommandSilent
 	}
 	if len(args) < 2 {
-		printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
+		printer.Error(errors.New("cli: failed to add the remote\ntwo arguments are required: <remote-name> <server-address>"))
 		return common.ErrCommandSilent
 	}
 	langAbs, err := deps.LanguageFactory()

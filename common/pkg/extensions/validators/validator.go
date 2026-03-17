@@ -28,7 +28,7 @@ import (
 // Compiling once at package level avoids repeated compilation on every call.
 var (
 	simpleNameRegex   = regexp.MustCompile(`^[a-z][a-z0-9]*[a-z0-9]$`)
-	nameRegex         = regexp.MustCompile(`^[a-z0-9][a-z0-9\-\._]*[a-z0-9]$`)
+	nameRegex         = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$`)
 	wildcardNameRegex = regexp.MustCompile(`^[a-z\*][a-z0-9\*\-\._]*[a-z0-9\*]*$`)
 )
 

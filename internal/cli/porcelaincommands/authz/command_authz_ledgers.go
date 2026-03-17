@@ -75,20 +75,28 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
 		return common.ErrCommandSilent
 	}
-	name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
-	if err := validators.ValidateName("ledger", name); err != nil {
-		printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
-		return common.ErrCommandSilent
-	}
-	ledger := &pap.Ledger{
-		ZoneID: zoneID,
-		Name:   name,
-	}
+	ledger := &pap.Ledger{ZoneID: zoneID}
 	if isCreate {
+		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+		if err := validators.ValidateName("ledger", name); err != nil {
+			printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
+			return common.ErrCommandSilent
+		}
+		ledger.Name = name
 		ledger, err = client.CreateLedger(zoneID, "policy", name)
 	} else {
 		ledgerID := v.GetString(options.FlagName(flagPrefix, flagLedgerID))
+		if ledgerID == "" {
+			printer.Error(errors.New("cli: --ledger-id is required"))
+			return common.ErrCommandSilent
+		}
+		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
+		if err := validators.ValidateName("ledger", name); err != nil {
+			printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
+			return common.ErrCommandSilent
+		}
 		ledger.LedgerID = ledgerID
+		ledger.Name = name
 		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {

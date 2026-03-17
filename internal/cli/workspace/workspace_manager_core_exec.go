@@ -230,7 +230,8 @@ func (m *Manager) ExecRemoveRemote(remote string, out common.PrinterOutFunc) (ma
 
 	refInfo, err := m.rfsMgr.CurrentHeadRefInfo()
 	if err != nil {
-		return fail(nil, err)
+		// No HEAD is set (e.g. workspace never checked out) — safe to proceed.
+		refInfo = nil
 	}
 	if refInfo != nil && refInfo.Remote() == remote {
 		if m.ctx.IsVerboseTerminalOutput() {

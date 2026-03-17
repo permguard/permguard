@@ -37,7 +37,7 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
+		printer.Error(errors.New("cli: failed to checkout the workspace\na ledger URI is required (e.g., origin/<zone-id>/<ledger-name>)"))
 		return common.ErrCommandSilent
 	}
 	langFct, err := deps.LanguageFactory()
