@@ -170,9 +170,6 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 // execInternalAddRemote adds a remote.
 func (m *Manager) execInternalAddRemote(internal bool, remote string, server string, zapPort int, papPort int, scheme string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
-		if !internal {
-			out(nil, "", fmt.Sprintf("Failed to add remote %s.", common.KeywordText(remote)), nil, true)
-		}
 		return output, err
 	}
 

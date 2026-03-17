@@ -160,8 +160,6 @@ func (m *Manager) printFiles(action string, files []string, out common.PrinterOu
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.
 func (m *Manager) raiseWrongWorkspaceDirError(out common.PrinterOutFunc) error {
-	out(nil, "", "The current working directory is not a valid Permguard workspace.", nil, true)
-	out(nil, "", "Please initialize the workspace by running the 'init' command.", nil, true)
 	return fmt.Errorf("cli: %s is not a permguard workspace directory", m.homeHiddenDir())
 }
 

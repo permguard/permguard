@@ -56,13 +56,13 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
 	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
@@ -92,7 +92,7 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
