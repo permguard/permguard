@@ -58,7 +58,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		input, err = os.Open(jsonPath)
 		if err != nil {
-			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err))
+			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), err))
 		}
 		defer func() { _ = input.Close() }()
 	} else {
@@ -71,13 +71,13 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		builder.WriteString(scanner.Text())
 	}
 	if err2 := scanner.Err(); err2 != nil {
-		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err2))
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), err2))
 	}
 	jsonString := builder.String()
 	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
-		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err))
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), err))
 	}
 
 	// Apply --current-workspace override (medium priority).
@@ -106,7 +106,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	flagZoneID := v.GetInt64(options.FlagName(commandNameForCheck, common.FlagCommonZoneID))
 	if cmd.Flags().Changed(common.FlagCommonZoneID) {
 		if flagZoneID <= 0 {
-			return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer."))
+			return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 		}
 		if authzReq.AuthorizationModel == nil {
 			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
@@ -190,9 +190,11 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		output := map[string]any{}
 		output["authorization_check"] = authzResp
 		if ctx.IsVerboseJSONOutput() {
-			if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-				output["details"] = lines
+			details := ctx.DrainVerboseDetails()
+			if details == nil {
+				details = []map[string]any{}
 			}
+			output["details"] = details
 		}
 		printer.PrintlnMap(output)
 	}

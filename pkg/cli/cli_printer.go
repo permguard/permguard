@@ -136,11 +136,43 @@ func (cp *PrinterTerminal) printJSON(output map[string]any) {
 	fmt.Println(string(jsonData))
 }
 
+// printDetails renders a []map[string]any details array per the CLI output contract.
+func (cp *PrinterTerminal) printDetails(details []map[string]any) {
+	for _, item := range details {
+		itemType, _ := item["type"].(string)
+		switch itemType {
+		case "action":
+			msg, _ := item["message"].(string)
+			fmt.Println(msg)
+		case "file":
+			p, _ := item["path"].(string)
+			fmt.Printf("file: %s\n", p)
+		case "network":
+			ep, _ := item["endpoint"].(string)
+			op, _ := item["operation"].(string)
+			fmt.Printf("network: %s [%s]\n", ep, op)
+		case "error":
+			msg, _ := item["message"].(string)
+			cause, _ := item["cause"].(string)
+			if cause != "" {
+				fmt.Printf("error: %s - %s\n", msg, cause)
+			} else {
+				fmt.Printf("error: %s\n", msg)
+			}
+		}
+	}
+}
+
 // printValue prints the value.
 func (cp *PrinterTerminal) printValue(key string, value any, newLine bool) {
 	if value == nil || (reflect.TypeOf(value).Kind() == reflect.String && value.(string) == "") {
 		keyColor := color.New(color.FgHiBlack)
 		keyColor.Println(key)
+		return
+	}
+	// Typed details array — render per CLI output contract, ignore key.
+	if details, ok := value.([]map[string]any); ok {
+		cp.printDetails(details)
 		return
 	}
 	switch v := value.(type) {

@@ -51,16 +51,17 @@ const (
 
 // Manager implements the internal manager to manage the .permguard directory.
 type Manager struct {
-	ctx       *common.CliCommandContext
-	homeDir   string
-	objMar    *objects.ObjectManager
-	langFct   languages.LanguageFactory
-	persMgr   *persistence.Manager
-	rmSrvtMgr *remoteserver.Manager
-	cfgMgr    *config.Manager
-	logsMgr   *logs.Manager
-	rfsMgr    *azrefs.Manager
-	cospMgr   *cosp.Manager
+	ctx            *common.CliCommandContext
+	homeDir        string
+	objMar         *objects.ObjectManager
+	langFct        languages.LanguageFactory
+	persMgr        *persistence.Manager
+	rmSrvtMgr      *remoteserver.Manager
+	cfgMgr         *config.Manager
+	logsMgr        *logs.Manager
+	rfsMgr         *azrefs.Manager
+	cospMgr        *cosp.Manager
+	contextPrinted bool
 }
 
 // NewInternalManager creates a new internal manager.
@@ -148,14 +149,6 @@ func (m *Manager) tryLock() (*flock.Flock, error) {
 		return nil, errors.Join(fmt.Errorf("cli: could not acquire the lock, another process is using it %s", m.lockFile()), err)
 	}
 	return fileLock, nil
-}
-
-// codeFileInfo represents info about the code file.
-func (m *Manager) printFiles(action string, files []string, out common.PrinterOutFunc) {
-	out(nil, "", fmt.Sprintf("	- %s:", action), nil, true)
-	for _, file := range files {
-		out(nil, "", fmt.Sprintf("	  	- '%s'", common.FileText(file)), nil, true)
-	}
 }
 
 // raiseWrongWorkspaceDirError raises an error when the directory is not a workspace directory.

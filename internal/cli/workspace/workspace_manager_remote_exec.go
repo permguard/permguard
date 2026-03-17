@@ -65,7 +65,23 @@ func (m *Manager) execInternalCheckoutLedger(_ bool, ledgerURI string, out commo
 			return fail(nil, err)
 		}
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "checkout", "Retrieving remote ledger information.", nil, true)
+			out(nil, "", "retrieving remote ledger information", nil, true)
+			scheme := remoteInfo.Scheme()
+			if scheme == "" {
+				scheme = "grpc"
+			}
+			out(nil, "", fmt.Sprintf("network: %s://%s:%d [get-ledger]", scheme, remoteInfo.Server(), remoteInfo.PAPPort()), nil, true)
+		} else if m.ctx.IsVerboseJSONOutput() {
+			scheme := remoteInfo.Scheme()
+			if scheme == "" {
+				scheme = "grpc"
+			}
+			m.ctx.AppendVerboseAction("retrieving remote ledger information")
+			m.ctx.AppendVerboseNetwork(
+				ledgerInfo.Remote(),
+				fmt.Sprintf("%s://%s:%d", scheme, remoteInfo.Server(), remoteInfo.PAPPort()),
+				"get-ledger",
+			)
 		}
 		var srvLedger *pap.Ledger
 		srvLedger, err = m.rmSrvtMgr.ServerRemoteLedger(remoteInfo, ledgerInfo)

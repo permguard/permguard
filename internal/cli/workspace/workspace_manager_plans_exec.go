@@ -120,37 +120,47 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 		out(nil, "", "No changes detected during the planning phase. system is up to date.", nil, true)
 	} else {
 		out(nil, "", "Planning process completed successfully.", nil, true)
-		out(nil, "", "The following changes have been identified and are ready to be applied:\n", nil, true)
 		unchanged, created, modified, deleted := 0, 0, 0, 0
 		for _, codeStateObj := range codeStateObjs {
 			if codeStateObj.State == cosp.CodeObjectStateUnchanged {
-				out(nil, "", fmt.Sprintf("	%s %s %s %s", common.UnchangedText("="), common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), common.UnchangedText(codeStateObj.OName)), nil, true)
 				unchangedItems = append(unchangedItems, codeStateObj)
 				unchanged++
 			}
 			if codeStateObj.State == cosp.CodeObjectStateCreate {
-				out(nil, "", fmt.Sprintf("	%s %s %s %s", common.CreateText("+"), common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), common.CreateText(codeStateObj.OName)), nil, true)
 				createdItems = append(createdItems, codeStateObj)
 				created++
 			}
 			if codeStateObj.State == cosp.CodeObjectStateModify {
-				out(nil, "", fmt.Sprintf("	%s %s %s %s", common.ModifyText("~"), common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), common.ModifyText(codeStateObj.OName)), nil, true)
 				modifiedItems = append(modifiedItems, codeStateObj)
 				modified++
 			}
 			if codeStateObj.State == cosp.CodeObjectStateDelete {
-				out(nil, "", fmt.Sprintf("	%s %s %s %s", common.DeleteText("-"), common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), common.DeleteText(codeStateObj.OName)), nil, true)
 				deletedItems = append(deletedItems, codeStateObj)
 				deleted++
 			}
 		}
-		out(nil, "", "", nil, true)
-		unchangedCountText := common.UnchangedText(strconv.Itoa(unchanged))
-		createdCountText := common.CreateText(strconv.Itoa(created))
-		modifiedCountText := common.ModifyText(strconv.Itoa(modified))
-		deletedCountText := common.DeleteText(strconv.Itoa(deleted))
-		out(nil, "", fmt.Sprintf("unchanged %s, created %s, modified %s, deleted %s", unchangedCountText, createdCountText, modifiedCountText, deletedCountText), nil, true)
-		out(nil, "", "", nil, true)
+		if m.ctx.IsTerminalOutput() {
+			for _, codeStateObj := range codeStateObjs {
+				symbol, nameText := "", codeStateObj.OName
+				switch codeStateObj.State {
+				case cosp.CodeObjectStateUnchanged:
+					symbol = common.UnchangedText("=")
+					nameText = common.UnchangedText(codeStateObj.OName)
+				case cosp.CodeObjectStateCreate:
+					symbol = common.CreateText("+")
+					nameText = common.CreateText(codeStateObj.OName)
+				case cosp.CodeObjectStateModify:
+					symbol = common.ModifyText("~")
+					nameText = common.ModifyText(codeStateObj.OName)
+				case cosp.CodeObjectStateDelete:
+					symbol = common.DeleteText("-")
+					nameText = common.DeleteText(codeStateObj.OName)
+				}
+				out(nil, "", fmt.Sprintf("  %s %s %s %s", symbol, common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), nameText), nil, true)
+			}
+		}
+		out(nil, "", fmt.Sprintf("unchanged %s, created %s, modified %s, deleted %s",
+			strconv.Itoa(unchanged), strconv.Itoa(created), strconv.Itoa(modified), strconv.Itoa(deleted)), nil, true)
 		planObjs := append(createdItems, modifiedItems...)
 		planObjs = append(planObjs, unchangedItems...)
 		planObjs = append(planObjs, deletedItems...)

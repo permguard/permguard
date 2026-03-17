@@ -30,18 +30,20 @@ import (
 	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
-// ExecPrintContext prints the context.
+// ExecPrintContext prints the context. It is idempotent: subsequent calls are no-ops.
 func (m *Manager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
+	if m.contextPrinted {
+		return output
+	}
+	m.contextPrinted = true
+	absRoot, _ := filepath.Abs(m.homeDir)
+	absPermguard := filepath.Join(absRoot, hiddenDir)
 	if m.ctx.IsVerboseTerminalOutput() {
-		context := m.persMgr.Context()
-		for key, value := range context {
-			out(nil, key, fmt.Sprintf("'%s'.", common.FileText(value)), nil, true)
-		}
+		out(nil, "", fmt.Sprintf("workspace at %s", absRoot), nil, true)
+		out(nil, "", fmt.Sprintf("file: %s", absPermguard), nil, true)
 	} else if m.ctx.IsVerboseJSONOutput() {
-		context := m.persMgr.Context()
-		for key, value := range context {
-			m.ctx.AppendVerboseLine(fmt.Sprintf("%s '%s'", key, value))
-		}
+		m.ctx.AppendVerboseAction(fmt.Sprintf("workspace at %s", absRoot))
+		m.ctx.AppendVerboseFile(absPermguard)
 	}
 	return output
 }

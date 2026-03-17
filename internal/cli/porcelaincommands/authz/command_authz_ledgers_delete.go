@@ -76,9 +76,11 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		output["ledgers"] = []*pap.Ledger{ledger}
 	}
 	if ctx.IsVerboseJSONOutput() {
-		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-			output["details"] = lines
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
 		}
+		output["details"] = details
 	}
 	printer.PrintlnMap(output)
 	return nil

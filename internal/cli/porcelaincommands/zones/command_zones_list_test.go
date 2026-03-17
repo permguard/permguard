@@ -134,6 +134,7 @@ func TestCliZonesListWithSuccess(t *testing.T) {
 			}
 		} else {
 			outputPrinter["zones"] = zones
+			outputPrinter["details"] = []map[string]any{}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

@@ -142,6 +142,7 @@ func TestCliLedgersListWithSuccess(t *testing.T) {
 			}
 		} else {
 			outputPrinter["ledgers"] = ledgers
+			outputPrinter["details"] = []map[string]any{}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

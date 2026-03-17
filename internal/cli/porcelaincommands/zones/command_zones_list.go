@@ -77,9 +77,11 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 		output["zones"] = zones
 	}
 	if ctx.IsVerboseJSONOutput() {
-		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-			output["details"] = lines
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
 		}
+		output["details"] = details
 	}
 	printer.PrintlnMap(output)
 	return nil
