@@ -36,9 +36,6 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	if len(args) < 1 {
-		return failWithDetails(ctx, printer, errors.New("cli: failed to checkout the workspace\na ledger URI is required (e.g., origin/<zone-id>/<ledger-name>)"))
-	}
 	langFct, err := deps.LanguageFactory()
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
@@ -46,6 +43,10 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 	wksMgr, err := workspace.NewInternalManager(ctx, langFct)
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
+	}
+	wksMgr.ExecPrintContext(nil, outFunc(ctx, printer))
+	if len(args) < 1 {
+		return failWithDetails(ctx, printer, errors.New("cli: failed to checkout the workspace\na ledger URI is required (e.g., origin/<zone-id>/<ledger-name>)"))
 	}
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))

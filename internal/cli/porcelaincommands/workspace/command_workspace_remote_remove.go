@@ -36,9 +36,6 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.DependenciesPro
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	if len(args) < 1 {
-		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to remove the remote"), err))
-	}
 	langAbs, err := deps.LanguageFactory()
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
@@ -46,6 +43,10 @@ func runECommandForRemoteRemoveWorkspace(args []string, deps cli.DependenciesPro
 	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
+	}
+	wksMgr.ExecPrintContext(nil, outFunc(ctx, printer))
+	if len(args) < 1 {
+		return failWithDetails(ctx, printer, errors.New("cli: failed to remove the remote\none argument is required: <remote-name>"))
 	}
 	remote := args[0]
 	output, err := wksMgr.ExecRemoveRemote(remote, outFunc(ctx, printer))

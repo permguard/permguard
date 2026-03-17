@@ -33,13 +33,15 @@ import (
 	"github.com/permguard/permguard/pkg/transport/models/zap"
 )
 
-// failWithDetails drains any buffered verbose lines and prints the error with details.
+// failWithDetails drains any buffered verbose details and prints the error with details.
 func failWithDetails(ctx *common.CliCommandContext, printer cli.Printer, err error) error {
 	output := map[string]any{}
 	if ctx.IsVerboseJSONOutput() {
-		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-			output["details"] = lines
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
 		}
+		output["details"] = details
 	}
 	printer.ErrorWithOutput(output, err)
 	return common.ErrCommandSilent
@@ -108,9 +110,11 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		output["zones"] = []*zap.Zone{zone}
 	}
 	if ctx.IsVerboseJSONOutput() {
-		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-			output["details"] = lines
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
 		}
+		output["details"] = details
 	}
 	printer.PrintlnMap(output)
 	return nil

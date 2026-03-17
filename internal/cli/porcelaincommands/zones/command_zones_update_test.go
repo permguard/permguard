@@ -124,6 +124,7 @@ func TestCliZonesUpdateWithSuccess(t *testing.T) {
 			outputPrinter[zoneID] = zone.Name
 		} else {
 			outputPrinter["zones"] = []*zap.Zone{zone}
+			outputPrinter["details"] = []map[string]any{}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

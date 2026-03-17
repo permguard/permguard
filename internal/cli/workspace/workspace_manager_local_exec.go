@@ -60,15 +60,14 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *Manager, out common.P
 	if m.ctx.IsJSONOutput() && len(errorsMap) == 0 {
 		output["code_files"] = []map[string]any{}
 		for _, codeFile := range codeFiles {
-			output["code_files"] = append(output["code_files"].([]map[string]any), map[string]any{
-				"path":       codeFile.Path,
-				"partition":  codeFile.Partition,
-				"section":    codeFile.Section + 1,
-				"oid":        codeFile.OID,
-				"oname":      codeFile.OName,
-				"has_errors": codeFile.HasErrors,
-				"error":      codeFile.Error,
-			})
+			item := map[string]any{
+				"path":      codeFile.Path,
+				"partition": codeFile.Partition,
+				"section":   codeFile.Section + 1,
+				"oid":       codeFile.OID,
+				"oname":     codeFile.OName,
+			}
+			output["code_files"] = append(output["code_files"].([]map[string]any), item)
 		}
 	}
 	if len(errorsMap) > 0 {
@@ -137,25 +136,34 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 	}
 	var output map[string]any
 	if m.ctx.IsVerboseTerminalOutput() {
-		selectedCount := len(selectedFiles)
-		ignoredCount := len(ignoredFiles)
-		totalCount := selectedCount + ignoredCount
-		fileWord := func(count int) string {
-			if count == 1 {
-				return "item"
+		selectedPaths := cosp.ConvertCodeFilesToPath(selectedFiles)
+		ignoredPaths := cosp.ConvertCodeFilesToPath(ignoredFiles)
+		if len(selectedPaths) > 0 {
+			out(nil, "", "scanning source files", nil, true)
+			for _, p := range selectedPaths {
+				out(nil, "", fmt.Sprintf("file: %s", p), nil, true)
 			}
-			return "items"
 		}
-		out(nil, "refresh", fmt.Sprintf("Scanned %s %s, selected %s %s, and ignored %s %s.",
-			common.NumberText(totalCount), fileWord(totalCount), common.NumberText(selectedCount), fileWord(selectedCount), common.NumberText(ignoredCount), fileWord(ignoredCount)), nil, true)
-		out(nil, "", "", nil, true)
-		m.printFiles("excluded_files", cosp.ConvertCodeFilesToPath(ignoredFiles), out)
-		m.printFiles("processed_files", cosp.ConvertCodeFilesToPath(selectedFiles), out)
-		out(nil, "", "", nil, true)
+		if len(ignoredPaths) > 0 {
+			out(nil, "", "ignoring files", nil, true)
+			for _, p := range ignoredPaths {
+				out(nil, "", fmt.Sprintf("file: %s", p), nil, true)
+			}
+		}
 	} else if m.ctx.IsVerboseJSONOutput() {
-		output = map[string]any{
-			"excluded_files":  cosp.ConvertCodeFilesToPath(ignoredFiles),
-			"processed_files": cosp.ConvertCodeFilesToPath(selectedFiles),
+		selectedPaths := cosp.ConvertCodeFilesToPath(selectedFiles)
+		ignoredPaths := cosp.ConvertCodeFilesToPath(ignoredFiles)
+		if len(selectedPaths) > 0 {
+			m.ctx.AppendVerboseAction("scanning source files")
+			for _, p := range selectedPaths {
+				m.ctx.AppendVerboseFile(p)
+			}
+		}
+		if len(ignoredPaths) > 0 {
+			m.ctx.AppendVerboseAction("ignoring files")
+			for _, p := range ignoredPaths {
+				m.ctx.AppendVerboseFile(p)
+			}
 		}
 	}
 	if m.ctx.IsVerboseTerminalOutput() {

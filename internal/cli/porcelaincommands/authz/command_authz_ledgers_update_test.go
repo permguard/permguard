@@ -125,6 +125,7 @@ func TestCliLedgersUpdateWithSuccess(t *testing.T) {
 			outputPrinter[ledgerID] = ledger.Name
 		} else {
 			outputPrinter["ledgers"] = []*pap.Ledger{ledger}
+			outputPrinter["details"] = []map[string]any{}
 		}
 		printerMock.On("PrintMap", outputPrinter).Return()
 		printerMock.On("PrintlnMap", outputPrinter).Return()

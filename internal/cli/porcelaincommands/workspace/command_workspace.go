@@ -38,33 +38,31 @@ var validateArg = func(_ *cobra.Command, args []string) error {
 }
 
 // finalizeOutput injects verbose details into the output map for JSON verbose mode before printing.
+// In verbose JSON mode, "details" is always present (at minimum an empty array).
 func finalizeOutput(ctx *common.CliCommandContext, output map[string]any) map[string]any {
 	if output == nil {
 		output = map[string]any{}
 	}
 	if ctx.IsVerboseJSONOutput() {
-		lines := ctx.DrainVerboseLines()
-		if len(lines) > 0 {
-			output["details"] = lines
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
 		}
+		output["details"] = details
 	}
 	return output
 }
 
-// finalizeErrorOutput wraps workspace output and verbose context lines into a nested "details" map for error responses.
-// This ensures error JSON has only "error", "causes", and "details" at the top level.
-func finalizeErrorOutput(ctx *common.CliCommandContext, output map[string]any) map[string]any {
-	details := make(map[string]any)
-	for k, v := range output {
-		details[k] = v
-	}
-	if ctx.IsVerboseJSONOutput() {
-		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
-			details["context"] = lines
-		}
-	}
+// finalizeErrorOutput returns an error-output map with a typed "details" array for verbose JSON mode.
+// Error JSON contains only "error", "causes", and (when verbose) "details".
+// In verbose JSON mode "details" is always present (at minimum an empty array).
+func finalizeErrorOutput(ctx *common.CliCommandContext, _ map[string]any) map[string]any {
 	result := map[string]any{}
-	if len(details) > 0 {
+	if ctx.IsVerboseJSONOutput() {
+		details := ctx.DrainVerboseDetails()
+		if details == nil {
+			details = []map[string]any{}
+		}
 		result["details"] = details
 	}
 	return result
@@ -79,6 +77,15 @@ func failWithDetails(ctx *common.CliCommandContext, printer cli.Printer, err err
 // outFunc is the function to output the result.
 var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.PrinterOutFunc {
 	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
+		// In JSON verbose mode, nil-input calls are streaming milestone messages.
+		// Buffer them as typed action objects into verboseDetails.
+		if ctx.IsVerboseJSONOutput() && output == nil {
+			if strVal, ok := value.(string); ok && strVal != "" {
+				msg := strings.ToLower(strings.TrimRight(strings.TrimSpace(strVal), "."))
+				ctx.AppendVerboseAction(msg)
+			}
+			return nil
+		}
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
 			if key == "" {

@@ -53,34 +53,50 @@ func CreateContextAndPrinter(deps cli.DependenciesProvider, cmd *cobra.Command, 
 
 // CliCommandContext is the context for the Cli.
 type CliCommandContext struct {
-	v            *viper.Viper
-	workDir      string
-	verbose      bool
-	output       string
-	verboseLines []string
+	v              *viper.Viper
+	workDir        string
+	verbose        bool
+	output         string
+	verboseDetails []map[string]any
 }
 
-// AppendVerboseLine appends a line to the verbose buffer (used in JSON verbose mode).
-func (c *CliCommandContext) AppendVerboseLine(line string) {
-	c.verboseLines = append(c.verboseLines, line)
+// AppendVerboseDetail appends a typed detail object to the verbose buffer.
+func (c *CliCommandContext) AppendVerboseDetail(detail map[string]any) {
+	c.verboseDetails = append(c.verboseDetails, detail)
 }
 
-// DrainVerboseLines returns and clears the verbose buffer.
-func (c *CliCommandContext) DrainVerboseLines() []string {
-	lines := c.verboseLines
-	c.verboseLines = nil
-	return lines
+// AppendVerboseAction appends an action detail to the verbose buffer.
+func (c *CliCommandContext) AppendVerboseAction(message string) {
+	c.AppendVerboseDetail(map[string]any{"type": "action", "message": message})
+}
+
+// AppendVerboseFile appends a file detail to the verbose buffer.
+func (c *CliCommandContext) AppendVerboseFile(path string) {
+	c.AppendVerboseDetail(map[string]any{"type": "file", "path": path})
+}
+
+// AppendVerboseNetwork appends a network detail to the verbose buffer.
+func (c *CliCommandContext) AppendVerboseNetwork(remote, endpoint, operation string) {
+	d := map[string]any{"type": "network", "remote": remote, "endpoint": endpoint, "operation": operation}
+	c.AppendVerboseDetail(d)
+}
+
+// DrainVerboseDetails returns and clears the verbose details buffer.
+func (c *CliCommandContext) DrainVerboseDetails() []map[string]any {
+	details := c.verboseDetails
+	c.verboseDetails = nil
+	return details
 }
 
 // VerboseCollector returns a collect function for gRPC verbose interceptors.
-// In terminal+verbose mode it prints immediately; in JSON+verbose mode it buffers.
+// In terminal+verbose mode it prints immediately; in JSON+verbose mode it buffers as action objects.
 // Returns nil when verbose is disabled.
 func (c *CliCommandContext) VerboseCollector() func(string) {
 	if c.IsVerboseTerminalOutput() {
 		return func(line string) { color.HiBlack("[verbose] %s\n", line) }
 	}
 	if c.IsVerboseJSONOutput() {
-		return c.AppendVerboseLine
+		return c.AppendVerboseAction
 	}
 	return nil
 }

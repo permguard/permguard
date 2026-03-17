@@ -50,9 +50,6 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	if len(args) < 2 {
-		return failWithDetails(ctx, printer, errors.New("cli: failed to add the remote\ntwo arguments are required: <remote-name> <server-address>"))
-	}
 	langAbs, err := deps.LanguageFactory()
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
@@ -60,6 +57,10 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
 		return failWithDetails(ctx, printer, err)
+	}
+	wksMgr.ExecPrintContext(nil, outFunc(ctx, printer))
+	if len(args) < 2 {
+		return failWithDetails(ctx, printer, errors.New("cli: failed to add the remote\ntwo arguments are required: <remote-name> <server-address>"))
 	}
 	remote := args[0]
 	rawServer := args[1]
