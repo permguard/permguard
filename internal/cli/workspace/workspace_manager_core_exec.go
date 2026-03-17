@@ -32,12 +32,16 @@ import (
 
 // ExecPrintContext prints the context.
 func (m *Manager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
-	if !m.ctx.IsVerboseTerminalOutput() {
-		return output
-	}
-	context := m.persMgr.Context()
-	for key, value := range context {
-		out(nil, "context", fmt.Sprintf("%s '%s'.", key, common.FileText(value)), nil, true)
+	if m.ctx.IsVerboseTerminalOutput() {
+		context := m.persMgr.Context()
+		for key, value := range context {
+			out(nil, key, fmt.Sprintf("'%s'.", common.FileText(value)), nil, true)
+		}
+	} else if m.ctx.IsVerboseJSONOutput() {
+		context := m.persMgr.Context()
+		for key, value := range context {
+			m.ctx.AppendVerboseLine(fmt.Sprintf("%s '%s'", key, value))
+		}
 	}
 	return output
 }

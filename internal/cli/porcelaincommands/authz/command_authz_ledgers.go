@@ -41,6 +41,18 @@ const (
 	flagLedgerKind = "kind"
 )
 
+// failWithDetails drains any buffered verbose lines and prints the error with details.
+func failWithDetails(ctx *common.CliCommandContext, printer cli.Printer, err error) error {
+	output := map[string]any{}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
+	}
+	printer.ErrorWithOutput(output, err)
+	return common.ErrCommandSilent
+}
+
 // runECommandForCreateLedger runs the command for creating a ledger.
 func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Command, v *viper.Viper, flagPrefix string, isCreate bool) error {
 	opGetErroMessage := func(op bool) string {
@@ -56,52 +68,44 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		printer.Error(errors.New("cli: --zone-id is required"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id is required"))
 	}
 	if zoneID < 0 {
-		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 	}
 	ledger := &pap.Ledger{ZoneID: zoneID}
 	if isCreate {
 		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 		if err := validators.ValidateName("ledger", name); err != nil {
-			printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
-			return common.ErrCommandSilent
+			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid ledger name"), err))
 		}
 		ledger.Name = name
 		ledger, err = client.CreateLedger(zoneID, "policy", name)
 	} else {
 		ledgerID := v.GetString(options.FlagName(flagPrefix, flagLedgerID))
 		if ledgerID == "" {
-			printer.Error(errors.New("cli: --ledger-id is required"))
-			return common.ErrCommandSilent
+			return failWithDetails(ctx, printer, errors.New("cli: --ledger-id is required"))
 		}
 		name := v.GetString(options.FlagName(flagPrefix, common.FlagCommonName))
 		if err := validators.ValidateName("ledger", name); err != nil {
-			printer.Error(errors.Join(errors.New("cli: invalid ledger name"), err))
-			return common.ErrCommandSilent
+			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid ledger name"), err))
 		}
 		ledger.LedgerID = ledgerID
 		ledger.Name = name
 		ledger, err = client.UpdateLedger(ledger)
 	}
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -110,6 +114,11 @@ func runECommandForUpsertLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
 		output["ledgers"] = []*pap.Ledger{ledger}
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
 	}
 	printer.PrintlnMap(output)
 	return nil

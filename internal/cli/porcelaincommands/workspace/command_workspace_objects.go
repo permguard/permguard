@@ -57,21 +57,11 @@ func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 
 	includeStorage := v.GetBool(options.FlagName(commandNameForWorkspacesObjects, commandNameForWorkspacesObjectsListObjects))
@@ -92,11 +82,11 @@ func runECommandForObjectsWorkspace(deps cli.DependenciesProvider, cmd *cobra.Co
 
 	output, err := wksMgr.ExecObjects(includeStorage, includeCode, filterCommits, filterTrees, filterBlob, outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list objects"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to list objects"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

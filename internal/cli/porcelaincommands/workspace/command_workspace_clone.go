@@ -84,8 +84,7 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 		return common.ErrCommandSilent
 	}
 	fail := func(err error) error {
-		printer.Error(errors.Join(errors.New("cli: failed to clone the workspace"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to clone the workspace"), err))
 	}
 
 	if validationErr != nil {
@@ -105,10 +104,11 @@ func runECommandForCloneWorkspace(args []string, deps cli.DependenciesProvider, 
 	flagScheme := v.GetString(options.FlagName(commandNameForWorkspacesClone, flagScheme))
 	output, err := wksMgr.ExecCloneLedger(ledgerURI, zapPort, papPort, flagScheme, outFunc(ctx, printer))
 	if err != nil {
-		return fail(err)
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to clone the workspace"), err))
+		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

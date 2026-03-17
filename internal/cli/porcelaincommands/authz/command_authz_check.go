@@ -48,10 +48,6 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
-	handleInputError := func(_ *common.CliCommandContext, printer cli.Printer, err error, message string) error {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", message), err))
-		return common.ErrCommandSilent
-	}
 	var input *os.File
 	if len(args) > 0 {
 		var jsonPath string
@@ -62,7 +58,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		}
 		input, err = os.Open(jsonPath)
 		if err != nil {
-			return handleInputError(ctx, printer, err, "invalid input for the authz check.")
+			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err))
 		}
 		defer func() { _ = input.Close() }()
 	} else {
@@ -75,13 +71,13 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		builder.WriteString(scanner.Text())
 	}
 	if err2 := scanner.Err(); err2 != nil {
-		return handleInputError(ctx, printer, err2, "invalid input for the authz check.")
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err2))
 	}
 	jsonString := builder.String()
 	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
-		return handleInputError(ctx, printer, err, "invalid input for the authz check.")
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check."), err))
 	}
 
 	// Apply --current-workspace override (medium priority).
@@ -110,7 +106,7 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	flagZoneID := v.GetInt64(options.FlagName(commandNameForCheck, common.FlagCommonZoneID))
 	if cmd.Flags().Changed(common.FlagCommonZoneID) {
 		if flagZoneID <= 0 {
-			return handleInputError(ctx, printer, nil, "--zone-id must be a positive integer.")
+			return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer."))
 		}
 		if authzReq.AuthorizationModel == nil {
 			authzReq.AuthorizationModel = &pdp.AuthorizationModelRequest{}
@@ -135,20 +131,17 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 
 	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPDPClient(pdpEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcPDPClient(pdpEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 	}
 	defer func() { _ = client.Close() }()
 	authzResp, err := client.AuthorizationCheck(&authzReq)
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: storage: failed to check the authorization request"), err))
 	}
 	if ctx.IsTerminalOutput() {
 		decision := authzResp.Decision
@@ -196,6 +189,11 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	} else if ctx.IsJSONOutput() {
 		output := map[string]any{}
 		output["authorization_check"] = authzResp
+		if ctx.IsVerboseJSONOutput() {
+			if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+				output["details"] = lines
+			}
+		}
 		printer.PrintlnMap(output)
 	}
 	return nil

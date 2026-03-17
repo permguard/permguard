@@ -34,7 +34,7 @@ import (
 type GrpcPDPClient struct {
 	endpoint        string
 	displayEndpoint string
-	verbose         bool
+	collect         func(string)
 	creds           credentials.TransportCredentials
 	spiffeCloser    io.Closer
 	mu              sync.Mutex
@@ -43,7 +43,7 @@ type GrpcPDPClient struct {
 }
 
 // NewGrpcPDPClient creates a new gRPC client for the PDP service.
-func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (*GrpcPDPClient, error) {
+func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, collect func(string)) (*GrpcPDPClient, error) {
 	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func NewGrpcPDPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose boo
 	return &GrpcPDPClient{
 		endpoint:        hostPort,
 		displayEndpoint: endpoint,
-		verbose:         verbose,
+		collect:         collect,
 		creds:           creds,
 		spiffeCloser:    spiffeCloser,
 	}, nil
@@ -92,8 +92,8 @@ func (c *GrpcPDPClient) getClient() (azpdpv1.V1PDPServiceClient, error) {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 	conn, err := grpc.NewClient(c.endpoint, dialOpt,
-		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.verbose, c.displayEndpoint), tlsHintUnaryInterceptor()),
-		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.verbose, c.displayEndpoint), tlsHintStreamInterceptor()),
+		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.collect, c.displayEndpoint), tlsHintUnaryInterceptor()),
+		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.collect, c.displayEndpoint), tlsHintStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, err

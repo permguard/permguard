@@ -45,29 +45,24 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the zone"), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the zone"), err))
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesDelete, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		printer.Error(errors.New("cli: --zone-id is required"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id is required"))
 	}
 	if zoneID < 0 {
-		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 	}
 	zone, err := client.DeleteZone(zoneID)
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the zone"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the zone"), err))
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -75,6 +70,11 @@ func runECommandForDeleteZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		output[zoneID] = zone.Name
 	} else if ctx.IsJSONOutput() {
 		output["zones"] = []*zap.Zone{zone}
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
 	}
 	printer.PrintlnMap(output)
 	return nil

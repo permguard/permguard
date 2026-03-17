@@ -34,7 +34,7 @@ import (
 type GrpcZAPClient struct {
 	endpoint        string
 	displayEndpoint string
-	verbose         bool
+	collect         func(string)
 	creds           credentials.TransportCredentials
 	spiffeCloser    io.Closer
 	mu              sync.Mutex
@@ -43,7 +43,7 @@ type GrpcZAPClient struct {
 }
 
 // NewGrpcZAPClient creates a new gRPC client for the ZAP service.
-func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (*GrpcZAPClient, error) {
+func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, collect func(string)) (*GrpcZAPClient, error) {
 	hostPort, useTLS, err := parseGrpcEndpoint(endpoint)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func NewGrpcZAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose boo
 	return &GrpcZAPClient{
 		endpoint:        hostPort,
 		displayEndpoint: endpoint,
-		verbose:         verbose,
+		collect:         collect,
 		creds:           creds,
 		spiffeCloser:    spiffeCloser,
 	}, nil
@@ -92,8 +92,8 @@ func (c *GrpcZAPClient) getClient() (azzapv1.V1ZAPServiceClient, error) {
 		dialOpt = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 	conn, err := grpc.NewClient(c.endpoint, dialOpt,
-		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.verbose, c.displayEndpoint), tlsHintUnaryInterceptor()),
-		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.verbose, c.displayEndpoint), tlsHintStreamInterceptor()),
+		grpc.WithChainUnaryInterceptor(verboseLoggingUnaryInterceptor(c.collect, c.displayEndpoint), tlsHintUnaryInterceptor()),
+		grpc.WithChainStreamInterceptor(verboseLoggingStreamInterceptor(c.collect, c.displayEndpoint), tlsHintStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, err

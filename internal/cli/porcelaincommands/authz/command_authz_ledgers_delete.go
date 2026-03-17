@@ -44,34 +44,28 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the ledger"), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the ledger"), err))
 	}
 	defer func() { _ = client.Close() }()
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		printer.Error(errors.New("cli: --zone-id is required"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id is required"))
 	}
 	if zoneID < 0 {
-		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersDelete, flagLedgerID))
 	if ledgerID == "" {
-		printer.Error(errors.New("cli: --ledger-id is required"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --ledger-id is required"))
 	}
 	ledger, err := client.DeleteLedger(zoneID, ledgerID)
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to delete the ledger"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to delete the ledger"), err))
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -80,6 +74,11 @@ func runECommandForDeleteLedger(deps cli.DependenciesProvider, cmd *cobra.Comman
 		output[ledgerID] = ledgerName
 	} else if ctx.IsJSONOutput() {
 		output["ledgers"] = []*pap.Ledger{ledger}
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
 	}
 	printer.PrintlnMap(output)
 	return nil

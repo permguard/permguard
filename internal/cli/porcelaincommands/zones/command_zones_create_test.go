@@ -73,16 +73,16 @@ func TestCliZonesCreateWithError(t *testing.T) {
 		printerMock := mocks.NewPrinterMock()
 		printerMock.On("Println", mock.Anything).Return()
 		printerMock.On("PrintlnMap", mock.Anything).Return()
-		printerMock.On("Error", mock.Anything).Return()
+		printerMock.On("ErrorWithOutput", mock.Anything, mock.Anything).Return()
 
 		depsMocks.On("CreatePrinter", mock.Anything, mock.Anything).Return(printerMock, nil)
 		depsMocks.On("CreateGrpcZAPClient", mock.Anything, mock.Anything, mock.Anything).Return(zapClient, nil)
 
 		testutils.BaseCommandWithParamsTest(t, v, cmd, args, true, outputs)
 		if test.HasError {
-			printerMock.AssertCalled(t, "Error", mock.Anything)
+			printerMock.AssertCalled(t, "ErrorWithOutput", mock.Anything, mock.Anything)
 		} else {
-			printerMock.AssertNotCalled(t, "Error", mock.Anything)
+			printerMock.AssertNotCalled(t, "ErrorWithOutput", mock.Anything, mock.Anything)
 		}
 	}
 }
