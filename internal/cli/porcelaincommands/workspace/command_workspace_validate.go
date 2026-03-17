@@ -38,21 +38,19 @@ func runECommandForValidateWorkspace(deps cli.DependenciesProvider, cmd *cobra.C
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		printer.Error(err)
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		printer.Error(err)
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	output, err := wksMgr.ExecValidate(outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to validate the workspace"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to validate the workspace"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

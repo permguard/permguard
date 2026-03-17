@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -52,10 +53,36 @@ func CreateContextAndPrinter(deps cli.DependenciesProvider, cmd *cobra.Command, 
 
 // CliCommandContext is the context for the Cli.
 type CliCommandContext struct {
-	v       *viper.Viper
-	workDir string
-	verbose bool
-	output  string
+	v            *viper.Viper
+	workDir      string
+	verbose      bool
+	output       string
+	verboseLines []string
+}
+
+// AppendVerboseLine appends a line to the verbose buffer (used in JSON verbose mode).
+func (c *CliCommandContext) AppendVerboseLine(line string) {
+	c.verboseLines = append(c.verboseLines, line)
+}
+
+// DrainVerboseLines returns and clears the verbose buffer.
+func (c *CliCommandContext) DrainVerboseLines() []string {
+	lines := c.verboseLines
+	c.verboseLines = nil
+	return lines
+}
+
+// VerboseCollector returns a collect function for gRPC verbose interceptors.
+// In terminal+verbose mode it prints immediately; in JSON+verbose mode it buffers.
+// Returns nil when verbose is disabled.
+func (c *CliCommandContext) VerboseCollector() func(string) {
+	if c.IsVerboseTerminalOutput() {
+		return func(line string) { color.HiBlack("[verbose] %s\n", line) }
+	}
+	if c.IsVerboseJSONOutput() {
+		return c.AppendVerboseLine
+	}
+	return nil
 }
 
 // newCliContext creates a new CliContext.

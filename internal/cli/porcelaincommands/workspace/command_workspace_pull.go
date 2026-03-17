@@ -38,29 +38,19 @@ func runECommandForPullWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	output, err := wksMgr.ExecPull(outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to execute the pull"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to execute the pull"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

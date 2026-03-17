@@ -38,29 +38,19 @@ func runECommandForApplyWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comm
 	}
 	absLangFact, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, absLangFact)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	output, err := wksMgr.ExecApply(outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to apply workspace changes"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to apply workspace changes"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

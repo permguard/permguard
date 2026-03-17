@@ -44,14 +44,12 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list zones"), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list zones"), err))
 	}
 	defer func() { _ = client.Close() }()
 
@@ -59,18 +57,15 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID))
 	if cmd.Flags().Changed(common.FlagCommonZoneID) && zoneID <= 0 {
-		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 	}
 
 	zones, err := client.FetchZonesBy(page, pageSize, zoneID, "")
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list zones"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list zones"), err))
 	}
 	if cmd.Flags().Changed(common.FlagCommonZoneID) && zoneID > 0 && len(zones) == 0 {
-		printer.Error(fmt.Errorf("cli: zone %d not found", zoneID))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, fmt.Errorf("cli: zone %d not found", zoneID))
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -80,6 +75,11 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 		}
 	} else if ctx.IsJSONOutput() {
 		output["zones"] = zones
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
 	}
 	printer.PrintlnMap(output)
 	return nil

@@ -37,11 +37,53 @@ var validateArg = func(_ *cobra.Command, args []string) error {
 	return nil
 }
 
+// finalizeOutput injects verbose details into the output map for JSON verbose mode before printing.
+func finalizeOutput(ctx *common.CliCommandContext, output map[string]any) map[string]any {
+	if output == nil {
+		output = map[string]any{}
+	}
+	if ctx.IsVerboseJSONOutput() {
+		lines := ctx.DrainVerboseLines()
+		if len(lines) > 0 {
+			output["details"] = lines
+		}
+	}
+	return output
+}
+
+// finalizeErrorOutput wraps workspace output and verbose context lines into a nested "details" map for error responses.
+// This ensures error JSON has only "error", "causes", and "details" at the top level.
+func finalizeErrorOutput(ctx *common.CliCommandContext, output map[string]any) map[string]any {
+	details := make(map[string]any)
+	for k, v := range output {
+		details[k] = v
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			details["context"] = lines
+		}
+	}
+	result := map[string]any{}
+	if len(details) > 0 {
+		result["details"] = details
+	}
+	return result
+}
+
+// failWithDetails prints an error together with any buffered verbose details and returns ErrCommandSilent.
+func failWithDetails(ctx *common.CliCommandContext, printer cli.Printer, err error) error {
+	printer.ErrorWithOutput(finalizeErrorOutput(ctx, nil), err)
+	return common.ErrCommandSilent
+}
+
 // outFunc is the function to output the result.
 var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.PrinterOutFunc {
 	return func(output map[string]any, key string, value any, err error, newLine bool) map[string]any {
 		if ctx.IsJSONOutput() {
 			key = strings.ReplaceAll(key, "-", "_")
+			if key == "" {
+				key = "message"
+			}
 		}
 		if output == nil {
 			output = make(map[string]any)

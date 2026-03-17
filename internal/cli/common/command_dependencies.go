@@ -36,18 +36,18 @@ func (c *cliDependencies) CreatePrinter(verbose bool, output string) (cli.Printe
 }
 
 // CreateGrpcZAPClient creates a new gRPC client for the ZAP service.
-func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (clients.GrpcZAPClient, error) {
-	return azclients.NewGrpcZAPClient(zapEndpoint, tlsCfg, verbose)
+func (c *cliDependencies) CreateGrpcZAPClient(zapEndpoint string, tlsCfg *grpctls.ClientConfig, collect func(string)) (clients.GrpcZAPClient, error) {
+	return azclients.NewGrpcZAPClient(zapEndpoint, tlsCfg, collect)
 }
 
 // CreateGrpcPAPClient creates a new gRPC client for the PAP service.
-func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (clients.GrpcPAPClient, error) {
-	return azclients.NewGrpcPAPClient(papEndpoint, tlsCfg, verbose)
+func (c *cliDependencies) CreateGrpcPAPClient(papEndpoint string, tlsCfg *grpctls.ClientConfig, collect func(string)) (clients.GrpcPAPClient, error) {
+	return azclients.NewGrpcPAPClient(papEndpoint, tlsCfg, collect)
 }
 
 // CreateGrpcPDPClient creates a new gRPC client for the PDP service.
-func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string, tlsCfg *grpctls.ClientConfig, verbose bool) (clients.GrpcPDPClient, error) {
-	return azclients.NewGrpcPDPClient(pdpEndpoint, tlsCfg, verbose)
+func (c *cliDependencies) CreateGrpcPDPClient(pdpEndpoint string, tlsCfg *grpctls.ClientConfig, collect func(string)) (clients.GrpcPDPClient, error) {
+	return azclients.NewGrpcPDPClient(pdpEndpoint, tlsCfg, collect)
 }
 
 // LanguageFactory creates a new gRPC client for the PAP service.

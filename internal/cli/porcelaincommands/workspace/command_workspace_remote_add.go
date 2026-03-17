@@ -51,26 +51,15 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 		return common.ErrCommandSilent
 	}
 	if len(args) < 2 {
-		printer.Error(errors.New("cli: failed to add the remote\ntwo arguments are required: <remote-name> <server-address>"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: failed to add the remote\ntwo arguments are required: <remote-name> <server-address>"))
 	}
 	langAbs, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, langAbs)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	remote := args[0]
 	rawServer := args[1]
@@ -81,11 +70,11 @@ func runECommandForRemoteAddWorkspace(args []string, deps cli.DependenciesProvid
 	scheme := azwkscommon.ResolveScheme(serverScheme, flagScheme)
 	output, err := wksMgr.ExecAddRemote(remote, server, zapPort, papPort, scheme, outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to add the remote"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to add the remote"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

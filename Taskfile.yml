@@ -331,8 +331,9 @@ tasks:
 
   cli:
     desc: Start CLI server
+    dir: '{{.USER_WORKING_DIR}}'
     cmds:
-      - go run cmd/cli/main.go {{.CLI_ARGS}}
+      - go run {{.TASKFILE_DIR}}/cmd/cli/main.go {{.CLI_ARGS}}
     silent: false
 
   allinone:

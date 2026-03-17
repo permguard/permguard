@@ -37,35 +37,24 @@ func runECommandForCheckoutWorkspace(args []string, deps cli.DependenciesProvide
 		return common.ErrCommandSilent
 	}
 	if len(args) < 1 {
-		printer.Error(errors.New("cli: failed to checkout the workspace\na ledger URI is required (e.g., origin/<zone-id>/<ledger-name>)"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: failed to checkout the workspace\na ledger URI is required (e.g., origin/<zone-id>/<ledger-name>)"))
 	}
 	langFct, err := deps.LanguageFactory()
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	wksMgr, err := workspace.NewInternalManager(ctx, langFct)
 	if err != nil {
-		if ctx.IsJSONOutput() {
-			printer.Error(err)
-		} else {
-			color.Red(fmt.Sprintf("%s", err))
-		}
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, err)
 	}
 	ledger := args[0]
 	output, err := wksMgr.ExecCheckoutLedger(ledger, outFunc(ctx, printer))
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to checkout the workspace"), err))
+		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to checkout the workspace"), err))
 		return common.ErrCommandSilent
 	}
 	if ctx.IsJSONOutput() {
-		printer.PrintlnMap(output)
+		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
 	return nil
 }

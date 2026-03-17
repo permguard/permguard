@@ -43,53 +43,44 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	}
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
 	tlsCfg := ctx.TLSClientConfig()
-	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.IsVerbose())
+	client, err := deps.CreateGrpcPAPClient(papEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
 	defer func() { _ = client.Close() }()
 	page := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize))
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
-		printer.Error(errors.New("cli: --zone-id is required"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id is required"))
 	}
 	if zoneID < 0 {
-		printer.Error(errors.New("cli: --zone-id must be a positive integer"))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
-	zapClient, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
+	zapClient, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.VerboseCollector())
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
 	defer func() { _ = zapClient.Close() }()
 	existingZones, err := zapClient.FetchZonesBy(1, 1, zoneID, "")
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
 	if len(existingZones) == 0 {
-		printer.Error(fmt.Errorf("cli: zone %d not found", zoneID))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, fmt.Errorf("cli: zone %d not found", zoneID))
 	}
 	ledgerID := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerID))
 	kind := v.GetString(options.FlagName(commandNameForLedgersList, flagLedgerKind))
 	ledgers, err := client.FetchLedgersBy(page, pageSize, zoneID, ledgerID, kind, "")
 	if err != nil {
-		printer.Error(errors.Join(errors.New("cli: failed to list ledgers"), err))
-		return common.ErrCommandSilent
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: failed to list ledgers"), err))
 	}
 	output := map[string]any{}
 	if ctx.IsTerminalOutput() {
@@ -100,6 +91,11 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 		}
 	} else if ctx.IsJSONOutput() {
 		output["ledgers"] = ledgers
+	}
+	if ctx.IsVerboseJSONOutput() {
+		if lines := ctx.DrainVerboseLines(); len(lines) > 0 {
+			output["details"] = lines
+		}
 	}
 	printer.PrintlnMap(output)
 	return nil
