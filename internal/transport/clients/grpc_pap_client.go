@@ -47,7 +47,7 @@ func NewGrpcPAPClient(endpoint string, tlsCfg *grpctls.ClientConfig, verbose boo
 	if err != nil {
 		return nil, err
 	}
-	if useTLS && tlsCfg != nil {
+	if tlsCfg != nil {
 		if err = tlsCfg.Validate(); err != nil {
 			return nil, err
 		}

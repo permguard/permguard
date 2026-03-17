@@ -258,7 +258,8 @@ func sanitizeErrorMessage(msg string) string {
 // implementation details (gRPC, sql) not suitable for end users.
 func isInternalErrorLine(line string) bool {
 	return strings.HasPrefix(line, "rpc error:") ||
-		strings.HasPrefix(line, "sql:")
+		strings.HasPrefix(line, "sql:") ||
+		(strings.HasPrefix(line, "storage:") && strings.Contains(line, "encountered an issue"))
 }
 
 // createOutputWithputError creates the output with the error.

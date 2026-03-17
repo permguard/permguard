@@ -52,13 +52,13 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 	}
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	tlsCfg := ctx.TLSClientConfig()
 	client, err := deps.CreateGrpcZAPClient(zapEndpoint, tlsCfg, ctx.IsVerbose())
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	defer func() { _ = client.Close() }()
@@ -87,7 +87,7 @@ func runECommandForUpsertZone(deps cli.DependenciesProvider, cmd *cobra.Command,
 		zone, err = client.UpdateZone(inputZone)
 	}
 	if err != nil {
-		printer.Error(errors.Join(fmt.Errorf("cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
+		printer.Error(errors.Join(fmt.Errorf("cli: cli: %s", strings.ToLower(opGetErroMessage(isCreate))), err))
 		return common.ErrCommandSilent
 	}
 	output := map[string]any{}
