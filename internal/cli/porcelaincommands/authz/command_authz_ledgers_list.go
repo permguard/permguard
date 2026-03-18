@@ -116,6 +116,7 @@ Examples:
 		# list all ledgers filtered by ledger id
 		permguard authz ledgers list --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f
 		`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListLedgers(deps, cmd, v)
 		},

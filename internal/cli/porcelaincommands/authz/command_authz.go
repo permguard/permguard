@@ -35,6 +35,7 @@ func CreateCommandForAuthZ(deps cli.DependenciesProvider, v *viper.Viper) *cobra
 		Use:   "authz",
 		Short: "Manage ledgers on the remote server",
 		Long:  common.BuildCliLongTemplate(`This command enables managament of ledgers on the remote server.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForAuthZ(cmd)
 		},

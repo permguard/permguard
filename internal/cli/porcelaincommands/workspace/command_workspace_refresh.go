@@ -65,6 +65,7 @@ func CreateCommandForWorkspaceRefresh(deps cli.DependenciesProvider, v *viper.Vi
 Examples:
   # scan source files in the current directory and synchronizes the local state
   permguard refresh`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForRefreshWorkspace(deps, cmd, v)
 		},

@@ -65,14 +65,10 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 		name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
 		language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
 		template := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
-		zoneID := v.GetInt64(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID))
-		ledgerID := v.GetString(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID))
 		initParams = &workspace.InitParms{
 			Name:     name,
 			Language: language,
 			Template: template,
-			ZoneID:   zoneID,
-			LedgerID: ledgerID,
 		}
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))

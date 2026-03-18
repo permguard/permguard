@@ -61,6 +61,7 @@ func createCommandForConfigReset(deps cli.DependenciesProvider, v *viper.Viper) 
 		Use:   "reset",
 		Short: "Reset the cli config settings",
 		Long:  common.BuildCliLongTemplate(`This command resets the cli config settings.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandReset(deps, cmd, v)
 		},

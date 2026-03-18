@@ -65,6 +65,7 @@ func CreateCommandForWorkspacePlan(deps cli.DependenciesProvider, v *viper.Viper
 Examples:
   # generate a plan of changes to apply to the remote ledger based on the differences between the local and remote states
   permguard plan`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPlanWorkspace(deps, cmd, v)
 		},

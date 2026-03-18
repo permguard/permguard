@@ -97,6 +97,7 @@ Examples:
   # delete a ledger and output the result in json format
   permguard authz ledgers delete --zone-id 273165098782 --ledger-id 668f3771eacf4094ba8a80942ea5fd3f --output json
 		`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForDeleteLedger(deps, cmd, v)
 		},

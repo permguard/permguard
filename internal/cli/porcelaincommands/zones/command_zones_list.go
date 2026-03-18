@@ -102,6 +102,7 @@ Examples:
 		# list zones and filter by zone
 		permguard zones list --zone-id 268786704340
 		`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForListZones(deps, cmd, v)
 		},

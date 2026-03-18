@@ -82,6 +82,7 @@ func createCommandForConfigShow(deps cli.DependenciesProvider, v *viper.Viper) *
 		Use:   "show",
 		Short: "Show current CLI configuration",
 		Long:  common.BuildCliLongTemplate(`This command shows the current CLI configuration.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForConfigShow(deps, cmd, v)
 		},

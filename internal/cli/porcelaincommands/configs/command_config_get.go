@@ -82,6 +82,7 @@ func createCommandForConfigZAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 		Use:   "zap-endpoint",
 		Short: "Get the zap endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the zap endpoint.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForZAPGet(deps, cmd, v)
 		},
@@ -95,6 +96,7 @@ func createCommandForConfigPAPGet(deps cli.DependenciesProvider, v *viper.Viper)
 		Use:   "pap-endpoint",
 		Short: "Get the pap endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the pap endpoint.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPAPGet(deps, cmd, v)
 		},
@@ -108,6 +110,7 @@ func createCommandForConfigPDPGet(deps cli.DependenciesProvider, v *viper.Viper)
 		Use:   "pdp-endpoint",
 		Short: "Get the pdp endpoint",
 		Long:  common.BuildCliLongTemplate(`This command gets the pdp endpoint.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPDPGet(deps, cmd, v)
 		},
@@ -137,6 +140,7 @@ func createCommandForConfigAuthstarMaxObjectSizeGet(deps cli.DependenciesProvide
 		Use:   "authstar-max-object-size",
 		Short: "Get the authstar max object size",
 		Long:  common.BuildCliLongTemplate(`This command gets the authstar max object size in bytes.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForAuthstarMaxObjectSizeGet(deps, cmd, v)
 		},
@@ -166,6 +170,7 @@ func createCommandForConfigNOTPMaxPacketSizeGet(deps cli.DependenciesProvider, v
 		Use:   "notp-max-packet-size",
 		Short: "Get the notp max packet size",
 		Long:  common.BuildCliLongTemplate(`This command gets the notp max packet size in bytes.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForNOTPMaxPacketSizeGet(deps, cmd, v)
 		},
