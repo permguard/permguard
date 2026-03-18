@@ -139,6 +139,7 @@ func createCommandForLedgers(deps cli.DependenciesProvider, v *viper.Viper) *cob
 		Use:   "ledgers",
 		Short: "Manage ledgers on the remote server",
 		Long:  common.BuildCliLongTemplate(`This command manages ledgers on the remote server.`),
+		Args:  cobra.NoArgs,
 		RunE:  runECommandForLedgers,
 	}
 

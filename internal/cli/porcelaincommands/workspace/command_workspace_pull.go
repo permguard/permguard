@@ -65,6 +65,7 @@ func CreateCommandForWorkspacePull(deps cli.DependenciesProvider, v *viper.Viper
 Examples:
   # fetches the latest changes from the remote ledger and constructs the remote state
   permguard pull`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForPullWorkspace(deps, cmd, v)
 		},

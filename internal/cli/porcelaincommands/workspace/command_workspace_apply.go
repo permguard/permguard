@@ -65,6 +65,7 @@ func CreateCommandForWorkspaceApply(deps cli.DependenciesProvider, v *viper.Vipe
 Examples:
   # apply the plan to the remote ledger
   permguard apply`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForApplyWorkspace(deps, cmd, v)
 		},

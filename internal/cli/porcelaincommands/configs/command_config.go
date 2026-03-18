@@ -35,6 +35,7 @@ func CreateCommandForConfig(deps cli.DependenciesProvider, v *viper.Viper) *cobr
 		Use:   "config",
 		Short: "Configure the command line settings",
 		Long:  common.BuildCliLongTemplate(`This command configures the command line settings.`),
+		Args:  cobra.NoArgs,
 		RunE:  runECommandForConfig,
 	}
 	command.AddCommand(createCommandForConfigReset(deps, v))

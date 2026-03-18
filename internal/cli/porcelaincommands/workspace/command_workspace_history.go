@@ -65,6 +65,7 @@ func CreateCommandForWorkspaceHistory(deps cli.DependenciesProvider, v *viper.Vi
 Examples:
   # show the history
   permguard history`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForHistoryWorkspace(deps, cmd, v)
 		},

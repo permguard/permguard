@@ -93,6 +93,7 @@ Examples:
   # delete a zone and output the result in json format
   permguard zones delete --zone-id 273165098782 --output json
 		`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForDeleteZone(deps, cmd, v)
 		},

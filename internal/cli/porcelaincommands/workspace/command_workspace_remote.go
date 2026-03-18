@@ -60,6 +60,7 @@ func CreateCommandForWorkspaceRemote(deps cli.DependenciesProvider, v *viper.Vip
 		Use:   "remote",
 		Short: `Manage remote server for tracking and interaction`,
 		Long:  common.BuildCliLongTemplate(`This command manages remote server for tracking and interaction`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForRemoteWorkspace(deps, cmd, v)
 		},

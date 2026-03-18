@@ -61,6 +61,7 @@ func CreateCommandForWorkspaceLedger(deps cli.DependenciesProvider, v *viper.Vip
 		Use:   "ledger",
 		Short: `Manage the ledger`,
 		Long:  common.BuildCliLongTemplate(`This command Manages the ledger.`),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForLedgerWorkspace(deps, cmd, v)
 		},

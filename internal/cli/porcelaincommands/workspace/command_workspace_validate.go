@@ -65,6 +65,7 @@ func CreateCommandForWorkspaceValidate(deps cli.DependenciesProvider, v *viper.V
 Examples:
   # validate the local state for consistency and correctness",
   permguard validate`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForValidateWorkspace(deps, cmd, v)
 		},

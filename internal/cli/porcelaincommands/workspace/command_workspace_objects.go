@@ -101,6 +101,7 @@ func CreateCommandForWorkspaceObjects(deps cli.DependenciesProvider, v *viper.Vi
 Examples:
   # list the objects in the workspace
   permguard objects`),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runECommandForObjectsWorkspace(deps, cmd, v)
 		},

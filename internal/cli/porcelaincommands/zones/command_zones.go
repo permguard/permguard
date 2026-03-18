@@ -131,6 +131,7 @@ func CreateCommandForZones(deps cli.DependenciesProvider, v *viper.Viper) *cobra
 		Use:   "zones",
 		Short: "Manage zones on the remote server",
 		Long:  common.BuildCliLongTemplate(`This command manages zones on the remote server.`),
+		Args:  cobra.NoArgs,
 		RunE:  runECommandForZones,
 	}
 
