@@ -34,7 +34,11 @@ func LogZoneEntry(zone *Zone) string {
 	if zone == nil {
 		return "zone is nil"
 	}
-	return fmt.Sprintf("zone id: %d, name: %s", zone.ZoneID, zone.Name)
+	zoneID := "none"
+	if zone.ZoneID != 0 {
+		zoneID = fmt.Sprintf("%d", zone.ZoneID)
+	}
+	return fmt.Sprintf("zone id: %s, name: %s", zoneID, zone.Name)
 }
 
 // Ledger is the model for the schema table.
@@ -54,7 +58,15 @@ func LogLedgerEntry(ledger *Ledger) string {
 	if ledger == nil {
 		return "ledger is nil"
 	}
-	return fmt.Sprintf("ledger id: %s, zone id: %d, name: %s", ledger.LedgerID, ledger.ZoneID, ledger.Name)
+	ledgerID := "none"
+	if ledger.LedgerID != "" {
+		ledgerID = ledger.LedgerID
+	}
+	zoneID := "none"
+	if ledger.ZoneID != 0 {
+		zoneID = fmt.Sprintf("%d", ledger.ZoneID)
+	}
+	return fmt.Sprintf("ledger id: %s, zone id: %s, name: %s", ledgerID, zoneID, ledger.Name)
 }
 
 // KeyValue is the model for the key_value table.
