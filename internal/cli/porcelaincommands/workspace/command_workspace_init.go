@@ -120,11 +120,5 @@ Examples:
 	command.Flags().String(commandNameForWorkspacesInitTemplate, "", "specify the template of the workspace to initialize")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate), command.Flags().Lookup(commandNameForWorkspacesInitTemplate))
 
-	command.Flags().Int64(common.FlagCommonZoneID, 0, "specify the zone id")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonZoneID), command.Flags().Lookup(common.FlagCommonZoneID))
-
-	command.Flags().String(common.FlagCommonLedgerID, "", "specify the ledger id")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, common.FlagCommonLedgerID), command.Flags().Lookup(common.FlagCommonLedgerID))
-
 	return command
 }
