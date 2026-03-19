@@ -104,8 +104,7 @@ func (r *Repository) UpsertLedger(ctx context.Context, tx *sql.Tx, isCreate bool
 		result, err = tx.ExecContext(ctx, "UPDATE ledgers SET name = ? WHERE zone_id = ? and ledger_id = ?", ledgerName, zoneID, ledgerID)
 	}
 	if err != nil || result == nil {
-		params := map[string]string{WrapSqliteParamForeignKey: "zone id"}
-		return nil, WrapSqliteErrorWithParams(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err, params)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to %s ledger - operation '%s-ledger' encountered an issue (%s)", action, action, LogLedgerEntry(ledger)), err)
 	}
 
 	var dbLedger Ledger

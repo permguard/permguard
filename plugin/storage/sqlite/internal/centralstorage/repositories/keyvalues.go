@@ -62,8 +62,7 @@ func (r *Repository) UpsertKeyValue(ctx context.Context, tx *sql.Tx, keyValue *K
 	)
 
 	if err != nil || result == nil {
-		params := map[string]string{WrapSqliteParamForeignKey: "key"}
-		return nil, WrapSqliteErrorWithParams(fmt.Sprintf("failed to upsert key-value pair - operation 'upsert-key-value' encountered an issue (key: %s)", key), err, params)
+		return nil, WrapSqliteError(fmt.Sprintf("failed to upsert key-value pair - operation 'upsert-key-value' encountered an issue (key: %s)", key), err)
 	}
 
 	var dbKeyValue KeyValue
