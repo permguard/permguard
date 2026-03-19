@@ -42,7 +42,7 @@ func TestCliConfigGetZAPEndpoint(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"zap-get-target", "--output", outputType}
+		args := []string{"--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
@@ -83,7 +83,7 @@ func TestCliConfigGetPAPEndpoint(t *testing.T) {
 		"json",
 	}
 	for _, outputType := range tests {
-		args := []string{"pap-get-target", "--output", outputType}
+		args := []string{"--output", outputType}
 		outputs := []string{""}
 
 		v := viper.New()
