@@ -56,10 +56,6 @@ type InitParms struct {
 	Language string
 	// Template the template.
 	Template string
-	// ZoneID the zone id.
-	ZoneID int64
-	// LedgerID the ledger id.
-	LedgerID string
 }
 
 // ExecInitWorkspace initializes the workspace.
