@@ -18,6 +18,7 @@ package repositories
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -36,7 +37,7 @@ func LogZoneEntry(zone *Zone) string {
 	}
 	zoneID := "none"
 	if zone.ZoneID != 0 {
-		zoneID = fmt.Sprintf("%d", zone.ZoneID)
+		zoneID = strconv.FormatInt(zone.ZoneID, 10)
 	}
 	return fmt.Sprintf("zone id: %s, name: %s", zoneID, zone.Name)
 }
@@ -64,7 +65,7 @@ func LogLedgerEntry(ledger *Ledger) string {
 	}
 	zoneID := "none"
 	if ledger.ZoneID != 0 {
-		zoneID = fmt.Sprintf("%d", ledger.ZoneID)
+		zoneID = strconv.FormatInt(ledger.ZoneID, 10)
 	}
 	return fmt.Sprintf("ledger id: %s, zone id: %s, name: %s", ledgerID, zoneID, ledger.Name)
 }
