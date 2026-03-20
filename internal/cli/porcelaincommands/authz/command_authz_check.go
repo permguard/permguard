@@ -49,19 +49,22 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		return common.ErrCommandSilent
 	}
 	var input *os.File
+	var jsonPath string
 	if len(args) > 0 {
-		var jsonPath string
 		if filepath.IsAbs(args[0]) {
 			jsonPath = args[0]
 		} else {
 			jsonPath = filepath.Join(ctx.WorkDir(), args[0])
 		}
+		ctx.AppendVerboseAction("reading authorization request input file")
+		ctx.AppendVerboseFile(jsonPath)
 		input, err = os.Open(jsonPath)
 		if err != nil {
-			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), err))
+			return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), fmt.Errorf("failed to open file %s", jsonPath)))
 		}
 		defer func() { _ = input.Close() }()
 	} else {
+		ctx.AppendVerboseAction("reading authorization request from stdin")
 		input = os.Stdin
 	}
 
@@ -75,9 +78,10 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 	}
 	jsonString := builder.String()
 	var authzReq pdp.AuthorizationCheckWithDefaultsRequest
+	ctx.AppendVerboseAction("unmarshaling authorization request json")
 	err = json.Unmarshal([]byte(jsonString), &authzReq)
 	if err != nil {
-		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), err))
+		return failWithDetails(ctx, printer, errors.Join(errors.New("cli: invalid input for the authz check"), buildUnmarshalError(err)))
 	}
 
 	// Apply --current-workspace override (medium priority).
@@ -199,6 +203,19 @@ func runECommandForCheck(deps cli.DependenciesProvider, cmd *cobra.Command, v *v
 		printer.PrintlnMap(output)
 	}
 	return nil
+}
+
+// buildUnmarshalError returns a user-friendly error from a json.Unmarshal failure.
+func buildUnmarshalError(err error) error {
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) {
+		return fmt.Errorf("field %q expects %s, got %s", typeErr.Field, typeErr.Type, typeErr.Value)
+	}
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return fmt.Errorf("invalid json syntax at byte offset %d", syntaxErr.Offset)
+	}
+	return err
 }
 
 // createCommandForCheck creates a command for executing check.

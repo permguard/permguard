@@ -73,7 +73,13 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 	if err != nil {
 		return fail(nil, err)
 	}
-	firstInit := created
+	if !created {
+		absPath := m.homeDir
+		if !filepath.IsAbs(absPath) {
+			absPath, _ = filepath.Abs(absPath)
+		}
+		return fail(nil, fmt.Errorf("cli: workspace already initialized in '%s'", absPath))
+	}
 
 	if initParams != nil {
 		name := initParams.Name
@@ -148,12 +154,7 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "init", "Initialization succeeded.", nil, true)
 	}
-	var msg string
-	if firstInit {
-		msg = fmt.Sprintf("Initialized empty permguard ledger in '%s'.", common.FileText(m.homeDir))
-	} else {
-		msg = fmt.Sprintf("Reinitialized existing permguard ledger in '%s'.", common.FileText(m.homeDir))
-	}
+	msg := fmt.Sprintf("Initialized empty permguard ledger in '%s'.", common.FileText(m.homeDir))
 	out(nil, "", msg, nil, true)
 	output := map[string]any{}
 	absPath := m.homeDir
