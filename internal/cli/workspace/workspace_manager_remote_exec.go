@@ -460,26 +460,22 @@ func (m *Manager) ExecCloneLedger(ledgerURI string, zapPort, papPort int, scheme
 	resolvedScheme := azwkscommon.ResolveScheme(serverScheme, scheme)
 
 	output, err := m.ExecInitWorkspace(nil, out)
-	aborted := false
-	if err == nil {
-		fileLock, err := m.tryLock()
-		if err != nil {
-			return fail(nil, err)
-		}
-		defer func() { _ = fileLock.Unlock() }()
-		output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, resolvedScheme, out)
-		if err == nil {
-			ledgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
-			output, err = m.execInternalCheckoutLedger(true, ledgerURI, out)
-			if err != nil {
-				aborted = true
-			}
-		} else {
-			aborted = true
-		}
+	if err != nil {
+		return fail(output, err)
 	}
-	if aborted {
-		return fail(output, errors.New("cli: operation has been aborted"))
+	fileLock, err := m.tryLock()
+	if err != nil {
+		return fail(nil, err)
+	}
+	defer func() { _ = fileLock.Unlock() }()
+	output, err = m.execInternalAddRemote(true, OriginRemoteName, uriServer, zapPort, papPort, resolvedScheme, out)
+	if err != nil {
+		return fail(output, err)
+	}
+	cloneLedgerURI := fmt.Sprintf("%s/%s/%s", OriginRemoteName, uriZoneID, uriLedger)
+	output, err = m.execInternalCheckoutLedger(true, cloneLedgerURI, out)
+	if err != nil {
+		return fail(output, err)
 	}
 	return output, nil
 }

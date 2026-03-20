@@ -19,6 +19,7 @@ package common
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -285,6 +286,14 @@ func (c *CliCommandContext) NOTPMaxPacketSize() (int, error) {
 	}
 }
 
+// resolveSpiffeSocketPath returns the SPIFFE socket path from the flag or SPIFFE_ENDPOINT_SOCKET env var.
+func (c *CliCommandContext) resolveSpiffeSocketPath() string {
+	if path := c.v.GetString(options.FlagName(FlagPrefixSpiffe, FlagSuffixSpiffeEndpoint)); path != "" {
+		return path
+	}
+	return os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+}
+
 // TLSClientConfig returns the TLS client configuration from CLI flags.
 func (c *CliCommandContext) TLSClientConfig() *grpctls.ClientConfig {
 	return &grpctls.ClientConfig{
@@ -293,6 +302,6 @@ func (c *CliCommandContext) TLSClientConfig() *grpctls.ClientConfig {
 		KeyFile:          c.v.GetString(options.FlagName(FlagPrefixTLS, FlagSuffixTLSKeyFile)),
 		SkipVerify:       c.v.GetBool(options.FlagName(FlagPrefixTLS, FlagSuffixTLSSkipVerify)),
 		Spiffe:           c.v.GetBool(options.FlagName(FlagPrefixSpiffe, FlagSuffixSpiffeEnabled)),
-		SpiffeSocketPath: c.v.GetString(options.FlagName(FlagPrefixSpiffe, FlagSuffixSpiffeEndpoint)),
+		SpiffeSocketPath: c.resolveSpiffeSocketPath(),
 	}
 }

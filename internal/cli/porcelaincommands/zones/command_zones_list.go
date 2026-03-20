@@ -55,6 +55,12 @@ func runECommandForListZones(deps cli.DependenciesProvider, cmd *cobra.Command, 
 
 	page := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForZonesList, common.FlagCommonPageSize))
+	if page <= 0 {
+		return failWithDetails(ctx, printer, errors.New("cli: --page must be a positive integer"))
+	}
+	if pageSize <= 0 {
+		return failWithDetails(ctx, printer, errors.New("cli: --size must be a positive integer"))
+	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForZonesList, common.FlagCommonZoneID))
 	if cmd.Flags().Changed(common.FlagCommonZoneID) && zoneID <= 0 {
 		return failWithDetails(ctx, printer, errors.New("cli: --zone-id must be a positive integer"))
