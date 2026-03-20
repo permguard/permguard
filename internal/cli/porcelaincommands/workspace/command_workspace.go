@@ -18,10 +18,9 @@ package workspace
 
 import (
 	"errors"
-	"fmt"
 	"strings"
-	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -96,8 +95,10 @@ var outFunc = func(ctx *common.CliCommandContext, printer cli.Printer) common.Pr
 			output = make(map[string]any)
 		}
 		if key != "" && ctx.IsVerboseTerminalOutput() {
-			timestamp := time.Now().Format(time.TimeOnly)
-			key = fmt.Sprintf("%s %s", common.TimeStampText(timestamp), common.LogHeaderText(key))
+			if strVal, ok := value.(string); ok {
+				color.HiBlack("%s\n", strVal)
+				return output
+			}
 		}
 		output[key] = value
 		if ctx.IsTerminalOutput() {
