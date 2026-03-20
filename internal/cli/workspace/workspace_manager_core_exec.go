@@ -31,19 +31,17 @@ import (
 )
 
 // ExecPrintContext prints the context. It is idempotent: subsequent calls are no-ops.
-func (m *Manager) ExecPrintContext(output map[string]any, out common.PrinterOutFunc) map[string]any {
+func (m *Manager) ExecPrintContext(output map[string]any, _ common.PrinterOutFunc) map[string]any {
 	if m.contextPrinted {
 		return output
 	}
 	m.contextPrinted = true
 	absRoot, _ := filepath.Abs(m.homeDir)
 	absPermguard := filepath.Join(absRoot, hiddenDir)
-	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "", fmt.Sprintf("workspace at %s", absRoot), nil, true)
-		out(nil, "", fmt.Sprintf("file: %s", absPermguard), nil, true)
-	} else if m.ctx.IsVerboseJSONOutput() {
+	if m.ctx.IsVerbose() {
 		m.ctx.AppendVerboseAction(fmt.Sprintf("workspace at %s", absRoot))
 		m.ctx.AppendVerboseFile(absPermguard)
+		m.ctx.FlushVerboseDetails()
 	}
 	return output
 }
