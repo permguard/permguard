@@ -88,6 +88,32 @@ func (c *CliCommandContext) DrainVerboseDetails() []map[string]any {
 	return details
 }
 
+// FlushVerboseDetails drains the verbose buffer and prints it in terminal verbose mode.
+// In JSON verbose mode this is a no-op — details stay buffered for DrainVerboseDetails.
+func (c *CliCommandContext) FlushVerboseDetails() {
+	if !c.IsVerboseTerminalOutput() {
+		return
+	}
+	details := c.DrainVerboseDetails()
+	for _, d := range details {
+		dtype, _ := d["type"].(string)
+		switch dtype {
+		case "action":
+			if msg, ok := d["message"].(string); ok {
+				color.HiBlack("%s\n", msg)
+			}
+		case "file":
+			if path, ok := d["path"].(string); ok {
+				color.HiBlack("file: %s\n", path)
+			}
+		case "network":
+			endpoint, _ := d["endpoint"].(string)
+			operation, _ := d["operation"].(string)
+			color.HiBlack("network: %s [%s]\n", endpoint, operation)
+		}
+	}
+}
+
 // VerboseCollector returns a collect function for gRPC verbose interceptors.
 // In terminal+verbose mode it prints immediately; in JSON+verbose mode it buffers as action objects.
 // Returns nil when verbose is disabled.

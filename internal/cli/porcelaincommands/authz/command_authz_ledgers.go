@@ -44,26 +44,8 @@ const (
 // failWithDetails drains any buffered verbose details and prints the error with details.
 func failWithDetails(ctx *common.CliCommandContext, printer cli.Printer, err error) error {
 	output := map[string]any{}
-	if ctx.IsVerboseTerminalOutput() {
-		details := ctx.DrainVerboseDetails()
-		for _, d := range details {
-			dtype, _ := d["type"].(string)
-			switch dtype {
-			case "action":
-				if msg, ok := d["message"].(string); ok {
-					color.HiBlack("%s\n", msg)
-				}
-			case "file":
-				if path, ok := d["path"].(string); ok {
-					color.HiBlack("file: %s\n", path)
-				}
-			case "network":
-				endpoint, _ := d["endpoint"].(string)
-				operation, _ := d["operation"].(string)
-				color.HiBlack("network: %s [%s]\n", endpoint, operation)
-			}
-		}
-	} else if ctx.IsVerboseJSONOutput() {
+	ctx.FlushVerboseDetails()
+	if ctx.IsVerboseJSONOutput() {
 		details := ctx.DrainVerboseDetails()
 		if details == nil {
 			details = []map[string]any{}
