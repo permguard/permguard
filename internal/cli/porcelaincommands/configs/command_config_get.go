@@ -35,6 +35,9 @@ func runECommandForZAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading zap endpoint from cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to get the zap endpoint"), err))
@@ -51,6 +54,9 @@ func runECommandForPAPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading pap endpoint from cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	papEndpoint, err := ctx.PAPEndpoint()
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to get the pap endpoint"), err))
@@ -67,6 +73,9 @@ func runECommandForPDPGet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading pdp endpoint from cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	pdpEndpoint, err := ctx.PDPEndpoint()
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to get the pdp endpoint"), err))
@@ -125,6 +134,9 @@ func runECommandForAuthstarMaxObjectSizeGet(deps cli.DependenciesProvider, cmd *
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading authstar max object size from cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	maxObjectSize, err := ctx.AuthstarMaxObjectSize()
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to get the authstar max object size"), err))
@@ -155,6 +167,9 @@ func runECommandForNOTPMaxPacketSizeGet(deps cli.DependenciesProvider, cmd *cobr
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading notp max packet size from cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	maxPacketSize, err := ctx.NOTPMaxPacketSize()
 	if err != nil {
 		printer.Error(errors.Join(errors.New("cli: failed to get the notp max packet size"), err))

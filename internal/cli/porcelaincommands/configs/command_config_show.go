@@ -35,6 +35,9 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 		color.Red(fmt.Sprintf("%s", err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("reading cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
+	ctx.FlushVerboseDetails()
 	zapEndpoint, err := ctx.ZAPEndpoint()
 	if err != nil {
 		zapEndpoint = "not set"
@@ -70,6 +73,13 @@ func runECommandForConfigShow(deps cli.DependenciesProvider, cmd *cobra.Command,
 			"pdp_endpoint":             pdpEndpoint,
 			"authstar_max_object_size": authstarMaxObjectSize,
 			"notp_max_packet_size":     notpMaxPacketSize,
+		}
+		if ctx.IsVerboseJSONOutput() {
+			details := ctx.DrainVerboseDetails()
+			if details == nil {
+				details = []map[string]any{}
+			}
+			output["details"] = details
 		}
 		printer.PrintlnMap(output)
 	}

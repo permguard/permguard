@@ -53,11 +53,15 @@ func runECommandForZAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("updating zap endpoint in cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixZAP, common.FlagSuffixZAPEndpoint), args[0])
 	if err != nil {
+		ctx.FlushVerboseDetails()
 		printer.Error(errors.Join(errors.New("cli: failed to set the zap endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.FlushVerboseDetails()
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("zap_endpoint has been set to %s.", args[0]))
 	}
@@ -75,11 +79,15 @@ func runECommandForPAPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("updating pap endpoint in cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPAP, common.FlagSuffixPAPEndpoint), args[0])
 	if err != nil {
+		ctx.FlushVerboseDetails()
 		printer.Error(errors.Join(errors.New("cli: failed to set the pap endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.FlushVerboseDetails()
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("pap_endpoint has been set to %s.", args[0]))
 	}
@@ -97,11 +105,15 @@ func runECommandForPDPSet(deps cli.DependenciesProvider, cmd *cobra.Command, v *
 		printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("updating pdp endpoint in cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
 	err = viperWriteEndpoint(v, options.FlagName(common.FlagPrefixPDP, common.FlagSuffixPDPEndpoint), args[0])
 	if err != nil {
+		ctx.FlushVerboseDetails()
 		printer.Error(errors.Join(errors.New("cli: failed to set the pdp endpoint"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.FlushVerboseDetails()
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("pdp_endpoint has been set to %s.", args[0]))
 	}
@@ -178,15 +190,19 @@ func runECommandForAuthstarMaxObjectSizeSet(deps cli.DependenciesProvider, cmd *
 		printer.Error(errors.New("cli: authstar-max-object-size must be a positive integer"))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("updating authstar max object size in cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
 	key := options.FlagName(common.FlagPrefixAuthstar, common.FlagSuffixAuthstarMaxObjectSize)
 	valueMap := map[string]interface{}{
 		key: size,
 	}
 	err = options.OverrideViperFromConfig(v, valueMap)
 	if err != nil {
+		ctx.FlushVerboseDetails()
 		printer.Error(errors.Join(errors.New("cli: failed to set the authstar max object size"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.FlushVerboseDetails()
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("authstar_max_object_size has been set to %d.", size))
 	}
@@ -230,15 +246,19 @@ func runECommandForNOTPMaxPacketSizeSet(deps cli.DependenciesProvider, cmd *cobr
 		printer.Error(errors.New("cli: notp-max-packet-size must be a positive integer"))
 		return common.ErrCommandSilent
 	}
+	ctx.AppendVerboseAction("updating notp max packet size in cli configuration")
+	ctx.AppendVerboseFile(v.ConfigFileUsed())
 	key := options.FlagName(common.FlagPrefixNOTP, common.FlagSuffixNOTPMaxPacketSize)
 	valueMap := map[string]interface{}{
 		key: size,
 	}
 	err = options.OverrideViperFromConfig(v, valueMap)
 	if err != nil {
+		ctx.FlushVerboseDetails()
 		printer.Error(errors.Join(errors.New("cli: failed to set the notp max packet size"), err))
 		return common.ErrCommandSilent
 	}
+	ctx.FlushVerboseDetails()
 	if ctx.IsTerminalOutput() {
 		printer.Println(fmt.Sprintf("notp_max_packet_size has been set to %d.", size))
 	}
