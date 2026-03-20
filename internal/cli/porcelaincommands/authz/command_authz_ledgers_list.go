@@ -53,6 +53,12 @@ func runECommandForListLedgers(deps cli.DependenciesProvider, cmd *cobra.Command
 	defer func() { _ = client.Close() }()
 	page := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPage))
 	pageSize := v.GetInt32(options.FlagName(commandNameForLedgersList, common.FlagCommonPageSize))
+	if page <= 0 {
+		return failWithDetails(ctx, printer, errors.New("cli: --page must be a positive integer"))
+	}
+	if pageSize <= 0 {
+		return failWithDetails(ctx, printer, errors.New("cli: --size must be a positive integer"))
+	}
 	zoneID := v.GetInt64(options.FlagName(commandNameForLedger, common.FlagCommonZoneID))
 	if zoneID == 0 {
 		return failWithDetails(ctx, printer, errors.New("cli: --zone-id is required"))
