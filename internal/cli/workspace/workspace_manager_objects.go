@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -137,24 +138,44 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	var output strings.Builder
-
-	fmt.Fprintf(&output, "%s %s:", common.KeywordText("tree"), common.IDText(oid))
+	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "VERSION", "LANG-TYPE"}
 
 	entries := tree.Entries()
-	for _, entry := range entries {
-		partition := entry.Partition()
-		language := entry.Language()
-		languageType := entry.LanguageType()
-		languageVersion := entry.LanguageVersion()
-		oid := entry.OID()
-		oname := entry.OName()
-		entryType := entry.Type()
-		fmt.Fprintf(&output, "\n  - %s %s %s %s %s %s %s", common.IDText(oid), common.KeywordText(entryType), common.NameText(partition),
-			common.NameText(oname), common.LanguageText(language), common.LanguageText(languageVersion), common.LanguageKeywordText(languageType))
+	dataRows := make([][]string, len(entries))
+	for i, e := range entries {
+		dataRows[i] = []string{
+			e.OID(),
+			e.Type(),
+			e.Partition(),
+			e.OName(),
+			e.Language(),
+			languageVersionDisplay(e.LanguageVersion()),
+			e.LanguageType(),
+		}
+	}
+	widths := columnWidths(headers, dataRows)
+
+	colorFns := []func(string) string{
+		common.IDText,
+		common.KeywordText,
+		common.NameText,
+		common.NameText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageKeywordText,
 	}
 
-	return output.String(), nil
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s %s:\n", common.KeywordText("tree"), common.IDText(oid))
+	if len(entries) == 0 {
+		fmt.Fprintf(&sb, "  (no entries)")
+		return sb.String(), nil
+	}
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	for _, row := range dataRows {
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
+	}
+	return strings.TrimRight(sb.String(), "\n"), nil
 }
 
 // treeMap gets the tree map.
@@ -194,6 +215,251 @@ func (m *Manager) blobString(blob any) ([]byte, bool, error) {
 		return nil, false, errors.New("cli: blob content is not a byte array")
 	}
 	return content, true, nil
+}
+
+// languageVersionDisplay returns v, or "" when v is a zero version ("0", "0.0").
+func languageVersionDisplay(v string) string {
+	if v == "0" || v == "0.0" {
+		return ""
+	}
+	return v
+}
+
+// tableRow builds a padded, colored row string from raw values, widths and color functions.
+func tableRow(vals []string, widths []int, colorFns []func(string) string) string {
+	var sb strings.Builder
+	for i, v := range vals {
+		padded := fmt.Sprintf("%-*s", widths[i], v)
+		colored := colorFns[i](padded)
+		if i < len(vals)-1 {
+			fmt.Fprintf(&sb, "%s  ", colored)
+		} else {
+			fmt.Fprintf(&sb, "%s", colored)
+		}
+	}
+	return sb.String()
+}
+
+// tableHeader builds a padded header row and a separator line from headers and widths.
+func tableHeader(headers []string, widths []int) string {
+	var sb strings.Builder
+	for i, h := range headers {
+		if i < len(headers)-1 {
+			fmt.Fprintf(&sb, "%-*s  ", widths[i], h)
+		} else {
+			fmt.Fprintf(&sb, "%s", h)
+		}
+	}
+	return sb.String()
+}
+
+// columnWidths computes per-column widths as the max of header and all row values.
+func columnWidths(headers []string, rows [][]string) []int {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i, v := range row {
+			if i < len(widths) && len(v) > widths[i] {
+				widths[i] = len(v)
+			}
+		}
+	}
+	return widths
+}
+
+// commitTableString formats a commit object as an aligned inspect table with all CBOR fields.
+// Columns: TREE | PARENT | AUTHOR | AUTHOR-TS | COMMITTER | COMMITTER-TS | MESSAGE
+func (m *Manager) commitTableString(_ string, commit *objects.Commit) (string, error) {
+	if commit == nil {
+		return "", errors.New("cli: commit is nil")
+	}
+
+	meta := commit.MetaData()
+	headers := []string{"TREE", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
+	dataRow := []string{
+		commit.Tree(),
+		commit.Parent(),
+		meta.Author(),
+		meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
+		meta.Committer(),
+		meta.CommitterTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
+		commit.Message(),
+	}
+	widths := columnWidths(headers, [][]string{dataRow})
+
+	colorFns := []func(string) string{
+		common.IDText,
+		common.IDText,
+		common.NameText,
+		common.TimeStampText,
+		common.NameText,
+		common.TimeStampText,
+		common.NormalText,
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
+	return sb.String(), nil
+}
+
+// treeTableString formats a tree object as an aligned inspect table with all CBOR fields.
+// First row is the tree object itself (TYPE=tree, OID=tree OID).
+// Subsequent rows are the tree entries (one per cborTreeEntry).
+// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE
+func (m *Manager) treeTableString(oid string, tree *objects.Tree) (string, error) {
+	if tree == nil {
+		return "", errors.New("cli: tree is nil")
+	}
+
+	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
+
+	// First row: the tree object itself.
+	selfRow := []string{"tree", "", oid, "", "", "", "", "", ""}
+
+	entries := tree.Entries()
+	dataRows := make([][]string, 0, 1+len(entries))
+	dataRows = append(dataRows, selfRow)
+	for _, e := range entries {
+		dataRows = append(dataRows, []string{
+			e.Type(),
+			e.Partition(),
+			e.OID(),
+			e.OName(),
+			e.CodeID(),
+			e.CodeType(),
+			e.Language(),
+			languageVersionDisplay(e.LanguageVersion()),
+			e.LanguageType(),
+		})
+	}
+
+	widths := columnWidths(headers, dataRows)
+
+	colorFns := []func(string) string{
+		common.KeywordText,
+		common.NameText,
+		common.IDText,
+		common.NameText,
+		common.NameText,
+		common.KeywordText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageKeywordText,
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	for _, row := range dataRows {
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
+	}
+	return strings.TrimRight(sb.String(), "\n"), nil
+}
+
+// commitInspectMap returns all CBOR fields of a commit as a map for JSON output.
+func (m *Manager) commitInspectMap(_ string, commit *objects.Commit) (map[string]any, error) {
+	if commit == nil {
+		return nil, errors.New("cli: commit is nil")
+	}
+	meta := commit.MetaData()
+	return map[string]any{
+		"tree":                commit.Tree(),
+		"parent":              commit.Parent(),
+		"author":              meta.Author(),
+		"author_timestamp":    meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
+		"committer":           meta.Committer(),
+		"committer_timestamp": meta.CommitterTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
+		"message":             commit.Message(),
+	}, nil
+}
+
+// treeInspectMap returns all CBOR fields of a tree as a map for JSON output.
+// The first entry in "entries" represents the tree object itself (type="tree").
+func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any, error) {
+	if tree == nil {
+		return nil, errors.New("cli: tree is nil")
+	}
+	entries := tree.Entries()
+	allEntries := make([]map[string]any, 0, 1+len(entries))
+	allEntries = append(allEntries, map[string]any{
+		"type": "tree",
+		"oid":  oid,
+	})
+	for _, e := range entries {
+		allEntries = append(allEntries, map[string]any{
+			"type":             e.Type(),
+			"partition":        e.Partition(),
+			"oid":              e.OID(),
+			"oname":            e.OName(),
+			"code_id":          e.CodeID(),
+			"code_type":        e.CodeType(),
+			"language":         e.Language(),
+			"language_version": languageVersionDisplay(e.LanguageVersion()),
+			"language_type":    e.LanguageType(),
+		})
+	}
+	return map[string]any{"entries": allEntries}, nil
+}
+
+// blobInspectMap returns all CBOR fields of a blob as a map for JSON output.
+// The "data" field contains the raw blob bytes encoded as base64.
+func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, error) {
+	header := objInfo.Header()
+	if header == nil {
+		return nil, errors.New("cli: blob header is nil")
+	}
+	data, _ := objInfo.Instance().([]byte)
+	return map[string]any{
+		"partition":           header.Partition(),
+		"is_native_language":  header.IsNativeLanguage(),
+		"language_id":         header.LanguageID(),
+		"language_version_id": header.LanguageVersionID(),
+		"language_type_id":    header.LanguageTypeID(),
+		"code_type_id":        header.CodeTypeID(),
+		"code_id":             header.CodeID(),
+		"data":                base64.StdEncoding.EncodeToString(data),
+	}, nil
+}
+
+// blobTableString formats a blob object as an aligned inspect table with all CBOR fields.
+// Columns: PARTITION | IS-NATIVE | LANG-ID | LANG-VER-ID | LANG-TYPE-ID | CODE-TYPE-ID | CODE-ID | DATA (base64)
+func (m *Manager) blobTableString(objInfo objects.ObjectInfo) (string, error) {
+	header := objInfo.Header()
+	if header == nil {
+		return "", errors.New("cli: blob header is nil")
+	}
+
+	data, _ := objInfo.Instance().([]byte)
+	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANG-VER-ID", "LANG-TYPE-ID", "CODE-TYPE-ID", "CODE-ID", "DATA"}
+	dataRow := []string{
+		header.Partition(),
+		strconv.FormatBool(header.IsNativeLanguage()),
+		fmt.Sprintf("%d", header.LanguageID()),
+		fmt.Sprintf("%d", header.LanguageVersionID()),
+		fmt.Sprintf("%d", header.LanguageTypeID()),
+		fmt.Sprintf("%d", header.CodeTypeID()),
+		header.CodeID(),
+		base64.StdEncoding.EncodeToString(data),
+	}
+	widths := columnWidths(headers, [][]string{dataRow})
+
+	colorFns := []func(string) string{
+		common.NameText,
+		common.KeywordText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageText,
+		common.NameText,
+		common.NormalText,
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
+	return sb.String(), nil
 }
 
 // getBlobString gets the blob map.

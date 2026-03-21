@@ -68,15 +68,15 @@ func ValidateManifest(manifest *Manifest) (bool, error) {
 		}
 	}
 	if len(manifest.BizPolicies) == 0 {
-		return false, errors.New("[ztas] manifest has no biz_policies")
+		return false, errors.New("[ztas] manifest has no app_authz")
 	}
 	for i, bizPolicy := range manifest.BizPolicies {
 		if _, ok := bizPolicy.Partitions["/"]; !ok {
-			return false, fmt.Errorf("[ztas] biz_policies[%d] is missing root partition", i)
+			return false, fmt.Errorf("[ztas] app_authz[%d] is missing root partition", i)
 		}
 		for partKey, partition := range bizPolicy.Partitions {
 			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
-				return false, fmt.Errorf("[ztas] biz_policies[%d] partition %q references undefined runtime %q", i, partKey, partition.Runtime)
+				return false, fmt.Errorf("[ztas] app_authz[%d] partition %q references undefined runtime %q", i, partKey, partition.Runtime)
 			}
 		}
 	}

@@ -177,6 +177,29 @@ func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid 
 	return nil
 }
 
+// execInspectMapObjectContent builds a key-value map of all raw CBOR fields for the given object.
+func (m *Manager) execInspectMapObjectContent(oid string, objInfo objects.ObjectInfo, outMap map[string]any) error {
+	var contentMap map[string]any
+	var err error
+
+	switch instance := objInfo.Instance().(type) {
+	case *objects.Commit:
+		contentMap, err = m.commitInspectMap(oid, instance)
+	case *objects.Tree:
+		contentMap, err = m.treeInspectMap(oid, instance)
+	default:
+		_ = instance
+		contentMap, err = m.blobInspectMap(objInfo)
+	}
+	if err != nil {
+		return err
+	}
+	for k, v := range contentMap {
+		outMap[k] = v
+	}
+	return nil
+}
+
 // execMapObjectContent builds a key-value representation of the object content,
 // optionally transforming blob data into a structured frontend format.
 func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
@@ -244,7 +267,7 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 }
 
 // ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
-func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, showInspect bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		return output, err
 	}
@@ -287,39 +310,56 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 	}
 
 	// Terminal output mode
-	if m.ctx.IsTerminalOutput() {
-		if showContent {
-			if showRaw {
-				out(nil, "", string(obj.Content()), nil, true)
-			} else {
-				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
-					return fail(nil, err)
-				}
-			}
+	switch {
+	case m.ctx.IsTerminalOutput() && showInspect:
+		var tableStr string
+		switch instance := selected.Instance().(type) {
+		case *objects.Commit:
+			tableStr, err = m.commitTableString(oid, instance)
+		case *objects.Tree:
+			tableStr, err = m.treeTableString(oid, instance)
+		default:
+			tableStr, err = m.blobTableString(*selected)
+		}
+		if err != nil {
+			return fail(nil, err)
+		}
+		out(nil, "", tableStr, nil, true)
+	case m.ctx.IsTerminalOutput() && showContent:
+		if showRaw {
+			out(nil, "", string(obj.Content()), nil, true)
 		} else {
-			out(nil, "", fmt.Sprintf("Your workspace object %s:\n", common.IDText(selected.OID())), nil, true)
-
-			if showRaw {
-				out(nil, "", string(obj.Content()), nil, true)
-			} else {
-				if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
-					return fail(nil, err)
-				}
+			if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+				return fail(nil, err)
 			}
+		}
+	case m.ctx.IsTerminalOutput():
+		out(nil, "", fmt.Sprintf("Your workspace object %s:\n", common.IDText(selected.OID())), nil, true)
 
-			out(nil, "", "\n", nil, false)
-
-			var sb strings.Builder
-			sb.WriteString("type " + common.KeywordText(selected.Type()))
-			sb.WriteString(", size " + common.NumberText(len(obj.Content())))
-			if header != nil {
-				sb.WriteString(", oname " + common.NameText(header.CodeID()))
+		if showRaw {
+			out(nil, "", string(obj.Content()), nil, true)
+		} else {
+			if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+				return fail(nil, err)
 			}
-			out(nil, "", sb.String(), nil, true)
 		}
 
-		// JSON output mode
-	} else if m.ctx.IsJSONOutput() {
+		out(nil, "", "\n", nil, false)
+
+		var sb strings.Builder
+		sb.WriteString("type " + common.KeywordText(selected.Type()))
+		sb.WriteString(", size " + common.NumberText(len(obj.Content())))
+		if header != nil {
+			sb.WriteString(", oname " + common.NameText(header.CodeID()))
+		}
+		out(nil, "", sb.String(), nil, true)
+	case m.ctx.IsJSONOutput() && showInspect:
+		objMap := map[string]any{}
+		if err := m.execInspectMapObjectContent(oid, *selected, objMap); err != nil {
+			return fail(nil, err)
+		}
+		output = out(output, "objects", []map[string]any{objMap}, nil, true)
+	case m.ctx.IsJSONOutput():
 		objMap := map[string]any{}
 
 		if showRaw {

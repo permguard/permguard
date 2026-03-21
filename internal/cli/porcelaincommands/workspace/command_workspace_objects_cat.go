@@ -39,6 +39,8 @@ const (
 	commandNameForWorkspacesCatContent = "content"
 	// commandNameForWorkspacesFrontendLanguage displays the content using the front-end language.
 	commandNameForWorkspacesFrontendLanguage = "frontend"
+	// commandNameForWorkspacesCatInspect displays all object fields as an aligned tabular inspect view.
+	commandNameForWorkspacesCatInspect = "inspect"
 )
 
 // runECommandForObjectsCatWorkspace runs the command for catting the object content.
@@ -65,8 +67,9 @@ func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra
 	showFrontendLanguage := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage))
 	showRaw := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
 	showContent := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
+	showInspect := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatInspect))
 
-	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, oid, outFunc(ctx, printer))
+	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, showInspect, oid, outFunc(ctx, printer))
 	if err != nil {
 		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to cat the object"), err))
 		return common.ErrCommandSilent
@@ -86,7 +89,10 @@ func CreateCommandForWorkspaceObjectsCat(deps cli.DependenciesProvider, v *viper
 
 Examples:
   # print the object content
-  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --frontend`),
+  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --frontend
+
+  # inspect all object fields in a tabular view
+  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --inspect`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runECommandForObjectsCatWorkspace(deps, cmd, v, args[0])
 		},
@@ -101,6 +107,9 @@ Examples:
 
 	command.Flags().Bool(commandNameForWorkspacesFrontendLanguage, false, "display the content formatted using the front-end language")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
+
+	command.Flags().Bool(commandNameForWorkspacesCatInspect, false, "display all object fields as a raw tabular inspect view")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatInspect), command.Flags().Lookup(commandNameForWorkspacesCatInspect))
 
 	return command
 }
