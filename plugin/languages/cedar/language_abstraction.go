@@ -107,16 +107,12 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.L
 	}
 
 	const (
-		codeType   = types.ClassTypePolicy
 		codeTypeID = types.ClassTypePolicyID
 
-		langPolicyType   = cedarlang.LanguagePolicyType
 		langPolicyTypeID = cedarlang.LanguagePolicyTypeID
 	)
 
-	lang := cedarlang.LanguageCedarJSON
 	langID := cedarlang.LanguageCedarJSONID
-	langVersion := cedarlang.LanguageSyntaxVersion
 	langVersionID := cedarlang.LanguageSyntaxVersionID
 
 	i := -1
@@ -160,7 +156,7 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.L
 			return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 		}
 
-		_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langPolicyType, i)
+		_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langPolicyTypeID, i)
 	}
 
 	return multiSecObj, nil
@@ -193,16 +189,12 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.L
 		objName = types.ClassTypeSchema
 
 		codeID     = types.ClassTypeSchema
-		codeType   = types.ClassTypeSchema
 		codeTypeID = types.ClassTypeSchemaID
 
-		langSchemaType   = cedarlang.LanguageSchemaType
 		langSchemaTypeID = cedarlang.LanguageSchemaTypeID
 	)
 
-	lang := cedarlang.LanguageCedarJSON
 	langID := cedarlang.LanguageCedarJSONID
-	langVersion := cedarlang.LanguageSyntaxVersion
 	langVersionID := cedarlang.LanguageSyntaxVersionID
 
 	// TODO: Implement schema validation
@@ -228,7 +220,7 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.L
 		return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 	}
 
-	_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeType, lang, langVersion, langSchemaType, 0)
+	_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langSchemaTypeID, 0)
 	return multiSecObj, nil
 }
 

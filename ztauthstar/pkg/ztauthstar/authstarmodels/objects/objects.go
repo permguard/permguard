@@ -251,14 +251,8 @@ func NewCommit(tree string, parentCommitID string, author string, authorTimestam
 	} else if strings.TrimSpace(parentCommitID) == "" {
 		return nil, errors.New("objects: parent commit id is empty")
 	}
-	if strings.TrimSpace(author) == "" {
-		author = "unknown"
-	}
 	if authorTimestamp.Equal((time.Time{})) {
 		authorTimestamp = time.Now()
-	}
-	if strings.TrimSpace(committer) == "" {
-		committer = "unknown"
 	}
 	if committerTimestamp.Equal((time.Time{})) {
 		committerTimestamp = time.Now()
@@ -278,19 +272,19 @@ func NewCommit(tree string, parentCommitID string, author string, authorTimestam
 
 // TreeEntry represents a single entry in a tree object.
 type TreeEntry struct {
-	partition       string
-	otype           string
-	oid             string
-	oname           string
-	codeID          string
-	codeType        string
-	language        string
-	languageVersion string
-	languageType    string
+	partition         string
+	otype             string
+	oid               string
+	oname             string
+	codeID            string
+	codeTypeID        uint32
+	languageID        uint32
+	languageVersionID uint32
+	languageTypeID    uint32
 }
 
 // NewTreeEntry creates a new tree entry.
-func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, language, languageVersion, languageType string) (*TreeEntry, error) {
+func NewTreeEntry(partition, otype, oid, oname, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32) (*TreeEntry, error) {
 	if strings.TrimSpace(partition) == "" {
 		return nil, errors.New("objects: partition is empty")
 	} else if strings.TrimSpace(otype) == "" {
@@ -301,25 +295,23 @@ func NewTreeEntry(partition, otype, oid, oname, codeID, codeType, language, lang
 		return nil, errors.New("objects: object name is empty")
 	} else if strings.TrimSpace(codeID) == "" {
 		return nil, errors.New("objects: code id is empty")
-	} else if strings.TrimSpace(codeType) == "" {
-		return nil, errors.New("objects: code name is empty")
-	} else if strings.TrimSpace(language) == "" {
-		return nil, errors.New("objects: language is empty")
-	} else if strings.TrimSpace(languageVersion) == "" {
-		return nil, errors.New("objects: language version is empty")
-	} else if strings.TrimSpace(languageType) == "" {
-		return nil, errors.New("objects: language type is empty")
+	} else if codeTypeID == 0 {
+		return nil, errors.New("objects: code type id is zero")
+	} else if languageID == 0 {
+		return nil, errors.New("objects: language id is zero")
+	} else if languageTypeID == 0 {
+		return nil, errors.New("objects: language type id is zero")
 	}
 	return &TreeEntry{
-		partition:       partition,
-		otype:           otype,
-		oid:             oid,
-		oname:           oname,
-		codeID:          codeID,
-		codeType:        codeType,
-		language:        language,
-		languageVersion: languageVersion,
-		languageType:    languageType,
+		partition:         partition,
+		otype:             otype,
+		oid:               oid,
+		oname:             oname,
+		codeID:            codeID,
+		codeTypeID:        codeTypeID,
+		languageID:        languageID,
+		languageVersionID: languageVersionID,
+		languageTypeID:    languageTypeID,
 	}, nil
 }
 
@@ -348,24 +340,24 @@ func (t *TreeEntry) CodeID() string {
 	return t.codeID
 }
 
-// CodeType returns the code name of the tree entry.
-func (t *TreeEntry) CodeType() string {
-	return t.codeType
+// CodeTypeID returns the code type ID of the tree entry.
+func (t *TreeEntry) CodeTypeID() uint32 {
+	return t.codeTypeID
 }
 
-// Language returns the language of the tree entry.
-func (t *TreeEntry) Language() string {
-	return t.language
+// LanguageID returns the language ID of the tree entry.
+func (t *TreeEntry) LanguageID() uint32 {
+	return t.languageID
 }
 
-// LanguageVersion returns the language version of the tree entry.
-func (t *TreeEntry) LanguageVersion() string {
-	return t.languageVersion
+// LanguageVersionID returns the language version ID of the tree entry.
+func (t *TreeEntry) LanguageVersionID() uint32 {
+	return t.languageVersionID
 }
 
-// LanguageType returns the language type of the tree entry.
-func (t *TreeEntry) LanguageType() string {
-	return t.languageType
+// LanguageTypeID returns the language type ID of the tree entry.
+func (t *TreeEntry) LanguageTypeID() uint32 {
+	return t.languageTypeID
 }
 
 // Tree represents a tree object.
@@ -394,7 +386,7 @@ func (t *Tree) AddEntry(entry *TreeEntry) error {
 		if e.OName() == entry.OName() {
 			return errors.New("objects: tree entry already exists")
 		}
-		if e.CodeID() == entry.CodeID() && e.CodeType() == entry.CodeType() {
+		if e.CodeID() == entry.CodeID() && e.CodeTypeID() == entry.CodeTypeID() {
 			return errors.New("objects: tree entry already exists")
 		}
 	}

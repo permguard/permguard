@@ -195,10 +195,10 @@ func (m *Manager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			codeFile.OType,
 			codeFile.OName,
 			codeFile.CodeID,
-			codeFile.CodeType,
-			codeFile.Language,
-			codeFile.LanguageVersion,
-			codeFile.LanguageType,
+			strconv.FormatUint(uint64(codeFile.CodeTypeID), 10),
+			strconv.FormatUint(uint64(codeFile.LanguageID), 10),
+			strconv.FormatUint(uint64(codeFile.LanguageVersionID), 10),
+			strconv.FormatUint(uint64(codeFile.LanguageTypeID), 10),
 			fmt.Sprintf("%d", codeFile.Mode),
 			strconv.Itoa(codeFile.Section),
 			strconv.FormatBool(codeFile.HasErrors),
@@ -220,11 +220,26 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		if len(record) < 13 {
 			return errors.New("invalid record format")
 		}
+		codeTypeID64, err := strconv.ParseUint(record[5], 10, 32)
+		if err != nil {
+			return err
+		}
+		languageID64, err := strconv.ParseUint(record[6], 10, 32)
+		if err != nil {
+			return err
+		}
+		langVersionID64, err := strconv.ParseUint(record[7], 10, 32)
+		if err != nil {
+			return err
+		}
+		langTypeID64, err := strconv.ParseUint(record[8], 10, 32)
+		if err != nil {
+			return err
+		}
 		mode64, err := strconv.ParseUint(record[9], 10, 32)
 		if err != nil {
 			return err
 		}
-		mode := uint32(mode64)
 		section, err := strconv.Atoi(record[10])
 		if err != nil {
 			return err
@@ -234,19 +249,19 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			return err
 		}
 		codeFile := CodeFile{
-			Path:            record[0],
-			OID:             record[1],
-			OType:           record[2],
-			OName:           record[3],
-			CodeID:          record[4],
-			CodeType:        record[5],
-			Language:        record[6],
-			LanguageVersion: record[7],
-			LanguageType:    record[8],
-			Mode:            mode,
-			Section:         section,
-			HasErrors:       hasErrors,
-			Error:           record[12],
+			Path:              record[0],
+			OID:               record[1],
+			OType:             record[2],
+			OName:             record[3],
+			CodeID:            record[4],
+			CodeTypeID:        uint32(codeTypeID64),
+			LanguageID:        uint32(languageID64),
+			LanguageVersionID: uint32(langVersionID64),
+			LanguageTypeID:    uint32(langTypeID64),
+			Mode:              uint32(mode64),
+			Section:           section,
+			HasErrors:         hasErrors,
+			Error:             record[12],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -283,15 +298,15 @@ func (m *Manager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]CodeObj
 	for _, entry := range tree.Entries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
-				Partition:       entry.Partition(),
-				OName:           entry.OName(),
-				OType:           entry.Type(),
-				OID:             entry.OID(),
-				CodeID:          entry.CodeID(),
-				CodeType:        entry.CodeType(),
-				Language:        entry.Language(),
-				LanguageType:    entry.LanguageType(),
-				LanguageVersion: entry.LanguageVersion(),
+				Partition:         entry.Partition(),
+				OName:             entry.OName(),
+				OType:             entry.Type(),
+				OID:               entry.OID(),
+				CodeID:            entry.CodeID(),
+				CodeTypeID:        entry.CodeTypeID(),
+				LanguageID:        entry.LanguageID(),
+				LanguageTypeID:    entry.LanguageTypeID(),
+				LanguageVersionID: entry.LanguageVersionID(),
 			},
 			State: "",
 		}
@@ -334,29 +349,26 @@ func (m *Manager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObje
 	if codeFile.CodeID == "" {
 		return nil, errors.New("cli: code file CodeID is empty")
 	}
-	if codeFile.CodeType == "" {
-		return nil, errors.New("cli: code file CodeType is empty")
+	if codeFile.CodeTypeID == 0 {
+		return nil, errors.New("cli: code file code type id is zero")
 	}
-	if codeFile.Language == "" {
-		return nil, errors.New("cli: code file Language is empty")
+	if codeFile.LanguageID == 0 {
+		return nil, errors.New("cli: code file language id is zero")
 	}
-	if codeFile.LanguageVersion == "" {
-		return nil, errors.New("cli: code file LanguageVersion is empty")
-	}
-	if codeFile.LanguageType == "" {
-		return nil, errors.New("cli: code file LanguageType is empty")
+	if codeFile.LanguageTypeID == 0 {
+		return nil, errors.New("cli: code file language type id is zero")
 	}
 	return &CodeObjectState{
 		CodeObject: CodeObject{
-			Partition:       codeFile.Partition,
-			OName:           codeFile.OName,
-			OType:           codeFile.OType,
-			OID:             codeFile.OID,
-			CodeID:          codeFile.CodeID,
-			CodeType:        codeFile.CodeType,
-			Language:        codeFile.Language,
-			LanguageVersion: codeFile.LanguageVersion,
-			LanguageType:    codeFile.LanguageType,
+			Partition:         codeFile.Partition,
+			OName:             codeFile.OName,
+			OType:             codeFile.OType,
+			OID:               codeFile.OID,
+			CodeID:            codeFile.CodeID,
+			CodeTypeID:        codeFile.CodeTypeID,
+			LanguageID:        codeFile.LanguageID,
+			LanguageVersionID: codeFile.LanguageVersionID,
+			LanguageTypeID:    codeFile.LanguageTypeID,
 		},
 	}, nil
 }
@@ -375,10 +387,10 @@ func (m *Manager) saveCodeObjectStates(path string, codeObjects []CodeObjectStat
 			codeObject.OType,
 			codeObject.OID,
 			codeObject.CodeID,
-			codeObject.CodeType,
-			codeObject.Language,
-			codeObject.LanguageVersion,
-			codeObject.LanguageType,
+			strconv.FormatUint(uint64(codeObject.CodeTypeID), 10),
+			strconv.FormatUint(uint64(codeObject.LanguageID), 10),
+			strconv.FormatUint(uint64(codeObject.LanguageVersionID), 10),
+			strconv.FormatUint(uint64(codeObject.LanguageTypeID), 10),
 		}
 	}
 	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
@@ -395,18 +407,22 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 		if len(record) < 2 {
 			return errors.New("invalid record format")
 		}
+		codeTypeID64, _ := strconv.ParseUint(record[6], 10, 32)
+		langID64, _ := strconv.ParseUint(record[7], 10, 32)
+		langVersionID64, _ := strconv.ParseUint(record[8], 10, 32)
+		langTypeID64, _ := strconv.ParseUint(record[9], 10, 32)
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
-				Partition:       record[1],
-				OName:           record[2],
-				OType:           record[3],
-				OID:             record[4],
-				CodeID:          record[5],
-				CodeType:        record[6],
-				Language:        record[7],
-				LanguageVersion: record[8],
-				LanguageType:    record[9],
+				Partition:         record[1],
+				OName:             record[2],
+				OType:             record[3],
+				OID:               record[4],
+				CodeID:            record[5],
+				CodeTypeID:        uint32(codeTypeID64),
+				LanguageID:        uint32(langID64),
+				LanguageVersionID: uint32(langVersionID64),
+				LanguageTypeID:    uint32(langTypeID64),
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)
@@ -494,6 +510,17 @@ func (m *Manager) ReadObject(oid string) (*objects.Object, error) {
 		return nil, fmt.Errorf("cli: corrupted object %s: %w", oid, err)
 	}
 	return m.objMgr.DeserializeObjectFromBytes(data)
+}
+
+// ObjectAbsolutePath returns the absolute filesystem path of the stored object for the given OID.
+func (m *Manager) ObjectAbsolutePath(oid string) (string, error) {
+	folder, name := m.codeSourceObjectDir(oid, m.codeSourceDir())
+	relPath := filepath.Join(folder, name)
+	abs, err := filepath.Abs(m.persMgr.Path(persistence.PermguardDir, relPath))
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
 }
 
 // CollectGarbage removes orphaned objects from the object store that are not reachable from the given commit.

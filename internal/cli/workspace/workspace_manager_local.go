@@ -220,19 +220,19 @@ func (m *Manager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partiti
 // buildCodeFileFromSection builds a CodeFile from a given SectionObject with metadata, errors and OID assignment.
 func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputFile cosp.CodeFile, path, wkdir string, mode uint32) cosp.CodeFile {
 	codeFile := cosp.CodeFile{
-		Partition:       secObj.Partition(),
-		Kind:            inputFile.Kind,
-		Path:            strings.TrimPrefix(path, wkdir),
-		Section:         secObj.NumberOfSection(),
-		Mode:            mode,
-		HasErrors:       secObj.Error() != nil,
-		OType:           secObj.ObjectType(),
-		OName:           secObj.ObjectName(),
-		CodeID:          secObj.CodeID(),
-		CodeType:        secObj.CodeType(),
-		Language:        secObj.Language(),
-		LanguageVersion: secObj.LanguageVersion(),
-		LanguageType:    secObj.LanguageType(),
+		Partition:         secObj.Partition(),
+		Kind:              inputFile.Kind,
+		Path:              strings.TrimPrefix(path, wkdir),
+		Section:           secObj.NumberOfSection(),
+		Mode:              mode,
+		HasErrors:         secObj.Error() != nil,
+		OType:             secObj.ObjectType(),
+		OName:             secObj.ObjectName(),
+		CodeID:            secObj.CodeID(),
+		CodeTypeID:        secObj.CodeTypeID(),
+		LanguageID:        secObj.LanguageID(),
+		LanguageVersionID: secObj.LanguageVersionID(),
+		LanguageTypeID:    secObj.LanguageTypeID(),
 	}
 
 	if codeFile.HasErrors {
@@ -317,14 +317,14 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		if len(schemaFileNames) > 0 {
 			schemaFileName := schemaFileNames[0]
 			codeFile := cosp.CodeFile{
-				Partition: partition,
-				Path:      m.persMgr.RelativeDir(persistence.WorkspaceDir, schemaFileName),
-				Section:   0,
-				Mode:      0,
-				HasErrors: true,
-				CodeID:    types.ClassTypeSchema,
-				CodeType:  types.ClassTypeSchema,
-				Error:     fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+				Partition:  partition,
+				Path:       m.persMgr.RelativeDir(persistence.WorkspaceDir, schemaFileName),
+				Section:    0,
+				Mode:       0,
+				HasErrors:  true,
+				CodeID:     types.ClassTypeSchema,
+				CodeTypeID: types.ClassTypeSchemaID,
+				Error:      fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
 			}
 			blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 		}
@@ -363,7 +363,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	}
 	for _, obj := range codeObsState {
 		var entry *objects.TreeEntry
-		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeType, obj.Language, obj.LanguageVersion, obj.LanguageType)
+		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeTypeID, obj.LanguageID, obj.LanguageVersionID, obj.LanguageTypeID)
 		if err != nil {
 			return "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}

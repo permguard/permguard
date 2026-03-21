@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -148,9 +150,9 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 			e.Type(),
 			e.Partition(),
 			e.OName(),
-			e.Language(),
-			languageVersionDisplay(e.LanguageVersion()),
-			e.LanguageType(),
+			resolveLanguageID(e.LanguageID()),
+			resolveLanguageVersionID(e.LanguageVersionID()),
+			resolveLanguageTypeID(e.LanguageTypeID()),
 		}
 	}
 	widths := columnWidths(headers, dataRows)
@@ -195,9 +197,9 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 		entryMap["oid"] = entry.OID()
 		entryMap["oname"] = entry.OName()
 		entryMap["type"] = entry.Type()
-		entryMap["language"] = entry.Language()
-		entryMap["language_type"] = entry.LanguageType()
-		entryMap["language_version"] = entry.LanguageVersion()
+		entryMap["language"] = resolveLanguageID(entry.LanguageID())
+		entryMap["language_type"] = resolveLanguageTypeID(entry.LanguageTypeID())
+		entryMap["language_version"] = resolveLanguageVersionID(entry.LanguageVersionID())
 		entriesList[i] = entryMap
 	}
 
@@ -217,12 +219,97 @@ func (m *Manager) blobString(blob any) ([]byte, bool, error) {
 	return content, true, nil
 }
 
-// languageVersionDisplay returns v, or "" when v is a zero version ("0", "0.0").
-func languageVersionDisplay(v string) string {
-	if v == "0" || v == "0.0" {
+// objectDiskSizeKB returns the on-disk file size in KB for the given OID.
+// Falls back to sizeBytes if the file cannot be stat'd.
+func (m *Manager) objectDiskSizeKB(fullPath string, sizeBytes int) float64 {
+	if info, err := os.Stat(fullPath); err == nil {
+		return float64(info.Size()) / 1024.0
+	}
+	return float64(sizeBytes) / 1024.0
+}
+
+// objectInspectHeader returns a formatted header block for the --inspect table view.
+// Shows the filename, full absolute path, and size in KB of the object on disk.
+func (m *Manager) objectInspectHeader(oid, objectType string, sizeBytes int) string {
+	fullPath, err := m.cospMgr.ObjectAbsolutePath(oid)
+	if err != nil {
+		fullPath = ""
+	}
+	// Reconstruct the full filename: the file on disk is oid[:len-2] inside a shard folder oid[len-2:].
+	// Appending the shard folder name to the base filename gives back the complete OID string.
+	name := filepath.Base(fullPath) + filepath.Base(filepath.Dir(fullPath))
+	sizeKB := m.objectDiskSizeKB(fullPath, sizeBytes)
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "  %-8s %s\n", "type", common.KeywordText(objectType))
+	fmt.Fprintf(&sb, "  %-8s %s\n", "name", common.NameText(name))
+	fmt.Fprintf(&sb, "  %-8s %s\n", "path", common.FileText(fullPath))
+	fmt.Fprintf(&sb, "  %-8s %.2f KB\n", "size", sizeKB)
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// objectInspectHeaderMap returns a map with header metadata for the --inspect JSON output.
+func (m *Manager) objectInspectHeaderMap(oid, objectType string, sizeBytes int) map[string]any {
+	fullPath, err := m.cospMgr.ObjectAbsolutePath(oid)
+	if err != nil {
+		fullPath = ""
+	}
+	// Reconstruct the full filename: the file on disk is oid[:len-2] inside a shard folder oid[len-2:].
+	// Appending the shard folder name to the base filename gives back the complete OID string.
+	name := filepath.Base(fullPath) + filepath.Base(filepath.Dir(fullPath))
+	sizeKB := m.objectDiskSizeKB(fullPath, sizeBytes)
+	return map[string]any{
+		"oid":     oid,
+		"type":    objectType,
+		"name":    name,
+		"path":    fullPath,
+		"size_kb": sizeKB,
+	}
+}
+
+// resolveLanguageID converts a language uint32 ID to its display name.
+func resolveLanguageID(id uint32) string {
+	switch id {
+	case 1:
+		return "cedar"
+	case 2:
+		return "cedar-json"
+	default:
+		return fmt.Sprintf("%d", id)
+	}
+}
+
+// resolveLanguageVersionID converts a language version uint32 ID to its display string.
+// Returns empty string for the zero version (ID 0 = "0.0").
+func resolveLanguageVersionID(id uint32) string {
+	if id == 0 {
 		return ""
 	}
-	return v
+	return fmt.Sprintf("%d", id)
+}
+
+// resolveLanguageTypeID converts a language type uint32 ID to its display name.
+func resolveLanguageTypeID(id uint32) string {
+	switch id {
+	case 1:
+		return "schema"
+	case 2:
+		return "policy"
+	default:
+		return fmt.Sprintf("%d", id)
+	}
+}
+
+// resolveCodeTypeID converts a code type uint32 ID to its display name.
+func resolveCodeTypeID(id uint32) string {
+	switch id {
+	case 1:
+		return "schema"
+	case 2:
+		return "policy"
+	default:
+		return fmt.Sprintf("%d", id)
+	}
 }
 
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
@@ -271,7 +358,7 @@ func columnWidths(headers []string, rows [][]string) []int {
 
 // commitTableString formats a commit object as an aligned inspect table with all CBOR fields.
 // Columns: TREE | PARENT | AUTHOR | AUTHOR-TS | COMMITTER | COMMITTER-TS | MESSAGE
-func (m *Manager) commitTableString(_ string, commit *objects.Commit) (string, error) {
+func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeBytes int) (string, error) {
 	if commit == nil {
 		return "", errors.New("cli: commit is nil")
 	}
@@ -300,6 +387,7 @@ func (m *Manager) commitTableString(_ string, commit *objects.Commit) (string, e
 	}
 
 	var sb strings.Builder
+	sb.WriteString(m.objectInspectHeader(oid, "commit", sizeBytes))
 	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
 	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
 	return sb.String(), nil
@@ -308,31 +396,41 @@ func (m *Manager) commitTableString(_ string, commit *objects.Commit) (string, e
 // treeTableString formats a tree object as an aligned inspect table with all CBOR fields.
 // First row is the tree object itself (TYPE=tree, OID=tree OID).
 // Subsequent rows are the tree entries (one per cborTreeEntry).
-// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE
-func (m *Manager) treeTableString(oid string, tree *objects.Tree) (string, error) {
+// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VER-ID | LANG-VER | LANG-TYPE-ID | LANG-TYPE
+func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
+	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VER-ID", "LANG-VER", "LANG-TYPE-ID", "LANG-TYPE"}
 
 	// First row: the tree object itself.
-	selfRow := []string{"tree", "", oid, "", "", "", "", "", ""}
+	selfRow := []string{"tree", "", oid, "", "", "", "", "", "", "", "", "", ""}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, 0, 1+len(entries))
 	dataRows = append(dataRows, selfRow)
 	for _, e := range entries {
+		langVerID := strconv.FormatUint(uint64(e.LanguageVersionID()), 10)
+		langVer := resolveLanguageVersionID(e.LanguageVersionID())
+		if e.LanguageVersionID() == 0 {
+			langVerID = ""
+			langVer = ""
+		}
 		dataRows = append(dataRows, []string{
 			e.Type(),
 			e.Partition(),
 			e.OID(),
 			e.OName(),
 			e.CodeID(),
-			e.CodeType(),
-			e.Language(),
-			languageVersionDisplay(e.LanguageVersion()),
-			e.LanguageType(),
+			strconv.FormatUint(uint64(e.CodeTypeID()), 10),
+			resolveCodeTypeID(e.CodeTypeID()),
+			strconv.FormatUint(uint64(e.LanguageID()), 10),
+			resolveLanguageID(e.LanguageID()),
+			langVerID,
+			langVer,
+			strconv.FormatUint(uint64(e.LanguageTypeID()), 10),
+			resolveLanguageTypeID(e.LanguageTypeID()),
 		})
 	}
 
@@ -345,12 +443,17 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree) (string, error
 		common.NameText,
 		common.NameText,
 		common.KeywordText,
+		common.KeywordText,
 		common.LanguageText,
 		common.LanguageText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageKeywordText,
 		common.LanguageKeywordText,
 	}
 
 	var sb strings.Builder
+	sb.WriteString(m.objectInspectHeader(oid, "tree", sizeBytes))
 	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
 	for _, row := range dataRows {
 		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
@@ -388,17 +491,24 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 		"oid":  oid,
 	})
 	for _, e := range entries {
-		allEntries = append(allEntries, map[string]any{
+		entry := map[string]any{
 			"type":             e.Type(),
 			"partition":        e.Partition(),
 			"oid":              e.OID(),
 			"oname":            e.OName(),
 			"code_id":          e.CodeID(),
-			"code_type":        e.CodeType(),
-			"language":         e.Language(),
-			"language_version": languageVersionDisplay(e.LanguageVersion()),
-			"language_type":    e.LanguageType(),
-		})
+			"code_type_id":     e.CodeTypeID(),
+			"code_type":        resolveCodeTypeID(e.CodeTypeID()),
+			"language_id":      e.LanguageID(),
+			"language":         resolveLanguageID(e.LanguageID()),
+			"language_type_id": e.LanguageTypeID(),
+			"language_type":    resolveLanguageTypeID(e.LanguageTypeID()),
+		}
+		if e.LanguageVersionID() != 0 {
+			entry["language_version_id"] = e.LanguageVersionID()
+			entry["language_version"] = resolveLanguageVersionID(e.LanguageVersionID())
+		}
+		allEntries = append(allEntries, entry)
 	}
 	return map[string]any{"entries": allEntries}, nil
 }
@@ -411,35 +521,53 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 		return nil, errors.New("cli: blob header is nil")
 	}
 	data, _ := objInfo.Instance().([]byte)
-	return map[string]any{
-		"partition":           header.Partition(),
-		"is_native_language":  header.IsNativeLanguage(),
-		"language_id":         header.LanguageID(),
-		"language_version_id": header.LanguageVersionID(),
-		"language_type_id":    header.LanguageTypeID(),
-		"code_type_id":        header.CodeTypeID(),
-		"code_id":             header.CodeID(),
-		"data":                base64.StdEncoding.EncodeToString(data),
-	}, nil
+	result := map[string]any{
+		"partition":          header.Partition(),
+		"is_native_language": header.IsNativeLanguage(),
+		"language_id":        header.LanguageID(),
+		"language":           resolveLanguageID(header.LanguageID()),
+		"language_type_id":   header.LanguageTypeID(),
+		"language_type":      resolveLanguageTypeID(header.LanguageTypeID()),
+		"code_type_id":       header.CodeTypeID(),
+		"code_type":          resolveCodeTypeID(header.CodeTypeID()),
+		"code_id":            header.CodeID(),
+		"data":               base64.StdEncoding.EncodeToString(data),
+	}
+	if header.LanguageVersionID() != 0 {
+		result["language_version_id"] = header.LanguageVersionID()
+		result["language_version"] = resolveLanguageVersionID(header.LanguageVersionID())
+	}
+	return result, nil
 }
 
 // blobTableString formats a blob object as an aligned inspect table with all CBOR fields.
-// Columns: PARTITION | IS-NATIVE | LANG-ID | LANG-VER-ID | LANG-TYPE-ID | CODE-TYPE-ID | CODE-ID | DATA (base64)
-func (m *Manager) blobTableString(objInfo objects.ObjectInfo) (string, error) {
+// Columns: PARTITION | IS-NATIVE | LANG-ID | LANGUAGE | LANG-VER-ID | LANG-VER | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
+func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
 		return "", errors.New("cli: blob header is nil")
 	}
 
+	langVerID := strconv.FormatUint(uint64(header.LanguageVersionID()), 10)
+	langVer := resolveLanguageVersionID(header.LanguageVersionID())
+	if header.LanguageVersionID() == 0 {
+		langVerID = ""
+		langVer = ""
+	}
+
 	data, _ := objInfo.Instance().([]byte)
-	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANG-VER-ID", "LANG-TYPE-ID", "CODE-TYPE-ID", "CODE-ID", "DATA"}
+	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VER-ID", "LANG-VER", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
 	dataRow := []string{
 		header.Partition(),
 		strconv.FormatBool(header.IsNativeLanguage()),
-		fmt.Sprintf("%d", header.LanguageID()),
-		fmt.Sprintf("%d", header.LanguageVersionID()),
-		fmt.Sprintf("%d", header.LanguageTypeID()),
-		fmt.Sprintf("%d", header.CodeTypeID()),
+		strconv.FormatUint(uint64(header.LanguageID()), 10),
+		resolveLanguageID(header.LanguageID()),
+		langVerID,
+		langVer,
+		strconv.FormatUint(uint64(header.LanguageTypeID()), 10),
+		resolveLanguageTypeID(header.LanguageTypeID()),
+		strconv.FormatUint(uint64(header.CodeTypeID()), 10),
+		resolveCodeTypeID(header.CodeTypeID()),
 		header.CodeID(),
 		base64.StdEncoding.EncodeToString(data),
 	}
@@ -452,11 +580,16 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo) (string, error) {
 		common.LanguageText,
 		common.LanguageText,
 		common.LanguageText,
+		common.LanguageKeywordText,
+		common.LanguageKeywordText,
+		common.KeywordText,
+		common.KeywordText,
 		common.NameText,
 		common.NormalText,
 	}
 
 	var sb strings.Builder
+	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))
 	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
 	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
 	return sb.String(), nil

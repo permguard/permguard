@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	cedarlang "github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -69,15 +70,15 @@ func TestTreeCreation(t *testing.T) {
 	tree, err := objects.NewTree()
 	require.NoError(t, err, "new tree should not return an error")
 
-	treeItem1, err := objects.NewTreeEntry("/", "blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", "codeType1", "cedar", "*", "policy")
+	treeItem1, err := objects.NewTreeEntry("/", "blob", "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", "name1", "code1", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID)
 	require.NoError(t, err, "new tree entry should not return an error")
 	_ = tree.AddEntry(treeItem1)
 
-	treeItem2, err := objects.NewTreeEntry("/", "blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", "codeType2", "cedar", "*", "policy")
+	treeItem2, err := objects.NewTreeEntry("/", "blob", "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", "name2", "code2", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID)
 	require.NoError(t, err, "new tree entry should not return an error")
 	_ = tree.AddEntry(treeItem2)
 
-	treeItem3, err := objects.NewTreeEntry("/", "tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", "codeType3", "cedar", "*", "policy")
+	treeItem3, err := objects.NewTreeEntry("/", "tree", "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", "name3", "code3", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID)
 	_ = tree.AddEntry(treeItem3)
 
 	require.NoError(t, err, "NewTree should not return an error")
@@ -96,9 +97,9 @@ func TestTreeCreation(t *testing.T) {
 		assert.Equal(entry.OID(), convertedEntry.OID(), "OID mismatch")
 		assert.Equal(entry.OName(), convertedEntry.OName(), "Name mismatch")
 		assert.Equal(entry.CodeID(), convertedEntry.CodeID(), "CodeID mismatch")
-		assert.Equal(entry.CodeType(), convertedEntry.CodeType(), "CodeType mismatch")
-		assert.Equal(entry.Language(), convertedEntry.Language(), "Language mismatch")
-		assert.Equal(entry.LanguageType(), convertedEntry.LanguageType(), "LanguageType mismatch")
-		assert.Equal(entry.LanguageVersion(), convertedEntry.LanguageVersion(), "LanguageVersion mismatch")
+		assert.Equal(entry.CodeTypeID(), convertedEntry.CodeTypeID(), "CodeTypeID mismatch")
+		assert.Equal(entry.LanguageID(), convertedEntry.LanguageID(), "LanguageID mismatch")
+		assert.Equal(entry.LanguageTypeID(), convertedEntry.LanguageTypeID(), "LanguageTypeID mismatch")
+		assert.Equal(entry.LanguageVersionID(), convertedEntry.LanguageVersionID(), "LanguageVersionID mismatch")
 	}
 }

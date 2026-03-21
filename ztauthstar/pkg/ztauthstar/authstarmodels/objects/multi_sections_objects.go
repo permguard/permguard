@@ -24,17 +24,17 @@ import (
 
 // SectionObject represents a section object.
 type SectionObject struct {
-	obj             *Object
-	partition       string
-	otype           string
-	oname           string
-	codeID          string
-	codeType        string
-	language        string
-	languageVersion string
-	languageType    string
-	numOfSect       int
-	err             error
+	obj               *Object
+	partition         string
+	otype             string
+	oname             string
+	codeID            string
+	codeTypeID        uint32
+	languageID        uint32
+	languageVersionID uint32
+	languageTypeID    uint32
+	numOfSect         int
+	err               error
 }
 
 // Object returns the object.
@@ -62,24 +62,24 @@ func (s *SectionObject) CodeID() string {
 	return s.codeID
 }
 
-// CodeType returns the code type.
-func (s *SectionObject) CodeType() string {
-	return s.codeType
+// CodeTypeID returns the code type ID.
+func (s *SectionObject) CodeTypeID() uint32 {
+	return s.codeTypeID
 }
 
-// Language returns the language.
-func (s *SectionObject) Language() string {
-	return s.language
+// LanguageID returns the language ID.
+func (s *SectionObject) LanguageID() uint32 {
+	return s.languageID
 }
 
-// LanguageVersion returns the language version.
-func (s *SectionObject) LanguageVersion() string {
-	return s.languageVersion
+// LanguageVersionID returns the language version ID.
+func (s *SectionObject) LanguageVersionID() uint32 {
+	return s.languageVersionID
 }
 
-// LanguageType returns the language type.
-func (s *SectionObject) LanguageType() string {
-	return s.languageType
+// LanguageTypeID returns the language type ID.
+func (s *SectionObject) LanguageTypeID() uint32 {
+	return s.languageTypeID
 }
 
 // NumberOfSection returns the number section.
@@ -93,19 +93,19 @@ func (s *SectionObject) Error() error {
 }
 
 // NewSectionObject creates a new section object.
-func NewSectionObject(obj *Object, partition, objType, objName, codeID, codeType, language, languageVersion, languageType string, section int, err error) (*SectionObject, error) {
+func NewSectionObject(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32, section int, err error) (*SectionObject, error) {
 	return &SectionObject{
-		partition:       partition,
-		obj:             obj,
-		otype:           objType,
-		oname:           objName,
-		codeID:          codeID,
-		codeType:        codeType,
-		language:        language,
-		languageVersion: languageVersion,
-		languageType:    languageType,
-		numOfSect:       section,
-		err:             err,
+		partition:         partition,
+		obj:               obj,
+		otype:             objType,
+		oname:             objName,
+		codeID:            codeID,
+		codeTypeID:        codeTypeID,
+		languageID:        languageID,
+		languageVersionID: languageVersionID,
+		languageTypeID:    languageTypeID,
+		numOfSect:         section,
+		err:               err,
 	}, nil
 }
 
@@ -157,8 +157,8 @@ func (m *MultiSectionsObject) AddSectionObject(obj *SectionObject) error {
 }
 
 // AddSectionObjectWithParams adds a section object with parameters.
-func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName, codeID, codeType, language, languageVersion, languageType string, section int) error {
-	objSect, err := NewSectionObject(obj, partition, objType, objName, codeID, codeType, language, languageVersion, languageType, section, nil)
+func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32, section int) error {
+	objSect, err := NewSectionObject(obj, partition, objType, objName, codeID, codeTypeID, languageID, languageVersionID, languageTypeID, section, nil)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition,
 
 // AddSectionObjectWithError adds a section object with an error.
 func (m *MultiSectionsObject) AddSectionObjectWithError(section int, err error) error {
-	objSect, err := NewSectionObject(nil, "", "", "", "", "", "", "", "", section, err)
+	objSect, err := NewSectionObject(nil, "", "", "", "", 0, 0, 0, 0, section, err)
 	if err != nil {
 		return err
 	}

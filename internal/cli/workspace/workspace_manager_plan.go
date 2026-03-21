@@ -42,7 +42,7 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 			continue
 		}
 		var treeItem *objects.TreeEntry
-		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeType, planItem.Language, planItem.LanguageVersion, planItem.LanguageType)
+		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeTypeID, planItem.LanguageID, planItem.LanguageVersionID, planItem.LanguageTypeID)
 		if err != nil {
 			return nil, nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}

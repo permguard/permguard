@@ -43,21 +43,21 @@ type codeLocalConfig struct {
 
 // CodeFile represents the code file.
 type CodeFile struct {
-	Kind            string `json:"kind"`
-	Partition       string `json:"partition"`
-	Path            string `json:"path"`
-	OID             string `json:"oid"`
-	OType           string `json:"otype"`
-	OName           string `json:"oname"`
-	CodeID          string `json:"codeid"`
-	CodeType        string `json:"codetype"`
-	Language        string `json:"language"`
-	LanguageVersion string `json:"languagetype"`
-	LanguageType    string `json:"languagename"`
-	Mode            uint32 `json:"mode"`
-	Section         int    `json:"section"`
-	HasErrors       bool   `json:"has_errors"`
-	Error           string `json:"error"`
+	Kind              string `json:"kind"`
+	Partition         string `json:"partition"`
+	Path              string `json:"path"`
+	OID               string `json:"oid"`
+	OType             string `json:"otype"`
+	OName             string `json:"oname"`
+	CodeID            string `json:"codeid"`
+	CodeTypeID        uint32 `json:"codetypeid"`
+	LanguageID        uint32 `json:"languageid"`
+	LanguageVersionID uint32 `json:"languageversionid"`
+	LanguageTypeID    uint32 `json:"languagetypeid"`
+	Mode              uint32 `json:"mode"`
+	Section           int    `json:"section"`
+	HasErrors         bool   `json:"has_errors"`
+	Error             string `json:"error"`
 }
 
 // ConvertCodeFilesToPath converts code files to paths.
@@ -71,15 +71,15 @@ func ConvertCodeFilesToPath(files []CodeFile) []string {
 
 // CodeObject represents the code object.
 type CodeObject struct {
-	Partition       string `json:"partition"`
-	OName           string `json:"oname"`
-	OType           string `json:"otype"`
-	OID             string `json:"oid"`
-	CodeID          string `json:"codeid"`
-	CodeType        string `json:"codetype"`
-	Language        string `json:"language"`
-	LanguageType    string `json:"languagetype"`
-	LanguageVersion string `json:"languageversion"`
+	Partition         string `json:"partition"`
+	OName             string `json:"oname"`
+	OType             string `json:"otype"`
+	OID               string `json:"oid"`
+	CodeID            string `json:"codeid"`
+	CodeTypeID        uint32 `json:"codetypeid"`
+	LanguageID        uint32 `json:"languageid"`
+	LanguageTypeID    uint32 `json:"languagetypeid"`
+	LanguageVersionID uint32 `json:"languageversionid"`
 }
 
 // CodeObjectState represents the code object state.

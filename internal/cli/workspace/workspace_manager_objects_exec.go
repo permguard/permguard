@@ -182,6 +182,8 @@ func (m *Manager) execInspectMapObjectContent(oid string, objInfo objects.Object
 	var contentMap map[string]any
 	var err error
 
+	sizeBytes := len(objInfo.Object().Content())
+
 	switch instance := objInfo.Instance().(type) {
 	case *objects.Commit:
 		contentMap, err = m.commitInspectMap(oid, instance)
@@ -193,6 +195,10 @@ func (m *Manager) execInspectMapObjectContent(oid string, objInfo objects.Object
 	}
 	if err != nil {
 		return err
+	}
+
+	for k, v := range m.objectInspectHeaderMap(oid, objInfo.Type(), sizeBytes) {
+		outMap[k] = v
 	}
 	for k, v := range contentMap {
 		outMap[k] = v
@@ -313,13 +319,14 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 	switch {
 	case m.ctx.IsTerminalOutput() && showInspect:
 		var tableStr string
+		contentSize := len(obj.Content())
 		switch instance := selected.Instance().(type) {
 		case *objects.Commit:
-			tableStr, err = m.commitTableString(oid, instance)
+			tableStr, err = m.commitTableString(oid, instance, contentSize)
 		case *objects.Tree:
-			tableStr, err = m.treeTableString(oid, instance)
+			tableStr, err = m.treeTableString(oid, instance, contentSize)
 		default:
-			tableStr, err = m.blobTableString(*selected)
+			tableStr, err = m.blobTableString(*selected, contentSize)
 		}
 		if err != nil {
 			return fail(nil, err)

@@ -27,9 +27,9 @@ func TestSerializeDeserializeTree(t *testing.T) {
 	assert := assert.New(t)
 	tree := &Tree{
 		entries: []TreeEntry{
-			{otype: "blob", oid: "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", language: "cedar", languageVersion: "*", languageType: "policy"},
-			{otype: "blob", oid: "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", language: "cedar", languageVersion: "*", languageType: "policy"},
-			{otype: "tree", oid: "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", partition: "/", oname: "name3", codeID: "code3", codeType: "codeType3", language: "cedar", languageVersion: "*", languageType: "policy"},
+			{otype: "blob", oid: "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "blob", oid: "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "tree", oid: "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
 		},
 	}
 	objectManager, _ := NewObjectManager()
@@ -58,10 +58,9 @@ func TestSerializeDeserializeTree(t *testing.T) {
 		assert.NotEmpty(entry.oid)
 		assert.NotEmpty(entry.oname)
 		assert.NotEmpty(entry.codeID)
-		assert.NotEmpty(entry.codeType)
-		assert.NotEmpty(entry.language)
-		assert.NotEmpty(entry.languageVersion)
-		assert.NotEmpty(entry.languageType)
+		assert.NotZero(entry.codeTypeID)
+		assert.NotZero(entry.languageID)
+		assert.NotZero(entry.languageTypeID)
 	}
 }
 

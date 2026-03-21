@@ -23,15 +23,15 @@ import (
 
 // cborTreeEntry is the CBOR-serializable representation of a tree entry.
 type cborTreeEntry struct {
-	Type            string `cbor:"1,keyasint"`
-	Partition       string `cbor:"2,keyasint"`
-	OID             string `cbor:"3,keyasint"`
-	OName           string `cbor:"4,keyasint"`
-	CodeID          string `cbor:"5,keyasint"`
-	CodeType        string `cbor:"6,keyasint"`
-	Language        string `cbor:"7,keyasint"`
-	LanguageVersion string `cbor:"8,keyasint"`
-	LanguageType    string `cbor:"9,keyasint"`
+	Type              string `cbor:"1,keyasint"`
+	Partition         string `cbor:"2,keyasint"`
+	OID               string `cbor:"3,keyasint"`
+	OName             string `cbor:"4,keyasint"`
+	CodeID            string `cbor:"5,keyasint"`
+	CodeTypeID        uint32 `cbor:"6,keyasint"`
+	LanguageID        uint32 `cbor:"7,keyasint"`
+	LanguageVersionID uint32 `cbor:"8,keyasint"`
+	LanguageTypeID    uint32 `cbor:"9,keyasint"`
 }
 
 // SerializeTree serializes a tree object to CBOR.
@@ -49,15 +49,15 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 			partition = "/"
 		}
 		entries[i] = cborTreeEntry{
-			Type:            entry.otype,
-			Partition:       partition,
-			OID:             entry.oid,
-			OName:           entry.oname,
-			CodeID:          entry.codeID,
-			CodeType:        entry.codeType,
-			Language:        entry.language,
-			LanguageVersion: entry.languageVersion,
-			LanguageType:    entry.languageType,
+			Type:              entry.otype,
+			Partition:         partition,
+			OID:               entry.oid,
+			OName:             entry.oname,
+			CodeID:            entry.codeID,
+			CodeTypeID:        entry.codeTypeID,
+			LanguageID:        entry.languageID,
+			LanguageVersionID: entry.languageVersionID,
+			LanguageTypeID:    entry.languageTypeID,
 		}
 	}
 	return m.encMode.Marshal(entries)
@@ -77,15 +77,15 @@ func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 	}
 	for i, e := range entries {
 		tree.entries[i] = TreeEntry{
-			otype:           e.Type,
-			partition:       e.Partition,
-			oid:             e.OID,
-			oname:           e.OName,
-			codeID:          e.CodeID,
-			codeType:        e.CodeType,
-			language:        e.Language,
-			languageVersion: e.LanguageVersion,
-			languageType:    e.LanguageType,
+			otype:             e.Type,
+			partition:         e.Partition,
+			oid:               e.OID,
+			oname:             e.OName,
+			codeID:            e.CodeID,
+			codeTypeID:        e.CodeTypeID,
+			languageID:        e.LanguageID,
+			languageVersionID: e.LanguageVersionID,
+			languageTypeID:    e.LanguageTypeID,
 		}
 	}
 	return tree, nil
