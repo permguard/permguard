@@ -79,49 +79,47 @@ func (m *Manager) ExecInitWorkspace(initParams *InitParms, out common.PrinterOut
 		return fail(nil, fmt.Errorf("cli: workspace already initialized in '%s'", absPath))
 	}
 
-	if initParams != nil {
-		name := initParams.Name
-		if len(strings.ReplaceAll(name, " ", "")) == 0 {
-			name = ids.GenerateID()
-		}
-		authzLang := strings.ToLower(strings.TrimSpace(initParams.Language))
-		if len(authzLang) == 0 {
-			return fail(nil, errors.New("cli: language is required"))
-		}
-		authzTemplate := strings.ToLower(initParams.Template)
+	name := initParams.Name
+	if len(strings.ReplaceAll(name, " ", "")) == 0 {
+		name = ids.GenerateID()
+	}
+	authzLang := strings.ToLower(strings.TrimSpace(initParams.Language))
+	if len(authzLang) == 0 {
+		return fail(nil, errors.New("cli: language is required"))
+	}
+	authzTemplate := strings.ToLower(initParams.Template)
 
-		var requirement *azmanifests.Requirement
-		requirement, err = azmanifests.ParseRequirement(authzLang)
-		if err != nil {
-			return fail(nil, err)
-		}
+	var requirement *azmanifests.Requirement
+	requirement, err = azmanifests.ParseRequirement(authzLang)
+	if err != nil {
+		return fail(nil, err)
+	}
 
-		var absLang languages.LanguageAbstraction
-		absLang, err = m.langFct.LanguageAbstraction(requirement.Name(), requirement.Version())
-		if err != nil {
-			return fail(nil, err)
-		}
+	var absLang languages.LanguageAbstraction
+	absLang, err = m.langFct.LanguageAbstraction(requirement.Name(), requirement.Version())
+	if err != nil {
+		return fail(nil, err)
+	}
 
-		var manifest *azmanifests.Manifest
-		manifest, err = azmanifests.NewManifest(name, "")
-		if err != nil {
-			return fail(nil, err)
-		}
-		manifest, err = absLang.BuildManifest(manifest, authzTemplate)
-		if err != nil {
-			return fail(nil, err)
-		}
+	var manifest *azmanifests.Manifest
+	manifest, err = azmanifests.NewManifest(name, "")
+	if err != nil {
+		return fail(nil, err)
+	}
+	manifest, err = absLang.BuildManifest(manifest, authzTemplate)
+	if err != nil {
+		return fail(nil, err)
+	}
 
-		var manifestData []byte
-		manifestData, err = azmanifests.ConvertManifestToBytes(manifest, true)
-		if err != nil {
-			return fail(nil, err)
-		}
+	var manifestData []byte
+	manifestData, err = azmanifests.ConvertManifestToBytes(manifest, true)
+	if err != nil {
+		return fail(nil, err)
+	}
 
-		_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
-		if err != nil {
-			return fail(nil, err)
-		}
+	_, err = m.persMgr.WriteFileIfNotExists(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false)
+	if err != nil {
+		return fail(nil, err)
 	}
 
 	fileLock, err := m.tryLock()

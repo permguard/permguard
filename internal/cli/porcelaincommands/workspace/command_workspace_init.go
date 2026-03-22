@@ -35,8 +35,6 @@ const (
 	commandNameForWorkspaceInit = "workspace-init"
 	// commandNameForWorkspacesInitName is name of the workspace to initialize.
 	commandNameForWorkspacesInitName = "name"
-	// commandNameForWorkspacesInitManifest is the flag to create a manifest file.
-	commandNameForWorkspacesInitManifest = "manifest"
 	// commandNameForWorkspacesInitLanguage is the language of the workspace to initialize.
 	commandNameForWorkspacesInitLanguage = "language"
 	// commandNameForWorkspacesInitTemplate is the template of the workspace to initialize.
@@ -59,29 +57,22 @@ func runECommandForInitWorkspace(deps cli.DependenciesProvider, cmd *cobra.Comma
 		return failWithDetails(ctx, printer, err)
 	}
 
-	var initParams *workspace.InitParms
-	createManifest := v.GetBool(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitManifest))
-	if createManifest {
-		name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
-		language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
-		template := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
-		initParams = &workspace.InitParms{
-			Name:     name,
-			Language: language,
-			Template: template,
-		}
+	name := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName))
+	language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
+	template := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitTemplate))
+	initParams := &workspace.InitParms{
+		Name:     name,
+		Language: language,
+		Template: template,
 	}
 	output, err := wksMgr.ExecInitWorkspace(initParams, outFunc(ctx, printer))
 	if err != nil {
 		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to initialize the workspace"), err))
 		return common.ErrCommandSilent
 	}
-	if createManifest {
-		language := v.GetString(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage))
-		_ = options.OverrideViperFromConfig(v, map[string]interface{}{
-			options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage): language,
-		})
-	}
+	_ = options.OverrideViperFromConfig(v, map[string]interface{}{
+		options.FlagName(common.FlagPrefixWorkspaceInit, common.FlagSuffixWorkspaceInitLanguage): language,
+	})
 	if ctx.IsJSONOutput() {
 		printer.PrintlnMap(finalizeOutput(ctx, output))
 	}
@@ -110,9 +101,6 @@ Examples:
 
 	command.Flags().String(commandNameForWorkspacesInitName, "", "specify the name of the workspace to initialize")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitName), command.Flags().Lookup(commandNameForWorkspacesInitName))
-
-	command.Flags().Bool(commandNameForWorkspacesInitManifest, false, "create a manifest file for the workspace")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitManifest), command.Flags().Lookup(commandNameForWorkspacesInitManifest))
 
 	command.Flags().String(commandNameForWorkspacesInitLanguage, "", "specify the language of the workspace to initialize")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspaceInit, commandNameForWorkspacesInitLanguage), command.Flags().Lookup(commandNameForWorkspacesInitLanguage))
