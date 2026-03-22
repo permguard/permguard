@@ -140,7 +140,7 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "VERSION", "LANG-TYPE"}
+	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, len(entries))
@@ -173,9 +173,9 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		fmt.Fprintf(&sb, "  (no entries)")
 		return sb.String(), nil
 	}
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, nil))
 	for _, row := range dataRows {
-		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns, nil))
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
 }
@@ -193,14 +193,15 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 	entriesList := make([]map[string]any, len(entries))
 
 	for i, entry := range entries {
-		entryMap := make(map[string]any)
-		entryMap["oid"] = entry.OID()
-		entryMap["oname"] = entry.OName()
-		entryMap["type"] = entry.Type()
-		entryMap["language"] = resolveLanguageID(entry.LanguageID())
-		entryMap["language_type"] = resolveLanguageTypeID(entry.LanguageTypeID())
-		entryMap["language_version"] = resolveLanguageVersionID(entry.LanguageVersionID())
-		entriesList[i] = entryMap
+		entriesList[i] = map[string]any{
+			"oid":              entry.OID(),
+			"oname":            entry.OName(),
+			"type":             entry.Type(),
+			"partition":        entry.Partition(),
+			"language":         resolveLanguageID(entry.LanguageID()),
+			"language_version": resolveLanguageVersionID(entry.LanguageVersionID()),
+			"language_type":    resolveLanguageTypeID(entry.LanguageTypeID()),
+		}
 	}
 
 	output["entries"] = entriesList
@@ -313,10 +314,17 @@ func resolveCodeTypeID(id uint32) string {
 }
 
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
-func tableRow(vals []string, widths []int, colorFns []func(string) string) string {
+// alignRight controls per-column alignment: true = right-align, false (or nil) = left-align.
+func tableRow(vals []string, widths []int, colorFns []func(string) string, alignRight []bool) string {
 	var sb strings.Builder
 	for i, v := range vals {
-		padded := fmt.Sprintf("%-*s", widths[i], v)
+		right := i < len(alignRight) && alignRight[i]
+		var padded string
+		if right {
+			padded = fmt.Sprintf("%*s", widths[i], v)
+		} else {
+			padded = fmt.Sprintf("%-*s", widths[i], v)
+		}
 		colored := colorFns[i](padded)
 		if i < len(vals)-1 {
 			fmt.Fprintf(&sb, "%s  ", colored)
@@ -327,12 +335,18 @@ func tableRow(vals []string, widths []int, colorFns []func(string) string) strin
 	return sb.String()
 }
 
-// tableHeader builds a padded header row and a separator line from headers and widths.
-func tableHeader(headers []string, widths []int) string {
+// tableHeader builds a padded header row from headers and widths.
+// alignRight controls per-column alignment: true = right-align, false (or nil) = left-align.
+func tableHeader(headers []string, widths []int, alignRight []bool) string {
 	var sb strings.Builder
 	for i, h := range headers {
+		right := i < len(alignRight) && alignRight[i]
 		if i < len(headers)-1 {
-			fmt.Fprintf(&sb, "%-*s  ", widths[i], h)
+			if right {
+				fmt.Fprintf(&sb, "%*s  ", widths[i], h)
+			} else {
+				fmt.Fprintf(&sb, "%-*s  ", widths[i], h)
+			}
 		} else {
 			fmt.Fprintf(&sb, "%s", h)
 		}
@@ -388,21 +402,21 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "commit", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
-	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, nil))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns, nil))
 	return sb.String(), nil
 }
 
 // treeTableString formats a tree object as an aligned inspect table with all CBOR fields.
 // First row is the tree object itself (TYPE=tree, OID=tree OID).
 // Subsequent rows are the tree entries (one per cborTreeEntry).
-// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VER-ID | LANG-VER | LANG-TYPE-ID | LANG-TYPE
+// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE
 func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VER-ID", "LANG-VER", "LANG-TYPE-ID", "LANG-TYPE"}
+	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE"}
 
 	// First row: the tree object itself.
 	selfRow := []string{"tree", "", oid, "", "", "", "", "", "", "", "", "", ""}
@@ -452,11 +466,14 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		common.LanguageKeywordText,
 	}
 
+	// TYPE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE
+	alignRight := []bool{false, false, false, false, false, true, false, true, false, true, false, true, false}
+
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "tree", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, alignRight))
 	for _, row := range dataRows {
-		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns, alignRight))
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
 }
@@ -504,10 +521,8 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 			"language_type_id": e.LanguageTypeID(),
 			"language_type":    resolveLanguageTypeID(e.LanguageTypeID()),
 		}
-		if e.LanguageVersionID() != 0 {
-			entry["language_version_id"] = e.LanguageVersionID()
-			entry["language_version"] = resolveLanguageVersionID(e.LanguageVersionID())
-		}
+		entry["language_version_id"] = e.LanguageVersionID()
+		entry["language_version"] = resolveLanguageVersionID(e.LanguageVersionID())
 		allEntries = append(allEntries, entry)
 	}
 	return map[string]any{"entries": allEntries}, nil
@@ -533,15 +548,13 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 		"code_id":            header.CodeID(),
 		"data":               base64.StdEncoding.EncodeToString(data),
 	}
-	if header.LanguageVersionID() != 0 {
-		result["language_version_id"] = header.LanguageVersionID()
-		result["language_version"] = resolveLanguageVersionID(header.LanguageVersionID())
-	}
+	result["language_version_id"] = header.LanguageVersionID()
+	result["language_version"] = resolveLanguageVersionID(header.LanguageVersionID())
 	return result, nil
 }
 
 // blobTableString formats a blob object as an aligned inspect table with all CBOR fields.
-// Columns: PARTITION | IS-NATIVE | LANG-ID | LANGUAGE | LANG-VER-ID | LANG-VER | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
+// Columns: PARTITION | IS-NATIVE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
 func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
@@ -556,7 +569,7 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 	}
 
 	data, _ := objInfo.Instance().([]byte)
-	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VER-ID", "LANG-VER", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
+	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
 	dataRow := []string{
 		header.Partition(),
 		strconv.FormatBool(header.IsNativeLanguage()),
@@ -588,10 +601,13 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		common.NormalText,
 	}
 
+	// PARTITION IS-NATIVE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID DATA
+	alignRight := []bool{false, false, true, false, true, false, true, false, true, false, false, false}
+
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
-	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, alignRight))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns, alignRight))
 	return sb.String(), nil
 }
 

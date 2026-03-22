@@ -60,7 +60,7 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 
 // buildPlanCommit builds the plan commit.
 func (m *Manager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
-	commit, err := objects.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "cli commit")
+	commit, err := objects.NewCommit(tree, parentCommitID, "", time.Now(), "", time.Now(), "")
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)
 	}
