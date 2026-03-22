@@ -30,7 +30,7 @@ type cborBlob struct {
 	LanguageID        uint32 `cbor:"5,keyasint"`
 	LanguageVersionID uint32 `cbor:"6,keyasint"`
 	LanguageTypeID    uint32 `cbor:"7,keyasint"`
-	IsNativeLanguage  bool   `cbor:"8,keyasint"`
+	ContentKind       uint32 `cbor:"8,keyasint"`
 	Data              []byte `cbor:"9,keyasint"`
 }
 
@@ -41,7 +41,7 @@ func (m *ObjectManager) SerializeBlob(header *ObjectHeader, data []byte) ([]byte
 	}
 	b := cborBlob{
 		Partition:         header.partition,
-		IsNativeLanguage:  header.isNativeLanguage,
+		ContentKind:       header.contentKind,
 		LanguageID:        header.languageID,
 		LanguageVersionID: header.languageVersionID,
 		LanguageTypeID:    header.languageTypeID,
@@ -64,7 +64,7 @@ func (m *ObjectManager) DeserializeBlob(data []byte) (*ObjectHeader, []byte, err
 	}
 	header := &ObjectHeader{
 		partition:         b.Partition,
-		isNativeLanguage:  b.IsNativeLanguage,
+		contentKind:       b.ContentKind,
 		languageID:        b.LanguageID,
 		languageVersionID: b.LanguageVersionID,
 		languageTypeID:    b.LanguageTypeID,

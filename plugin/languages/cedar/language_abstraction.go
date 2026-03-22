@@ -134,7 +134,7 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.L
 			continue
 		}
 
-		header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID, profiles.ProfileZtasAppID)
+		header, err := objects.NewObjectHeader(partition, objects.ContentKindSourceLanguage, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID, profiles.ProfileZtasAppID)
 		if err != nil {
 			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -204,7 +204,7 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.L
 	if err != nil {
 		return nil, errors.Join(errors.New("cedar: failed to create the multi section object"), err)
 	}
-	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID, profiles.ProfileDefaultID)
+	header, err := objects.NewObjectHeader(partition, objects.ContentKindSourceLanguage, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID, profiles.ProfileDefaultID)
 	if err != nil {
 		_ = multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil

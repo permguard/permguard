@@ -403,16 +403,16 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 // treeTableString formats a tree object as an aligned inspect table with all CBOR fields.
 // First row is the tree object itself (TYPE=tree, OID=tree OID).
 // Subsequent rows are the tree entries (one per cborTreeEntry).
-// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE
+// Columns: TYPE | PROFILE-ID | PROFILE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE
 func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "PROFILE"}
+	headers := []string{"TYPE", "PROFILE-ID", "PROFILE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE"}
 
 	// First row: the tree object itself.
-	selfRow := []string{"tree", "", oid, "", "", "", "", "", "", "", "", "", "", ""}
+	selfRow := []string{"tree", "", "", "", oid, "", "", "", "", "", "", "", "", "", ""}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, 0, 1+len(entries))
@@ -426,6 +426,8 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		}
 		dataRows = append(dataRows, []string{
 			e.Type(),
+			strconv.FormatUint(uint64(e.ProfileID()), 10),
+			m.resolveProfileID(e.ProfileID()),
 			e.Partition(),
 			e.OID(),
 			e.OName(),
@@ -438,7 +440,6 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 			langVer,
 			strconv.FormatUint(uint64(e.LanguageTypeID()), 10),
 			m.resolveLanguageTypeID(e.LanguageTypeID()),
-			m.resolveProfileID(e.ProfileID()),
 		})
 	}
 
@@ -446,6 +447,8 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 
 	colorFns := []func(string) string{
 		common.KeywordText,
+		common.NameText,
+		common.NameText,
 		common.NameText,
 		common.IDText,
 		common.NameText,
@@ -458,11 +461,10 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		common.LanguageText,
 		common.LanguageKeywordText,
 		common.LanguageKeywordText,
-		common.NameText,
 	}
 
-	// TYPE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE PROFILE
-	alignRight := []bool{false, false, false, false, false, true, false, true, false, true, false, true, false, false}
+	// TYPE PROFILE-ID PROFILE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE
+	alignRight := []bool{false, true, false, false, false, false, false, true, false, true, false, true, false, true, false}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "tree", sizeBytes))
@@ -534,18 +536,19 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 	}
 	data, _ := objInfo.Instance().([]byte)
 	result := map[string]any{
-		"partition":          header.Partition(),
-		"is_native_language": header.IsNativeLanguage(),
-		"language_id":        header.LanguageID(),
-		"language":           m.resolveLanguageID(header.LanguageID()),
-		"language_type_id":   header.LanguageTypeID(),
-		"language_type":      m.resolveLanguageTypeID(header.LanguageTypeID()),
-		"code_type_id":       header.CodeTypeID(),
-		"code_type":          m.resolveCodeTypeID(header.CodeTypeID()),
-		"code_id":            header.CodeID(),
-		"profile_id":         header.ProfileID(),
-		"profile":            m.resolveProfileID(header.ProfileID()),
-		"data":               base64.StdEncoding.EncodeToString(data),
+		"partition":         header.Partition(),
+		"content_kind_id":   header.ContentKind(),
+		"content_kind_name": objects.ContentKindName(header.ContentKind()),
+		"language_id":       header.LanguageID(),
+		"language":          m.resolveLanguageID(header.LanguageID()),
+		"language_type_id":  header.LanguageTypeID(),
+		"language_type":     m.resolveLanguageTypeID(header.LanguageTypeID()),
+		"code_type_id":      header.CodeTypeID(),
+		"code_type":         m.resolveCodeTypeID(header.CodeTypeID()),
+		"code_id":           header.CodeID(),
+		"profile_id":        header.ProfileID(),
+		"profile":           m.resolveProfileID(header.ProfileID()),
+		"data":              base64.StdEncoding.EncodeToString(data),
 	}
 	result["language_version_id"] = header.LanguageVersionID()
 	result["language_version"] = m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
@@ -553,7 +556,7 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 }
 
 // blobTableString formats a blob object as an aligned inspect table with all CBOR fields.
-// Columns: PARTITION | IS-NATIVE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
+// Columns: PROFILE-ID | PROFILE | PARTITION | CONTENT-KIND-ID | CONTENT-KIND | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
 func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
@@ -568,10 +571,13 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 	}
 
 	data, _ := objInfo.Instance().([]byte)
-	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "PROFILE", "DATA"}
+	headers := []string{"PROFILE-ID", "PROFILE", "PARTITION", "CONTENT-KIND-ID", "CONTENT-KIND", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
 	dataRow := []string{
+		strconv.FormatUint(uint64(header.ProfileID()), 10),
+		m.resolveProfileID(header.ProfileID()),
 		header.Partition(),
-		strconv.FormatBool(header.IsNativeLanguage()),
+		strconv.FormatUint(uint64(header.ContentKind()), 10),
+		objects.ContentKindName(header.ContentKind()),
 		strconv.FormatUint(uint64(header.LanguageID()), 10),
 		m.resolveLanguageID(header.LanguageID()),
 		langVerID,
@@ -581,29 +587,30 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		strconv.FormatUint(uint64(header.CodeTypeID()), 10),
 		m.resolveCodeTypeID(header.CodeTypeID()),
 		header.CodeID(),
-		m.resolveProfileID(header.ProfileID()),
 		base64.StdEncoding.EncodeToString(data),
 	}
 	widths := columnWidths(headers, [][]string{dataRow})
 
 	colorFns := []func(string) string{
 		common.NameText,
-		common.KeywordText,
-		common.LanguageText,
-		common.LanguageText,
-		common.LanguageText,
-		common.LanguageText,
-		common.LanguageKeywordText,
-		common.LanguageKeywordText,
-		common.KeywordText,
-		common.KeywordText,
 		common.NameText,
+		common.NameText,
+		common.KeywordText,
+		common.KeywordText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageText,
+		common.LanguageKeywordText,
+		common.LanguageKeywordText,
+		common.KeywordText,
+		common.KeywordText,
 		common.NameText,
 		common.NormalText,
 	}
 
-	// PARTITION IS-NATIVE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID PROFILE DATA
-	alignRight := []bool{false, false, true, false, true, false, true, false, true, false, false, false, false}
+	// PROFILE-ID PROFILE PARTITION CONTENT-KIND-ID CONTENT-KIND LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID DATA
+	alignRight := []bool{true, false, false, true, false, true, false, true, false, true, false, true, false, false, false}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))

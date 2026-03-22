@@ -18,6 +18,7 @@ package objects
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,11 +37,29 @@ const (
 	// It is a CIDv1 with dag-cbor codec and an all-zero SHA2-256 digest,
 	// used as a sentinel value representing the absence of content.
 	ZeroOID = "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	// ContentKindAbstractTree represents an abstract/parsed representation of the content.
+	ContentKindAbstractTree uint32 = 0
+	// ContentKindSourceLanguage represents source code in the policy language.
+	ContentKindSourceLanguage uint32 = 1
 )
+
+// ContentKindName returns the display name for a content kind ID.
+// Falls back to the decimal string representation for unknown IDs.
+func ContentKindName(id uint32) string {
+	switch id {
+	case ContentKindAbstractTree:
+		return "ast"
+	case ContentKindSourceLanguage:
+		return "source"
+	default:
+		return fmt.Sprintf("%d", id)
+	}
+}
 
 // ObjectHeader represents the object header.
 type ObjectHeader struct {
-	isNativeLanguage  bool
+	contentKind       uint32
 	partition         string
 	languageID        uint32
 	languageVersionID uint32
@@ -55,9 +74,9 @@ func (o *ObjectHeader) Partition() string {
 	return o.partition
 }
 
-// IsNativeLanguage returns true if the object is in a native language.
-func (o *ObjectHeader) IsNativeLanguage() bool {
-	return o.isNativeLanguage
+// ContentKind returns the content kind of the object.
+func (o *ObjectHeader) ContentKind() uint32 {
+	return o.contentKind
 }
 
 // LanguageID returns the language ID of the object.
@@ -92,10 +111,10 @@ func (o *ObjectHeader) ProfileID() uint32 {
 }
 
 // NewObjectHeader creates a new object header.
-func NewObjectHeader(partition string, isNativeLanguage bool, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
+func NewObjectHeader(partition string, contentKind uint32, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
 	return &ObjectHeader{
 		partition:         partition,
-		isNativeLanguage:  isNativeLanguage,
+		contentKind:       contentKind,
 		languageID:        languageID,
 		languageVersionID: languageVersionID,
 		languageTypeID:    languageTypeID,
