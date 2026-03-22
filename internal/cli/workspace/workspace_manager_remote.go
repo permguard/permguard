@@ -126,7 +126,7 @@ func (m *Manager) CurrentHeadTree(ref string) (*objects.Tree, error) {
 	if commit == nil {
 		return nil, nil
 	}
-	treeObj, err := m.cospMgr.ReadObject(commit.Tree())
+	treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())
 	if err != nil {
 		return nil, err
 	}

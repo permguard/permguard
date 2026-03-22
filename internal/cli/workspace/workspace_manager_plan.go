@@ -42,7 +42,7 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 			continue
 		}
 		var treeItem *objects.TreeEntry
-		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeTypeID, planItem.LanguageID, planItem.LanguageVersionID, planItem.LanguageTypeID)
+		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeTypeID, planItem.LanguageID, planItem.LanguageVersionID, planItem.LanguageTypeID, planItem.ProfileID)
 		if err != nil {
 			return nil, nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}
@@ -61,11 +61,11 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 // buildPlanCommit builds the plan commit.
 // parentCommitID is the string from the ref system; ZeroOID and empty string both mean root commit.
 func (m *Manager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
-	var parent *string
+	parent := objects.NewNullableString(nil)
 	if parentCommitID != "" && parentCommitID != objects.ZeroOID {
-		parent = &parentCommitID
+		parent = objects.NewNullableString(&parentCommitID)
 	}
-	commit, err := objects.NewCommit(tree, parent, "", time.Now(), "", time.Now(), "")
+	commit, err := objects.NewCommit(objects.CID(tree), parent, "", time.Now(), "", time.Now(), "")
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)
 	}

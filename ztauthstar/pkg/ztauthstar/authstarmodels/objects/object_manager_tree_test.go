@@ -27,9 +27,9 @@ func TestSerializeDeserializeTree(t *testing.T) {
 	assert := assert.New(t)
 	tree := &Tree{
 		entries: []TreeEntry{
-			{otype: "blob", oid: "515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
-			{otype: "blob", oid: "2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
-			{otype: "tree", oid: "fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "blob", oid: "bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "blob", oid: "bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "tree", oid: "bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
 		},
 	}
 	objectManager, _ := NewObjectManager()
@@ -47,9 +47,9 @@ func TestSerializeDeserializeTree(t *testing.T) {
 	// Entries should be sorted by OID after serialization
 	assert.Equal(3, len(deserialized.entries), "Entries count mismatch")
 	// Verify sorted order (by OID)
-	assert.Equal("2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca12d9d6170", deserialized.entries[0].oid)
-	assert.Equal("515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634d3def5fe", deserialized.entries[1].oid)
-	assert.Equal("fa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1bf9ff851", deserialized.entries[2].oid)
+	assert.Equal("bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", deserialized.entries[0].oid)
+	assert.Equal("bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", deserialized.entries[1].oid)
+	assert.Equal("bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", deserialized.entries[2].oid)
 
 	// Verify full round-trip of all fields
 	for _, entry := range deserialized.entries {

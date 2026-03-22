@@ -199,6 +199,7 @@ func (m *Manager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			strconv.FormatUint(uint64(codeFile.LanguageID), 10),
 			strconv.FormatUint(uint64(codeFile.LanguageVersionID), 10),
 			strconv.FormatUint(uint64(codeFile.LanguageTypeID), 10),
+			strconv.FormatUint(uint64(codeFile.ProfileID), 10),
 			fmt.Sprintf("%d", codeFile.Mode),
 			strconv.Itoa(codeFile.Section),
 			strconv.FormatBool(codeFile.HasErrors),
@@ -217,7 +218,7 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
-		if len(record) < 13 {
+		if len(record) < 14 {
 			return errors.New("invalid record format")
 		}
 		codeTypeID64, err := strconv.ParseUint(record[5], 10, 32)
@@ -236,15 +237,19 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		if err != nil {
 			return err
 		}
-		mode64, err := strconv.ParseUint(record[9], 10, 32)
+		profileID64, err := strconv.ParseUint(record[9], 10, 32)
 		if err != nil {
 			return err
 		}
-		section, err := strconv.Atoi(record[10])
+		mode64, err := strconv.ParseUint(record[10], 10, 32)
 		if err != nil {
 			return err
 		}
-		hasErrors, err := strconv.ParseBool(record[11])
+		section, err := strconv.Atoi(record[11])
+		if err != nil {
+			return err
+		}
+		hasErrors, err := strconv.ParseBool(record[12])
 		if err != nil {
 			return err
 		}
@@ -258,10 +263,11 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			LanguageID:        uint32(languageID64),
 			LanguageVersionID: uint32(langVersionID64),
 			LanguageTypeID:    uint32(langTypeID64),
+			ProfileID:         uint32(profileID64),
 			Mode:              uint32(mode64),
 			Section:           section,
 			HasErrors:         hasErrors,
-			Error:             record[12],
+			Error:             record[13],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -307,6 +313,7 @@ func (m *Manager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]CodeObj
 				LanguageID:        entry.LanguageID(),
 				LanguageTypeID:    entry.LanguageTypeID(),
 				LanguageVersionID: entry.LanguageVersionID(),
+				ProfileID:         entry.ProfileID(),
 			},
 			State: "",
 		}
@@ -369,6 +376,7 @@ func (m *Manager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObje
 			LanguageID:        codeFile.LanguageID,
 			LanguageVersionID: codeFile.LanguageVersionID,
 			LanguageTypeID:    codeFile.LanguageTypeID,
+			ProfileID:         codeFile.ProfileID,
 		},
 	}, nil
 }
@@ -391,6 +399,7 @@ func (m *Manager) saveCodeObjectStates(path string, codeObjects []CodeObjectStat
 			strconv.FormatUint(uint64(codeObject.LanguageID), 10),
 			strconv.FormatUint(uint64(codeObject.LanguageVersionID), 10),
 			strconv.FormatUint(uint64(codeObject.LanguageTypeID), 10),
+			strconv.FormatUint(uint64(codeObject.ProfileID), 10),
 		}
 	}
 	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
@@ -411,6 +420,7 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 		langID64, _ := strconv.ParseUint(record[7], 10, 32)
 		langVersionID64, _ := strconv.ParseUint(record[8], 10, 32)
 		langTypeID64, _ := strconv.ParseUint(record[9], 10, 32)
+		profileID64, _ := strconv.ParseUint(record[10], 10, 32)
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
@@ -423,6 +433,7 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 				LanguageID:        uint32(langID64),
 				LanguageVersionID: uint32(langVersionID64),
 				LanguageTypeID:    uint32(langTypeID64),
+				ProfileID:         uint32(profileID64),
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)
@@ -553,7 +564,7 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 		if !ok {
 			return 0, fmt.Errorf("cli: gc aborted, oid %s is not a commit", currentID)
 		}
-		treeObj, err := m.ReadObject(commit.Tree())
+		treeObj, err := m.ReadObject(commit.Tree().String())
 		if err != nil {
 			return 0, fmt.Errorf("cli: gc aborted, failed to read tree %s: %w", commit.Tree(), err)
 		}
@@ -572,10 +583,10 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 		for _, entry := range tree.Entries() {
 			reachable[entry.OID()] = true
 		}
-		if commit.Parent() == nil {
+		if !commit.Parent().Valid {
 			break
 		}
-		currentID = *commit.Parent()
+		currentID = commit.Parent().String
 	}
 	allObjs, err := m.objects(m.objectsDir(), true)
 	if err != nil {
@@ -688,10 +699,10 @@ func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
 			return nil, err
 		}
 		commits = append(commits, *commitInfo)
-		if commit.Parent() == nil {
+		if !commit.Parent().Valid {
 			break
 		}
-		parentID := *commit.Parent()
+		parentID := commit.Parent().String
 		commit, err = m.Commit(parentID)
 		if err != nil {
 			return nil, err

@@ -33,6 +33,7 @@ type SectionObject struct {
 	languageID        uint32
 	languageVersionID uint32
 	languageTypeID    uint32
+	profileID         uint32
 	numOfSect         int
 	err               error
 }
@@ -82,6 +83,12 @@ func (s *SectionObject) LanguageTypeID() uint32 {
 	return s.languageTypeID
 }
 
+// ProfileID returns the authorization profile ID.
+// A value of 0 means no specific profile (default).
+func (s *SectionObject) ProfileID() uint32 {
+	return s.profileID
+}
+
 // NumberOfSection returns the number section.
 func (s *SectionObject) NumberOfSection() int {
 	return s.numOfSect
@@ -93,7 +100,7 @@ func (s *SectionObject) Error() error {
 }
 
 // NewSectionObject creates a new section object.
-func NewSectionObject(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32, section int, err error) (*SectionObject, error) {
+func NewSectionObject(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32, section int, err error) (*SectionObject, error) {
 	return &SectionObject{
 		partition:         partition,
 		obj:               obj,
@@ -104,6 +111,7 @@ func NewSectionObject(obj *Object, partition, objType, objName, codeID string, c
 		languageID:        languageID,
 		languageVersionID: languageVersionID,
 		languageTypeID:    languageTypeID,
+		profileID:         profileID,
 		numOfSect:         section,
 		err:               err,
 	}, nil
@@ -157,8 +165,8 @@ func (m *MultiSectionsObject) AddSectionObject(obj *SectionObject) error {
 }
 
 // AddSectionObjectWithParams adds a section object with parameters.
-func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32, section int) error {
-	objSect, err := NewSectionObject(obj, partition, objType, objName, codeID, codeTypeID, languageID, languageVersionID, languageTypeID, section, nil)
+func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32, section int) error {
+	objSect, err := NewSectionObject(obj, partition, objType, objName, codeID, codeTypeID, languageID, languageVersionID, languageTypeID, profileID, section, nil)
 	if err != nil {
 		return err
 	}
@@ -167,7 +175,7 @@ func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition,
 
 // AddSectionObjectWithError adds a section object with an error.
 func (m *MultiSectionsObject) AddSectionObjectWithError(section int, err error) error {
-	objSect, err := NewSectionObject(nil, "", "", "", "", 0, 0, 0, 0, section, err)
+	objSect, err := NewSectionObject(nil, "", "", "", "", 0, 0, 0, 0, 0, section, err)
 	if err != nil {
 		return err
 	}

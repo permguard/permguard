@@ -54,6 +54,7 @@ type CodeFile struct {
 	LanguageID        uint32 `json:"languageid"`
 	LanguageVersionID uint32 `json:"languageversionid"`
 	LanguageTypeID    uint32 `json:"languagetypeid"`
+	ProfileID         uint32 `json:"profileid"`
 	Mode              uint32 `json:"mode"`
 	Section           int    `json:"section"`
 	HasErrors         bool   `json:"has_errors"`
@@ -80,6 +81,7 @@ type CodeObject struct {
 	LanguageID        uint32 `json:"languageid"`
 	LanguageTypeID    uint32 `json:"languagetypeid"`
 	LanguageVersionID uint32 `json:"languageversionid"`
+	ProfileID         uint32 `json:"profileid"`
 }
 
 // CodeObjectState represents the code object state.

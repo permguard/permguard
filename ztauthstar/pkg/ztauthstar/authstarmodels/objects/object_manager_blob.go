@@ -23,14 +23,15 @@ import (
 
 // cborBlob is the CBOR-serializable representation of a blob object.
 type cborBlob struct {
-	Partition         string `cbor:"1,keyasint"`
-	IsNativeLanguage  bool   `cbor:"2,keyasint"`
-	LanguageID        uint32 `cbor:"3,keyasint"`
-	LanguageVersionID uint32 `cbor:"4,keyasint"`
-	LanguageTypeID    uint32 `cbor:"5,keyasint"`
-	CodeTypeID        uint32 `cbor:"6,keyasint"`
-	CodeID            string `cbor:"7,keyasint"`
-	Data              []byte `cbor:"8,keyasint"`
+	ProfileID         uint32 `cbor:"1,keyasint"`
+	Partition         string `cbor:"2,keyasint"`
+	CodeID            string `cbor:"3,keyasint"`
+	CodeTypeID        uint32 `cbor:"4,keyasint"`
+	LanguageID        uint32 `cbor:"5,keyasint"`
+	LanguageVersionID uint32 `cbor:"6,keyasint"`
+	LanguageTypeID    uint32 `cbor:"7,keyasint"`
+	IsNativeLanguage  bool   `cbor:"8,keyasint"`
+	Data              []byte `cbor:"9,keyasint"`
 }
 
 // SerializeBlob serializes an ObjectHeader and its associated data into CBOR.
@@ -47,6 +48,7 @@ func (m *ObjectManager) SerializeBlob(header *ObjectHeader, data []byte) ([]byte
 		CodeTypeID:        header.codeTypeID,
 		CodeID:            header.codeID,
 		Data:              data,
+		ProfileID:         header.profileID,
 	}
 	return m.encMode.Marshal(b)
 }
@@ -68,6 +70,7 @@ func (m *ObjectManager) DeserializeBlob(data []byte) (*ObjectHeader, []byte, err
 		languageTypeID:    b.LanguageTypeID,
 		codeTypeID:        b.CodeTypeID,
 		codeID:            b.CodeID,
+		profileID:         b.ProfileID,
 	}
 	return header, b.Data, nil
 }

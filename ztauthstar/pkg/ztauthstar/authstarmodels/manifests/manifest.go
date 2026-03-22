@@ -20,7 +20,7 @@ package manifest
 type Manifest struct {
 	Metadata    Metadata           `json:"metadata"`
 	Runtimes    map[string]Runtime `json:"runtimes"`
-	BizPolicies []BizPolicy        `json:"app_authz"`
+	BizPolicies []BizPolicy        `json:"ztas_app"`
 }
 
 // BizPolicy represents a set of business policies with their partitions.

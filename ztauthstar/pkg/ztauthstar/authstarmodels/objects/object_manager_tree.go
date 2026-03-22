@@ -24,14 +24,15 @@ import (
 // cborTreeEntry is the CBOR-serializable representation of a tree entry.
 type cborTreeEntry struct {
 	Type              string `cbor:"1,keyasint"`
-	Partition         string `cbor:"2,keyasint"`
-	OID               string `cbor:"3,keyasint"`
-	OName             string `cbor:"4,keyasint"`
-	CodeID            string `cbor:"5,keyasint"`
-	CodeTypeID        uint32 `cbor:"6,keyasint"`
-	LanguageID        uint32 `cbor:"7,keyasint"`
-	LanguageVersionID uint32 `cbor:"8,keyasint"`
-	LanguageTypeID    uint32 `cbor:"9,keyasint"`
+	ProfileID         uint32 `cbor:"2,keyasint"`
+	Partition         string `cbor:"3,keyasint"`
+	OID               string `cbor:"4,keyasint"`
+	OName             string `cbor:"5,keyasint"`
+	CodeID            string `cbor:"6,keyasint"`
+	CodeTypeID        uint32 `cbor:"7,keyasint"`
+	LanguageID        uint32 `cbor:"8,keyasint"`
+	LanguageVersionID uint32 `cbor:"9,keyasint"`
+	LanguageTypeID    uint32 `cbor:"10,keyasint"`
 }
 
 // SerializeTree serializes a tree object to CBOR.
@@ -58,6 +59,7 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 			LanguageID:        entry.languageID,
 			LanguageVersionID: entry.languageVersionID,
 			LanguageTypeID:    entry.languageTypeID,
+			ProfileID:         entry.profileID,
 		}
 	}
 	return m.encMode.Marshal(entries)
@@ -86,6 +88,7 @@ func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 			languageID:        e.LanguageID,
 			languageVersionID: e.LanguageVersionID,
 			languageTypeID:    e.LanguageTypeID,
+			profileID:         e.ProfileID,
 		}
 	}
 	return tree, nil

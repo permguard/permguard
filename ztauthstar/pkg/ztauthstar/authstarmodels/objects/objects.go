@@ -47,6 +47,7 @@ type ObjectHeader struct {
 	languageTypeID    uint32
 	codeID            string
 	codeTypeID        uint32
+	profileID         uint32
 }
 
 // Partition returns the partition of the object.
@@ -84,8 +85,14 @@ func (o *ObjectHeader) CodeTypeID() uint32 {
 	return o.codeTypeID
 }
 
+// ProfileID returns the authorization profile ID of the object.
+// A value of 0 means no specific profile (default).
+func (o *ObjectHeader) ProfileID() uint32 {
+	return o.profileID
+}
+
 // NewObjectHeader creates a new object header.
-func NewObjectHeader(partition string, isNativeLanguage bool, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID uint32) (*ObjectHeader, error) {
+func NewObjectHeader(partition string, isNativeLanguage bool, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
 	return &ObjectHeader{
 		partition:         partition,
 		isNativeLanguage:  isNativeLanguage,
@@ -94,6 +101,7 @@ func NewObjectHeader(partition string, isNativeLanguage bool, languageID, langua
 		languageTypeID:    languageTypeID,
 		codeID:            codeID,
 		codeTypeID:        codeTypeID,
+		profileID:         profileID,
 	}, nil
 }
 
@@ -218,19 +226,19 @@ func (c *CommitMetaData) CommitterTimestamp() time.Time {
 
 // Commit represents a commit object.
 type Commit struct {
-	tree     string
-	parent   *string
+	tree     CID
+	parent   NullableString
 	metaData CommitMetaData
 	message  string
 }
 
 // Tree returns the tree of the commit.
-func (c *Commit) Tree() string {
+func (c *Commit) Tree() CID {
 	return c.tree
 }
 
 // Parent returns the OID of the parent commit, or nil for the root commit.
-func (c *Commit) Parent() *string {
+func (c *Commit) Parent() NullableString {
 	return c.parent
 }
 
@@ -246,12 +254,12 @@ func (c *Commit) Message() string {
 
 // NewCommit creates a new commit object.
 // parentCommitID is nil for a root commit (no parent).
-func NewCommit(tree string, parentCommitID *string, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
-	if strings.TrimSpace(tree) == "" {
-		return nil, errors.New("objects: tree is empty")
+func NewCommit(tree CID, parentCommitID NullableString, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
+	if !tree.IsValid() {
+		return nil, errors.New("objects: tree CID is invalid")
 	}
-	if parentCommitID != nil && strings.TrimSpace(*parentCommitID) == "" {
-		return nil, errors.New("objects: parent commit id is empty")
+	if parentCommitID.Valid && !CID(parentCommitID.String).IsValid() {
+		return nil, errors.New("objects: parent commit CID is invalid")
 	}
 	if authorTimestamp.Equal((time.Time{})) {
 		authorTimestamp = time.Now()
@@ -283,10 +291,11 @@ type TreeEntry struct {
 	languageID        uint32
 	languageVersionID uint32
 	languageTypeID    uint32
+	profileID         uint32
 }
 
 // NewTreeEntry creates a new tree entry.
-func NewTreeEntry(partition, otype, oid, oname, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID uint32) (*TreeEntry, error) {
+func NewTreeEntry(partition, otype, oid, oname, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32) (*TreeEntry, error) {
 	if strings.TrimSpace(partition) == "" {
 		return nil, errors.New("objects: partition is empty")
 	} else if strings.TrimSpace(otype) == "" {
@@ -314,6 +323,7 @@ func NewTreeEntry(partition, otype, oid, oname, codeID string, codeTypeID, langu
 		languageID:        languageID,
 		languageVersionID: languageVersionID,
 		languageTypeID:    languageTypeID,
+		profileID:         profileID,
 	}, nil
 }
 
@@ -360,6 +370,12 @@ func (t *TreeEntry) LanguageVersionID() uint32 {
 // LanguageTypeID returns the language type ID of the tree entry.
 func (t *TreeEntry) LanguageTypeID() uint32 {
 	return t.languageTypeID
+}
+
+// ProfileID returns the authorization profile ID of the tree entry.
+// A value of 0 means no specific profile (default).
+func (t *TreeEntry) ProfileID() uint32 {
+	return t.profileID
 }
 
 // Tree represents a tree object.

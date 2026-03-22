@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/profiles"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -80,11 +81,11 @@ func (m *Manager) objectsInfos(includeStorage, includeCode, filterCommits, filte
 }
 
 // derefParent returns the dereferenced parent OID or an empty string for a root commit.
-func derefParent(p *string) string {
-	if p == nil {
+func derefParent(p objects.NullableString) string {
+	if !p.Valid {
 		return ""
 	}
-	return *p
+	return p.String
 }
 
 // history gets the commit history.
@@ -115,7 +116,7 @@ func (m *Manager) commitString(oid string, commit *objects.Commit) (string, erro
 		common.KeywordText("commit"),
 		common.IDText(oid),
 		common.KeywordText("tree"),
-		common.IDText(tree),
+		common.IDText(tree.String()),
 		common.DateText(committerTimestamp),
 		common.DateText(authorTimestamp),
 	)
@@ -131,7 +132,7 @@ func (m *Manager) commitMap(oid string, commit *objects.Commit) (map[string]any,
 	output := make(map[string]any)
 	output["oid"] = oid
 	output["parent"] = derefParent(commit.Parent())
-	output["tree"] = commit.Tree()
+	output["tree"] = commit.Tree().String()
 	output["message"] = commit.Message()
 
 	metdata := commit.MetaData()
@@ -148,7 +149,7 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
+	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "PROFILE"}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, len(entries))
@@ -161,6 +162,7 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 			m.resolveLanguageID(e.LanguageID()),
 			m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID()),
 			m.resolveLanguageTypeID(e.LanguageTypeID()),
+			m.resolveProfileID(e.ProfileID()),
 		}
 	}
 	widths := columnWidths(headers, dataRows)
@@ -173,6 +175,7 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		common.LanguageText,
 		common.LanguageText,
 		common.LanguageKeywordText,
+		common.NameText,
 	}
 
 	var sb strings.Builder
@@ -209,6 +212,7 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 			"language":         m.resolveLanguageID(entry.LanguageID()),
 			"language_version": m.resolveLanguageVersionID(entry.LanguageID(), entry.LanguageVersionID()),
 			"language_type":    m.resolveLanguageTypeID(entry.LanguageTypeID()),
+			"profile":          m.resolveProfileID(entry.ProfileID()),
 		}
 	}
 
@@ -297,6 +301,11 @@ func (m *Manager) resolveCodeTypeID(id uint32) string {
 	return m.langReg.ResolveCodeTypeName(id)
 }
 
+// resolveProfileID converts an authz profile uint32 ID to its display name.
+func (m *Manager) resolveProfileID(id uint32) string {
+	return profiles.ProfileName(id)
+}
+
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
 // alignRight controls per-column alignment: true = right-align, false (or nil) = left-align.
 func tableRow(vals []string, widths []int, colorFns []func(string) string, alignRight []bool) string {
@@ -364,7 +373,7 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 	meta := commit.MetaData()
 	headers := []string{"TREE", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
 	dataRow := []string{
-		commit.Tree(),
+		commit.Tree().String(),
 		derefParent(commit.Parent()),
 		meta.Author(),
 		meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
@@ -400,10 +409,10 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE"}
+	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "PROFILE"}
 
 	// First row: the tree object itself.
-	selfRow := []string{"tree", "", oid, "", "", "", "", "", "", "", "", "", ""}
+	selfRow := []string{"tree", "", oid, "", "", "", "", "", "", "", "", "", "", ""}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, 0, 1+len(entries))
@@ -429,6 +438,7 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 			langVer,
 			strconv.FormatUint(uint64(e.LanguageTypeID()), 10),
 			m.resolveLanguageTypeID(e.LanguageTypeID()),
+			m.resolveProfileID(e.ProfileID()),
 		})
 	}
 
@@ -448,10 +458,11 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		common.LanguageText,
 		common.LanguageKeywordText,
 		common.LanguageKeywordText,
+		common.NameText,
 	}
 
-	// TYPE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE
-	alignRight := []bool{false, false, false, false, false, true, false, true, false, true, false, true, false}
+	// TYPE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE PROFILE
+	alignRight := []bool{false, false, false, false, false, true, false, true, false, true, false, true, false, false}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "tree", sizeBytes))
@@ -469,7 +480,7 @@ func (m *Manager) commitInspectMap(_ string, commit *objects.Commit) (map[string
 	}
 	meta := commit.MetaData()
 	return map[string]any{
-		"tree":                commit.Tree(),
+		"tree":                commit.Tree().String(),
 		"parent":              derefParent(commit.Parent()),
 		"author":              meta.Author(),
 		"author_timestamp":    meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
@@ -504,6 +515,8 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 			"language":         m.resolveLanguageID(e.LanguageID()),
 			"language_type_id": e.LanguageTypeID(),
 			"language_type":    m.resolveLanguageTypeID(e.LanguageTypeID()),
+			"profile_id":       e.ProfileID(),
+			"profile":          m.resolveProfileID(e.ProfileID()),
 		}
 		entry["language_version_id"] = e.LanguageVersionID()
 		entry["language_version"] = m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
@@ -530,6 +543,8 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 		"code_type_id":       header.CodeTypeID(),
 		"code_type":          m.resolveCodeTypeID(header.CodeTypeID()),
 		"code_id":            header.CodeID(),
+		"profile_id":         header.ProfileID(),
+		"profile":            m.resolveProfileID(header.ProfileID()),
 		"data":               base64.StdEncoding.EncodeToString(data),
 	}
 	result["language_version_id"] = header.LanguageVersionID()
@@ -553,7 +568,7 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 	}
 
 	data, _ := objInfo.Instance().([]byte)
-	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
+	headers := []string{"PARTITION", "IS-NATIVE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "PROFILE", "DATA"}
 	dataRow := []string{
 		header.Partition(),
 		strconv.FormatBool(header.IsNativeLanguage()),
@@ -566,6 +581,7 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		strconv.FormatUint(uint64(header.CodeTypeID()), 10),
 		m.resolveCodeTypeID(header.CodeTypeID()),
 		header.CodeID(),
+		m.resolveProfileID(header.ProfileID()),
 		base64.StdEncoding.EncodeToString(data),
 	}
 	widths := columnWidths(headers, [][]string{dataRow})
@@ -582,11 +598,12 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		common.KeywordText,
 		common.KeywordText,
 		common.NameText,
+		common.NameText,
 		common.NormalText,
 	}
 
-	// PARTITION IS-NATIVE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID DATA
-	alignRight := []bool{false, false, true, false, true, false, true, false, true, false, false, false}
+	// PARTITION IS-NATIVE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID PROFILE DATA
+	alignRight := []bool{false, false, true, false, true, false, true, false, true, false, false, false, false}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))

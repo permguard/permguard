@@ -40,11 +40,11 @@ func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 		return nil, errors.New("objects: commit is nil")
 	}
 	parentOID := ZeroOID
-	if commit.parent != nil {
-		parentOID = *commit.parent
+	if commit.parent.Valid {
+		parentOID = commit.parent.String
 	}
 	c := cborCommit{
-		Tree:               commit.tree,
+		Tree:               commit.tree.String(),
 		Parent:             parentOID,
 		Author:             commit.metaData.author,
 		AuthorTimestamp:    commit.metaData.authorTimestamp.Unix(),
@@ -65,12 +65,14 @@ func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	if err := m.decMode.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("objects: failed to decode commit: %w", err)
 	}
-	var parent *string
+	var parent NullableString
 	if c.Parent != ZeroOID {
-		parent = &c.Parent
+		parent = NullableString{String: c.Parent, Valid: true}
+	} else {
+		parent = NullableString{Valid: false}
 	}
 	return &Commit{
-		tree:   c.Tree,
+		tree:   CID(c.Tree),
 		parent: parent,
 		metaData: CommitMetaData{
 			author:             c.Author,
@@ -114,10 +116,10 @@ func (m *ObjectManager) BuildCommitHistory(fromCommitID string, toCommitID strin
 			match = true
 			break
 		}
-		if commit.Parent() == nil {
+		if !commit.Parent().Valid {
 			break
 		}
-		currentID = *commit.Parent()
+		currentID = commit.Parent().String
 	}
 	if reverse {
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {

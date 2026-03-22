@@ -28,8 +28,8 @@ func TestSerializeDeserializeCommit(t *testing.T) {
 	assert := assert.New(t)
 
 	commit := &Commit{
-		tree:   "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d",
-		parent: "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76",
+		tree:   CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c"),
+		parent: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
 		metaData: CommitMetaData{
 			author:             "Nicola Gallo",
 			authorTimestamp:    time.Unix(1628704800, 0),
@@ -77,8 +77,8 @@ func TestSerializeDeserializeCommitWithOID(t *testing.T) {
 	objectManager, _ := NewObjectManager()
 
 	commit1 := &Commit{
-		tree:   "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d",
-		parent: "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76",
+		tree:   CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c"),
+		parent: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
 		metaData: CommitMetaData{
 			author:             "Nicola Gallo",
 			authorTimestamp:    time.Unix(1628704800, 0),

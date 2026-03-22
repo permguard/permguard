@@ -31,6 +31,7 @@ import (
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/validators"
 	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/profiles"
 )
 
 // LanguageAbstraction is the abstraction for the cedar language.
@@ -133,7 +134,7 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.L
 			continue
 		}
 
-		header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID)
+		header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langPolicyTypeID, codeID, codeTypeID, profiles.ProfileZtasAppID)
 		if err != nil {
 			_ = multiSecObj.AddSectionObjectWithError(i, err)
 			continue
@@ -156,7 +157,7 @@ func (abs *LanguageAbstraction) CreatePolicyBlobObjects(mfestLang *azmanifests.L
 			return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 		}
 
-		_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langPolicyTypeID, i)
+		_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langPolicyTypeID, profiles.ProfileZtasAppID, i)
 	}
 
 	return multiSecObj, nil
@@ -203,7 +204,7 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.L
 	if err != nil {
 		return nil, errors.Join(errors.New("cedar: failed to create the multi section object"), err)
 	}
-	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID)
+	header, err := objects.NewObjectHeader(partition, true, langID, langVersionID, langSchemaTypeID, codeID, codeTypeID, profiles.ProfileDefaultID)
 	if err != nil {
 		_ = multiSecObj.AddSectionObjectWithError(0, err)
 		return multiSecObj, nil
@@ -220,7 +221,7 @@ func (abs *LanguageAbstraction) CreateSchemaBlobObjects(mfestLang *azmanifests.L
 		return nil, errors.Join(errors.New("cedar: failed to get the object info"), err)
 	}
 
-	_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langSchemaTypeID, 0)
+	_ = multiSecObj.AddSectionObjectWithParams(obj, partition, objInfo.Type(), objName, codeID, codeTypeID, langID, langVersionID, langSchemaTypeID, profiles.ProfileDefaultID, 0)
 	return multiSecObj, nil
 }
 

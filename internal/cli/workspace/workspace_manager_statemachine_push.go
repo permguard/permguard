@@ -45,9 +45,9 @@ func (m *Manager) collectObjectsForCommit(isCode bool, commitObj *objects.Object
 
 	var treeObj *objects.Object
 	if isCode {
-		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.Tree())
+		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.Tree().String())
 	} else {
-		treeObj, err = m.cospMgr.ReadObject(commit.Tree())
+		treeObj, err = m.cospMgr.ReadObject(commit.Tree().String())
 	}
 	if err != nil {
 		return nil, err

@@ -30,8 +30,8 @@ func TestObjectManager(t *testing.T) {
 	t.Run("Test CreateCommitObject and GetObjectInfo", func(t *testing.T) {
 		assert := assert.New(t)
 		commit := &Commit{
-			tree:   "3b18e17a0e8664d3dffab99ebf6d730ddc6e8649",
-			parent: "a1b2c3d4e5f678901234567890abcdef12345678",
+			tree:   CID("bafyrei3b18e17a0e8664d3dffab99ebf6d730ddc6e8649aaaaaaaaaaaaaaaaaa"),
+			parent: NullableString{String: "bafyreia1b2c3d4e5f678901234567890abcdef12345678aaaaaaaaaaaaaaaaaaa", Valid: true},
 			metaData: CommitMetaData{
 				author:             "Nicola Gallo",
 				authorTimestamp:    time.Unix(1628704800, 0),
@@ -69,9 +69,9 @@ func TestObjectManager(t *testing.T) {
 		assert := assert.New(t)
 		tree := &Tree{
 			entries: []TreeEntry{
-				{otype: "blob", oid: "6eb715b073c6b28e03715129e03a0d52c8e21b73", partition: "/", oname: "name1", codeID: "code1", codeType: "codeType1", language: "cedar", languageVersion: "*", languageType: "policy"},
-				{otype: "blob", oid: "a7fdb22705a5e6145b6a8b1fa947825c5e97a51c", partition: "/", oname: "name2", codeID: "code2", codeType: "codeType2", language: "cedar", languageVersion: "*", languageType: "policy"},
-				{otype: "tree", oid: "a7fdb33705a5e6145b6a8b1fa947825c5e97a51c", oname: "name3", codeID: "code3", codeType: "codeType3", language: "cedar", languageVersion: "*", languageType: "policy"},
+				{otype: "blob", oid: "bafyreiab715b073c6b28e03715129e03a0d52c8e21b73aaaaaaaaaaaaaaaaaaa", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
+				{otype: "blob", oid: "bafyreia7fdb22705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
+				{otype: "tree", oid: "bafyreia7fdb33705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
 			},
 		}
 
@@ -98,7 +98,7 @@ func TestObjectManager(t *testing.T) {
 		blobData := []byte("This is the content of the blob object")
 
 		// Create blob object
-		header, _ := NewObjectHeader("/", true, 1, 1, 1, "my-custom-id", 1)
+		header, _ := NewObjectHeader("/", true, 1, 1, 1, "my-custom-id", 1, 0)
 		blobObj, err := objectManager.CreateBlobObject(header, blobData)
 		assert.NoError(err)
 		assert.NotEmpty(blobObj.oid, "OID should not be empty")

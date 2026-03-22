@@ -273,7 +273,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			return fail(err)
 		}
 
-		treeObj, err := m.cospMgr.ReadObject(commit.Tree())
+		treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())
 		if err != nil {
 			return fail(err)
 		}

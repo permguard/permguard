@@ -363,7 +363,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	}
 	for _, obj := range codeObsState {
 		var entry *objects.TreeEntry
-		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeTypeID, obj.LanguageID, obj.LanguageVersionID, obj.LanguageTypeID)
+		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeTypeID, obj.LanguageID, obj.LanguageVersionID, obj.LanguageTypeID, obj.ProfileID)
 		if err != nil {
 			return "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}

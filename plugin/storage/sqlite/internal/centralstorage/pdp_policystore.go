@@ -76,7 +76,7 @@ func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP,
 	if err != nil {
 		return nil, err
 	}
-	ocontent, err = authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, commitObj.Tree())
+	ocontent, err = authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, commitObj.Tree().String())
 	if err != nil {
 		return nil, err
 	}

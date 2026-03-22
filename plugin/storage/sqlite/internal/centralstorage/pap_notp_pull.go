@@ -173,7 +173,7 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 		Content: commitObj.Content(),
 	})
 
-	treeObj, err := s.readObject(ctx, db, zoneID, commit.Tree())
+	treeObj, err := s.readObject(ctx, db, zoneID, commit.Tree().String())
 	if err != nil {
 		return nil, err
 	}

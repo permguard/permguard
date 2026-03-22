@@ -40,7 +40,7 @@ func (m *ObjectManager) VerifyCommitGraphIntegrity(commitOID string, objFunc fun
 	}
 
 	treeOID := commit.Tree()
-	treeObj, err := objFunc(treeOID)
+	treeObj, err := objFunc(treeOID.String())
 	if err != nil {
 		return fmt.Errorf("objects: failed to read tree %s referenced by commit %s: %w", treeOID, commitOID, err)
 	}
