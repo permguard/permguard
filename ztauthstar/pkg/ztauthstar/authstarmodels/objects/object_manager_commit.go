@@ -34,13 +34,18 @@ type cborCommit struct {
 }
 
 // SerializeCommit serializes a commit object to CBOR.
+// A nil parent is serialized as ZeroOID to maintain wire-format compatibility.
 func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 	if commit == nil {
 		return nil, errors.New("objects: commit is nil")
 	}
+	parentOID := ZeroOID
+	if commit.parent != nil {
+		parentOID = *commit.parent
+	}
 	c := cborCommit{
 		Tree:               commit.tree,
-		Parent:             commit.parent,
+		Parent:             parentOID,
 		Author:             commit.metaData.author,
 		AuthorTimestamp:    commit.metaData.authorTimestamp.Unix(),
 		Committer:          commit.metaData.committer,
@@ -51,6 +56,7 @@ func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 }
 
 // DeserializeCommit deserializes a commit object from CBOR.
+// ZeroOID in the wire format is converted to nil in the public API (root commit).
 func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	if data == nil {
 		return nil, errors.New("objects: data is nil")
@@ -59,9 +65,13 @@ func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	if err := m.decMode.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("objects: failed to decode commit: %w", err)
 	}
+	var parent *string
+	if c.Parent != ZeroOID {
+		parent = &c.Parent
+	}
 	return &Commit{
 		tree:   c.Tree,
-		parent: c.Parent,
+		parent: parent,
 		metaData: CommitMetaData{
 			author:             c.Author,
 			authorTimestamp:    time.Unix(c.AuthorTimestamp, 0),
@@ -104,7 +114,10 @@ func (m *ObjectManager) BuildCommitHistory(fromCommitID string, toCommitID strin
 			match = true
 			break
 		}
-		currentID = commit.Parent()
+		if commit.Parent() == nil {
+			break
+		}
+		currentID = *commit.Parent()
 	}
 	if reverse {
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {

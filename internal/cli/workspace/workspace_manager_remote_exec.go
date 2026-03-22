@@ -301,10 +301,10 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 				"oname":            entry.OName(),
 				"type":             entry.Type(),
 				"code_id":          entry.CodeID(),
-				"code_type":        resolveCodeTypeID(entry.CodeTypeID()),
-				"language":         resolveLanguageID(entry.LanguageID()),
-				"language_version": resolveLanguageVersionID(entry.LanguageVersionID()),
-				"language_type":    resolveLanguageTypeID(entry.LanguageTypeID()),
+				"code_type":        m.resolveCodeTypeID(entry.CodeTypeID()),
+				"language":         m.resolveLanguageID(entry.LanguageID()),
+				"language_version": m.resolveLanguageVersionID(entry.LanguageID(), entry.LanguageVersionID()),
+				"language_type":    m.resolveLanguageTypeID(entry.LanguageTypeID()),
 			})
 			if _, ok := codeMapIDs[entry.OID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.OID())

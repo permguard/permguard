@@ -79,6 +79,14 @@ func (m *Manager) objectsInfos(includeStorage, includeCode, filterCommits, filte
 	return filteredObjects, nil
 }
 
+// derefParent returns the dereferenced parent OID or an empty string for a root commit.
+func derefParent(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // history gets the commit history.
 func (m *Manager) history(commit string) ([]azwkscommon.CommitInfo, error) {
 	commitHistory, err := m.cospMgr.History(commit)
@@ -122,7 +130,7 @@ func (m *Manager) commitMap(oid string, commit *objects.Commit) (map[string]any,
 
 	output := make(map[string]any)
 	output["oid"] = oid
-	output["parent"] = commit.Parent()
+	output["parent"] = derefParent(commit.Parent())
 	output["tree"] = commit.Tree()
 	output["message"] = commit.Message()
 
@@ -150,9 +158,9 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 			e.Type(),
 			e.Partition(),
 			e.OName(),
-			resolveLanguageID(e.LanguageID()),
-			resolveLanguageVersionID(e.LanguageVersionID()),
-			resolveLanguageTypeID(e.LanguageTypeID()),
+			m.resolveLanguageID(e.LanguageID()),
+			m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID()),
+			m.resolveLanguageTypeID(e.LanguageTypeID()),
 		}
 	}
 	widths := columnWidths(headers, dataRows)
@@ -198,9 +206,9 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 			"oname":            entry.OName(),
 			"type":             entry.Type(),
 			"partition":        entry.Partition(),
-			"language":         resolveLanguageID(entry.LanguageID()),
-			"language_version": resolveLanguageVersionID(entry.LanguageVersionID()),
-			"language_type":    resolveLanguageTypeID(entry.LanguageTypeID()),
+			"language":         m.resolveLanguageID(entry.LanguageID()),
+			"language_version": m.resolveLanguageVersionID(entry.LanguageID(), entry.LanguageVersionID()),
+			"language_type":    m.resolveLanguageTypeID(entry.LanguageTypeID()),
 		}
 	}
 
@@ -268,49 +276,25 @@ func (m *Manager) objectInspectHeaderMap(oid, objectType string, sizeBytes int) 
 	}
 }
 
-// resolveLanguageID converts a language uint32 ID to its display name.
-func resolveLanguageID(id uint32) string {
-	switch id {
-	case 1:
-		return "cedar"
-	case 2:
-		return "cedar-json"
-	default:
-		return fmt.Sprintf("%d", id)
-	}
+// resolveLanguageID converts a language uint32 ID to its display name via the registry.
+func (m *Manager) resolveLanguageID(id uint32) string {
+	return m.langReg.ResolveLanguageName(id)
 }
 
-// resolveLanguageVersionID converts a language version uint32 ID to its display string.
-// Returns empty string for the zero version (ID 0 = "0.0").
-func resolveLanguageVersionID(id uint32) string {
-	if id == 0 {
-		return ""
-	}
-	return fmt.Sprintf("%d", id)
+// resolveLanguageVersionID converts a language version uint32 ID to its display string
+// within the context of the given language ID, via the registry.
+func (m *Manager) resolveLanguageVersionID(langID, versionID uint32) string {
+	return m.langReg.ResolveVersionName(langID, versionID)
 }
 
-// resolveLanguageTypeID converts a language type uint32 ID to its display name.
-func resolveLanguageTypeID(id uint32) string {
-	switch id {
-	case 1:
-		return "schema"
-	case 2:
-		return "policy"
-	default:
-		return fmt.Sprintf("%d", id)
-	}
+// resolveLanguageTypeID converts a language type uint32 ID to its display name via the registry.
+func (m *Manager) resolveLanguageTypeID(id uint32) string {
+	return m.langReg.ResolveTypeName(id)
 }
 
-// resolveCodeTypeID converts a code type uint32 ID to its display name.
-func resolveCodeTypeID(id uint32) string {
-	switch id {
-	case 1:
-		return "schema"
-	case 2:
-		return "policy"
-	default:
-		return fmt.Sprintf("%d", id)
-	}
+// resolveCodeTypeID converts a code type uint32 ID to its display name via the registry.
+func (m *Manager) resolveCodeTypeID(id uint32) string {
+	return m.langReg.ResolveCodeTypeName(id)
 }
 
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
@@ -381,7 +365,7 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 	headers := []string{"TREE", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
 	dataRow := []string{
 		commit.Tree(),
-		commit.Parent(),
+		derefParent(commit.Parent()),
 		meta.Author(),
 		meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
 		meta.Committer(),
@@ -426,7 +410,7 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 	dataRows = append(dataRows, selfRow)
 	for _, e := range entries {
 		langVerID := strconv.FormatUint(uint64(e.LanguageVersionID()), 10)
-		langVer := resolveLanguageVersionID(e.LanguageVersionID())
+		langVer := m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
 		if e.LanguageVersionID() == 0 {
 			langVerID = ""
 			langVer = ""
@@ -438,13 +422,13 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 			e.OName(),
 			e.CodeID(),
 			strconv.FormatUint(uint64(e.CodeTypeID()), 10),
-			resolveCodeTypeID(e.CodeTypeID()),
+			m.resolveCodeTypeID(e.CodeTypeID()),
 			strconv.FormatUint(uint64(e.LanguageID()), 10),
-			resolveLanguageID(e.LanguageID()),
+			m.resolveLanguageID(e.LanguageID()),
 			langVerID,
 			langVer,
 			strconv.FormatUint(uint64(e.LanguageTypeID()), 10),
-			resolveLanguageTypeID(e.LanguageTypeID()),
+			m.resolveLanguageTypeID(e.LanguageTypeID()),
 		})
 	}
 
@@ -486,7 +470,7 @@ func (m *Manager) commitInspectMap(_ string, commit *objects.Commit) (map[string
 	meta := commit.MetaData()
 	return map[string]any{
 		"tree":                commit.Tree(),
-		"parent":              commit.Parent(),
+		"parent":              derefParent(commit.Parent()),
 		"author":              meta.Author(),
 		"author_timestamp":    meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
 		"committer":           meta.Committer(),
@@ -515,14 +499,14 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 			"oname":            e.OName(),
 			"code_id":          e.CodeID(),
 			"code_type_id":     e.CodeTypeID(),
-			"code_type":        resolveCodeTypeID(e.CodeTypeID()),
+			"code_type":        m.resolveCodeTypeID(e.CodeTypeID()),
 			"language_id":      e.LanguageID(),
-			"language":         resolveLanguageID(e.LanguageID()),
+			"language":         m.resolveLanguageID(e.LanguageID()),
 			"language_type_id": e.LanguageTypeID(),
-			"language_type":    resolveLanguageTypeID(e.LanguageTypeID()),
+			"language_type":    m.resolveLanguageTypeID(e.LanguageTypeID()),
 		}
 		entry["language_version_id"] = e.LanguageVersionID()
-		entry["language_version"] = resolveLanguageVersionID(e.LanguageVersionID())
+		entry["language_version"] = m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
 		allEntries = append(allEntries, entry)
 	}
 	return map[string]any{"entries": allEntries}, nil
@@ -540,16 +524,16 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 		"partition":          header.Partition(),
 		"is_native_language": header.IsNativeLanguage(),
 		"language_id":        header.LanguageID(),
-		"language":           resolveLanguageID(header.LanguageID()),
+		"language":           m.resolveLanguageID(header.LanguageID()),
 		"language_type_id":   header.LanguageTypeID(),
-		"language_type":      resolveLanguageTypeID(header.LanguageTypeID()),
+		"language_type":      m.resolveLanguageTypeID(header.LanguageTypeID()),
 		"code_type_id":       header.CodeTypeID(),
-		"code_type":          resolveCodeTypeID(header.CodeTypeID()),
+		"code_type":          m.resolveCodeTypeID(header.CodeTypeID()),
 		"code_id":            header.CodeID(),
 		"data":               base64.StdEncoding.EncodeToString(data),
 	}
 	result["language_version_id"] = header.LanguageVersionID()
-	result["language_version"] = resolveLanguageVersionID(header.LanguageVersionID())
+	result["language_version"] = m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
 	return result, nil
 }
 
@@ -562,7 +546,7 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 	}
 
 	langVerID := strconv.FormatUint(uint64(header.LanguageVersionID()), 10)
-	langVer := resolveLanguageVersionID(header.LanguageVersionID())
+	langVer := m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
 	if header.LanguageVersionID() == 0 {
 		langVerID = ""
 		langVer = ""
@@ -574,13 +558,13 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		header.Partition(),
 		strconv.FormatBool(header.IsNativeLanguage()),
 		strconv.FormatUint(uint64(header.LanguageID()), 10),
-		resolveLanguageID(header.LanguageID()),
+		m.resolveLanguageID(header.LanguageID()),
 		langVerID,
 		langVer,
 		strconv.FormatUint(uint64(header.LanguageTypeID()), 10),
-		resolveLanguageTypeID(header.LanguageTypeID()),
+		m.resolveLanguageTypeID(header.LanguageTypeID()),
 		strconv.FormatUint(uint64(header.CodeTypeID()), 10),
-		resolveCodeTypeID(header.CodeTypeID()),
+		m.resolveCodeTypeID(header.CodeTypeID()),
 		header.CodeID(),
 		base64.StdEncoding.EncodeToString(data),
 	}

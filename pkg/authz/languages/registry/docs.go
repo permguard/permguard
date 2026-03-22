@@ -14,16 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package languages
-
-import (
-	langregistry "github.com/permguard/permguard/pkg/authz/languages/registry"
-)
-
-// LanguageFactory is the interface for the language factory.
-type LanguageFactory interface {
-	// LanguageAbstraction creates a language abstraction.
-	LanguageAbstraction(language, version string) (LanguageAbstraction, error)
-	// LanguageRegistry returns the registry of language descriptors for ID resolution.
-	LanguageRegistry() *langregistry.LanguageRegistry
-}
+// Package registry provides a central registry for language plugin descriptors.
+package registry

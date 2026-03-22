@@ -37,7 +37,7 @@ func TestCommitCreation(t *testing.T) {
 
 	tree := "4ad3bb52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c1d"
 	parent := "a294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacb8099d76"
-	commit, err := objects.NewCommit(tree, parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
+	commit, err := objects.NewCommit(tree, &parent, "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
 	require.NoError(t, err, "NewCommit should not return an error")
 	assert.NotNil(commit, "Commit should not be nil")
 

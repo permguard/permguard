@@ -532,8 +532,7 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 	reachable := map[string]bool{}
 	visited := map[string]bool{}
 	currentID := commitID
-	const maxWalkIterations = 100000
-	for i := 0; currentID != objects.ZeroOID && i < maxWalkIterations; i++ {
+	for currentID != objects.ZeroOID {
 		if visited[currentID] {
 			return 0, fmt.Errorf("cli: cycle detected in commit chain at %s", currentID)
 		}
@@ -573,7 +572,10 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 		for _, entry := range tree.Entries() {
 			reachable[entry.OID()] = true
 		}
-		currentID = commit.Parent()
+		if commit.Parent() == nil {
+			break
+		}
+		currentID = *commit.Parent()
 	}
 	allObjs, err := m.objects(m.objectsDir(), true)
 	if err != nil {
@@ -676,8 +678,7 @@ func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
 		return nil, err
 	}
 	visited := map[string]bool{}
-	const maxHistoryIterations = 100000
-	for i := 0; commit != nil && i < maxHistoryIterations; i++ {
+	for commit != nil {
 		if visited[commitID] {
 			return nil, fmt.Errorf("cli: cycle detected in commit history at %s", commitID)
 		}
@@ -687,10 +688,10 @@ func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
 			return nil, err
 		}
 		commits = append(commits, *commitInfo)
-		parentID := commit.Parent()
-		if parentID == objects.ZeroOID {
+		if commit.Parent() == nil {
 			break
 		}
+		parentID := *commit.Parent()
 		commit, err = m.Commit(parentID)
 		if err != nil {
 			return nil, err

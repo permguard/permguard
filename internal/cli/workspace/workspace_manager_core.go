@@ -32,6 +32,7 @@ import (
 	azrefs "github.com/permguard/permguard/internal/cli/workspace/refs"
 	"github.com/permguard/permguard/internal/cli/workspace/remoteserver"
 	"github.com/permguard/permguard/pkg/authz/languages"
+	langregistry "github.com/permguard/permguard/pkg/authz/languages/registry"
 	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
@@ -55,6 +56,7 @@ type Manager struct {
 	homeDir        string
 	objMar         *objects.ObjectManager
 	langFct        languages.LanguageFactory
+	langReg        *langregistry.LanguageRegistry
 	persMgr        *persistence.Manager
 	rmSrvtMgr      *remoteserver.Manager
 	cfgMgr         *config.Manager
@@ -100,6 +102,7 @@ func NewInternalManager(ctx *common.CliCommandContext, langFct languages.Languag
 		ctx:       ctx,
 		objMar:    objMar,
 		langFct:   langFct,
+		langReg:   langFct.LanguageRegistry(),
 		persMgr:   persMgr,
 		rmSrvtMgr: rmSrvtMgr,
 		cfgMgr:    cfgMgr,

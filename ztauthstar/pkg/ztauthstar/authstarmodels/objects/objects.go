@@ -219,7 +219,7 @@ func (c *CommitMetaData) CommitterTimestamp() time.Time {
 // Commit represents a commit object.
 type Commit struct {
 	tree     string
-	parent   string
+	parent   *string
 	metaData CommitMetaData
 	message  string
 }
@@ -229,8 +229,8 @@ func (c *Commit) Tree() string {
 	return c.tree
 }
 
-// Parent return the parent of the commit.
-func (c *Commit) Parent() string {
+// Parent returns the OID of the parent commit, or nil for the root commit.
+func (c *Commit) Parent() *string {
 	return c.parent
 }
 
@@ -245,10 +245,12 @@ func (c *Commit) Message() string {
 }
 
 // NewCommit creates a new commit object.
-func NewCommit(tree string, parentCommitID string, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
+// parentCommitID is nil for a root commit (no parent).
+func NewCommit(tree string, parentCommitID *string, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
 	if strings.TrimSpace(tree) == "" {
 		return nil, errors.New("objects: tree is empty")
-	} else if strings.TrimSpace(parentCommitID) == "" {
+	}
+	if parentCommitID != nil && strings.TrimSpace(*parentCommitID) == "" {
 		return nil, errors.New("objects: parent commit id is empty")
 	}
 	if authorTimestamp.Equal((time.Time{})) {

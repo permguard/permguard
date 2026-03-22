@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
+	langregistry "github.com/permguard/permguard/pkg/authz/languages/registry"
 	"github.com/permguard/permguard/plugin/languages/cedar"
 	"github.com/permguard/permguard/ztauthstar-cedar/pkg/cedarlang"
 )
@@ -27,12 +28,18 @@ import (
 // CommunityLanguageFactory is the factory for the community language.
 type CommunityLanguageFactory struct {
 	languages map[string]languages.LanguageAbstraction
+	langReg   *langregistry.LanguageRegistry
 }
 
 // NewCommunityLanguageFactory creates a new community language factory.
 func NewCommunityLanguageFactory() (*CommunityLanguageFactory, error) {
+	langReg := langregistry.NewLanguageRegistry()
+	if err := langReg.Register(cedar.NewCedarLanguageDescriptor()); err != nil {
+		return nil, fmt.Errorf("cli: failed to register cedar language descriptor: %w", err)
+	}
 	languageFactory := &CommunityLanguageFactory{
 		languages: map[string]languages.LanguageAbstraction{},
+		langReg:   langReg,
 	}
 	cedarLanguageAbs, err := cedar.NewCedarLanguageAbstraction()
 	if err != nil {
@@ -49,4 +56,9 @@ func (c *CommunityLanguageFactory) LanguageAbstraction(language, version string)
 		return nil, fmt.Errorf("cli: invalid language %s with version %s", language, version)
 	}
 	return langAbs, nil
+}
+
+// LanguageRegistry returns the registry of language descriptors.
+func (c *CommunityLanguageFactory) LanguageRegistry() *langregistry.LanguageRegistry {
+	return c.langReg
 }
