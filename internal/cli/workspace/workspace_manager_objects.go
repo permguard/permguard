@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
@@ -184,9 +183,9 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		fmt.Fprintf(&sb, "  (no entries)")
 		return sb.String(), nil
 	}
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, nil))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
 	for _, row := range dataRows {
-		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns, nil))
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
 }
@@ -307,17 +306,10 @@ func (m *Manager) resolveProfileID(id uint32) string {
 }
 
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
-// alignRight controls per-column alignment: true = right-align, false (or nil) = left-align.
-func tableRow(vals []string, widths []int, colorFns []func(string) string, alignRight []bool) string {
+func tableRow(vals []string, widths []int, colorFns []func(string) string) string {
 	var sb strings.Builder
 	for i, v := range vals {
-		right := i < len(alignRight) && alignRight[i]
-		var padded string
-		if right {
-			padded = fmt.Sprintf("%*s", widths[i], v)
-		} else {
-			padded = fmt.Sprintf("%-*s", widths[i], v)
-		}
+		padded := fmt.Sprintf("%-*s", widths[i], v)
 		colored := colorFns[i](padded)
 		if i < len(vals)-1 {
 			fmt.Fprintf(&sb, "%s  ", colored)
@@ -329,17 +321,11 @@ func tableRow(vals []string, widths []int, colorFns []func(string) string, align
 }
 
 // tableHeader builds a padded header row from headers and widths.
-// alignRight controls per-column alignment: true = right-align, false (or nil) = left-align.
-func tableHeader(headers []string, widths []int, alignRight []bool) string {
+func tableHeader(headers []string, widths []int) string {
 	var sb strings.Builder
 	for i, h := range headers {
-		right := i < len(alignRight) && alignRight[i]
 		if i < len(headers)-1 {
-			if right {
-				fmt.Fprintf(&sb, "%*s  ", widths[i], h)
-			} else {
-				fmt.Fprintf(&sb, "%-*s  ", widths[i], h)
-			}
+			fmt.Fprintf(&sb, "%-*s  ", widths[i], h)
 		} else {
 			fmt.Fprintf(&sb, "%s", h)
 		}
@@ -395,50 +381,43 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "commit", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, nil))
-	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns, nil))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
 	return sb.String(), nil
 }
 
-// treeTableString formats a tree object as an aligned inspect table with all CBOR fields.
+// treeTableString formats a tree object as an aligned inspect table with resolved names only.
 // First row is the tree object itself (TYPE=tree, OID=tree OID).
 // Subsequent rows are the tree entries (one per cborTreeEntry).
-// Columns: TYPE | PROFILE-ID | PROFILE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE-ID | CODE-TYPE | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE
+// Columns: TYPE | PROFILE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE
 func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PROFILE-ID", "PROFILE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE-ID", "CODE-TYPE", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE"}
+	headers := []string{"TYPE", "PROFILE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
 
 	// First row: the tree object itself.
-	selfRow := []string{"tree", "", "", "", oid, "", "", "", "", "", "", "", "", "", ""}
+	selfRow := []string{"tree", "", "", oid, "", "", "", "", "", ""}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, 0, 1+len(entries))
 	dataRows = append(dataRows, selfRow)
 	for _, e := range entries {
-		langVerID := strconv.FormatUint(uint64(e.LanguageVersionID()), 10)
 		langVer := m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
 		if e.LanguageVersionID() == 0 {
-			langVerID = ""
 			langVer = ""
 		}
 		dataRows = append(dataRows, []string{
 			e.Type(),
-			strconv.FormatUint(uint64(e.ProfileID()), 10),
 			m.resolveProfileID(e.ProfileID()),
 			e.Partition(),
 			e.OID(),
 			e.OName(),
 			e.CodeID(),
-			strconv.FormatUint(uint64(e.CodeTypeID()), 10),
 			m.resolveCodeTypeID(e.CodeTypeID()),
-			strconv.FormatUint(uint64(e.LanguageID()), 10),
 			m.resolveLanguageID(e.LanguageID()),
-			langVerID,
 			langVer,
-			strconv.FormatUint(uint64(e.LanguageTypeID()), 10),
 			m.resolveLanguageTypeID(e.LanguageTypeID()),
 		})
 	}
@@ -449,28 +428,20 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 		common.KeywordText,
 		common.NameText,
 		common.NameText,
-		common.NameText,
 		common.IDText,
 		common.NameText,
 		common.NameText,
 		common.KeywordText,
-		common.KeywordText,
 		common.LanguageText,
 		common.LanguageText,
-		common.LanguageText,
-		common.LanguageText,
-		common.LanguageKeywordText,
 		common.LanguageKeywordText,
 	}
 
-	// TYPE PROFILE-ID PROFILE PARTITION OID ONAME CODE-ID CODE-TYPE-ID CODE-TYPE LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE
-	alignRight := []bool{false, true, false, false, false, false, false, true, false, true, false, true, false, true, false}
-
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(oid, "tree", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, alignRight))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
 	for _, row := range dataRows {
-		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns, alignRight))
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, widths, colorFns))
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
 }
@@ -555,67 +526,47 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 	return result, nil
 }
 
-// blobTableString formats a blob object as an aligned inspect table with all CBOR fields.
-// Columns: PROFILE-ID | PROFILE | PARTITION | CONTENT-KIND-ID | CONTENT-KIND | LANG-ID | LANGUAGE | LANG-VERSION-ID | LANG-VERSION | LANG-TYPE-ID | LANG-TYPE | CODE-TYPE-ID | CODE-TYPE | CODE-ID | DATA (base64)
+// blobTableString formats a blob object as an aligned inspect table with resolved names only.
+// Columns: PROFILE | PARTITION | CONTENT-KIND | LANGUAGE | LANG-VERSION | LANG-TYPE | CODE-TYPE | CODE-ID | DATA (base64)
 func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
 		return "", errors.New("cli: blob header is nil")
 	}
 
-	langVerID := strconv.FormatUint(uint64(header.LanguageVersionID()), 10)
 	langVer := m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
 	if header.LanguageVersionID() == 0 {
-		langVerID = ""
 		langVer = ""
 	}
 
-	data, _ := objInfo.Instance().([]byte)
-	headers := []string{"PROFILE-ID", "PROFILE", "PARTITION", "CONTENT-KIND-ID", "CONTENT-KIND", "LANG-ID", "LANGUAGE", "LANG-VERSION-ID", "LANG-VERSION", "LANG-TYPE-ID", "LANG-TYPE", "CODE-TYPE-ID", "CODE-TYPE", "CODE-ID", "DATA"}
+	headers := []string{"PROFILE", "PARTITION", "CONTENT-KIND", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "CODE-TYPE", "CODE-ID"}
 	dataRow := []string{
-		strconv.FormatUint(uint64(header.ProfileID()), 10),
 		m.resolveProfileID(header.ProfileID()),
 		header.Partition(),
-		strconv.FormatUint(uint64(header.ContentKind()), 10),
 		objects.ContentKindName(header.ContentKind()),
-		strconv.FormatUint(uint64(header.LanguageID()), 10),
 		m.resolveLanguageID(header.LanguageID()),
-		langVerID,
 		langVer,
-		strconv.FormatUint(uint64(header.LanguageTypeID()), 10),
 		m.resolveLanguageTypeID(header.LanguageTypeID()),
-		strconv.FormatUint(uint64(header.CodeTypeID()), 10),
 		m.resolveCodeTypeID(header.CodeTypeID()),
 		header.CodeID(),
-		base64.StdEncoding.EncodeToString(data),
 	}
 	widths := columnWidths(headers, [][]string{dataRow})
 
 	colorFns := []func(string) string{
 		common.NameText,
 		common.NameText,
-		common.NameText,
 		common.KeywordText,
-		common.KeywordText,
-		common.LanguageText,
-		common.LanguageText,
 		common.LanguageText,
 		common.LanguageText,
 		common.LanguageKeywordText,
-		common.LanguageKeywordText,
-		common.KeywordText,
 		common.KeywordText,
 		common.NameText,
-		common.NormalText,
 	}
-
-	// PROFILE-ID PROFILE PARTITION CONTENT-KIND-ID CONTENT-KIND LANG-ID LANGUAGE LANG-VERSION-ID LANG-VERSION LANG-TYPE-ID LANG-TYPE CODE-TYPE-ID CODE-TYPE CODE-ID DATA
-	alignRight := []bool{true, false, false, true, false, true, false, true, false, true, false, true, false, false, false}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths, alignRight))
-	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns, alignRight))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
+	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
 	return sb.String(), nil
 }
 
