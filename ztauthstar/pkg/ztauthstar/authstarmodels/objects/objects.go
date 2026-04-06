@@ -38,19 +38,19 @@ const (
 	// used as a sentinel value representing the absence of content.
 	ZeroOID = "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-	// ContentKindAbstractTree represents an abstract/parsed representation of the content.
-	ContentKindAbstractTree uint32 = 0
-	// ContentKindSourceLanguage represents source code in the policy language.
-	ContentKindSourceLanguage uint32 = 1
+	// DataTypeAbstractTree represents an abstract/parsed representation of the content.
+	DataTypeAbstractTree uint32 = 0
+	// DataTypeSourceLanguage represents source code in the policy language.
+	DataTypeSourceLanguage uint32 = 1
 )
 
-// ContentKindName returns the display name for a content kind ID.
+// DataTypeName returns the display name for a content kind ID.
 // Falls back to the decimal string representation for unknown IDs.
-func ContentKindName(id uint32) string {
+func DataTypeName(id uint32) string {
 	switch id {
-	case ContentKindAbstractTree:
+	case DataTypeAbstractTree:
 		return "ast"
-	case ContentKindSourceLanguage:
+	case DataTypeSourceLanguage:
 		return "source"
 	default:
 		return fmt.Sprintf("%d", id)
@@ -59,7 +59,7 @@ func ContentKindName(id uint32) string {
 
 // ObjectHeader represents the object header.
 type ObjectHeader struct {
-	contentKind       uint32
+	dataType          uint32
 	partition         string
 	languageID        uint32
 	languageVersionID uint32
@@ -74,9 +74,9 @@ func (o *ObjectHeader) Partition() string {
 	return o.partition
 }
 
-// ContentKind returns the content kind of the object.
-func (o *ObjectHeader) ContentKind() uint32 {
-	return o.contentKind
+// DataType returns the content kind of the object.
+func (o *ObjectHeader) DataType() uint32 {
+	return o.dataType
 }
 
 // LanguageID returns the language ID of the object.
@@ -111,10 +111,10 @@ func (o *ObjectHeader) ProfileID() uint32 {
 }
 
 // NewObjectHeader creates a new object header.
-func NewObjectHeader(partition string, contentKind uint32, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
+func NewObjectHeader(partition string, dataType uint32, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
 	return &ObjectHeader{
 		partition:         partition,
-		contentKind:       contentKind,
+		dataType:          dataType,
 		languageID:        languageID,
 		languageVersionID: languageVersionID,
 		languageTypeID:    languageTypeID,

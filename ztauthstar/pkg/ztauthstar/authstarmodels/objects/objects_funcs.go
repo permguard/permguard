@@ -32,7 +32,7 @@ func ReadObjectContentBytes(obj *Object) (uint32, []byte, error) {
 		return 0, nil, err
 	}
 	objHeader := objInfo.Header()
-	if objHeader.ContentKind() != ContentKindSourceLanguage {
+	if objHeader.DataType() != DataTypeSourceLanguage {
 		return 0, nil, errors.New("objects: object is not in source language")
 	}
 	instance, ok := objInfo.Instance().([]byte)

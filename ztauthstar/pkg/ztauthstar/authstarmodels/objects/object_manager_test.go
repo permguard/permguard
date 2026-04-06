@@ -98,7 +98,7 @@ func TestObjectManager(t *testing.T) {
 		blobData := []byte("This is the content of the blob object")
 
 		// Create blob object
-		header, _ := NewObjectHeader("/", ContentKindSourceLanguage, 1, 1, 1, "my-custom-id", 1, 0)
+		header, _ := NewObjectHeader("/", DataTypeSourceLanguage, 1, 1, 1, "my-custom-id", 1, 0)
 		blobObj, err := objectManager.CreateBlobObject(header, blobData)
 		assert.NoError(err)
 		assert.NotEmpty(blobObj.oid, "OID should not be empty")
@@ -116,7 +116,7 @@ func TestObjectManager(t *testing.T) {
 
 		// Validate header fields
 		assert.Equal("/", objectInfo.header.Partition())
-		assert.Equal(ContentKindSourceLanguage, objectInfo.header.ContentKind())
+		assert.Equal(DataTypeSourceLanguage, objectInfo.header.DataType())
 		assert.Equal(uint32(1), objectInfo.header.LanguageID())
 		assert.Equal(uint32(1), objectInfo.header.LanguageVersionID())
 		assert.Equal(uint32(1), objectInfo.header.LanguageTypeID())

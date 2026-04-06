@@ -507,19 +507,19 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 	}
 	data, _ := objInfo.Instance().([]byte)
 	result := map[string]any{
-		"partition":         header.Partition(),
-		"content_kind_id":   header.ContentKind(),
-		"content_kind_name": objects.ContentKindName(header.ContentKind()),
-		"language_id":       header.LanguageID(),
-		"language":          m.resolveLanguageID(header.LanguageID()),
-		"language_type_id":  header.LanguageTypeID(),
-		"language_type":     m.resolveLanguageTypeID(header.LanguageTypeID()),
-		"code_type_id":      header.CodeTypeID(),
-		"code_type":         m.resolveCodeTypeID(header.CodeTypeID()),
-		"code_id":           header.CodeID(),
-		"profile_id":        header.ProfileID(),
-		"profile":           m.resolveProfileID(header.ProfileID()),
-		"data":              base64.StdEncoding.EncodeToString(data),
+		"partition":        header.Partition(),
+		"data_type_id":     header.DataType(),
+		"data_type_name":   objects.DataTypeName(header.DataType()),
+		"language_id":      header.LanguageID(),
+		"language":         m.resolveLanguageID(header.LanguageID()),
+		"language_type_id": header.LanguageTypeID(),
+		"language_type":    m.resolveLanguageTypeID(header.LanguageTypeID()),
+		"code_type_id":     header.CodeTypeID(),
+		"code_type":        m.resolveCodeTypeID(header.CodeTypeID()),
+		"code_id":          header.CodeID(),
+		"profile_id":       header.ProfileID(),
+		"profile":          m.resolveProfileID(header.ProfileID()),
+		"data":             base64.StdEncoding.EncodeToString(data),
 	}
 	result["language_version_id"] = header.LanguageVersionID()
 	result["language_version"] = m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
@@ -527,7 +527,7 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 }
 
 // blobTableString formats a blob object as an aligned inspect table with resolved names only.
-// Columns: PROFILE | PARTITION | CONTENT-KIND | LANGUAGE | LANG-VERSION | LANG-TYPE | CODE-TYPE | CODE-ID | DATA (base64)
+// Columns: PROFILE | PARTITION | DATA-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE | CODE-TYPE | CODE-ID | DATA (base64)
 func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
@@ -539,11 +539,11 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		langVer = ""
 	}
 
-	headers := []string{"PROFILE", "PARTITION", "CONTENT-KIND", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "CODE-TYPE", "CODE-ID"}
+	headers := []string{"PROFILE", "PARTITION", "DATA-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "CODE-TYPE", "CODE-ID"}
 	dataRow := []string{
 		m.resolveProfileID(header.ProfileID()),
 		header.Partition(),
-		objects.ContentKindName(header.ContentKind()),
+		objects.DataTypeName(header.DataType()),
 		m.resolveLanguageID(header.LanguageID()),
 		langVer,
 		m.resolveLanguageTypeID(header.LanguageTypeID()),
