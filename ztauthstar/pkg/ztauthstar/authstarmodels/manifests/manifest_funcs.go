@@ -37,8 +37,8 @@ func NewManifest(name, description string) (*Manifest, error) {
 			Name:        name,
 			Description: description,
 		},
-		Runtimes:    make(map[string]Runtime),
-		BizPolicies: []BizPolicy{},
+		Runtimes: make(map[string]Runtime),
+		ZtasApp:  []ZtasApp{},
 	}
 	return manifest, nil
 }
@@ -67,10 +67,10 @@ func ValidateManifest(manifest *Manifest) (bool, error) {
 			return false, fmt.Errorf("[ztas] runtime %q has invalid engine version: %q", runtimeKey, runtime.Engine.Version)
 		}
 	}
-	if len(manifest.BizPolicies) == 0 {
+	if len(manifest.ZtasApp) == 0 {
 		return false, errors.New("[ztas] manifest has no ztas_app")
 	}
-	for i, bizPolicy := range manifest.BizPolicies {
+	for i, bizPolicy := range manifest.ZtasApp {
 		if _, ok := bizPolicy.Partitions["/"]; !ok {
 			return false, fmt.Errorf("[ztas] ztas_app[%d] is missing root partition", i)
 		}

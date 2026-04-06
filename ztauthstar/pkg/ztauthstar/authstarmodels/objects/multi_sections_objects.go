@@ -24,18 +24,13 @@ import (
 
 // SectionObject represents a section object.
 type SectionObject struct {
-	obj               *Object
-	partition         string
-	otype             string
-	oname             string
-	codeID            string
-	codeTypeID        uint32
-	languageID        uint32
-	languageVersionID uint32
-	languageTypeID    uint32
-	profileID         uint32
-	numOfSect         int
-	err               error
+	obj       *Object
+	partition string
+	otype     string
+	oname     string
+	metadata  map[string]any
+	numOfSect int
+	err       error
 }
 
 // Object returns the object.
@@ -58,35 +53,42 @@ func (s *SectionObject) ObjectName() string {
 	return s.oname
 }
 
-// CodeID returns the code ID.
-func (s *SectionObject) CodeID() string {
-	return s.codeID
+// Metadata returns the metadata map.
+func (s *SectionObject) Metadata() map[string]any {
+	return s.metadata
 }
 
-// CodeTypeID returns the code type ID.
-func (s *SectionObject) CodeTypeID() uint32 {
-	return s.codeTypeID
+// MetadataString returns a metadata value as a string.
+func (s *SectionObject) MetadataString(key string) string {
+	v, ok := s.metadata[key]
+	if !ok {
+		return ""
+	}
+	str, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return str
 }
 
-// LanguageID returns the language ID.
-func (s *SectionObject) LanguageID() uint32 {
-	return s.languageID
-}
-
-// LanguageVersionID returns the language version ID.
-func (s *SectionObject) LanguageVersionID() uint32 {
-	return s.languageVersionID
-}
-
-// LanguageTypeID returns the language type ID.
-func (s *SectionObject) LanguageTypeID() uint32 {
-	return s.languageTypeID
-}
-
-// ProfileID returns the authorization profile ID.
-// A value of 0 means no specific profile (default).
-func (s *SectionObject) ProfileID() uint32 {
-	return s.profileID
+// MetadataUint32 returns a metadata value as a uint32.
+func (s *SectionObject) MetadataUint32(key string) uint32 {
+	v, ok := s.metadata[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case uint32:
+		return n
+	case uint64:
+		return uint32(n)
+	case int64:
+		return uint32(n)
+	case float64:
+		return uint32(n)
+	default:
+		return 0
+	}
 }
 
 // NumberOfSection returns the number section.
@@ -100,20 +102,18 @@ func (s *SectionObject) Error() error {
 }
 
 // NewSectionObject creates a new section object.
-func NewSectionObject(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32, section int, err error) (*SectionObject, error) {
+func NewSectionObject(obj *Object, partition, objType, objName string, metadata map[string]any, section int, err error) (*SectionObject, error) {
+	if metadata == nil {
+		metadata = make(map[string]any)
+	}
 	return &SectionObject{
-		partition:         partition,
-		obj:               obj,
-		otype:             objType,
-		oname:             objName,
-		codeID:            codeID,
-		codeTypeID:        codeTypeID,
-		languageID:        languageID,
-		languageVersionID: languageVersionID,
-		languageTypeID:    languageTypeID,
-		profileID:         profileID,
-		numOfSect:         section,
-		err:               err,
+		partition: partition,
+		obj:       obj,
+		otype:     objType,
+		oname:     objName,
+		metadata:  metadata,
+		numOfSect: section,
+		err:       err,
 	}, nil
 }
 
@@ -165,8 +165,8 @@ func (m *MultiSectionsObject) AddSectionObject(obj *SectionObject) error {
 }
 
 // AddSectionObjectWithParams adds a section object with parameters.
-func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32, section int) error {
-	objSect, err := NewSectionObject(obj, partition, objType, objName, codeID, codeTypeID, languageID, languageVersionID, languageTypeID, profileID, section, nil)
+func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition, objType, objName string, metadata map[string]any, section int) error {
+	objSect, err := NewSectionObject(obj, partition, objType, objName, metadata, section, nil)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (m *MultiSectionsObject) AddSectionObjectWithParams(obj *Object, partition,
 
 // AddSectionObjectWithError adds a section object with an error.
 func (m *MultiSectionsObject) AddSectionObjectWithError(section int, err error) error {
-	objSect, err := NewSectionObject(nil, "", "", "", "", 0, 0, 0, 0, 0, section, err)
+	objSect, err := NewSectionObject(nil, "", "", "", nil, section, err)
 	if err != nil {
 		return err
 	}

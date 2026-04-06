@@ -44,11 +44,11 @@ func BuildManifest(manifest *azmanifests.Manifest, template string, engineName, 
 	if manifest.Runtimes == nil {
 		manifest.Runtimes = map[string]azmanifests.Runtime{}
 	}
-	if len(manifest.BizPolicies) == 0 {
-		manifest.BizPolicies = []azmanifests.BizPolicy{{Partitions: map[string]azmanifests.Partition{}}}
+	if len(manifest.ZtasApp) == 0 {
+		manifest.ZtasApp = []azmanifests.ZtasApp{{Partitions: map[string]azmanifests.Partition{}}}
 	}
-	if manifest.BizPolicies[0].Partitions == nil {
-		manifest.BizPolicies[0] = azmanifests.BizPolicy{Partitions: map[string]azmanifests.Partition{}}
+	if manifest.ZtasApp[0].Partitions == nil {
+		manifest.ZtasApp[0] = azmanifests.ZtasApp{Partitions: map[string]azmanifests.Partition{}}
 	}
 	runtimeKey := RuntimeKey
 	_, ok := manifest.Runtimes[runtimeKey]
@@ -66,8 +66,8 @@ func BuildManifest(manifest *azmanifests.Manifest, template string, engineName, 
 		}
 		manifest.Runtimes[runtimeKey] = runtime
 	}
-	if _, ok = manifest.BizPolicies[0].Partitions[partitionKey]; !ok {
-		manifest.BizPolicies[0].Partitions[partitionKey] = azmanifests.Partition{
+	if _, ok = manifest.ZtasApp[0].Partitions[partitionKey]; !ok {
+		manifest.ZtasApp[0].Partitions[partitionKey] = azmanifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
@@ -96,7 +96,7 @@ func ValidateManifest(manifest *azmanifests.Manifest) (bool, error) {
 	if !cedarRuntimeFound {
 		return false, errors.New("[cedar] manifest is missing cedar runtime")
 	}
-	for _, bizPolicy := range manifest.BizPolicies {
+	for _, bizPolicy := range manifest.ZtasApp {
 		if bizPolicy.Partitions == nil {
 			continue
 		}

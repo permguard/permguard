@@ -135,7 +135,7 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 		}
 		objInfoHeader := objInfo.Header()
 		oid := objInfo.OID()
-		switch objInfoHeader.CodeTypeID() {
+		switch objInfoHeader.MetadataUint32(objects.MetaKeyCodeTypeID) {
 		case types.ClassTypeSchemaID:
 			authzPolicyStore.AddSchema(oid, objInfo)
 		case types.ClassTypePolicyID:

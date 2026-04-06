@@ -32,14 +32,14 @@ func ReadObjectContentBytes(obj *Object) (uint32, []byte, error) {
 		return 0, nil, err
 	}
 	objHeader := objInfo.Header()
-	if objHeader.DataType() != DataTypeSourceLanguage {
-		return 0, nil, errors.New("objects: object is not in source language")
+	if objHeader.DataType() != DataTypeAbstractTree && objHeader.DataType() != DataTypeSourceLanguage {
+		return 0, nil, errors.New("objects: object data type is not supported")
 	}
 	instance, ok := objInfo.Instance().([]byte)
 	if !ok {
 		return 0, nil, errors.New("objects: invalid object instance")
 	}
-	return objHeader.CodeTypeID(), instance, nil
+	return objHeader.MetadataUint32(MetaKeyCodeTypeID), instance, nil
 }
 
 // CreateCommitObject creates a commit object.

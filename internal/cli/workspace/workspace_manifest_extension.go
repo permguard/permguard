@@ -80,7 +80,7 @@ func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, er
 		manifest:  manifest,
 		langInfos: map[string]languageInfo{},
 	}
-	for _, bizPolicy := range manifest.BizPolicies {
+	for _, bizPolicy := range manifest.ZtasApp {
 		for partitionKey, partition := range bizPolicy.Partitions {
 			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
 				continue

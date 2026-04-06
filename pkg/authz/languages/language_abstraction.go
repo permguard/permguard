@@ -32,9 +32,9 @@ type LanguageAbstraction interface {
 	Language() string
 	// LanguageID gets the language id
 	LanguageID() uint32
-	// FrontendLanguage gets fronted language.
-	FrontendLanguage() string
-	// FrontendLanguage gets backend language.
+	// HumanLanguage gets human-readable language.
+	HumanLanguage() string
+	// HumanLanguage gets backend language.
 	BackendLanguage() string
 	// PolicyFileExtensions gets the policy file extensions.
 	PolicyFileExtensions() []string
@@ -48,8 +48,8 @@ type LanguageAbstraction interface {
 	CreateSchemaBlobObjects(mfestLang *azmanifests.Language, partition string, path string, data []byte) (*objects.MultiSectionsObject, error)
 	// CreateSchemaContentBytes creates a schema content bytes.
 	CreateSchemaContentBytes(mfestLang *azmanifests.Language, blocks []byte) ([]byte, string, error)
-	// ConvertBytesToFrontendLanguage converts bytes to the frontend language.
-	ConvertBytesToFrontendLanguage(mfestLang *azmanifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
+	// ConvertBytesToHumanLanguage converts bytes to the human-readable language.
+	ConvertBytesToHumanLanguage(mfestLang *azmanifests.Language, langID, langVersionID, langTypeID uint32, content []byte) ([]byte, error)
 	// AuthorizationCheck checks the authorization.
 	AuthorizationCheck(mfestLang *azmanifests.Language, contextID string, policyStore *authzen.PolicyStore, authzCtx *authzen.AuthorizationModel) (*authzen.AuthorizationDecision, error)
 }

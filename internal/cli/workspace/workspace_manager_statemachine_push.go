@@ -74,7 +74,7 @@ func (m *Manager) collectObjectsForCommit(isCode bool, commitObj *objects.Object
 		}
 		result = append(result, pap.ObjectState{
 			OID:     entry.OID(),
-			OType:   entry.Type(),
+			OType:   entry.OType(),
 			Content: obj.Content(),
 		})
 	}

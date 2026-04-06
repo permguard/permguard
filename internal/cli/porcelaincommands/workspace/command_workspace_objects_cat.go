@@ -37,8 +37,8 @@ const (
 	commandNameForWorkspacesCatRaw = "raw"
 	// commandNameForWorkspacesCatContent shows the content of the object
 	commandNameForWorkspacesCatContent = "content"
-	// commandNameForWorkspacesFrontendLanguage displays the content using the front-end language.
-	commandNameForWorkspacesFrontendLanguage = "frontend"
+	// commandNameForWorkspacesHuman displays the content in human-readable format.
+	commandNameForWorkspacesHuman = "human"
 	// commandNameForWorkspacesCatInspect displays all object fields as an aligned tabular inspect view.
 	commandNameForWorkspacesCatInspect = "inspect"
 )
@@ -64,12 +64,12 @@ func runECommandForObjectsCatWorkspace(deps cli.DependenciesProvider, cmd *cobra
 		includeStorage = true
 	}
 
-	showFrontendLanguage := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage))
+	showHuman := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesHuman))
 	showRaw := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatRaw))
 	showContent := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent))
 	showInspect := v.GetBool(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatInspect))
 
-	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, showInspect, oid, outFunc(ctx, printer))
+	output, err := wksMgr.ExecObjectsCat(includeStorage, includeCode, showHuman, showRaw, showContent, showInspect, oid, outFunc(ctx, printer))
 	if err != nil {
 		printer.ErrorWithOutput(finalizeErrorOutput(ctx, output), errors.Join(errors.New("cli: failed to cat the object"), err))
 		return common.ErrCommandSilent
@@ -89,7 +89,7 @@ func CreateCommandForWorkspaceObjectsCat(deps cli.DependenciesProvider, v *viper
 
 Examples:
   # print the object content
-  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --frontend
+  permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --human
 
   # inspect all object fields in a tabular view
   permguard objects cat bafyreihpc3vupfos5yqnlakgbrpjx3ztbkwwlir5zetbwo3y6uhzpwtxuy --inspect`),
@@ -105,8 +105,8 @@ Examples:
 	command.Flags().Bool(commandNameForWorkspacesCatContent, false, "display only the processed content")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatContent), command.Flags().Lookup(commandNameForWorkspacesCatContent))
 
-	command.Flags().Bool(commandNameForWorkspacesFrontendLanguage, false, "display the content formatted using the front-end language")
-	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesFrontendLanguage), command.Flags().Lookup(commandNameForWorkspacesFrontendLanguage))
+	command.Flags().Bool(commandNameForWorkspacesHuman, false, "display the content in human-readable format")
+	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesHuman), command.Flags().Lookup(commandNameForWorkspacesHuman))
 
 	command.Flags().Bool(commandNameForWorkspacesCatInspect, false, "display all object fields as a raw tabular inspect view")
 	_ = v.BindPFlag(options.FlagName(commandNameForWorkspacesCat, commandNameForWorkspacesCatInspect), command.Flags().Lookup(commandNameForWorkspacesCatInspect))

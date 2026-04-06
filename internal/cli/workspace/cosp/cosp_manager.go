@@ -199,7 +199,6 @@ func (m *Manager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			strconv.FormatUint(uint64(codeFile.LanguageID), 10),
 			strconv.FormatUint(uint64(codeFile.LanguageVersionID), 10),
 			strconv.FormatUint(uint64(codeFile.LanguageTypeID), 10),
-			strconv.FormatUint(uint64(codeFile.ProfileID), 10),
 			fmt.Sprintf("%d", codeFile.Mode),
 			strconv.Itoa(codeFile.Section),
 			strconv.FormatBool(codeFile.HasErrors),
@@ -218,7 +217,7 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
-		if len(record) < 14 {
+		if len(record) < 13 {
 			return errors.New("invalid record format")
 		}
 		codeTypeID64, err := strconv.ParseUint(record[5], 10, 32)
@@ -237,19 +236,15 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 		if err != nil {
 			return err
 		}
-		profileID64, err := strconv.ParseUint(record[9], 10, 32)
+		mode64, err := strconv.ParseUint(record[9], 10, 32)
 		if err != nil {
 			return err
 		}
-		mode64, err := strconv.ParseUint(record[10], 10, 32)
+		section, err := strconv.Atoi(record[10])
 		if err != nil {
 			return err
 		}
-		section, err := strconv.Atoi(record[11])
-		if err != nil {
-			return err
-		}
-		hasErrors, err := strconv.ParseBool(record[12])
+		hasErrors, err := strconv.ParseBool(record[11])
 		if err != nil {
 			return err
 		}
@@ -263,11 +258,10 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			LanguageID:        uint32(languageID64),
 			LanguageVersionID: uint32(langVersionID64),
 			LanguageTypeID:    uint32(langTypeID64),
-			ProfileID:         uint32(profileID64),
 			Mode:              uint32(mode64),
 			Section:           section,
 			HasErrors:         hasErrors,
-			Error:             record[13],
+			Error:             record[12],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -304,16 +298,16 @@ func (m *Manager) BuildCodeSourceCodeStateForTree(tree *objects.Tree) ([]CodeObj
 	for _, entry := range tree.Entries() {
 		codeObjState := CodeObjectState{
 			CodeObject: CodeObject{
-				Partition:         entry.Partition(),
+				Partition:         tree.Partition(),
 				OName:             entry.OName(),
-				OType:             entry.Type(),
+				OType:             entry.OType(),
 				OID:               entry.OID(),
-				CodeID:            entry.CodeID(),
-				CodeTypeID:        entry.CodeTypeID(),
-				LanguageID:        entry.LanguageID(),
-				LanguageTypeID:    entry.LanguageTypeID(),
-				LanguageVersionID: entry.LanguageVersionID(),
-				ProfileID:         entry.ProfileID(),
+				DataType:          entry.DataType(),
+				CodeID:            entry.MetadataString(objects.MetaKeyCodeID),
+				CodeTypeID:        entry.MetadataUint32(objects.MetaKeyCodeTypeID),
+				LanguageID:        entry.MetadataUint32(objects.MetaKeyLanguageID),
+				LanguageTypeID:    entry.MetadataUint32(objects.MetaKeyLanguageTypeID),
+				LanguageVersionID: entry.MetadataUint32(objects.MetaKeyLanguageVersionID),
 			},
 			State: "",
 		}
@@ -376,7 +370,6 @@ func (m *Manager) convertCodeFileToCodeObjectState(codeFile CodeFile) (*CodeObje
 			LanguageID:        codeFile.LanguageID,
 			LanguageVersionID: codeFile.LanguageVersionID,
 			LanguageTypeID:    codeFile.LanguageTypeID,
-			ProfileID:         codeFile.ProfileID,
 		},
 	}, nil
 }
@@ -399,7 +392,6 @@ func (m *Manager) saveCodeObjectStates(path string, codeObjects []CodeObjectStat
 			strconv.FormatUint(uint64(codeObject.LanguageID), 10),
 			strconv.FormatUint(uint64(codeObject.LanguageVersionID), 10),
 			strconv.FormatUint(uint64(codeObject.LanguageTypeID), 10),
-			strconv.FormatUint(uint64(codeObject.ProfileID), 10),
 		}
 	}
 	err := m.persMgr.WriteCSVStream(persistence.PermguardDir, path, nil, codeObjects, rowFunc, true)
@@ -420,7 +412,6 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 		langID64, _ := strconv.ParseUint(record[7], 10, 32)
 		langVersionID64, _ := strconv.ParseUint(record[8], 10, 32)
 		langTypeID64, _ := strconv.ParseUint(record[9], 10, 32)
-		profileID64, _ := strconv.ParseUint(record[10], 10, 32)
 		codeObject := CodeObjectState{
 			State: record[0],
 			CodeObject: CodeObject{
@@ -433,7 +424,6 @@ func (m *Manager) readCodeObjectStates(path string) ([]CodeObjectState, error) {
 				LanguageID:        uint32(langID64),
 				LanguageVersionID: uint32(langVersionID64),
 				LanguageTypeID:    uint32(langTypeID64),
-				ProfileID:         uint32(profileID64),
 			},
 		}
 		codeObjects = append(codeObjects, codeObject)

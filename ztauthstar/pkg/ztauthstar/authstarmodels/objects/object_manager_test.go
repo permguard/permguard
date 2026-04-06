@@ -68,10 +68,11 @@ func TestObjectManager(t *testing.T) {
 	t.Run("Test CreateTreeObject and GetObjectInfo", func(t *testing.T) {
 		assert := assert.New(t)
 		tree := &Tree{
+			partition: "/",
 			entries: []TreeEntry{
-				{otype: "blob", oid: "bafyreiab715b073c6b28e03715129e03a0d52c8e21b73aaaaaaaaaaaaaaaaaaa", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
-				{otype: "blob", oid: "bafyreia7fdb22705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
-				{otype: "tree", oid: "bafyreia7fdb33705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 1, languageTypeID: 2},
+				{otype: "blob", oid: "bafyreiab715b073c6b28e03715129e03a0d52c8e21b73aaaaaaaaaaaaaaaaaaa", oname: "name1", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code1", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(1), MetaKeyLanguageTypeID: uint32(2)}},
+				{otype: "blob", oid: "bafyreia7fdb22705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", oname: "name2", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code2", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(1), MetaKeyLanguageTypeID: uint32(2)}},
+				{otype: "tree", oid: "bafyreia7fdb33705a5e6145b6a8b1fa947825c5e97a51caaaaaaaaaaaaaaaaaa", oname: "name3", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code3", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(1), MetaKeyLanguageTypeID: uint32(2)}},
 			},
 		}
 
@@ -98,7 +99,13 @@ func TestObjectManager(t *testing.T) {
 		blobData := []byte("This is the content of the blob object")
 
 		// Create blob object
-		header, _ := NewObjectHeader("/", DataTypeSourceLanguage, 1, 1, 1, "my-custom-id", 1, 0)
+		header, _ := NewObjectHeader(DataTypeAbstractTree, map[string]any{
+			MetaKeyLanguageID:        uint32(1),
+			MetaKeyLanguageVersionID: uint32(1),
+			MetaKeyLanguageTypeID:    uint32(1),
+			MetaKeyCodeID:            "my-custom-id",
+			MetaKeyCodeTypeID:        uint32(1),
+		})
 		blobObj, err := objectManager.CreateBlobObject(header, blobData)
 		assert.NoError(err)
 		assert.NotEmpty(blobObj.oid, "OID should not be empty")
@@ -115,13 +122,12 @@ func TestObjectManager(t *testing.T) {
 		assert.Equal(blobData, retrievedBlob, "Blob content mismatch")
 
 		// Validate header fields
-		assert.Equal("/", objectInfo.header.Partition())
-		assert.Equal(DataTypeSourceLanguage, objectInfo.header.DataType())
-		assert.Equal(uint32(1), objectInfo.header.LanguageID())
-		assert.Equal(uint32(1), objectInfo.header.LanguageVersionID())
-		assert.Equal(uint32(1), objectInfo.header.LanguageTypeID())
-		assert.Equal("my-custom-id", objectInfo.header.CodeID())
-		assert.Equal(uint32(1), objectInfo.header.CodeTypeID())
+		assert.Equal(DataTypeAbstractTree, objectInfo.header.DataType())
+		assert.Equal(uint32(1), objectInfo.header.MetadataUint32(MetaKeyLanguageID))
+		assert.Equal(uint32(1), objectInfo.header.MetadataUint32(MetaKeyLanguageVersionID))
+		assert.Equal(uint32(1), objectInfo.header.MetadataUint32(MetaKeyLanguageTypeID))
+		assert.Equal("my-custom-id", objectInfo.header.MetadataString(MetaKeyCodeID))
+		assert.Equal(uint32(1), objectInfo.header.MetadataUint32(MetaKeyCodeTypeID))
 	})
 
 	// Test for invalid data

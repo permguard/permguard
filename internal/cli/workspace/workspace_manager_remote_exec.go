@@ -296,15 +296,15 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		codeBlocks := map[string][][]byte{}
 		for _, entry := range tree.Entries() {
 			codeEntries = append(codeEntries, map[string]any{
-				"partition":        entry.Partition(),
+				"partition":        tree.Partition(),
 				"oid":              entry.OID(),
 				"oname":            entry.OName(),
-				"type":             entry.Type(),
-				"code_id":          entry.CodeID(),
-				"code_type":        m.resolveCodeTypeID(entry.CodeTypeID()),
-				"language":         m.resolveLanguageID(entry.LanguageID()),
-				"language_version": m.resolveLanguageVersionID(entry.LanguageID(), entry.LanguageVersionID()),
-				"language_type":    m.resolveLanguageTypeID(entry.LanguageTypeID()),
+				"type":             entry.OType(),
+				"code_id":          entry.MetadataString(objects.MetaKeyCodeID),
+				"code_type":        m.resolveCodeTypeID(entry.MetadataUint32(objects.MetaKeyCodeTypeID)),
+				"language":         m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID)),
+				"language_version": m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID)),
+				"language_type":    m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 			})
 			if _, ok := codeMapIDs[entry.OID()]; !ok {
 				entryObj, err := m.cospMgr.ReadObject(entry.OID())
@@ -325,22 +325,22 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:
-					partition := header.Partition()
+					partition := tree.Partition()
 					if _, ok := schemaBlocks[partition]; !ok {
 						schemaBlocks[partition] = []byte{}
 					}
 					schemaBlocks[partition] = codeBlock
 					continue
 				case types.ClassTypePolicyID:
-					partition := header.Partition()
-					langID := header.LanguageID()
-					langVersionID := header.LanguageVersionID()
-					langTypeID := header.LanguageTypeID()
+					partition := tree.Partition()
+					langID := header.MetadataUint32(objects.MetaKeyLanguageID)
+					langVersionID := header.MetadataUint32(objects.MetaKeyLanguageVersionID)
+					langTypeID := header.MetadataUint32(objects.MetaKeyLanguageTypeID)
 					absLang, err := langPvd.AbstractLanguage(partition)
 					if err != nil {
 						return fail(err)
 					}
-					langCodeBlock, err := absLang.ConvertBytesToFrontendLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
+					langCodeBlock, err := absLang.ConvertBytesToHumanLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
 					if err != nil {
 						return fail(err)
 					}

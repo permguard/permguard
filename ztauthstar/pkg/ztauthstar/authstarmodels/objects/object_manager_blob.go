@@ -23,15 +23,9 @@ import (
 
 // cborBlob is the CBOR-serializable representation of a blob object.
 type cborBlob struct {
-	ProfileID         uint32 `cbor:"1,keyasint"`
-	Partition         string `cbor:"2,keyasint"`
-	CodeID            string `cbor:"3,keyasint"`
-	CodeTypeID        uint32 `cbor:"4,keyasint"`
-	LanguageID        uint32 `cbor:"5,keyasint"`
-	LanguageVersionID uint32 `cbor:"6,keyasint"`
-	LanguageTypeID    uint32 `cbor:"7,keyasint"`
-	DataType          uint32 `cbor:"8,keyasint"`
-	Data              []byte `cbor:"9,keyasint"`
+	DataType uint32         `cbor:"1,keyasint"`
+	Metadata map[string]any `cbor:"2,keyasint"`
+	Data     []byte         `cbor:"3,keyasint"`
 }
 
 // SerializeBlob serializes an ObjectHeader and its associated data into CBOR.
@@ -40,15 +34,9 @@ func (m *ObjectManager) SerializeBlob(header *ObjectHeader, data []byte) ([]byte
 		return nil, errors.New("objects: header is nil")
 	}
 	b := cborBlob{
-		Partition:         header.partition,
-		DataType:          header.dataType,
-		LanguageID:        header.languageID,
-		LanguageVersionID: header.languageVersionID,
-		LanguageTypeID:    header.languageTypeID,
-		CodeTypeID:        header.codeTypeID,
-		CodeID:            header.codeID,
-		Data:              data,
-		ProfileID:         header.profileID,
+		DataType: header.dataType,
+		Metadata: header.metadata,
+		Data:     data,
 	}
 	return m.encMode.Marshal(b)
 }
@@ -63,14 +51,8 @@ func (m *ObjectManager) DeserializeBlob(data []byte) (*ObjectHeader, []byte, err
 		return nil, nil, fmt.Errorf("objects: failed to decode blob: %w", err)
 	}
 	header := &ObjectHeader{
-		partition:         b.Partition,
-		dataType:          b.DataType,
-		languageID:        b.LanguageID,
-		languageVersionID: b.LanguageVersionID,
-		languageTypeID:    b.LanguageTypeID,
-		codeTypeID:        b.CodeTypeID,
-		codeID:            b.CodeID,
-		profileID:         b.ProfileID,
+		dataType: b.DataType,
+		metadata: b.Metadata,
 	}
 	return header, b.Data, nil
 }

@@ -225,7 +225,7 @@ func (m *Manager) execInternalValidate(internal bool, out common.PrinterOutFunc)
 
 	_, invalidCodeFiles, err := m.retrieveCodeMap()
 	if err != nil {
-		if m.ctx.IsVerboseTerminalOutput() {
+ 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "validate", "Codemap could not be retrieved.", nil, true)
 		}
 		return fail(output, err)

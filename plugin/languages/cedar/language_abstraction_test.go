@@ -67,18 +67,30 @@ func TestTreeCreation(t *testing.T) {
 	require.NoError(t, err, "NewCedarLanguageAbstraction should not return an error")
 	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
-	tree, err := objects.NewTree()
+	tree, err := objects.NewTree("/")
 	require.NoError(t, err, "new tree should not return an error")
 
-	treeItem1, err := objects.NewTreeEntry("/", "blob", "bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", "name1", "code1", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID, 0)
+	meta1 := map[string]any{
+		objects.MetaKeyCodeID: "code1", objects.MetaKeyCodeTypeID: cedarlang.LanguagePolicyTypeID,
+		objects.MetaKeyLanguageID: cedarlang.LanguageCedarJSONID, objects.MetaKeyLanguageVersionID: cedarlang.LanguageSyntaxVersionID, objects.MetaKeyLanguageTypeID: cedarlang.LanguagePolicyTypeID,
+	}
+	treeItem1, err := objects.NewTreeEntry("blob", "bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", "name1", objects.TreeDataTypePolicy, meta1)
 	require.NoError(t, err, "new tree entry should not return an error")
 	_ = tree.AddEntry(treeItem1)
 
-	treeItem2, err := objects.NewTreeEntry("/", "blob", "bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", "name2", "code2", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID, 0)
+	meta2 := map[string]any{
+		objects.MetaKeyCodeID: "code2", objects.MetaKeyCodeTypeID: cedarlang.LanguagePolicyTypeID,
+		objects.MetaKeyLanguageID: cedarlang.LanguageCedarJSONID, objects.MetaKeyLanguageVersionID: cedarlang.LanguageSyntaxVersionID, objects.MetaKeyLanguageTypeID: cedarlang.LanguagePolicyTypeID,
+	}
+	treeItem2, err := objects.NewTreeEntry("blob", "bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", "name2", objects.TreeDataTypePolicy, meta2)
 	require.NoError(t, err, "new tree entry should not return an error")
 	_ = tree.AddEntry(treeItem2)
 
-	treeItem3, err := objects.NewTreeEntry("/", "tree", "bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", "name3", "code3", cedarlang.LanguagePolicyTypeID, cedarlang.LanguageCedarJSONID, cedarlang.LanguageSyntaxVersionID, cedarlang.LanguagePolicyTypeID, 0)
+	meta3 := map[string]any{
+		objects.MetaKeyCodeID: "code3", objects.MetaKeyCodeTypeID: cedarlang.LanguagePolicyTypeID,
+		objects.MetaKeyLanguageID: cedarlang.LanguageCedarJSONID, objects.MetaKeyLanguageVersionID: cedarlang.LanguageSyntaxVersionID, objects.MetaKeyLanguageTypeID: cedarlang.LanguagePolicyTypeID,
+	}
+	treeItem3, err := objects.NewTreeEntry("tree", "bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", "name3", objects.TreeDataTypePolicy, meta3)
 	_ = tree.AddEntry(treeItem3)
 
 	require.NoError(t, err, "NewTree should not return an error")
@@ -96,10 +108,10 @@ func TestTreeCreation(t *testing.T) {
 		convertedEntry := convertedTree.Entries()[i]
 		assert.Equal(entry.OID(), convertedEntry.OID(), "OID mismatch")
 		assert.Equal(entry.OName(), convertedEntry.OName(), "Name mismatch")
-		assert.Equal(entry.CodeID(), convertedEntry.CodeID(), "CodeID mismatch")
-		assert.Equal(entry.CodeTypeID(), convertedEntry.CodeTypeID(), "CodeTypeID mismatch")
-		assert.Equal(entry.LanguageID(), convertedEntry.LanguageID(), "LanguageID mismatch")
-		assert.Equal(entry.LanguageTypeID(), convertedEntry.LanguageTypeID(), "LanguageTypeID mismatch")
-		assert.Equal(entry.LanguageVersionID(), convertedEntry.LanguageVersionID(), "LanguageVersionID mismatch")
+		assert.Equal(entry.MetadataString(objects.MetaKeyCodeID), convertedEntry.MetadataString(objects.MetaKeyCodeID), "CodeID mismatch")
+		assert.Equal(entry.MetadataUint32(objects.MetaKeyCodeTypeID), convertedEntry.MetadataUint32(objects.MetaKeyCodeTypeID), "CodeTypeID mismatch")
+		assert.Equal(entry.MetadataUint32(objects.MetaKeyLanguageID), convertedEntry.MetadataUint32(objects.MetaKeyLanguageID), "LanguageID mismatch")
+		assert.Equal(entry.MetadataUint32(objects.MetaKeyLanguageTypeID), convertedEntry.MetadataUint32(objects.MetaKeyLanguageTypeID), "LanguageTypeID mismatch")
+		assert.Equal(entry.MetadataUint32(objects.MetaKeyLanguageVersionID), convertedEntry.MetadataUint32(objects.MetaKeyLanguageVersionID), "LanguageVersionID mismatch")
 	}
 }

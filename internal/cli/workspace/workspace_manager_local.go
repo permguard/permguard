@@ -228,11 +228,11 @@ func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputF
 		HasErrors:         secObj.Error() != nil,
 		OType:             secObj.ObjectType(),
 		OName:             secObj.ObjectName(),
-		CodeID:            secObj.CodeID(),
-		CodeTypeID:        secObj.CodeTypeID(),
-		LanguageID:        secObj.LanguageID(),
-		LanguageVersionID: secObj.LanguageVersionID(),
-		LanguageTypeID:    secObj.LanguageTypeID(),
+		CodeID:            secObj.MetadataString(objects.MetaKeyCodeID),
+		CodeTypeID:        secObj.MetadataUint32(objects.MetaKeyCodeTypeID),
+		LanguageID:        secObj.MetadataUint32(objects.MetaKeyLanguageID),
+		LanguageVersionID: secObj.MetadataUint32(objects.MetaKeyLanguageVersionID),
+		LanguageTypeID:    secObj.MetadataUint32(objects.MetaKeyLanguageTypeID),
 	}
 
 	if codeFile.HasErrors {
@@ -356,14 +356,24 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	}
 
 	// Build a tree from object states
+	partition := "/"
+	if len(codeObsState) > 0 {
+		partition = codeObsState[0].Partition
+	}
 	var tree *objects.Tree
-	tree, err = objects.NewTree()
+	tree, err = objects.NewTree(partition)
 	if err != nil {
 		return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), err)
 	}
 	for _, obj := range codeObsState {
 		var entry *objects.TreeEntry
-		entry, err = objects.NewTreeEntry(obj.Partition, obj.OType, obj.OID, obj.OName, obj.CodeID, obj.CodeTypeID, obj.LanguageID, obj.LanguageVersionID, obj.LanguageTypeID, obj.ProfileID)
+		entry, err = objects.NewTreeEntry(obj.OType, obj.OID, obj.OName, obj.DataType, map[string]any{
+			objects.MetaKeyCodeID:            obj.CodeID,
+			objects.MetaKeyCodeTypeID:        obj.CodeTypeID,
+			objects.MetaKeyLanguageID:        obj.LanguageID,
+			objects.MetaKeyLanguageVersionID: obj.LanguageVersionID,
+			objects.MetaKeyLanguageTypeID:    obj.LanguageTypeID,
+		})
 		if err != nil {
 			return "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}

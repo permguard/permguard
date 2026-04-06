@@ -33,7 +33,11 @@ func (m *Manager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeOb
 func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
 	var err error
 	var tree *objects.Tree
-	tree, err = objects.NewTree()
+	partition := "/"
+	if len(plan) > 0 {
+		partition = plan[0].Partition
+	}
+	tree, err = objects.NewTree(partition)
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: tree cannot be created"), err)
 	}
@@ -42,7 +46,13 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 			continue
 		}
 		var treeItem *objects.TreeEntry
-		treeItem, err = objects.NewTreeEntry(planItem.Partition, planItem.OType, planItem.OID, planItem.OName, planItem.CodeID, planItem.CodeTypeID, planItem.LanguageID, planItem.LanguageVersionID, planItem.LanguageTypeID, planItem.ProfileID)
+		treeItem, err = objects.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.DataType, map[string]any{
+			objects.MetaKeyCodeID:            planItem.CodeID,
+			objects.MetaKeyCodeTypeID:        planItem.CodeTypeID,
+			objects.MetaKeyLanguageID:        planItem.LanguageID,
+			objects.MetaKeyLanguageVersionID: planItem.LanguageVersionID,
+			objects.MetaKeyLanguageTypeID:    planItem.LanguageTypeID,
+		})
 		if err != nil {
 			return nil, nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}

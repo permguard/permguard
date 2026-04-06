@@ -18,13 +18,13 @@ package manifest
 
 // Manifest represnts an Auth* model manifest.
 type Manifest struct {
-	Metadata    Metadata           `json:"metadata"`
-	Runtimes    map[string]Runtime `json:"runtimes"`
-	BizPolicies []BizPolicy        `json:"ztas_app"`
+	Metadata Metadata           `json:"metadata"`
+	Runtimes map[string]Runtime `json:"runtimes"`
+	ZtasApp  []ZtasApp          `json:"ztas_app"`
 }
 
-// BizPolicy represents a set of business policies with their partitions.
-type BizPolicy struct {
+// ZtasApp represents a set of business policies with their partitions.
+type ZtasApp struct {
 	Partitions map[string]Partition `json:"partitions"`
 }
 

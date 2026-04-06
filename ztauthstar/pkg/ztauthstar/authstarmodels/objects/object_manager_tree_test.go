@@ -26,10 +26,11 @@ import (
 func TestSerializeDeserializeTree(t *testing.T) {
 	assert := assert.New(t)
 	tree := &Tree{
+		partition: "/",
 		entries: []TreeEntry{
-			{otype: "blob", oid: "bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", partition: "/", oname: "name1", codeID: "code1", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
-			{otype: "blob", oid: "bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", partition: "/", oname: "name2", codeID: "code2", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
-			{otype: "tree", oid: "bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", partition: "/", oname: "name3", codeID: "code3", codeTypeID: 2, languageID: 2, languageVersionID: 0, languageTypeID: 2},
+			{otype: "blob", oid: "bafyreia515513cd9200cfe899da7ac17a2293ed23a35674b933010d9736e634", oname: "name1", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code1", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(0), MetaKeyLanguageTypeID: uint32(2)}},
+			{otype: "blob", oid: "bafyreia2d8ccd4b8c9331d762c13a0b2824c121baad579f29f9c16d27146ca1", oname: "name2", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code2", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(0), MetaKeyLanguageTypeID: uint32(2)}},
+			{otype: "tree", oid: "bafyreiafa9b45a58ed64dd7309484a9a4f736930c78b7cb43e23eea22f297e1", oname: "name3", dataType: TreeDataTypePolicy, metadata: map[string]any{MetaKeyCodeID: "code3", MetaKeyCodeTypeID: uint32(2), MetaKeyLanguageID: uint32(2), MetaKeyLanguageVersionID: uint32(0), MetaKeyLanguageTypeID: uint32(2)}},
 		},
 	}
 	objectManager, _ := NewObjectManager()
@@ -54,13 +55,12 @@ func TestSerializeDeserializeTree(t *testing.T) {
 	// Verify full round-trip of all fields
 	for _, entry := range deserialized.entries {
 		assert.NotEmpty(entry.otype)
-		assert.NotEmpty(entry.partition)
 		assert.NotEmpty(entry.oid)
 		assert.NotEmpty(entry.oname)
-		assert.NotEmpty(entry.codeID)
-		assert.NotZero(entry.codeTypeID)
-		assert.NotZero(entry.languageID)
-		assert.NotZero(entry.languageTypeID)
+		assert.NotEmpty(entry.MetadataString(MetaKeyCodeID))
+		assert.NotZero(entry.MetadataUint32(MetaKeyCodeTypeID))
+		assert.NotZero(entry.MetadataUint32(MetaKeyLanguageID))
+		assert.NotZero(entry.MetadataUint32(MetaKeyLanguageTypeID))
 	}
 }
 

@@ -23,16 +23,17 @@ import (
 
 // cborTreeEntry is the CBOR-serializable representation of a tree entry.
 type cborTreeEntry struct {
-	Type              string `cbor:"1,keyasint"`
-	ProfileID         uint32 `cbor:"2,keyasint"`
-	Partition         string `cbor:"3,keyasint"`
-	OID               string `cbor:"4,keyasint"`
-	OName             string `cbor:"5,keyasint"`
-	CodeID            string `cbor:"6,keyasint"`
-	CodeTypeID        uint32 `cbor:"7,keyasint"`
-	LanguageID        uint32 `cbor:"8,keyasint"`
-	LanguageVersionID uint32 `cbor:"9,keyasint"`
-	LanguageTypeID    uint32 `cbor:"10,keyasint"`
+	OType    string         `cbor:"1,keyasint"`
+	OID      string         `cbor:"2,keyasint"`
+	OName    string         `cbor:"3,keyasint"`
+	DataType uint32         `cbor:"4,keyasint"`
+	Metadata map[string]any `cbor:"5,keyasint"`
+}
+
+// cborTree is the CBOR-serializable representation of a tree object.
+type cborTree struct {
+	Entries   []cborTreeEntry `cbor:"1,keyasint"`
+	Partition string          `cbor:"2,keyasint"`
 }
 
 // SerializeTree serializes a tree object to CBOR.
@@ -45,24 +46,19 @@ func (m *ObjectManager) SerializeTree(tree *Tree) ([]byte, error) {
 	})
 	entries := make([]cborTreeEntry, len(tree.entries))
 	for i, entry := range tree.entries {
-		partition := entry.partition
-		if partition == "" {
-			partition = "/"
-		}
 		entries[i] = cborTreeEntry{
-			Type:              entry.otype,
-			Partition:         partition,
-			OID:               entry.oid,
-			OName:             entry.oname,
-			CodeID:            entry.codeID,
-			CodeTypeID:        entry.codeTypeID,
-			LanguageID:        entry.languageID,
-			LanguageVersionID: entry.languageVersionID,
-			LanguageTypeID:    entry.languageTypeID,
-			ProfileID:         entry.profileID,
+			OType:    entry.otype,
+			OID:      entry.oid,
+			OName:    entry.oname,
+			DataType: entry.dataType,
+			Metadata: entry.metadata,
 		}
 	}
-	return m.encMode.Marshal(entries)
+	ct := cborTree{
+		Partition: tree.partition,
+		Entries:   entries,
+	}
+	return m.encMode.Marshal(ct)
 }
 
 // DeserializeTree deserializes a tree object from CBOR.
@@ -70,25 +66,21 @@ func (m *ObjectManager) DeserializeTree(data []byte) (*Tree, error) {
 	if data == nil {
 		return nil, fmt.Errorf("objects: data is nil")
 	}
-	var entries []cborTreeEntry
-	if err := m.decMode.Unmarshal(data, &entries); err != nil {
+	var ct cborTree
+	if err := m.decMode.Unmarshal(data, &ct); err != nil {
 		return nil, fmt.Errorf("objects: failed to decode tree: %w", err)
 	}
 	tree := &Tree{
-		entries: make([]TreeEntry, len(entries)),
+		partition: ct.Partition,
+		entries:   make([]TreeEntry, len(ct.Entries)),
 	}
-	for i, e := range entries {
+	for i, e := range ct.Entries {
 		tree.entries[i] = TreeEntry{
-			otype:             e.Type,
-			partition:         e.Partition,
-			oid:               e.OID,
-			oname:             e.OName,
-			codeID:            e.CodeID,
-			codeTypeID:        e.CodeTypeID,
-			languageID:        e.LanguageID,
-			languageVersionID: e.LanguageVersionID,
-			languageTypeID:    e.LanguageTypeID,
-			profileID:         e.ProfileID,
+			otype:    e.OType,
+			oid:      e.OID,
+			oname:    e.OName,
+			dataType: e.DataType,
+			metadata: e.Metadata,
 		}
 	}
 	return tree, nil

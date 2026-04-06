@@ -194,7 +194,7 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 		}
 		result = append(result, pap.ObjectState{
 			OID:     entry.OID(),
-			OType:   entry.Type(),
+			OType:   entry.OType(),
 			Content: obj.Content(),
 		})
 	}

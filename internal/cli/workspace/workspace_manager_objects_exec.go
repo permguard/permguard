@@ -61,7 +61,7 @@ func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filter
 			objType := objInfo.Type()
 			objHeader := objInfo.Header()
 			if objHeader != nil {
-				codeID := objHeader.CodeID()
+				codeID := objHeader.MetadataString(objects.MetaKeyCodeID)
 				out(nil, "", fmt.Sprintf("	- %s %s %s", common.IDText(objID), common.KeywordText(objType), common.NameText(codeID)), nil, true)
 			} else {
 				out(nil, "", fmt.Sprintf("	- %s %s", common.IDText(objID), common.KeywordText(objType)), nil, true)
@@ -109,7 +109,7 @@ func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filter
 			objMap["osize"] = len(objInfo.Object().Content())
 			objHeader := objInfo.Header()
 			if objHeader != nil {
-				codeID := objHeader.CodeID()
+				codeID := objHeader.MetadataString(objects.MetaKeyCodeID)
 				objMap["oname"] = codeID
 			}
 			objMaps = append(objMaps, objMap)
@@ -121,8 +121,8 @@ func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filter
 }
 
 // execPrintObjectContent prints the object content in human-readable form,
-// optionally converting blob data to a frontend-friendly format.
-func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, out common.PrinterOutFunc) error {
+// optionally converting blob data to a human-readable format.
+func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showHuman bool, out common.PrinterOutFunc) error {
 	switch instance := objInfo.Instance().(type) {
 	case *objects.Commit:
 		content, err := m.commitString(oid, instance)
@@ -141,26 +141,28 @@ func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid 
 	case []byte:
 		instanceBytes := instance
 
-		if showFrontendLanguage {
+		if showHuman {
 			header := objInfo.Header()
 			if header == nil {
-				return errors.New("cli: object header s nil")
+				return errors.New("cli: object header is nil")
 			}
 
-			absLang, err := langPvd.AbstractLanguage(header.Partition())
-			if err != nil {
-				return err
-			}
+			if header.DataType() == objects.DataTypeAbstractTree {
+				absLang, err := langPvd.AbstractLanguage(header.MetadataString(objects.MetaKeyPartition))
+				if err != nil {
+					return err
+				}
 
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
-				nil,
-				header.LanguageID(),
-				header.LanguageVersionID(),
-				header.LanguageTypeID(),
-				instance,
-			)
-			if err != nil {
-				return err
+				instanceBytes, err = absLang.ConvertBytesToHumanLanguage(
+					nil,
+					header.MetadataUint32(objects.MetaKeyLanguageID),
+					header.MetadataUint32(objects.MetaKeyLanguageVersionID),
+					header.MetadataUint32(objects.MetaKeyLanguageTypeID),
+					instance,
+				)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -207,8 +209,8 @@ func (m *Manager) execInspectMapObjectContent(oid string, objInfo objects.Object
 }
 
 // execMapObjectContent builds a key-value representation of the object content,
-// optionally transforming blob data into a structured frontend format.
-func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showFrontendLanguage bool, outMap map[string]any) error {
+// optionally transforming blob data into a structured human-readable format.
+func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showHuman bool, outMap map[string]any) error {
 	var contentMap map[string]any
 	var err error
 
@@ -228,27 +230,29 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 	case []byte:
 		instanceBytes := instance
 
-		if showFrontendLanguage {
+		if showHuman {
 			header := objInfo.Header()
 			if header == nil {
-				return errors.New("cli: object header s nil")
+				return errors.New("cli: object header is nil")
 			}
 
-			var absLang languages.LanguageAbstraction
-			absLang, err = langPvd.AbstractLanguage(header.Partition())
-			if err != nil {
-				return err
-			}
+			if header.DataType() == objects.DataTypeAbstractTree {
+				var absLang languages.LanguageAbstraction
+				absLang, err = langPvd.AbstractLanguage(header.MetadataString(objects.MetaKeyPartition))
+				if err != nil {
+					return err
+				}
 
-			instanceBytes, err = absLang.ConvertBytesToFrontendLanguage(
-				nil,
-				header.LanguageID(),
-				header.LanguageVersionID(),
-				header.LanguageTypeID(),
-				instance,
-			)
-			if err != nil {
-				return err
+				instanceBytes, err = absLang.ConvertBytesToHumanLanguage(
+					nil,
+					header.MetadataUint32(objects.MetaKeyLanguageID),
+					header.MetadataUint32(objects.MetaKeyLanguageVersionID),
+					header.MetadataUint32(objects.MetaKeyLanguageTypeID),
+					instance,
+				)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -273,7 +277,7 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 }
 
 // ExecObjectsCat prints the content or metadata of a specific object identified by its OID.
-func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLanguage, showRaw, showContent, showInspect bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
+func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showHuman, showRaw, showContent, showInspect bool, oid string, out common.PrinterOutFunc) (map[string]any, error) {
 	fail := func(output map[string]any, err error) (map[string]any, error) {
 		return output, err
 	}
@@ -336,7 +340,7 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 		if showRaw {
 			out(nil, "", string(obj.Content()), nil, true)
 		} else {
-			if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+			if err := m.execPrintObjectContent(langPvd, oid, *selected, showHuman, out); err != nil {
 				return fail(nil, err)
 			}
 		}
@@ -346,7 +350,7 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 		if showRaw {
 			out(nil, "", string(obj.Content()), nil, true)
 		} else {
-			if err := m.execPrintObjectContent(langPvd, oid, *selected, showFrontendLanguage, out); err != nil {
+			if err := m.execPrintObjectContent(langPvd, oid, *selected, showHuman, out); err != nil {
 				return fail(nil, err)
 			}
 		}
@@ -357,7 +361,7 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 		sb.WriteString("type " + common.KeywordText(selected.Type()))
 		sb.WriteString(", size " + common.NumberText(len(obj.Content())))
 		if header != nil {
-			sb.WriteString(", oname " + common.NameText(header.CodeID()))
+			sb.WriteString(", oname " + common.NameText(header.MetadataString(objects.MetaKeyCodeID)))
 		}
 		out(nil, "", sb.String(), nil, true)
 	case m.ctx.IsJSONOutput() && showInspect:
@@ -372,7 +376,7 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 		if showRaw {
 			objMap["raw_content"] = base64.StdEncoding.EncodeToString(obj.Content())
 		} else {
-			if err := m.execMapObjectContent(langPvd, oid, *selected, showFrontendLanguage, objMap); err != nil {
+			if err := m.execMapObjectContent(langPvd, oid, *selected, showHuman, objMap); err != nil {
 				return fail(nil, err)
 			}
 		}
@@ -382,7 +386,7 @@ func (m *Manager) ExecObjectsCat(includeStorage, includeCode, showFrontendLangua
 			objMap["otype"] = selected.Type()
 			objMap["osize"] = len(obj.Content())
 			if header != nil {
-				objMap["oname"] = header.CodeID()
+				objMap["oname"] = header.MetadataString(objects.MetaKeyCodeID)
 			}
 		}
 

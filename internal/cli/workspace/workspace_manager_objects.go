@@ -26,7 +26,6 @@ import (
 	"strings"
 
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
-	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/profiles"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -148,20 +147,19 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "PROFILE"}
+	headers := []string{"OID", "TYPE", "PARTITION", "ONAME", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, len(entries))
 	for i, e := range entries {
 		dataRows[i] = []string{
 			e.OID(),
-			e.Type(),
-			e.Partition(),
+			e.OType(),
+			tree.Partition(),
 			e.OName(),
-			m.resolveLanguageID(e.LanguageID()),
-			m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID()),
-			m.resolveLanguageTypeID(e.LanguageTypeID()),
-			m.resolveProfileID(e.ProfileID()),
+			m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID)),
+			m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID)),
+			m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 		}
 	}
 	widths := columnWidths(headers, dataRows)
@@ -174,7 +172,6 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 		common.LanguageText,
 		common.LanguageText,
 		common.LanguageKeywordText,
-		common.NameText,
 	}
 
 	var sb strings.Builder
@@ -206,12 +203,11 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 		entriesList[i] = map[string]any{
 			"oid":              entry.OID(),
 			"oname":            entry.OName(),
-			"type":             entry.Type(),
-			"partition":        entry.Partition(),
-			"language":         m.resolveLanguageID(entry.LanguageID()),
-			"language_version": m.resolveLanguageVersionID(entry.LanguageID(), entry.LanguageVersionID()),
-			"language_type":    m.resolveLanguageTypeID(entry.LanguageTypeID()),
-			"profile":          m.resolveProfileID(entry.ProfileID()),
+			"type":             entry.OType(),
+			"partition":        tree.Partition(),
+			"language":         m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID)),
+			"language_version": m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID)),
+			"language_type":    m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 		}
 	}
 
@@ -300,11 +296,6 @@ func (m *Manager) resolveCodeTypeID(id uint32) string {
 	return m.langReg.ResolveCodeTypeName(id)
 }
 
-// resolveProfileID converts an authz profile uint32 ID to its display name.
-func (m *Manager) resolveProfileID(id uint32) string {
-	return profiles.ProfileName(id)
-}
-
 // tableRow builds a padded, colored row string from raw values, widths and color functions.
 func tableRow(vals []string, widths []int, colorFns []func(string) string) string {
 	var sb strings.Builder
@@ -389,36 +380,35 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 // treeTableString formats a tree object as an aligned inspect table with resolved names only.
 // First row is the tree object itself (TYPE=tree, OID=tree OID).
 // Subsequent rows are the tree entries (one per cborTreeEntry).
-// Columns: TYPE | PROFILE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE
+// Columns: TYPE | PARTITION | OID | ONAME | CODE-ID | CODE-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE
 func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int) (string, error) {
 	if tree == nil {
 		return "", errors.New("cli: tree is nil")
 	}
 
-	headers := []string{"TYPE", "PROFILE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
+	headers := []string{"TYPE", "PARTITION", "OID", "ONAME", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
 
 	// First row: the tree object itself.
-	selfRow := []string{"tree", "", "", oid, "", "", "", "", "", ""}
+	selfRow := []string{"tree", "", oid, "", "", "", "", "", ""}
 
 	entries := tree.Entries()
 	dataRows := make([][]string, 0, 1+len(entries))
 	dataRows = append(dataRows, selfRow)
 	for _, e := range entries {
-		langVer := m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
-		if e.LanguageVersionID() == 0 {
+		langVer := m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		if e.MetadataUint32(objects.MetaKeyLanguageVersionID) == 0 {
 			langVer = ""
 		}
 		dataRows = append(dataRows, []string{
-			e.Type(),
-			m.resolveProfileID(e.ProfileID()),
-			e.Partition(),
+			e.OType(),
+			tree.Partition(),
 			e.OID(),
 			e.OName(),
-			e.CodeID(),
-			m.resolveCodeTypeID(e.CodeTypeID()),
-			m.resolveLanguageID(e.LanguageID()),
+			e.MetadataString(objects.MetaKeyCodeID),
+			m.resolveCodeTypeID(e.MetadataUint32(objects.MetaKeyCodeTypeID)),
+			m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID)),
 			langVer,
-			m.resolveLanguageTypeID(e.LanguageTypeID()),
+			m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 		})
 	}
 
@@ -426,7 +416,6 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 
 	colorFns := []func(string) string{
 		common.KeywordText,
-		common.NameText,
 		common.NameText,
 		common.IDText,
 		common.NameText,
@@ -477,22 +466,20 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 	})
 	for _, e := range entries {
 		entry := map[string]any{
-			"type":             e.Type(),
-			"partition":        e.Partition(),
+			"type":             e.OType(),
+			"partition":        tree.Partition(),
 			"oid":              e.OID(),
 			"oname":            e.OName(),
-			"code_id":          e.CodeID(),
-			"code_type_id":     e.CodeTypeID(),
-			"code_type":        m.resolveCodeTypeID(e.CodeTypeID()),
-			"language_id":      e.LanguageID(),
-			"language":         m.resolveLanguageID(e.LanguageID()),
-			"language_type_id": e.LanguageTypeID(),
-			"language_type":    m.resolveLanguageTypeID(e.LanguageTypeID()),
-			"profile_id":       e.ProfileID(),
-			"profile":          m.resolveProfileID(e.ProfileID()),
+			"code_id":          e.MetadataString(objects.MetaKeyCodeID),
+			"code_type_id":     e.MetadataUint32(objects.MetaKeyCodeTypeID),
+			"code_type":        m.resolveCodeTypeID(e.MetadataUint32(objects.MetaKeyCodeTypeID)),
+			"language_id":      e.MetadataUint32(objects.MetaKeyLanguageID),
+			"language":         m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID)),
+			"language_type_id": e.MetadataUint32(objects.MetaKeyLanguageTypeID),
+			"language_type":    m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 		}
-		entry["language_version_id"] = e.LanguageVersionID()
-		entry["language_version"] = m.resolveLanguageVersionID(e.LanguageID(), e.LanguageVersionID())
+		entry["language_version_id"] = e.MetadataUint32(objects.MetaKeyLanguageVersionID)
+		entry["language_version"] = m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID))
 		allEntries = append(allEntries, entry)
 	}
 	return map[string]any{"entries": allEntries}, nil
@@ -507,22 +494,11 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 	}
 	data, _ := objInfo.Instance().([]byte)
 	result := map[string]any{
-		"partition":        header.Partition(),
-		"data_type_id":     header.DataType(),
-		"data_type_name":   objects.DataTypeName(header.DataType()),
-		"language_id":      header.LanguageID(),
-		"language":         m.resolveLanguageID(header.LanguageID()),
-		"language_type_id": header.LanguageTypeID(),
-		"language_type":    m.resolveLanguageTypeID(header.LanguageTypeID()),
-		"code_type_id":     header.CodeTypeID(),
-		"code_type":        m.resolveCodeTypeID(header.CodeTypeID()),
-		"code_id":          header.CodeID(),
-		"profile_id":       header.ProfileID(),
-		"profile":          m.resolveProfileID(header.ProfileID()),
-		"data":             base64.StdEncoding.EncodeToString(data),
+		"data_type_id":   header.DataType(),
+		"data_type_name": objects.DataTypeName(header.DataType()),
+		"metadata":       header.Metadata(),
+		"data":           base64.StdEncoding.EncodeToString(data),
 	}
-	result["language_version_id"] = header.LanguageVersionID()
-	result["language_version"] = m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
 	return result, nil
 }
 
@@ -534,33 +510,29 @@ func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (st
 		return "", errors.New("cli: blob header is nil")
 	}
 
-	langVer := m.resolveLanguageVersionID(header.LanguageID(), header.LanguageVersionID())
-	if header.LanguageVersionID() == 0 {
+	langVer := m.resolveLanguageVersionID(header.MetadataUint32(objects.MetaKeyLanguageID), header.MetadataUint32(objects.MetaKeyLanguageVersionID))
+	if header.MetadataUint32(objects.MetaKeyLanguageVersionID) == 0 {
 		langVer = ""
 	}
 
-	headers := []string{"PROFILE", "PARTITION", "DATA-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE", "CODE-TYPE", "CODE-ID"}
+	headers := []string{"DATA-TYPE", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
 	dataRow := []string{
-		m.resolveProfileID(header.ProfileID()),
-		header.Partition(),
 		objects.DataTypeName(header.DataType()),
-		m.resolveLanguageID(header.LanguageID()),
+		header.MetadataString(objects.MetaKeyCodeID),
+		m.resolveCodeTypeID(header.MetadataUint32(objects.MetaKeyCodeTypeID)),
+		m.resolveLanguageID(header.MetadataUint32(objects.MetaKeyLanguageID)),
 		langVer,
-		m.resolveLanguageTypeID(header.LanguageTypeID()),
-		m.resolveCodeTypeID(header.CodeTypeID()),
-		header.CodeID(),
+		m.resolveLanguageTypeID(header.MetadataUint32(objects.MetaKeyLanguageTypeID)),
 	}
 	widths := columnWidths(headers, [][]string{dataRow})
 
 	colorFns := []func(string) string{
-		common.NameText,
+		common.KeywordText,
 		common.NameText,
 		common.KeywordText,
 		common.LanguageText,
 		common.LanguageText,
 		common.LanguageKeywordText,
-		common.KeywordText,
-		common.NameText,
 	}
 
 	var sb strings.Builder

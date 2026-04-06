@@ -38,16 +38,44 @@ const (
 	// used as a sentinel value representing the absence of content.
 	ZeroOID = "bafyreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+	// DataTypeUnknown represents an unknown data type.
+	DataTypeUnknown uint32 = 0
+	// DataTypeConfig represents a configuration data type.
+	DataTypeConfig uint32 = 1
 	// DataTypeAbstractTree represents an abstract/parsed representation of the content.
-	DataTypeAbstractTree uint32 = 0
+	DataTypeAbstractTree uint32 = 2
 	// DataTypeSourceLanguage represents source code in the policy language.
-	DataTypeSourceLanguage uint32 = 1
+	DataTypeSourceLanguage uint32 = 3
+
+	// TreeDataTypeUnknown represents an unknown tree entry data type.
+	TreeDataTypeUnknown uint32 = 0
+	// TreeDataTypeManifest represents a manifest tree entry data type.
+	TreeDataTypeManifest uint32 = 1
+	// TreeDataTypePolicy represents a policy tree entry data type.
+	TreeDataTypePolicy uint32 = 2
+
+	// MetaKeyPartition is the metadata key for the partition.
+	MetaKeyPartition = "partition"
+	// MetaKeyLanguageID is the metadata key for the language ID.
+	MetaKeyLanguageID = "language-id"
+	// MetaKeyLanguageVersionID is the metadata key for the language version ID.
+	MetaKeyLanguageVersionID = "language-version-id"
+	// MetaKeyLanguageTypeID is the metadata key for the language type ID.
+	MetaKeyLanguageTypeID = "language-type-id"
+	// MetaKeyCodeID is the metadata key for the code ID.
+	MetaKeyCodeID = "code-id"
+	// MetaKeyCodeTypeID is the metadata key for the code type ID.
+	MetaKeyCodeTypeID = "code-type-id"
 )
 
 // DataTypeName returns the display name for a content kind ID.
 // Falls back to the decimal string representation for unknown IDs.
 func DataTypeName(id uint32) string {
 	switch id {
+	case DataTypeUnknown:
+		return "unknown"
+	case DataTypeConfig:
+		return "config"
 	case DataTypeAbstractTree:
 		return "ast"
 	case DataTypeSourceLanguage:
@@ -57,70 +85,79 @@ func DataTypeName(id uint32) string {
 	}
 }
 
+// TreeDataTypeName returns the display name for a tree entry data type ID.
+func TreeDataTypeName(id uint32) string {
+	switch id {
+	case TreeDataTypeUnknown:
+		return "unknown"
+	case TreeDataTypeManifest:
+		return "manifest"
+	case TreeDataTypePolicy:
+		return "policy"
+	default:
+		return fmt.Sprintf("%d", id)
+	}
+}
+
 // ObjectHeader represents the object header.
 type ObjectHeader struct {
-	dataType          uint32
-	partition         string
-	languageID        uint32
-	languageVersionID uint32
-	languageTypeID    uint32
-	codeID            string
-	codeTypeID        uint32
-	profileID         uint32
+	dataType uint32
+	metadata map[string]any
 }
 
-// Partition returns the partition of the object.
-func (o *ObjectHeader) Partition() string {
-	return o.partition
-}
-
-// DataType returns the content kind of the object.
+// DataType returns the data type of the object.
 func (o *ObjectHeader) DataType() uint32 {
 	return o.dataType
 }
 
-// LanguageID returns the language ID of the object.
-func (o *ObjectHeader) LanguageID() uint32 {
-	return o.languageID
+// Metadata returns the metadata map of the object.
+func (o *ObjectHeader) Metadata() map[string]any {
+	return o.metadata
 }
 
-// LanguageVersionID returns the language version ID of the object.
-func (o *ObjectHeader) LanguageVersionID() uint32 {
-	return o.languageVersionID
+// MetadataString returns a metadata value as a string.
+// Returns an empty string if the key is missing or not a string.
+func (o *ObjectHeader) MetadataString(key string) string {
+	v, ok := o.metadata[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }
 
-// LanguageTypeID returns the language type ID of the object.
-func (o *ObjectHeader) LanguageTypeID() uint32 {
-	return o.languageTypeID
-}
-
-// CodeID returns the code ID of the object.
-func (o *ObjectHeader) CodeID() string {
-	return o.codeID
-}
-
-// CodeTypeID returns the code type ID of the object.
-func (o *ObjectHeader) CodeTypeID() uint32 {
-	return o.codeTypeID
-}
-
-// ProfileID returns the authorization profile ID of the object.
-// A value of 0 means no specific profile (default).
-func (o *ObjectHeader) ProfileID() uint32 {
-	return o.profileID
+// MetadataUint32 returns a metadata value as a uint32.
+// Returns 0 if the key is missing or not a uint32.
+func (o *ObjectHeader) MetadataUint32(key string) uint32 {
+	v, ok := o.metadata[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case uint32:
+		return n
+	case uint64:
+		return uint32(n)
+	case int64:
+		return uint32(n)
+	case float64:
+		return uint32(n)
+	default:
+		return 0
+	}
 }
 
 // NewObjectHeader creates a new object header.
-func NewObjectHeader(partition string, dataType uint32, languageID, languageVersionID, languageTypeID uint32, codeID string, codeTypeID, profileID uint32) (*ObjectHeader, error) {
+func NewObjectHeader(dataType uint32, metadata map[string]any) (*ObjectHeader, error) {
+	if metadata == nil {
+		metadata = make(map[string]any)
+	}
 	return &ObjectHeader{
-		partition:         partition,
-		dataType:          dataType,
-		languageID:        languageID,
-		languageVersionID: languageVersionID,
-		languageTypeID:    languageTypeID,
-		codeID:            codeID,
-		codeTypeID:        codeTypeID,
-		profileID:         profileID,
+		dataType: dataType,
+		metadata: metadata,
 	}, nil
 }
 
@@ -158,8 +195,8 @@ func NewObject(content []byte) (*Object, error) {
 // ObjectInfo is the object info.
 type ObjectInfo struct {
 	header        *ObjectHeader
-	object        *Object
 	otype         string
+	object        *Object
 	instanceBytes []byte
 	instance      any
 }
@@ -301,58 +338,41 @@ func NewCommit(tree CID, parentCommitID NullableString, author string, authorTim
 
 // TreeEntry represents a single entry in a tree object.
 type TreeEntry struct {
-	partition         string
-	otype             string
-	oid               string
-	oname             string
-	codeID            string
-	codeTypeID        uint32
-	languageID        uint32
-	languageVersionID uint32
-	languageTypeID    uint32
-	profileID         uint32
+	otype    string
+	oid      string
+	oname    string
+	dataType uint32
+	metadata map[string]any
 }
 
 // NewTreeEntry creates a new tree entry.
-func NewTreeEntry(partition, otype, oid, oname, codeID string, codeTypeID, languageID, languageVersionID, languageTypeID, profileID uint32) (*TreeEntry, error) {
-	if strings.TrimSpace(partition) == "" {
-		return nil, errors.New("objects: partition is empty")
-	} else if strings.TrimSpace(otype) == "" {
+func NewTreeEntry(otype, oid, oname string, dataType uint32, metadata map[string]any) (*TreeEntry, error) {
+	if strings.TrimSpace(otype) == "" {
 		return nil, errors.New("objects: object type is empty")
 	} else if strings.TrimSpace(oid) == "" {
 		return nil, errors.New("objects: object id is empty")
 	} else if strings.TrimSpace(oname) == "" {
 		return nil, errors.New("objects: object name is empty")
-	} else if strings.TrimSpace(codeID) == "" {
-		return nil, errors.New("objects: code id is empty")
-	} else if codeTypeID == 0 {
-		return nil, errors.New("objects: code type id is zero")
-	} else if languageID == 0 {
-		return nil, errors.New("objects: language id is zero")
-	} else if languageTypeID == 0 {
-		return nil, errors.New("objects: language type id is zero")
+	}
+	if metadata == nil {
+		metadata = make(map[string]any)
 	}
 	return &TreeEntry{
-		partition:         partition,
-		otype:             otype,
-		oid:               oid,
-		oname:             oname,
-		codeID:            codeID,
-		codeTypeID:        codeTypeID,
-		languageID:        languageID,
-		languageVersionID: languageVersionID,
-		languageTypeID:    languageTypeID,
-		profileID:         profileID,
+		otype:    otype,
+		oid:      oid,
+		oname:    oname,
+		dataType: dataType,
+		metadata: metadata,
 	}, nil
 }
 
-// Partition returns the partition of the tree entry.
-func (t *TreeEntry) Partition() string {
-	return t.partition
+// DataType returns the data type of the tree entry.
+func (t *TreeEntry) DataType() uint32 {
+	return t.dataType
 }
 
-// Type returns the type of the tree entry.
-func (t *TreeEntry) Type() string {
+// OType returns the object type of the tree entry.
+func (t *TreeEntry) OType() string {
 	return t.otype
 }
 
@@ -366,47 +386,64 @@ func (t *TreeEntry) OName() string {
 	return t.oname
 }
 
-// CodeID returns the code ID of the tree entry.
-func (t *TreeEntry) CodeID() string {
-	return t.codeID
+// Metadata returns the metadata map of the tree entry.
+func (t *TreeEntry) Metadata() map[string]any {
+	return t.metadata
 }
 
-// CodeTypeID returns the code type ID of the tree entry.
-func (t *TreeEntry) CodeTypeID() uint32 {
-	return t.codeTypeID
+// MetadataString returns a metadata value as a string.
+func (t *TreeEntry) MetadataString(key string) string {
+	v, ok := t.metadata[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }
 
-// LanguageID returns the language ID of the tree entry.
-func (t *TreeEntry) LanguageID() uint32 {
-	return t.languageID
-}
-
-// LanguageVersionID returns the language version ID of the tree entry.
-func (t *TreeEntry) LanguageVersionID() uint32 {
-	return t.languageVersionID
-}
-
-// LanguageTypeID returns the language type ID of the tree entry.
-func (t *TreeEntry) LanguageTypeID() uint32 {
-	return t.languageTypeID
-}
-
-// ProfileID returns the authorization profile ID of the tree entry.
-// A value of 0 means no specific profile (default).
-func (t *TreeEntry) ProfileID() uint32 {
-	return t.profileID
+// MetadataUint32 returns a metadata value as a uint32.
+func (t *TreeEntry) MetadataUint32(key string) uint32 {
+	v, ok := t.metadata[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case uint32:
+		return n
+	case uint64:
+		return uint32(n)
+	case int64:
+		return uint32(n)
+	case float64:
+		return uint32(n)
+	default:
+		return 0
+	}
 }
 
 // Tree represents a tree object.
 type Tree struct {
-	entries []TreeEntry
+	partition string
+	entries   []TreeEntry
 }
 
 // NewTree creates a new tree object.
-func NewTree() (*Tree, error) {
+func NewTree(partition string) (*Tree, error) {
+	if strings.TrimSpace(partition) == "" {
+		return nil, errors.New("objects: partition is empty")
+	}
 	return &Tree{
-		entries: make([]TreeEntry, 0),
+		partition: partition,
+		entries:   make([]TreeEntry, 0),
 	}, nil
+}
+
+// Partition returns the partition of the tree.
+func (t *Tree) Partition() string {
+	return t.partition
 }
 
 // Entries returns the entries of the tree.
@@ -423,7 +460,7 @@ func (t *Tree) AddEntry(entry *TreeEntry) error {
 		if e.OName() == entry.OName() {
 			return errors.New("objects: tree entry already exists")
 		}
-		if e.CodeID() == entry.CodeID() && e.CodeTypeID() == entry.CodeTypeID() {
+		if e.MetadataString(MetaKeyCodeID) == entry.MetadataString(MetaKeyCodeID) && e.MetadataUint32(MetaKeyCodeTypeID) == entry.MetadataUint32(MetaKeyCodeTypeID) {
 			return errors.New("objects: tree entry already exists")
 		}
 	}

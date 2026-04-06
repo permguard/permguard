@@ -31,7 +31,7 @@ func newValidManifest() *Manifest {
 				Engine:   Engine{Name: "permguard", Version: ">=0.0.0", Distribution: "community"},
 			},
 		},
-		BizPolicies: []BizPolicy{
+		ZtasApp: []ZtasApp{
 			{
 				Partitions: map[string]Partition{
 					"/": {Runtime: "cedar", Schema: false},
@@ -139,7 +139,7 @@ func TestValidateManifestInvalidEngineVersion(t *testing.T) {
 func TestValidateManifestEmptyBizPolicies(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.BizPolicies = []BizPolicy{}
+	m.ZtasApp = []ZtasApp{}
 	ok, err := ValidateManifest(m)
 	assert.Error(err)
 	assert.False(ok)
@@ -148,7 +148,7 @@ func TestValidateManifestEmptyBizPolicies(t *testing.T) {
 func TestValidateManifestMissingRootPartition(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.BizPolicies[0].Partitions = map[string]Partition{
+	m.ZtasApp[0].Partitions = map[string]Partition{
 		"/custom": {Runtime: "cedar", Schema: false},
 	}
 	ok, err := ValidateManifest(m)
@@ -159,7 +159,7 @@ func TestValidateManifestMissingRootPartition(t *testing.T) {
 func TestValidateManifestUndefinedRuntime(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.BizPolicies[0].Partitions["/"] = Partition{Runtime: "nonexistent-runtime", Schema: false}
+	m.ZtasApp[0].Partitions["/"] = Partition{Runtime: "nonexistent-runtime", Schema: false}
 	ok, err := ValidateManifest(m)
 	assert.Error(err)
 	assert.False(ok)
