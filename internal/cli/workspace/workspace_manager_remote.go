@@ -117,8 +117,9 @@ func (m *Manager) CurrentHeadCommit(ref string) (*objects.Commit, error) {
 	return remoteCommit, nil
 }
 
-// CurrentHeadTree gets the current head tree.
-func (m *Manager) CurrentHeadTree(ref string) (*objects.Tree, error) {
+// CurrentHeadTrees gets all profile trees from the current head commit.
+// Returns a map of profile key -> tree.
+func (m *Manager) CurrentHeadTrees(ref string) (map[string]*objects.Tree, error) {
 	commit, err := m.CurrentHeadCommit(ref)
 	if err != nil {
 		return nil, err
@@ -126,13 +127,17 @@ func (m *Manager) CurrentHeadTree(ref string) (*objects.Tree, error) {
 	if commit == nil {
 		return nil, nil
 	}
-	treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())
-	if err != nil {
-		return nil, err
+	result := make(map[string]*objects.Tree, len(commit.Profiles()))
+	for _, profile := range commit.Profiles() {
+		treeObj, err := m.cospMgr.ReadObject(profile.Tree().String())
+		if err != nil {
+			return nil, err
+		}
+		tree, err := objects.ConvertObjectToTree(treeObj)
+		if err != nil {
+			return nil, err
+		}
+		result[profile.Key()] = tree
 	}
-	tree, err := objects.ConvertObjectToTree(treeObj)
-	if err != nil {
-		return nil, err
-	}
-	return tree, nil
+	return result, nil
 }

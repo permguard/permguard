@@ -62,40 +62,43 @@ func (m *Manager) collectObjectsForCommit(isCode bool, commitObj *objects.Object
 		})
 	}
 
-	var treeObj *objects.Object
-	if isCode {
-		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.Tree().String())
-	} else {
-		treeObj, err = m.cospMgr.ReadObject(commit.Tree().String())
-	}
-	if err != nil {
-		return nil, err
-	}
-	tree, err := objects.ConvertObjectToTree(treeObj)
-	if err != nil {
-		return nil, err
-	}
-	result = append(result, pap.ObjectState{
-		OID:     treeObj.OID(),
-		OType:   objects.ObjectTypeTree,
-		Content: treeObj.Content(),
-	})
-
-	for _, entry := range tree.Entries() {
-		var obj *objects.Object
+	// Collect all profile trees and their blob entries
+	for _, profile := range commit.Profiles() {
+		var treeObj *objects.Object
 		if isCode {
-			obj, err = m.cospMgr.ReadCodeSourceObject(entry.OID())
+			treeObj, err = m.cospMgr.ReadCodeSourceObject(profile.Tree().String())
 		} else {
-			obj, err = m.cospMgr.ReadObject(entry.OID())
+			treeObj, err = m.cospMgr.ReadObject(profile.Tree().String())
 		}
 		if err != nil {
 			return nil, err
 		}
+		tree, err := objects.ConvertObjectToTree(treeObj)
+		if err != nil {
+			return nil, err
+		}
 		result = append(result, pap.ObjectState{
-			OID:     entry.OID(),
-			OType:   entry.OType(),
-			Content: obj.Content(),
+			OID:     treeObj.OID(),
+			OType:   objects.ObjectTypeTree,
+			Content: treeObj.Content(),
 		})
+
+		for _, entry := range tree.Entries() {
+			var obj *objects.Object
+			if isCode {
+				obj, err = m.cospMgr.ReadCodeSourceObject(entry.OID())
+			} else {
+				obj, err = m.cospMgr.ReadObject(entry.OID())
+			}
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, pap.ObjectState{
+				OID:     entry.OID(),
+				OType:   entry.OType(),
+				Content: obj.Content(),
+			})
+		}
 	}
 	return result, nil
 }

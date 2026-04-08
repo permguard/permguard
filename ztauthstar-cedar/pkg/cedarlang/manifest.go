@@ -18,13 +18,15 @@ package cedarlang
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 const (
-	partitionKey = "/"
+	partitionKey       = "/"
+	requiredProfileKey = "ztas_app"
 )
 
 // BuildManifest builds the manifest.
@@ -44,11 +46,12 @@ func BuildManifest(manifest *azmanifests.Manifest, template string, engineName, 
 	if manifest.Runtimes == nil {
 		manifest.Runtimes = map[string]azmanifests.Runtime{}
 	}
-	if len(manifest.ZtasApp) == 0 {
-		manifest.ZtasApp = []azmanifests.ZtasApp{{Partitions: map[string]azmanifests.Partition{}}}
+	const defaultProfileKey = "ztas_app"
+	if len(manifest.Profiles) == 0 {
+		manifest.Profiles = map[string]azmanifests.Profile{}
 	}
-	if manifest.ZtasApp[0].Partitions == nil {
-		manifest.ZtasApp[0] = azmanifests.ZtasApp{Partitions: map[string]azmanifests.Partition{}}
+	if _, ok := manifest.Profiles[defaultProfileKey]; !ok {
+		manifest.Profiles[defaultProfileKey] = azmanifests.Profile{Partitions: map[string]azmanifests.Partition{}}
 	}
 	runtimeKey := RuntimeKey
 	_, ok := manifest.Runtimes[runtimeKey]
@@ -66,11 +69,13 @@ func BuildManifest(manifest *azmanifests.Manifest, template string, engineName, 
 		}
 		manifest.Runtimes[runtimeKey] = runtime
 	}
-	if _, ok = manifest.ZtasApp[0].Partitions[partitionKey]; !ok {
-		manifest.ZtasApp[0].Partitions[partitionKey] = azmanifests.Partition{
+	defaultProfile := manifest.Profiles[defaultProfileKey]
+	if _, ok = defaultProfile.Partitions[partitionKey]; !ok {
+		defaultProfile.Partitions[partitionKey] = azmanifests.Partition{
 			Runtime: runtimeKey,
 			Schema:  schema,
 		}
+		manifest.Profiles[defaultProfileKey] = defaultProfile
 	}
 	return manifest, nil
 }
@@ -96,11 +101,14 @@ func ValidateManifest(manifest *azmanifests.Manifest) (bool, error) {
 	if !cedarRuntimeFound {
 		return false, errors.New("[cedar] manifest is missing cedar runtime")
 	}
-	for _, bizPolicy := range manifest.ZtasApp {
-		if bizPolicy.Partitions == nil {
+	if _, ok := manifest.Profiles[requiredProfileKey]; !ok {
+		return false, fmt.Errorf("[cedar] manifest is missing required profile %q", requiredProfileKey)
+	}
+	for _, profile := range manifest.Profiles {
+		if profile.Partitions == nil {
 			continue
 		}
-		partition, ok := bizPolicy.Partitions[partitionKey]
+		partition, ok := profile.Partitions[partitionKey]
 		if !ok {
 			continue
 		}

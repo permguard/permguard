@@ -78,14 +78,6 @@ func (m *Manager) objectsInfos(includeStorage, includeCode, filterCommits, filte
 	return filteredObjects, nil
 }
 
-// derefParent returns the dereferenced parent OID or an empty string for a root commit.
-func derefParent(p objects.NullableString) string {
-	if !p.Valid {
-		return ""
-	}
-	return p.String
-}
-
 // history gets the commit history.
 func (m *Manager) history(commit string) ([]azwkscommon.CommitInfo, error) {
 	commitHistory, err := m.cospMgr.History(commit)
@@ -101,27 +93,28 @@ func (m *Manager) commitString(oid string, commit *objects.Commit) (string, erro
 		return "", errors.New("cli: commit is nil")
 	}
 
-	tree := commit.Tree()
 	metadata := commit.MetaData()
 	committerTimestamp := metadata.CommitterTimestamp()
 	authorTimestamp := metadata.AuthorTimestamp()
 
-	output := fmt.Sprintf(
-		"%s %s:\n"+
-			"  - %s: %s\n"+
-			"  - %s: %s\n"+
-			"  - Committer date: %s\n"+
-			"  - Author date: %s",
-		common.KeywordText("commit"),
-		common.IDText(oid),
-		common.KeywordText("tree"),
-		common.IDText(tree.String()),
-		common.KeywordText("manifest"),
-		common.IDText(commit.Manifest().String()),
-		common.DateText(committerTimestamp),
-		common.DateText(authorTimestamp),
-	)
-	return output, nil
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s %s:\n", common.KeywordText("commit"), common.IDText(oid))
+	fmt.Fprintf(&sb, "  - %s:\n", common.KeywordText("profiles"))
+	for _, profile := range commit.Profiles() {
+		fmt.Fprintf(&sb, "    - %s: %s\n", common.NameText(profile.Key()), common.IDText(profile.Tree().String()))
+	}
+	fmt.Fprintf(&sb, "  - %s: %s\n", common.KeywordText("manifest"), common.IDText(commit.Manifest().String()))
+	fmt.Fprintf(&sb, "  - Committer date: %s\n", common.DateText(committerTimestamp))
+	fmt.Fprintf(&sb, "  - Author date: %s", common.DateText(authorTimestamp))
+	return sb.String(), nil
+}
+
+// derefPredecessor returns the dereferenced predecessor OID or an empty string for a root commit.
+func derefPredecessor(p objects.NullableString) string {
+	if !p.Valid {
+		return ""
+	}
+	return p.String
 }
 
 // commitMap gets the commit map.
@@ -132,8 +125,15 @@ func (m *Manager) commitMap(oid string, commit *objects.Commit) (map[string]any,
 
 	output := make(map[string]any)
 	output["oid"] = oid
-	output["parent"] = derefParent(commit.Parent())
-	output["tree"] = commit.Tree().String()
+	output["predecessor"] = derefPredecessor(commit.Predecessor())
+	profiles := make([]map[string]any, 0, len(commit.Profiles()))
+	for _, p := range commit.Profiles() {
+		profiles = append(profiles, map[string]any{
+			"key":  p.Key(),
+			"tree": p.Tree().String(),
+		})
+	}
+	output["profiles"] = profiles
 	output["manifest"] = commit.Manifest().String()
 	output["message"] = commit.Message()
 
@@ -369,28 +369,43 @@ func columnWidths(headers []string, rows [][]string) []int {
 }
 
 // commitTableString formats a commit object as an aligned inspect table with all CBOR fields.
-// Columns: TREE | PARENT | AUTHOR | AUTHOR-TS | COMMITTER | COMMITTER-TS | MESSAGE
 func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeBytes int) (string, error) {
 	if commit == nil {
 		return "", errors.New("cli: commit is nil")
 	}
 
 	meta := commit.MetaData()
-	headers := []string{"TREE", "MANIFEST", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
-	dataRow := []string{
-		commit.Tree().String(),
+
+	var sb strings.Builder
+	sb.WriteString(m.objectInspectHeader(oid, "commit", sizeBytes))
+
+	// Profiles table
+	profHeaders := []string{"PROFILE", "TREE"}
+	profRows := make([][]string, 0, len(commit.Profiles()))
+	for _, p := range commit.Profiles() {
+		profRows = append(profRows, []string{p.Key(), p.Tree().String()})
+	}
+	profWidths := columnWidths(profHeaders, profRows)
+	profColorFns := []func(string) string{common.NameText, common.IDText}
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(profHeaders, profWidths))
+	for _, row := range profRows {
+		fmt.Fprintf(&sb, "  %s\n", tableRow(row, profWidths, profColorFns))
+	}
+	sb.WriteString("\n")
+
+	// Metadata row
+	metaHeaders := []string{"MANIFEST", "PREDECESSOR", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
+	metaRow := []string{
 		commit.Manifest().String(),
-		derefParent(commit.Parent()),
+		derefPredecessor(commit.Predecessor()),
 		meta.Author(),
 		meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
 		meta.Committer(),
 		meta.CommitterTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
 		commit.Message(),
 	}
-	widths := columnWidths(headers, [][]string{dataRow})
-
-	colorFns := []func(string) string{
-		common.IDText,
+	metaWidths := columnWidths(metaHeaders, [][]string{metaRow})
+	metaColorFns := []func(string) string{
 		common.IDText,
 		common.IDText,
 		common.NameText,
@@ -399,11 +414,8 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 		common.TimeStampText,
 		common.NormalText,
 	}
-
-	var sb strings.Builder
-	sb.WriteString(m.objectInspectHeader(oid, "commit", sizeBytes))
-	fmt.Fprintf(&sb, "  %s\n", tableHeader(headers, widths))
-	fmt.Fprintf(&sb, "  %s", tableRow(dataRow, widths, colorFns))
+	fmt.Fprintf(&sb, "  %s\n", tableHeader(metaHeaders, metaWidths))
+	fmt.Fprintf(&sb, "  %s", tableRow(metaRow, metaWidths, metaColorFns))
 	return sb.String(), nil
 }
 
@@ -483,10 +495,17 @@ func (m *Manager) commitInspectMap(_ string, commit *objects.Commit) (map[string
 		return nil, errors.New("cli: commit is nil")
 	}
 	meta := commit.MetaData()
+	profiles := make([]map[string]any, 0, len(commit.Profiles()))
+	for _, p := range commit.Profiles() {
+		profiles = append(profiles, map[string]any{
+			"key":  p.Key(),
+			"tree": p.Tree().String(),
+		})
+	}
 	return map[string]any{
-		"tree":                commit.Tree().String(),
+		"profiles":            profiles,
 		"manifest":            commit.Manifest().String(),
-		"parent":              derefParent(commit.Parent()),
+		"predecessor":         derefPredecessor(commit.Predecessor()),
 		"author":              meta.Author(),
 		"author_timestamp":    meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
 		"committer":           meta.Committer(),

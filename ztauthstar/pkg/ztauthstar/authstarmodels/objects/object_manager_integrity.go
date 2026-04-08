@@ -21,7 +21,7 @@ import (
 )
 
 // VerifyCommitGraphIntegrity verifies that all objects referenced by a commit exist and are valid.
-// It checks: commit → tree → all blob entries.
+// It checks: commit → manifest, commit → profiles[] → tree → all blob entries.
 func (m *ObjectManager) VerifyCommitGraphIntegrity(commitOID string, objFunc func(string) (*Object, error)) error {
 	commitObj, err := objFunc(commitOID)
 	if err != nil {
@@ -51,31 +51,34 @@ func (m *ObjectManager) VerifyCommitGraphIntegrity(commitOID string, objFunc fun
 		}
 	}
 
-	treeOID := commit.Tree()
-	treeObj, err := objFunc(treeOID.String())
-	if err != nil {
-		return fmt.Errorf("objects: failed to read tree %s referenced by commit %s: %w", treeOID, commitOID, err)
-	}
-	if treeObj == nil {
-		return fmt.Errorf("objects: tree %s referenced by commit %s not found", treeOID, commitOID)
-	}
-	treeInfo, err := m.ObjectInfo(treeObj)
-	if err != nil {
-		return fmt.Errorf("objects: failed to parse tree %s: %w", treeOID, err)
-	}
-	tree, ok := treeInfo.Instance().(*Tree)
-	if !ok {
-		return fmt.Errorf("objects: object %s is not a tree", treeOID)
-	}
-
-	for _, entry := range tree.Entries() {
-		blobOID := entry.OID()
-		blobObj, err := objFunc(blobOID)
+	// Verify each profile's tree and its blob entries
+	for _, profile := range commit.Profiles() {
+		treeOID := profile.Tree()
+		treeObj, err := objFunc(treeOID.String())
 		if err != nil {
-			return fmt.Errorf("objects: failed to read blob %s referenced by tree %s: %w", blobOID, treeOID, err)
+			return fmt.Errorf("objects: failed to read tree %s for profile %s referenced by commit %s: %w", treeOID, profile.Key(), commitOID, err)
 		}
-		if blobObj == nil {
-			return fmt.Errorf("objects: blob %s referenced by tree %s not found", blobOID, treeOID)
+		if treeObj == nil {
+			return fmt.Errorf("objects: tree %s for profile %s referenced by commit %s not found", treeOID, profile.Key(), commitOID)
+		}
+		treeInfo, err := m.ObjectInfo(treeObj)
+		if err != nil {
+			return fmt.Errorf("objects: failed to parse tree %s: %w", treeOID, err)
+		}
+		tree, ok := treeInfo.Instance().(*Tree)
+		if !ok {
+			return fmt.Errorf("objects: object %s is not a tree", treeOID)
+		}
+
+		for _, entry := range tree.Entries() {
+			blobOID := entry.OID()
+			blobObj, err := objFunc(blobOID)
+			if err != nil {
+				return fmt.Errorf("objects: failed to read blob %s referenced by tree %s: %w", blobOID, treeOID, err)
+			}
+			if blobObj == nil {
+				return fmt.Errorf("objects: blob %s referenced by tree %s not found", blobOID, treeOID)
+			}
 		}
 	}
 	return nil

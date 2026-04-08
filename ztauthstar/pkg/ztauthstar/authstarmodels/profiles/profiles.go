@@ -26,7 +26,7 @@ const (
 	// ProfileDefaultID is the default profile ID (0 = unset / no specific input model).
 	ProfileDefaultID = uint32(0)
 	// ProfileZtasApp is the name of the ZtasApp (ZTAUTH* App) profile.
-	ProfileZtasApp = "ztas_app"
+	ProfileZtasApp = "profiles"
 	// ProfileZtasAppID is the ID of the ZtasApp (ZTAUTH* App) profile.
 	ProfileZtasAppID = uint32(1)
 )

@@ -18,66 +18,102 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/permguard/permguard/pkg/authz/languages"
 	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 type languageInfo struct {
+	profileName   string
+	partition     string
 	lang          *azmanifests.Language
 	langAbs       languages.LanguageAbstraction
 	schemaEnabled bool
 }
 
 // ManifestLanguageProvider manifest language provider.
+// The langInfos map is keyed by profile key (profileName + partition, e.g. "ztas_app/", "ztas_app/root1").
 type ManifestLanguageProvider struct {
 	manifest  *azmanifests.Manifest
 	langInfos map[string]languageInfo
 }
 
-// Partitions gets the partitions for the manifest language provider.
-func (p *ManifestLanguageProvider) Partitions() []string {
-	partitions := make([]string, 0, len(p.langInfos))
-	for partKey := range p.langInfos {
-		partitions = append(partitions, partKey)
+// ProfileKeys returns all profile keys (profileName + partition).
+func (p *ManifestLanguageProvider) ProfileKeys() []string {
+	keys := make([]string, 0, len(p.langInfos))
+	for k := range p.langInfos {
+		keys = append(keys, k)
 	}
-	return partitions
+	return keys
 }
 
-// Language gets the language for the input partition.
-func (p *ManifestLanguageProvider) Language(partition string) (*azmanifests.Language, error) {
+// Partition returns the raw partition path for a profile key.
+func (p *ManifestLanguageProvider) Partition(profileKey string) (string, error) {
 	if p.langInfos == nil {
-		return nil, errors.New("cli: parition doens't exists")
+		return "", fmt.Errorf("cli: profile key %q does not exist", profileKey)
 	}
-	langInfo, ok := p.langInfos[partition]
+	info, ok := p.langInfos[profileKey]
 	if !ok {
-		return nil, errors.New("cli: parition doens't exists")
+		return "", fmt.Errorf("cli: profile key %q does not exist", profileKey)
 	}
-	return langInfo.lang, nil
+	return info.partition, nil
 }
 
-// SchemaEnabled returns whether schema is enabled for the given partition.
-func (p *ManifestLanguageProvider) SchemaEnabled(partition string) bool {
+// Language gets the language for the input profile key.
+func (p *ManifestLanguageProvider) Language(profileKey string) (*azmanifests.Language, error) {
+	if p.langInfos == nil {
+		return nil, fmt.Errorf("cli: profile key %q does not exist", profileKey)
+	}
+	info, ok := p.langInfos[profileKey]
+	if !ok {
+		return nil, fmt.Errorf("cli: profile key %q does not exist", profileKey)
+	}
+	return info.lang, nil
+}
+
+// SchemaEnabled returns whether schema is enabled for the given profile key.
+func (p *ManifestLanguageProvider) SchemaEnabled(profileKey string) bool {
 	if p.langInfos == nil {
 		return false
 	}
-	langInfo, ok := p.langInfos[partition]
+	info, ok := p.langInfos[profileKey]
 	if !ok {
 		return false
 	}
-	return langInfo.schemaEnabled
+	return info.schemaEnabled
 }
 
-// AbstractLanguage gets the abstract language for the input partition.
-func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages.LanguageAbstraction, error) {
+// AbstractLanguage gets the abstract language for the input profile key.
+func (p *ManifestLanguageProvider) AbstractLanguage(profileKey string) (languages.LanguageAbstraction, error) {
 	if p.langInfos == nil {
-		return nil, errors.New("cli: parition doens't exists")
+		return nil, fmt.Errorf("cli: profile key %q does not exist", profileKey)
 	}
-	langInfo, ok := p.langInfos[partition]
+	info, ok := p.langInfos[profileKey]
 	if !ok {
-		return nil, errors.New("cli: parition doens't exists")
+		return nil, fmt.Errorf("cli: profile key %q does not exist", profileKey)
 	}
-	return langInfo.langAbs, nil
+	return info.langAbs, nil
+}
+
+// AbstractLanguageByPartition gets the abstract language by partition path (tries all profile keys).
+func (p *ManifestLanguageProvider) AbstractLanguageByPartition(partition string) (languages.LanguageAbstraction, error) {
+	for _, info := range p.langInfos {
+		if info.partition == partition {
+			return info.langAbs, nil
+		}
+	}
+	return nil, fmt.Errorf("cli: no profile found for partition %q", partition)
+}
+
+// LanguageByPartition gets the language by partition path (tries all profile keys).
+func (p *ManifestLanguageProvider) LanguageByPartition(partition string) (*azmanifests.Language, error) {
+	for _, info := range p.langInfos {
+		if info.partition == partition {
+			return info.lang, nil
+		}
+	}
+	return nil, fmt.Errorf("cli: no profile found for partition %q", partition)
 }
 
 // buildManifestLanguageManager build a new instance of the manifest language provider.
@@ -93,25 +129,26 @@ func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, er
 		manifest:  manifest,
 		langInfos: map[string]languageInfo{},
 	}
-	for _, bizPolicy := range manifest.ZtasApp {
-		for partitionKey, partition := range bizPolicy.Partitions {
+	for profileName, profile := range manifest.Profiles {
+		for partitionKey, partition := range profile.Partitions {
 			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
 				continue
 			}
 			runtime := manifest.Runtimes[partition.Runtime]
-			if _, ok := mfestLangMgr.langInfos[partition.Runtime]; !ok {
+			profileKey := profileName + partitionKey
+			if _, ok := mfestLangMgr.langInfos[profileKey]; !ok {
 				lang := runtime.Language
 				absLang, err := m.langFct.LanguageAbstraction(lang.Name, lang.Version)
 				if err != nil {
 					return nil, err
 				}
-				mfestLangMgr.langInfos[partitionKey] = languageInfo{
+				mfestLangMgr.langInfos[profileKey] = languageInfo{
+					profileName:   profileName,
+					partition:     partitionKey,
 					lang:          &runtime.Language,
 					langAbs:       absLang,
 					schemaEnabled: partition.Schema,
 				}
-			} else {
-				continue
 			}
 		}
 	}

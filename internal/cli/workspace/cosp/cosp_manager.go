@@ -132,14 +132,14 @@ func (m *Manager) SaveCodeSourceObject(oid string, content []byte) (bool, error)
 	if err != nil {
 		return false, errors.Join(fmt.Errorf("cli: failed to save object %s", oid), err)
 	}
-	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, false)
 }
 
 // ReadCodeSourceObject reads the object from the code source and verifies OID integrity.
 func (m *Manager) ReadCodeSourceObject(oid string) (*objects.Object, error) {
 	folder, name := m.codeSourceObjectDir(oid, m.codeSourceDir())
 	path := filepath.Join(folder, name)
-	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
+	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -167,10 +167,17 @@ func (m *Manager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // SaveCodeSourceConfig saves the code source config file.
-func (m *Manager) SaveCodeSourceConfig(treeID, manifestID string) error {
+func (m *Manager) SaveCodeSourceConfig(profiles []objects.CommitProfile, manifestID string) error {
+	cfgProfiles := make([]codeProfileConfig, len(profiles))
+	for i, p := range profiles {
+		cfgProfiles[i] = codeProfileConfig{
+			Key:    p.Key(),
+			TreeID: p.Tree().String(),
+		}
+	}
 	config := &codeLocalConfig{
 		CodeState: codeStateConfig{
-			TreeID:     treeID,
+			Profiles:   cfgProfiles,
 			ManifestID: manifestID,
 		},
 	}
@@ -179,17 +186,25 @@ func (m *Manager) SaveCodeSourceConfig(treeID, manifestID string) error {
 }
 
 // ReadCodeSourceConfig reads the code source config file.
-func (m *Manager) ReadCodeSourceConfig() (string, string, error) {
+func (m *Manager) ReadCodeSourceConfig() ([]objects.CommitProfile, string, error) {
 	file := m.codeSourceConfigFile()
 	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, file, false)
 	if err != nil {
-		return "", "", errors.Join(errors.New("cli: failed to read code source config"), err)
+		return nil, "", errors.Join(errors.New("cli: failed to read code source config"), err)
 	}
 	var config codeLocalConfig
 	if err := toml.Unmarshal(data, &config); err != nil {
-		return "", "", errors.Join(errors.New("cli: failed to unmarshal code source config"), err)
+		return nil, "", errors.Join(errors.New("cli: failed to unmarshal code source config"), err)
 	}
-	return config.CodeState.TreeID, config.CodeState.ManifestID, nil
+	profiles := make([]objects.CommitProfile, 0, len(config.CodeState.Profiles))
+	for _, p := range config.CodeState.Profiles {
+		cp, err := objects.NewCommitProfile(p.Key, objects.CID(p.TreeID))
+		if err != nil {
+			return nil, "", errors.Join(errors.New("cli: failed to create commit profile from config"), err)
+		}
+		profiles = append(profiles, *cp)
+	}
+	return profiles, config.CodeState.ManifestID, nil
 }
 
 // SaveCodeSourceCodeMap saves the code map in the code source.
@@ -205,6 +220,7 @@ func (m *Manager) SaveCodeSourceCodeMap(codeFiles []CodeFile) error {
 			return nil
 		}
 		return []string{
+			codeFile.Partition,
 			codeFile.Path,
 			codeFile.OID,
 			codeFile.OType,
@@ -232,43 +248,44 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 	path := filepath.Join(m.codeSourceDir(), hiddenCodeMapFile)
 	var codeFiles []CodeFile
 	recordFunc := func(record []string) error {
-		if len(record) < 13 {
+		if len(record) < 14 {
 			return errors.New("invalid record format")
 		}
-		codeTypeID64, err := strconv.ParseUint(record[5], 10, 32)
+		codeTypeID64, err := strconv.ParseUint(record[6], 10, 32)
 		if err != nil {
 			return err
 		}
-		languageID64, err := strconv.ParseUint(record[6], 10, 32)
+		languageID64, err := strconv.ParseUint(record[7], 10, 32)
 		if err != nil {
 			return err
 		}
-		langVersionID64, err := strconv.ParseUint(record[7], 10, 32)
+		langVersionID64, err := strconv.ParseUint(record[8], 10, 32)
 		if err != nil {
 			return err
 		}
-		langTypeID64, err := strconv.ParseUint(record[8], 10, 32)
+		langTypeID64, err := strconv.ParseUint(record[9], 10, 32)
 		if err != nil {
 			return err
 		}
-		mode64, err := strconv.ParseUint(record[9], 10, 32)
+		mode64, err := strconv.ParseUint(record[10], 10, 32)
 		if err != nil {
 			return err
 		}
-		section, err := strconv.Atoi(record[10])
+		section, err := strconv.Atoi(record[11])
 		if err != nil {
 			return err
 		}
-		hasErrors, err := strconv.ParseBool(record[11])
+		hasErrors, err := strconv.ParseBool(record[12])
 		if err != nil {
 			return err
 		}
 		codeFile := CodeFile{
-			Path:              record[0],
-			OID:               record[1],
-			OType:             record[2],
-			OName:             record[3],
-			CodeID:            record[4],
+			Partition:         record[0],
+			Path:              record[1],
+			OID:               record[2],
+			OType:             record[3],
+			OName:             record[4],
+			CodeID:            record[5],
 			CodeTypeID:        uint32(codeTypeID64),
 			LanguageID:        uint32(languageID64),
 			LanguageVersionID: uint32(langVersionID64),
@@ -276,7 +293,7 @@ func (m *Manager) ReadCodeSourceCodeMap() ([]CodeFile, error) {
 			Mode:              uint32(mode64),
 			Section:           section,
 			HasErrors:         hasErrors,
-			Error:             record[12],
+			Error:             record[13],
 		}
 		codeFiles = append(codeFiles, codeFile)
 		return nil
@@ -475,17 +492,19 @@ func (m *Manager) CalculateCodeObjectsState(currentObjs []CodeObjectState, remot
 	if remoteObjs == nil {
 		remoteObjs = []CodeObjectState{}
 	}
+	// Key by partition + OName to handle same names across partitions
+	compKey := func(o CodeObjectState) string { return o.Partition + "\x00" + o.OName }
 	currentMap := make(map[string]string)
 	for _, obj := range currentObjs {
-		currentMap[obj.OName] = obj.OID
+		currentMap[compKey(obj)] = obj.OID
 	}
 	remoteMap := make(map[string]string)
 	for _, obj := range remoteObjs {
-		remoteMap[obj.OName] = obj.OID
+		remoteMap[compKey(obj)] = obj.OID
 	}
 	result := []CodeObjectState{}
 	for _, obj := range currentObjs {
-		if newOID, exists := remoteMap[obj.OName]; exists {
+		if newOID, exists := remoteMap[compKey(obj)]; exists {
 			if obj.OID != newOID {
 				result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateModify})
 			} else {
@@ -496,7 +515,7 @@ func (m *Manager) CalculateCodeObjectsState(currentObjs []CodeObjectState, remot
 		}
 	}
 	for _, obj := range remoteObjs {
-		if _, exists := currentMap[obj.OName]; !exists {
+		if _, exists := currentMap[compKey(obj)]; !exists {
 			result = append(result, CodeObjectState{CodeObject: obj.CodeObject, State: CodeObjectStateDelete})
 		}
 	}
@@ -511,14 +530,14 @@ func (m *Manager) SaveObject(oid string, content []byte) (bool, error) {
 	if err != nil {
 		return false, errors.Join(fmt.Errorf("cli: failed to save object %s", oid), err)
 	}
-	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, true)
+	return m.persMgr.WriteFile(persistence.PermguardDir, path, content, 0o644, false)
 }
 
 // ReadObject reads the object from the objs store and verifies OID integrity.
 func (m *Manager) ReadObject(oid string) (*objects.Object, error) {
 	folder, name := m.codeSourceObjectDir(oid, "")
 	path := filepath.Join(folder, name)
-	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, true)
+	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, path, false)
 	if err != nil {
 		return nil, err
 	}
@@ -569,29 +588,37 @@ func (m *Manager) CollectGarbage(commitID string) (int, error) {
 		if !ok {
 			return 0, fmt.Errorf("cli: gc aborted, oid %s is not a commit", currentID)
 		}
-		treeObj, err := m.ReadObject(commit.Tree().String())
-		if err != nil {
-			return 0, fmt.Errorf("cli: gc aborted, failed to read tree %s: %w", commit.Tree(), err)
+		// Mark manifest as reachable
+		manifestOID := commit.Manifest().String()
+		if manifestOID != "" && manifestOID != objects.ZeroOID {
+			reachable[manifestOID] = true
 		}
-		if treeObj == nil {
-			return 0, fmt.Errorf("cli: gc aborted, missing tree %s", commit.Tree())
+		// Mark all profile trees and their entries as reachable
+		for _, profile := range commit.Profiles() {
+			treeObj, err := m.ReadObject(profile.Tree().String())
+			if err != nil {
+				return 0, fmt.Errorf("cli: gc aborted, failed to read tree %s for profile %s: %w", profile.Tree(), profile.Key(), err)
+			}
+			if treeObj == nil {
+				return 0, fmt.Errorf("cli: gc aborted, missing tree %s for profile %s", profile.Tree(), profile.Key())
+			}
+			reachable[treeObj.OID()] = true
+			treeInfo, err := m.objMgr.ObjectInfo(treeObj)
+			if err != nil {
+				return 0, fmt.Errorf("cli: gc aborted, failed to get tree info for %s: %w", profile.Tree(), err)
+			}
+			tree, ok := treeInfo.Instance().(*objects.Tree)
+			if !ok {
+				return 0, fmt.Errorf("cli: gc aborted, oid %s is not a tree", profile.Tree())
+			}
+			for _, entry := range tree.Entries() {
+				reachable[entry.OID()] = true
+			}
 		}
-		reachable[treeObj.OID()] = true
-		treeInfo, err := m.objMgr.ObjectInfo(treeObj)
-		if err != nil {
-			return 0, fmt.Errorf("cli: gc aborted, failed to get tree info for %s: %w", commit.Tree(), err)
-		}
-		tree, ok := treeInfo.Instance().(*objects.Tree)
-		if !ok {
-			return 0, fmt.Errorf("cli: gc aborted, oid %s is not a tree", commit.Tree())
-		}
-		for _, entry := range tree.Entries() {
-			reachable[entry.OID()] = true
-		}
-		if !commit.Parent().Valid {
+		if !commit.Predecessor().Valid {
 			break
 		}
-		currentID = commit.Parent().String
+		currentID = commit.Predecessor().String
 	}
 	allObjs, err := m.objects(m.objectsDir(), true)
 	if err != nil {
@@ -704,15 +731,15 @@ func (m *Manager) History(commitID string) ([]azwkscommon.CommitInfo, error) {
 			return nil, err
 		}
 		commits = append(commits, *commitInfo)
-		if !commit.Parent().Valid {
+		if !commit.Predecessor().Valid {
 			break
 		}
-		parentID := commit.Parent().String
-		commit, err = m.Commit(parentID)
+		predecessorID := commit.Predecessor().String
+		commit, err = m.Commit(predecessorID)
 		if err != nil {
 			return nil, err
 		}
-		commitID = parentID
+		commitID = predecessorID
 	}
 	return commits, nil
 }

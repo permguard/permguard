@@ -49,7 +49,7 @@ func NewManifest(name, description string) (*Manifest, error) {
 			Description: description,
 		},
 		Runtimes: make(map[string]Runtime),
-		ZtasApp:  []ZtasApp{},
+		Profiles: map[string]Profile{},
 	}
 	return manifest, nil
 }
@@ -78,17 +78,30 @@ func ValidateManifest(manifest *Manifest) (bool, error) {
 			return false, fmt.Errorf("[ztas] runtime %q has invalid engine version: %q", runtimeKey, runtime.Engine.Version)
 		}
 	}
-	if len(manifest.ZtasApp) == 0 {
-		return false, errors.New("[ztas] manifest has no ztas_app")
+	if len(manifest.Profiles) == 0 {
+		return false, errors.New("[ztas] manifest has no profiles")
 	}
-	for i, bizPolicy := range manifest.ZtasApp {
-		if _, ok := bizPolicy.Partitions["/"]; !ok {
-			return false, fmt.Errorf("[ztas] ztas_app[%d] is missing root partition", i)
+	// Validate partitions are unique across all profiles
+	seenPartitions := map[string]string{} // partition -> profile that owns it
+	for profileKey, profile := range manifest.Profiles {
+		if len(profile.Partitions) == 0 {
+			return false, fmt.Errorf("[ztas] profile %q has no partitions", profileKey)
 		}
-		for partKey, partition := range bizPolicy.Partitions {
-			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
-				return false, fmt.Errorf("[ztas] ztas_app[%d] partition %q references undefined runtime %q", i, partKey, partition.Runtime)
+		for partKey, partition := range profile.Partitions {
+			if partKey != "/" {
+				// Partition must be single-level: /name (not /a/b)
+				trimmed := strings.TrimPrefix(partKey, "/")
+				if trimmed == "" || strings.Contains(trimmed, "/") {
+					return false, fmt.Errorf("[ztas] profile %q partition %q is invalid: must be \"/\" or \"/{name}\" (single level only)", profileKey, partKey)
+				}
 			}
+			if _, ok := manifest.Runtimes[partition.Runtime]; !ok {
+				return false, fmt.Errorf("[ztas] profile %q partition %q references undefined runtime %q", profileKey, partKey, partition.Runtime)
+			}
+			if ownerProfile, exists := seenPartitions[partKey]; exists {
+				return false, fmt.Errorf("[ztas] partition %q is defined in both profile %q and %q, partitions must be unique across profiles", partKey, ownerProfile, profileKey)
+			}
+			seenPartitions[partKey] = profileKey
 		}
 	}
 	return true, nil

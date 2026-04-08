@@ -63,9 +63,9 @@ func authorizationCheckReadBytes(ctx context.Context, s *SQLiteCentralStoragePDP
 	return instanceBytes, err
 }
 
-// authorizationCheckReadTree reads the tree object for the authorization check.
-func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, commitID string) (*objects.Tree, error) {
-	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadPolicyTree")
+// authorizationCheckReadTrees reads all profile trees for the authorization check.
+func authorizationCheckReadTrees(ctx context.Context, s *SQLiteCentralStoragePDP, db *sqlx.DB, objMng *objects.ObjectManager, zoneID int64, commitID string) ([]*objects.Tree, error) {
+	ctx, span := telemetry.Tracer().Start(ctx, "storage.ReadPolicyTrees")
 	defer span.End()
 	span.SetAttributes(attribute.Int64("zone_id", zoneID), attribute.String("commit_id", commitID))
 	ocontent, err := authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, commitID)
@@ -76,11 +76,19 @@ func authorizationCheckReadTree(ctx context.Context, s *SQLiteCentralStoragePDP,
 	if err != nil {
 		return nil, err
 	}
-	ocontent, err = authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, commitObj.Tree().String())
-	if err != nil {
-		return nil, err
+	var trees []*objects.Tree
+	for _, profile := range commitObj.Profiles() {
+		tcontent, err := authorizationCheckReadBytes(ctx, s, db, objMng, zoneID, profile.Tree().String())
+		if err != nil {
+			return nil, err
+		}
+		tree, err := objMng.DeserializeTree(tcontent)
+		if err != nil {
+			return nil, err
+		}
+		trees = append(trees, tree)
 	}
-	return objMng.DeserializeTree(ocontent)
+	return trees, nil
 }
 
 // LoadPolicyStore loads the policy store for a given zone ID and store ID.
@@ -113,35 +121,37 @@ func (s SQLiteCentralStoragePDP) LoadPolicyStore(ctx context.Context, zoneID int
 	if err != nil {
 		return nil, fmt.Errorf("storage: server couldn't create the object manager: %w", azstorage.ErrInternal)
 	}
-	treeObj, err := authorizationCheckReadTree(ctx, &s, db, objMng, zoneID, ledgerRef)
+	trees, err := authorizationCheckReadTrees(ctx, &s, db, objMng, zoneID, ledgerRef)
 	if err != nil {
-		return nil, fmt.Errorf("storage: server couldn't read the tree: %w", err)
+		return nil, fmt.Errorf("storage: server couldn't read the trees: %w", err)
 	}
-	entries := treeObj.Entries()
-	span.SetAttributes(attribute.Int("policy_entries", len(entries)))
-	for _, entry := range entries {
-		entryID := entry.OID()
-		value, err2 := authorizationCheckReadKeyValue(ctx, &s, db, objMng, zoneID, entryID)
-		if err2 != nil {
-			return nil, fmt.Errorf("storage: server couldn't read the key %s: %w", entryID, err2)
-		}
-		obj, err3 := objMng.DeserializeObjectFromBytes(value)
-		if err3 != nil {
-			return nil, fmt.Errorf("storage: server couldn't deserialize the object from bytes: %w", err3)
-		}
-		objInfo, err4 := objMng.ObjectInfo(obj)
-		if err4 != nil {
-			return nil, fmt.Errorf("storage: server couldn't read object info: %w", err4)
-		}
-		objInfoHeader := objInfo.Header()
-		oid := objInfo.OID()
-		switch objInfoHeader.MetadataUint32(objects.MetaKeyCodeTypeID) {
-		case types.ClassTypeSchemaID:
-			authzPolicyStore.AddSchema(oid, objInfo)
-		case types.ClassTypePolicyID:
-			authzPolicyStore.AddPolicy(oid, objInfo)
-		default:
-			return nil, fmt.Errorf("storage: server couldn't process the code type id: %w", azstorage.ErrInternal)
+	for _, treeObj := range trees {
+		entries := treeObj.Entries()
+		span.SetAttributes(attribute.Int("policy_entries", len(entries)))
+		for _, entry := range entries {
+			entryID := entry.OID()
+			value, err2 := authorizationCheckReadKeyValue(ctx, &s, db, objMng, zoneID, entryID)
+			if err2 != nil {
+				return nil, fmt.Errorf("storage: server couldn't read the key %s: %w", entryID, err2)
+			}
+			obj, err3 := objMng.DeserializeObjectFromBytes(value)
+			if err3 != nil {
+				return nil, fmt.Errorf("storage: server couldn't deserialize the object from bytes: %w", err3)
+			}
+			objInfo, err4 := objMng.ObjectInfo(obj)
+			if err4 != nil {
+				return nil, fmt.Errorf("storage: server couldn't read object info: %w", err4)
+			}
+			objInfoHeader := objInfo.Header()
+			oid := objInfo.OID()
+			switch objInfoHeader.MetadataUint32(objects.MetaKeyCodeTypeID) {
+			case types.ClassTypeSchemaID:
+				authzPolicyStore.AddSchema(oid, objInfo)
+			case types.ClassTypePolicyID:
+				authzPolicyStore.AddPolicy(oid, objInfo)
+			default:
+				return nil, fmt.Errorf("storage: server couldn't process the code type id: %w", azstorage.ErrInternal)
+			}
 		}
 	}
 	return authzPolicyStore, nil

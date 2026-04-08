@@ -36,8 +36,10 @@ func TestCommitCreation(t *testing.T) {
 	assert.NotNil(langAbs, "Language abstraction should not be nil")
 
 	tree := "bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c"
-	parent := "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc"
-	commit, err := objects.NewCommit(objects.CID(tree), objects.CID(objects.ZeroOID), objects.NewNullableString(&parent), "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
+	predecessor := "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc"
+	profile, err := objects.NewCommitProfile("default/", objects.CID(tree))
+	require.NoError(t, err, "NewCommitProfile should not return an error")
+	commit, err := objects.NewCommit([]objects.CommitProfile{*profile}, objects.CID(objects.ZeroOID), objects.NewNullableString(&predecessor), "Nicola Gallo", time.Unix(1628704800, 0), "Nicola Gallo", time.Unix(1628704800, 0), "Initial commit")
 	require.NoError(t, err, "NewCommit should not return an error")
 	assert.NotNil(commit, "Commit should not be nil")
 
@@ -48,8 +50,8 @@ func TestCommitCreation(t *testing.T) {
 	convertedCommit, err := objects.ConvertObjectToCommit(commitObj)
 	require.NoError(t, err, "ConvertObjectToCommit should not return an error")
 	assert.NotNil(convertedCommit, "Converted commit should not be nil")
-	assert.Equal(commit.Tree(), convertedCommit.Tree(), "Tree mismatch")
-	assert.Equal(commit.Parent(), convertedCommit.Parent(), "Parent mismatch")
+	assert.Equal(commit.Profiles(), convertedCommit.Profiles(), "Profiles mismatch")
+	assert.Equal(commit.Predecessor(), convertedCommit.Predecessor(), "Predecessor mismatch")
 	commitMetdata := commit.MetaData()
 	convertedMetdata := convertedCommit.MetaData()
 	assert.Equal(commitMetdata.Author(), convertedMetdata.Author(), "Author mismatch")

@@ -31,8 +31,8 @@ func newValidManifest() *Manifest {
 				Engine:   Engine{Name: "permguard", Version: ">=0.0.0", Distribution: "community"},
 			},
 		},
-		ZtasApp: []ZtasApp{
-			{
+		Profiles: map[string]Profile{
+			"default": {
 				Partitions: map[string]Partition{
 					"/": {Runtime: "cedar", Schema: false},
 				},
@@ -136,20 +136,46 @@ func TestValidateManifestInvalidEngineVersion(t *testing.T) {
 	}
 }
 
-func TestValidateManifestEmptyBizPolicies(t *testing.T) {
+func TestValidateManifestEmptyProfiles(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.ZtasApp = []ZtasApp{}
+	m.Profiles = map[string]Profile{}
 	ok, err := ValidateManifest(m)
 	assert.Error(err)
 	assert.False(ok)
 }
 
-func TestValidateManifestMissingRootPartition(t *testing.T) {
+func TestValidateManifestNonRootPartitionValid(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.ZtasApp[0].Partitions = map[string]Partition{
-		"/custom": {Runtime: "cedar", Schema: false},
+	m.Profiles["default"] = Profile{
+		Partitions: map[string]Partition{
+			"/custom": {Runtime: "cedar", Schema: false},
+		},
+	}
+	ok, err := ValidateManifest(m)
+	assert.NoError(err)
+	assert.True(ok)
+}
+
+func TestValidateManifestNestedPartitionInvalid(t *testing.T) {
+	assert := assert.New(t)
+	m := newValidManifest()
+	m.Profiles["default"] = Profile{
+		Partitions: map[string]Partition{
+			"/a/b": {Runtime: "cedar", Schema: false},
+		},
+	}
+	ok, err := ValidateManifest(m)
+	assert.Error(err)
+	assert.False(ok)
+}
+
+func TestValidateManifestEmptyPartitions(t *testing.T) {
+	assert := assert.New(t)
+	m := newValidManifest()
+	m.Profiles["default"] = Profile{
+		Partitions: map[string]Partition{},
 	}
 	ok, err := ValidateManifest(m)
 	assert.Error(err)
@@ -159,7 +185,9 @@ func TestValidateManifestMissingRootPartition(t *testing.T) {
 func TestValidateManifestUndefinedRuntime(t *testing.T) {
 	assert := assert.New(t)
 	m := newValidManifest()
-	m.ZtasApp[0].Partitions["/"] = Partition{Runtime: "nonexistent-runtime", Schema: false}
+	p := m.Profiles["default"]
+	p.Partitions["/"] = Partition{Runtime: "nonexistent-runtime", Schema: false}
+	m.Profiles["default"] = p
 	ok, err := ValidateManifest(m)
 	assert.Error(err)
 	assert.False(ok)

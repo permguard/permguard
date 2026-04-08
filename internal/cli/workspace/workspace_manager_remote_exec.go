@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path"
@@ -310,17 +311,12 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			}
 		}
 
-		if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, targetManifestFile, manifestData, 0o644, false); err != nil {
-			return fail(errors.Join(fmt.Errorf("cli: failed to write %s", targetManifestFile), err))
-		}
-
-		treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())
-		if err != nil {
-			return fail(err)
-		}
-		tree, err := objects.ConvertObjectToTree(treeObj)
-		if err != nil {
-			return fail(err)
+		// Write manifest only if the file doesn't exist or content has changed.
+		existingData, _, readErr := m.persMgr.ReadFile(persistence.WorkspaceDir, targetManifestFile, false)
+		if readErr != nil || !bytes.Equal(existingData, manifestData) {
+			if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, targetManifestFile, manifestData, 0o644, false); err != nil {
+				return fail(errors.Join(fmt.Errorf("cli: failed to write %s", targetManifestFile), err))
+			}
 		}
 
 		codeMap, err := m.cospMgr.ReadCodeSourceCodeMap()
@@ -335,72 +331,83 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		codeEntries := []map[string]any{}
 		schemaBlocks := map[string][]byte{}
 		codeBlocks := map[string][][]byte{}
-		for _, entry := range tree.Entries() {
-			codeEntries = append(codeEntries, map[string]any{
-				"partition":        tree.Partition(),
-				"oid":              entry.OID(),
-				"oname":            entry.OName(),
-				"type":             entry.OType(),
-				"code_id":          entry.MetadataString(objects.MetaKeyCodeID),
-				"code_type":        m.resolveCodeTypeID(entry.MetadataUint32(objects.MetaKeyCodeTypeID)),
-				"language":         m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID)),
-				"language_version": m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID)),
-				"language_type":    m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID)),
-			})
-			if _, ok := codeMapIDs[entry.OID()]; !ok {
-				entryObj, err := m.cospMgr.ReadObject(entry.OID())
-				if err != nil {
-					return fail(err)
-				}
-				objInfo, err := m.objMar.ObjectInfo(entryObj)
-				if err != nil {
-					return fail(err)
-				}
-				header := objInfo.Header()
-				if header == nil {
-					return fail(errors.New("cli: object header is nil"))
-				}
-				// Skip manifest blobs — they are handled separately above
-				if header.DataType() == objects.DataTypeManifest {
-					continue
-				}
-				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
-				if err != nil {
-					return fail(err)
-				}
-				switch classType {
-				case types.ClassTypeSchemaID:
-					partition := tree.Partition()
-					if _, ok := schemaBlocks[partition]; !ok {
-						schemaBlocks[partition] = []byte{}
-					}
-					schemaBlocks[partition] = codeBlock
-					continue
-				case types.ClassTypePolicyID:
-					partition := tree.Partition()
-					langID := header.MetadataUint32(objects.MetaKeyLanguageID)
-					langVersionID := header.MetadataUint32(objects.MetaKeyLanguageVersionID)
-					langTypeID := header.MetadataUint32(objects.MetaKeyLanguageTypeID)
-					absLang, err := langPvd.AbstractLanguage(partition)
+		for _, profile := range commit.Profiles() {
+			treeObj, err := m.cospMgr.ReadObject(profile.Tree().String())
+			if err != nil {
+				return fail(err)
+			}
+			tree, err := objects.ConvertObjectToTree(treeObj)
+			if err != nil {
+				return fail(err)
+			}
+
+			for _, entry := range tree.Entries() {
+				codeEntries = append(codeEntries, map[string]any{
+					"partition":        tree.Partition(),
+					"oid":              entry.OID(),
+					"oname":            entry.OName(),
+					"type":             entry.OType(),
+					"code_id":          entry.MetadataString(objects.MetaKeyCodeID),
+					"code_type":        m.resolveCodeTypeID(entry.MetadataUint32(objects.MetaKeyCodeTypeID)),
+					"language":         m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID)),
+					"language_version": m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID)),
+					"language_type":    m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID)),
+				})
+				if _, ok := codeMapIDs[entry.OID()]; !ok {
+					entryObj, err := m.cospMgr.ReadObject(entry.OID())
 					if err != nil {
 						return fail(err)
 					}
-					langCodeBlock, err := absLang.ConvertBytesToHumanLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
+					objInfo, err := m.objMar.ObjectInfo(entryObj)
 					if err != nil {
 						return fail(err)
 					}
-					if _, ok := codeBlocks[partition]; !ok {
-						codeBlocks[partition] = [][]byte{}
+					header := objInfo.Header()
+					if header == nil {
+						return fail(errors.New("cli: object header is nil"))
 					}
-					codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
-				default:
-					return fail(errors.New("cli: invalid class type"))
+					// Skip manifest blobs — they are handled separately above
+					if header.DataType() == objects.DataTypeManifest {
+						continue
+					}
+					classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
+					if err != nil {
+						return fail(err)
+					}
+					switch classType {
+					case types.ClassTypeSchemaID:
+						partition := tree.Partition()
+						if _, ok := schemaBlocks[partition]; !ok {
+							schemaBlocks[partition] = []byte{}
+						}
+						schemaBlocks[partition] = codeBlock
+						continue
+					case types.ClassTypePolicyID:
+						partition := tree.Partition()
+						langID := header.MetadataUint32(objects.MetaKeyLanguageID)
+						langVersionID := header.MetadataUint32(objects.MetaKeyLanguageVersionID)
+						langTypeID := header.MetadataUint32(objects.MetaKeyLanguageTypeID)
+						absLang, err := langPvd.AbstractLanguageByPartition(partition)
+						if err != nil {
+							return fail(err)
+						}
+						langCodeBlock, err := absLang.ConvertBytesToHumanLanguage(nil, langID, langVersionID, langTypeID, codeBlock)
+						if err != nil {
+							return fail(err)
+						}
+						if _, ok := codeBlocks[partition]; !ok {
+							codeBlocks[partition] = [][]byte{}
+						}
+						codeBlocks[partition] = append(codeBlocks[partition], langCodeBlock)
+					default:
+						return fail(errors.New("cli: invalid class type"))
+					}
 				}
 			}
 		}
 		output["code_entries"] = codeEntries
 		for partition, codeBlockItem := range codeBlocks {
-			absLang, err := langPvd.AbstractLanguage(partition)
+			absLang, err := langPvd.AbstractLanguageByPartition(partition)
 			if err != nil {
 				return fail(err)
 			}
@@ -416,7 +423,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			}
 		}
 		for partition, schemaBlockItem := range schemaBlocks {
-			absLang, err := langPvd.AbstractLanguage(partition)
+			absLang, err := langPvd.AbstractLanguageByPartition(partition)
 			if err != nil {
 				return fail(err)
 			}

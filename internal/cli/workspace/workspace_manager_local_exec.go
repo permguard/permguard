@@ -172,7 +172,7 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Starting blobification process.", nil, true)
 	}
-	treeID, _, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
+	profiles, _, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsVerboseTerminalOutput() {
@@ -187,7 +187,9 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 	output = buildOutputForCodeFiles(codeFiles, m, out, output)
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Blobification process completed successfully.", nil, true)
-		out(nil, "refresh", fmt.Sprintf("New tree created with id: %s.", common.IDText(treeID)), nil, true)
+		for _, p := range profiles {
+			out(nil, "refresh", fmt.Sprintf("Profile %s tree created with id: %s.", common.NameText(p.Key()), common.IDText(p.Tree().String())), nil, true)
+		}
 	}
 	if !internal {
 		out(nil, "", "Your workspace has been refreshed.", nil, true)

@@ -20,11 +20,11 @@ package manifest
 type Manifest struct {
 	Metadata Metadata           `json:"metadata" yaml:"metadata"`
 	Runtimes map[string]Runtime `json:"runtimes" yaml:"runtimes"`
-	ZtasApp  []ZtasApp          `json:"ztas_app" yaml:"ztas_app"`
+	Profiles map[string]Profile `json:"profiles" yaml:"profiles"`
 }
 
-// ZtasApp represents a set of business policies with their partitions.
-type ZtasApp struct {
+// Profile represents a named set of partitions.
+type Profile struct {
 	Partitions map[string]Partition `json:"partitions" yaml:"partitions"`
 }
 

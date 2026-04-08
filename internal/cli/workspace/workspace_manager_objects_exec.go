@@ -129,10 +129,10 @@ func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filter
 func (m *Manager) resolveAbstractLanguage(langPvd *ManifestLanguageProvider, header *objects.ObjectHeader) (languages.LanguageAbstraction, error) {
 	partition := header.MetadataString(objects.MetaKeyPartition)
 	if partition != "" {
-		return langPvd.AbstractLanguage(partition)
+		return langPvd.AbstractLanguageByPartition(partition)
 	}
-	for _, p := range langPvd.Partitions() {
-		absLang, err := langPvd.AbstractLanguage(p)
+	for _, pk := range langPvd.ProfileKeys() {
+		absLang, err := langPvd.AbstractLanguage(pk)
 		if err == nil {
 			return absLang, nil
 		}

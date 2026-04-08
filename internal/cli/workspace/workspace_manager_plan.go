@@ -29,57 +29,66 @@ func (m *Manager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeOb
 	return m.cospMgr.CalculateCodeObjectsState(currentCodeObsStates, remoteCodeObsStates)
 }
 
-// buildPlanTree builds the plan tree.
-func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *objects.Object, error) {
-	var err error
-	var tree *objects.Tree
-	partition := "/"
-	if len(plan) > 0 {
-		partition = plan[0].Partition
-	}
-	tree, err = objects.NewTree(partition)
-	if err != nil {
-		return nil, nil, errors.Join(errors.New("cli: tree cannot be created"), err)
-	}
+// buildPlanTrees builds one tree per partition from the plan and returns commit profiles.
+func (m *Manager) buildPlanTrees(plan []cosp.CodeObjectState) ([]objects.CommitProfile, error) {
+	// Group plan items by partition
+	partitionItems := map[string][]cosp.CodeObjectState{}
 	for _, planItem := range plan {
 		if planItem.State == cosp.CodeObjectStateDelete {
 			continue
 		}
-		// Skip manifest entries — they are not tree entries
 		if planItem.DataType == objects.TreeDataTypeManifest {
 			continue
 		}
-		var treeItem *objects.TreeEntry
-		treeItem, err = objects.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.DataType, map[string]any{
-			objects.MetaKeyCodeID:            planItem.CodeID,
-			objects.MetaKeyCodeTypeID:        planItem.CodeTypeID,
-			objects.MetaKeyLanguageID:        planItem.LanguageID,
-			objects.MetaKeyLanguageVersionID: planItem.LanguageVersionID,
-			objects.MetaKeyLanguageTypeID:    planItem.LanguageTypeID,
-		})
+		partitionItems[planItem.Partition] = append(partitionItems[planItem.Partition], planItem)
+	}
+
+	var profiles []objects.CommitProfile
+	for partition, items := range partitionItems {
+		tree, err := objects.NewTree(partition)
 		if err != nil {
-			return nil, nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
+			return nil, errors.Join(errors.New("cli: tree cannot be created"), err)
 		}
-		if err = tree.AddEntry(treeItem); err != nil {
-			return nil, nil, errors.Join(errors.New("cli: tree item cannot be added to the tree because of errors in the code files"), err)
+		for _, planItem := range items {
+			treeItem, err := objects.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.DataType, map[string]any{
+				objects.MetaKeyCodeID:            planItem.CodeID,
+				objects.MetaKeyCodeTypeID:        planItem.CodeTypeID,
+				objects.MetaKeyLanguageID:        planItem.LanguageID,
+				objects.MetaKeyLanguageVersionID: planItem.LanguageVersionID,
+				objects.MetaKeyLanguageTypeID:    planItem.LanguageTypeID,
+			})
+			if err != nil {
+				return nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
+			}
+			if err = tree.AddEntry(treeItem); err != nil {
+				return nil, errors.Join(errors.New("cli: tree item cannot be added to the tree because of errors in the code files"), err)
+			}
 		}
+		treeObj, err := objects.CreateTreeObject(tree)
+		if err != nil {
+			return nil, errors.Join(errors.New("cli: tree object cannot be created"), err)
+		}
+		if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
+			return nil, err
+		}
+		profileKey := "default" + partition
+		cp, err := objects.NewCommitProfile(profileKey, objects.CID(treeObj.OID()))
+		if err != nil {
+			return nil, errors.Join(errors.New("cli: commit profile cannot be created"), err)
+		}
+		profiles = append(profiles, *cp)
 	}
-	var treeObj *objects.Object
-	treeObj, err = objects.CreateTreeObject(tree)
-	if err != nil {
-		return nil, nil, errors.Join(errors.New("cli: tree object cannot be created"), err)
-	}
-	return tree, treeObj, nil
+	return profiles, nil
 }
 
 // buildPlanCommit builds the plan commit.
-// parentCommitID is the string from the ref system; ZeroOID and empty string both mean root commit.
-func (m *Manager) buildPlanCommit(tree string, manifest string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
-	parent := objects.NewNullableString(nil)
-	if parentCommitID != "" && parentCommitID != objects.ZeroOID {
-		parent = objects.NewNullableString(&parentCommitID)
+// predecessorCommitID is the string from the ref system; ZeroOID and empty string both mean root commit.
+func (m *Manager) buildPlanCommit(profiles []objects.CommitProfile, manifest string, predecessorCommitID string) (*objects.Commit, *objects.Object, error) {
+	predecessor := objects.NewNullableString(nil)
+	if predecessorCommitID != "" && predecessorCommitID != objects.ZeroOID {
+		predecessor = objects.NewNullableString(&predecessorCommitID)
 	}
-	commit, err := objects.NewCommit(objects.CID(tree), objects.CID(manifest), parent, "", time.Now(), "", time.Now(), "")
+	commit, err := objects.NewCommit(profiles, objects.CID(manifest), predecessor, "", time.Now(), "", time.Now(), "")
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)
 	}

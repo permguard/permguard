@@ -31,10 +31,16 @@ const (
 	CodeObjectStateDelete = "delete"
 )
 
+// codeProfileConfig represents a single profile entry in the config.
+type codeProfileConfig struct {
+	Key    string `toml:"key"`
+	TreeID string `toml:"treeid"`
+}
+
 // codeStateConfig represents the config of the code state.
 type codeStateConfig struct {
-	TreeID     string `toml:"treeid"`
-	ManifestID string `toml:"manifestid"`
+	Profiles   []codeProfileConfig `toml:"profiles"`
+	ManifestID string              `toml:"manifestid"`
 }
 
 // codeLocalConfig represents the configuration for the code local.

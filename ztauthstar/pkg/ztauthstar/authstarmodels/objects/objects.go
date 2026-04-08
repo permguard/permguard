@@ -282,18 +282,47 @@ func (c *CommitMetaData) CommitterTimestamp() time.Time {
 	return c.committerTimestamp
 }
 
-// Commit represents a commit object.
-type Commit struct {
-	tree     CID
-	manifest CID
-	parent   NullableString
-	metaData CommitMetaData
-	message  string
+// CommitProfile represents a profile entry in a commit, mapping a profile/partition key to a tree.
+type CommitProfile struct {
+	key  string
+	tree CID
 }
 
-// Tree returns the tree of the commit.
-func (c *Commit) Tree() CID {
-	return c.tree
+// NewCommitProfile creates a new commit profile.
+func NewCommitProfile(key string, tree CID) (*CommitProfile, error) {
+	if key == "" {
+		return nil, errors.New("objects: commit profile key is empty")
+	}
+	if !tree.IsValid() {
+		return nil, errors.New("objects: commit profile tree CID is invalid")
+	}
+	return &CommitProfile{key: key, tree: tree}, nil
+}
+
+// Key returns the profile key (e.g. "profilename/partition").
+func (p *CommitProfile) Key() string {
+	return p.key
+}
+
+// Tree returns the tree CID for this profile.
+func (p *CommitProfile) Tree() CID {
+	return p.tree
+}
+
+// Commit represents a commit object.
+type Commit struct {
+	profiles    []CommitProfile
+	manifest    CID
+	predecessor NullableString
+	metaData    CommitMetaData
+	message     string
+}
+
+// Profiles returns the profiles of the commit.
+func (c *Commit) Profiles() []CommitProfile {
+	cp := make([]CommitProfile, len(c.profiles))
+	copy(cp, c.profiles)
+	return cp
 }
 
 // Manifest returns the manifest CID of the commit.
@@ -301,9 +330,9 @@ func (c *Commit) Manifest() CID {
 	return c.manifest
 }
 
-// Parent returns the OID of the parent commit, or nil for the root commit.
-func (c *Commit) Parent() NullableString {
-	return c.parent
+// Predecessor returns the OID of the predecessor commit, or nil for the root commit.
+func (c *Commit) Predecessor() NullableString {
+	return c.predecessor
 }
 
 // MetaData returns the metadata of the commit.
@@ -317,16 +346,21 @@ func (c *Commit) Message() string {
 }
 
 // NewCommit creates a new commit object.
-// parentCommitID is nil for a root commit (no parent).
-func NewCommit(tree CID, manifest CID, parentCommitID NullableString, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
-	if !tree.IsValid() {
-		return nil, errors.New("objects: tree CID is invalid")
+// predecessorCommitID is nil for a root commit (no predecessor).
+func NewCommit(profiles []CommitProfile, manifest CID, predecessorCommitID NullableString, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
+	if len(profiles) == 0 {
+		return nil, errors.New("objects: commit must have at least one profile")
+	}
+	for i := range profiles {
+		if !profiles[i].tree.IsValid() {
+			return nil, fmt.Errorf("objects: profile %q has invalid tree CID", profiles[i].key)
+		}
 	}
 	if !manifest.IsValid() {
 		return nil, errors.New("objects: manifest CID is invalid")
 	}
-	if parentCommitID.Valid && !CID(parentCommitID.String).IsValid() {
-		return nil, errors.New("objects: parent commit CID is invalid")
+	if predecessorCommitID.Valid && !CID(predecessorCommitID.String).IsValid() {
+		return nil, errors.New("objects: predecessor commit CID is invalid")
 	}
 	if authorTimestamp.Equal((time.Time{})) {
 		authorTimestamp = time.Now()
@@ -335,9 +369,9 @@ func NewCommit(tree CID, manifest CID, parentCommitID NullableString, author str
 		committerTimestamp = time.Now()
 	}
 	return &Commit{
-		tree:     tree,
-		manifest: manifest,
-		parent:   parentCommitID,
+		profiles:    profiles,
+		manifest:    manifest,
+		predecessor: predecessorCommitID,
 		metaData: CommitMetaData{
 			author:             author,
 			authorTimestamp:    authorTimestamp,

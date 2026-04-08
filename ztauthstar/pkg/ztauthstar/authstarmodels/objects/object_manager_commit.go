@@ -22,35 +22,48 @@ import (
 	"time"
 )
 
+// cborCommitProfile is the CBOR-serializable representation of a commit profile entry.
+type cborCommitProfile struct {
+	Key  string `cbor:"1,keyasint"`
+	Tree string `cbor:"2,keyasint"`
+}
+
 // cborCommit is the CBOR-serializable representation of a commit.
 type cborCommit struct {
-	Tree               string `cbor:"1,keyasint"`
-	Parent             string `cbor:"2,keyasint"`
-	Author             string `cbor:"3,keyasint"`
-	AuthorTimestamp    int64  `cbor:"4,keyasint"`
-	Committer          string `cbor:"5,keyasint"`
-	CommitterTimestamp int64  `cbor:"6,keyasint"`
-	Message            string `cbor:"7,keyasint"`
-	Manifest           string `cbor:"8,keyasint"`
+	Profiles           []cborCommitProfile `cbor:"1,keyasint"`
+	Predecessor        string              `cbor:"2,keyasint"`
+	Author             string              `cbor:"3,keyasint"`
+	AuthorTimestamp    int64               `cbor:"4,keyasint"`
+	Committer          string              `cbor:"5,keyasint"`
+	CommitterTimestamp int64               `cbor:"6,keyasint"`
+	Message            string              `cbor:"7,keyasint"`
+	Manifest           string              `cbor:"8,keyasint"`
 }
 
 // SerializeCommit serializes a commit object to CBOR.
-// A nil parent is serialized as ZeroOID to maintain wire-format compatibility.
+// A nil predecessor is serialized as ZeroOID to maintain wire-format compatibility.
 func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 	if commit == nil {
 		return nil, errors.New("objects: commit is nil")
 	}
-	parentOID := ZeroOID
-	if commit.parent.Valid {
-		parentOID = commit.parent.String
+	predecessorOID := ZeroOID
+	if commit.predecessor.Valid {
+		predecessorOID = commit.predecessor.String
 	}
 	manifestOID := commit.manifest.String()
 	if manifestOID == "" {
 		manifestOID = ZeroOID
 	}
+	cborProfiles := make([]cborCommitProfile, len(commit.profiles))
+	for i, p := range commit.profiles {
+		cborProfiles[i] = cborCommitProfile{
+			Key:  p.key,
+			Tree: p.tree.String(),
+		}
+	}
 	c := cborCommit{
-		Tree:               commit.tree.String(),
-		Parent:             parentOID,
+		Profiles:           cborProfiles,
+		Predecessor:        predecessorOID,
 		Author:             commit.metaData.author,
 		AuthorTimestamp:    commit.metaData.authorTimestamp.Unix(),
 		Committer:          commit.metaData.committer,
@@ -71,20 +84,27 @@ func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	if err := m.decMode.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("objects: failed to decode commit: %w", err)
 	}
-	var parent NullableString
-	if c.Parent != ZeroOID {
-		parent = NullableString{String: c.Parent, Valid: true}
+	var predecessor NullableString
+	if c.Predecessor != ZeroOID {
+		predecessor = NullableString{String: c.Predecessor, Valid: true}
 	} else {
-		parent = NullableString{Valid: false}
+		predecessor = NullableString{Valid: false}
 	}
 	manifest := CID(c.Manifest)
 	if c.Manifest == "" || c.Manifest == ZeroOID {
 		manifest = CID(ZeroOID)
 	}
+	profiles := make([]CommitProfile, len(c.Profiles))
+	for i, p := range c.Profiles {
+		profiles[i] = CommitProfile{
+			key:  p.Key,
+			tree: CID(p.Tree),
+		}
+	}
 	return &Commit{
-		tree:     CID(c.Tree),
-		manifest: manifest,
-		parent:   parent,
+		profiles:    profiles,
+		manifest:    manifest,
+		predecessor: predecessor,
 		metaData: CommitMetaData{
 			author:             c.Author,
 			authorTimestamp:    time.Unix(c.AuthorTimestamp, 0),
@@ -127,10 +147,10 @@ func (m *ObjectManager) BuildCommitHistory(fromCommitID string, toCommitID strin
 			match = true
 			break
 		}
-		if !commit.Parent().Valid {
+		if !commit.Predecessor().Valid {
 			break
 		}
-		currentID = commit.Parent().String
+		currentID = commit.Predecessor().String
 	}
 	if reverse {
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {

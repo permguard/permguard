@@ -187,30 +187,33 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 		})
 	}
 
-	treeObj, err := s.readObject(ctx, db, zoneID, commit.Tree().String())
-	if err != nil {
-		return nil, err
-	}
-	tree, err := GetObjectForType[objects.Tree](objMng, treeObj)
-	if err != nil {
-		return nil, err
-	}
-	result = append(result, pap.ObjectState{
-		OID:     treeObj.OID(),
-		OType:   objects.ObjectTypeTree,
-		Content: treeObj.Content(),
-	})
-
-	for _, entry := range tree.Entries() {
-		obj, err := s.readObject(ctx, db, zoneID, entry.OID())
+	// Include all profile trees and their blob entries
+	for _, profile := range commit.Profiles() {
+		treeObj, err := s.readObject(ctx, db, zoneID, profile.Tree().String())
+		if err != nil {
+			return nil, err
+		}
+		tree, err := GetObjectForType[objects.Tree](objMng, treeObj)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, pap.ObjectState{
-			OID:     entry.OID(),
-			OType:   entry.OType(),
-			Content: obj.Content(),
+			OID:     treeObj.OID(),
+			OType:   objects.ObjectTypeTree,
+			Content: treeObj.Content(),
 		})
+
+		for _, entry := range tree.Entries() {
+			obj, err := s.readObject(ctx, db, zoneID, entry.OID())
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, pap.ObjectState{
+				OID:     entry.OID(),
+				OType:   entry.OType(),
+				Content: obj.Content(),
+			})
+		}
 	}
 	return result, nil
 }

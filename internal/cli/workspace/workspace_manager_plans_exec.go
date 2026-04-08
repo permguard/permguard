@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
@@ -95,21 +96,24 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote commit.", common.KeywordText(headCtx.Ref())), nil, true)
 		}
 	}
-	var remoteTree *objects.Tree
+	var remoteTrees map[string]*objects.Tree
 	if remoteCommit != nil {
-		remoteTree, err = m.CurrentHeadTree(headCtx.Ref())
+		remoteTrees, err = m.CurrentHeadTrees(headCtx.Ref())
 		if err != nil {
 			if m.ctx.IsVerboseTerminalOutput() {
-				out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", common.KeywordText(headCtx.Ref())), nil, true)
+				out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote trees.", common.KeywordText(headCtx.Ref())), nil, true)
 			}
 		}
 	}
 	var remoteCodeState []cosp.CodeObjectState
-	if remoteTree != nil {
-		remoteCodeState, err = m.cospMgr.BuildCodeSourceCodeStateForTree(remoteTree)
-		if err != nil {
-			out(nil, "", errPlanningProcessFailed, nil, true)
-			return fail(output, err)
+	if remoteTrees != nil {
+		for _, tree := range remoteTrees {
+			treeState, err := m.cospMgr.BuildCodeSourceCodeStateForTree(tree)
+			if err != nil {
+				out(nil, "", errPlanningProcessFailed, nil, true)
+				return fail(output, err)
+			}
+			remoteCodeState = append(remoteCodeState, treeState...)
 		}
 	} else {
 		remoteCodeState = []cosp.CodeObjectState{}
@@ -118,13 +122,9 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 	if remoteCommit != nil {
 		manifestOID := remoteCommit.Manifest().String()
 		if manifestOID != "" && manifestOID != objects.ZeroOID {
-			partition := "/"
-			if remoteTree != nil {
-				partition = remoteTree.Partition()
-			}
 			remoteCodeState = append(remoteCodeState, cosp.CodeObjectState{
 				CodeObject: cosp.CodeObject{
-					Partition: partition,
+					Partition: "/",
 					OName:     "manifest",
 					OType:     objects.ObjectTypeBlob,
 					OID:       manifestOID,
@@ -141,13 +141,9 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 	// Add local manifest to code state so it appears in the plan
 	_, localManifestID, configErr := m.cospMgr.ReadCodeSourceConfig()
 	if configErr == nil && localManifestID != "" && localManifestID != objects.ZeroOID {
-		partition := "/"
-		if len(localCodeState) > 0 {
-			partition = localCodeState[0].Partition
-		}
 		localCodeState = append(localCodeState, cosp.CodeObjectState{
 			CodeObject: cosp.CodeObject{
-				Partition: partition,
+				Partition: "/",
 				OName:     "manifest",
 				OType:     objects.ObjectTypeBlob,
 				OID:       localManifestID,
@@ -186,22 +182,28 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 		}
 		if m.ctx.IsTerminalOutput() {
 			for _, codeStateObj := range codeStateObjs {
-				symbol, nameText := "", codeStateObj.OName
+				symbol := ""
+				var colorFn func(string) string
 				switch codeStateObj.State {
 				case cosp.CodeObjectStateUnchanged:
 					symbol = common.UnchangedText("=")
-					nameText = common.UnchangedText(codeStateObj.OName)
+					colorFn = common.UnchangedText
 				case cosp.CodeObjectStateCreate:
 					symbol = common.CreateText("+")
-					nameText = common.CreateText(codeStateObj.OName)
+					colorFn = common.CreateText
 				case cosp.CodeObjectStateModify:
 					symbol = common.ModifyText("~")
-					nameText = common.ModifyText(codeStateObj.OName)
+					colorFn = common.ModifyText
 				case cosp.CodeObjectStateDelete:
 					symbol = common.DeleteText("-")
-					nameText = common.DeleteText(codeStateObj.OName)
+					colorFn = common.DeleteText
 				}
-				out(nil, "", fmt.Sprintf("  %s %s %s %s", symbol, common.IDText(codeStateObj.Partition), common.IDText(codeStateObj.OID), nameText), nil, true)
+				partName := codeStateObj.Partition
+				if !strings.HasSuffix(partName, "/") {
+					partName += "/"
+				}
+				partName += codeStateObj.OName
+				out(nil, "", fmt.Sprintf("  %s %s %s", symbol, common.IDText(codeStateObj.OID), colorFn(partName)), nil, true)
 			}
 		}
 		out(nil, "", fmt.Sprintf("unchanged %s, created %s, modified %s, deleted %s",
@@ -322,22 +324,20 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 	}
 
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", "Preparing to build the tree.", nil, true)
+		out(nil, "apply", "Preparing to build the trees.", nil, true)
 	}
-	_, treeObj, err := m.buildPlanTree(plan)
+	commitProfiles, err := m.buildPlanTrees(plan)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "apply", "Failed to build the tree.", nil, true)
+			out(nil, "apply", "Failed to build the trees.", nil, true)
 		}
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return fail(output, err)
 	}
-	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
-		out(nil, "", errPlanningProcessFailed, nil, true)
-		return fail(output, err)
-	}
 	if m.ctx.IsVerboseTerminalOutput() {
-		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", common.IDText(treeObj.OID())), nil, true)
+		for _, cp := range commitProfiles {
+			out(nil, "apply", fmt.Sprintf("Profile %s tree created with id: %s.", common.NameText(cp.Key()), common.IDText(cp.Tree().String())), nil, true)
+		}
 	}
 	_, manifestID, err := m.cospMgr.ReadCodeSourceConfig()
 	if err != nil {
@@ -348,7 +348,11 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return fail(output, errors.New("cli: manifest is required for commit but was not found"))
 	}
-	_, commitObj, err := m.buildPlanCommit(treeObj.OID(), manifestID, headCtx.remoteCommitID)
+	if len(commitProfiles) == 0 {
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return fail(output, errors.New("cli: no profiles found in plan"))
+	}
+	_, commitObj, err := m.buildPlanCommit(commitProfiles, manifestID, headCtx.remoteCommitID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)

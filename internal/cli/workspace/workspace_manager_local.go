@@ -47,19 +47,43 @@ func (m *Manager) cleanupLocalArea() (bool, error) {
 	return m.cospMgr.CleanCodeSource()
 }
 
-// scanSourceCodeFiles scans the source code and schema files across all supported partitions.
+// scanSourceCodeFiles scans the source code and schema files across all profile/partitions.
 // It returns two lists: the included files and the ignored files.
 func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp.CodeFile, []cosp.CodeFile, error) {
-	partitions := langPvd.Partitions()
-	if len(partitions) == 0 {
-		return nil, nil, errors.New("cli: no partitions are supported")
+	profileKeys := langPvd.ProfileKeys()
+	if len(profileKeys) == 0 {
+		return nil, nil, errors.New("cli: no profile/partitions are supported")
+	}
+
+	// Collect all partition paths for exclusion logic
+	allPartitions := make([]string, 0, len(profileKeys))
+	for _, pk := range profileKeys {
+		partition, err := langPvd.Partition(pk)
+		if err != nil {
+			return nil, nil, err
+		}
+		allPartitions = append(allPartitions, partition)
 	}
 
 	var scanIncludedFiles, scanIgnoredFiles []cosp.CodeFile
 	workDir := m.ctx.WorkDir()
 
-	for _, partition := range partitions {
-		absLang, err := langPvd.AbstractLanguage(partition)
+	for _, profileKey := range profileKeys {
+		partition, err := langPvd.Partition(profileKey)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Validate that non-root partition directories exist
+		if partition != "/" {
+			partDir := strings.TrimPrefix(partition, "/")
+			exists, _ := m.persMgr.CheckPathIfExists(persistence.WorkspaceDir, partDir)
+			if !exists {
+				return nil, nil, fmt.Errorf("cli: partition %q directory %q does not exist in the workspace", partition, partDir)
+			}
+		}
+
+		absLang, err := langPvd.AbstractLanguage(profileKey)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -67,21 +91,18 @@ func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp
 		codeFileExts := absLang.PolicyFileExtensions()
 		schemaFileNames := absLang.SchemaFileNames()
 
-		ignoredPartitionPaths := []string{}
-		if partition == "/" {
-			for _, subPart := range partitions {
-				if subPart == partition {
-					continue
-				}
-				subPart = strings.TrimPrefix(subPart, "/")
-				ignoredPartitionPaths = append(ignoredPartitionPaths, filepath.Join(".", subPart))
+		// Build list of other partition directories to exclude from results
+		var excludeDirs []string
+		for _, otherPart := range allPartitions {
+			if otherPart == partition || otherPart == "/" {
+				continue
 			}
+			excludeDirs = append(excludeDirs, strings.TrimPrefix(otherPart, "/"))
 		}
 
 		// Scan code files
 		codeIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, schemaFileNames...)
-		codeIgnorePatterns = append(codeIgnorePatterns, ignoredPartitionPaths...)
-		codeIncluded, codeIgnored, err := m.scanByKind(partition, cosp.CodeFileTypeOfCodeType, codeFileExts, codeIgnorePatterns, workDir)
+		codeIncluded, codeIgnored, err := m.scanByKind(partition, cosp.CodeFileTypeOfCodeType, codeFileExts, codeIgnorePatterns, excludeDirs, workDir)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -90,8 +111,7 @@ func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp
 
 		// Scan schema files
 		schemaIgnorePatterns := append([]string{hiddenIgnoreFile, hiddenDir, gitDir, gitIgnoreFile}, codeFileExts...)
-		schemaIgnorePatterns = append(schemaIgnorePatterns, ignoredPartitionPaths...)
-		schemaIncluded, schemaIgnored, err := m.scanByKind(partition, cosp.CodeFileOfSchemaType, schemaFileNames, schemaIgnorePatterns, workDir)
+		schemaIncluded, schemaIgnored, err := m.scanByKind(partition, cosp.CodeFileOfSchemaType, schemaFileNames, schemaIgnorePatterns, excludeDirs, workDir)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -119,11 +139,22 @@ func (m *Manager) scanSourceCodeFiles(langPvd *ManifestLanguageProvider) ([]cosp
 
 // scanByKind scans and filters files of a specific kind (e.g., code or schema) for a given partition.
 // It returns the included files and the ignored files, each annotated with partition and kind.
-func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, workDir string) ([]cosp.CodeFile, []cosp.CodeFile, error) {
+// excludeDirs contains relative directory names to exclude from scanning results (other partition dirs).
+func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePatterns []string, excludeDirs []string, workDir string) ([]cosp.CodeFile, []cosp.CodeFile, error) {
 	partitionPath := filepath.Join(".", strings.TrimPrefix(partition, "/"))
 	includedPaths, ignoredPaths, err := m.persMgr.ScanAndFilterFiles(persistence.WorkspaceDir, partitionPath, extensions, ignorePatterns, hiddenIgnoreFile)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// isExcluded checks if a relative path falls under any excluded directory
+	isExcluded := func(relPath string) bool {
+		for _, dir := range excludeDirs {
+			if strings.HasPrefix(relPath, dir+string(filepath.Separator)) || relPath == dir {
+				return true
+			}
+		}
+		return false
 	}
 
 	var includedFiles, ignoredFiles []cosp.CodeFile
@@ -131,6 +162,9 @@ func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePa
 		relPath, err := filepath.Rel(workDir, absPath)
 		if err != nil {
 			return nil, nil, errors.Join(fmt.Errorf("cli: failed to compute relative path for included file %q", absPath), err)
+		}
+		if isExcluded(relPath) {
+			continue
 		}
 		includedFiles = append(includedFiles, cosp.CodeFile{
 			Partition: partition,
@@ -157,11 +191,11 @@ func (m *Manager) scanByKind(partition string, kind string, extensions, ignorePa
 // blobifyPermSchemaFile processes a Permguard schema file.
 // It enforces that only one schema file is allowed per workspace.
 func (m *Manager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, partition, path, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile, data []byte, file cosp.CodeFile) ([]cosp.CodeFile, error) {
-	absLang, err := langPvd.AbstractLanguage(file.Partition)
+	absLang, err := langPvd.AbstractLanguageByPartition(file.Partition)
 	if err != nil {
 		return nil, err
 	}
-	lang, err := langPvd.Language(file.Partition)
+	lang, err := langPvd.LanguageByPartition(file.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -189,11 +223,11 @@ func (m *Manager) blobifyPermSchemaFile(langPvd *ManifestLanguageProvider, parti
 func (m *Manager) blobifyLanguageFile(langPvd *ManifestLanguageProvider, partition string, path string, data []byte,
 	file cosp.CodeFile, wkdir string, mode uint32, blobifiedCodeFiles []cosp.CodeFile,
 ) ([]cosp.CodeFile, error) {
-	absLang, err := langPvd.AbstractLanguage(file.Partition)
+	absLang, err := langPvd.AbstractLanguageByPartition(file.Partition)
 	if err != nil {
 		return nil, err
 	}
-	lang, err := langPvd.Language(file.Partition)
+	lang, err := langPvd.LanguageByPartition(file.Partition)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +289,7 @@ func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputF
 // It ensures that only one schema file exists per partition and constructs a tree object to represent the structure.
 // Pre-condition: the code source area must be clean before calling this function.
 // Post-condition: on success, the code source area contains all blob objects, the codemap, codestate and tree config.
-func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, string, []cosp.CodeFile, error) {
+func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) ([]objects.CommitProfile, string, []cosp.CodeFile, error) {
 	blobifiedCodeFiles := []cosp.CodeFile{}
 	partitionSchemas := map[string]int{}
 
@@ -269,7 +303,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		var mode uint32
 		data, mode, err = m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
 		if err != nil {
-			return "", "", nil, err
+			return nil, "", nil, err
 		}
 
 		partition := file.Partition
@@ -279,7 +313,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		case cosp.CodeFileTypeOfCodeType:
 			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, partition, path, data, file, wkdir, mode, blobifiedCodeFiles)
 			if err != nil {
-				return "", "", nil, err
+				return nil, "", nil, err
 			}
 		case cosp.CodeFileOfSchemaType:
 			// Ensure only one schema file per partition
@@ -297,25 +331,26 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 			} else {
 				blobifiedCodeFiles, err = m.blobifyPermSchemaFile(langPvd, partition, path, wkdir, mode, blobifiedCodeFiles, data, file)
 				if err != nil {
-					return "", "", nil, err
+					return nil, "", nil, err
 				}
 			}
 		default:
-			return "", "", nil, errors.New("cli: file type is not supported")
+			return nil, "", nil, errors.New("cli: file type is not supported")
 		}
 	}
 
 	// Validate that required schema files are present per partition (only when schema is enabled)
-	for _, partition := range langPvd.Partitions() {
+	for _, profileKey := range langPvd.ProfileKeys() {
+		partition, _ := langPvd.Partition(profileKey)
 		if partitionSchemas[partition] > 0 {
 			continue
 		}
-		if !langPvd.SchemaEnabled(partition) {
+		if !langPvd.SchemaEnabled(profileKey) {
 			continue
 		}
-		absLang, err := langPvd.AbstractLanguage(partition)
+		absLang, err := langPvd.AbstractLanguage(profileKey)
 		if err != nil {
-			return "", "", nil, err
+			return nil, "", nil, err
 		}
 		schemaFileNames := absLang.SchemaFileNames()
 		if len(schemaFileNames) > 0 {
@@ -337,13 +372,13 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	// Save code source map
 	var err error
 	if err = m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
-		return "", "", blobifiedCodeFiles, err
+		return nil, "", blobifiedCodeFiles, err
 	}
 
 	// Abort if any file has errors
 	for _, file := range blobifiedCodeFiles {
 		if file.HasErrors {
-			return "", "", blobifiedCodeFiles, errors.New("cli: blobification process failed due to code file errors")
+			return nil, "", blobifiedCodeFiles, errors.New("cli: blobification process failed due to code file errors")
 		}
 	}
 
@@ -351,88 +386,91 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	var codeObsState []cosp.CodeObjectState
 	codeObsState, err = m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
 	if err != nil {
-		return "", "", blobifiedCodeFiles, err
+		return nil, "", blobifiedCodeFiles, err
 	}
 
-	// Build a tree from object states (policies/schemas only)
-	partition := "/"
-	if len(codeObsState) > 0 {
-		partition = codeObsState[0].Partition
-	}
-	var tree *objects.Tree
-	tree, err = objects.NewTree(partition)
-	if err != nil {
-		return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), err)
-	}
+	// Group code object states by partition and build one tree per partition
+	partitionObjs := map[string][]cosp.CodeObjectState{}
 	for _, obj := range codeObsState {
-		var entry *objects.TreeEntry
-		entry, err = objects.NewTreeEntry(obj.OType, obj.OID, obj.OName, obj.DataType, map[string]any{
-			objects.MetaKeyCodeID:            obj.CodeID,
-			objects.MetaKeyCodeTypeID:        obj.CodeTypeID,
-			objects.MetaKeyLanguageID:        obj.LanguageID,
-			objects.MetaKeyLanguageVersionID: obj.LanguageVersionID,
-			objects.MetaKeyLanguageTypeID:    obj.LanguageTypeID,
-		})
-		if err != nil {
-			return "", "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
-		}
-		if err = tree.AddEntry(entry); err != nil {
-			return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree item cannot be added due to file errors"), err)
-		}
+		partitionObjs[obj.Partition] = append(partitionObjs[obj.Partition], obj)
 	}
 
-	// Create tree object and persist it
-	var treeObj *objects.Object
-	treeObj, err = objects.CreateTreeObject(tree)
-	if err != nil {
-		return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object creation failed"), err)
+	var commitProfiles []objects.CommitProfile
+	for partition, objs := range partitionObjs {
+		tree, treeErr := objects.NewTree(partition)
+		if treeErr != nil {
+			return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), treeErr)
+		}
+		for _, obj := range objs {
+			entry, entryErr := objects.NewTreeEntry(obj.OType, obj.OID, obj.OName, obj.DataType, map[string]any{
+				objects.MetaKeyCodeID:            obj.CodeID,
+				objects.MetaKeyCodeTypeID:        obj.CodeTypeID,
+				objects.MetaKeyLanguageID:        obj.LanguageID,
+				objects.MetaKeyLanguageVersionID: obj.LanguageVersionID,
+				objects.MetaKeyLanguageTypeID:    obj.LanguageTypeID,
+			})
+			if entryErr != nil {
+				return nil, "", nil, errors.Join(errors.New("cli: tree item cannot be created"), entryErr)
+			}
+			if entryErr = tree.AddEntry(entry); entryErr != nil {
+				return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree item cannot be added due to file errors"), entryErr)
+			}
+		}
+		treeObj, treeErr := objects.CreateTreeObject(tree)
+		if treeErr != nil {
+			return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object creation failed"), treeErr)
+		}
+		if _, saveErr := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); saveErr != nil {
+			return nil, "", blobifiedCodeFiles, saveErr
+		}
+		profileKey := "default" + partition
+		cp, cpErr := objects.NewCommitProfile(profileKey, objects.CID(treeObj.OID()))
+		if cpErr != nil {
+			return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: commit profile cannot be created"), cpErr)
+		}
+		commitProfiles = append(commitProfiles, *cp)
 	}
-	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
-		return "", "", blobifiedCodeFiles, err
-	}
-
-	treeID := treeObj.OID()
 
 	// Create manifest blob
 	wsDir := m.persMgr.Path(persistence.WorkspaceDir, "")
 	manifestFileName, manifestFormat, err := azmanifests.DetectManifestFile(wsDir)
 	if err != nil {
-		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to detect manifest file"), err)
+		return commitProfiles, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to detect manifest file"), err)
 	}
 	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifestFileName, false)
 	if err != nil {
-		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to read manifest file"), err)
+		return commitProfiles, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to read manifest file"), err)
 	}
 	manifestHeader, err := objects.NewObjectHeader(objects.DataTypeManifest, map[string]any{
 		objects.MetaKeyFormat: manifestFormat,
 	})
 	if err != nil {
-		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest header"), err)
+		return commitProfiles, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest header"), err)
 	}
 	objMng, err := objects.NewObjectManager()
 	if err != nil {
-		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create object manager"), err)
+		return commitProfiles, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create object manager"), err)
 	}
 	manifestObj, err := objMng.CreateBlobObject(manifestHeader, manifestData)
 	if err != nil {
-		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest blob"), err)
+		return commitProfiles, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest blob"), err)
 	}
 	if _, err := m.cospMgr.SaveCodeSourceObject(manifestObj.OID(), manifestObj.Content()); err != nil {
-		return treeID, "", blobifiedCodeFiles, err
+		return commitProfiles, "", blobifiedCodeFiles, err
 	}
 	manifestID := manifestObj.OID()
 
 	// Save the object state (policies/schemas only — manifest is added dynamically during plan)
 	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
-		return "", "", blobifiedCodeFiles, err
+		return nil, "", blobifiedCodeFiles, err
 	}
 
-	// Save configuration with tree and manifest IDs
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID, manifestID); err != nil {
-		return treeID, manifestID, blobifiedCodeFiles, err
+	// Save configuration with profiles and manifest IDs
+	if err := m.cospMgr.SaveCodeSourceConfig(commitProfiles, manifestID); err != nil {
+		return commitProfiles, manifestID, blobifiedCodeFiles, err
 	}
 
-	return treeID, manifestID, blobifiedCodeFiles, nil
+	return commitProfiles, manifestID, blobifiedCodeFiles, nil
 }
 
 // retrieveCodeMap loads the code map and separates valid and invalid files.
@@ -445,14 +483,16 @@ func (m *Manager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, error) {
 
 	validFiles := []cosp.CodeFile{}
 	invalidFiles := []cosp.CodeFile{}
+	// Count names per partition to allow same name in different partitions
 	nameCount := make(map[string]int)
 
-	// First pass: count names and collect explicit errors
+	// First pass: count names per partition and collect explicit errors
 	for _, file := range codeFiles {
 		if file.HasErrors {
 			invalidFiles = append(invalidFiles, file)
 		} else {
-			nameCount[file.OName]++
+			key := file.Partition + "\x00" + file.OName
+			nameCount[key]++
 		}
 	}
 
@@ -462,8 +502,9 @@ func (m *Manager) retrieveCodeMap() ([]cosp.CodeFile, []cosp.CodeFile, error) {
 			continue // already added to invalidFiles
 		}
 
-		if nameCount[file.OName] > 1 {
-			// Duplicate object name found
+		key := file.Partition + "\x00" + file.OName
+		if nameCount[key] > 1 {
+			// Duplicate object name found within the same partition
 			file.HasErrors = true
 			file.Error = "language: duplicate object name found in the code files. please ensure that there are no duplicate object names"
 			invalidFiles = append(invalidFiles, file)
