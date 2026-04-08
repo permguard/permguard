@@ -70,12 +70,12 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 
 // buildPlanCommit builds the plan commit.
 // parentCommitID is the string from the ref system; ZeroOID and empty string both mean root commit.
-func (m *Manager) buildPlanCommit(tree string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
+func (m *Manager) buildPlanCommit(tree string, manifest string, parentCommitID string) (*objects.Commit, *objects.Object, error) {
 	parent := objects.NewNullableString(nil)
 	if parentCommitID != "" && parentCommitID != objects.ZeroOID {
 		parent = objects.NewNullableString(&parentCommitID)
 	}
-	commit, err := objects.NewCommit(objects.CID(tree), parent, "", time.Now(), "", time.Now(), "")
+	commit, err := objects.NewCommit(objects.CID(tree), objects.CID(manifest), parent, "", time.Now(), "", time.Now(), "")
 	if err != nil {
 		return nil, nil, errors.Join(errors.New("cli: commit cannot be created"), err)
 	}

@@ -290,7 +290,16 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", fmt.Sprintf("The tree has been created with id: %s.", common.IDText(treeObj.OID())), nil, true)
 	}
-	_, commitObj, err := m.buildPlanCommit(treeObj.OID(), headCtx.remoteCommitID)
+	_, manifestID, err := m.cospMgr.ReadCodeSourceConfig()
+	if err != nil {
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return fail(output, err)
+	}
+	if manifestID == "" || manifestID == objects.ZeroOID {
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return fail(output, errors.New("cli: manifest is required for commit but was not found"))
+	}
+	_, commitObj, err := m.buildPlanCommit(treeObj.OID(), manifestID, headCtx.remoteCommitID)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the commit.", nil, true)

@@ -40,8 +40,8 @@ const (
 
 	// DataTypeUnknown represents an unknown data type.
 	DataTypeUnknown uint32 = 0
-	// DataTypeConfig represents a configuration data type.
-	DataTypeConfig uint32 = 1
+	// DataTypeManifest represents a manifest data type.
+	DataTypeManifest uint32 = 1
 	// DataTypeAbstractTree represents an abstract/parsed representation of the content.
 	DataTypeAbstractTree uint32 = 2
 	// DataTypeSourceLanguage represents source code in the policy language.
@@ -66,6 +66,8 @@ const (
 	MetaKeyCodeID = "code-id"
 	// MetaKeyCodeTypeID is the metadata key for the code type ID.
 	MetaKeyCodeTypeID = "code-type-id"
+	// MetaKeyFormat is the metadata key for the content format.
+	MetaKeyFormat = "format"
 )
 
 // DataTypeName returns the display name for a content kind ID.
@@ -74,8 +76,8 @@ func DataTypeName(id uint32) string {
 	switch id {
 	case DataTypeUnknown:
 		return "unknown"
-	case DataTypeConfig:
-		return "config"
+	case DataTypeManifest:
+		return "manifest"
 	case DataTypeAbstractTree:
 		return "ast"
 	case DataTypeSourceLanguage:
@@ -283,6 +285,7 @@ func (c *CommitMetaData) CommitterTimestamp() time.Time {
 // Commit represents a commit object.
 type Commit struct {
 	tree     CID
+	manifest CID
 	parent   NullableString
 	metaData CommitMetaData
 	message  string
@@ -291,6 +294,11 @@ type Commit struct {
 // Tree returns the tree of the commit.
 func (c *Commit) Tree() CID {
 	return c.tree
+}
+
+// Manifest returns the manifest CID of the commit.
+func (c *Commit) Manifest() CID {
+	return c.manifest
 }
 
 // Parent returns the OID of the parent commit, or nil for the root commit.
@@ -310,9 +318,12 @@ func (c *Commit) Message() string {
 
 // NewCommit creates a new commit object.
 // parentCommitID is nil for a root commit (no parent).
-func NewCommit(tree CID, parentCommitID NullableString, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
+func NewCommit(tree CID, manifest CID, parentCommitID NullableString, author string, authorTimestamp time.Time, committer string, committerTimestamp time.Time, message string) (*Commit, error) {
 	if !tree.IsValid() {
 		return nil, errors.New("objects: tree CID is invalid")
+	}
+	if !manifest.IsValid() {
+		return nil, errors.New("objects: manifest CID is invalid")
 	}
 	if parentCommitID.Valid && !CID(parentCommitID.String).IsValid() {
 		return nil, errors.New("objects: parent commit CID is invalid")
@@ -324,8 +335,9 @@ func NewCommit(tree CID, parentCommitID NullableString, author string, authorTim
 		committerTimestamp = time.Now()
 	}
 	return &Commit{
-		tree:   tree,
-		parent: parentCommitID,
+		tree:     tree,
+		manifest: manifest,
+		parent:   parentCommitID,
 		metaData: CommitMetaData{
 			author:             author,
 			authorTimestamp:    authorTimestamp,

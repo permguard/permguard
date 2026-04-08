@@ -25,6 +25,7 @@ import (
 	"github.com/permguard/permguard/internal/cli/workspace/cosp"
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 )
 
@@ -254,7 +255,7 @@ func (m *Manager) buildCodeFileFromSection(secObj *objects.SectionObject, inputF
 // It ensures that only one schema file exists per partition and constructs a tree object to represent the structure.
 // Pre-condition: the code source area must be clean before calling this function.
 // Post-condition: on success, the code source area contains all blob objects, the codemap, codestate and tree config.
-func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, []cosp.CodeFile, error) {
+func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLanguageProvider) (string, string, []cosp.CodeFile, error) {
 	blobifiedCodeFiles := []cosp.CodeFile{}
 	partitionSchemas := map[string]int{}
 
@@ -268,7 +269,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		var mode uint32
 		data, mode, err = m.persMgr.ReadFile(persistence.WorkspaceDir, path, false)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 
 		partition := file.Partition
@@ -278,7 +279,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		case cosp.CodeFileTypeOfCodeType:
 			blobifiedCodeFiles, err = m.blobifyLanguageFile(langPvd, partition, path, data, file, wkdir, mode, blobifiedCodeFiles)
 			if err != nil {
-				return "", nil, err
+				return "", "", nil, err
 			}
 		case cosp.CodeFileOfSchemaType:
 			// Ensure only one schema file per partition
@@ -296,11 +297,11 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 			} else {
 				blobifiedCodeFiles, err = m.blobifyPermSchemaFile(langPvd, partition, path, wkdir, mode, blobifiedCodeFiles, data, file)
 				if err != nil {
-					return "", nil, err
+					return "", "", nil, err
 				}
 			}
 		default:
-			return "", nil, errors.New("cli: file type is not supported")
+			return "", "", nil, errors.New("cli: file type is not supported")
 		}
 	}
 
@@ -311,7 +312,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		}
 		absLang, err := langPvd.AbstractLanguage(partition)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		schemaFileNames := absLang.SchemaFileNames()
 		if len(schemaFileNames) > 0 {
@@ -333,13 +334,13 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	// Save code source map
 	var err error
 	if err = m.cospMgr.SaveCodeSourceCodeMap(blobifiedCodeFiles); err != nil {
-		return "", blobifiedCodeFiles, err
+		return "", "", blobifiedCodeFiles, err
 	}
 
 	// Abort if any file has errors
 	for _, file := range blobifiedCodeFiles {
 		if file.HasErrors {
-			return "", blobifiedCodeFiles, errors.New("cli: blobification process failed due to code file errors")
+			return "", "", blobifiedCodeFiles, errors.New("cli: blobification process failed due to code file errors")
 		}
 	}
 
@@ -347,12 +348,12 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	var codeObsState []cosp.CodeObjectState
 	codeObsState, err = m.cospMgr.ConvertCodeFilesToCodeObjectStates(blobifiedCodeFiles)
 	if err != nil {
-		return "", blobifiedCodeFiles, err
+		return "", "", blobifiedCodeFiles, err
 	}
 
 	// Save the object state
 	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
-		return "", blobifiedCodeFiles, err
+		return "", "", blobifiedCodeFiles, err
 	}
 
 	// Build a tree from object states
@@ -363,7 +364,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	var tree *objects.Tree
 	tree, err = objects.NewTree(partition)
 	if err != nil {
-		return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), err)
+		return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object cannot be created"), err)
 	}
 	for _, obj := range codeObsState {
 		var entry *objects.TreeEntry
@@ -375,10 +376,10 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 			objects.MetaKeyLanguageTypeID:    obj.LanguageTypeID,
 		})
 		if err != nil {
-			return "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
+			return "", "", nil, errors.Join(errors.New("cli: tree item cannot be created"), err)
 		}
 		if err = tree.AddEntry(entry); err != nil {
-			return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree item cannot be added due to file errors"), err)
+			return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree item cannot be added due to file errors"), err)
 		}
 	}
 
@@ -386,19 +387,44 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	var treeObj *objects.Object
 	treeObj, err = objects.CreateTreeObject(tree)
 	if err != nil {
-		return "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object creation failed"), err)
+		return "", "", blobifiedCodeFiles, errors.Join(errors.New("cli: tree object creation failed"), err)
 	}
 	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
-		return "", blobifiedCodeFiles, err
+		return "", "", blobifiedCodeFiles, err
 	}
 
-	// Save tree configuration
 	treeID := treeObj.OID()
-	if err := m.cospMgr.SaveCodeSourceConfig(treeID); err != nil {
-		return treeID, blobifiedCodeFiles, err
+
+	// Create manifest blob
+	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, false)
+	if err != nil {
+		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to read manifest file"), err)
+	}
+	manifestHeader, err := objects.NewObjectHeader(objects.DataTypeManifest, map[string]any{
+		objects.MetaKeyFormat: "json",
+	})
+	if err != nil {
+		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest header"), err)
+	}
+	objMng, err := objects.NewObjectManager()
+	if err != nil {
+		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create object manager"), err)
+	}
+	manifestObj, err := objMng.CreateBlobObject(manifestHeader, manifestData)
+	if err != nil {
+		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest blob"), err)
+	}
+	if _, err := m.cospMgr.SaveCodeSourceObject(manifestObj.OID(), manifestObj.Content()); err != nil {
+		return treeID, "", blobifiedCodeFiles, err
+	}
+	manifestID := manifestObj.OID()
+
+	// Save configuration with tree and manifest IDs
+	if err := m.cospMgr.SaveCodeSourceConfig(treeID, manifestID); err != nil {
+		return treeID, manifestID, blobifiedCodeFiles, err
 	}
 
-	return treeID, blobifiedCodeFiles, nil
+	return treeID, manifestID, blobifiedCodeFiles, nil
 }
 
 // retrieveCodeMap loads the code map and separates valid and invalid files.

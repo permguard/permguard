@@ -109,12 +109,15 @@ func (m *Manager) commitString(oid string, commit *objects.Commit) (string, erro
 	output := fmt.Sprintf(
 		"%s %s:\n"+
 			"  - %s: %s\n"+
+			"  - %s: %s\n"+
 			"  - Committer date: %s\n"+
 			"  - Author date: %s",
 		common.KeywordText("commit"),
 		common.IDText(oid),
 		common.KeywordText("tree"),
 		common.IDText(tree.String()),
+		common.KeywordText("manifest"),
+		common.IDText(commit.Manifest().String()),
 		common.DateText(committerTimestamp),
 		common.DateText(authorTimestamp),
 	)
@@ -131,6 +134,7 @@ func (m *Manager) commitMap(oid string, commit *objects.Commit) (map[string]any,
 	output["oid"] = oid
 	output["parent"] = derefParent(commit.Parent())
 	output["tree"] = commit.Tree().String()
+	output["manifest"] = commit.Manifest().String()
 	output["message"] = commit.Message()
 
 	metdata := commit.MetaData()
@@ -348,9 +352,10 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 	}
 
 	meta := commit.MetaData()
-	headers := []string{"TREE", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
+	headers := []string{"TREE", "MANIFEST", "PARENT", "AUTHOR", "AUTHOR-TS", "COMMITTER", "COMMITTER-TS", "MESSAGE"}
 	dataRow := []string{
 		commit.Tree().String(),
+		commit.Manifest().String(),
 		derefParent(commit.Parent()),
 		meta.Author(),
 		meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
@@ -361,6 +366,7 @@ func (m *Manager) commitTableString(oid string, commit *objects.Commit, sizeByte
 	widths := columnWidths(headers, [][]string{dataRow})
 
 	colorFns := []func(string) string{
+		common.IDText,
 		common.IDText,
 		common.IDText,
 		common.NameText,
@@ -395,9 +401,21 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 	dataRows := make([][]string, 0, 1+len(entries))
 	dataRows = append(dataRows, selfRow)
 	for _, e := range entries {
-		langVer := m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID))
-		if e.MetadataUint32(objects.MetaKeyLanguageVersionID) == 0 {
-			langVer = ""
+		codeType := ""
+		if e.MetadataUint32(objects.MetaKeyCodeTypeID) != 0 {
+			codeType = m.resolveCodeTypeID(e.MetadataUint32(objects.MetaKeyCodeTypeID))
+		}
+		lang := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageID) != 0 {
+			lang = m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID))
+		}
+		langVer := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageVersionID) != 0 {
+			langVer = m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		}
+		langType := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageTypeID) != 0 {
+			langType = m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID))
 		}
 		dataRows = append(dataRows, []string{
 			e.OType(),
@@ -405,10 +423,10 @@ func (m *Manager) treeTableString(oid string, tree *objects.Tree, sizeBytes int)
 			e.OID(),
 			e.OName(),
 			e.MetadataString(objects.MetaKeyCodeID),
-			m.resolveCodeTypeID(e.MetadataUint32(objects.MetaKeyCodeTypeID)),
-			m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID)),
+			codeType,
+			lang,
 			langVer,
-			m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID)),
+			langType,
 		})
 	}
 
@@ -443,6 +461,7 @@ func (m *Manager) commitInspectMap(_ string, commit *objects.Commit) (map[string
 	meta := commit.MetaData()
 	return map[string]any{
 		"tree":                commit.Tree().String(),
+		"manifest":            commit.Manifest().String(),
 		"parent":              derefParent(commit.Parent()),
 		"author":              meta.Author(),
 		"author_timestamp":    meta.AuthorTimestamp().UTC().Format("2006-01-02T15:04:05Z"),
@@ -486,7 +505,8 @@ func (m *Manager) treeInspectMap(oid string, tree *objects.Tree) (map[string]any
 }
 
 // blobInspectMap returns all CBOR fields of a blob as a map for JSON output.
-// The "data" field contains the raw blob bytes encoded as base64.
+// The layout varies by data type: manifest blobs show only data type info,
+// while code blobs include both raw IDs and resolved text names.
 func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, error) {
 	header := objInfo.Header()
 	if header == nil {
@@ -499,41 +519,67 @@ func (m *Manager) blobInspectMap(objInfo objects.ObjectInfo) (map[string]any, er
 		"metadata":       header.Metadata(),
 		"data":           base64.StdEncoding.EncodeToString(data),
 	}
+	if header.DataType() != objects.DataTypeManifest {
+		result["code_id"] = header.MetadataString(objects.MetaKeyCodeID)
+		result["code_type_id"] = header.MetadataUint32(objects.MetaKeyCodeTypeID)
+		result["code_type"] = m.resolveCodeTypeID(header.MetadataUint32(objects.MetaKeyCodeTypeID))
+		result["language_id"] = header.MetadataUint32(objects.MetaKeyLanguageID)
+		result["language"] = m.resolveLanguageID(header.MetadataUint32(objects.MetaKeyLanguageID))
+		result["language_version_id"] = header.MetadataUint32(objects.MetaKeyLanguageVersionID)
+		result["language_version"] = m.resolveLanguageVersionID(header.MetadataUint32(objects.MetaKeyLanguageID), header.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		result["language_type_id"] = header.MetadataUint32(objects.MetaKeyLanguageTypeID)
+		result["language_type"] = m.resolveLanguageTypeID(header.MetadataUint32(objects.MetaKeyLanguageTypeID))
+	}
 	return result, nil
 }
 
 // blobTableString formats a blob object as an aligned inspect table with resolved names only.
-// Columns: PROFILE | PARTITION | DATA-TYPE | LANGUAGE | LANG-VERSION | LANG-TYPE | CODE-TYPE | CODE-ID | DATA (base64)
+// The layout varies by data type: manifest blobs show only DATA-TYPE, while code blobs
+// show the full set of code-related columns.
 func (m *Manager) blobTableString(objInfo objects.ObjectInfo, sizeBytes int) (string, error) {
 	header := objInfo.Header()
 	if header == nil {
 		return "", errors.New("cli: blob header is nil")
 	}
 
-	langVer := m.resolveLanguageVersionID(header.MetadataUint32(objects.MetaKeyLanguageID), header.MetadataUint32(objects.MetaKeyLanguageVersionID))
-	if header.MetadataUint32(objects.MetaKeyLanguageVersionID) == 0 {
-		langVer = ""
+	var headers []string
+	var dataRow []string
+	var colorFns []func(string) string
+
+	switch header.DataType() {
+	case objects.DataTypeManifest:
+		headers = []string{"DATA-TYPE"}
+		dataRow = []string{
+			objects.DataTypeName(header.DataType()),
+		}
+		colorFns = []func(string) string{
+			common.KeywordText,
+		}
+	default:
+		langVer := m.resolveLanguageVersionID(header.MetadataUint32(objects.MetaKeyLanguageID), header.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		if header.MetadataUint32(objects.MetaKeyLanguageVersionID) == 0 {
+			langVer = ""
+		}
+		headers = []string{"DATA-TYPE", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
+		dataRow = []string{
+			objects.DataTypeName(header.DataType()),
+			header.MetadataString(objects.MetaKeyCodeID),
+			m.resolveCodeTypeID(header.MetadataUint32(objects.MetaKeyCodeTypeID)),
+			m.resolveLanguageID(header.MetadataUint32(objects.MetaKeyLanguageID)),
+			langVer,
+			m.resolveLanguageTypeID(header.MetadataUint32(objects.MetaKeyLanguageTypeID)),
+		}
+		colorFns = []func(string) string{
+			common.KeywordText,
+			common.NameText,
+			common.KeywordText,
+			common.LanguageText,
+			common.LanguageText,
+			common.LanguageKeywordText,
+		}
 	}
 
-	headers := []string{"DATA-TYPE", "CODE-ID", "CODE-TYPE", "LANGUAGE", "LANG-VERSION", "LANG-TYPE"}
-	dataRow := []string{
-		objects.DataTypeName(header.DataType()),
-		header.MetadataString(objects.MetaKeyCodeID),
-		m.resolveCodeTypeID(header.MetadataUint32(objects.MetaKeyCodeTypeID)),
-		m.resolveLanguageID(header.MetadataUint32(objects.MetaKeyLanguageID)),
-		langVer,
-		m.resolveLanguageTypeID(header.MetadataUint32(objects.MetaKeyLanguageTypeID)),
-	}
 	widths := columnWidths(headers, [][]string{dataRow})
-
-	colorFns := []func(string) string{
-		common.KeywordText,
-		common.NameText,
-		common.KeywordText,
-		common.LanguageText,
-		common.LanguageText,
-		common.LanguageKeywordText,
-	}
 
 	var sb strings.Builder
 	sb.WriteString(m.objectInspectHeader(objInfo.OID(), "blob", sizeBytes))

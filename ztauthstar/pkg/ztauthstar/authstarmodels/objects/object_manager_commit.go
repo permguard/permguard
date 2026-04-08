@@ -31,6 +31,7 @@ type cborCommit struct {
 	Committer          string `cbor:"5,keyasint"`
 	CommitterTimestamp int64  `cbor:"6,keyasint"`
 	Message            string `cbor:"7,keyasint"`
+	Manifest           string `cbor:"8,keyasint"`
 }
 
 // SerializeCommit serializes a commit object to CBOR.
@@ -43,6 +44,10 @@ func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 	if commit.parent.Valid {
 		parentOID = commit.parent.String
 	}
+	manifestOID := commit.manifest.String()
+	if manifestOID == "" {
+		manifestOID = ZeroOID
+	}
 	c := cborCommit{
 		Tree:               commit.tree.String(),
 		Parent:             parentOID,
@@ -51,6 +56,7 @@ func (m *ObjectManager) SerializeCommit(commit *Commit) ([]byte, error) {
 		Committer:          commit.metaData.committer,
 		CommitterTimestamp: commit.metaData.committerTimestamp.Unix(),
 		Message:            commit.message,
+		Manifest:           manifestOID,
 	}
 	return m.encMode.Marshal(c)
 }
@@ -71,9 +77,14 @@ func (m *ObjectManager) DeserializeCommit(data []byte) (*Commit, error) {
 	} else {
 		parent = NullableString{Valid: false}
 	}
+	manifest := CID(c.Manifest)
+	if c.Manifest == "" || c.Manifest == ZeroOID {
+		manifest = CID(ZeroOID)
+	}
 	return &Commit{
-		tree:   CID(c.Tree),
-		parent: parent,
+		tree:     CID(c.Tree),
+		manifest: manifest,
+		parent:   parent,
 		metaData: CommitMetaData{
 			author:             c.Author,
 			authorTimestamp:    time.Unix(c.AuthorTimestamp, 0),

@@ -43,6 +43,25 @@ func (m *Manager) collectObjectsForCommit(isCode bool, commitObj *objects.Object
 		Content: commitObj.Content(),
 	}}
 
+	// Include manifest blob if present
+	manifestOID := commit.Manifest().String()
+	if manifestOID != "" && manifestOID != objects.ZeroOID {
+		var manifestObj *objects.Object
+		if isCode {
+			manifestObj, err = m.cospMgr.ReadCodeSourceObject(manifestOID)
+		} else {
+			manifestObj, err = m.cospMgr.ReadObject(manifestOID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, pap.ObjectState{
+			OID:     manifestObj.OID(),
+			OType:   objects.ObjectTypeBlob,
+			Content: manifestObj.Content(),
+		})
+	}
+
 	var treeObj *objects.Object
 	if isCode {
 		treeObj, err = m.cospMgr.ReadCodeSourceObject(commit.Tree().String())

@@ -18,9 +18,12 @@ package workspace
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/permguard/permguard/internal/cli/common"
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
@@ -120,6 +123,35 @@ func (m *Manager) ExecObjects(includeStorage, includeCode, filterCommits, filter
 	return output, nil
 }
 
+// resolveAbstractLanguage tries to find the language abstraction for a blob header.
+// It first checks the partition metadata, then falls back to trying all partitions.
+func (m *Manager) resolveAbstractLanguage(langPvd *ManifestLanguageProvider, header *objects.ObjectHeader) (languages.LanguageAbstraction, error) {
+	partition := header.MetadataString(objects.MetaKeyPartition)
+	if partition != "" {
+		return langPvd.AbstractLanguage(partition)
+	}
+	for _, p := range langPvd.Partitions() {
+		absLang, err := langPvd.AbstractLanguage(p)
+		if err == nil {
+			return absLang, nil
+		}
+	}
+	return nil, errors.New("cli: no matching partition found for blob")
+}
+
+// convertManifestToYAML converts JSON manifest bytes to YAML.
+func convertManifestToYAML(data []byte) ([]byte, error) {
+	var raw any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("cli: failed to parse manifest JSON: %w", err)
+	}
+	out, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("cli: failed to convert manifest to YAML: %w", err)
+	}
+	return out, nil
+}
+
 // execPrintObjectContent prints the object content in human-readable form,
 // optionally converting blob data to a human-readable format.
 func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid string, objInfo objects.ObjectInfo, showHuman bool, out common.PrinterOutFunc) error {
@@ -147,12 +179,12 @@ func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid 
 				return errors.New("cli: object header is nil")
 			}
 
-			if header.DataType() == objects.DataTypeAbstractTree {
-				absLang, err := langPvd.AbstractLanguage(header.MetadataString(objects.MetaKeyPartition))
+			switch header.DataType() {
+			case objects.DataTypeAbstractTree:
+				absLang, err := m.resolveAbstractLanguage(langPvd, header)
 				if err != nil {
 					return err
 				}
-
 				instanceBytes, err = absLang.ConvertBytesToHumanLanguage(
 					nil,
 					header.MetadataUint32(objects.MetaKeyLanguageID),
@@ -163,6 +195,12 @@ func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid 
 				if err != nil {
 					return err
 				}
+			case objects.DataTypeManifest:
+				yamlBytes, err := convertManifestToYAML(instance)
+				if err != nil {
+					return err
+				}
+				instanceBytes = yamlBytes
 			}
 		}
 
@@ -236,13 +274,13 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 				return errors.New("cli: object header is nil")
 			}
 
-			if header.DataType() == objects.DataTypeAbstractTree {
+			switch header.DataType() {
+			case objects.DataTypeAbstractTree:
 				var absLang languages.LanguageAbstraction
-				absLang, err = langPvd.AbstractLanguage(header.MetadataString(objects.MetaKeyPartition))
+				absLang, err = m.resolveAbstractLanguage(langPvd, header)
 				if err != nil {
 					return err
 				}
-
 				instanceBytes, err = absLang.ConvertBytesToHumanLanguage(
 					nil,
 					header.MetadataUint32(objects.MetaKeyLanguageID),
@@ -250,6 +288,11 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 					header.MetadataUint32(objects.MetaKeyLanguageTypeID),
 					instance,
 				)
+				if err != nil {
+					return err
+				}
+			case objects.DataTypeManifest:
+				instanceBytes, err = convertManifestToYAML(instance)
 				if err != nil {
 					return err
 				}

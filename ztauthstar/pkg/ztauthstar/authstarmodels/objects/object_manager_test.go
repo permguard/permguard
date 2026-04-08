@@ -30,8 +30,9 @@ func TestObjectManager(t *testing.T) {
 	t.Run("Test CreateCommitObject and GetObjectInfo", func(t *testing.T) {
 		assert := assert.New(t)
 		commit := &Commit{
-			tree:   CID("bafyrei3b18e17a0e8664d3dffab99ebf6d730ddc6e8649aaaaaaaaaaaaaaaaaa"),
-			parent: NullableString{String: "bafyreia1b2c3d4e5f678901234567890abcdef12345678aaaaaaaaaaaaaaaaaaa", Valid: true},
+			tree:     CID("bafyrei3b18e17a0e8664d3dffab99ebf6d730ddc6e8649aaaaaaaaaaaaaaaaaa"),
+			manifest: CID("bafyrei4c29f28b1e9775e4ccab10aef7e841dde7f9760aaaaaaaaaaaaaaaaaa"),
+			parent:   NullableString{String: "bafyreia1b2c3d4e5f678901234567890abcdef12345678aaaaaaaaaaaaaaaaaaa", Valid: true},
 			metaData: CommitMetaData{
 				author:             "Nicola Gallo",
 				authorTimestamp:    time.Unix(1628704800, 0),
@@ -56,6 +57,7 @@ func TestObjectManager(t *testing.T) {
 		// Cast to commit and validate fields
 		retrievedCommit := objectInfo.instance.(*Commit)
 		assert.Equal(commit.tree, retrievedCommit.tree, "Tree mismatch")
+		assert.Equal(commit.manifest, retrievedCommit.manifest, "Manifest mismatch")
 		assert.Equal(commit.parent, retrievedCommit.parent, "Parents mismatch")
 		assert.Equal(commit.metaData.author, retrievedCommit.metaData.author, "Author mismatch")
 		assert.Equal(commit.metaData.authorTimestamp.Unix(), retrievedCommit.metaData.authorTimestamp.Unix(), "Author timestamp mismatch")

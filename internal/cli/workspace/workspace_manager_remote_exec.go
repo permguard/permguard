@@ -26,6 +26,7 @@ import (
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/internal/cli/workspace/logs"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/authz/languages/types"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
 
 	"github.com/permguard/permguard/internal/cli/workspace/persistence"
@@ -271,6 +272,27 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		commit, err := objects.ConvertObjectToCommit(commitObj)
 		if err != nil {
 			return fail(err)
+		}
+
+		// Extract manifest.json from manifest blob
+		manifestOID := commit.Manifest().String()
+		if manifestOID == "" || manifestOID == objects.ZeroOID {
+			return fail(errors.New("cli: manifest is missing from the remote commit"))
+		}
+		manifestObj, err := m.cospMgr.ReadObject(manifestOID)
+		if err != nil {
+			return fail(errors.Join(errors.New("cli: failed to read manifest blob from remote"), err))
+		}
+		manifestInfo, err := m.objMar.ObjectInfo(manifestObj)
+		if err != nil {
+			return fail(err)
+		}
+		manifestData, ok := manifestInfo.Instance().([]byte)
+		if !ok {
+			return fail(errors.New("cli: manifest blob content is invalid"))
+		}
+		if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false); err != nil {
+			return fail(errors.Join(errors.New("cli: failed to write manifest.json"), err))
 		}
 
 		treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())

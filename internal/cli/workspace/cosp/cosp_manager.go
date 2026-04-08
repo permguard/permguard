@@ -167,14 +167,29 @@ func (m *Manager) saveConfig(name string, override bool, cfg any) error {
 }
 
 // SaveCodeSourceConfig saves the code source config file.
-func (m *Manager) SaveCodeSourceConfig(treeID string) error {
+func (m *Manager) SaveCodeSourceConfig(treeID, manifestID string) error {
 	config := &codeLocalConfig{
 		CodeState: codeStateConfig{
-			TreeID: treeID,
+			TreeID:     treeID,
+			ManifestID: manifestID,
 		},
 	}
 	file := m.codeSourceConfigFile()
 	return m.saveConfig(file, true, config)
+}
+
+// ReadCodeSourceConfig reads the code source config file.
+func (m *Manager) ReadCodeSourceConfig() (string, string, error) {
+	file := m.codeSourceConfigFile()
+	data, _, err := m.persMgr.ReadFile(persistence.PermguardDir, file, false)
+	if err != nil {
+		return "", "", errors.Join(errors.New("cli: failed to read code source config"), err)
+	}
+	var config codeLocalConfig
+	if err := toml.Unmarshal(data, &config); err != nil {
+		return "", "", errors.Join(errors.New("cli: failed to unmarshal code source config"), err)
+	}
+	return config.CodeState.TreeID, config.CodeState.ManifestID, nil
 }
 
 // SaveCodeSourceCodeMap saves the code map in the code source.

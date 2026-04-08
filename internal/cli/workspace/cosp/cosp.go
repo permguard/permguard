@@ -33,7 +33,8 @@ const (
 
 // codeStateConfig represents the config of the code state.
 type codeStateConfig struct {
-	TreeID string `toml:"treeid"`
+	TreeID     string `toml:"treeid"`
+	ManifestID string `toml:"manifestid"`
 }
 
 // codeLocalConfig represents the configuration for the code local.

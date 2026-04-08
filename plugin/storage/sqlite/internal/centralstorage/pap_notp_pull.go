@@ -173,6 +173,20 @@ func (s SQLiteCentralStoragePAP) collectObjectsForCommit(ctx context.Context, zo
 		Content: commitObj.Content(),
 	})
 
+	// Include manifest blob if present
+	manifestOID := commit.Manifest().String()
+	if manifestOID != "" && manifestOID != objects.ZeroOID {
+		manifestObj, err := s.readObject(ctx, db, zoneID, manifestOID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, pap.ObjectState{
+			OID:     manifestObj.OID(),
+			OType:   objects.ObjectTypeBlob,
+			Content: manifestObj.Content(),
+		})
+	}
+
 	treeObj, err := s.readObject(ctx, db, zoneID, commit.Tree().String())
 	if err != nil {
 		return nil, err

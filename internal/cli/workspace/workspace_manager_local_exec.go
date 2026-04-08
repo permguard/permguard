@@ -169,7 +169,7 @@ func (m *Manager) execInternalRefresh(internal bool, out common.PrinterOutFunc) 
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "refresh", "Starting blobification process.", nil, true)
 	}
-	treeID, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
+	treeID, _, codeFiles, err := m.blobifyLocal(selectedFiles, langPvd)
 	if err != nil {
 		output = buildOutputForCodeFiles(codeFiles, m, out, output)
 		if m.ctx.IsVerboseTerminalOutput() {

@@ -39,6 +39,18 @@ func (m *ObjectManager) VerifyCommitGraphIntegrity(commitOID string, objFunc fun
 		return fmt.Errorf("objects: object %s is not a commit", commitOID)
 	}
 
+	// Verify manifest blob exists if referenced
+	manifestOID := commit.Manifest()
+	if manifestOID.String() != "" && manifestOID.String() != ZeroOID {
+		manifestObj, err := objFunc(manifestOID.String())
+		if err != nil {
+			return fmt.Errorf("objects: failed to read manifest %s referenced by commit %s: %w", manifestOID, commitOID, err)
+		}
+		if manifestObj == nil {
+			return fmt.Errorf("objects: manifest %s referenced by commit %s not found", manifestOID, commitOID)
+		}
+	}
+
 	treeOID := commit.Tree()
 	treeObj, err := objFunc(treeOID.String())
 	if err != nil {
