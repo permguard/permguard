@@ -156,14 +156,26 @@ func (m *Manager) treeString(oid string, tree *objects.Tree) (string, error) {
 	entries := tree.Entries()
 	dataRows := make([][]string, len(entries))
 	for i, e := range entries {
+		lang := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageID) != 0 {
+			lang = m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID))
+		}
+		langVer := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageVersionID) != 0 {
+			langVer = m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		}
+		langType := ""
+		if e.MetadataUint32(objects.MetaKeyLanguageTypeID) != 0 {
+			langType = m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID))
+		}
 		dataRows[i] = []string{
 			e.OID(),
 			e.OType(),
 			tree.Partition(),
 			e.OName(),
-			m.resolveLanguageID(e.MetadataUint32(objects.MetaKeyLanguageID)),
-			m.resolveLanguageVersionID(e.MetadataUint32(objects.MetaKeyLanguageID), e.MetadataUint32(objects.MetaKeyLanguageVersionID)),
-			m.resolveLanguageTypeID(e.MetadataUint32(objects.MetaKeyLanguageTypeID)),
+			lang,
+			langVer,
+			langType,
 		}
 	}
 	widths := columnWidths(headers, dataRows)
@@ -204,14 +216,26 @@ func (m *Manager) treeMap(oid string, tree *objects.Tree) (map[string]any, error
 	entriesList := make([]map[string]any, len(entries))
 
 	for i, entry := range entries {
+		lang := ""
+		if entry.MetadataUint32(objects.MetaKeyLanguageID) != 0 {
+			lang = m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID))
+		}
+		langVer := ""
+		if entry.MetadataUint32(objects.MetaKeyLanguageVersionID) != 0 {
+			langVer = m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID))
+		}
+		langType := ""
+		if entry.MetadataUint32(objects.MetaKeyLanguageTypeID) != 0 {
+			langType = m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID))
+		}
 		entriesList[i] = map[string]any{
 			"oid":              entry.OID(),
 			"oname":            entry.OName(),
 			"type":             entry.OType(),
 			"partition":        tree.Partition(),
-			"language":         m.resolveLanguageID(entry.MetadataUint32(objects.MetaKeyLanguageID)),
-			"language_version": m.resolveLanguageVersionID(entry.MetadataUint32(objects.MetaKeyLanguageID), entry.MetadataUint32(objects.MetaKeyLanguageVersionID)),
-			"language_type":    m.resolveLanguageTypeID(entry.MetadataUint32(objects.MetaKeyLanguageTypeID)),
+			"language":         lang,
+			"language_version": langVer,
+			"language_type":    langType,
 		}
 	}
 
