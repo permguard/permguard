@@ -24,8 +24,9 @@ import (
 )
 
 type languageInfo struct {
-	lang    *azmanifests.Language
-	langAbs languages.LanguageAbstraction
+	lang          *azmanifests.Language
+	langAbs       languages.LanguageAbstraction
+	schemaEnabled bool
 }
 
 // ManifestLanguageProvider manifest language provider.
@@ -55,6 +56,18 @@ func (p *ManifestLanguageProvider) Language(partition string) (*azmanifests.Lang
 	return langInfo.lang, nil
 }
 
+// SchemaEnabled returns whether schema is enabled for the given partition.
+func (p *ManifestLanguageProvider) SchemaEnabled(partition string) bool {
+	if p.langInfos == nil {
+		return false
+	}
+	langInfo, ok := p.langInfos[partition]
+	if !ok {
+		return false
+	}
+	return langInfo.schemaEnabled
+}
+
 // AbstractLanguage gets the abstract language for the input partition.
 func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages.LanguageAbstraction, error) {
 	if p.langInfos == nil {
@@ -69,7 +82,7 @@ func (p *ManifestLanguageProvider) AbstractLanguage(partition string) (languages
 
 // buildManifestLanguageManager build a new instance of the manifest language provider.
 func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, error) {
-	manifest, err := m.hasValidManifestWorkspaceDir()
+	manifest, _, err := m.hasValidManifestWorkspaceDir()
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +106,9 @@ func (m *Manager) buildManifestLanguageProvider() (*ManifestLanguageProvider, er
 					return nil, err
 				}
 				mfestLangMgr.langInfos[partitionKey] = languageInfo{
-					lang:    &runtime.Language,
-					langAbs: absLang,
+					lang:          &runtime.Language,
+					langAbs:       absLang,
+					schemaEnabled: partition.Schema,
 				}
 			} else {
 				continue

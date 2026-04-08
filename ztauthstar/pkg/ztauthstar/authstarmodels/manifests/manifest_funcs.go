@@ -21,14 +21,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	// ManifestFileName is the manifest file name.
+	// ManifestFileName is the default manifest file name.
 	ManifestFileName = "manifest.json"
+	// ManifestFormatJSON identifies JSON format.
+	ManifestFormatJSON = "json"
+	// ManifestFormatYAML identifies YAML format.
+	ManifestFormatYAML = "yaml"
 )
+
+// ManifestFileNames lists all supported manifest file names.
+var ManifestFileNames = []string{"manifest.json", "manifest.yaml", "manifest.yml"}
 
 // NewManifest creates a new manifest.
 func NewManifest(name, description string) (*Manifest, error) {
@@ -101,7 +112,7 @@ func ConvertManifestToBytes(manifest *Manifest, indent bool) ([]byte, error) {
 	return data, nil
 }
 
-// ConvertBytesToManifest converts the input bytes to a manifest.
+// ConvertBytesToManifest converts the input JSON bytes to a manifest.
 func ConvertBytesToManifest(data []byte) (*Manifest, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("[ztas] manifest data is empty")
@@ -112,4 +123,105 @@ func ConvertBytesToManifest(data []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("[ztas] failed to deserialize the manifest: %w", err)
 	}
 	return manifest, nil
+}
+
+// ConvertManifestToYAMLBytes converts a manifest to YAML bytes.
+func ConvertManifestToYAMLBytes(manifest *Manifest) ([]byte, error) {
+	if manifest == nil {
+		return nil, fmt.Errorf("[ztas] manifest is nil")
+	}
+	data, err := yaml.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("[ztas] failed to serialize the manifest to YAML: %w", err)
+	}
+	return bytes.TrimRight(data, "\n"), nil
+}
+
+// ConvertYAMLBytesToManifest converts YAML bytes to a manifest.
+// It rejects content that is valid JSON, since YAML files must use YAML syntax.
+func ConvertYAMLBytesToManifest(data []byte) (*Manifest, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("[ztas] manifest data is empty")
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+		return nil, fmt.Errorf("[ztas] manifest file has a YAML extension but contains JSON content")
+	}
+	manifest := &Manifest{}
+	err := yaml.Unmarshal(data, manifest)
+	if err != nil {
+		return nil, fmt.Errorf("[ztas] failed to deserialize the YAML manifest: %w", err)
+	}
+	return manifest, nil
+}
+
+// ConvertBytesToManifestByFormat converts bytes to a manifest using the specified format.
+func ConvertBytesToManifestByFormat(data []byte, format string) (*Manifest, error) {
+	switch format {
+	case ManifestFormatJSON:
+		return ConvertBytesToManifest(data)
+	case ManifestFormatYAML:
+		return ConvertYAMLBytesToManifest(data)
+	default:
+		return nil, fmt.Errorf("[ztas] unsupported manifest format: %s", format)
+	}
+}
+
+// ConvertManifestToBytesForFormat converts a manifest to bytes in the specified format.
+func ConvertManifestToBytesForFormat(manifest *Manifest, format string) ([]byte, error) {
+	switch format {
+	case ManifestFormatJSON:
+		return ConvertManifestToBytes(manifest, true)
+	case ManifestFormatYAML:
+		return ConvertManifestToYAMLBytes(manifest)
+	default:
+		return nil, fmt.Errorf("[ztas] unsupported manifest format: %s", format)
+	}
+}
+
+// FormatFromFileName returns the format string for a manifest file name.
+// Normalizes ".yml" to "yaml".
+func FormatFromFileName(filename string) string {
+	ext := filepath.Ext(filename)
+	switch ext {
+	case ".json":
+		return ManifestFormatJSON
+	case ".yaml", ".yml":
+		return ManifestFormatYAML
+	default:
+		return ""
+	}
+}
+
+// ManifestFileNameForFormat returns the canonical manifest file name for a format.
+func ManifestFileNameForFormat(format string) string {
+	switch format {
+	case ManifestFormatJSON:
+		return "manifest.json"
+	case ManifestFormatYAML:
+		return "manifest.yaml"
+	default:
+		return ManifestFileName
+	}
+}
+
+// DetectManifestFile scans a directory for manifest files and returns the one found.
+// Returns an error if zero or more than one manifest file exists.
+func DetectManifestFile(dir string) (string, string, error) {
+	var found []string
+	for _, name := range ManifestFileNames {
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			found = append(found, name)
+		}
+	}
+	if len(found) == 0 {
+		return "", "", errors.New("[ztas] no manifest file found (expected manifest.json, manifest.yaml, or manifest.yml)")
+	}
+	if len(found) > 1 {
+		return "", "", fmt.Errorf("[ztas] multiple manifest files found (%s), only one is allowed", strings.Join(found, ", "))
+	}
+	filename := found[0]
+	format := FormatFromFileName(filename)
+	return filename, format, nil
 }

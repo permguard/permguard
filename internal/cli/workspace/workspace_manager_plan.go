@@ -45,6 +45,10 @@ func (m *Manager) buildPlanTree(plan []cosp.CodeObjectState) (*objects.Tree, *ob
 		if planItem.State == cosp.CodeObjectStateDelete {
 			continue
 		}
+		// Skip manifest entries — they are not tree entries
+		if planItem.DataType == objects.TreeDataTypeManifest {
+			continue
+		}
 		var treeItem *objects.TreeEntry
 		treeItem, err = objects.NewTreeEntry(planItem.OType, planItem.OID, planItem.OName, planItem.DataType, map[string]any{
 			objects.MetaKeyCodeID:            planItem.CodeID,

@@ -274,7 +274,7 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 			return fail(err)
 		}
 
-		// Extract manifest.json from manifest blob
+		// Extract manifest from manifest blob
 		manifestOID := commit.Manifest().String()
 		if manifestOID == "" || manifestOID == objects.ZeroOID {
 			return fail(errors.New("cli: manifest is missing from the remote commit"))
@@ -291,8 +291,27 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 		if !ok {
 			return fail(errors.New("cli: manifest blob content is invalid"))
 		}
-		if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, manifestData, 0o644, false); err != nil {
-			return fail(errors.Join(errors.New("cli: failed to write manifest.json"), err))
+
+		// Determine target format from blob metadata and write in the correct format.
+		// The blob content is stored in its original format (json or yaml),
+		// so we write it directly with the matching file extension.
+		manifestFormat := azmanifests.ManifestFormatJSON
+		if manifestHeader := manifestInfo.Header(); manifestHeader != nil {
+			if f := manifestHeader.MetadataString(objects.MetaKeyFormat); f != "" {
+				manifestFormat = f
+			}
+		}
+		targetManifestFile := azmanifests.ManifestFileNameForFormat(manifestFormat)
+
+		// Remove any existing manifest files in other formats to avoid conflicts.
+		for _, name := range azmanifests.ManifestFileNames {
+			if name != targetManifestFile {
+				_, _ = m.persMgr.DeletePath(persistence.WorkspaceDir, name)
+			}
+		}
+
+		if _, err := m.persMgr.WriteFile(persistence.WorkspaceDir, targetManifestFile, manifestData, 0o644, false); err != nil {
+			return fail(errors.Join(fmt.Errorf("cli: failed to write %s", targetManifestFile), err))
 		}
 
 		treeObj, err := m.cospMgr.ReadObject(commit.Tree().String())
@@ -333,10 +352,6 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 				if err != nil {
 					return fail(err)
 				}
-				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
-				if err != nil {
-					return fail(err)
-				}
 				objInfo, err := m.objMar.ObjectInfo(entryObj)
 				if err != nil {
 					return fail(err)
@@ -344,6 +359,14 @@ func (m *Manager) execInternalPull(internal bool, out common.PrinterOutFunc) (ma
 				header := objInfo.Header()
 				if header == nil {
 					return fail(errors.New("cli: object header is nil"))
+				}
+				// Skip manifest blobs — they are handled separately above
+				if header.DataType() == objects.DataTypeManifest {
+					continue
+				}
+				classType, codeBlock, err := objects.ReadObjectContentBytes(entryObj)
+				if err != nil {
+					return fail(err)
 				}
 				switch classType {
 				case types.ClassTypeSchemaID:

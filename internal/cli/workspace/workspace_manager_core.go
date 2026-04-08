@@ -160,36 +160,42 @@ func (m *Manager) raiseWrongWorkspaceDirError(_ common.PrinterOutFunc) error {
 }
 
 // hasValidManifestWorkspaceDir checks if the directory is a valid workspace directory.
-func (m *Manager) hasValidManifestWorkspaceDir() (*azmanifests.Manifest, error) {
-	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, false)
+// It detects the manifest file (manifest.json, manifest.yaml, or manifest.yml) and returns the parsed manifest and its format.
+func (m *Manager) hasValidManifestWorkspaceDir() (*azmanifests.Manifest, string, error) {
+	wsDir := m.persMgr.Path(persistence.WorkspaceDir, "")
+	filename, format, err := azmanifests.DetectManifestFile(wsDir)
 	if err != nil {
-		return nil, errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)
+		return nil, "", errors.Join(errors.New("cli: could not find the manifest file in the workspace directory"), err)
 	}
-	manifest, err := azmanifests.ConvertBytesToManifest(manifestData)
+	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, filename, false)
+	if err != nil {
+		return nil, "", errors.Join(errors.New("cli: could not read the manifest file in the workspace directory"), err)
+	}
+	manifest, err := azmanifests.ConvertBytesToManifestByFormat(manifestData, format)
 	errMft := errors.New("cli: invalid manifest in the workspace directory")
 	if err != nil {
-		return nil, errors.Join(errMft, err)
+		return nil, "", errors.Join(errMft, err)
 	}
 	ok, err := azmanifests.ValidateManifest(manifest)
 	if err != nil {
-		return nil, errors.Join(errMft, err)
+		return nil, "", errors.Join(errMft, err)
 	}
 	if !ok {
-		return nil, errors.Join(errMft, err)
+		return nil, "", errors.Join(errMft, err)
 	}
 	for _, runtime := range manifest.Runtimes {
 		lang := runtime.Language
 		absLang, err := m.langFct.LanguageAbstraction(lang.Name, lang.Version)
 		if err != nil {
-			return nil, errors.Join(errMft, err)
+			return nil, "", errors.Join(errMft, err)
 		}
 		ok, err = absLang.ValidateManifest(manifest)
 		if err != nil {
-			return nil, errors.Join(errMft, err)
+			return nil, "", errors.Join(errMft, err)
 		}
 		if !ok {
-			return nil, errors.Join(errMft, err)
+			return nil, "", errors.Join(errMft, err)
 		}
 	}
-	return manifest, nil
+	return manifest, format, nil
 }

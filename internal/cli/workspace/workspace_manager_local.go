@@ -305,9 +305,12 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		}
 	}
 
-	// Validate that required schema files are present per partition
-	for partition, schemaCount := range partitionSchemas {
-		if schemaCount > 0 {
+	// Validate that required schema files are present per partition (only when schema is enabled)
+	for _, partition := range langPvd.Partitions() {
+		if partitionSchemas[partition] > 0 {
+			continue
+		}
+		if !langPvd.SchemaEnabled(partition) {
 			continue
 		}
 		absLang, err := langPvd.AbstractLanguage(partition)
@@ -325,7 +328,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 				HasErrors:  true,
 				CodeID:     types.ClassTypeSchema,
 				CodeTypeID: types.ClassTypeSchemaID,
-				Error:      fmt.Sprintf("language: the schema file '%s' is missing. Please ensure there are no duplicate schema files and that the required schema file is present.", schemaFileName),
+				Error:      fmt.Sprintf("language: the schema file '%s' is required because schema is enabled for partition '%s' in the manifest. Either add the schema file or set schema to false in the manifest.", schemaFileName, partition),
 			}
 			blobifiedCodeFiles = append(blobifiedCodeFiles, codeFile)
 		}
@@ -351,12 +354,7 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		return "", "", blobifiedCodeFiles, err
 	}
 
-	// Save the object state
-	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
-		return "", "", blobifiedCodeFiles, err
-	}
-
-	// Build a tree from object states
+	// Build a tree from object states (policies/schemas only)
 	partition := "/"
 	if len(codeObsState) > 0 {
 		partition = codeObsState[0].Partition
@@ -396,12 +394,17 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 	treeID := treeObj.OID()
 
 	// Create manifest blob
-	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, azmanifests.ManifestFileName, false)
+	wsDir := m.persMgr.Path(persistence.WorkspaceDir, "")
+	manifestFileName, manifestFormat, err := azmanifests.DetectManifestFile(wsDir)
+	if err != nil {
+		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to detect manifest file"), err)
+	}
+	manifestData, _, err := m.persMgr.ReadFile(persistence.WorkspaceDir, manifestFileName, false)
 	if err != nil {
 		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to read manifest file"), err)
 	}
 	manifestHeader, err := objects.NewObjectHeader(objects.DataTypeManifest, map[string]any{
-		objects.MetaKeyFormat: "json",
+		objects.MetaKeyFormat: manifestFormat,
 	})
 	if err != nil {
 		return treeID, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to create manifest header"), err)
@@ -418,6 +421,11 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		return treeID, "", blobifiedCodeFiles, err
 	}
 	manifestID := manifestObj.OID()
+
+	// Save the object state (policies/schemas only — manifest is added dynamically during plan)
+	if err = m.cospMgr.SaveCodeSourceCodeState(codeObsState); err != nil {
+		return "", "", blobifiedCodeFiles, err
+	}
 
 	// Save configuration with tree and manifest IDs
 	if err := m.cospMgr.SaveCodeSourceConfig(treeID, manifestID); err != nil {

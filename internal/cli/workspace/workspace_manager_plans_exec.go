@@ -89,10 +89,19 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 			out(nil, "plan", fmt.Sprintf("The ref %s has no commits associated with it.", common.KeywordText(headCtx.Ref())), nil, true)
 		}
 	}
-	remoteTree, err := m.CurrentHeadTree(headCtx.Ref())
+	remoteCommit, err := m.CurrentHeadCommit(headCtx.Ref())
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
-			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", common.KeywordText(headCtx.Ref())), nil, true)
+			out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote commit.", common.KeywordText(headCtx.Ref())), nil, true)
+		}
+	}
+	var remoteTree *objects.Tree
+	if remoteCommit != nil {
+		remoteTree, err = m.CurrentHeadTree(headCtx.Ref())
+		if err != nil {
+			if m.ctx.IsVerboseTerminalOutput() {
+				out(nil, "plan", fmt.Sprintf("The ref %s could not read the remote tree.", common.KeywordText(headCtx.Ref())), nil, true)
+			}
 		}
 	}
 	var remoteCodeState []cosp.CodeObjectState
@@ -105,10 +114,46 @@ func (m *Manager) execInternalPlan(internal bool, out common.PrinterOutFunc) (ma
 	} else {
 		remoteCodeState = []cosp.CodeObjectState{}
 	}
+	// Add remote manifest to code state so it appears in the plan
+	if remoteCommit != nil {
+		manifestOID := remoteCommit.Manifest().String()
+		if manifestOID != "" && manifestOID != objects.ZeroOID {
+			partition := "/"
+			if remoteTree != nil {
+				partition = remoteTree.Partition()
+			}
+			remoteCodeState = append(remoteCodeState, cosp.CodeObjectState{
+				CodeObject: cosp.CodeObject{
+					Partition: partition,
+					OName:     "manifest",
+					OType:     objects.ObjectTypeBlob,
+					OID:       manifestOID,
+					DataType:  objects.TreeDataTypeManifest,
+				},
+			})
+		}
+	}
 	localCodeState, err := m.cospMgr.ReadCodeSourceCodeState()
 	if err != nil {
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return fail(output, err)
+	}
+	// Add local manifest to code state so it appears in the plan
+	_, localManifestID, configErr := m.cospMgr.ReadCodeSourceConfig()
+	if configErr == nil && localManifestID != "" && localManifestID != objects.ZeroOID {
+		partition := "/"
+		if len(localCodeState) > 0 {
+			partition = localCodeState[0].Partition
+		}
+		localCodeState = append(localCodeState, cosp.CodeObjectState{
+			CodeObject: cosp.CodeObject{
+				Partition: partition,
+				OName:     "manifest",
+				OType:     objects.ObjectTypeBlob,
+				OID:       localManifestID,
+				DataType:  objects.TreeDataTypeManifest,
+			},
+		})
 	}
 	codeStateObjs := m.plan(localCodeState, remoteCodeState)
 
@@ -284,6 +329,10 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the tree.", nil, true)
 		}
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return fail(output, err)
+	}
+	if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
 		out(nil, "", errPlanningProcessFailed, nil, true)
 		return fail(output, err)
 	}

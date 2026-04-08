@@ -41,6 +41,8 @@ func buildOutputForCodeFiles(codeFiles []cosp.CodeFile, m *Manager, out common.P
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(output, "refresh", fmt.Sprintf(`Error in file %s, partition %s, section %s and error message '%s'.`,
 				common.FileText(cFile), common.IDText(cPartition), common.NumberText(cSection), common.LogErrorText(codeFile.Error)), nil, true)
+		} else if m.ctx.IsTerminalOutput() {
+			out(output, "", fmt.Sprintf("  - %s: %s", common.FileText(cFile), common.LogErrorText(codeFile.Error)), nil, true)
 		} else if m.ctx.IsJSONOutput() {
 			if _, ok := errorsMap[cFile]; !ok {
 				errorsMap[cFile] = map[string]any{}
@@ -218,7 +220,10 @@ func (m *Manager) execInternalValidate(internal bool, out common.PrinterOutFunc)
 		return output, err
 	}
 
-	output, _ := m.execInternalRefresh(true, out)
+	output, err := m.execInternalRefresh(true, out)
+	if err != nil {
+		return fail(output, err)
+	}
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "validate", "Retrieving codemap.", nil, true)
 	}

@@ -29,6 +29,7 @@ import (
 	azwkscommon "github.com/permguard/permguard/internal/cli/workspace/common"
 	"github.com/permguard/permguard/pkg/authz/languages"
 	"github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/objects"
+	azmanifests "github.com/permguard/permguard/ztauthstar/pkg/ztauthstar/authstarmodels/manifests"
 )
 
 // ExecObjects list the objects.
@@ -139,8 +140,12 @@ func (m *Manager) resolveAbstractLanguage(langPvd *ManifestLanguageProvider, hea
 	return nil, errors.New("cli: no matching partition found for blob")
 }
 
-// convertManifestToYAML converts JSON manifest bytes to YAML.
-func convertManifestToYAML(data []byte) ([]byte, error) {
+// convertManifestToYAML converts manifest bytes to YAML for human-readable output.
+// If the content is already YAML, it is returned as-is.
+func convertManifestToYAML(data []byte, format string) ([]byte, error) {
+	if format == azmanifests.ManifestFormatYAML {
+		return data, nil
+	}
 	var raw any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("cli: failed to parse manifest JSON: %w", err)
@@ -196,7 +201,7 @@ func (m *Manager) execPrintObjectContent(langPvd *ManifestLanguageProvider, oid 
 					return err
 				}
 			case objects.DataTypeManifest:
-				yamlBytes, err := convertManifestToYAML(instance)
+				yamlBytes, err := convertManifestToYAML(instance, header.MetadataString(objects.MetaKeyFormat))
 				if err != nil {
 					return err
 				}
@@ -292,7 +297,7 @@ func (m *Manager) execMapObjectContent(langPvd *ManifestLanguageProvider, oid st
 					return err
 				}
 			case objects.DataTypeManifest:
-				instanceBytes, err = convertManifestToYAML(instance)
+				instanceBytes, err = convertManifestToYAML(instance, header.MetadataString(objects.MetaKeyFormat))
 				if err != nil {
 					return err
 				}

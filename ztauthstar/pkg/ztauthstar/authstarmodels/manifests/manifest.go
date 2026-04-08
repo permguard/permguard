@@ -18,45 +18,45 @@ package manifest
 
 // Manifest represnts an Auth* model manifest.
 type Manifest struct {
-	Metadata Metadata           `json:"metadata"`
-	Runtimes map[string]Runtime `json:"runtimes"`
-	ZtasApp  []ZtasApp          `json:"ztas_app"`
+	Metadata Metadata           `json:"metadata" yaml:"metadata"`
+	Runtimes map[string]Runtime `json:"runtimes" yaml:"runtimes"`
+	ZtasApp  []ZtasApp          `json:"ztas_app" yaml:"ztas_app"`
 }
 
 // ZtasApp represents a set of business policies with their partitions.
 type ZtasApp struct {
-	Partitions map[string]Partition `json:"partitions"`
+	Partitions map[string]Partition `json:"partitions" yaml:"partitions"`
 }
 
 // Metadata of the manifest.
 type Metadata struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Author      string `json:"author"`
-	License     string `json:"license"`
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description" yaml:"description"`
+	Author      string `json:"author" yaml:"author"`
+	License     string `json:"license" yaml:"license"`
 }
 
 // Language of the runtime.
 type Language struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
+	Name    string `json:"name" yaml:"name"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // Engine of the runtime.
 type Engine struct {
-	Name         string `json:"name"`
-	Version      string `json:"version"`
-	Distribution string `json:"distribution"`
+	Name         string `json:"name" yaml:"name"`
+	Version      string `json:"version" yaml:"version"`
+	Distribution string `json:"distribution" yaml:"distribution"`
 }
 
 // Runtime required for the auth* model.
 type Runtime struct {
-	Language Language `json:"language"`
-	Engine   Engine   `json:"engine"`
+	Language Language `json:"language" yaml:"language"`
+	Engine   Engine   `json:"engine" yaml:"engine"`
 }
 
 // Partition of the auth* model.
 type Partition struct {
-	Runtime string `json:"runtime"`
-	Schema  bool   `json:"schema"`
+	Runtime string `json:"runtime" yaml:"runtime"`
+	Schema  bool   `json:"schema" yaml:"schema"`
 }
