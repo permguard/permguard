@@ -28,8 +28,10 @@ func TestSerializeDeserializeCommit(t *testing.T) {
 	assert := assert.New(t)
 
 	commit := &Commit{
-		tree:   CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c"),
-		parent: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
+		profiles: []CommitProfile{
+			{key: "ztas_app/", tree: CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c")},
+		},
+		predecessor: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
 		metaData: CommitMetaData{
 			author:             "Nicola Gallo",
 			authorTimestamp:    time.Unix(1628704800, 0),
@@ -52,8 +54,8 @@ func TestSerializeDeserializeCommit(t *testing.T) {
 	assert.NotNil(deserializedCommit)
 
 	// Check if the deserialized commit matches the original commit
-	assert.Equal(commit.tree, deserializedCommit.tree, "Tree mismatch")
-	assert.Equal(commit.parent, deserializedCommit.parent, "Parents mismatch")
+	assert.Equal(commit.profiles, deserializedCommit.profiles, "Profiles mismatch")
+	assert.Equal(commit.predecessor, deserializedCommit.predecessor, "Predecessor mismatch")
 	assert.Equal(commit.metaData.author, deserializedCommit.metaData.author, "Author mismatch")
 	assert.Equal(commit.metaData.authorTimestamp.Unix(), deserializedCommit.metaData.authorTimestamp.Unix(), "Author timestamp mismatch")
 	assert.Equal(commit.metaData.committer, deserializedCommit.metaData.committer, "Committer mismatch")
@@ -77,8 +79,10 @@ func TestSerializeDeserializeCommitWithOID(t *testing.T) {
 	objectManager, _ := NewObjectManager()
 
 	commit1 := &Commit{
-		tree:   CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c"),
-		parent: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
+		profiles: []CommitProfile{
+			{key: "ztas_app/", tree: CID("bafyreib52786751f4b6f9839953fe3dcc2278c66648f0d0193f98088b7e4d0c")},
+		},
+		predecessor: NullableString{String: "bafyreia294ba66f45afd23f8bda3892728601bb509989a80dbb54d7b513dacc", Valid: true},
 		metaData: CommitMetaData{
 			author:             "Nicola Gallo",
 			authorTimestamp:    time.Unix(1628704800, 0),
