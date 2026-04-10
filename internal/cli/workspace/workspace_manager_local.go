@@ -423,7 +423,10 @@ func (m *Manager) blobifyLocal(codeFiles []cosp.CodeFile, langPvd *ManifestLangu
 		if _, saveErr := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); saveErr != nil {
 			return nil, "", blobifiedCodeFiles, saveErr
 		}
-		profileKey := "default" + partition
+		profileKey, pkErr := langPvd.ProfileKeyByPartition(partition)
+		if pkErr != nil {
+			return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: failed to resolve profile key for partition"), pkErr)
+		}
 		cp, cpErr := objects.NewCommitProfile(profileKey, objects.CID(treeObj.OID()))
 		if cpErr != nil {
 			return nil, "", blobifiedCodeFiles, errors.Join(errors.New("cli: commit profile cannot be created"), cpErr)

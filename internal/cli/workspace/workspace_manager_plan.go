@@ -30,7 +30,7 @@ func (m *Manager) plan(currentCodeObsStates []cosp.CodeObjectState, remoteCodeOb
 }
 
 // buildPlanTrees builds one tree per partition from the plan and returns commit profiles.
-func (m *Manager) buildPlanTrees(plan []cosp.CodeObjectState) ([]objects.CommitProfile, error) {
+func (m *Manager) buildPlanTrees(plan []cosp.CodeObjectState, langPvd *ManifestLanguageProvider) ([]objects.CommitProfile, error) {
 	// Group plan items by partition
 	partitionItems := map[string][]cosp.CodeObjectState{}
 	for _, planItem := range plan {
@@ -71,7 +71,10 @@ func (m *Manager) buildPlanTrees(plan []cosp.CodeObjectState) ([]objects.CommitP
 		if _, err := m.cospMgr.SaveCodeSourceObject(treeObj.OID(), treeObj.Content()); err != nil {
 			return nil, err
 		}
-		profileKey := "default" + partition
+		profileKey, pkErr := langPvd.ProfileKeyByPartition(partition)
+		if pkErr != nil {
+			return nil, errors.Join(errors.New("cli: failed to resolve profile key for partition"), pkErr)
+		}
 		cp, err := objects.NewCommitProfile(profileKey, objects.CID(treeObj.OID()))
 		if err != nil {
 			return nil, errors.Join(errors.New("cli: commit profile cannot be created"), err)

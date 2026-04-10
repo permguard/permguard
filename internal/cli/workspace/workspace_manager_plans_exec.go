@@ -326,7 +326,12 @@ func (m *Manager) execInternalApply(internal bool, out common.PrinterOutFunc) (m
 	if m.ctx.IsVerboseTerminalOutput() {
 		out(nil, "apply", "Preparing to build the trees.", nil, true)
 	}
-	commitProfiles, err := m.buildPlanTrees(plan)
+	langPvd, err := m.buildManifestLanguageProvider()
+	if err != nil {
+		out(nil, "", errPlanningProcessFailed, nil, true)
+		return fail(output, err)
+	}
+	commitProfiles, err := m.buildPlanTrees(plan, langPvd)
 	if err != nil {
 		if m.ctx.IsVerboseTerminalOutput() {
 			out(nil, "apply", "Failed to build the trees.", nil, true)

@@ -106,6 +106,16 @@ func (p *ManifestLanguageProvider) AbstractLanguageByPartition(partition string)
 	return nil, fmt.Errorf("cli: no profile found for partition %q", partition)
 }
 
+// ProfileKeyByPartition returns the profile key for a given partition path.
+func (p *ManifestLanguageProvider) ProfileKeyByPartition(partition string) (string, error) {
+	for key, info := range p.langInfos {
+		if info.partition == partition {
+			return key, nil
+		}
+	}
+	return "", fmt.Errorf("cli: no profile found for partition %q", partition)
+}
+
 // LanguageByPartition gets the language by partition path (tries all profile keys).
 func (p *ManifestLanguageProvider) LanguageByPartition(partition string) (*azmanifests.Language, error) {
 	for _, info := range p.langInfos {
