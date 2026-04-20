@@ -1,11 +1,11 @@
 {
-  "Syntax": "0.2.0",
+  "version": "0.2.0",
   "delveConfig": {
     "showGlobalVariables": false
   },
   "configurations": [
     {
-      "name": "cli",
+      "name": "cli-debug",
       "type": "go",
       "request": "launch",
       "mode": "auto",
@@ -28,15 +28,15 @@
 	  "args": ["plan", "-w", "/Users/nicolagallo/source/nitro/permguard-workspace/repos/permguard/playground/pharmagovflow", "-v", "-o", "json"],
       // "args": ["config", "pap-set-target", "dsafasdf", "-v"],
       "env": {
-        "PERMGUARD_DEBUG": "TRUE",
+        "PERMGUARD_DEBUG": "TRUE"
       }
     },
     {
-      "name": "all-in-one",
+      "name": "all-in-one-debug",
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "./cmd/server-all-in-one/main.go",
+      "program": "./cmd/server-all-in-one",
       // "args": ["-h"],
       "cwd": "${workspaceFolder}",
       "env": {
@@ -45,9 +45,26 @@
         "PERMGUARD_LOG_LEVEL": "DEBUG",
         // "PERMGUARD_SERVER_ZAP_ENABLE_DEFAULT_CREATION": "TRUE",
         "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
-        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT",
+        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT"
         // "PERMGUARD_SERVER_TLS_MODE": "tls",
       }
+    },
+    {
+      "name": "all-in-one-run",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "./cmd/server-all-in-one",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PERMGUARD_DEBUG": "TRUE",
+        "PERMGUARD_SERVER_APPDATA": "./playground/volume",
+        "PERMGUARD_LOG_LEVEL": "DEBUG",
+        "PERMGUARD_SERVER_ZAP_DATA_FETCH_MAXSIZE": "1000",
+        "PERMGUARD_SERVER_PDP_DECISION_LOG": "STDOUT"
+      },
+      "noDebug": true,
+      "console": "integratedTerminal"
     }
   ]
 }
