@@ -36,6 +36,19 @@ updates:
           - "serde*"
           - "clap*"
           - "tracing*"
+      # The RustCrypto stack moves as one generation or not at all. `hmac` 0.13 is built on
+      # `digest` 0.11 and `sha2` 0.10 on `digest` 0.10; combining them does not fail at resolution,
+      # it fails deep inside a trait bound — `Hmac<Sha256>` needs its hash to implement the *same*
+      # generation's traits. A bump of one alone is a red build that looks like a code error, so
+      # they arrive in one pull request that either builds or does not.
+      rustcrypto:
+        patterns:
+          - "sha2"
+          - "hmac"
+          - "digest"
+          - "block-buffer"
+          - "crypto-common"
+          - "generic-array"
 
   - package-ecosystem: github-actions
     directory: /

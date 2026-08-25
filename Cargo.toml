@@ -52,7 +52,11 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 flate2 = "1"
 futures-core = "0.3"
-hmac = "0.13"
+# Pinned to the generation `sha2` is on. `hmac` 0.13 is built on `digest` 0.11 and `sha2` 0.10 on
+# `digest` 0.10, and the two cannot meet: `Hmac<Sha256>` needs its hash to implement the *same*
+# generation's traits. Bumping one without the other does not fail at resolution — it fails deep in
+# a trait bound, which is why it reached CI. Moving up means moving `sha2` in the same commit.
+hmac = "0.12"
 http = "1"
 http-body-util = "0.1"
 hyper-util = { version = "0.1", default-features = false, features = ["tokio", "client-legacy", "http1"] }
