@@ -75,9 +75,62 @@ jobs:
         with:
           command: check advisories licenses bans sources
 
+  # The Apple binaries, built on Apple hardware.
+  #
+  # Everything else cross-compiles from Linux with Zig, which carries a linker and a libc for four
+  # targets. What it cannot carry is Apple's SDK: `Security.framework` and `CoreFoundation.framework`
+  # are not redistributable, and `rustls-native-certs` needs them to read the macOS keychain. Giving
+  # that up would take the corporate root out of the trust path on exactly the machines that have
+  # one — so this runs where the SDK already is, and GoReleaser imports the result.
+  macos-binaries:
+    name: Build the macOS binaries
+    needs: [verify, supply-chain]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # The same toolchain the tests ran against, for the same reason.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
+        with:
+          toolchain: "1.97"
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Laid out the way `builds[].prebuilt.path` expects — `prebuilt/{os}_{arch}/<binary>` — so the
+      # two halves of the release meet on a path and nothing has to translate names twice.
+      - name: Build
+        env:
+          PERMGUARD_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for target in x86_64-apple-darwin aarch64-apple-darwin; do
+            cargo build --release --locked --target "${target}" \
+              --package permguard-cli \
+              --package permguard-all-in-one \
+              --package permguard-control-plane \
+              --package permguard-data-plane
+          done
+          mkdir -p prebuilt/darwin_amd64 prebuilt/darwin_arm64
+          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+            cp "target/x86_64-apple-darwin/release/${binary}"  "prebuilt/darwin_amd64/${binary}"
+            cp "target/aarch64-apple-darwin/release/${binary}" "prebuilt/darwin_arm64/${binary}"
+          done
+          # A binary that is not executable is a release that fails at the first `chmod`-less unpack.
+          chmod +x prebuilt/darwin_*/*
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-binaries
+          path: prebuilt/
+          retention-days: 1
+          if-no-files-found: error
+
   publish:
     name: Build artifacts and publish release
-    needs: [verify, supply-chain]
+    needs: [verify, supply-chain, macos-binaries]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -101,6 +154,23 @@ jobs:
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Built on macOS by the job above, imported by `builds[].builder: prebuilt`.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: macos-binaries
+          path: prebuilt/
+
+      - name: The macOS binaries are here and executable
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+              path="prebuilt/darwin_${arch}/${binary}"
+              [ -x "${path}" ] || { echo "missing or not executable: ${path}" >&2; exit 1; }
+            done
+          done
+          echo "ok: 8 macOS binaries"
 
       - name: Set up Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2

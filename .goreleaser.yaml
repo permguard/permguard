@@ -33,8 +33,6 @@ builds:
     targets: &targets
       - x86_64-unknown-linux-musl
       - aarch64-unknown-linux-musl
-      - x86_64-apple-darwin
-      - aarch64-apple-darwin
       - x86_64-pc-windows-gnu
       - aarch64-pc-windows-gnullvm
     env:
@@ -70,6 +68,47 @@ builds:
     env:
       - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
 
+  # The Apple binaries are not cross-compiled: they are built on macOS, by the `macos-binaries` job,
+  # and imported here.
+  #
+  # Zig gives this repository a linker and a libc for four targets from one Linux runner, which is
+  # why everything above is a `zigbuild`. What it cannot give is Apple's SDK — `Security.framework`
+  # and `CoreFoundation.framework` are not redistributable, and `rustls-native-certs` needs them to
+  # read the macOS keychain. The alternative was to stop reading the keychain, which would silently
+  # take the corporate root out of the trust path on exactly the machines that have one. So macOS is
+  # built on macOS, and the two halves meet here.
+  - id: permguard_cli_darwin
+    builder: prebuilt
+    binary: permguard
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard
+
+  - id: permguard_all_in_one_darwin
+    builder: prebuilt
+    binary: permguard-all-in-one
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-all-in-one
+
+  - id: permguard_control_plane_darwin
+    builder: prebuilt
+    binary: permguard-control-plane
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-control-plane
+
+  - id: permguard_data_plane_darwin
+    builder: prebuilt
+    binary: permguard-data-plane
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-data-plane
+
 checksum:
   name_template: "checksums.txt"
 
@@ -84,7 +123,7 @@ source:
 archives:
   - formats: [tar.gz]
     id: permguard_cli
-    ids: ["permguard_cli"]
+    ids: ["permguard_cli", "permguard_cli_darwin"]
     name_template: >-
       {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -92,7 +131,7 @@ archives:
         formats: [zip]
   - formats: [tar.gz]
     id: permguard_all_in_one
-    ids: ["permguard_all_in_one"]
+    ids: ["permguard_all_in_one", "permguard_all_in_one_darwin"]
     name_template: >-
       permguard_all_in_one_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -100,7 +139,7 @@ archives:
         formats: [zip]
   - formats: [tar.gz]
     id: permguard_control_plane
-    ids: ["permguard_control_plane"]
+    ids: ["permguard_control_plane", "permguard_control_plane_darwin"]
     name_template: >-
       permguard_control_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -108,7 +147,7 @@ archives:
         formats: [zip]
   - formats: [tar.gz]
     id: permguard_data_plane
-    ids: ["permguard_data_plane"]
+    ids: ["permguard_data_plane", "permguard_data_plane_darwin"]
     name_template: >-
       permguard_data_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
@@ -152,6 +191,7 @@ nfpms:
       - rpm
       - apk
     file_name_template: '{{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}'
+    # The CLI packages are Linux only; the Apple half is delivered by the Homebrew cask.
     ids:
       - permguard_cli
 

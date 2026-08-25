@@ -44,8 +44,9 @@ docker_signs:
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      # The Apple binaries, which are the only ones notarisation applies to.
       ids:
-        - permguard_cli
+        - permguard_cli_darwin
       sign:
         certificate: "{{.Env.MACOS_SIGN_P12}}"
         password: "{{.Env.MACOS_SIGN_PASSWORD}}"
@@ -62,7 +63,8 @@ notarize:
 homebrew_casks:
   - name: cli-rust
     binaries: ["permguard"]
-    ids: ["permguard_cli"]
+    # A cask installs on macOS, so it carries the Apple build.
+    ids: ["permguard_cli_darwin"]
     repository:
       owner: "{{ .Env.ORG }}"
       name: homebrew-tap
