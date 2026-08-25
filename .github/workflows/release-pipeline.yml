@@ -118,7 +118,8 @@ jobs:
             cp "target/x86_64-apple-darwin/release/${binary}"  "prebuilt/darwin_amd64/${binary}"
             cp "target/aarch64-apple-darwin/release/${binary}" "prebuilt/darwin_arm64/${binary}"
           done
-          # A binary that is not executable is a release that fails at the first `chmod`-less unpack.
+          # Set here for anyone who downloads this artifact by hand. It does *not* survive the
+          # upload — a zip carries no POSIX mode — so the consuming job sets it again.
           chmod +x prebuilt/darwin_*/*
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -164,12 +165,26 @@ jobs:
       - name: The macOS binaries are here and executable
         run: |
           set -euo pipefail
+          # `upload-artifact` zips what it is handed, and a zip carries no POSIX mode: the
+          # executable bit does not survive the round trip, whatever the uploading job set. Restored
+          # here rather than assumed — a binary archived without it is a release that fails at the
+          # first run, on the user's machine, long after anyone could have noticed.
+          chmod +x prebuilt/darwin_amd64/* prebuilt/darwin_arm64/*
+          incomplete=0
           for arch in amd64 arm64; do
             for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
               path="prebuilt/darwin_${arch}/${binary}"
-              [ -x "${path}" ] || { echo "missing or not executable: ${path}" >&2; exit 1; }
+              if [ ! -s "${path}" ] || [ ! -x "${path}" ]; then
+                echo "missing, empty or not executable: ${path}" >&2
+                incomplete=1
+              fi
             done
           done
+          if [ "${incomplete}" -ne 0 ]; then
+            echo "what actually arrived:" >&2
+            find prebuilt -type f -printf '%M %10s %p\n' | sort >&2
+            exit 1
+          fi
           echo "ok: 8 macOS binaries"
 
       - name: Set up Zig
