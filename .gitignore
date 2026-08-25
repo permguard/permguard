@@ -548,3 +548,9 @@ $RECYCLE.BIN/
 # a cache here should be ignored too, not swept under a `rm -rf` somebody has to remember.
 .zig-cache/
 zig-out/
+
+# Where the release pipeline drops the macOS binaries built on a macOS runner, for GoReleaser to
+# import. Like the Zig cache above, it exists only during a release — and GoReleaser refuses to
+# release from a tree with untracked paths in it, which is the right rule and the reason both of
+# these are listed rather than cleaned up by hand.
+prebuilt/
