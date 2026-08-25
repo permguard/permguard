@@ -18,7 +18,7 @@ ARG BINARY_NAME=permguard
 
 LABEL org.opencontainers.image.title="permguard-cli" \
       org.opencontainers.image.description="The Permguard command-line interface." \
-      org.opencontainers.image.source="https://github.com/permguard/permguard-rust" \
+      org.opencontainers.image.source="https://github.com/permguard/permguard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY docker/rootfs/etc/passwd docker/rootfs/etc/group /etc/

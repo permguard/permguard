@@ -3,7 +3,7 @@
 
 # Permguard
 
-[![ci](https://github.com/permguard/permguard-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard-rust/actions/workflows/ci.yml)
+[![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
 Permguard as a Rust workspace: shared infrastructure crates, reusable plane modules, and deployable

@@ -13,7 +13,7 @@ version: 0.1.0
 appVersion: "0.1.0"
 home: https://www.permguard.com
 sources:
-  - https://github.com/permguard/permguard-rust
+  - https://github.com/permguard/permguard
 maintainers:
   - name: Permguard Team
     email: opensource@permguard.com

@@ -9,7 +9,7 @@ ARG BINARY_NAME=permguard_control_plane
 
 LABEL org.opencontainers.image.title="permguard-control-plane" \
       org.opencontainers.image.description="Permguard control plane runtime." \
-      org.opencontainers.image.source="https://github.com/permguard/permguard-rust" \
+      org.opencontainers.image.source="https://github.com/permguard/permguard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY docker/rootfs/etc/passwd docker/rootfs/etc/group /etc/

@@ -24,7 +24,7 @@ set -euf
 #   tag optional Git tag (e.g. v0.0.18 or 0.0.18). If omitted, uses latest.
 
 OWNER="permguard"
-REPO="permguard-rust"
+REPO="permguard"
 PROJECT="permguard"        # used for checksum filename prefix
 BINARY="permguard"         # installed binary name
 

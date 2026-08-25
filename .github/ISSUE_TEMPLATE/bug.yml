@@ -9,7 +9,7 @@ body:
     attributes:
       value: |
         **Not for vulnerabilities.** A security issue goes through the process in
-        [SECURITY.md](https://github.com/permguard/permguard-rust/blob/main/SECURITY.md), never a
+        [SECURITY.md](https://github.com/permguard/permguard/blob/main/SECURITY.md), never a
         public issue.
 
   - type: textarea

@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Owner   = "permguard"
-$Repo = "permguard-rust"
+$Repo = "permguard"
 $Project = "permguard"
 
 Write-Host "[permguard-install] Detecting architecture…" -ForegroundColor Cyan

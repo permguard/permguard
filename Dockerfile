@@ -50,7 +50,7 @@ FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="Permguard" \
       org.opencontainers.image.description="Permguard plane runtime." \
-      org.opencontainers.image.source="https://github.com/permguard/permguard-rust" \
+      org.opencontainers.image.source="https://github.com/permguard/permguard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=builder /staged/passwd /staged/group /etc/

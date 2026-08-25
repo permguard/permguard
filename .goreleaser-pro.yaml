@@ -77,6 +77,6 @@ homebrew_casks:
       email: opensource@permguard.com
     license: "Apache-2.0"
     url:
-      template: "https://github.com/permguard/permguard-rust/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-      verified: "github.com/permguard/permguard-rust/"
+      template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+      verified: "github.com/permguard/permguard/"
     skip_upload: false

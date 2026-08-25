@@ -9,7 +9,7 @@ ARG BINARY_NAME=permguard_all_in_one
 
 LABEL org.opencontainers.image.title="permguard-all-in-one" \
       org.opencontainers.image.description="Permguard all-in-one runtime." \
-      org.opencontainers.image.source="https://github.com/permguard/permguard-rust" \
+      org.opencontainers.image.source="https://github.com/permguard/permguard" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY docker/rootfs/etc/passwd docker/rootfs/etc/group /etc/

@@ -198,5 +198,5 @@ binaries. Nothing before this was released from this repository.
   published to Docker Hub and the GitHub Container Registry; a Helm chart; and a local lab with
   Prometheus, Grafana and Loki already wired to the planes.
 
-[Unreleased]: https://github.com/permguard/permguard-rust/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/permguard/permguard-rust/releases/tag/v0.1.0
+[Unreleased]: https://github.com/permguard/permguard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/permguard/permguard/releases/tag/v0.1.0

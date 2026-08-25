@@ -17,7 +17,7 @@ project_name: permguard
 
 env:
   - ORG=permguard
-  - REPO=permguard-rust
+  - REPO=permguard
 
 before:
   hooks:
@@ -165,7 +165,7 @@ dockers_v2:
     ids:
       - permguard_all_in_one
     images:
-      - "ghcr.io/permguard/permguard-rust/all-in-one"
+      - "ghcr.io/permguard/permguard/all-in-one"
     tags:
       - "{{ .Version }}"
       - "latest"
@@ -179,14 +179,14 @@ dockers_v2:
       org.opencontainers.image.title: "permguard-all-in-one"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
-      org.opencontainers.image.source: "github.com/permguard/permguard-rust"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
 
   - id: permguard_control_plane
     dockerfile: ./packaging/docker/Dockerfile
     ids:
       - permguard_control_plane
     images:
-      - "ghcr.io/permguard/permguard-rust/control-plane"
+      - "ghcr.io/permguard/permguard/control-plane"
     tags:
       - "{{ .Version }}"
       - "latest"
@@ -200,14 +200,14 @@ dockers_v2:
       org.opencontainers.image.title: "permguard-control-plane"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
-      org.opencontainers.image.source: "github.com/permguard/permguard-rust"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
 
   - id: permguard_data_plane
     dockerfile: ./packaging/docker/Dockerfile
     ids:
       - permguard_data_plane
     images:
-      - "ghcr.io/permguard/permguard-rust/data-plane"
+      - "ghcr.io/permguard/permguard/data-plane"
     tags:
       - "{{ .Version }}"
       - "latest"
@@ -221,4 +221,4 @@ dockers_v2:
       org.opencontainers.image.title: "permguard-data-plane"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
-      org.opencontainers.image.source: "github.com/permguard/permguard-rust"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
