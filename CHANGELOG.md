@@ -16,7 +16,41 @@ default that is no longer the same. A release cannot be cut without an entry her
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] - 2026-08-25
+
+The first release of the Rust workspace: the shared infrastructure crates, the reusable plane
+modules, the deployable binaries, the decision endpoint and the decision log.
+
+Nothing before this was released *from this workspace*. The `v0.0.x` line is the Go
+implementation living in the same repository, and this is a different product versioned from
+zero — so everything below is an addition, including the entries that read as fixes: they
+record decisions taken while this release was being built, kept because the reasoning is worth
+more than the tidiness of dropping them.
+
 ### Added
+
+- **Contracts crate** (`permguard-core`): storage, secrets, signing keys, audit, services and the
+  server host, as traits and the types they exchange, with a dependency allowlist enforced by
+  `scripts/check-core-dependencies.sh`.
+- **Default implementations** (`permguard-std`), one Cargo feature per area, with `provision` — the
+  one that can mint a certificate authority — deliberately outside the default set.
+- **One listener for every surface** (`permguard-transport`): TCP, TLS, mutual TLS, certificate
+  revocation, material reload, and a shutdown that drains connections in flight.
+- **Telemetry surface** (`permguard-telemetry`) on a port of its own: `/healthz`, `/readyz` and
+  `/metrics`, with liveness and readiness reported separately.
+- **Control plane and data plane**, each serving `GET /`, `/version` and `/health` over HTTP and
+  `GetInfo`/`GetHealth` over gRPC, and an all-in-one runtime that hosts both.
+- **Command line** (`permguard`) with `version`, `config` and `inspect`:
+  - `inspect` probes every plane and reports `ready`, `degraded`, `unhealthy` or `unreachable`,
+    each with a stable `reason` code, a latency and a UTC timestamp;
+  - `config show`/`get`/`set`/`reset` over `~/.permguard/config.yml`, resolved through four layers —
+    flag, environment, file, default — with `show` reporting which layer each value came from;
+  - TLS and mutual TLS against a plane, including a client identity for a server that asks for one.
+- **Deployment**: multi-architecture images for the CLI, the all-in-one runtime and both planes,
+  published to Docker Hub and the GitHub Container Registry; a Helm chart; and a local lab with
+  Prometheus, Grafana and Loki already wired to the planes.
 
 - **Per-address connection bound** (`limits.connections_per_peer`, default 256): one client can no
   longer hold a surface's whole connection pool while every global number reads as healthy. Addresses
@@ -133,7 +167,7 @@ default that is no longer the same. A release cannot be cut without an entry her
   profiles, a Prometheus remote-write receiver in the lab, and a **Permguard · Load test**
   dashboard overlaying what the client felt with what the server measured.
 
-### Fixed
+### Fixed while building this release
 
 - **A partition towards one control plane no longer costs it its mirrors.** With several servers
   configured, reaping was driven by whatever the *answering* servers listed, so a server that could
@@ -152,7 +186,7 @@ default that is no longer the same. A release cannot be cut without an entry her
   and never reached the server. The plan now also compares the manifest digest and each partition's
   subtree, and reports what it found (`~ cedar/schema`, `~ manifest`).
 
-### Changed
+### Decided while building this release
 
 - **`dataPlane.sync` is now `dataPlane.mirrors`**, and its environment variables moved from
   `PERMGUARD_SYNC_*` to `PERMGUARD_MIRRORS_*`. The block is named after what it keeps current — the
@@ -168,34 +202,6 @@ default that is no longer the same. A release cannot be cut without an entry her
 - Every GitHub Actions step is pinned to a commit SHA rather than a movable tag.
 - `permguard_surface_connections_refused_total` now carries a `scope` label — `pool` or `peer` —
   saying which bound refused. Queries that sum by `surface` are unaffected.
-
-## [0.1.0] - 2026-08-22
-
-The first Rust workspace: shared infrastructure crates, reusable plane modules, and deployable
-binaries. Nothing before this was released from this repository.
-
-### Added
-
-- **Contracts crate** (`permguard-core`): storage, secrets, signing keys, audit, services and the
-  server host, as traits and the types they exchange, with a dependency allowlist enforced by
-  `scripts/check-core-dependencies.sh`.
-- **Default implementations** (`permguard-std`), one Cargo feature per area, with `provision` — the
-  one that can mint a certificate authority — deliberately outside the default set.
-- **One listener for every surface** (`permguard-transport`): TCP, TLS, mutual TLS, certificate
-  revocation, material reload, and a shutdown that drains connections in flight.
-- **Telemetry surface** (`permguard-telemetry`) on a port of its own: `/healthz`, `/readyz` and
-  `/metrics`, with liveness and readiness reported separately.
-- **Control plane and data plane**, each serving `GET /`, `/version` and `/health` over HTTP and
-  `GetInfo`/`GetHealth` over gRPC, and an all-in-one runtime that hosts both.
-- **Command line** (`permguard`) with `version`, `config` and `inspect`:
-  - `inspect` probes every plane and reports `ready`, `degraded`, `unhealthy` or `unreachable`,
-    each with a stable `reason` code, a latency and a UTC timestamp;
-  - `config show`/`get`/`set`/`reset` over `~/.permguard/config.yml`, resolved through four layers —
-    flag, environment, file, default — with `show` reporting which layer each value came from;
-  - TLS and mutual TLS against a plane, including a client identity for a server that asks for one.
-- **Deployment**: multi-architecture images for the CLI, the all-in-one runtime and both planes,
-  published to Docker Hub and the GitHub Container Registry; a Helm chart; and a local lab with
-  Prometheus, Grafana and Loki already wired to the planes.
 
 [Unreleased]: https://github.com/permguard/permguard/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/permguard/permguard/releases/tag/v0.1.0
