@@ -541,3 +541,10 @@ $RECYCLE.BIN/
 # a Docker build that fails on a fresh checkout while passing on the machine that wrote it.
 !docker/rootfs/
 !docker/rootfs/**
+
+# Zig's build cache. `cargo-zigbuild` cross-compiles the release binaries, and the Zig toolchain
+# leaves this in the working directory — where GoReleaser sees an untracked path and refuses to
+# release from a dirty tree. Ignored rather than cleaned in the workflow: the next tool that leaves
+# a cache here should be ignored too, not swept under a `rm -rf` somebody has to remember.
+.zig-cache/
+zig-out/
