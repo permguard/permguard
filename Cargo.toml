@@ -52,7 +52,7 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 flate2 = "1"
 futures-core = "0.3"
-hmac = "0.12"
+hmac = "0.13"
 http = "1"
 http-body-util = "0.1"
 hyper-util = { version = "0.1", default-features = false, features = ["tokio", "client-legacy", "http1"] }
