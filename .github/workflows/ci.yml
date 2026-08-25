@@ -109,7 +109,9 @@ jobs:
 
       # The release Dockerfiles are built here with a stand-in binary, so a typo in a COPY path or a
       # broken stage fails a pull request rather than a release. The binary is not the point; the
-      # image layout is.
+      # image layout is — and these are the *same* Dockerfiles `dockers_v2` publishes, so what is
+      # smoke-tested here is what ships. The context is assembled the way GoReleaser assembles it:
+      # the binary at `${TARGETPLATFORM}/${BINARY_NAME}`, plus whatever `extra_files` lists.
       - name: the release images build
         run: |
           set -euo pipefail

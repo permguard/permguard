@@ -137,6 +137,27 @@ Decision request example:
 - `jq`, for JSON examples.
 - `k6`, only for load testing.
 
+## Install The CLI
+
+Install the `permguard` command from this checkout:
+
+```sh
+cargo install --path crates/permguard-cli --bin permguard
+```
+
+Make sure Cargo's binary directory is on your `PATH`:
+
+```sh
+export PATH="$HOME/.cargo/bin:$PATH"
+permguard --help
+```
+
+During development, reinstall after CLI changes:
+
+```sh
+cargo install --path crates/permguard-cli --bin permguard --force
+```
+
 ## Quick Start
 
 Build everything:
@@ -166,43 +187,43 @@ telemetry      http://127.0.0.1:7558
 Inspect the planes:
 
 ```sh
-task cli -- inspect
+permguard inspect
 ```
 
 Create a zone and a ledger:
 
 ```sh
-task cli -- zones create acme --endpoint http://127.0.0.1:7556
-task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+permguard zones create acme --endpoint http://127.0.0.1:7556
+permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 ```
 
 Initialize and publish the included PDP lab:
 
 ```sh
-task cli -- -w pdp-lab init pdp-lab --language cedar,rego
-task cli -- -w pdp-lab remote add origin http://127.0.0.1:7556
-task cli -- -w pdp-lab validate
-task cli -- -w pdp-lab checkout origin/acme/main-ledger
-task cli -- -w pdp-lab plan
-task cli -- -w pdp-lab apply -m "lab policies"
+permguard -w pdp-lab init pdp-lab --language cedar,rego
+permguard -w pdp-lab remote add origin http://127.0.0.1:7556
+permguard -w pdp-lab validate
+permguard -w pdp-lab checkout origin/acme/main-ledger
+permguard -w pdp-lab plan
+permguard -w pdp-lab apply -m "lab policies"
 ```
 
 Wait for the data plane to mirror the ledger, then ask for decisions:
 
 ```sh
 sleep 20
-task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
+permguard -w pdp-lab check -f pdp-lab/requests/permit.json
+permguard -w pdp-lab check -f pdp-lab/requests/deny.json
+permguard -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+permguard -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
 ```
 
 Read the decision log:
 
 ```sh
-task cli -- decisions list --zone acme --ledger main-ledger
-task cli -- decisions tail --zone acme --ledger main-ledger --follow
-task cli -- decisions export --zone acme --ledger main-ledger -o json
+permguard decisions list --zone acme --ledger main-ledger
+permguard decisions tail --zone acme --ledger main-ledger --follow
+permguard decisions export --zone acme --ledger main-ledger -o json
 ```
 
 Call the PDP HTTP API directly:
@@ -219,8 +240,8 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
 Use gRPC instead of HTTP:
 
 ```sh
-task cli -- -w pdp-lab --data-endpoint grpc://127.0.0.1:7656 check -f pdp-lab/requests/permit.json
-task cli -- --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+permguard -w pdp-lab --data-endpoint grpc://127.0.0.1:7656 check -f pdp-lab/requests/permit.json
+permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
 ```
 
 ## Run Commands
@@ -234,10 +255,6 @@ task run:control                   # control plane only
 task run:data                      # data plane only
 task run-as-tls:all                # all-in-one with TLS
 task run-as-mtls:all               # all-in-one with HTTP TLS and gRPC mTLS
-task cli -- --help                 # run the CLI
-task cli -- inspect                # inspect local planes
-task cli -- config show            # show CLI configuration
-task cli -- completion zsh         # shell completions
 ```
 
 Use `make`:
@@ -249,14 +266,20 @@ make run-control
 make run-data
 make run-as-tls-all
 make run-as-mtls-all
-make cli ARGS="--help"
-make cli ARGS="inspect"
 ```
 
-Use Cargo directly:
+Use the installed CLI:
 
 ```sh
-cargo run -p permguard-cli --bin permguard -- --help
+permguard --help                   # CLI help
+permguard inspect                  # inspect local planes
+permguard config show              # show CLI configuration
+permguard completion zsh           # shell completions
+```
+
+Use Cargo directly for runtime binaries:
+
+```sh
 cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/config.local.yml
 cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
 cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
@@ -293,56 +316,56 @@ crates/permguard-data-plane/config.local-mtls.yml
 Create and manage remote state:
 
 ```sh
-task cli -- zones create acme --endpoint http://127.0.0.1:7556
-task cli -- zones list
-task cli -- zones get acme
-task cli -- ledgers create --zone acme main-ledger
-task cli -- ledgers list --zone acme
-task cli -- ledgers get --zone acme main-ledger
+permguard zones create acme --endpoint http://127.0.0.1:7556
+permguard zones list
+permguard zones get acme
+permguard ledgers create --zone acme main-ledger
+permguard ledgers list --zone acme
+permguard ledgers get --zone acme main-ledger
 ```
 
 Author and publish policies:
 
 ```sh
 mkdir my-policies
-task cli -- -w my-policies init my-policies --language cedar
-task cli -- -w my-policies remote add origin http://127.0.0.1:7556
-task cli -- -w my-policies checkout origin/acme/main-ledger
-task cli -- -w my-policies refresh
-task cli -- -w my-policies validate
-task cli -- -w my-policies plan
-task cli -- -w my-policies apply -m "update policies"
-task cli -- -w my-policies status
-task cli -- -w my-policies history
-task cli -- -w my-policies verify
+permguard -w my-policies init my-policies --language cedar
+permguard -w my-policies remote add origin http://127.0.0.1:7556
+permguard -w my-policies checkout origin/acme/main-ledger
+permguard -w my-policies refresh
+permguard -w my-policies validate
+permguard -w my-policies plan
+permguard -w my-policies apply -m "update policies"
+permguard -w my-policies status
+permguard -w my-policies history
+permguard -w my-policies verify
 ```
 
 Inspect local objects:
 
 ```sh
-task cli -- -w my-policies objects list
-task cli -- -w my-policies objects list --tracked
-task cli -- -w my-policies objects prune --dry-run
-task cli -- -w my-policies objects cat <digest> --human
+permguard -w my-policies objects list
+permguard -w my-policies objects list --tracked
+permguard -w my-policies objects prune --dry-run
+permguard -w my-policies objects cat <digest> --human
 ```
 
 Ask for authorization:
 
 ```sh
-task cli -- -w my-policies check --subject User:alice --action read --resource Document:budget
-task cli -- -w my-policies check -f request.json
-cat request.json | task cli -- -w my-policies check -f -
-task cli -- check -f request.json --zone acme --ledger main-ledger -o json
+permguard -w my-policies check --subject User:alice --action read --resource Document:budget
+permguard -w my-policies check -f request.json
+cat request.json | permguard -w my-policies check -f -
+permguard check -f request.json --zone acme --ledger main-ledger -o json
 ```
 
 Read and verify decision records:
 
 ```sh
-task cli -- decisions list --zone acme --ledger main-ledger
-task cli -- decisions tail --zone acme --ledger main-ledger --follow
-task cli -- decisions get <decision-id> --zone acme --ledger main-ledger
-task cli -- decisions export --zone acme --ledger main-ledger -o json
-task cli -- decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
+permguard decisions list --zone acme --ledger main-ledger
+permguard decisions tail --zone acme --ledger main-ledger --follow
+permguard decisions get <decision-id> --zone acme --ledger main-ledger
+permguard decisions export --zone acme --ledger main-ledger -o json
+permguard decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
 ```
 
 ## PDP Lab
@@ -363,22 +386,22 @@ Run it end to end:
 ```sh
 task run:all
 
-task cli -- zones create acme --endpoint http://127.0.0.1:7556
-task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+permguard zones create acme --endpoint http://127.0.0.1:7556
+permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 
-task cli -- -w pdp-lab init pdp-lab --language cedar,rego
-task cli -- -w pdp-lab remote add origin http://127.0.0.1:7556
-task cli -- -w pdp-lab validate
-task cli -- -w pdp-lab checkout origin/acme/main-ledger
-task cli -- -w pdp-lab plan
-task cli -- -w pdp-lab apply -m "lab policies"
+permguard -w pdp-lab init pdp-lab --language cedar,rego
+permguard -w pdp-lab remote add origin http://127.0.0.1:7556
+permguard -w pdp-lab validate
+permguard -w pdp-lab checkout origin/acme/main-ledger
+permguard -w pdp-lab plan
+permguard -w pdp-lab apply -m "lab policies"
 
 sleep 20
 
-task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
-task cli -- decisions list --zone acme --ledger main-ledger
+permguard -w pdp-lab check -f pdp-lab/requests/permit.json
+permguard -w pdp-lab check -f pdp-lab/requests/deny.json
+permguard -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+permguard decisions list --zone acme --ledger main-ledger
 ```
 
 ## Observability Lab

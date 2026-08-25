@@ -160,10 +160,17 @@ nfpms:
 # this repository's own namespace: no name can collide with the Go images on
 # Docker Hub, and adding Docker Hub later is one more `images:` entry.
 dockers_v2:
+  # `extra_files` is not decoration: the build context GoReleaser assembles holds the Dockerfile and
+  # the prebuilt binary at `${TARGETPLATFORM}/${BINARY_NAME}`, and nothing else. Anything else a
+  # COPY names — the licence, the state directory the image ships — has to be listed here or the
+  # build fails at release time, which is the worst possible moment to find out.
   - id: permguard_all_in_one
-    dockerfile: ./packaging/docker/Dockerfile
+    dockerfile: ./docker/release/all-in-one.Dockerfile
     ids:
       - permguard_all_in_one
+    extra_files:
+      - LICENSE
+      - docker/rootfs
     images:
       - "ghcr.io/permguard/permguard/all-in-one"
     tags:
@@ -182,9 +189,12 @@ dockers_v2:
       org.opencontainers.image.source: "github.com/permguard/permguard"
 
   - id: permguard_control_plane
-    dockerfile: ./packaging/docker/Dockerfile
+    dockerfile: ./docker/release/control-plane.Dockerfile
     ids:
       - permguard_control_plane
+    extra_files:
+      - LICENSE
+      - docker/rootfs
     images:
       - "ghcr.io/permguard/permguard/control-plane"
     tags:
@@ -203,9 +213,12 @@ dockers_v2:
       org.opencontainers.image.source: "github.com/permguard/permguard"
 
   - id: permguard_data_plane
-    dockerfile: ./packaging/docker/Dockerfile
+    dockerfile: ./docker/release/data-plane.Dockerfile
     ids:
       - permguard_data_plane
+    extra_files:
+      - LICENSE
+      - docker/rootfs
     images:
       - "ghcr.io/permguard/permguard/data-plane"
     tags:
@@ -219,6 +232,33 @@ dockers_v2:
       BINARY_NAME: permguard-data-plane
     labels:
       org.opencontainers.image.title: "permguard-data-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
+  # The CLI, published as an image too: a pipeline step that runs `permguard check` or `permguard
+  # apply` wants the binary without installing it, and the Dockerfile already existed with nothing
+  # releasing it.
+  - id: permguard_cli
+    dockerfile: ./docker/release/cli.Dockerfile
+    ids:
+      - permguard_cli
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "ghcr.io/permguard/permguard/cli"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard
+    labels:
+      org.opencontainers.image.title: "permguard-cli"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "github.com/permguard/permguard"
