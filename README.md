@@ -6,30 +6,136 @@
 [![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-Permguard is a Rust workspace for running policy authorization as a set of small,
-auditable services.
+**Permguard is trustworthy authorization infrastructure for AI agents and
+regulated systems.**
 
-It gives you:
+It implements a **Policy Decision Point (PDP)**: applications, agents and
+services send authorization questions such as "can this subject perform this
+action on this resource?", and Permguard answers with a decision that can be
+recorded, audited and tied back to the exact policy version that produced it.
 
-- a **control plane** that stores zones, ledgers, policy objects and decision logs;
-- a **data plane** that mirrors policy ledgers and answers authorization checks;
-- an **all-in-one runtime** for local development and demos;
-- a `permguard` CLI for authoring, pushing, pulling, checking and inspecting policies;
-- built-in policy language support for **Cedar** and **Rego**;
-- signed, content-addressed policy objects and verifiable decision records.
+Permguard is built for environments where authorization must be explainable:
 
-The local developer path is intentionally small: build the workspace, run the
-all-in-one process, create a zone and ledger, push the sample policies, then ask
-the data plane for a decision.
+- AI agents that need external, policy-governed permission checks before acting;
+- regulated systems that need repeatable decisions and audit evidence;
+- multi-tenant platforms that separate policy authoring from runtime evaluation;
+- teams that want Cedar and Rego policies in the same authorization workflow.
+
+## What It Does
+
+Permguard separates policy distribution from policy evaluation:
+
+```text
+policy authors + CI
+        |
+        v
+permguard CLI  --apply-->  control plane  --mirror-->  data plane / PDP
+                                |                         |
+                                |                         v
+                                |                  authorization decision
+                                |                         |
+                                v                         v
+                         policy objects            signed decision log
+```
+
+- The **control plane** stores zones, ledgers, policy objects and decision logs.
+- The **data plane** mirrors policy ledgers and serves the PDP decision endpoint.
+- The **CLI** initializes workspaces, validates policies, pushes versions, checks
+  decisions and reads/verifies decision records.
+- The **object model** is content-addressed, so a decision can name the exact
+  policy state that was evaluated.
+- The **decision log** is designed for audit: records are produced by the data
+  plane, shipped to the control plane and can be verified later.
+
+## Multi-Language Policies
+
+A Permguard policy workspace is described by a manifest. One ledger can contain
+multiple language partitions and expose one or more PDP profiles.
+
+Example from `pdp-lab/manifest.yml`:
+
+```yaml
+metadata:
+  kind: policy
+  name: pdp-lab
+  description: The Permguard PDP laboratory - Cedar and Rego side by side.
+  author: Nitro Agility S.r.l.
+  license: Apache-2.0
+runtimes:
+  cedar:
+    language: { name: cedar, constraint: ">=4.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+  rego:
+    language: { name: rego, constraint: ">=1.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  cedar: { runtime: cedar, schema: true }
+  rego:  { runtime: rego, schema: false }
+profiles:
+  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }
+  gateway: { type: permguard.pdp.v1, partitions: [rego] }
+```
+
+Cedar policy example:
+
+```cedar
+@alias("document-readers")
+permit (
+    principal in Group::"finance",
+    action == Action::"read",
+    resource
+);
+
+@alias("document-owners")
+permit (
+    principal,
+    action == Action::"write",
+    resource
+) when { resource.owner == principal };
+```
+
+Rego policy example:
+
+```rego
+# METADATA
+# custom:
+#   alias: gateway-access
+package gateway.access
+
+import rego.v1
+
+default allow := false
+
+allow if {
+    input.subject.type == "User"
+    input.action.name == "read"
+}
+
+allow if {
+    input.subject.properties.role == "admin"
+    input.action.name in {"create", "update", "delete"}
+}
+```
+
+Decision request example:
+
+```json
+{
+  "subject": { "type": "User", "id": "alice" },
+  "action": { "name": "read" },
+  "resource": { "type": "Document", "id": "budget-2026" },
+  "context": { "time": "2026-08-24T10:00:00Z" }
+}
+```
 
 ## Requirements
 
 - Rust `1.97` or newer.
 - `cargo`.
-- Either `task` or `make`; both expose the same development commands.
-- Docker Compose, only for the observability lab.
-- `jq`, useful for JSON examples.
-- `k6`, only for load tests.
+- `task` or `make`.
+- Docker Compose, for the lab and observability stack.
+- `jq`, for JSON examples.
+- `k6`, only for load testing.
 
 ## Quick Start
 
@@ -41,7 +147,7 @@ task build
 make build
 ```
 
-Start the local all-in-one runtime:
+Start the all-in-one runtime:
 
 ```sh
 task run:all
@@ -49,7 +155,7 @@ task run:all
 make run-all
 ```
 
-This starts both planes in one process:
+The local runtime exposes:
 
 ```text
 control plane  http://127.0.0.1:7556
@@ -57,22 +163,20 @@ data plane     http://127.0.0.1:7656
 telemetry      http://127.0.0.1:7558
 ```
 
-In another shell, inspect the runtime:
+Inspect the planes:
 
 ```sh
 task cli -- inspect
-# or
-make cli ARGS="inspect"
 ```
 
-Create a tenant boundary and a policy ledger:
+Create a zone and a ledger:
 
 ```sh
 task cli -- zones create acme --endpoint http://127.0.0.1:7556
 task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 ```
 
-Use the included PDP lab as a ready-made policy workspace:
+Initialize and publish the included PDP lab:
 
 ```sh
 task cli -- -w pdp-lab init pdp-lab --language cedar,rego
@@ -83,37 +187,73 @@ task cli -- -w pdp-lab plan
 task cli -- -w pdp-lab apply -m "lab policies"
 ```
 
-Give the data plane one mirror interval, then ask for authorization decisions:
+Wait for the data plane to mirror the ledger, then ask for decisions:
 
 ```sh
 sleep 20
 task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
 task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
 ```
 
-Read back the decisions recorded by the data plane and shipped to the control
-plane:
+Read the decision log:
 
 ```sh
 task cli -- decisions list --zone acme --ledger main-ledger
 task cli -- decisions tail --zone acme --ledger main-ledger --follow
+task cli -- decisions export --zone acme --ledger main-ledger -o json
 ```
 
-## Common Commands
+Call the PDP HTTP API directly:
 
 ```sh
-task cli -- --help                         # CLI help
-task cli -- config show                    # show CLI configuration
-task cli -- zones list                     # list zones
-task cli -- ledgers list --zone acme       # list ledgers in a zone
-task cli -- -w pdp-lab status              # local workspace state
-task cli -- -w pdp-lab history             # tracked ledger history
-task cli -- -w pdp-lab verify              # verify remote head and local closure
-task cli -- -w pdp-lab objects list        # inspect the local object store
-task cli -- completion zsh                 # shell completions
+curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
+
+curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+  -H 'content-type: application/json' \
+  -H 'x-request-id: lab-1' \
+  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' pdp-lab/requests/permit.json)" | jq
 ```
 
-Direct Cargo invocations are useful when you do not want the task wrapper:
+Use gRPC instead of HTTP:
+
+```sh
+task cli -- -w pdp-lab --data-endpoint grpc://127.0.0.1:7656 check -f pdp-lab/requests/permit.json
+task cli -- --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+```
+
+## Run Commands
+
+Use `task`:
+
+```sh
+task build                         # build the workspace
+task run:all                       # control + data plane in one process
+task run:control                   # control plane only
+task run:data                      # data plane only
+task run-as-tls:all                # all-in-one with TLS
+task run-as-mtls:all               # all-in-one with HTTP TLS and gRPC mTLS
+task cli -- --help                 # run the CLI
+task cli -- inspect                # inspect local planes
+task cli -- config show            # show CLI configuration
+task cli -- completion zsh         # shell completions
+```
+
+Use `make`:
+
+```sh
+make build
+make run-all
+make run-control
+make run-data
+make run-as-tls-all
+make run-as-mtls-all
+make cli ARGS="--help"
+make cli ARGS="inspect"
+```
+
+Use Cargo directly:
 
 ```sh
 cargo run -p permguard-cli --bin permguard -- --help
@@ -122,72 +262,92 @@ cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/per
 cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
 ```
 
-## Running Modes
-
-Use the all-in-one runtime for local work:
-
-```sh
-task run:all
-task run-as-tls:all
-task run-as-mtls:all
-```
-
-Run the planes separately when you want the deployment shape:
-
-```sh
-task run:control
-task run:data
-```
-
-The local configuration files live with the binaries:
-
-```text
-crates/permguard-all-in-one/config.local.yml
-crates/permguard-control-plane/config.local.yml
-crates/permguard-data-plane/config.local.yml
-```
-
-Each server command accepts the config path as its positional argument and can
-override common settings from the command line:
+Server commands accept a config file and optional overrides:
 
 ```sh
 cargo run -p permguard-control-plane --bin permguard-control-plane -- \
   crates/permguard-control-plane/config.local.yml \
   --public-http-addr 127.0.0.1:7556 \
+  --public-grpc-addr 127.0.0.1:7556 \
+  --telemetry-addr 127.0.0.1:7558 \
   --log-level debug \
   --log-format terminal
 ```
 
-## What The CLI Does
+Local configs:
 
-`permguard` is the operator and authoring tool. It can:
+```text
+crates/permguard-all-in-one/config.local.yml
+crates/permguard-all-in-one/config.local-tls.yml
+crates/permguard-all-in-one/config.local-mtls.yml
+crates/permguard-control-plane/config.local.yml
+crates/permguard-control-plane/config.local-tls.yml
+crates/permguard-control-plane/config.local-mtls.yml
+crates/permguard-data-plane/config.local.yml
+crates/permguard-data-plane/config.local-tls.yml
+crates/permguard-data-plane/config.local-mtls.yml
+```
 
-- create, list, update and delete zones;
-- create, list, update and delete ledgers inside a zone;
-- initialize a local policy workspace;
-- add remotes, checkout ledgers, pull remote state and apply local changes;
-- validate Cedar and Rego policy sources before upload;
-- inspect local policy objects;
-- ask a data plane for a decision with `permguard check`;
-- read, tail, export and verify decision records;
-- generate shell completions.
+## CLI Workflow
 
-Examples:
+Create and manage remote state:
 
 ```sh
-task cli -- init my-policies --language cedar
-task cli -- remote add origin http://127.0.0.1:7556
-task cli -- checkout origin/acme/main-ledger
-task cli -- refresh
-task cli -- validate
-task cli -- plan
-task cli -- apply -m "update policies"
-task cli -- check --subject User:alice --action read --resource Document:budget
+task cli -- zones create acme --endpoint http://127.0.0.1:7556
+task cli -- zones list
+task cli -- zones get acme
+task cli -- ledgers create --zone acme main-ledger
+task cli -- ledgers list --zone acme
+task cli -- ledgers get --zone acme main-ledger
+```
+
+Author and publish policies:
+
+```sh
+mkdir my-policies
+task cli -- -w my-policies init my-policies --language cedar
+task cli -- -w my-policies remote add origin http://127.0.0.1:7556
+task cli -- -w my-policies checkout origin/acme/main-ledger
+task cli -- -w my-policies refresh
+task cli -- -w my-policies validate
+task cli -- -w my-policies plan
+task cli -- -w my-policies apply -m "update policies"
+task cli -- -w my-policies status
+task cli -- -w my-policies history
+task cli -- -w my-policies verify
+```
+
+Inspect local objects:
+
+```sh
+task cli -- -w my-policies objects list
+task cli -- -w my-policies objects list --tracked
+task cli -- -w my-policies objects prune --dry-run
+task cli -- -w my-policies objects cat <digest> --human
+```
+
+Ask for authorization:
+
+```sh
+task cli -- -w my-policies check --subject User:alice --action read --resource Document:budget
+task cli -- -w my-policies check -f request.json
+cat request.json | task cli -- -w my-policies check -f -
+task cli -- check -f request.json --zone acme --ledger main-ledger -o json
+```
+
+Read and verify decision records:
+
+```sh
+task cli -- decisions list --zone acme --ledger main-ledger
+task cli -- decisions tail --zone acme --ledger main-ledger --follow
+task cli -- decisions get <decision-id> --zone acme --ledger main-ledger
+task cli -- decisions export --zone acme --ledger main-ledger -o json
+task cli -- decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
 ```
 
 ## PDP Lab
 
-`pdp-lab/` is the fastest way to see Permguard work end to end. It contains:
+`pdp-lab/` is a complete example policy workspace:
 
 ```text
 pdp-lab/
@@ -198,35 +358,32 @@ pdp-lab/
 `-- requests/*.json
 ```
 
-The lab demonstrates one ledger with two partitions:
-
-- `cedar`, with schema-backed document policies;
-- `rego`, with a gateway policy;
-- `default`, a profile that evaluates both partitions;
-- `gateway`, a profile that evaluates only the Rego partition.
-
-After applying the lab, these checks exercise the data plane:
+Run it end to end:
 
 ```sh
+task run:all
+
+task cli -- zones create acme --endpoint http://127.0.0.1:7556
+task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+
+task cli -- -w pdp-lab init pdp-lab --language cedar,rego
+task cli -- -w pdp-lab remote add origin http://127.0.0.1:7556
+task cli -- -w pdp-lab validate
+task cli -- -w pdp-lab checkout origin/acme/main-ledger
+task cli -- -w pdp-lab plan
+task cli -- -w pdp-lab apply -m "lab policies"
+
+sleep 20
+
 task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
 task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
 task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
-task cli -- -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
-```
-
-You can also call the HTTP API directly:
-
-```sh
-curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
-curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
-  -H 'content-type: application/json' \
-  -H 'x-request-id: lab-1' \
-  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' pdp-lab/requests/permit.json)" | jq
+task cli -- decisions list --zone acme --ledger main-ledger
 ```
 
 ## Observability Lab
 
-Start the local Compose lab with both planes plus Prometheus, Grafana and Loki:
+Start both planes plus Prometheus, Grafana and Loki:
 
 ```sh
 task lab:up
@@ -234,13 +391,23 @@ task lab:up
 make lab-up
 ```
 
-Start only observability, useful when the planes are running on the host:
+Start only observability for planes running on the host:
 
 ```sh
 task lab:observability
+# or
+make lab-observability
 ```
 
-Default local addresses:
+Print the local addresses:
+
+```sh
+task lab:where
+# or
+make lab-where
+```
+
+Defaults:
 
 ```text
 Grafana     http://127.0.0.1:7590
@@ -250,22 +417,24 @@ Control     http://127.0.0.1:7556
 Data        http://127.0.0.1:7656
 ```
 
-Stop the lab:
+Follow logs and stop the lab:
 
 ```sh
+task lab:logs
+task lab:logs SERVICE=grafana
 task lab:down
-task lab:clean     # also removes lab volumes
+task lab:clean
 ```
 
 ## Load Testing
 
-Run the control plane in release mode for benchmarks:
+Start the benchmark server:
 
 ```sh
 task bench:server
 ```
 
-Then run one of the k6 profiles:
+Run k6 profiles:
 
 ```sh
 task bench:peak
@@ -276,14 +445,12 @@ task bench:tls
 task bench:hold
 ```
 
-To send k6 client metrics to the lab Prometheus:
+Send k6 metrics to the observability lab:
 
 ```sh
 task lab:observability
 task bench:grafana
 ```
-
-The benchmark scripts are in `bench/`.
 
 ## Workspace Layout
 
@@ -313,19 +480,22 @@ task lint                    # clippy with warnings denied
 task coverage                # coverage gate
 ```
 
-The structural checks are part of the normal check path:
+Structural checks:
 
 ```sh
-task check:core-deps         # keep permguard-core dependency-light
-task check:seams             # keep concrete construction in composition roots
-task check:systems           # keep Taskfile and Makefile aligned
-task check:headers           # license headers
+task check:core-deps
+task check:seams
+task check:systems
+task check:headers
 ```
 
-Before opening a change, run:
+Equivalent Make targets are available:
 
 ```sh
-task check
+make check
+make test
+make lint
+make coverage
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and
