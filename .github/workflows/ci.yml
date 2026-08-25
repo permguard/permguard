@@ -301,7 +301,7 @@ jobs:
       # The repository already had a markdownlint configuration and nothing running it. Documentation
       # that drifts out of the style it declares is documentation nobody trusts to be current.
       - name: markdown
-        uses: DavidAnson/markdownlint-cli2-action@05f32210e84442804257b2a6f20b273450ec8265 # v19
+        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
         with:
           globs: "**/*.md"
       # Every link that points inside the repository, checked. A README that links to a page that was
