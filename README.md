@@ -6,101 +6,330 @@
 [![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-Permguard as a Rust workspace: shared infrastructure crates, reusable plane modules, and deployable
-application binaries.
+Permguard is a Rust workspace for running policy authorization as a set of small,
+auditable services.
+
+It gives you:
+
+- a **control plane** that stores zones, ledgers, policy objects and decision logs;
+- a **data plane** that mirrors policy ledgers and answers authorization checks;
+- an **all-in-one runtime** for local development and demos;
+- a `permguard` CLI for authoring, pushing, pulling, checking and inspecting policies;
+- built-in policy language support for **Cedar** and **Rego**;
+- signed, content-addressed policy objects and verifiable decision records.
+
+The local developer path is intentionally small: build the workspace, run the
+all-in-one process, create a zone and ledger, push the sample policies, then ask
+the data plane for a decision.
+
+## Requirements
+
+- Rust `1.97` or newer.
+- `cargo`.
+- Either `task` or `make`; both expose the same development commands.
+- Docker Compose, only for the observability lab.
+- `jq`, useful for JSON examples.
+- `k6`, only for load tests.
+
+## Quick Start
+
+Build everything:
 
 ```sh
-task run:all                 # or: make run-all
-permguard inspect
+task build
+# or
+make build
 ```
+
+Start the local all-in-one runtime:
+
+```sh
+task run:all
+# or
+make run-all
+```
+
+This starts both planes in one process:
 
 ```text
-control plane
-  endpoint: http://127.0.0.1:7556
-  status:   ready
-  health:   live=true ready=true
-  latency:  0ms
-...
-2 of 2 planes ready, 2 reachable
+control plane  http://127.0.0.1:7556
+data plane     http://127.0.0.1:7656
+telemetry      http://127.0.0.1:7558
 ```
 
-Then, for a local environment that looks like a real one — Prometheus, Grafana and Loki, with
-dashboards already provisioned:
+In another shell, inspect the runtime:
 
 ```sh
-task lab:up                  # Grafana on http://127.0.0.1:7590
+task cli -- inspect
+# or
+make cli ARGS="inspect"
 ```
 
-## Documentation
+Create a tenant boundary and a policy ledger:
 
-The reference documentation is published at
-[docs.permguard.com](https://docs.permguard.com) — the quick start, the command
-line, the decision endpoint and its log, the synchronization loop, running the
-planes, observability, containers, Kubernetes and releasing.
+```sh
+task cli -- zones create acme --endpoint http://127.0.0.1:7556
+task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+```
 
-What lives *here*, beside the code it describes, is the part that goes stale the
-moment the code moves: every crate carries its own module documentation, and
-`cargo doc --open` is the version that is true of the commit you have checked
-out.
+Use the included PDP lab as a ready-made policy workspace:
 
-## How it is put together
+```sh
+task cli -- -w pdp-lab init pdp-lab --language cedar,rego
+task cli -- -w pdp-lab remote add origin http://127.0.0.1:7556
+task cli -- -w pdp-lab validate
+task cli -- -w pdp-lab checkout origin/acme/main-ledger
+task cli -- -w pdp-lab plan
+task cli -- -w pdp-lab apply -m "lab policies"
+```
 
-Three layers, and the boundaries between them are checked rather than hoped for.
+Give the data plane one mirror interval, then ask for authorization decisions:
 
-| Crate | What it is |
+```sh
+sleep 20
+task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
+```
+
+Read back the decisions recorded by the data plane and shipped to the control
+plane:
+
+```sh
+task cli -- decisions list --zone acme --ledger main-ledger
+task cli -- decisions tail --zone acme --ledger main-ledger --follow
+```
+
+## Common Commands
+
+```sh
+task cli -- --help                         # CLI help
+task cli -- config show                    # show CLI configuration
+task cli -- zones list                     # list zones
+task cli -- ledgers list --zone acme       # list ledgers in a zone
+task cli -- -w pdp-lab status              # local workspace state
+task cli -- -w pdp-lab history             # tracked ledger history
+task cli -- -w pdp-lab verify              # verify remote head and local closure
+task cli -- -w pdp-lab objects list        # inspect the local object store
+task cli -- completion zsh                 # shell completions
+```
+
+Direct Cargo invocations are useful when you do not want the task wrapper:
+
+```sh
+cargo run -p permguard-cli --bin permguard -- --help
+cargo run -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/config.local.yml
+cargo run -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml
+cargo run -p permguard-data-plane --bin permguard-data-plane -- crates/permguard-data-plane/config.local.yml
+```
+
+## Running Modes
+
+Use the all-in-one runtime for local work:
+
+```sh
+task run:all
+task run-as-tls:all
+task run-as-mtls:all
+```
+
+Run the planes separately when you want the deployment shape:
+
+```sh
+task run:control
+task run:data
+```
+
+The local configuration files live with the binaries:
+
+```text
+crates/permguard-all-in-one/config.local.yml
+crates/permguard-control-plane/config.local.yml
+crates/permguard-data-plane/config.local.yml
+```
+
+Each server command accepts the config path as its positional argument and can
+override common settings from the command line:
+
+```sh
+cargo run -p permguard-control-plane --bin permguard-control-plane -- \
+  crates/permguard-control-plane/config.local.yml \
+  --public-http-addr 127.0.0.1:7556 \
+  --log-level debug \
+  --log-format terminal
+```
+
+## What The CLI Does
+
+`permguard` is the operator and authoring tool. It can:
+
+- create, list, update and delete zones;
+- create, list, update and delete ledgers inside a zone;
+- initialize a local policy workspace;
+- add remotes, checkout ledgers, pull remote state and apply local changes;
+- validate Cedar and Rego policy sources before upload;
+- inspect local policy objects;
+- ask a data plane for a decision with `permguard check`;
+- read, tail, export and verify decision records;
+- generate shell completions.
+
+Examples:
+
+```sh
+task cli -- init my-policies --language cedar
+task cli -- remote add origin http://127.0.0.1:7556
+task cli -- checkout origin/acme/main-ledger
+task cli -- refresh
+task cli -- validate
+task cli -- plan
+task cli -- apply -m "update policies"
+task cli -- check --subject User:alice --action read --resource Document:budget
+```
+
+## PDP Lab
+
+`pdp-lab/` is the fastest way to see Permguard work end to end. It contains:
+
+```text
+pdp-lab/
+|-- manifest.yml
+|-- cedar/documents.cedar
+|-- cedar/model.cedarschema
+|-- rego/gateway.rego
+`-- requests/*.json
+```
+
+The lab demonstrates one ledger with two partitions:
+
+- `cedar`, with schema-backed document policies;
+- `rego`, with a gateway policy;
+- `default`, a profile that evaluates both partitions;
+- `gateway`, a profile that evaluates only the Rego partition.
+
+After applying the lab, these checks exercise the data plane:
+
+```sh
+task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+task cli -- -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
+```
+
+You can also call the HTTP API directly:
+
+```sh
+curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
+curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+  -H 'content-type: application/json' \
+  -H 'x-request-id: lab-1' \
+  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' pdp-lab/requests/permit.json)" | jq
+```
+
+## Observability Lab
+
+Start the local Compose lab with both planes plus Prometheus, Grafana and Loki:
+
+```sh
+task lab:up
+# or
+make lab-up
+```
+
+Start only observability, useful when the planes are running on the host:
+
+```sh
+task lab:observability
+```
+
+Default local addresses:
+
+```text
+Grafana     http://127.0.0.1:7590
+Prometheus  http://127.0.0.1:7591
+Loki        http://127.0.0.1:7592
+Control     http://127.0.0.1:7556
+Data        http://127.0.0.1:7656
+```
+
+Stop the lab:
+
+```sh
+task lab:down
+task lab:clean     # also removes lab volumes
+```
+
+## Load Testing
+
+Run the control plane in release mode for benchmarks:
+
+```sh
+task bench:server
+```
+
+Then run one of the k6 profiles:
+
+```sh
+task bench:peak
+task bench:ladder
+task bench:shed
+task bench:grpc
+task bench:tls
+task bench:hold
+```
+
+To send k6 client metrics to the lab Prometheus:
+
+```sh
+task lab:observability
+task bench:grafana
+```
+
+The benchmark scripts are in `bench/`.
+
+## Workspace Layout
+
+| Crate | Purpose |
 | --- | --- |
-| `permguard-core` | **The contracts**: storage, secrets, signing keys, audit, services, the server host. Traits and the types they exchange, no implementation, no socket, no runtime. |
-| `permguard-std` | The default implementations, one Cargo feature per area. |
-| `permguard-transport` | One listener for every surface: TCP, TLS, mutual TLS, revocation, reload, and a shutdown that drains. |
-| `permguard-telemetry` | Liveness, readiness and metrics, on a port of its own. |
-| `permguard-server` | The server host, its service registry, the command line that drives them — and `plane/`, the composition root: the one place that names a concrete storage, audit sink or signing ring. |
-| `permguard-languages` | The built-in policy languages, compiled in: Cedar and Rego — **split by role**: the base both sides need (is this legal, what alias does the source declare), the authoring half only the CLI needs (splitting files), and the evaluating half only the data plane calls (compile once, then decide). It plugs *into* the model, never the other way round, so a language pack from anywhere needs no change to the model. |
-| `permguard-objects` | What the objects **are**: canonical CBOR, digests, blob/tree/commit, policy identity, the manifest, signed head statements. Dependency-free — it knows no language, no protocol, no storage, which is what lets every side compute the same digests without agreeing on anything else. |
-| `permguard-notp` | How the objects **move**: the Negotiated Object Transfer Protocol's wire messages, one encoder and one decoder shared by every party. |
-| `permguard-control-client` | How a **client** reaches a Permguard deployment: endpoints and trust material, both transports, the catalog, the NOTP verbs, the decision endpoint, and the verified local mirror. The CLI and the data plane share it, so the two speak the wire identically. |
-| `permguard-control-plane`, `permguard-data-plane`, `permguard-all-in-one` | The binaries. The control plane also owns the server half of NOTP (`engine`, `store`) and what it holds, measured (`inventory`); the data plane owns the mirroring loop (`sync`) and the decision endpoint (`authz`) — the `permguard.pdp.v1` profile over both transports. |
-| `permguard-cli` | `permguard` — and `engine/`, which is both halves the CLI needs: the NOTP client (`transfer`) and authoring. |
+| `permguard-core` | Shared contracts: storage, secrets, signing keys, audit, services and server host types. |
+| `permguard-std` | Default implementations behind feature flags. |
+| `permguard-transport` | HTTP, gRPC, TLS, mutual TLS, revocation, reload and graceful shutdown. |
+| `permguard-telemetry` | Liveness, readiness and metrics. |
+| `permguard-server` | Server host, service registry, command dispatch and plane composition support. |
+| `permguard-languages` | Built-in Cedar and Rego integration. |
+| `permguard-objects` | Canonical policy objects, digests, manifests and signed head statements. |
+| `permguard-notp` | Negotiated Object Transfer Protocol messages and codecs. |
+| `permguard-control-client` | Client-side access to endpoints, trust material, catalogs, NOTP, decisions and mirrors. |
+| `permguard-control-plane` | Control-plane binary, policy object storage, inventory and decision-log ingestion. |
+| `permguard-data-plane` | Data-plane binary, mirror loop, authorization endpoint and decision recording. |
+| `permguard-all-in-one` | Local runtime that runs control and data planes in one process. |
+| `permguard-cli` | `permguard`, the command-line interface and authoring engine. |
 
-A crate exists where a second consumer does. Where a thing has exactly one consumer it is a module
-of that consumer — which is why the NOTP server half lives in the control plane, the client half in
-the CLI, and each plane owns the `.proto` it serves (a caller generates its own client from that
-file, so nothing depends backwards).
-
-Two properties hold this together, and neither is expressible in the type system, so both are
-enforced by a script that runs in CI:
-
-- **`permguard-core` depends on four crates and no more** — whatever lands in its dependency list
-  lands in every crate in the workspace, and a contracts crate that drags a database driver stops
-  being a contracts crate. `scripts/check-core-dependencies.sh`.
-- **No crate constructs its own collaborators.** A composition root is the single place that names a
-  concrete implementation, which is what lets a different binary reuse the plane modules and supply
-  its own. `scripts/check-composition-root.sh`.
-
-## Load testing
+## Development
 
 ```sh
-task lab:observability        # Grafana + Prometheus, watching the plane you start next
-task bench:server             # release build, limits out of the way — in another shell
-task bench:peak               # the req/s ceiling
-task bench:ladder             # latency at fixed rising rates, where the knee is
-task bench:shed               # overload under default limits (against task run:control)
+task check                   # lint, structural checks and tests
+task test                    # workspace tests
+task test PKG=permguard-cli  # one crate
+task lint                    # clippy with warnings denied
+task coverage                # coverage gate
 ```
 
-Server-side numbers land on **Permguard · Overview** with no flags at all; `task bench:grafana`
-prints the k6 flags that put the client-side view beside them on **Permguard · Load test**. The whole
-method — capacity vs shed profiles, open vs closed model, remote runs — is
-documented with the benchmark harness under `bench/`.
-
-## Working on it
+The structural checks are part of the normal check path:
 
 ```sh
-task check                   # or: make check — lint, structural checks, tests
-task test PKG=permguard-cli
-task lint
+task check:core-deps         # keep permguard-core dependency-light
+task check:seams             # keep concrete construction in composition roots
+task check:systems           # keep Taskfile and Makefile aligned
+task check:headers           # license headers
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), and [COMPATIBILITY.md](COMPATIBILITY.md) for what a version
-promises — which is also the list of things a change has to be careful with.
+Before opening a change, run:
+
+```sh
+task check
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and
+[COMPATIBILITY.md](COMPATIBILITY.md) for compatibility promises.
 
 ## License
 
