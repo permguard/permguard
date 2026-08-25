@@ -16,7 +16,9 @@
 use std::sync::Arc;
 
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::info;
+#[cfg(unix)]
+use tracing::warn;
 
 use permguard_core::BoxFuture;
 
