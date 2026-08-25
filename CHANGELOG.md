@@ -74,7 +74,6 @@ default that is no longer the same. A release cannot be cut without an entry her
   written convention (`allow` permits, `deny` overrides, absent means no). A deny is a `200` with
   `decision: false`; a ledger this plane does not mirror is `404`; one it may not serve is `503`.
   Every decision, permit and deny alike, lands in the audit trail with the id its response carries.
-  See [docs/authorization-check.md](docs/authorization-check.md).
 - **Schema enforcement at load**: a partition that declares `schema: true` has every policy
   type-checked against it, in strict mode, when it is compiled — a policy that does not satisfy the
   schema refuses the load instead of being served. With a schema, the request itself is validated
@@ -98,7 +97,7 @@ default that is no longer the same. A release cannot be cut without an entry her
   the previous one working is skipped. A server that does not answer never causes a deletion; a
   mirror the configuration or the server no longer names is removed, behind three guards. Per-server
   TLS material (`mirrors.servers[].tls`) with no "skip verification" anywhere. Every round is audited,
-  including the quiet ones. See [docs/data-plane-mirrors.md](docs/data-plane-mirrors.md).
+  including the quiet ones.
 - **`permguard check`**: ask a data plane for a decision — a document (`-f file`, `-f -` for standard
   input) or flags (`--subject user:alice --action read --resource document:budget`), in
   `terminal`/`json`/`yaml`. Which store the question is about follows one rule shared by every

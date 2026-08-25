@@ -280,12 +280,16 @@ jobs:
       # Blocking: a chart that renders objects the API server would refuse is a chart that fails at
       # install time, and CI is the place to find that out. The render itself must succeed too — the
       # `|| true` would have turned a broken template into an empty file kubeconform waves through.
+      #
+      # The render happens on the runner, where helm already is, and only the *validation* runs in
+      # the container. The previous shape asked the image for a shell to run both — and that image
+      # has no shell, so the step failed before it validated anything. A container that carries one
+      # binary is the point of that image; expecting a shell inside it was the mistake.
+      - name: render the chart for validation
+        run: helm template permguard charts/permguard > rendered.yaml
       - uses: docker://ghcr.io/yannh/kubeconform@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e # latest, 2026-08
         with:
-          entrypoint: /bin/sh
-          args: >-
-            -c "helm template permguard charts/permguard > /tmp/rendered.yaml &&
-                kubeconform -strict -summary -ignore-missing-schemas /tmp/rendered.yaml"
+          args: -strict -summary -ignore-missing-schemas /github/workspace/rendered.yaml
 
   docs:
     name: documentation

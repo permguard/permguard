@@ -535,3 +535,9 @@ $RECYCLE.BIN/
 .volume-docker/
 .volume-docker-compose/
 .permguard
+
+# The image's own filesystem. The Python packaging block above ignores `lib/` and `var/`, which
+# happens to match every directory of the rootfs this repository *ships* — and an ignored rootfs is
+# a Docker build that fails on a fresh checkout while passing on the machine that wrote it.
+!docker/rootfs/
+!docker/rootfs/**

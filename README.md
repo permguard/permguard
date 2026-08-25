@@ -33,18 +33,15 @@ task lab:up                  # Grafana on http://127.0.0.1:7590
 
 ## Documentation
 
-| Page | What is in it |
-| --- | --- |
-| [Quick start](docs/quick-start.md) | Plain, TLS and mutual TLS, each with the binary, `task` and `make` |
-| [The command line](docs/cli.md) | `version`, `config`, `inspect`, `check`; settings resolution and exit statuses |
-| [Answering decisions](docs/authorization-check.md) | The `permguard.pdp.v1` endpoint: the volume walk, the in-memory cache, the load gate, both languages, and `permguard check` |
-| [Decision logs](docs/decision-logs.md) | **Design**: where every decision is recorded, shipped, kept and consumed |
-| [Keeping a data plane current](docs/data-plane-mirrors.md) | The synchronization loop: what it follows, what it guarantees, what it reports |
-| [Running the planes](docs/running.md) | Ports, protocols, TLS per surface, and what each plane answers |
-| [Observability](docs/observability.md) | Health, readiness, every metric, and the local monitoring lab |
-| [Containers](docs/docker.md) | The published images, and the compose lab |
-| [Kubernetes](docs/kubernetes.md) | The Helm chart, and what to change before production |
-| [Releasing](docs/release.md) | What a tag produces, and where it goes |
+The reference documentation is published at
+[docs.permguard.com](https://docs.permguard.com) — the quick start, the command
+line, the decision endpoint and its log, the synchronization loop, running the
+planes, observability, containers, Kubernetes and releasing.
+
+What lives *here*, beside the code it describes, is the part that goes stale the
+moment the code moves: every crate carries its own module documentation, and
+`cargo doc --open` is the version that is true of the commit you have checked
+out.
 
 ## How it is put together
 
@@ -91,8 +88,8 @@ task bench:shed               # overload under default limits (against task run:
 
 Server-side numbers land on **Permguard · Overview** with no flags at all; `task bench:grafana`
 prints the k6 flags that put the client-side view beside them on **Permguard · Load test**. The whole
-method — capacity vs shed profiles, open vs closed model, remote runs — is in
-[docs/benchmarking.md](docs/benchmarking.md).
+method — capacity vs shed profiles, open vs closed model, remote runs — is
+documented with the benchmark harness under `bench/`.
 
 ## Working on it
 

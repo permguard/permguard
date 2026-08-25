@@ -38,7 +38,7 @@ impl Digest {
             return Err(DigestError::Grammar);
         }
         let mut raw = [0u8; 32];
-        for (i, chunk) in bytes.chunks_exact(2).enumerate() {
+        for (i, chunk) in bytes.as_chunks::<2>().0.iter().enumerate() {
             raw[i] = (hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?;
         }
         Ok(Digest { raw })

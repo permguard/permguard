@@ -116,12 +116,14 @@ pub fn recompute(leaf: &str, steps: &[Step]) -> String {
 
 fn fold(level: &[[u8; 32]]) -> Vec<[u8; 32]> {
     let mut next = Vec::with_capacity(level.len().div_ceil(2));
-    let mut pairs = level.chunks_exact(2);
-    for pair in pairs.by_ref() {
+    let (pairs, odd) = level.as_chunks::<2>();
+    for pair in pairs {
         next.push(hash_node(&pair[0], &pair[1]));
     }
-    if let Some(odd) = pairs.remainder().first() {
-        next.push(*odd);
+    // An odd level promotes its last node unchanged rather than duplicating it:
+    // see the module documentation for why that is half of the defence.
+    if let Some(promoted) = odd.first() {
+        next.push(*promoted);
     }
 
     next
@@ -161,7 +163,7 @@ fn parse(text: &str) -> Option<[u8; 32]> {
         return None;
     }
     let mut raw = [0u8; 32];
-    for (index, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
+    for (index, chunk) in hex.as_bytes().as_chunks::<2>().0.iter().enumerate() {
         let pair = std::str::from_utf8(chunk).ok()?;
         raw[index] = u8::from_str_radix(pair, 16).ok()?;
     }
