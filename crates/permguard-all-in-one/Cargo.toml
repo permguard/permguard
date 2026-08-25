@@ -1,0 +1,31 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-all-in-one"
+description = "Permguard all-in-one runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[[bin]]
+name = "permguard-all-in-one"
+path = "src/main.rs"
+
+[[bin]]
+name = "permguard_all_in_one"
+path = "src/bin/permguard_all_in_one.rs"
+
+[dependencies]
+permguard-control-plane.workspace = true
+permguard-core.workspace = true
+permguard-server.workspace = true
+permguard-data-plane.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }

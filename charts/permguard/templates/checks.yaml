@@ -1,0 +1,22 @@
+{{- /*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/ -}}
+{{- /*
+Shapes this chart refuses to deploy.
+
+The all-in-one runtime IS a control plane and a data plane in one process: running it beside either
+standalone plane is not a bigger deployment, it is two deployments fighting over one identity — two
+key rings both claiming to be the issuer, two catalogs diverging on one volume layout, and a caller
+with no way to know which control plane answered. Whichever shape is wanted, it is one or the other,
+and a values file that asks for both is a mistake this chart reports at template time — not one a
+cluster discovers in production.
+
+This file renders nothing; it exists to be able to say no.
+*/ -}}
+{{- if and .Values.allInOne.enabled (or .Values.controlPlane.enabled .Values.dataPlane.enabled) }}
+{{- fail (printf "allInOne.enabled=true cannot be combined with controlPlane.enabled=%v / dataPlane.enabled=%v: the all-in-one IS both planes in one process. Deploy either the all-in-one (--set allInOne.enabled=true --set controlPlane.enabled=false --set dataPlane.enabled=false) or the standalone planes, never both." .Values.controlPlane.enabled .Values.dataPlane.enabled) }}
+{{- end }}
+{{- if not (or .Values.allInOne.enabled .Values.controlPlane.enabled .Values.dataPlane.enabled) }}
+{{- fail "nothing is enabled: this values file deploys no plane at all. Enable the two standalone planes (the default), one of them, or the all-in-one — an install that installs nothing is a mistake, not a choice." }}
+{{- end }}

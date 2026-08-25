@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package permguard.control.v1;
+
+service ControlPlane {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  // The plane's discovery document — the same JSON the HTTP surface answers
+  // at /.well-known/server-configuration, so a gRPC-only client discovers
+  // the plane without ever speaking HTTP.
+  rpc GetServerConfiguration(GetServerConfigurationRequest) returns (GetServerConfigurationResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string plane = 1;
+  string product = 2;
+  string version = 3;
+  string commit = 4;
+}
+
+message GetServerConfigurationRequest {}
+
+message GetServerConfigurationResponse {
+  // The discovery document, as JSON — byte-identical to the HTTP answer.
+  string document_json = 1;
+}
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  bool live = 1;
+  bool ready = 2;
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Zones and ledgers: the same catalog the HTTP routes serve, one wire format apart.
+//
+// Wherever a call refers to an existing zone or ledger it takes a `selector`: the GUID, or the
+// name — the server tells them apart by shape, and names shaped like GUIDs cannot be created.
+// ---------------------------------------------------------------------------------------------
+
+service ZoneCatalog {
+  rpc CreateZone(CreateZoneRequest) returns (ZoneResponse);
+  rpc ListZones(ListZonesRequest) returns (ListZonesResponse);
+  rpc GetZone(GetZoneRequest) returns (ZoneResponse);
+  rpc RenameZone(RenameZoneRequest) returns (ZoneResponse);
+  rpc DeleteZone(DeleteZoneRequest) returns (ZoneResponse);
+
+  rpc CreateLedger(CreateLedgerRequest) returns (LedgerResponse);
+  rpc ListLedgers(ListLedgersRequest) returns (ListLedgersResponse);
+  rpc GetLedger(GetLedgerRequest) returns (LedgerResponse);
+  rpc RenameLedger(RenameLedgerRequest) returns (LedgerResponse);
+  rpc DeleteLedger(DeleteLedgerRequest) returns (LedgerResponse);
+}
+
+message Zone {
+  string id = 1;
+  string name = 2;
+  uint64 created_at = 3;
+  uint64 updated_at = 4;
+}
+
+message Ledger {
+  string id = 1;
+  string zone_id = 2;
+  string name = 3;
+  uint64 created_at = 4;
+  uint64 updated_at = 5;
+  // The ledger's default ref — a reference into its git-like store.
+  string default_ref = 6;
+}
+
+message CreateZoneRequest { string name = 1; }
+// A page of the listing: 1-based `page`, at most `size` per page. Zero for
+// both means everything — the shape a synchronizing mirror wants, and what
+// every caller sent before pagination existed.
+message ListZonesRequest {
+  uint32 page = 1;
+  uint32 size = 2;
+}
+message GetZoneRequest { string zone = 1; }
+message RenameZoneRequest { string zone = 1; string name = 2; }
+message DeleteZoneRequest { string zone = 1; }
+
+message ZoneResponse { Zone zone = 1; }
+message ListZonesResponse { repeated Zone zones = 1; }
+
+message CreateLedgerRequest { string zone = 1; string name = 2; }
+message ListLedgersRequest {
+  string zone = 1;
+  // Same paging contract as ListZonesRequest.
+  uint32 page = 2;
+  uint32 size = 3;
+}
+message GetLedgerRequest { string zone = 1; string ledger = 2; }
+message RenameLedgerRequest { string zone = 1; string ledger = 2; string name = 3; }
+message DeleteLedgerRequest { string zone = 1; string ledger = 2; }
+
+message LedgerResponse { Ledger ledger = 1; }
+message ListLedgersResponse { repeated Ledger ledgers = 1; }

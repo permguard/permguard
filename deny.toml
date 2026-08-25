@@ -1,0 +1,79 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Supply-chain gates for the Permguard workspace.
+#
+# This file exists before the HTTP and gRPC stacks land on purpose. Turning `cargo deny` on after
+# pulling in axum, tonic, hyper and rustls means the first run reports a wall of findings and nobody
+# can tell which ones are ours. Turning it on while the tree is small means every later addition is
+# reviewed one at a time, which is the only way the review actually happens.
+
+[graph]
+all-features = true
+
+# The platforms this product is actually built for: the image is Debian, and it is developed on
+# macOS and Linux. Without this, `cargo deny` reads the whole lock file — including the Windows and
+# UEFI dependencies that exist in it only because something declares them for targets nobody here
+# compiles — and reports duplicates in code that is never built.
+#
+# Narrowing the question is not hiding the answer: a crate that is never compiled cannot end up in a
+# binary, and a warning about one is noise that makes the real warnings harder to see.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-apple-darwin" },
+]
+
+[advisories]
+# A crate with a known advisory stops the build. A deliberate exception goes in `ignore` with the
+# advisory id and a reason, so the exception is reviewable instead of invisible.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Permissive licences only. Anything copyleft reaching a binary a customer runs is a legal question,
+# and a legal question should not be answered by a transitive dependency bump.
+# Only what the tree actually uses. An allowance nobody matches is an allowance nobody reviewed:
+# `cargo deny` reports it, and a warning list with permanent noise in it is a warning list nobody
+# reads. Adding one back is a line, and a deliberate one.
+allow = [
+    "Apache-2.0",
+    # LLVM's linking exception only ever *relaxes* Apache-2.0; reached through
+    # cedar-policy → stacker → psm → ar_archive_writer (build-time only).
+    "Apache-2.0 WITH LLVM-exception",
+    # MIT without even the attribution clause; reached through cedar-policy's
+    # URI handling (borrow-or-share).
+    "MIT-0",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Two versions of the same crate in one binary is usually harmless and occasionally a security
+# problem: it means one copy is patched and the other is not.
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+# The three below are not that. Each is a duplicate between the compiler's world and the binary's,
+# and it was checked rather than assumed — `cargo tree --edges normal,no-proc-macro` reports exactly
+# one `getrandom`, exactly one `hashbrown` and no `syn` at all in what actually gets linked.
+#
+# They are skipped by version so the exception stays narrow: a second copy appearing in the runtime
+# graph, which is the case the rule exists for, would still be reported. The build-time copies are
+# not unexamined — the advisories check reads every crate in the lock file whatever it is used for.
+skip = [
+    { crate = "getrandom@0.4", reason = "build script of tonic-prost-build, via prost-build and tempfile; the binary links only 0.2 through ring" },
+    { crate = "hashbrown@0.15", reason = "prost-build's petgraph, at compile time; the binary links only 0.17 through indexmap" },
+    { crate = "syn@2", reason = "x509-parser's derive macros; proc-macro crates run in the compiler and are never linked into the binary" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

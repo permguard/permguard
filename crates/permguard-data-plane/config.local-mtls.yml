@@ -1,0 +1,126 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Mutual TLS, as far as it goes: TLS on HTTP, mutual TLS on gRPC.
+#
+# The split is deliberate and it is not a limitation of the listener. HTTP here is what a browser, a
+# curl and a probe reach, and demanding a client certificate from those turns every operator into a
+# certificate holder. gRPC is what a Permguard SDK reaches — a service talking to a service, which is
+# exactly the caller a client certificate can identify.
+#
+# Because the two protocols now carry different TLS policies, they need different addresses: an
+# address serves one policy.
+development_mode: true
+autogenerate: true
+working_dir: .volume/data-plane-mtls
+
+log:
+  level: debug
+  format: terminal
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+telemetry:
+  addr: 127.0.0.1:7658
+  # Server authentication only. A scraper is not a Permguard client, and a metrics endpoint that
+  # demands a certificate is a metrics endpoint nothing scrapes.
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7657
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        # Of everybody tls/ca.pem signs, this endpoint answers exactly one: the client certificate
+        # the runtime generated beside it. Authentication is the handshake; this is authorisation.
+        allow:
+          - cn:local-operator
+
+  # Mirroring over mutual TLS. The client certificate goes to the gRPC address, because that is the
+  # address carrying the mutual-TLS policy — an address serves one policy, which is why there are two.
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      # The control plane started with permguard-control-plane's config.local-mtls.yml: TLS on 7556,
+      # mutual TLS on 7557. Both the authority and the certificate we present come from that plane's
+      # volume — a certificate signed by *this* volume's authority is one the control plane never
+      # trusted. Its CN, `local-operator`, is the one that plane's allow list answers.
+      - url: "grpcs://127.0.0.1:7557"
+        tls:
+          ca_file: ../control-plane-mtls/tls/ca.pem
+          cert: ../control-plane-mtls/tls/client.pem
+          key: ../control-plane-mtls/tls/client.key
+
+  # The decision path, sized for a laptop: a handful of ledgers, a small heap.
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: data-plane-local-mtls          # half of every stream identity: two replicas must never share one
+      server:
+        url: "grpcs://127.0.0.1:7557"
+        tls:
+          ca_file: ../control-plane-mtls/tls/ca.pem
+          cert: ../control-plane-mtls/tls/client.pem
+          key: ../control-plane-mtls/tls/client.key
+          # Its own identity in a real deployment: shipping decisions and reading policy are
+          # two authorizations. Here they share the certificate this environment generates.
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

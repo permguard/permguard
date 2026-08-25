@@ -1,0 +1,224 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Permguard data plane configuration template.
+development_mode: false
+autogenerate: false
+# The one root of everything this process keeps: the catalog (data/), the trail, the keys, the
+# generated secrets. Move this and everything moves with it — it is the volume to mount and back up.
+working_dir: /var/lib/permguard/data-plane
+
+log:
+  level: info
+  format: json
+
+dataPlane:
+  # The plane's signing ring: it will sign the decision responses this plane returns. Part of
+  # the model, like the control plane's ring — its own keys, never the operations ring that
+  # seals the audit trail. Published as JWKS at /data-plane/keys and named by
+  # /.well-known/server-configuration. Lifecycle follows operations.keys.
+  # keys:
+  #   enabled: "true"          # absent: follows operations.keys.enabled
+  #   directory: keys/data     # on the volume, unless said otherwise
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7656
+      # tls:
+      #   enabled: false
+      #   cert: tls/http-server.pem
+      #   key: tls/http-server.key
+      #   client_ca: tls/http-clients.pem
+      #   crl: tls/http-clients.crl
+      #   allow:                          # who, of everybody client_ca signed, this endpoint answers
+      #     - cn:the-billing-service      # empty/absent: the handshake is the whole decision
+      #     - sha256:<fingerprint>
+      #   min_version: "1.3"
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7656
+      # tls:
+      #   enabled: false
+      #   cert: tls/grpc-server.pem
+      #   key: tls/grpc-server.key
+      #   client_ca: tls/grpc-clients.pem
+      #   crl: tls/grpc-clients.crl
+      #   allow:
+      #     - cn:the-billing-service
+      #   min_version: "1.3"
+
+  # ── What this plane mirrors ──────────────────────────────────────────────────────────────────
+  # Sync belongs to the data plane: it is the plane that answers decisions that needs the policies,
+  # and a control plane has nothing to mirror. Each followed ledger becomes its own directory under
+  # <working_dir>/mirrors/<zone-id>/<ledger-id>, and they are all kept current at once.
+  #
+  # A plane fed by other means — a sidecar running `permguard pull`, a baked image, a mounted
+  # volume — leaves this out entirely and serves whatever its volume holds.
+  #
+  # The server URL is exact: it is who you trust, whose certificate you check, whose ring signs what
+  # you accept. Zones and ledgers are patterns, matched against what the server actually lists, so a
+  # ledger created tomorrow is followed without touching this file. A pattern describes a whole name:
+  # `main` follows the ledger `main`, never `main-staging`. Naming NEITHER zones NOR ledgers means
+  # everything that server lists — the URL alone is "mirror it all".
+  # mirrors:
+  #   enabled: "true"
+  #   interval: "30s"        # how often a round STARTS; a tick that finds the previous one working is skipped
+  #   timeout: "2m"          # per ledger: one that exceeds it is abandoned for this round, not forever
+  #   parallelism: "4"       # how many ledgers are mirrored at once
+  #   jitter: "0.1"          # each round waits interval ± (interval × jitter)/2, drawn again
+  #                          # every round — so replicas do not wake together, and do not re-align
+  #   stale_after: "0s"      # how old the last verified sync may grow before this plane alarms;
+  #                          # "0s" or absent: no bound. Still served — the alarm is the point.
+  #   expire_after: "0s"     # how old it may grow before this plane refuses to answer from the
+  #                          # mirror (503). A revocation that matters makes "indefinitely" wrong;
+  #                          # a flaky link makes "minutes" wrong — this is the deployment's number.
+  #   servers:
+  #     - url: "http://control-plane:7556"    # everything this server lists: no zones, no ledgers
+  #     - url: "https://control.acme.com"     # narrowed, and reached over TLS
+  #       zones: ["acme-.*"]                  # absent means every zone the server lists
+  #       ledgers: ["main-ledger", "prod"]    # absent means every ledger of a matching zone
+  #       tls:
+  #         ca_file: tls/control-plane-ca.pem   # the authority its certificate is checked against;
+  #                                             # absent means the platform trust store
+  #     - url: "grpcs://control.internal:7557"  # the same NOTP transfer, over gRPC
+  #       zones: ["eu", "us"]                   # several patterns are alternatives
+  #       tls:
+  #         ca_file: tls/control-plane-ca.pem
+  #         cert: tls/control-plane-client.pem  # our own certificate, where the server asks for one
+  #         key: tls/control-plane-client.key   # mutual TLS: material or not, there is no `mtls` flag
+  #         server_name: control-plane          # check the certificate against the name it carries,
+  #                                             # when this plane dials it by another address
+  #
+  # There is deliberately no "skip verification" here: a plane that accepts any certificate is a
+  # plane whose policies come from whoever answers the port, and nobody is watching this one.
+
+  # ── What the decision path may spend ─────────────────────────────────────────────────────────
+  # A check is answered out of memory: the ledger's policies are read from the volume once,
+  # compiled into the engine's own program (and, where a partition declares a schema, checked
+  # against it), and kept. That is what makes a decision take microseconds instead of a disk seek.
+  #
+  # Two bounds decide how much is kept — whichever is reached first, the least recently used
+  # compiled partition is dropped and rebuilt the next time somebody asks for it. Raise them for a
+  # plane that serves many ledgers or large policy sets; the defaults fit a small container.
+  #
+  # The commit is part of the cache key, so a synchronization that advances a ledger needs no flush
+  # and a replaced commit is never served.
+  # decisions:
+  #   cache:
+  #     partitions: "64"       # compiled partitions held at once (one ledger contributes one per partition)
+  #     bytes: "256M"          # what they may weigh; accepts k/M/G
+  #   max_evaluations: "256"   # the most evaluations one boxcarred request may carry
+
+  #   # Every decision, recorded where it can be kept, proven and consumed. Off by default: a
+  #   # decision log is a security control and a data-protection surface at once, and neither is
+  #   # switched on for a deployment that did not ask for it.
+  #   log:
+  #     enabled: "true"
+  #     pdp_id: data-plane-eu-1        # required when the log is on. Half of every stream identity:
+  #                                    # two replicas sharing one write two records at one (stream,
+  #                                    # seq), and that closes a stream permanently at the far end.
+  #                                    # A hostname fallback is convenient and wrong the first time
+  #                                    # two replicas run on one host, so there is not one.
+  #
+  #     # Where the record goes. Described exactly like a mirror source, because it is the same kind
+  #     # of relationship: a server this plane authenticates before it speaks to it.
+  #     server:
+  #       url: "grpcs://control.acme.com:7557"     # exact: this is who you trust
+  #       tls:
+  #         ca_file: tls/control-plane-ca.pem      # absent: the platform trust store
+  #         cert: tls/decision-log-client.pem      # its own identity, deliberately not the mirror's:
+  #         key: tls/decision-log-client.key       # *may ship decision logs* and *may read policy*
+  #                                                # are two authorizations, and a deployment should
+  #                                                # be able to grant one without the other
+  #         server_name: control-plane             # when the address is not the name
+  #
+  #     # Durability before the network. Bounded both ways: a spool that grows without limit turns a
+  #     # control-plane outage into a full disk.
+  #     spool:
+  #       directory: "data/decisions/spool"       # under the working directory; holds the instance id too
+  #       bytes: "512M"                # DECISION RECORDS ONLY. The record that ends a stream is
+  #                                    # reserved outside this bound, because a producer that cannot
+  #                                    # write its last record cannot legally discard anything and
+  #                                    # cannot continue at all.
+  #       age: "24h"                   # how old the oldest unshipped record may be
+  #
+  #     # Latency against efficiency: whichever comes first.
+  #     batch: { bytes: "256k", interval: "1s" }
+  #
+  #     # What a full spool means — the one decision only a deployment can make.
+  #     #   open   keep answering; the stream ends with a signed discontinuity and a new one begins
+  #     #   closed refuse to decide rather than decide unrecorded
+  #     on_full: "open"
+  #
+  #     # What is written. Denies and errors are never sampled, whatever this says: a log that drops
+  #     # refusals is not an audit trail.
+  #     sample: { permits: "1.0" }
+  #
+  #     # Caller-supplied attributes may carry personal data, so they are off by default and named
+  #     # one at a time. An allow-list, never a deny-list: a field added to a request tomorrow must
+  #     # not start being recorded by itself. Their keyed commitments are always recorded, which
+  #     # proves what the decision saw without keeping it.
+  #     # The secret input commitments are taken under. Required when the log is on, and a
+  #     # *different* key from the pseudonymisation one: they protect different things, and
+  #     # rotating one to crypto-shred pseudonyms must not invalidate every commitment with it.
+  #     # A commitment keyed by anything public — a hostname, this plane's own name — is a bare
+  #     # digest, and a bare digest of `department=HR` is a dictionary away from `HR`.
+  #     commitment:
+  #       key_ref: decision-commitment      # in the secret store this deployment composes
+  #       key_version: "v1"                 # recorded in every marker, so rotation is legible
+  #     include:
+  #       subject_properties: ["department"]
+  #       resource_properties: []
+  #       context: ["ip", "time"]
+
+# public:
+#   disclose_build: "true"     # "false": /version stops naming the version and commit
+#   error_detail: "minimal"    # how much an error says about the inside: "full" or "minimal".
+#                              # Unset, development_mode decides — minimal everywhere real.
+
+telemetry:
+  addr: 0.0.0.0:7658
+
+# What one surface — and one client — may spend. Every value has a bounded default; this block exists
+# to move them, not to enable them.
+# limits:
+#   connections: "1024"             # sockets one surface holds at once
+#   connections_per_peer: "256"     # sockets one address may hold; "0" disables the per-address bound
+#   peer_exempt:                    # addresses exempt from the per-address bound (never from the pool)
+#     - 10.0.0.0/8                  #   e.g. the load balancer, the health checker
+#   concurrent_requests: "256"      # requests in flight at once; beyond it, 503 rather than a queue
+#   request_timeout: "30s"          # how long one request may take
+#   handshake_timeout: "10s"        # how long a client has to finish a TLS handshake
+#   header_timeout: "10s"           # how long a client has to send a complete request head
+#   body_bytes: "1M"                # bytes one request body may carry
+#   connection_lifetime: "0s"       # how long one connection may exist; "0s" leaves it unbounded
+#   write_stall_timeout: "30s"      # a response making no progress: the client stopped reading
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 1h
+    rotate_every: 30d
+    retain: 365d
+  secrets:
+    provider: directory        # one file per secret under <working_dir>/operations/secrets —
+                               # what a mounted Kubernetes Secret looks like. The keys named
+                               # below (audit-pseudonym, decision-commitment, …) must exist
+                               # there before a production plane will start.
+  audit:
+    sink: file
+    retention: 90d
+    # refusals: "false"      # "true": denied operations (name taken, not found, invalid name) are
+    #                        # recorded on the trail as <operation>.refused — for a compliance
+    #                        # regime that wants denied attempts on the record. Internal faults
+    #                        # never reach the trail: they are ours, and live in the log.
+    #                        #
+    #                        # Leave it off on an unauthenticated surface: the refusal rate is the
+    #                        # attacker's to choose, and each refusal is a synchronous write into
+    #                        # the evidentiary record. Turn it on only behind authenticated callers
+    #                        # (tls.allow) or an ingress that limits the rate. Anonymous refusals
+    #                        # belong in the metrics, which cannot be inflated into gigabytes.
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

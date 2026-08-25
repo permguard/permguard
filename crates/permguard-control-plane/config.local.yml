@@ -1,0 +1,54 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/control-plane
+
+log:
+  level: debug
+  format: terminal
+
+telemetry:
+  addr: 127.0.0.1:7558
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7556
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7556
+
+  # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
+  # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "5m"
+      grace: "15m"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "7d"
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

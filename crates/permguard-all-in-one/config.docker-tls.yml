@@ -1,0 +1,147 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The all-in-one runtime in a container, with TLS on every surface.
+development_mode: true
+autogenerate: true
+working_dir: /var/lib/permguard/all-in-one
+
+log:
+  level: debug
+  format: json
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+telemetry:
+  addr: 0.0.0.0:7558
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+runtime:
+  planes:
+    - control
+    - data
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7556
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7556
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+
+  # Reclaiming what nothing references, on a cadence a demo can watch.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "1h"
+      grace: "1h"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "30d"
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+
+  # Mirroring, in one process and over TLS. The control plane in this very binary is where the
+  # ledgers are; this data plane keeps its own verified copy of them, reaching it the way any client
+  # would — through the certificate, checked against the authority in this same volume. That the two
+  # share a volume is what makes the trust material a relative path here and a mounted Secret in a
+  # cluster; nothing else about the exchange differs.
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      - url: "https://127.0.0.1:7556"
+        tls:
+          # The authority this runtime generated beside the certificate it serves.
+          ca_file: tls/ca.pem
+
+  # The decision path, sized for the lab's container limits.
+  decisions:
+    cache:
+      partitions: "32"
+      bytes: "128M"
+    max_evaluations: "128"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: all-in-one-docker-tls          # half of every stream identity: two replicas must never share one
+      server:
+        url: "https://127.0.0.1:7556"
+        tls:
+          ca_file: tls/ca.pem
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+limits:
+  # Through Docker's port forwarding every connection from the host arrives as the compose
+  # network's gateway address — one address for all clients, which is exactly the NAT case the
+  # per-address bound documents: exempt the private range the network lives in, or the bound
+  # counts the gateway as one very greedy client. The pool limit still bounds the total.
+  peer_exempt:
+    - 172.16.0.0/12
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

@@ -1,0 +1,47 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# `cargo deny` refuses a dependency with a known advisory. That is a gate, not a process: it says no
+# and waits for somebody to do something. This is the part that proposes the something.
+#
+# Actions are here as well as crates, and for the same reason: a workflow pinned to a moving tag is a
+# dependency that updates itself without review, which is the supply-chain problem people mean when
+# they say "supply chain".
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, rust]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One pull request for the transport stack: rustls, hyper, tonic and friends move together, and
+      # five separate bumps that only build in combination is five red pull requests.
+      transport:
+        patterns:
+          - "rustls*"
+          - "tokio-rustls"
+          - "hyper*"
+          - "tonic*"
+          - "tower*"
+          - "axum*"
+          - "http*"
+      lint-and-serde:
+        patterns:
+          - "serde*"
+          - "clap*"
+          - "tracing*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "chore(ci)"

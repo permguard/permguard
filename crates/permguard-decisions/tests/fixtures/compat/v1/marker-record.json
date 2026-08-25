@@ -1,0 +1,25 @@
+{
+  "at": "2026-08-24T10:00:00Z",
+  "commitments": {
+    "alg": "HMAC-SHA256",
+    "key_version": "v1"
+  },
+  "kind": "marker",
+  "pdp": {
+    "engines": {
+      "cedar": "4.4.0",
+      "rego": "1.0.0"
+    },
+    "version": "0.1.0"
+  },
+  "prev": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "sampling": {
+    "permits": "1.0"
+  },
+  "seq": 1,
+  "stream": {
+    "id": "plane",
+    "instance": "compat-v1"
+  },
+  "v": 1
+}

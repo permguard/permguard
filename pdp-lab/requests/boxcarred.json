@@ -1,0 +1,13 @@
+{
+  "profile": "gateway",
+
+  "subject": { "type": "User", "id": "dora", "properties": { "role": "admin" } },
+  "resource": { "type": "Document", "id": "q4-forecast" },
+  "options": { "evaluations_semantic": "execute_all" },
+
+  "evaluations": [
+    { "action": { "name": "read" },   "request_id": "read" },
+    { "action": { "name": "create" }, "request_id": "create" },
+    { "action": { "name": "purge" },  "request_id": "purge" }
+  ]
+}

@@ -1,0 +1,4 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+hmac-sha256:v1:23c9b839a884f48261b2ce1ed548414251bdf0ab96809f62e0f23f1f548e7bef

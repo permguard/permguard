@@ -1,0 +1,45 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-server"
+description = "The Permguard server host, its service registry, and the command line that drives them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+autobenches = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+permguard-core.workspace = true
+permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
+permguard-telemetry.workspace = true
+permguard-transport.workspace = true
+serde.workspace = true
+serde_norway.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+# Distributed tracing: spans leave over OTLP when `telemetry.otel` turns it on.
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
+tracing-opentelemetry.workspace = true
+
+[dev-dependencies]
+# `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
+tokio = { workspace = true, features = ["test-util"] }
+
+[[bench]]
+name = "server_host"
+path = "benches/server_host.rs"
+harness = false

@@ -1,0 +1,52 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Log shipping for the lab: read the Docker daemon's own container logs, keep the Permguard ones.
+#
+# Docker service discovery rather than a log driver, because it needs nothing of the containers being
+# watched — a plane started later, or restarted, is picked up without touching its configuration. The
+# cost is the socket mount, which is why this is a lab file and not a deployment one.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: permguard
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only this lab's containers, whatever else is running on the machine.
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        regex: permguard-compose-lab
+        action: keep
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: container
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container_name
+      - target_label: job
+        replacement: permguard
+    pipeline_stages:
+      # The planes log JSON, so the level and the event name become queryable rather than being
+      # buried in a string. `log.format: terminal` would make this a no-op, which is why the lab
+      # configurations use `json`.
+      - json:
+          expressions:
+            level: level
+            event_name: '"event.name"'
+            component: component
+            message: fields.message
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+          action_on_failure: fudge

@@ -1,0 +1,762 @@
+{
+  "uid": "permguard-decision-log",
+  "title": "Permguard \u00b7 Decision log",
+  "description": "Every decision, from the plane that answered it to the store that keeps it: is the log keeping up, is anything being lost, and who is producing it. The decision path itself is on the data-plane dashboard; this one is about the record of it.",
+  "tags": [
+    "permguard",
+    "decisions"
+  ],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Is the log keeping up",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Unshipped records",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(permguard_decisions_unshipped_records)",
+          "legendFormat": "unshipped records",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "description": "Written on a data plane and not yet acknowledged durable by the control plane. The number to watch: climbing and not coming back is a shipper that is not shipping, and it is visible long before the spool fills and the stream has to end."
+    },
+    {
+      "type": "stat",
+      "title": "Spool held",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(permguard_decisions_spool_bytes)",
+          "legendFormat": "spool held",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "description": "What the data planes are holding on their own disks. Bounded by dataPlane.decisions.log.spool.bytes; the terminal record is reserved outside it."
+    },
+    {
+      "type": "stat",
+      "title": "Records / s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_written_total[5m]))",
+          "legendFormat": "records / s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "description": "Records written to the spool, by every producer."
+    },
+    {
+      "type": "stat",
+      "title": "Rejected batches",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(increase(permguard_decisions_shipped_total{outcome=\"rejected\"}[1h]))",
+          "legendFormat": "rejected batches",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "description": "A batch the control plane refused on its merits \u2014 a signature that does not verify, a chain that does not hold, a stream it has closed. Above zero is an incident, not a trend: no amount of retrying changes those answers."
+    },
+    {
+      "type": "stat",
+      "title": "Dropped records",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(increase(permguard_decisions_dropped_total[1h]))",
+          "legendFormat": "dropped records",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "description": "Records discarded because a spool reached a bound. Above zero means a stream ended and a new incarnation began \u2014 the log says so with a signed discontinuity, but the records themselves are gone."
+    },
+    {
+      "type": "stat",
+      "title": "Streams closed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(increase(permguard_decisions_streams_closed_total[24h]))",
+          "legendFormat": "streams closed",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "description": "Streams closed permanently after two different records claimed one sequence. Either a bug or an attack; never a retry."
+    },
+    {
+      "type": "timeseries",
+      "title": "Written, shipped, accepted",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_written_total[5m]))",
+          "legendFormat": "written",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_shipped_total{outcome=\"ok\"}[5m]))",
+          "legendFormat": "shipped",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_batches_total{outcome=\"ok\"}[5m]))",
+          "legendFormat": "batches accepted",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "The three rates that should track each other. Written above shipped for any length of time is the backlog growing; shipped above accepted is batches the store is not taking."
+    },
+    {
+      "type": "timeseries",
+      "title": "Unshipped backlog",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "permguard_decisions_unshipped_records",
+          "legendFormat": "unshipped",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "permguard_decisions_sequence - permguard_decisions_acked_sequence",
+          "legendFormat": "written \u2212 acked",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "Two views of the same gap, from the producer's own counters. A control plane that is down costs spool, not availability \u2014 this is the spool being spent."
+    },
+    {
+      "type": "row",
+      "title": "Where it goes wrong",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Shipping outcomes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum by (outcome) (rate(permguard_decisions_shipped_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 20,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "`deferred` is retryable \u2014 the store could not take it right now and the records are still on the producer's disk. `out_of_order` is not a loss either: the store needs an earlier batch first. `rejected` is the one that stops the shipper."
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingestion refusals, by reason",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum by (reason) (rate(permguard_decisions_refusals_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 20,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "`unattributable`: no published key signed it. `unverifiable`: the records are not what the envelope attests. `conflict`: two records at one sequence \u2014 terminal. `unavailable`: the store's own fault, and the shipper retries."
+    },
+    {
+      "type": "timeseries",
+      "title": "Sampled out, and dropped",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_sampled_out_total[5m]))",
+          "legendFormat": "sampled out",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_decisions_dropped_total[5m]))",
+          "legendFormat": "dropped",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "Not the same thing, and never conflated: a sampled-out permit was never a record and leaves no hole, while a dropped one is loss. Denies and errors are never sampled."
+    },
+    {
+      "type": "timeseries",
+      "title": "How long ingestion takes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(permguard_decisions_ingest_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(permguard_decisions_ingest_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "Accepting one batch, flush included. This is the cost of the promise: a sequence is acknowledged only once it survives a host restart."
+    },
+    {
+      "type": "row",
+      "title": "Who is producing, and who is reading",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Records stored, per tenant",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum by (zone, ledger) (rate(permguard_decisions_records_total[5m]))",
+          "legendFormat": "{{zone}}/{{ledger}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 20,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "Per zone and ledger, because retention, export and audit are all bought and asked about per zone."
+    },
+    {
+      "type": "timeseries",
+      "title": "Pages served to readers",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum by (scope, outcome) (rate(permguard_decisions_reads_total[5m]))",
+          "legendFormat": "{{scope}} {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "description": "`tenant` against `stream` scope, and `expired` \u2014 a consumer that fell off retention and was told where the remaining records begin."
+    },
+    {
+      "type": "table",
+      "title": "Producer streams",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "description": "Every producer stream this control plane holds, and the highest CONTIGUOUS DURABLE sequence for each. A row that stops advancing while its plane keeps deciding is the same story as the unshipped gauge, from the other end.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "permguard_decisions_stream_acked",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "editable": true
+}

@@ -1,0 +1,17 @@
+# Build output and VCS metadata never belong in the build context.
+target/
+.git/
+.gitignore
+.tokensave/
+.volume/
+.volume-docker/
+.volume-docker-compose/
+.volume-docker-dev/
+
+# The image is built from source; the recipe itself is not an input.
+Dockerfile
+.dockerignore
+
+# Large files the build does not read. The binary embeds the mini logo in build.rs.
+assets/*
+!assets/permguard-logo-mini.png

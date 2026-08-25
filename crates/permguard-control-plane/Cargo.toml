@@ -1,0 +1,60 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-control-plane"
+description = "The Permguard control plane."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+# The gRPC contract this plane serves, compiled from its own `proto/`.
+build = "build.rs"
+
+[[bin]]
+name = "permguard-control-plane"
+path = "src/main.rs"
+
+[[bin]]
+name = "permguard_control_plane"
+path = "src/bin/permguard_control_plane.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+base64.workspace = true
+permguard-core.workspace = true
+# What a decision record is: the canonical bytes, the chain, the signed envelope.
+permguard-decisions.workspace = true
+permguard-server.workspace = true
+permguard-languages.workspace = true
+permguard-notp.workspace = true
+permguard-objects.workspace = true
+serde_json.workspace = true
+prost.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+tonic.workspace = true
+tracing.workspace = true
+tonic-prost.workspace = true
+
+
+[dev-dependencies]
+# The producer half, so the shipping contract is exercised end to end rather
+# than against a stub that agrees with itself.
+permguard-control-client.workspace = true
+permguard-data-plane.workspace = true
+ring.workspace = true
+permguard-std.workspace = true
+tower.workspace = true
+http.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true

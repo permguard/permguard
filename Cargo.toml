@@ -1,0 +1,87 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[workspace]
+resolver = "3"
+members = [
+    "crates/permguard-all-in-one",
+    "crates/permguard-cli",
+    "crates/permguard-control-plane",
+    "crates/permguard-core",
+    "crates/permguard-data-plane",
+    "crates/permguard-decisions",
+    "crates/permguard-notp",
+    "crates/permguard-control-client",
+    "crates/permguard-objects",
+    "crates/permguard-languages",
+    "crates/permguard-server",
+    "crates/permguard-std",
+    "crates/permguard-telemetry",
+    "crates/permguard-transport",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "Apache-2.0"
+repository = "https://github.com/permguard/permguard-rust"
+
+[workspace.dependencies]
+permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.0" }
+permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }
+permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.0" }
+permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
+permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
+permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
+permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
+permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
+permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
+permguard-languages = { path = "crates/permguard-languages", version = "0.1.0" }
+permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
+permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
+permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.0" }
+permguard-transport = { path = "crates/permguard-transport", version = "0.1.0" }
+
+anyhow = "1"
+async-stream = "0.3"
+axum = { version = "0.8", default-features = false, features = ["http1", "http2", "json", "tokio"] }
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+flate2 = "1"
+futures-core = "0.3"
+hmac = "0.12"
+http = "1"
+http-body-util = "0.1"
+hyper-util = { version = "0.1", default-features = false, features = ["tokio", "client-legacy", "http1"] }
+opentelemetry = "0.32"
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace"] }
+opentelemetry_sdk = "0.32"
+prost = "0.14"
+prost-types = "0.14"
+proptest = "1"
+rcgen = "0.14"
+regex = "1"
+ring = "0.17"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+rustls-native-certs = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_norway = "0.9"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging"] }
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+tower = "0.5"
+tower-http = { version = "0.6", default-features = false, features = ["catch-panic", "limit", "timeout"] }
+tower-layer = "0.3"
+tower-service = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "registry"] }
+tracing-opentelemetry = "0.33"
+x509-parser = "0.17"
+zeroize = { version = "1", features = ["derive"] }

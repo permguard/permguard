@@ -1,0 +1,18 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: 1
+
+providers:
+  - name: Permguard
+    orgId: 1
+    folder: Permguard
+    type: file
+    disableDeletion: false
+    # Edits in the browser are kept until the file changes, so a demo can be adjusted live without
+    # the provisioner overwriting it mid-sentence.
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

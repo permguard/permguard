@@ -1,0 +1,6 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[env]
+PERMGUARD_COPYRIGHT_YEAR = "2022"
+PERMGUARD_COPYRIGHT_HOLDER = "Nitro Agility S.r.l."

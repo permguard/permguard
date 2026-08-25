@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-decisions"
+description = "What a decision record is: RFC 8785 canonical JSON, record digests, the producer hash chain, signed batch envelopes with Merkle roots, and the durable spool. Shared by the data plane that writes them, the control plane that keeps them and the CLI that verifies them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[dependencies]
+# The record is JSON on the wire and JSON at rest: one representation, and the
+# canonicalisation below is defined over it.
+serde.workspace = true
+serde_json.workspace = true
+# The same hashing the object model uses, so a verifier links one library.
+sha2.workspace = true
+hmac.workspace = true
+# JWS is base64url all the way down, and Ed25519 verification comes from the
+# one cryptographic backend this workspace already links.
+base64.workspace = true
+ring.workspace = true
+permguard-core.workspace = true
+
+[dev-dependencies]
+# A real key ring, so signing and verification are exercised end to end rather
+# than against a stub that agrees with itself.
+permguard-std = { workspace = true, features = ["keys"] }
+proptest.workspace = true

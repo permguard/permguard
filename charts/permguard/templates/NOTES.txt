@@ -1,0 +1,45 @@
+{{- /*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/ -}}
+Permguard {{ .Chart.AppVersion }} is installed as {{ .Release.Name }}.
+
+{{ if .Values.allInOne.enabled -}}
+The all-in-one runtime:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-all-in-one {{ .Values.allInOne.ports.controlHttp }}:{{ .Values.allInOne.ports.controlHttp }} {{ .Values.allInOne.ports.dataHttp }}:{{ .Values.allInOne.ports.dataHttp }}
+  permguard inspect
+{{- else -}}
+The two planes, each with a service of its own:
+{{ if .Values.controlPlane.enabled }}
+  control  {{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
+{{- end }}
+{{- if .Values.dataPlane.enabled }}
+  data     {{ include "permguard.fullname" . }}-data-plane:{{ .Values.dataPlane.ports.http }}
+{{- end }}
+
+Reach them from your machine, and ask them what they are:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-control-plane {{ .Values.controlPlane.ports.http }}:{{ .Values.controlPlane.ports.http }} &
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "permguard.fullname" . }}-data-plane {{ .Values.dataPlane.ports.http }}:{{ .Values.dataPlane.ports.http }} &
+  permguard inspect
+{{- end }}
+
+Liveness and readiness are answered on the telemetry port, which has a service of its own and is
+never part of the public one. Metrics are on {{ if .Values.allInOne.enabled }}{{ .Values.allInOne.ports.telemetry }}{{ else }}{{ .Values.controlPlane.ports.telemetry }}{{ end }}/metrics.
+
+{{ if not .Values.persistence.enabled }}
+NOTE: persistence is off, so each pod keeps its keys and its audit trail in an emptyDir. A restart
+      mints new signing keys{{ if .Values.autogenerate }} — `autogenerate` is on{{ end }}, which is
+      fine for a test environment and wrong for anything issuing tokens somebody else verifies. Set
+      `persistence.enabled=true` for a real installation.
+{{- end }}
+{{- if .Values.developmentMode }}
+
+NOTE: `developmentMode` is on. Do not run this in production.
+{{- end }}
+{{- if .Values.autogenerate }}
+
+NOTE: `autogenerate` is on: a plane that finds no certificate authority or signing key will mint its
+      own. In a cluster that material should come from something that manages it.
+{{- end }}

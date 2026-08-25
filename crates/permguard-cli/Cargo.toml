@@ -1,0 +1,45 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-cli"
+description = "The Permguard command-line interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+
+[[bin]]
+name = "permguard"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+permguard-core.workspace = true
+# The record, the chain and the signature — so `--verify` checks what the
+# planes compute, with the same code rather than a second implementation.
+permguard-decisions.workspace = true
+permguard-control-client.workspace = true
+permguard-notp.workspace = true
+permguard-objects.workspace = true
+permguard-languages.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+toml = "0.8"
+
+[dev-dependencies]
+base64.workspace = true
+permguard-control-plane.workspace = true
+rcgen.workspace = true
+ring.workspace = true
+

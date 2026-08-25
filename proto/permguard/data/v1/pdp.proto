@@ -1,0 +1,131 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The `permguard.pdp.v1` profile over gRPC.
+//
+// The same contract the HTTPS binding serves — OpenID AuthZEN 1.0 with the
+// Permguard extensions — expressed in protobuf. The standard defines the JSON
+// binding and leaves other transports to profiles; this is ours, and it is
+// field-for-field the same request and the same answer, so a deployment can
+// choose a transport without choosing semantics.
+//
+// Free-form parts of the contract (`properties`, `context`, the entity graph)
+// ride as `google.protobuf.Struct` / `Value`: they are policy data, and a
+// schema for them belongs to the policy language, not to this file.
+
+syntax = "proto3";
+
+package permguard.data.v1;
+
+import "google/protobuf/struct.proto";
+
+// The decision service a PEP calls.
+service PolicyDecisionPoint {
+  // One access evaluation.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+  // Many, in one exchange, resolved by the requested semantic.
+  rpc EvaluateMany(EvaluateRequest) returns (EvaluateResponse);
+  // What this PDP serves, and — by their absence — what it does not.
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
+}
+
+// Whom a decision is about, or what it targets.
+message Entity {
+  string type = 1;
+  string id = 2;
+  google.protobuf.Struct properties = 3;
+}
+
+// The operation attempted.
+message Action {
+  string name = 1;
+  google.protobuf.Struct properties = 2;
+}
+
+// The Permguard `entities` extension: the entity graph, in the runtime's shape.
+message Entities {
+  string schema = 1;
+  repeated google.protobuf.Value items = 2;
+}
+
+// One entry of a boxcarred request: whatever it sets overrides the defaults.
+message Evaluation {
+  Entity subject = 1;
+  Entity resource = 2;
+  Action action = 3;
+  google.protobuf.Struct context = 4;
+  Entities entities = 5;
+  string request_id = 6;
+}
+
+// How a batch resolves.
+enum EvaluationsSemantic {
+  EVALUATIONS_SEMANTIC_UNSPECIFIED = 0;
+  EVALUATIONS_SEMANTIC_EXECUTE_ALL = 1;
+  EVALUATIONS_SEMANTIC_DENY_ON_FIRST_DENY = 2;
+  EVALUATIONS_SEMANTIC_PERMIT_ON_FIRST_PERMIT = 3;
+}
+
+message EvaluateRequest {
+  // Which policy store to decide against. Required, both of them: there is no
+  // default, and deciding against the wrong store is the one failure nobody
+  // can debug.
+  string zone = 1;
+  string ledger = 2;
+  // Which of the ledger's profiles. `default` when empty.
+  string profile = 3;
+
+  // The defaults every evaluation inherits.
+  Entity subject = 4;
+  Entity resource = 5;
+  Action action = 6;
+  google.protobuf.Struct context = 7;
+
+  // Extensions.
+  Entity principal = 8;
+  Entities entities = 9;
+
+  repeated Evaluation evaluations = 10;
+  EvaluationsSemantic evaluations_semantic = 11;
+  string request_id = 12;
+}
+
+// The two audiences of one reason.
+message Reason {
+  string code = 1;
+  string message = 2;
+}
+
+message DecisionContext {
+  // This decision's own identifier, matching its audit record.
+  string id = 1;
+  Reason reason_admin = 2;
+  Reason reason_user = 3;
+  // The policies that decided it, by identity.
+  repeated string policies = 4;
+}
+
+message Decision {
+  bool decision = 1;
+  string request_id = 2;
+  DecisionContext context = 3;
+}
+
+message EvaluateResponse {
+  bool decision = 1;
+  string request_id = 2;
+  DecisionContext context = 3;
+  // Present exactly when the request carried evaluations, in the same order.
+  repeated Decision evaluations = 4;
+}
+
+message GetMetadataRequest {}
+
+message GetMetadataResponse {
+  string policy_decision_point = 1;
+  string access_evaluation_endpoint = 2;
+  string access_evaluations_endpoint = 3;
+  repeated string capabilities = 4;
+  string permguard_profile = 5;
+  string permguard_store_scope = 6;
+}

@@ -1,0 +1,82 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# .goreleaser-pro.yaml
+#
+# What the licensed runner adds on top of `.goreleaser.yaml`: SBOMs for every
+# archive, a cosign signature over the checksums file, container-image signing,
+# macOS signing and notarization when the secrets are present, and the Homebrew
+# cask. Same shape as the Go repository's, so one team runs one release process.
+
+version: 2
+pro: true
+
+includes:
+  - from_file:
+      path: ./.goreleaser.yaml
+
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - "--yes"
+    artifacts: all
+    output: true
+
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - permguard_cli
+      sign:
+        certificate: "{{.Env.MACOS_SIGN_P12}}"
+        password: "{{.Env.MACOS_SIGN_PASSWORD}}"
+      notarize:
+        issuer_id: "{{.Env.MACOS_NOTARY_ISSUER_ID}}"
+        key_id: "{{.Env.MACOS_NOTARY_KEY_ID}}"
+        key: "{{.Env.MACOS_NOTARY_KEY}}"
+        wait: true
+        timeout: 20m
+
+# A distinct cask name for as long as the Go CLI and this one share the tap:
+# `brew install permguard/tap/cli-rust`. When this CLI becomes *the* CLI, the
+# cask takes the `cli` name over and this one becomes an alias.
+homebrew_casks:
+  - name: cli-rust
+    binaries: ["permguard"]
+    ids: ["permguard_cli"]
+    repository:
+      owner: "{{ .Env.ORG }}"
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    alternative_names:
+      - cli-rust@{{ .Version }}
+      - cli-rust@{{ .Major }}
+    homepage: "https://docs.permguard.com/"
+    description: "Permguard CLI (Rust)"
+    commit_author:
+      name: Permguard Team
+      email: opensource@permguard.com
+    license: "Apache-2.0"
+    url:
+      template: "https://github.com/permguard/permguard-rust/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+      verified: "github.com/permguard/permguard-rust/"
+    skip_upload: false

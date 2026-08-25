@@ -1,0 +1,36 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Provisioned, so the lab has its data sources the moment it starts. A demo that begins with "now add
+# a data source" is a demo that has already lost the room.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: permguard-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+      httpMethod: POST
+
+  - name: Tempo
+    uid: permguard-tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+
+  - name: Loki
+    uid: permguard-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # Every record a plane writes carries an `event.name`; this turns one into a link from a log
+      # line to the trace-shaped question "what else happened on this request".
+      derivedFields:
+        - name: request_id
+          matcherRegex: '"request_id":"([^"]+)"'
+          url: '$${__value.raw}'

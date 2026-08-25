@@ -1,0 +1,324 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The checks this repository already had, made real.
+#
+# `task check` and the two structural checks existed before this file did, and ran only when somebody
+# remembered to type them. For a security product a check that is not enforced is not a check.
+
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # build.rs validates these and fails the build when they are missing.
+  PERMGUARD_COPYRIGHT_YEAR: "2022"
+  PERMGUARD_COPYRIGHT_HOLDER: "Nitro Agility S.r.l."
+
+jobs:
+  check:
+    name: lint, structure, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # The version declared as `rust-version` in Cargo.toml. Building with exactly the minimum is
+      # what makes the minimum a fact: a job on `stable` would pass while the declared MSRV quietly
+      # stopped compiling.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
+        with:
+          toolchain: "1.97"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the declared MSRV is the one we build with
+        run: |
+          declared="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          built="$(rustc --version | cut -d' ' -f2 | cut -d. -f1,2)"
+          if [ "${declared}" != "${built}" ]; then
+            echo "Cargo.toml declares rust-version ${declared}, this job builds with ${built}" >&2
+            echo "update both, or the declared minimum is a claim nothing checks" >&2
+            exit 1
+          fi
+          echo "ok: built with the declared minimum, ${declared}"
+      - name: formatting
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: only the binary composes collaborators
+        run: ./scripts/check-composition-root.sh
+      - name: permguard-core keeps its dependency allowlist
+        run: ./scripts/check-core-dependencies.sh
+      - name: the Makefile and the Taskfile agree
+        run: ./scripts/check-build-systems.sh
+      - name: every source file carries the licence header
+        run: ./scripts/check-license-headers.sh
+      - name: every feature combination still builds
+        run: |
+          cargo check -p permguard-std --all-targets --no-default-features --locked
+          cargo check -p permguard-std --all-targets --locked
+      - name: tests
+        # --all-features because `permguard-std` keeps `provision` outside its default set, and a
+        # plain run would never compile the tests that cover it.
+        run: cargo test --workspace --all-features --locked
+
+  supply-chain:
+    name: advisories, licences, sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check advisories licenses bans sources
+
+  release-config:
+    name: release configuration and images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      # A release configuration is only exercised by tagging, which is the worst moment to discover
+      # it is wrong: the tag is already public. Both files are validated on every change instead.
+      - name: goreleaser configuration is valid
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser-pro
+          # Same major pin as the release pipeline: validation must exercise
+          # the release toolchain we actually use.
+          version: "~> v2"
+          args: check --config ./.goreleaser.yaml
+        env:
+          GORELEASER_KEY: ${{ secrets['GORELEASER_KEY'] }}
+
+      - name: goreleaser pro configuration is valid
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: check --config ./.goreleaser-pro.yaml
+        env:
+          GORELEASER_KEY: ${{ secrets['GORELEASER_KEY'] }}
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      # The release Dockerfiles are built here with a stand-in binary, so a typo in a COPY path or a
+      # broken stage fails a pull request rather than a release. The binary is not the point; the
+      # image layout is.
+      - name: the release images build
+        run: |
+          set -euo pipefail
+          context="$(mktemp -d)"
+          mkdir -p "${context}/linux/amd64" "${context}/docker"
+          cp -R docker/rootfs "${context}/docker/rootfs"
+          cp LICENSE "${context}/LICENSE"
+          printf '#!/bin/sh\nexit 0\n' > "${context}/linux/amd64/stand-in"
+          chmod +x "${context}/linux/amd64/stand-in"
+          for dockerfile in docker/release/*.Dockerfile; do
+            echo "building ${dockerfile}"
+            docker buildx build \
+              --platform linux/amd64 \
+              --build-arg BINARY_NAME=stand-in \
+              --file "${dockerfile}" \
+              --output type=cacheonly \
+              "${context}"
+          done
+
+  commits:
+    name: commit subjects
+    # Release notes are grouped by commit prefix, so a subject that does not carry one lands in
+    # "Other" and is invisible. Checked on pull requests only: history already written cannot be
+    # fixed by failing a build.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - name: every subject is a conventional commit
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|test|chore|refactor|perf|build|ci|revert)(\([a-z0-9./-]+\))?!?: .+'
+          failed=0
+          while read -r sha subject; do
+            if ! printf '%s' "${subject}" | grep -qE "${pattern}"; then
+              echo "${sha} does not start with a type: ${subject}" >&2
+              failed=1
+            fi
+            if [ "${#subject}" -gt 100 ]; then
+              echo "${sha} has a subject longer than 100 characters" >&2
+              failed=1
+            fi
+          done < <(git log --no-merges --format='%h %s' \
+                     "origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}")
+          if [ "${failed}" -ne 0 ]; then
+            echo "expected: <type>(<scope>): <subject>, for example 'fix(cli): report a draining plane as degraded'" >&2
+            exit 1
+          fi
+          echo "ok: every commit subject carries a type"
+
+  changelog:
+    name: changelog entry
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      # A changed interface with no changelog line is the normal way a release ends up
+      # undocumented. The check is advisory — plenty of changes legitimately have nothing to say to
+      # an operator — so it annotates rather than blocks.
+      - name: does this need a changelog line
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          changed="$(git diff --name-only "${base}"...HEAD)"
+          watched="$(echo "${changed}" | grep -E '^(crates/.*/(src|config).*|crates/.*\.yml|charts/)' || true)"
+          if [ -z "${watched}" ]; then
+            echo "nothing an operator can see changed"
+            exit 0
+          fi
+          if echo "${changed}" | grep -q '^CHANGELOG.md$'; then
+            echo "ok: the changelog was updated"
+            exit 0
+          fi
+          echo "::warning::this changes behaviour or configuration and CHANGELOG.md was not touched"
+
+  forward-compatibility:
+    name: the next toolchain
+    runs-on: ubuntu-latest
+    # The `check` job builds with the declared minimum. This one builds with whatever `stable` is
+    # today, so a compiler change is found here rather than by a release that suddenly will not
+    # build. Allowed to fail: it reports the future, and the future is not a regression in this
+    # pull request.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: clippy and tests, on stable
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo test --workspace --all-features
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08; the toolchain is chosen by `toolchain:`, not by the ref
+        with:
+          toolchain: stable
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
+        with:
+          tool: cargo-llvm-cov
+      # Reported, not gated. A coverage threshold buys tests written to move a number; a number in
+      # the summary of every run buys the conversation about the part nobody covered.
+      - name: measure
+        run: |
+          cargo llvm-cov --workspace --all-features --summary-only \
+            | tee "${GITHUB_STEP_SUMMARY}"
+
+  chart:
+    name: helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - name: lint
+        run: helm lint charts/permguard
+      # Rendered in every shape the chart supports, because a template that only works with the
+      # default values is a template that breaks the first time somebody turns something on.
+      - name: render every shape
+        run: |
+          set -euo pipefail
+          for values in \
+            "" \
+            "--values charts/permguard/values-production.yaml" \
+            "--set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
+            "--set persistence.enabled=true" \
+            "--set metrics.serviceMonitor.enabled=true" \
+            "--set controlPlane.autoscaling.enabled=true,dataPlane.autoscaling.enabled=true" \
+            "--set image.registry=ghcr.io" \
+            "--set developmentMode=true,autogenerate=true"; do
+            echo "helm template ${values:-(defaults)}"
+            # shellcheck disable=SC2086
+            helm template permguard charts/permguard ${values} > /dev/null
+          done
+      # The shape the chart must refuse: the all-in-one beside a standalone plane is two deployments
+      # fighting over one identity, and asking for it has to fail at template time, not in a cluster.
+      - name: the chart refuses the all-in-one beside the planes
+        run: |
+          set -euo pipefail
+          if helm template permguard charts/permguard --set allInOne.enabled=true > /dev/null 2>&1; then
+            echo "the chart rendered a mixed all-in-one + planes shape it must refuse" >&2
+            exit 1
+          fi
+          if helm template permguard charts/permguard \
+               --set controlPlane.enabled=false --set dataPlane.enabled=false > /dev/null 2>&1; then
+            echo "the chart rendered an install that installs nothing" >&2
+            exit 1
+          fi
+          echo "ok: the mixed shape and the empty shape are both refused"
+      # Blocking: a chart that renders objects the API server would refuse is a chart that fails at
+      # install time, and CI is the place to find that out. The render itself must succeed too — the
+      # `|| true` would have turned a broken template into an empty file kubeconform waves through.
+      - uses: docker://ghcr.io/yannh/kubeconform@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e # latest, 2026-08
+        with:
+          entrypoint: /bin/sh
+          args: >-
+            -c "helm template permguard charts/permguard > /tmp/rendered.yaml &&
+                kubeconform -strict -summary -ignore-missing-schemas /tmp/rendered.yaml"
+
+  docs:
+    name: documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # The repository already had a markdownlint configuration and nothing running it. Documentation
+      # that drifts out of the style it declares is documentation nobody trusts to be current.
+      - name: markdown
+        uses: DavidAnson/markdownlint-cli2-action@05f32210e84442804257b2a6f20b273450ec8265 # v19
+        with:
+          globs: "**/*.md"
+      # Every link that points inside the repository, checked. A README that links to a page that was
+      # renamed is the most common piece of stale documentation there is.
+      - name: internal links resolve
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r file; do
+            while IFS= read -r target; do
+              case "${target}" in
+                http*|mailto:*|"#"*) continue ;;
+              esac
+              path="${target%%#*}"
+              [ -z "${path}" ] && continue
+              resolved="$(dirname "${file}")/${path}"
+              if [ ! -e "${resolved}" ]; then
+                echo "${file}: ${target} does not exist" >&2
+                failed=1
+              fi
+            done < <(grep -oE '\]\([^)]+\)' "${file}" | sed 's/^](//; s/)$//')
+          done < <(git ls-files '*.md')
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
+          echo "ok: every internal link resolves"

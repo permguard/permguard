@@ -1,0 +1,46 @@
+{
+  "action": {
+    "name": "read"
+  },
+  "at": "2026-08-24T10:00:01Z",
+  "decision": true,
+  "id": "decision-compat-1",
+  "inputs": {
+    "context": "hmac-sha256:v1:context",
+    "external": []
+  },
+  "kind": "decision",
+  "latency_us": 321,
+  "pdp": {
+    "version": "0.1.0"
+  },
+  "policies": [
+    "policy-1"
+  ],
+  "prev": "sha256:59ae457193a0763ef11a8f331085efa025ef8207b1c1f7616ec224b7f5b50cd2",
+  "reason": {
+    "code": "permit"
+  },
+  "resource": {
+    "id": "budget",
+    "type": "Document"
+  },
+  "retained_by_newer_producer": "ignored by structs, hashed verbatim",
+  "seq": 2,
+  "store": {
+    "commit": "sha256:ec1773bf",
+    "counter": 3,
+    "ledger": "main-ledger",
+    "profile": "default",
+    "zone": "acme"
+  },
+  "stream": {
+    "id": "plane",
+    "instance": "compat-v1"
+  },
+  "subject": {
+    "id": "pseudo:v1:subject",
+    "type": "User"
+  },
+  "v": 1
+}

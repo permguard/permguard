@@ -1,0 +1,145 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{- if .Values.metrics.prometheusRule.enabled }}
+{{- $rules := .Values.metrics.prometheusRule }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "permguard.fullname" . }}
+  labels:
+    {{- include "permguard.labels" . | nindent 4 }}
+    {{- with $rules.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: permguard.availability
+      rules:
+        - alert: PermguardNotReady
+          expr: permguard_ready == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} is not ready"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardNotLive
+          expr: permguard_up == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} reports liveness failure"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardServerErrors
+          expr: sum by (component, surface) (rate(permguard_surface_requests_total{status=~"5.."}[5m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.surface }}`}} is answering 5xx"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardConnectionsRefused
+          expr: increase(permguard_surface_connections_refused_total[5m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.surface }}`}} refused connections"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardDecisionAuditLoss
+          expr: increase(permguard_authz_audit_records_total{outcome=~"dropped|failed"}[5m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Decision audit records were not written"
+            runbook_url: "https://docs.permguard.com/authorization-check#observability"
+    - name: permguard.mirrors
+      rules:
+        - alert: PermguardMirrorStale
+          expr: max by (component, zone, ledger) (permguard_sync_mirror_age_seconds) > {{ int $rules.mirror.staleSeconds }}
+          for: {{ $rules.mirror.staleFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.zone }}`}}/{{`{{ $labels.ledger }}`}} mirror is stale"
+            runbook_url: "https://docs.permguard.com/data-plane-mirrors#freshness"
+        - alert: PermguardMirrorSyncFailing
+          expr: increase(permguard_sync_mirrors_total{outcome=~"failed|timeout"}[10m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.zone }}`}}/{{`{{ $labels.ledger }}`}} mirror sync is failing"
+            runbook_url: "https://docs.permguard.com/data-plane-mirrors#observability"
+        - alert: PermguardMirrorRoundPartial
+          expr: increase(permguard_sync_rounds_total{outcome="partial"}[10m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A mirror round completed partially"
+            runbook_url: "https://docs.permguard.com/data-plane-mirrors#observability"
+    - name: permguard.decision-log
+      rules:
+        - alert: PermguardDecisionLogBacklogGrowing
+          expr: sum by (component) (permguard_decisions_unshipped_records) > {{ int $rules.decisionLog.backlogRecords }}
+          for: {{ $rules.decisionLog.backlogFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.component }}`}} decision log backlog is not draining"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardDecisionLogDroppedRecords
+          expr: increase(permguard_decisions_dropped_total[5m]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "Decision records were dropped"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardDecisionLogDiscontinuity
+          expr: increase(permguard_decisions_discontinuities_total[5m]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "A decision stream recorded a discontinuity"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardDecisionLogBatchRejected
+          expr: increase(permguard_decisions_shipped_total{outcome="rejected"}[5m]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "The control plane rejected a decision-log batch"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardDecisionStoreRefusingBatches
+          expr: increase(permguard_decisions_refusals_total[5m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "The decision store refused one or more batches"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+        - alert: PermguardDecisionStreamClosed
+          expr: increase(permguard_decisions_streams_closed_total[1h]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "A decision stream was permanently closed"
+            runbook_url: "https://docs.permguard.com/decision-logs#failure-modes"
+    - name: permguard.tls
+      rules:
+        - alert: PermguardRevocationListExpiringSoon
+          expr: (permguard_tls_crl_expiry_timestamp_seconds - time()) / 86400 < {{ int $rules.tls.crlExpiryDays }}
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.surface }}`}} CRL expires soon"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+        - alert: PermguardCertificateExpiringSoon
+          expr: (permguard_tls_certificate_expiry_timestamp_seconds - time()) / 86400 < {{ int $rules.tls.certificateExpiryDays }}
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.surface }}`}} certificate expires soon"
+            runbook_url: "https://docs.permguard.com/observability#alerts"
+{{- end }}

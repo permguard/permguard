@@ -1,0 +1,83 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/data-plane
+
+log:
+  level: debug
+  format: terminal
+
+telemetry:
+  addr: 127.0.0.1:7658
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7656
+
+  # This plane mirrors the control plane running beside it on this laptop. No `zones` and no
+  # `ledgers`: everything that server lists is followed, including a ledger created a minute from
+  # now. See config.template.yml for the full menu.
+  mirrors:
+    enabled: "true"
+    interval: "15s"        # a cadence somebody watching a terminal can see; the default is 30s
+    timeout: "1m"          # per ledger
+    parallelism: "4"
+    servers:
+      # The control plane started with permguard-control-plane's config.local.yml.
+      - url: "http://127.0.0.1:7556"
+
+  # The decision path, sized for a laptop: a handful of ledgers, a small heap.
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: data-plane-local          # half of every stream identity: two replicas must never share one
+      server:
+        url: "http://127.0.0.1:7556"
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

@@ -1,0 +1,103 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/data-plane-tls
+
+log:
+  level: debug
+  format: terminal
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+telemetry:
+  addr: 127.0.0.1:7658
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+
+  # Mirroring over TLS. The control plane generated its own authority inside its own volume, and a
+  # certificate is worth exactly what the authority behind it is: name that file rather than turning
+  # verification off. Relative paths resolve against this plane's working_dir, so the sibling volume
+  # is one level up.
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      # The control plane started with permguard-control-plane's config.local-tls.yml. Its
+      # certificate names both localhost and 127.0.0.1, so no server_name is needed here.
+      - url: "https://127.0.0.1:7556"
+        tls:
+          ca_file: ../control-plane-tls/tls/ca.pem
+
+  # The decision path, sized for a laptop: a handful of ledgers, a small heap.
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: data-plane-local-tls          # half of every stream identity: two replicas must never share one
+      server:
+        url: "https://127.0.0.1:7556"
+        tls:
+          ca_file: ../control-plane-tls/tls/ca.pem
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

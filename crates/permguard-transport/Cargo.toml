@@ -1,0 +1,46 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-transport"
+description = "One listener for every Permguard surface: TCP, TLS, mTLS, and a shutdown that drains."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+axum-server.workspace = true
+http.workspace = true
+hyper-util.workspace = true
+permguard-core.workspace = true
+# Naming each request. The same generator `rustls` already links, rather than a second one.
+ring.workspace = true
+rustls.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-rustls.workspace = true
+# `limit` is the concurrency ceiling, `load-shed` turns waiting for it into a refusal.
+tower = { workspace = true, features = ["limit", "load-shed"] }
+tower-http.workspace = true
+tower-layer.workspace = true
+tower-service.workspace = true
+tracing.workspace = true
+x509-parser.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+# `test-util` is what makes paused-time tests possible: thirty seconds of write stall pass in a
+# microsecond of wall clock, so the stall bound is tested at its real value instead of a token one.
+tokio = { workspace = true, features = ["test-util"] }
+rustls.workspace = true
+rcgen.workspace = true
+tokio-rustls.workspace = true

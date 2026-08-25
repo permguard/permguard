@@ -1,0 +1,262 @@
+{
+  "uid": "permguard-logs",
+  "title": "Permguard \u00b7 Logs",
+  "description": "The records the planes write, from Loki. Containers only: a plane started with `task run:all` logs to your terminal, and nothing is shipping that.",
+  "tags": [
+    "permguard",
+    "logs"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "permguard-loki"
+        },
+        "definition": "label_values({job=\"permguard\"}, container)",
+        "query": {
+          "label": "container",
+          "stream": "{job=\"permguard\"}",
+          "type": 1,
+          "refId": "containers"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Records per second, by level",
+      "datasource": {
+        "type": "loki",
+        "uid": "permguard-loki"
+      },
+      "description": "Every record a Permguard process writes is JSON with a level and an `event.name`. This counts them by level: a WARN or ERROR rate that moves is the thing to look at first.",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "permguard-loki"
+          },
+          "editorMode": "code",
+          "expr": "sum by (level) (rate({job=\"permguard\"} | json | __error__=\"\" [$__auto]))",
+          "queryType": "range",
+          "refId": "A",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Records per second, by event",
+      "datasource": {
+        "type": "loki",
+        "uid": "permguard-loki"
+      },
+      "description": "`event.name` is the stable field \u2014 `plane.listening`, `service.started`, `server.stopping`. The message beside it is free to be reworded; this is what a query should match on.",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "permguard-loki"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, sum by (event_name) (rate({job=\"permguard\"} | json event_name=\"[\\\"event.name\\\"]\" | __error__=\"\" [$__auto])))",
+          "queryType": "range",
+          "refId": "A",
+          "legendFormat": "{{event_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Warnings and errors",
+      "description": "Anything the process itself considered wrong.",
+      "datasource": {
+        "type": "loki",
+        "uid": "permguard-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "permguard-loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"permguard\"} | json | level =~ \"WARN|ERROR\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Audit trail",
+      "description": "What was recorded about who did what. In this profile the sink is a file inside the container as well; this is the copy that reached stdout.",
+      "datasource": {
+        "type": "loki",
+        "uid": "permguard-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "permguard-loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"permguard\"} | json event_name=\"[\\\"event.name\\\"]\" | event_name =~ \"audit.*\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Everything",
+      "description": "The full stream for the selected containers.",
+      "datasource": {
+        "type": "loki",
+        "uid": "permguard-loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "permguard-loki"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"permguard\", container=~\"$container\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}

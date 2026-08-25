@@ -1,0 +1,58 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- if $plane.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+data:
+  config.yml: |
+    {{- $section := ternary "controlPlane" "dataPlane" (eq $component "control-plane") }}
+    {{- $config := dict
+          "development_mode" $.Values.developmentMode
+          "autogenerate" $.Values.autogenerate
+          "working_dir" "/var/lib/permguard"
+          "log" (dict "level" $.Values.logging.level "format" $.Values.logging.format)
+          "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int $plane.ports.telemetry)))
+    }}
+    {{- $public := dict "public" (dict
+          "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.http)))
+          "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.grpc)))
+    ) }}
+    {{- $_ := set $config $section $public }}
+    {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
+    {{- toYaml $merged | nindent 4 }}
+---
+{{- end }}
+{{- end }}
+{{- if .Values.allInOne.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "permguard.fullname" . }}-all-in-one
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+data:
+  config.yml: |
+    {{- $config := dict
+          "development_mode" .Values.developmentMode
+          "autogenerate" .Values.autogenerate
+          "working_dir" "/var/lib/permguard"
+          "log" (dict "level" .Values.logging.level "format" .Values.logging.format)
+          "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.telemetry)))
+          "runtime" (dict "planes" (list "control" "data"))
+          "controlPlane" (dict "public" (dict
+              "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.controlHttp)))
+              "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.controlHttp)))))
+          "dataPlane" (dict "public" (dict
+              "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.dataHttp)))
+              "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.dataHttp)))))
+    }}
+    {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
+    {{- toYaml $merged | nindent 4 }}
+{{- end }}

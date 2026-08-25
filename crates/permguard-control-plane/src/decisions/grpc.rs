@@ -1,0 +1,281 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The decision log's gRPC shape: the same contract as the HTTP one, answered
+//! by the same code.
+//!
+//! # Why the payloads are bytes
+//!
+//! A record's digest is taken over its canonical JSON, and the chain that binds
+//! every record to a signed head is taken over those digests. Re-encoding a
+//! record as protobuf and back would change the bytes and break every digest
+//! after it — so the wire carries exactly what was signed, and this surface
+//! carries the wire. That is not laziness about the schema: it is the only
+//! shape under which two transports can deliver the *same* record.
+//!
+//! # Refusals
+//!
+//! `out_of_order` is a field rather than a status, because nothing is wrong:
+//! the store simply needs an earlier batch first. Everything else is a status
+//! carrying this product's class and code in its metadata, so a gRPC caller
+//! and an HTTP caller branch on the same vocabulary.
+
+use permguard_decisions::envelope::Batch;
+use serde_json::Value;
+use tonic::{Request, Response, Status};
+
+use super::http::DecisionFacade;
+use super::store::Scope;
+use super::{Accepted, Refused, ingest, measure, read};
+use crate::v1::decision_log_server::DecisionLog;
+use crate::v1::{ReadRequest, ReadResponse, ShipRequest, ShipResponse};
+
+/// The metadata keys a refusal's class and code travel in.
+const CLASS: &str = "permguard-error-class";
+const CODE: &str = "permguard-error-code";
+
+#[tonic::async_trait]
+impl DecisionLog for DecisionFacade {
+    async fn ship(&self, request: Request<ShipRequest>) -> Result<Response<ShipResponse>, Status> {
+        let started = std::time::Instant::now();
+        let batch: Batch =
+            serde_json::from_slice(&request.into_inner().batch).map_err(|error| {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", "malformed")]);
+
+                refusal(
+                    Status::invalid_argument(format!("this is not a decision batch: {error}")),
+                    "validation",
+                    "malformed_batch",
+                )
+            })?;
+
+        let keys = self.accepted_keys().map_err(|error| {
+            refusal(
+                Status::unavailable(format!(
+                    "this plane cannot verify signatures right now: {error}"
+                )),
+                "unavailable",
+                "keys_unavailable",
+            )
+        })?;
+
+        // Off the runtime's threads, exactly as on HTTP: accepting a batch is
+        // appends and fsyncs across several files.
+        let outcome = {
+            let (facade, batch) = (self.clone(), batch.clone());
+            tokio::task::spawn_blocking(move || {
+                match ingest::accept(&facade.store, &batch, &keys) {
+                    // A rotated producer ring is a file to re-read, not a
+                    // plane to restart.
+                    Err(Refused::Unattributable(_)) => {
+                        ingest::accept(&facade.store, &batch, &facade.reload_producers())
+                    }
+                    other => other,
+                }
+            })
+            .await
+            .unwrap_or_else(|error| Err(Refused::Unavailable(error.to_string())))
+        };
+        self.metrics.observe(
+            &measure::INGEST_SECONDS,
+            &[],
+            started.elapsed().as_secs_f64(),
+        );
+
+        match outcome {
+            Ok(Accepted::Ok { acked, stored }) => {
+                self.metrics.count(
+                    &measure::BATCHES,
+                    &[("outcome", if stored == 0 { "replay" } else { "ok" })],
+                );
+                self.count_records(&batch.records);
+                self.publish_acked(&batch, acked);
+
+                Ok(Response::new(ShipResponse {
+                    acked,
+                    stored,
+                    out_of_order: false,
+                    expected_seq: 0,
+                }))
+            }
+            Ok(Accepted::OutOfOrder { expected_seq }) => {
+                self.metrics
+                    .count(&measure::BATCHES, &[("outcome", "out_of_order")]);
+
+                Ok(Response::new(ShipResponse {
+                    acked: 0,
+                    stored: 0,
+                    out_of_order: true,
+                    expected_seq,
+                }))
+            }
+            Err(refused) => {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", reason_of(&refused))]);
+                if matches!(refused, Refused::Conflict { .. }) {
+                    self.metrics.count(&measure::CLOSED, &[]);
+                }
+
+                Err(status_of(&refused))
+            }
+        }
+    }
+
+    async fn read(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {
+        let asked = request.into_inner();
+        let scope = if !asked.pdp.is_empty() && !asked.instance.is_empty() {
+            Scope::Stream {
+                pdp_id: asked.pdp,
+                instance: asked.instance,
+            }
+        } else if !asked.zone.is_empty() && !asked.ledger.is_empty() {
+            Scope::Tenant {
+                zone: asked.zone,
+                ledger: asked.ledger,
+            }
+        } else {
+            return Err(refusal(
+                Status::invalid_argument(
+                    "name a zone and a ledger, or one producer stream with `pdp` and `instance`",
+                ),
+                "validation",
+                "scope_required",
+            ));
+        };
+        let kind = match scope {
+            Scope::Stream { .. } => "stream",
+            Scope::Tenant { .. } => "tenant",
+        };
+        let limit = usize::try_from(asked.limit).unwrap_or(100).clamp(1, 1_000);
+        let from = (!asked.from.is_empty()).then_some(asked.from);
+
+        // Off the runtime's threads, exactly as on HTTP.
+        let page = {
+            let (store, scope) = (self.store.clone(), scope.clone());
+            tokio::task::spawn_blocking(move || {
+                read::page_with(&store, &scope, from.as_deref(), limit, asked.proof)
+            })
+            .await
+            .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+        };
+        match page {
+            Ok(page) => {
+                self.metrics
+                    .count(&measure::READS, &[("scope", kind), ("outcome", "ok")]);
+
+                Ok(Response::new(ReadResponse {
+                    records: page.records.iter().map(render).collect(),
+                    next: page.next,
+                    more: page.more,
+                    proof: page.proof.iter().map(render).collect(),
+                    inclusion: page.inclusion.iter().map(render_inclusion).collect(),
+                }))
+            }
+            Err(read::ReadError::Expired { oldest }) => {
+                self.metrics
+                    .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
+
+                // The oldest offset travels in the message, so a consumer
+                // learns where to resume from the refusal itself.
+                let mut status = refusal(
+                    Status::not_found(format!(
+                        "this offset is older than what this scope still holds; the oldest \
+                         available is `{oldest}`"
+                    )),
+                    "not_found",
+                    "offset_expired",
+                );
+                if let Ok(value) = oldest.parse() {
+                    status
+                        .metadata_mut()
+                        .insert("permguard-oldest-offset", value);
+                }
+
+                Err(status)
+            }
+            Err(error) => {
+                self.metrics
+                    .count(&measure::READS, &[("scope", kind), ("outcome", "refused")]);
+
+                Err(refusal(
+                    Status::invalid_argument(error.to_string()),
+                    "validation",
+                    "offset_invalid",
+                ))
+            }
+        }
+    }
+}
+
+impl DecisionFacade {
+    fn count_records(&self, records: &[Value]) {
+        for record in records {
+            if let Some((zone, ledger)) = super::store::tenancy(record) {
+                self.metrics.count(
+                    &measure::RECORDS,
+                    &[("zone", zone.as_str()), ("ledger", ledger.as_str())],
+                );
+            }
+        }
+    }
+}
+
+fn render(value: &Value) -> Vec<u8> {
+    serde_json::to_vec(value).unwrap_or_default()
+}
+
+fn render_inclusion(inclusion: &read::Inclusion) -> Vec<u8> {
+    serde_json::to_vec(inclusion).unwrap_or_default()
+}
+
+fn reason_of(refused: &Refused) -> &'static str {
+    match refused {
+        Refused::Unattributable(_) => "unattributable",
+        Refused::Unverifiable(_) => "unverifiable",
+        Refused::Conflict { .. } => "conflict",
+        Refused::Closed(_) => "closed",
+        Refused::Unavailable(_) => "unavailable",
+    }
+}
+
+fn status_of(refused: &Refused) -> Status {
+    match refused {
+        Refused::Unattributable(detail) => refusal(
+            Status::invalid_argument(detail.clone()),
+            "validation",
+            "batch_unattributable",
+        ),
+        Refused::Unverifiable(detail) => refusal(
+            Status::invalid_argument(detail.clone()),
+            "validation",
+            "batch_unverifiable",
+        ),
+        Refused::Conflict { .. } => refusal(
+            Status::failed_precondition(refused.to_string()),
+            "conflict",
+            "stream_conflict",
+        ),
+        Refused::Closed(_) => refusal(
+            Status::failed_precondition(refused.to_string()),
+            "conflict",
+            "stream_closed",
+        ),
+        // The one a shipper must treat as *retry*, never as *drop*.
+        Refused::Unavailable(detail) => refusal(
+            Status::unavailable(detail.clone()),
+            "unavailable",
+            "store_unavailable",
+        ),
+    }
+}
+
+/// Attaches this product's class and code, so both transports say one thing.
+fn refusal(mut status: Status, class: &'static str, code: &'static str) -> Status {
+    if let (Ok(class), Ok(code)) = (class.parse(), code.parse()) {
+        status.metadata_mut().insert(CLASS, class);
+        status.metadata_mut().insert(CODE, code);
+    }
+
+    status
+}

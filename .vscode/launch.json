@@ -1,0 +1,69 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "permguard: control plane",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=permguard-control-plane", "--package=permguard-control-plane"],
+        "filter": { "name": "permguard-control-plane", "kind": "bin" }
+      },
+      "args": ["crates/permguard-control-plane/config.local.yml"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PERMGUARD_COPYRIGHT_YEAR": "2022",
+        "PERMGUARD_COPYRIGHT_HOLDER": "Nitro Agility S.r.l."
+      }
+    },
+    {
+      "name": "permguard: data plane",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=permguard-data-plane", "--package=permguard-data-plane"],
+        "filter": { "name": "permguard-data-plane", "kind": "bin" }
+      },
+      "args": ["crates/permguard-data-plane/config.local.yml"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PERMGUARD_COPYRIGHT_YEAR": "2022",
+        "PERMGUARD_COPYRIGHT_HOLDER": "Nitro Agility S.r.l."
+      }
+    },
+    {
+      "name": "permguard: all-in-one",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=permguard-all-in-one", "--package=permguard-all-in-one"],
+        "filter": { "name": "permguard-all-in-one", "kind": "bin" }
+      },
+      "args": ["crates/permguard-all-in-one/config.local.yml"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PERMGUARD_RUNTIME_PLANES": "control,data",
+        "PERMGUARD_CONTROL_HTTP_ADDR": "127.0.0.1:7556",
+        "PERMGUARD_CONTROL_GRPC_ADDR": "127.0.0.1:7556",
+        "PERMGUARD_DATA_HTTP_ADDR": "127.0.0.1:7656",
+        "PERMGUARD_DATA_GRPC_ADDR": "127.0.0.1:7656",
+        "PERMGUARD_COPYRIGHT_YEAR": "2022",
+        "PERMGUARD_COPYRIGHT_HOLDER": "Nitro Agility S.r.l."
+      }
+    },
+    {
+      "name": "permguard: cli inspect",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=permguard", "--package=permguard-cli"],
+        "filter": { "name": "permguard", "kind": "bin" }
+      },
+      "args": ["inspect"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

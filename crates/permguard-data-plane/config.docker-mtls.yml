@@ -1,0 +1,127 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# TLS on HTTP, mutual TLS on gRPC, in a container. The same split as config.local-mtls.yml, and for
+# the same reason: HTTP is what an operator and a probe reach, gRPC is what a service reaches. An
+# address serves one TLS policy, so the two protocols need two ports.
+development_mode: true
+autogenerate: true
+working_dir: /var/lib/permguard/data-plane
+
+log:
+  level: debug
+  format: json
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+telemetry:
+  addr: 0.0.0.0:7658
+  # Server authentication only: a scraper is not a Permguard client.
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7657
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        # Of everybody tls/ca.pem signs, this endpoint answers exactly one: the client certificate
+        # the runtime generated beside it. Authentication is the handshake; this is authorisation.
+        allow:
+          - cn:local-operator
+
+  # Mirroring over mutual TLS, in a container. Off until both the authority and our own certificate
+  # are here: each plane has its own Docker volume, so the control plane's tls/ca.pem and the
+  # operator certificate it signed have to be mounted or copied to the paths below. Then turn it on.
+  mirrors:
+    enabled: "false"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      # Mutual TLS is on the gRPC address (7557): an address serves one TLS policy.
+      - url: "grpcs://control-plane:7557"
+        tls:
+          ca_file: tls/control-plane-ca.pem
+          cert: tls/control-plane-client.pem
+          key: tls/control-plane-client.key
+          server_name: localhost
+
+  # The decision path, sized for the lab's container limits.
+  decisions:
+    cache:
+      partitions: "32"
+      bytes: "128M"
+    max_evaluations: "128"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: data-plane-docker-mtls          # half of every stream identity: two replicas must never share one
+      server:
+        url: "grpcs://control-plane:7557"
+        tls:
+          ca_file: tls/control-plane-ca.pem
+          cert: tls/control-plane-client.pem
+          key: tls/control-plane-client.key
+          server_name: localhost
+          # Its own identity in a real deployment: shipping decisions and reading policy are
+          # two authorizations. Here they share the certificate this environment generates.
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+limits:
+  # Through Docker's port forwarding every connection from the host arrives as the compose
+  # network's gateway address — one address for all clients, which is exactly the NAT case the
+  # per-address bound documents: exempt the private range the network lives in, or the bound
+  # counts the gateway as one very greedy client. The pool limit still bounds the total.
+  peer_exempt:
+    - 172.16.0.0/12
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

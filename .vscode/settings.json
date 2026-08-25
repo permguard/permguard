@@ -1,0 +1,15 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+{
+  // build.rs refuses to build without these, so the editor's own cargo invocations need them too —
+  // otherwise rust-analyzer reports errors the command line does not have.
+  "rust-analyzer.cargo.extraEnv": {
+    "PERMGUARD_COPYRIGHT_YEAR": "2022",
+    "PERMGUARD_COPYRIGHT_HOLDER": "Nitro Agility S.r.l."
+  },
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.allTargets": true,
+  "files.exclude": { "**/target": true },
+  "search.exclude": { "**/target": true, "**/.volume": true }
+}

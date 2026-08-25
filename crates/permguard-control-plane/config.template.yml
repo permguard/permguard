@@ -1,0 +1,145 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Permguard control plane configuration template.
+development_mode: false
+autogenerate: false
+# The one root of everything this process keeps: the catalog (data/), the trail, the keys, the
+# generated secrets. Move this and everything moves with it — it is the volume to mount and back up.
+working_dir: /var/lib/permguard/control-plane
+
+log:
+  level: info
+  format: json
+
+controlPlane:
+  # The plane's signing ring: what the control plane serves is attested with these keys —
+  # NOTP head statements today. Its own ring, never the operations ring that seals the audit
+  # trail; published as JWKS at /control-plane/keys and named by /.well-known/server-configuration.
+  # Lifecycle (publish_ahead, rotate_every, retain) follows operations.keys.
+  # keys:
+  #   enabled: "true"          # absent: follows operations.keys.enabled
+  #   directory: keys/control  # on the volume, unless said otherwise
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7556
+      # tls:
+      #   enabled: false
+      #   cert: tls/http-server.pem
+      #   key: tls/http-server.key
+      #   client_ca: tls/http-clients.pem
+      #   crl: tls/http-clients.crl
+      #   allow:                          # who, of everybody client_ca signed, this endpoint answers
+      #     - cn:the-billing-service      # empty/absent: the handshake is the whole decision
+      #     - sha256:<fingerprint>
+      #   min_version: "1.3"
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7556
+      # tls:
+      #   enabled: false
+      #   cert: tls/grpc-server.pem
+      #   key: tls/grpc-server.key
+      #   client_ca: tls/grpc-clients.pem
+      #   crl: tls/grpc-clients.crl
+      #   allow:
+      #     - cn:the-billing-service
+      #   min_version: "1.3"
+
+  # ── Keeping the store from growing forever ───────────────────────────────────────────────────
+  # A content-addressed store only ever adds. A push uploads its objects and *then* commits, so a
+  # push that never commits — a lost connection, a conflict nobody retried — leaves objects nothing
+  # will ever reach; so does a history that moved past a policy version. Nothing else here deletes
+  # an object, so without this the disk of a long-lived deployment climbs in one direction.
+  #
+  # The rule: keep what any ref reaches, remove the rest **once it is older than the grace period**.
+  #
+  # `grace` is the safety property, not a tuning knob. During a push the uploaded objects are
+  # legitimately unreachable until the commit lands; a sweep that ignored their age would delete the
+  # work of every push in flight, and the client would find out from a commit refused for an object
+  # it knows it sent. The server refuses anything below 15m for that reason.
+  # storage:
+  #   gc:
+  #     enabled: "true"      # the default; "false" keeps everything, forever
+  #     interval: "6h"       # how often the store is swept — about how promptly space returns
+  #     grace: "24h"         # how old an unreachable object must be before it may go
+
+  # # Where the decisions this deployment's data planes answer are kept. Off by default: a control
+  # # plane that receives nothing should not create a store, and a deployment that has not decided
+  # # its retention should not be handed one by accident.
+  # #
+  # # Records arrive signed and chained and are stored VERBATIM — the producer chain is taken over
+  # # the bytes the producer signed, so a store that re-serialised them would break every digest
+  # # after the first. They are indexed into a physical partition per (zone, ledger): a tenant reads
+  # # a directory that contains only its own records, because a bug in a filter leaks a neighbour's
+  # # data and a partition cannot.
+  # decisions:
+  #   enabled: "true"
+  #   directory: "data/decisions/store"  # under the working directory; put it on a volume that survives
+  #   retention: "90d"           # how long records are kept. This is also the bound on how far
+  #                              # behind a reader may fall: past it, a consumer is told
+  #                              # `offset_expired` and where the remaining records begin, rather
+  #                              # than resuming from the wrong place and reporting a clean run.
+
+# public:
+#   disclose_build: "true"     # "false": /version stops naming the version and commit
+#   error_detail: "minimal"    # how much an error says about the inside: "full" or "minimal".
+#                              # Unset, development_mode decides — minimal everywhere real.
+
+telemetry:
+  addr: 0.0.0.0:7558
+
+# What one surface — and one client — may spend. Every value has a bounded default; this block exists
+# to move them, not to enable them.
+# limits:
+#   connections: "1024"             # sockets one surface holds at once
+#   connections_per_peer: "256"     # sockets one address may hold; "0" disables the per-address bound
+#   peer_exempt:                    # addresses exempt from the per-address bound (never from the pool)
+#     - 10.0.0.0/8                  #   e.g. the load balancer, the health checker
+#   concurrent_requests: "256"      # requests in flight at once; beyond it, 503 rather than a queue
+#   request_timeout: "30s"          # how long one request may take
+#   handshake_timeout: "10s"        # how long a client has to finish a TLS handshake
+#   header_timeout: "10s"           # how long a client has to send a complete request head
+#   body_bytes: "1M"                # bytes one request body may carry
+#   connection_lifetime: "0s"       # how long one connection may exist; "0s" leaves it unbounded
+#   write_stall_timeout: "30s"      # a response making no progress: the client stopped reading
+
+# The NOTP transfer bounds of the git-like store this plane serves. Every value has a safe
+# default; sizes accept k/M/G suffixes. The batch limit must exceed the largest legal object
+# (5M) plus framing, and any gRPC message limit in front must be configured above it.
+# notp:
+#   max_batch_bytes: "8M"       # upper bound of one upload/fetch batch, advertised per negotiate
+#   max_batch_objects: "1000"   # most objects one batch may carry
+#   max_push_objects: "10000"   # most objects one push delta may declare (preflight + at commit)
+#   max_push_bytes: "64M"       # most bytes one push delta may declare
+#   ledger_quota_bytes: "1G"    # storage quota of one ledger's objects, checked at upload
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 1h
+    rotate_every: 30d
+    retain: 365d
+  secrets:
+    provider: directory        # one file per secret under <working_dir>/operations/secrets —
+                               # what a mounted Kubernetes Secret looks like. The keys named
+                               # below (audit-pseudonym, decision-commitment, …) must exist
+                               # there before a production plane will start.
+  audit:
+    sink: file
+    retention: 90d
+    # refusals: "false"      # "true": denied operations (name taken, not found, invalid name) are
+    #                        # recorded on the trail as <operation>.refused — for a compliance
+    #                        # regime that wants denied attempts on the record. Internal faults
+    #                        # never reach the trail: they are ours, and live in the log.
+    #                        #
+    #                        # Leave it off on an unauthenticated surface: the refusal rate is the
+    #                        # attacker's to choose, and each refusal is a synchronous write into
+    #                        # the evidentiary record. Turn it on only behind authenticated callers
+    #                        # (tls.allow) or an ingress that limits the rate. Anonymous refusals
+    #                        # belong in the metrics, which cannot be inflated into gigabytes.
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

@@ -1,0 +1,28 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# A lab Tempo: one binary, local storage, short retention. It receives OTLP/gRPC
+# on 4317 from the planes and answers Grafana on 3200. Nothing here is sized for
+# production — this exists so a trace can be looked at, not kept.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+
+compactor:
+  compaction:
+    block_retention: 6h

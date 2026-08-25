@@ -1,0 +1,26 @@
+// The entity model the document policies are written against.
+
+entity Group;
+entity User in [Group];
+entity Document = {
+  owner: User,
+};
+
+// The context a request may carry is part of the declared shape too: with a
+// schema, Cedar refuses a request carrying an attribute nobody declared,
+// rather than silently ignoring what no policy could read.
+action read appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    time?: String,
+  },
+};
+
+action write appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    time?: String,
+  },
+};

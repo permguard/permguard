@@ -1,0 +1,29 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- if and $plane.enabled $plane.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "permguard.fullname" $ }}-{{ $component }}
+  minReplicas: {{ $plane.autoscaling.minReplicas }}
+  maxReplicas: {{ $plane.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $plane.autoscaling.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+{{- end }}

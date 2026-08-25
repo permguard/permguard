@@ -1,0 +1,42 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "permguard: run control plane",
+      "type": "shell",
+      "command": "task run:control",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "permguard: run data plane",
+      "type": "shell",
+      "command": "task run:data",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "permguard: run all-in-one",
+      "type": "shell",
+      "command": "task run:all",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "permguard: cli inspect",
+      "type": "shell",
+      "command": "task cli -- inspect",
+      "problemMatcher": []
+    },
+    {
+      "label": "permguard: check",
+      "type": "shell",
+      "command": "task check",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The decision log: data planes ship what they decided, and consumers read it
+// back from an offset that belongs to them.
+//
+// Every payload here is a *record* or an *envelope* carried as its JSON bytes,
+// deliberately, and this is the one design decision in the file. A record's
+// digest is taken over its canonical JSON, and the chain that binds every
+// record to a signed head is taken over those digests. Re-encoding a record as
+// protobuf and back would change the bytes and break every digest after it, so
+// the wire carries what was signed and this contract carries the wire.
+
+syntax = "proto3";
+
+package permguard.control.v1;
+
+service DecisionLog {
+  // Ship one signed batch. At-least-once: a batch the producer already sent is
+  // deduplicated by (stream, seq) and the acknowledgement does not move.
+  rpc Ship(ShipRequest) returns (ShipResponse);
+  // Read one page, from an offset the consumer keeps.
+  rpc Read(ReadRequest) returns (ReadResponse);
+}
+
+message ShipRequest {
+  // The signed batch, as its JSON bytes: `{signature, records}`.
+  bytes batch = 1;
+}
+
+// What the store concluded.
+//
+// `out_of_order` is not an error: nothing was lost, the shipper simply ran
+// ahead, and `expected_seq` says where to resume. Every other refusal arrives
+// as a gRPC status with the taxonomy's class and code in its metadata.
+message ShipResponse {
+  // The highest CONTIGUOUS DURABLE sequence. The producer truncates its spool
+  // by this number, so it is never the highest accepted.
+  uint64 acked = 1;
+  // How many records this call added. Zero for a replay.
+  uint64 stored = 2;
+  // Set when the store needs an earlier batch first.
+  bool out_of_order = 3;
+  // Where to resume from, when it does.
+  uint64 expected_seq = 4;
+}
+
+message ReadRequest {
+  // One tenant's records. Both are required together.
+  string zone = 1;
+  string ledger = 2;
+  // Or one producer's whole stream — the privileged, deployment-wide read.
+  string pdp = 3;
+  string instance = 4;
+  // Where to resume: the opaque offset a previous page returned. It is bound
+  // to the scope that issued it, and is refused elsewhere rather than
+  // reinterpreted.
+  string from = 5;
+  // How many records at once.
+  uint32 limit = 6;
+  // Include the signed envelopes attesting these records.
+  bool proof = 7;
+}
+
+message ReadResponse {
+  // The records, verbatim: the bytes the producer signed.
+  repeated bytes records = 1;
+  // The offset to present next.
+  string next = 2;
+  // Whether the scope holds more right now.
+  bool more = 3;
+  // The envelopes attesting these records, when asked for.
+  repeated bytes proof = 4;
+  // One inclusion path per record, as JSON, when asked for. What a
+  // tenant-scoped reader verifies with: its page is a subsequence of a
+  // producer's stream, so the chain cannot be checked across it.
+  repeated bytes inclusion = 5;
+}

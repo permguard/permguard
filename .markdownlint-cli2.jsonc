@@ -1,0 +1,32 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// What the Markdown in this repository is held to.
+//
+// Two deliberate departures from the defaults, and nothing else:
+//
+//   line-length  120 rather than 80, to match the Rust — rustfmt wraps at 100 and the prose beside
+//                it should not be narrower than the code it describes. Tables and code blocks are
+//                exempt, because wrapping either of them makes them harder to read, not easier.
+//
+//   no-inline-html  off, and with it first-line-h1. The README opens with a centred logo and title,
+//                   which Markdown has no way of expressing and GitHub renders as HTML — so the
+//                   first line is a `<p>` rather than a heading, on purpose.
+//
+//   no-duplicate-heading  siblings only. Keep a Changelog repeats `### Added` under every release on
+//                         purpose; what stays an error is the same heading twice under one parent.
+{
+  "config": {
+    "no-duplicate-heading": {
+      "siblings_only": true
+    },
+    "line-length": {
+      "line_length": 120,
+      "tables": false,
+      "code_blocks": false
+    },
+    "no-inline-html": false,
+    "first-line-heading": false
+  },
+  "globs": ["**/*.md", "!target"]
+}

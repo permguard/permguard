@@ -1,0 +1,224 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# .goreleaser.yaml
+#
+# The release, described once: four binaries, six targets each, cross-compiled
+# with cargo-zigbuild (the toolchain the pipeline installs). Archives, deb/rpm/apk
+# packages, checksums and container images all come from these builds — the same
+# structure the Go repository releases with, so one team runs one process.
+#
+# The tagged source already carries its version (scripts/release.sh bumps
+# Cargo.toml before tagging), so nothing here injects one.
+
+version: 2
+
+project_name: permguard
+
+env:
+  - ORG=permguard
+  - REPO=permguard-rust
+
+before:
+  hooks:
+    - cargo fetch --locked
+
+builds:
+  - id: permguard_cli
+    builder: rust
+    binary: permguard
+    tool: cargo
+    command: zigbuild
+    flags: ["--release", "--locked", "--package=permguard-cli"]
+    targets: &targets
+      - x86_64-unknown-linux-musl
+      - aarch64-unknown-linux-musl
+      - x86_64-apple-darwin
+      - aarch64-apple-darwin
+      - x86_64-pc-windows-gnu
+      - aarch64-pc-windows-gnullvm
+    env:
+      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+
+  - id: permguard_all_in_one
+    builder: rust
+    binary: permguard-all-in-one
+    tool: cargo
+    command: zigbuild
+    flags: ["--release", "--locked", "--package=permguard-all-in-one"]
+    targets: *targets
+    env:
+      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+
+  - id: permguard_control_plane
+    builder: rust
+    binary: permguard-control-plane
+    tool: cargo
+    command: zigbuild
+    flags: ["--release", "--locked", "--package=permguard-control-plane"]
+    targets: *targets
+    env:
+      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+
+  - id: permguard_data_plane
+    builder: rust
+    binary: permguard-data-plane
+    tool: cargo
+    command: zigbuild
+    flags: ["--release", "--locked", "--package=permguard-data-plane"]
+    targets: *targets
+    env:
+      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+
+checksum:
+  name_template: "checksums.txt"
+
+docker_digest:
+  name_template: "digests.txt"
+
+source:
+  enabled: true
+
+# The same naming the Go repository publishes with, so install scripts and
+# download habits carry over unchanged.
+archives:
+  - formats: [tar.gz]
+    id: permguard_cli
+    ids: ["permguard_cli"]
+    name_template: >-
+      {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_all_in_one
+    ids: ["permguard_all_in_one"]
+    name_template: >-
+      permguard_all_in_one_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_control_plane
+    ids: ["permguard_control_plane"]
+    name_template: >-
+      permguard_control_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+  - formats: [tar.gz]
+    id: permguard_data_plane
+    ids: ["permguard_data_plane"]
+    name_template: >-
+      permguard_data_plane_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Refactor"
+      regexp: "^refactor"
+      order: 2
+    - title: "Other"
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  footer: >-
+    ---
+    Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+nfpms:
+  - vendor: Permguard
+    homepage: https://www.permguard.com
+    maintainer: Permguard Team <opensource@permguard.com>
+    description: Permguard CLI
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+      - apk
+    file_name_template: '{{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}'
+    ids:
+      - permguard_cli
+
+# Container images from the same tested binaries — a distroless base and one
+# static musl binary, nothing else in the filesystem. Published to GHCR under
+# this repository's own namespace: no name can collide with the Go images on
+# Docker Hub, and adding Docker Hub later is one more `images:` entry.
+dockers_v2:
+  - id: permguard_all_in_one
+    dockerfile: ./packaging/docker/Dockerfile
+    ids:
+      - permguard_all_in_one
+    images:
+      - "ghcr.io/permguard/permguard-rust/all-in-one"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-all-in-one
+    labels:
+      org.opencontainers.image.title: "permguard-all-in-one"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard-rust"
+
+  - id: permguard_control_plane
+    dockerfile: ./packaging/docker/Dockerfile
+    ids:
+      - permguard_control_plane
+    images:
+      - "ghcr.io/permguard/permguard-rust/control-plane"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-control-plane
+    labels:
+      org.opencontainers.image.title: "permguard-control-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard-rust"
+
+  - id: permguard_data_plane
+    dockerfile: ./packaging/docker/Dockerfile
+    ids:
+      - permguard_data_plane
+    images:
+      - "ghcr.io/permguard/permguard-rust/data-plane"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-data-plane
+    labels:
+      org.opencontainers.image.title: "permguard-data-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard-rust"

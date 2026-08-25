@@ -1,0 +1,185 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+name: permguard-compose-lab
+
+services:
+  control-plane:
+    profiles: ["lab"]
+    build:
+      context: .
+      args:
+        PACKAGE: permguard-control-plane
+        BIN: permguard-control-plane
+    command:
+      - /etc/permguard/config.yml
+    ports:
+      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-7556}:7556"
+    volumes:
+      - ./crates/permguard-control-plane/config.docker.yml:/etc/permguard/config.yml:ro
+      - control-plane-state:/var/lib/permguard
+
+  data-plane:
+    profiles: ["lab"]
+    build:
+      context: .
+      args:
+        PACKAGE: permguard-data-plane
+        BIN: permguard-data-plane
+    command:
+      - /etc/permguard/config.yml
+    ports:
+      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7656}:7656"
+    volumes:
+      - ./crates/permguard-data-plane/config.docker.yml:/etc/permguard/config.yml:ro
+      - data-plane-state:/var/lib/permguard
+
+  # The all-in-one IS a control plane and a data plane in one process, so its profile and the two
+  # planes' profile are mutually exclusive by construction: `--profile lab` OR `--profile
+  # all-in-one`, never both. Compose cannot forbid combining profiles on the command line, so the
+  # exclusion is also enforced physically — this service publishes the same 7556 and 7656 the
+  # standalone planes publish, and starting both shapes together fails at the port bind, loudly,
+  # before anything serves. Use `task lab:up` / `task lab:all`, which each pick exactly one.
+  all-in-one:
+    profiles: ["all-in-one"]
+    build:
+      context: .
+      args:
+        PACKAGE: permguard-all-in-one
+        BIN: permguard-all-in-one
+    command:
+      - /etc/permguard/config.yml
+    environment:
+      PERMGUARD_RUNTIME_PLANES: ${PERMGUARD_RUNTIME_PLANES:-control,data}
+    ports:
+      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-7556}:7556"
+      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7656}:7656"
+    volumes:
+      - ./crates/permguard-all-in-one/config.docker.yml:/etc/permguard/config.yml:ro
+      - all-in-one-state:/var/lib/permguard
+
+  # ---------------------------------------------------------------------------------------------
+  # Observability. `--profile observability` starts these three and nothing else, which is the mode
+  # that watches planes running on the host: `task run:all`, then `docker compose --profile
+  # observability up`. Prometheus is configured for both sets of targets at once, so the same stack
+  # works whether the planes are in containers, on the host, or both — a target that is not there is
+  # simply down.
+  # ---------------------------------------------------------------------------------------------
+
+  prometheus:
+    profiles: ["observability", "lab", "all-in-one", "tls"]
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=6h
+      - --web.enable-lifecycle
+      # What lets k6 push its client-side metrics into this same Prometheus, so a load test's two
+      # views — what the client felt, what the server measured — sit on one dashboard. Harmless when
+      # unused, and this Prometheus is a lab on loopback.
+      - --web.enable-remote-write-receiver
+    ports:
+      - "127.0.0.1:${PERMGUARD_PROMETHEUS_PORT:-7591}:9090"
+    volumes:
+      - ./lab/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./lab/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      # Docker Desktop provides this; on Linux it has to be asked for. It is how the containerised
+      # Prometheus reaches a plane a developer started on the host.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  loki:
+    profiles: ["observability", "lab", "all-in-one", "tls"]
+    image: grafana/loki:3.3.2
+    command: ["-config.file=/etc/loki/loki.yml"]
+    ports:
+      - "127.0.0.1:${PERMGUARD_LOKI_PORT:-7592}:3100"
+    volumes:
+      - ./lab/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  promtail:
+    profiles: ["observability", "lab", "all-in-one", "tls"]
+    image: grafana/promtail:3.3.2
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./lab/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      # Read-only: this reads container metadata and log files, and must never be able to change
+      # anything about the daemon it is reading from.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Traces. The planes export OTLP/gRPC spans here when `telemetry.otel.enabled` is on
+  # (the docker configs turn it on and point at this service). Tempo keeps them for the
+  # lab's horizon; Grafana queries it beside Prometheus and Loki.
+  tempo:
+    profiles: ["observability", "lab", "all-in-one", "tls"]
+    image: grafana/tempo:2.7.1
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    ports:
+      - "127.0.0.1:${PERMGUARD_TEMPO_OTLP_PORT:-7593}:4317"
+    volumes:
+      - ./lab/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["observability", "lab", "all-in-one", "tls"]
+    image: grafana/grafana:11.5.1
+    ports:
+      - "127.0.0.1:${PERMGUARD_GRAFANA_PORT:-7590}:3000"
+    environment:
+      # A lab, on loopback, with no data worth protecting: a login screen between a demo and its
+      # dashboard buys nothing. Never copy these three lines anywhere else.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_LOG_LEVEL: warn
+      # Opens straight on the overview dashboard.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/overview.json
+      GF_FEATURE_TOGGLES_ENABLE: lokiLogsDataplane
+    volumes:
+      - ./lab/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./lab/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  tempo-data:
+  control-plane-state:
+  data-plane-state:
+  all-in-one-state:
+  prometheus-data:
+  loki-data:
+  grafana-data:

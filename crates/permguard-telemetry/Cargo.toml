@@ -1,0 +1,29 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-telemetry"
+description = "The Permguard telemetry surface: liveness, readiness and metrics, on a port of its own."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+permguard-core.workspace = true
+permguard-transport.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync"] }
+permguard-std = { workspace = true, default-features = false, features = ["audit", "metrics", "storage"] }
+# `oneshot` drives the router directly, so the route tests need no socket at all.
+tower = { workspace = true, features = ["util"] }

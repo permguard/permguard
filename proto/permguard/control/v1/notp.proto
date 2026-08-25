@@ -1,0 +1,126 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// NOTP — the Negotiated Object Transfer Protocol — over gRPC. The same
+// messages the REST framing carries as CBOR; batches ride one message.
+
+syntax = "proto3";
+
+package permguard.control.v1;
+
+service GitLikeStore {
+  // Advertise: the ref's head, counter, and signed head statement.
+  rpc GetRef(GetRefRequest) returns (GetRefResponse);
+  // Push, three steps: negotiate the delta, upload what is missing, commit.
+  rpc NegotiatePush(NegotiatePushRequest) returns (NegotiatePushResponse);
+  rpc UploadObjects(UploadObjectsRequest) returns (UploadObjectsResponse);
+  rpc CommitPush(CommitPushRequest) returns (CommitPushResponse);
+  // Pull, two steps: negotiate the delta, fetch the objects.
+  rpc NegotiatePull(NegotiatePullRequest) returns (NegotiatePullResponse);
+  rpc FetchObjects(FetchObjectsRequest) returns (FetchObjectsResponse);
+  // The ring that verifies head statements, as a JWKS document.
+  rpc GetKeyRing(GetKeyRingRequest) returns (GetKeyRingResponse);
+}
+
+message GetRefRequest {
+  string zone = 1;
+  string ledger = 2;
+  string ref = 3;
+}
+
+message GetRefResponse {
+  string head = 1;
+  uint64 counter = 2;
+  // COSE_Sign1 envelope of the head statement.
+  bytes statement = 3;
+}
+
+message ObjectClaim {
+  string digest = 1;
+  uint64 size = 2;
+}
+
+message NegotiatePushRequest {
+  string zone = 1;
+  string ledger = 2;
+  string ref = 3;
+  string new_head = 4;
+  // Empty means the creation case: the ref must not exist yet.
+  string expected_old = 5;
+  repeated ObjectClaim closure = 6;
+}
+
+message NegotiatePushResponse {
+  repeated string missing = 1;
+  uint64 max_batch_bytes = 2;
+  uint64 max_batch_objects = 3;
+  // Batch compression the server speaks ("deflate"); empty means raw.
+  string compression = 4;
+}
+
+message UploadObjectsRequest {
+  string zone = 1;
+  string ledger = 2;
+  repeated bytes objects = 3;
+  // How `objects` are encoded; empty means raw. Digests name the raw bytes.
+  string compression = 4;
+}
+
+message UploadObjectsResponse {
+  repeated string received = 1;
+}
+
+message CommitPushRequest {
+  string zone = 1;
+  string ledger = 2;
+  string ref = 3;
+  string new_head = 4;
+  string expected_old = 5;
+}
+
+message CommitPushResponse {
+  string head = 1;
+  uint64 counter = 2;
+  bytes statement = 3;
+}
+
+message NegotiatePullRequest {
+  string zone = 1;
+  string ledger = 2;
+  string ref = 3;
+  // Empty means the current head; otherwise a commit reachable from the ref.
+  string at = 4;
+  repeated string have = 5;
+}
+
+message NegotiatePullResponse {
+  string head = 1;
+  uint64 counter = 2;
+  bytes statement = 3;
+  repeated string missing = 4;
+  uint64 max_batch_bytes = 5;
+  uint64 max_batch_objects = 6;
+  // Batch compression the server speaks ("deflate"); empty means raw.
+  string compression = 7;
+}
+
+message FetchObjectsRequest {
+  string zone = 1;
+  string ledger = 2;
+  repeated string digests = 3;
+  // The compression the client accepts for the response batch; empty means raw only.
+  string accept_compression = 4;
+}
+
+message FetchObjectsResponse {
+  repeated bytes objects = 1;
+  // How `objects` are encoded; empty means raw.
+  string compression = 2;
+}
+
+message GetKeyRingRequest {}
+
+message GetKeyRingResponse {
+  // The JWKS document, as JSON — the same bytes the HTTP endpoint serves.
+  bytes jwks = 1;
+}

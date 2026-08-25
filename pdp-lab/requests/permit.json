@@ -1,0 +1,65 @@
+{
+  "subject": {
+    "type": "User",
+    "id": "alice"
+  },
+  "action": {
+    "name": "read"
+  },
+  "resource": {
+    "type": "Document",
+    "id": "budget-2026"
+  },
+  "context": {
+    "time": "2026-08-24T10:00:00Z"
+  },
+  "entities": {
+    "schema": "cedar",
+    "items": [
+      {
+        "uid": {
+          "type": "Group",
+          "id": "finance"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "alice"
+        },
+        "attrs": {},
+        "parents": [
+          {
+            "type": "Group",
+            "id": "finance"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "carol"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Document",
+          "id": "budget-2026"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": "carol"
+            }
+          }
+        },
+        "parents": []
+      }
+    ]
+  }
+}

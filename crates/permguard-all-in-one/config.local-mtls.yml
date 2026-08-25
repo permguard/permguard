@@ -1,0 +1,164 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The all-in-one runtime: TLS on HTTP, mutual TLS on gRPC.
+#
+# See the plane configurations for why the split is that way round — HTTP is what an operator and a
+# probe reach, gRPC is what a service reaches — and why it needs a second port per plane: an address
+# serves one TLS policy.
+development_mode: true
+autogenerate: true
+working_dir: .volume/all-in-one-mtls
+
+log:
+  level: debug
+  format: terminal
+
+public:
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+telemetry:
+  addr: 127.0.0.1:7558
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
+runtime:
+  planes:
+    - control
+    - data
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7556
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7557
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        # Of everybody tls/ca.pem signs, this endpoint answers exactly one: the client certificate
+        # the runtime generated beside it. Authentication is the handshake; this is authorisation.
+        allow:
+          - cn:local-operator
+
+  # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
+  # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "5m"
+      grace: "15m"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "7d"
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7657
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        # Of everybody tls/ca.pem signs, this endpoint answers exactly one: the client certificate
+        # the runtime generated beside it. Authentication is the handshake; this is authorisation.
+        allow:
+          - cn:local-operator
+
+  # Mirroring, in one process and over TLS. The control plane in this very binary is where the
+  # ledgers are; this data plane keeps its own verified copy of them, reaching it the way any client
+  # would — through the certificate, checked against the authority in this same volume. That the two
+  # share a volume is what makes the trust material a relative path here and a mounted Secret in a
+  # cluster; nothing else about the exchange differs.
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      - url: "grpcs://127.0.0.1:7557"
+        tls:
+          # The authority this runtime generated beside the certificate it serves.
+          ca_file: tls/ca.pem
+          # Mutual TLS: the operator certificate this runtime generated, whose CN `local-operator`
+          # is the one the endpoint's allow list answers.
+          cert: tls/client.pem
+          key: tls/client.key
+
+  # The decision path, sized for a laptop: a handful of ledgers, a small heap.
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: all-in-one-local-mtls          # half of every stream identity: two replicas must never share one
+      server:
+        url: "grpcs://127.0.0.1:7557"
+        tls:
+          ca_file: tls/ca.pem
+          cert: tls/client.pem
+          key: tls/client.key
+          # Its own identity in a real deployment: shipping decisions and reading policy are
+          # two authorizations. Here they share the certificate this environment generates.
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

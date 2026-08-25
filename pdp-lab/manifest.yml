@@ -1,0 +1,27 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+metadata:
+  kind: policy
+  name: pdp-lab
+  description: The Permguard PDP laboratory - Cedar and Rego side by side.
+  author: Nitro Agility S.r.l.
+  license: Apache-2.0
+runtimes:
+  cedar:
+    language: { name: cedar, constraint: ">=4.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+  rego:
+    language: { name: rego, constraint: ">=1.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  cedar: { runtime: cedar, schema: true }
+  rego:  { runtime: rego, schema: false }
+profiles:
+  # Both partitions answer one request. They therefore share one vocabulary:
+  # the entity types the Cedar schema declares (`User`, `Document`, `Group`)
+  # are the ledger's, and the Rego module reads the same ones.
+  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }
+  # Only the gateway's rules. What a profile is *for*: the same ledger, a
+  # narrower contract — here, questions the Cedar schema does not declare
+  # (`create`, `update`, `delete`) and therefore could not evaluate.
+  gateway: { type: permguard.pdp.v1, partitions: [rego] }

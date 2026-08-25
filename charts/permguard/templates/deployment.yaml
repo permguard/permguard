@@ -1,0 +1,192 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- if $plane.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  {{- with $.Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not $plane.autoscaling.enabled }}
+  replicas: {{ $plane.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 8 }}
+      annotations:
+        # The configuration's own hash, so a ConfigMap change rolls the pods. Without it, editing
+        # configuration changes nothing until something unrelated happens to restart them.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        {{- include "permguard.metricsAnnotations" (dict "root" $ "telemetryPort" $plane.ports.telemetry) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "permguard.serviceAccountName" $ }}
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      # Long enough for readiness to go false, the load balancer to notice, and connections in
+      # flight to finish. The process drains on SIGTERM; this is the time it is given to.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ $component }}
+          image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: ["/etc/permguard/config.yml"]
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $plane.ports.http }}
+              protocol: TCP
+            {{- if ne (int $plane.ports.grpc) (int $plane.ports.http) }}
+            - name: grpc
+              containerPort: {{ $plane.ports.grpc }}
+              protocol: TCP
+            {{- end }}
+            - name: telemetry
+              containerPort: {{ $plane.ports.telemetry }}
+              protocol: TCP
+          {{- include "permguard.probes" (dict "root" $) | nindent 10 }}
+          resources:
+            {{- toYaml $plane.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/permguard
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/permguard
+            # The root filesystem is read-only, so anything that wants a temporary file needs this.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "permguard.fullname" $ }}-{{ $component }}
+        - name: tmp
+          emptyDir: {}
+        - name: state
+        {{- if $.Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "permguard.fullname" $ }}-{{ $component }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+      {{- with $plane.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $plane.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $plane.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if $plane.affinity }}
+        {{- toYaml $plane.affinity | nindent 8 }}
+        {{- else }}
+        # Spread replicas across nodes when the cluster can, rather than requiring it: a
+        # single-node cluster should still be able to run this chart.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 20 }}
+        {{- end }}
+---
+{{- end }}
+{{- end }}
+{{- if .Values.allInOne.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "permguard.fullname" . }}-all-in-one
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+spec:
+  replicas: {{ .Values.allInOne.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "permguard.selectorLabels" (dict "root" . "component" "all-in-one") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "permguard.componentLabels" (dict "root" . "component" "all-in-one") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- include "permguard.metricsAnnotations" (dict "root" . "telemetryPort" .Values.allInOne.ports.telemetry) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "permguard.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: all-in-one
+          image: {{ include "permguard.image" (dict "root" . "repository" .Values.allInOne.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["/etc/permguard/config.yml"]
+          env:
+            - name: PERMGUARD_RUNTIME_PLANES
+              value: "control,data"
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: control-http
+              containerPort: {{ .Values.allInOne.ports.controlHttp }}
+            - name: data-http
+              containerPort: {{ .Values.allInOne.ports.dataHttp }}
+            - name: telemetry
+              containerPort: {{ .Values.allInOne.ports.telemetry }}
+          {{- include "permguard.probes" (dict "root" .) | nindent 10 }}
+          resources:
+            {{- toYaml .Values.allInOne.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/permguard
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/permguard
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "permguard.fullname" . }}-all-in-one
+        - name: tmp
+          emptyDir: {}
+        - name: state
+        {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "permguard.fullname" . }}-all-in-one
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+{{- end }}

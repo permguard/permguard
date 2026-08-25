@@ -1,0 +1,100 @@
+{{/*
+Copyright (c) 2022 Nitro Agility S.r.l.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+{{/*
+Two services per plane, and that is the point rather than an accident.
+
+The public service is what callers reach. The telemetry service is what Prometheus and the kubelet
+reach, and it is separate so that a NetworkPolicy, an ingress or a mesh can allow one without
+allowing the other: metrics describe the inside of the process, and health tells an attacker when it
+is struggling.
+*/}}
+{{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
+{{- if $plane.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  {{- with $plane.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $plane.service.type }}
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $plane.ports.http }}
+      targetPort: http
+      protocol: TCP
+    {{- if ne (int $plane.ports.grpc) (int $plane.ports.http) }}
+    - name: grpc
+      port: {{ $plane.ports.grpc }}
+      targetPort: grpc
+      protocol: TCP
+    {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}-telemetry
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  annotations:
+    {{- include "permguard.metricsAnnotations" (dict "root" $ "telemetryPort" $plane.ports.telemetry) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: telemetry
+      port: {{ $plane.ports.telemetry }}
+      targetPort: telemetry
+      protocol: TCP
+---
+{{- end }}
+{{- end }}
+{{- if .Values.allInOne.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" . }}-all-in-one
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+  {{- with .Values.allInOne.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.allInOne.service.type }}
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+  ports:
+    - name: control-http
+      port: {{ .Values.allInOne.ports.controlHttp }}
+      targetPort: control-http
+    - name: data-http
+      port: {{ .Values.allInOne.ports.dataHttp }}
+      targetPort: data-http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" . }}-all-in-one-telemetry
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+  annotations:
+    {{- include "permguard.metricsAnnotations" (dict "root" . "telemetryPort" .Values.allInOne.ports.telemetry) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" . "component" "all-in-one") | nindent 4 }}
+  ports:
+    - name: telemetry
+      port: {{ .Values.allInOne.ports.telemetry }}
+      targetPort: telemetry
+{{- end }}

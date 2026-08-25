@@ -1,0 +1,57 @@
+{
+  "subject": {
+    "type": "User",
+    "id": "bob"
+  },
+  "action": {
+    "name": "write"
+  },
+  "resource": {
+    "type": "Document",
+    "id": "budget-2026"
+  },
+  "entities": {
+    "schema": "cedar",
+    "items": [
+      {
+        "uid": {
+          "type": "Group",
+          "id": "finance"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "bob"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "carol"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Document",
+          "id": "budget-2026"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": "carol"
+            }
+          }
+        },
+        "parents": []
+      }
+    ]
+  }
+}

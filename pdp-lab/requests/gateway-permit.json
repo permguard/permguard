@@ -1,0 +1,7 @@
+{
+  "profile":  "gateway",
+
+  "subject":  { "type": "User", "id": "dora", "properties": { "role": "admin" } },
+  "action":   { "name": "create" },
+  "resource": { "type": "Document", "id": "q4-forecast" }
+}

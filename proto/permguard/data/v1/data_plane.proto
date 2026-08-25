@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package permguard.data.v1;
+
+service DataPlane {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse);
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+  string plane = 1;
+  string product = 2;
+  string version = 3;
+  string commit = 4;
+}
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  bool live = 1;
+  bool ready = 2;
+}
+

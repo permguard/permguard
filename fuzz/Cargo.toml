@@ -1,0 +1,46 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+permguard-decisions = { path = "../crates/permguard-decisions" }
+permguard-notp = { path = "../crates/permguard-notp" }
+permguard-objects = { path = "../crates/permguard-objects" }
+serde_json = "1"
+
+[[bin]]
+name = "cbor_decode"
+path = "fuzz_targets/cbor_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "manifest_decode"
+path = "fuzz_targets/manifest_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "notp_decode"
+path = "fuzz_targets/notp_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decision_json"
+path = "fuzz_targets/decision_json.rs"
+test = false
+doc = false
+bench = false

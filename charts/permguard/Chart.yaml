@@ -1,0 +1,27 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: permguard
+description: >-
+  Permguard, as a cluster runs it: the control plane and the data plane as separate deployments, or
+  the all-in-one runtime as a single one.
+type: application
+# The chart's own version. Bumped when the templates change, independently of what they deploy.
+version: 0.1.0
+# What it deploys by default, which is this repository's version.
+appVersion: "0.1.0"
+home: https://www.permguard.com
+sources:
+  - https://github.com/permguard/permguard-rust
+maintainers:
+  - name: Permguard Team
+    email: opensource@permguard.com
+    url: https://github.com/permguard
+keywords:
+  - authorization
+  - policy
+  - zero-trust
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/containsSecurityUpdates: "false"

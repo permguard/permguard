@@ -1,0 +1,27 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Who reviews what. Paths later in the file win, so the specific rules below override the default.
+
+*                               @permguard/maintainers
+
+# The contracts every other crate depends on, and the two scripts that keep the structure honest. A
+# change here changes every crate at once.
+/crates/permguard-core/         @permguard/maintainers
+/scripts/                       @permguard/maintainers
+
+# Anything that decides who is trusted, or what is encrypted.
+/crates/permguard-transport/    @permguard/security
+/crates/permguard-std/src/keys/ @permguard/security
+/crates/permguard-std/src/keys.rs @permguard/security
+/crates/permguard-std/src/secrets.rs @permguard/security
+/crates/permguard-std/src/provision.rs @permguard/security
+/crates/permguard-cli/src/tls.rs @permguard/security
+
+# What gets published, and to where.
+/.github/workflows/             @permguard/maintainers
+/.goreleaser.yaml               @permguard/maintainers
+/.goreleaser-pro.yaml           @permguard/maintainers
+/deny.toml                      @permguard/security
+/docker/                        @permguard/maintainers
+/charts/                        @permguard/maintainers

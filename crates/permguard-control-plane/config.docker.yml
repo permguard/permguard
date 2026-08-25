@@ -1,0 +1,67 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+development_mode: true
+autogenerate: true
+working_dir: /var/lib/permguard/control-plane
+
+log:
+  level: debug
+  format: json
+
+telemetry:
+  addr: 0.0.0.0:7558
+  # The lab ships a Tempo beside the planes; spans go there. Fail-open: with
+  # Tempo down the planes serve unchanged and spans are dropped.
+  otel:
+    enabled: "true"
+    endpoint: "http://tempo:4317"
+    sample_rate: "1.0"
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7556
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7556
+
+  # Reclaiming what nothing references, on a cadence a demo can watch.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "1h"
+      grace: "1h"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "30d"
+
+limits:
+  # Through Docker's port forwarding every connection from the host arrives as the compose
+  # network's gateway address — one address for all clients, which is exactly the NAT case the
+  # per-address bound documents: exempt the private range the network lives in, or the bound
+  # counts the gateway as one very greedy client. The pool limit still bounds the total.
+  peer_exempt:
+    - 172.16.0.0/12
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

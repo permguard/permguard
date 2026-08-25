@@ -1,0 +1,5 @@
+{
+  "subject":  { "type": "User", "id": "alice" },
+  "action":   { "name": "read" },
+  "resource": { "type": "Document", "id": "budget-2026" }
+}

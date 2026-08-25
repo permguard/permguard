@@ -1,0 +1,296 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# What this chart deploys, and how.
+#
+# The defaults deploy the two planes separately, which is how they are meant to run: they scale for
+# different reasons — the data plane with request volume, the control plane with administration — and
+# a single deployment can only be sized for one of them. Set `allInOne.enabled` and turn the two off
+# to run the single-process runtime instead, which is what a small installation or a test environment
+# wants.
+
+# Which registry the images come from. Both carry the same digests; this exists so a cluster that
+# mirrors one of them does not have to override four image names.
+image:
+  registry: docker.io
+  # `ghcr.io` is the other one. Set `registry: ghcr.io` and every image below follows.
+  pullPolicy: IfNotPresent
+  # Empty means the chart's appVersion, so an upgrade of the chart is an upgrade of the product
+  # unless something says otherwise.
+  tag: ""
+  pullSecrets: []
+
+controlPlane:
+  enabled: true
+  repository: permguard/control-plane
+  replicaCount: 2
+  # The public surface, and the telemetry surface which must never be part of it.
+  ports:
+    http: 7556
+    grpc: 7556
+    telemetry: 7558
+  service:
+    type: ClusterIP
+    annotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      # No CPU limit on purpose: a limit throttles a process that is answering requests, and the
+      # request above is what the scheduler needs. Memory is limited because a leak has to stop
+      # somewhere.
+      memory: 256Mi
+  # A rollout that takes the last ready replica with it is a rollout with an outage in it.
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  # Extra configuration merged into the generated ConfigMap, so a value that has no field in this
+  # file can still be set without forking the chart. This is where a control plane in a cluster says
+  # where it keeps the decisions its data planes ship it:
+  #
+  #   controlPlane:
+  #     decisions:
+  #       enabled: "true"
+  #       directory: "data/decisions/store"  # put it on a PersistentVolume: it is an audit store, not a cache
+  #       retention: "90d"         # also the bound on how far behind a reader may fall
+  extraConfig: {}
+
+dataPlane:
+  enabled: true
+  repository: permguard/data-plane
+  replicaCount: 3
+  ports:
+    http: 7656
+    grpc: 7656
+    telemetry: 7658
+  service:
+    type: ClusterIP
+    annotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  # Extra configuration merged into the generated ConfigMap. This is where a data plane in a cluster
+  # says where its policies come from: mirroring lives under `dataPlane.mirrors`, and the URL alone means
+  # every zone and every ledger that control plane lists. Patterns narrow it; per-server `tls` carries
+  # the authority (and, for mutual TLS, our own certificate) out of a mounted Secret.
+  #
+  # extraConfig:
+  #   dataPlane:
+  #     mirrors:
+  #       enabled: "true"
+  #       interval: "30s"        # how often a round STARTS; an overlapping tick is skipped
+  #       timeout: "2m"          # per ledger
+  #       parallelism: "4"
+  #       jitter: "0.1"          # so replicas do not all wake on the same second
+  #       servers:
+  #         - url: "https://permguard-control-plane:7556"
+  #           zones: ["acme-.*"]                   # absent: every zone the server lists
+  #           ledgers: ["main-ledger"]             # absent: every ledger of a matching zone
+  #           tls:
+  #             ca_file: tls/control-plane-ca.pem  # from a Secret mounted on the volume
+  #     decisions:
+  #       cache:
+  #         partitions: "64"   # compiled partitions held in memory at once
+  #         bytes: "256M"      # what they may weigh, against this pod's memory limit
+  #       max_evaluations: "256"
+  #       # Every decision, recorded. `pdp_id` must differ per replica: two producers sharing one
+  #       # write two records at a single (stream, seq), which closes a stream at the far end. With
+  #       # replicaCount > 1 take it from the pod name rather than from this file.
+  #       log:
+  #         enabled: "true"
+  #         pdp_id: permguard-data-plane-0
+  #         server:
+  #           url: "grpcs://permguard-control-plane:7557"
+  #           tls:
+  #             ca_file: tls/control-plane-ca.pem
+  #             cert: tls/decision-log-client.pem   # its own identity, not the mirror's
+  #             key: tls/decision-log-client.key
+  #         spool:
+  #           directory: "data/decisions/spool"  # on a persistent volume: it is the copy that survives a restart
+  #           bytes: "512M"             # decision records only; the terminal record is reserved apart
+  #           age: "24h"
+  #         batch: { bytes: "256k", interval: "1s" }
+  #         on_full: "open"             # or "closed": refuse to decide rather than decide unrecorded
+  #         sample: { permits: "1.0" }
+  #         commitment:
+  #           key_ref: decision-commitment   # required: a commitment keyed by anything public is
+  #           key_version: "v1"              # a bare digest of a low-entropy caller attribute
+  #         include:
+  #           subject_properties: []    # an allow-list, never "all"
+  #           resource_properties: []
+  #           context: []
+  extraConfig: {}
+
+allInOne:
+  enabled: false
+  repository: permguard/all-in-one
+  replicaCount: 1
+  ports:
+    controlHttp: 7556
+    dataHttp: 7656
+    telemetry: 7558
+  service:
+    type: ClusterIP
+    annotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+  # Extra configuration merged into the generated ConfigMap. An all-in-one that runs at the edge and
+  # follows a control plane elsewhere states it the same way — under `dataPlane.mirrors`, exactly as a
+  # standalone data plane does. One hosting both planes itself has nothing to mirror.
+  #
+  # extraConfig:
+  #   dataPlane:
+  #     mirrors:
+  #       enabled: "true"
+  #       servers:
+  #         - url: "https://control.acme.com"   # the URL alone: everything it lists
+  extraConfig: {}
+
+# What every pod gets, and what it is not allowed to do. These are the defaults because the images
+# were built for them: a static binary from `scratch`, running as 65532, needing nothing writable
+# except the state directory.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop: ["ALL"]
+
+# Where a plane keeps generated keys and its audit trail.
+#
+# `emptyDir` by default, and that is a real decision rather than a placeholder: with `autogenerate`
+# on, a pod that loses this directory mints itself a new signing key on restart, which is fine for a
+# test environment and wrong for anything issuing tokens somebody else verifies. A real installation
+# sets `persistence.enabled` and gets a volume per replica.
+persistence:
+  enabled: false
+  storageClass: ""
+  accessModes: ["ReadWriteOnce"]
+  size: 1Gi
+
+# Liveness and readiness answer different questions, so they are configured separately. Readiness
+# goes false at the first instant of shutdown, before anything is closed, which is what lets a
+# service stop routing to a pod that is still finishing what it has.
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 2
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 2
+  startup:
+    enabled: true
+    path: /healthz
+    periodSeconds: 2
+    failureThreshold: 30
+
+# Prometheus. `annotations` works with any scraper that reads them; `serviceMonitor` is for the
+# Prometheus Operator, and needs its CRD to be installed.
+metrics:
+  annotations: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+  # Prometheus Operator alert rules. Disabled by default because the CRD belongs to the cluster's
+  # monitoring stack, not to this chart.
+  prometheusRule:
+    enabled: false
+    labels: {}
+    mirror:
+      staleSeconds: 900
+      staleFor: 5m
+    decisionLog:
+      backlogRecords: 1000
+      backlogFor: 10m
+    tls:
+      certificateExpiryDays: 30
+      crlExpiryDays: 7
+
+logging:
+  level: info
+  # `json`, because a cluster's logs are read by a collector before they are read by a person.
+  format: json
+
+# Development mode and autogeneration. Both default to what a cluster should have: off.
+#
+# `autogenerate` on means a plane will mint its own certificate authority and signing keys when it
+# finds none. That is exactly right on a laptop and exactly wrong in a cluster, where the material
+# should come from something that manages it.
+developmentMode: false
+autogenerate: false
+
+# The ports a pod serves are the only ones it accepts, once any NetworkPolicy selects it. On by
+# default: the policy always closes what is not served, and `from` decides who may reach what is.
+# Each `from` is a list of NetworkPolicyPeer (namespaceSelector / podSelector / ipBlock), passed
+# through as written; an empty list means any peer — a PDP usually serves the whole cluster, and
+# telemetry is scraped from a namespace this chart cannot guess. Narrow them where the cluster
+# knows better:
+#
+#   networkPolicy:
+#     telemetry:
+#       from:
+#         - namespaceSelector:
+#             matchLabels:
+#               kubernetes.io/metadata.name: monitoring
+#
+# Ingress only: the data plane dials out (the control plane it mirrors, the decision log, DNS),
+# and an egress list maintained here would either break that or allow everything.
+networkPolicy:
+  enabled: true
+  public:
+    from: []
+  telemetry:
+    from: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+commonLabels: {}
+commonAnnotations: {}

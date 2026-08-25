@@ -1,0 +1,24 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-languages"
+description = "The built-in policy language plugins — Cedar and Rego: parsing, validation, policy extraction and alias markers. Compiled in, never loaded."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[dependencies]
+# The model a language plugs into: manifest runtimes for the load gate, and the
+# manifest's own validation. One direction only — the model knows no language.
+permguard-objects.workspace = true
+# The official engines, pinned: what evaluates policy is exactly what was
+# reviewed and shipped — plugins are a build, not a deployment action.
+cedar-policy = "4.12"
+regorus = "0.11"
+serde_json.workspace = true
+serde_norway.workspace = true

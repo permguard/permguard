@@ -1,0 +1,95 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+development_mode: true
+autogenerate: true
+working_dir: /var/lib/permguard/data-plane
+
+log:
+  level: debug
+  format: json
+
+telemetry:
+  addr: 0.0.0.0:7658
+  # The lab ships a Tempo beside the planes; spans go there. Fail-open: with
+  # Tempo down the planes serve unchanged and spans are dropped.
+  otel:
+    enabled: "true"
+    endpoint: "http://tempo:4317"
+    sample_rate: "1.0"
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 0.0.0.0:7656
+    grpc:
+      enabled: true
+      addr: 0.0.0.0:7656
+
+  # Everything the control plane beside it in the compose network holds, on a cadence a demo can
+  # watch. The URL alone means every zone and every ledger that server lists.
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      - url: "http://control-plane:7556"
+
+  # The decision path, sized for the lab's container limits.
+  decisions:
+    cache:
+      partitions: "32"
+      bytes: "128M"
+    max_evaluations: "128"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: the decision path never waits on the log, and a
+    # control plane that is down costs spool, not availability.
+    log:
+      enabled: "true"
+      pdp_id: data-plane-docker          # half of every stream identity: two replicas must never share one
+      server:
+        url: "http://control-plane:7556"
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+limits:
+  # Through Docker's port forwarding every connection from the host arrives as the compose
+  # network's gateway address — one address for all clients, which is exactly the NAT case the
+  # per-address bound documents: exempt the private range the network lives in, or the bound
+  # counts the gateway as one very greedy client. The pool limit still bounds the total.
+  peer_exempt:
+    - 172.16.0.0/12
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

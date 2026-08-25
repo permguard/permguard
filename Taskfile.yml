@@ -1,0 +1,302 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+version: '3'
+
+silent: true
+
+vars:
+  DEFAULT_PLANE: control
+
+tasks:
+  build:
+    desc: Build every Permguard crate.
+    vars:
+      PKG: '{{.PKG | default ""}}'
+      RELEASE: '{{.RELEASE | default ""}}'
+      ARGS: '{{.ARGS | default ""}}'
+    cmds:
+      - >-
+        cargo build {{if .PKG}}-p {{.PKG}}{{else}}--workspace{{end}}
+        {{if .RELEASE}}--release{{end}} {{.ARGS}}
+
+  bench:server:
+    desc: Run the control plane for capacity benchmarks — release build, limits raised out of the way.
+    cmds:
+      # Overridable, so the hunt for a ceiling can raise the fence it is hunting:
+      #   PERMGUARD_LIMITS_CONNECTIONS=60000 task bench:server
+      - >-
+        PERMGUARD_LIMITS_CONCURRENT_REQUESTS=${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000}
+        PERMGUARD_LIMITS_CONNECTIONS=${PERMGUARD_LIMITS_CONNECTIONS:-20000}
+        PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0}
+        cargo run --release -p permguard-control-plane --bin permguard-control-plane
+        -- crates/permguard-control-plane/config.local.yml {{.ARGS}}
+
+  bench:server:shed:
+    desc: Run the control plane for the shed benchmark — a low request ceiling, per-address bound off.
+    cmds:
+      # concurrent_requests=8 rather than the default 256, and deliberately: today's handlers are
+      # trivial, so by Little's law the in-flight count is throughput × handler time — measured at
+      # about twelve on this class of machine, and far below 256 at any load one box can generate.
+      # A ceiling below that working point is what makes the shed layer observable; the number under
+      # test is the behaviour, not the ceiling.
+      - >-
+        PERMGUARD_LIMITS_CONCURRENT_REQUESTS=8
+        PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=0
+        cargo run --release -p permguard-control-plane --bin permguard-control-plane
+        -- crates/permguard-control-plane/config.local.yml {{.ARGS}}
+
+  bench:peak:
+    desc: Closed-loop throughput ceiling against /version. Needs `task bench:server` running.
+    cmds:
+      - k6 run --tag testid=peak-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/peak.js
+
+  bench:ladder:
+    desc: Latency at fixed rising rates (open model) against /version. Needs `task bench:server`.
+    cmds:
+      - k6 run --tag testid=ladder-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/ladder.js
+
+  bench:shed:
+    desc: Overload behaviour of the shed layer — run against `task bench:server:shed`.
+    cmds:
+      - k6 run --tag testid=shed-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/shed.js
+
+  bench:grpc:
+    desc: gRPC GetInfo throughput and latency. Needs `task bench:server` (or an mTLS profile, see bench/grpc.js).
+    cmds:
+      - k6 run --tag testid=grpc-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/grpc.js
+
+  bench:tls:
+    desc: Request cost over TLS/mTLS, handshake measured apart. See bench/tls.js for the variables.
+    cmds:
+      - k6 run --tag testid=tls-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/tls.js
+
+  bench:hold:
+    desc: How many connections the plane can hold — ramps keep-alive sockets, watch the connections gauge. Needs `task bench:server`.
+    cmds:
+      - k6 run --tag testid=hold-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/hold.js
+
+  bench:grafana:
+    desc: Print the k6 flags that push client metrics into the lab's Prometheus.
+    cmds:
+      - |
+        printf 'run the lab first (task lab:observability), then add to any bench task:\n\n'
+        printf '  K6_ARGS="-o experimental-prometheus-rw" \\\n'
+        printf '  K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:%s/api/v1/write \\\n' "${PERMGUARD_PROMETHEUS_PORT:-7591}"
+        printf '  K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99),avg,max" \\\n'
+        printf '  task bench:ladder\n\nGrafana: Permguard · Load test, http://127.0.0.1:%s\n' "${PERMGUARD_GRAFANA_PORT:-7590}"
+
+  check:
+    desc: Run lint, structural checks, and tests.
+    cmds:
+      - task: lint
+      - task: check:seams
+      - task: check:core-deps
+      - task: check:systems
+      - task: check:headers
+      - task: test
+
+  coverage:
+    desc: Measure test coverage and enforce the 60% per-crate line floor.
+    cmds:
+      - ./scripts/check-coverage.sh
+
+  coverage:html:
+    desc: Measure coverage and open the annotated-source HTML report.
+    cmds:
+      - cargo llvm-cov --workspace --html --open
+
+  coverage:lcov:
+    desc: Write coverage as lcov.info, for editors and CI uploaders.
+    cmds:
+      - cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+  check:changelog:
+    desc: Check that the version being released is described in CHANGELOG.md.
+    vars:
+      TAG: '{{.TAG | default ""}}'
+    cmds:
+      - ./scripts/check-changelog.sh {{if .TAG}}{{.TAG}}{{else}}v$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1){{end}}
+
+  check:headers:
+    desc: Check that every source file carries the licence header.
+    cmds:
+      - ./scripts/check-license-headers.sh
+
+  check:systems:
+    desc: Check that the Makefile and the Taskfile offer the same commands.
+    cmds:
+      - ./scripts/check-build-systems.sh
+
+  check:core-deps:
+    desc: Check that permguard-core keeps its dependency list minimal.
+    cmds:
+      - ./scripts/check-core-dependencies.sh
+
+  check:seams:
+    desc: Check that concrete collaborators are constructed only in application crates.
+    cmds:
+      - ./scripts/check-composition-root.sh
+
+  cli:
+    desc: Run the Permguard CLI.
+    vars:
+      RUN_ARGS: '{{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}{{.ARGS | default "--help"}}{{end}}'
+      RELEASE: '{{.RELEASE | default ""}}'
+    cmds:
+      # The wrapper does not treat the CLI's exit status as its own failure: a refusal the CLI
+      # reports cleanly (exit 64, structured on stderr) is an answer, and task shouting "Failed"
+      # under it is noise. The cost is that `task cli` always exits 0 — anything scripting against
+      # exit statuses should invoke the `permguard` binary directly, which is what the statuses are
+      # documented for.
+      - cmd: cargo run -q {{if .RELEASE}}--release{{end}} -p permguard-cli --bin permguard -- {{.RUN_ARGS}}
+        ignore_error: true
+
+  lint:
+    desc: Run clippy over every crate and target.
+    vars:
+      PKG: '{{.PKG | default ""}}'
+      ARGS: '{{.ARGS | default ""}}'
+    cmds:
+      - >-
+        cargo clippy {{if .PKG}}-p {{.PKG}}{{else}}--workspace{{end}}
+        --all-targets --all-features {{.ARGS}} -- -D warnings
+
+  plane:run:
+    desc: Run one plane locally. PLANE is control or data.
+    vars:
+      PLANE: '{{.PLANE | default .DEFAULT_PLANE}}'
+      CONFIG: '{{.CONFIG | default "config.local.yml"}}'
+      RELEASE: '{{.RELEASE | default ""}}'
+      ARGS: '{{.ARGS | default ""}}'
+    cmds:
+      - >-
+        cargo run {{if .RELEASE}}--release{{end}}
+        -p permguard-{{.PLANE}}-plane
+        --bin permguard-{{.PLANE}}-plane
+        -- crates/permguard-{{.PLANE}}-plane/{{.CONFIG}} {{.ARGS}}
+
+  run:control:
+    desc: Run the control plane locally.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: control, CONFIG: '{{.CONFIG | default "config.local.yml"}}', ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run:data:
+    desc: Run the data plane locally.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: data, CONFIG: '{{.CONFIG | default "config.local.yml"}}', ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run:all:
+    desc: Run the all-in-one Permguard runtime locally.
+    vars:
+      CONFIG: '{{.CONFIG | default "config.local.yml"}}'
+      PLANES: '{{.PLANES | default "control,data"}}'
+      RELEASE: '{{.RELEASE | default ""}}'
+      ARGS: '{{.ARGS | default ""}}'
+    cmds:
+      - >-
+        PERMGUARD_RUNTIME_PLANES={{.PLANES}}
+        cargo run {{if .RELEASE}}--release{{end}}
+        -p permguard-all-in-one --bin permguard-all-in-one
+        -- crates/permguard-all-in-one/{{.CONFIG}} {{.ARGS}}
+
+  run-as-tls:control:
+    desc: Run the control plane locally, with TLS.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: control, CONFIG: config.local-tls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-tls:data:
+    desc: Run the data plane locally, with TLS.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: data, CONFIG: config.local-tls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-tls:all:
+    desc: Run the all-in-one runtime locally, with TLS.
+    cmds:
+      - task: run:all
+        vars: { CONFIG: config.local-tls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-mtls:control:
+    desc: Run the control plane locally, with TLS on HTTP and mutual TLS on gRPC.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: control, CONFIG: config.local-mtls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-mtls:data:
+    desc: Run the data plane locally, with TLS on HTTP and mutual TLS on gRPC.
+    cmds:
+      - task: plane:run
+        vars: { PLANE: data, CONFIG: config.local-mtls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  run-as-mtls:all:
+    desc: Run the all-in-one runtime locally, with TLS on HTTP and mutual TLS on gRPC.
+    cmds:
+      - task: run:all
+        vars: { CONFIG: config.local-mtls.yml, ARGS: '{{.ARGS}}', RELEASE: '{{.RELEASE}}' }
+
+  lab:up:
+    desc: Start the compose lab — both planes, Prometheus, Grafana, Loki.
+    cmds:
+      - docker compose -f docker-compose.lab.yml --profile lab up --build {{.ARGS | default "-d"}}
+      - task: lab:where
+
+  lab:all:
+    desc: Start the compose lab with the all-in-one runtime instead of the two planes.
+    cmds:
+      - docker compose -f docker-compose.lab.yml --profile all-in-one up --build {{.ARGS | default "-d"}}
+      - task: lab:where
+
+  lab:observability:
+    desc: Start only Prometheus, Grafana and Loki, to watch planes running on the host.
+    cmds:
+      - docker compose -f docker-compose.lab.yml --profile observability up {{.ARGS | default "-d"}}
+      - task: lab:where
+
+  lab:down:
+    desc: Stop the compose lab, keeping its data — metrics, logs and dashboards survive the next up.
+    cmds:
+      - docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down {{.ARGS}}
+
+  lab:clean:
+    desc: Stop the compose lab AND discard its data — the next up starts with empty dashboards.
+    cmds:
+      - docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down -v
+
+  lab:logs:
+    desc: Follow the compose lab's logs. SERVICE names one service.
+    cmds:
+      - docker compose -f docker-compose.lab.yml logs --follow --tail 50 {{.SERVICE}}
+
+  lab:where:
+    desc: Print where the lab is listening.
+    cmds:
+      - |
+        printf 'Grafana     http://127.0.0.1:%s   (dashboards are already provisioned)\n' "${PERMGUARD_GRAFANA_PORT:-7590}"
+        printf 'Prometheus  http://127.0.0.1:%s\n' "${PERMGUARD_PROMETHEUS_PORT:-7591}"
+        printf 'Loki        http://127.0.0.1:%s\n' "${PERMGUARD_LOKI_PORT:-7592}"
+        printf 'Control     http://127.0.0.1:%s\n' "${PERMGUARD_CONTROL_HTTP_PORT:-7556}"
+        printf 'Data        http://127.0.0.1:%s\n' "${PERMGUARD_DATA_HTTP_PORT:-7656}"
+
+  test:
+    desc: Run tests.
+    vars:
+      PKG: '{{.PKG | default ""}}'
+      FILTER: '{{.FILTER | default ""}}'
+      NOCAPTURE: '{{.NOCAPTURE | default ""}}'
+      RELEASE: '{{.RELEASE | default ""}}'
+      FEATURES: '{{.FEATURES | default "--all-features"}}'
+      ARGS: '{{.ARGS | default ""}}'
+    cmds:
+      - >-
+        cargo test {{if .PKG}}-p {{.PKG}}{{else}}--workspace{{end}}
+        {{.FEATURES}} {{if .RELEASE}}--release{{end}} {{.ARGS}} {{.FILTER}}
+        {{if .NOCAPTURE}}-- --nocapture{{end}}
+
+  version:control:
+    desc: Report the control plane version.
+    cmds:
+      - cargo run -p permguard-control-plane --bin permguard-control-plane -- version

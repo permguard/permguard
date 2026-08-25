@@ -1,0 +1,22 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-notp"
+description = "NOTP — the Negotiated Object Transfer Protocol: the wire messages, in the canonical CBOR profile. One encoder and one decoder, shared by every party, so two implementations cannot drift."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[dependencies]
+# The objects the protocol moves: digests on the wire, the canonical codec
+# the bodies are framed in. The protocol knows the objects; the objects know
+# no protocol.
+permguard-objects.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

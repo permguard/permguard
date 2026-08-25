@@ -1,0 +1,75 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug report
+description: Something does not behave the way it says it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Not for vulnerabilities.** A security issue goes through the process in
+        [SECURITY.md](https://github.com/permguard/permguard-rust/blob/main/SECURITY.md), never a
+        public issue.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The commands, in order. A run that starts from `task run:all` is ideal.
+      placeholder: |
+        task run:all
+        permguard inspect -o json
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: The output of `permguard version -o json`, and of `permguard inspect -o json` if a plane is involved.
+      render: json
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part
+      options:
+        - CLI
+        - Control plane
+        - Data plane
+        - All-in-one runtime
+        - Telemetry, metrics or probes
+        - TLS or mutual TLS
+        - Configuration
+        - Container image or Helm chart
+        - Something else, or not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: |
+        The relevant part of your configuration, and the output of `permguard config show`.
+        **Remove keys, certificates and endpoints you do not want public.**
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: What the process printed. `log.level: debug` says considerably more.
+      render: shell

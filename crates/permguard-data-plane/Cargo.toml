@@ -1,0 +1,57 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-data-plane"
+description = "The Permguard data plane."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Not a library: this workspace is one product, released as binaries and images from one tag. A crate
+# here is a compilation unit of that product, not something to depend on from outside it — and a name
+# taken on crates.io is taken permanently.
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "permguard-data-plane"
+path = "src/main.rs"
+
+[[bin]]
+name = "permguard_data_plane"
+path = "src/bin/permguard_data_plane.rs"
+
+[dependencies]
+axum.workspace = true
+anyhow.workspace = true
+permguard-control-client.workspace = true
+permguard-core.workspace = true
+# What a decision record is: the canonical bytes, the chain and the durable spool.
+permguard-decisions.workspace = true
+regex.workspace = true
+tracing.workspace = true
+permguard-server.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+serde_json.workspace = true
+permguard-languages.workspace = true
+permguard-objects.workspace = true
+serde.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tonic.workspace = true
+tonic-prost.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true
+
+[dev-dependencies]
+permguard-control-plane.workspace = true
+permguard-control-client.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+http.workspace = true
+http-body-util.workspace = true
+permguard-std.workspace = true
+tower.workspace = true

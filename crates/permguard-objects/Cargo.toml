@@ -1,0 +1,25 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-objects"
+description = "The content-addressed object model: canonical CBOR, digests, blob/tree/commit, policy identity, the manifest and the signed head statement. What the objects *are* — shared by storage and by the transfer protocol, and tied to neither."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[dependencies]
+# zlib for objects at rest and negotiated wire batches — the same algorithm
+# git uses for loose objects; pure-Rust backend.
+flate2.workspace = true
+# The same cryptographic stack the rest of the workspace already links: no second implementation
+# of hashing or signing to keep an eye on.
+ring.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

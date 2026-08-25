@@ -1,0 +1,491 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! Planes: an API bundle that can be hosted alone or beside others.
+//!
+//! A plane is a [`PlaneModule`] — HTTP routes, gRPC services, a name — that
+//! the process mounts as a lifecycle [`Service`] on its own listeners.
+//! [`PlaneServer`] is the bootstrap every shipped binary shares: one plane
+//! for the standalone servers, several for the all-in-one, the same
+//! composition either way.
+//!
+//! The parts around it, split by domain: [`settings`] (the setting keys and
+//! the configuration-file sections that feed them), [`discovery`] (what the
+//! well-known documents say about which planes are loaded), and
+//! [`factories`] (what the composition root builds: rings, catalogs, sinks).
+
+use std::env;
+use std::process::ExitCode;
+use std::sync::{Arc, Mutex};
+
+use anyhow::{Context, Result, anyhow};
+use axum::Router;
+use tracing::info;
+
+use permguard_core::{
+    BoxFuture, BuildSettings, Config, Metrics, ProductIdentity, ServerContext, Service,
+    TlsSettings, ready,
+};
+use permguard_std::audit::TracingAuditSink;
+use permguard_std::keys::KeyService;
+use permguard_std::metrics::Registry;
+use permguard_std::pseudonym::HmacPseudonymizer;
+use permguard_std::storage::MemoryStorage;
+use permguard_telemetry::TelemetryService;
+use permguard_transport::Surface;
+
+use crate::{App, DefaultServerHost};
+
+pub mod discovery;
+pub mod factories;
+pub mod settings;
+
+pub use discovery::{
+    DiscoveredPlane, discovered_planes, plane_configuration_document, plane_http_base,
+    server_configuration_document,
+};
+pub use factories::build_settings;
+pub use settings::*;
+
+use discovery::plane_enabled;
+use factories::{
+    audit_sink_for, catalog_for, control_signing_keys_for, data_signing_keys_for, key_manager_for,
+    secret_store_for,
+};
+use settings::{parse_bool, tls_for};
+
+/// A plane API bundle that can be hosted alone or beside other planes.
+pub trait PlaneModule: Send + Sync + 'static {
+    /// Stable plane id used in runtime selection, for example `control`.
+    fn id(&self) -> &'static str;
+
+    /// Component name written in logs and metrics.
+    fn component(&self) -> &'static str;
+
+    /// Human-readable service name used in startup errors.
+    fn description(&self) -> &'static str;
+
+    /// Builds this plane's HTTP router.
+    fn http_routes(&self, context: &ServerContext<'_>) -> Router;
+
+    /// Builds this plane's gRPC router.
+    fn grpc_routes(&self, context: &ServerContext<'_>) -> Router;
+
+    /// Background work this plane runs beside its listeners.
+    ///
+    /// Most planes contribute none: they answer requests and that is all. A
+    /// plane that keeps state current — a mirroring data plane, say — hands
+    /// its loop over here, so it starts and stops with the process instead of
+    /// inventing a lifecycle of its own.
+    fn services(&self) -> Vec<Box<dyn Service>> {
+        Vec::new()
+    }
+
+    /// The transport limits this plane's surfaces run under.
+    ///
+    /// The configured limits, unless a plane knows better. The hook exists
+    /// because limits compose across layers, and the transport is the outer
+    /// one: a body ceiling below what a plane's own protocol advertises turns
+    /// the advertisement into a lie — the control plane negotiates NOTP
+    /// batches of `notp.max_batch_bytes` and must therefore accept a request
+    /// that large, whatever the generic default says.
+    fn limits(&self, config: &permguard_core::Config) -> permguard_core::Limits {
+        config.limits().clone()
+    }
+}
+
+/// Where a plane listener reads its address from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaneAddress {
+    /// Use `public.http.addr` from the active config file.
+    ConfigPublicHttp,
+    /// Use `public.grpc.addr` from the active config file.
+    ConfigPublicGrpc,
+    /// Read an environment variable and fall back to a static default.
+    Env {
+        variable: &'static str,
+        default: &'static str,
+    },
+    /// Read a declared setting from the effective config.
+    Setting {
+        enabled_key: &'static str,
+        addr_key: &'static str,
+    },
+}
+
+impl PlaneAddress {
+    /// Builds an environment-backed address source.
+    pub const fn env(variable: &'static str, default: &'static str) -> Self {
+        Self::Env { variable, default }
+    }
+
+    pub const fn setting(enabled_key: &'static str, addr_key: &'static str) -> Self {
+        Self::Setting {
+            enabled_key,
+            addr_key,
+        }
+    }
+
+    fn resolve(self, config: &Config) -> Result<Option<String>> {
+        match self {
+            Self::ConfigPublicHttp => Ok(config.public_http_addr().map(ToOwned::to_owned)),
+            Self::ConfigPublicGrpc => Ok(config.public_grpc_addr().map(ToOwned::to_owned)),
+            Self::Env { variable, default } => Ok(Some(
+                env::var(variable)
+                    .ok()
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| default.to_owned()),
+            )),
+            Self::Setting {
+                enabled_key,
+                addr_key,
+            } => {
+                if let Some(enabled) = config.setting(enabled_key)
+                    && !parse_bool(enabled).with_context(|| format!("reading {enabled_key}"))?
+                {
+                    return Ok(None);
+                }
+
+                Ok(config.setting(addr_key).map(ToOwned::to_owned))
+            }
+        }
+    }
+}
+
+/// Where a plane's HTTP and gRPC listeners read their addresses from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaneAddresses {
+    http: PlaneAddress,
+    grpc: PlaneAddress,
+    http_tls: PlaneTls,
+    grpc_tls: PlaneTls,
+}
+
+impl PlaneAddresses {
+    /// Uses the configured public HTTP and gRPC addresses.
+    pub const fn config_public() -> Self {
+        Self {
+            http: PlaneAddress::ConfigPublicHttp,
+            grpc: PlaneAddress::ConfigPublicGrpc,
+            http_tls: PlaneTls::Public,
+            grpc_tls: PlaneTls::Public,
+        }
+    }
+
+    /// Uses environment-backed HTTP and gRPC addresses.
+    pub const fn env(
+        http_variable: &'static str,
+        http_default: &'static str,
+        grpc_variable: &'static str,
+        grpc_default: &'static str,
+    ) -> Self {
+        Self {
+            http: PlaneAddress::env(http_variable, http_default),
+            grpc: PlaneAddress::env(grpc_variable, grpc_default),
+            http_tls: PlaneTls::Public,
+            grpc_tls: PlaneTls::Public,
+        }
+    }
+
+    /// Uses declared settings for HTTP and gRPC addresses.
+    pub const fn settings(http: PlaneEndpointKeys, grpc: PlaneEndpointKeys) -> Self {
+        Self {
+            http: PlaneAddress::setting(http.enabled, http.addr),
+            grpc: PlaneAddress::setting(grpc.enabled, grpc.addr),
+            http_tls: PlaneTls::setting(http.tls),
+            grpc_tls: PlaneTls::setting(grpc.tls),
+        }
+    }
+}
+
+/// Where a plane listener reads TLS material from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaneTls {
+    /// Use process-level `public.tls`, when configured.
+    Public,
+    /// Read plane/protocol-specific TLS settings and fall back to process-level `public.tls`.
+    Setting { keys: PlaneTlsKeys },
+}
+
+impl PlaneTls {
+    pub const fn setting(keys: PlaneTlsKeys) -> Self {
+        Self::Setting { keys }
+    }
+
+    fn resolve(self, config: &Config) -> Result<Option<TlsSettings>> {
+        match self {
+            Self::Public => Ok(config.public_tls()),
+            Self::Setting { keys } => tls_for(config, keys),
+        }
+    }
+}
+
+/// A plane mounted as a lifecycle service.
+pub struct PlaneService {
+    module: Box<dyn PlaneModule>,
+    addresses: PlaneAddresses,
+    running: Mutex<Vec<Surface>>,
+}
+
+impl PlaneService {
+    /// Hosts `module` at `addresses`.
+    pub fn new(module: Box<dyn PlaneModule>, addresses: PlaneAddresses) -> Self {
+        Self {
+            module,
+            addresses,
+            running: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl Service for PlaneService {
+    fn name(&self) -> &'static str {
+        self.module.component()
+    }
+
+    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            if !plane_enabled(context.config(), self.module.id()) {
+                info!(
+                    event.name = "plane.disabled",
+                    component = self.module.component(),
+                    plane = self.module.id(),
+                    "plane is not selected by runtime configuration"
+                );
+
+                return Ok(());
+            }
+
+            let http_addr = self.addresses.http.resolve(context.config())?;
+            let grpc_addr = self.addresses.grpc.resolve(context.config())?;
+            let http_tls = self.addresses.http_tls.resolve(context.config())?;
+            let grpc_tls = self.addresses.grpc_tls.resolve(context.config())?;
+
+            let surfaces = match (http_addr, grpc_addr, http_tls, grpc_tls) {
+                (None, None, _, _) => {
+                    info!(
+                        event.name = "plane.disabled",
+                        component = self.module.component(),
+                        plane = self.module.id(),
+                        "no plane address is configured"
+                    );
+
+                    return Ok(());
+                }
+                (Some(addr), Some(grpc), http_tls, grpc_tls) if addr == grpc => {
+                    if http_tls != grpc_tls {
+                        anyhow::bail!(
+                            "{} HTTP and gRPC share `{addr}` but declare different TLS policies: \
+                             use the same TLS policy or split the HTTP and gRPC addresses",
+                            self.module.description()
+                        );
+                    }
+
+                    vec![(
+                        addr,
+                        "http+grpc",
+                        self.module
+                            .http_routes(context)
+                            .merge(self.module.grpc_routes(context)),
+                        http_tls,
+                    )]
+                }
+                (Some(addr), Some(grpc), http_tls, grpc_tls) => vec![
+                    (addr, "http", self.module.http_routes(context), http_tls),
+                    (grpc, "grpc", self.module.grpc_routes(context), grpc_tls),
+                ],
+                (Some(addr), None, http_tls, _) => {
+                    vec![(addr, "http", self.module.http_routes(context), http_tls)]
+                }
+                (None, Some(addr), _, grpc_tls) => {
+                    vec![(addr, "grpc", self.module.grpc_routes(context), grpc_tls)]
+                }
+            };
+
+            for (configured, protocol, router, tls) in surfaces {
+                let surface = self
+                    .start_surface(context, configured, protocol, router, tls)
+                    .await?;
+                self.running
+                    .lock()
+                    .map_err(|_| {
+                        anyhow!("the {} surface lock is poisoned", self.module.description())
+                    })?
+                    .push(surface);
+            }
+
+            Ok(())
+        })
+    }
+
+    fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        let surfaces = match self.running.lock() {
+            Ok(mut running) => std::mem::take(&mut *running),
+            Err(_) => {
+                return ready(Err(anyhow!(
+                    "the {} surface lock is poisoned",
+                    self.module.description()
+                )));
+            }
+        };
+
+        Box::pin(async move {
+            for surface in surfaces {
+                let address = surface
+                    .stop(context.config().shutdown_timeout())
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "waiting for the {} surface to finish",
+                            self.module.description()
+                        )
+                    })?;
+
+                info!(
+                    event.name = "plane.stopped_listening",
+                    component = self.module.component(),
+                    plane = self.module.id(),
+                    address = %address,
+                    "stopped listening"
+                );
+            }
+
+            Ok(())
+        })
+    }
+}
+
+impl PlaneService {
+    async fn start_surface(
+        &self,
+        context: &ServerContext<'_>,
+        configured: String,
+        protocol: &'static str,
+        router: Router,
+        secured: Option<TlsSettings>,
+    ) -> Result<Surface> {
+        if let Some(settings) = &secured {
+            settings
+                .validate()
+                .with_context(|| format!("validating TLS for {protocol}"))?;
+        }
+
+        let surface = Surface::listener(self.module.component(), configured.as_str(), router)
+            .tls(secured.as_ref())
+            .limits(self.module.limits(context.config()))
+            .metrics(context.metrics().clone())
+            .start()
+            .await
+            .with_context(|| format!("starting the {} surface", self.module.description()))?;
+
+        let bound = surface.address();
+
+        info!(
+            event.name = "plane.listening",
+            component = self.module.component(),
+            plane = self.module.id(),
+            protocol,
+            address = %bound,
+            tls = secured.is_some(),
+            mtls = secured.as_ref().is_some_and(TlsSettings::is_mutual),
+            "listening"
+        );
+
+        Ok(surface)
+    }
+}
+
+/// Shared bootstrap for single-plane and all-in-one binaries.
+pub struct PlaneServer {
+    identity: ProductIdentity,
+    build_settings: BuildSettings,
+    planes: Vec<PlaneService>,
+}
+
+impl PlaneServer {
+    /// Starts a server with no planes registered yet.
+    pub fn new(identity: ProductIdentity, build_settings: BuildSettings) -> Self {
+        Self {
+            identity,
+            build_settings,
+            planes: Vec::new(),
+        }
+    }
+
+    /// Adds a plane to the process.
+    pub fn with_plane(mut self, module: Box<dyn PlaneModule>, addresses: PlaneAddresses) -> Self {
+        self.planes.push(PlaneService::new(module, addresses));
+        self
+    }
+
+    /// Runs the composed process.
+    pub async fn run(self) -> ExitCode {
+        let binary_name = self.identity.binary_name();
+        let version = self.build_settings.version();
+
+        let mut app = App::new(
+            self.identity,
+            self.build_settings,
+            Box::new(DefaultServerHost::new()),
+            Box::new(MemoryStorage::new()),
+            Box::new(TracingAuditSink::new(binary_name, version)),
+        )
+        .with_metrics(Metrics::new(Arc::new(Registry::new())))
+        .with_provisioner(permguard_std::provision::prepare)
+        .with_secrets_factory(secret_store_for)
+        .with_audit_factory(move |config, keys| audit_sink_for(binary_name, config, keys))
+        .with_keys_factory(key_manager_for)
+        .with_catalog_factory(catalog_for)
+        .with_control_signing_keys_factory(control_signing_keys_for)
+        .with_data_signing_keys_factory(data_signing_keys_for)
+        .with_pseudonymizer_factory(|key, key_version| {
+            Box::new(HmacPseudonymizer::new(key, key_version))
+        })
+        .with_reload_handler(|| {
+            permguard_transport::reload_all();
+        })
+        .with_declared_settings(declared_settings_for(&self.planes))
+        .with_section_settings("runtime", runtime_settings)
+        .with_service(Box::new(
+            TelemetryService::new().with_configuration(server_configuration_document),
+        ))
+        .with_service(Box::new(KeyService::new()));
+
+        for section in section_settings_for(&self.planes) {
+            app = app.with_section_settings(section.name, move |value| {
+                plane_settings(value, section.keys)
+            });
+
+            // The data plane's `mirrors.servers` and `decisions.log.server`
+            // are lists and structures, so they cannot ride the setting
+            // layers: they are attached as structured configuration, and their
+            // shape is checked while somebody is watching.
+            if section.name == "controlPlane" {
+                app = app.with_structured_section(section.name, |config, value| {
+                    Ok(config.with_decision_producer_keys(settings::producer_keys(value)?))
+                });
+            }
+
+            if section.name == "dataPlane" {
+                app = app.with_structured_section(section.name, |config, value| {
+                    let config = config.with_mirror_sources(settings::mirror_sources(value)?)?;
+                    let (destination, include) = settings::log_destination(value)?;
+
+                    config.with_log_destination(destination, include)
+                });
+            }
+        }
+
+        for plane in self.planes {
+            // The plane's own background work first: it starts before the
+            // listeners it feeds, and stops after them.
+            for service in plane.module.services() {
+                app = app.with_service(service);
+            }
+            app = app.with_service(Box::new(plane));
+        }
+
+        app.run().await
+    }
+}

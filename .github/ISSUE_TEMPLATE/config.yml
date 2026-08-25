@@ -1,0 +1,11 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/permguard/permguard-rust/security/advisories/new
+    about: Report privately. Never in a public issue.
+  - name: Documentation
+    url: https://docs.permguard.com
+    about: How to run and configure Permguard.
