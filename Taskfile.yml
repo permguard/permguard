@@ -266,6 +266,22 @@ tasks:
     cmds:
       - docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down -v
 
+  clean:
+    desc: Remove build artifacts. STALE=7 removes only what nothing has touched for 7 days.
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -n "{{.STALE}}" ]; then
+          if ! command -v cargo-sweep >/dev/null 2>&1; then
+            echo "cargo-sweep is not installed: cargo install cargo-sweep" >&2
+            exit 1
+          fi
+          # Keeps what a rebuild would otherwise redo, drops what only history is holding on to.
+          cargo sweep --time "{{.STALE}}"
+        else
+          cargo clean
+        fi
+
   lab:logs:
     desc: Follow the compose lab's logs. SERVICE names one service.
     cmds:

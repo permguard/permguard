@@ -27,6 +27,20 @@ rust-version = "1.97"
 license = "Apache-2.0"
 repository = "https://github.com/permguard/permguard"
 
+# Debug information, without the part that makes a debug binary a hundred megabytes.
+#
+# `target/` keeps one artifact per combination of inputs — dependency versions, feature sets, test
+# harnesses — and Cargo never collects the old ones. A day of dependency bumps and `--all-features`
+# runs leaves dozens, and at full DWARF each is enormous. Line tables keep what is actually used
+# every day: a panic still names the file and the line. What is given up is inspecting variables in
+# a debugger, and a session that needs it can rebuild with `RUSTFLAGS="-C debuginfo=2"`.
+[profile.dev]
+debug = "line-tables-only"
+
+# Tests inherit `dev` for this, and they are where most of the artifacts come from.
+[profile.test]
+debug = "line-tables-only"
+
 [workspace.dependencies]
 permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.0" }
 permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }

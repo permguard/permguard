@@ -123,12 +123,20 @@ source:
 archives:
   - formats: [tar.gz]
     id: permguard_cli
-    ids: ["permguard_cli", "permguard_cli_darwin"]
+    ids: ["permguard_cli"]
     name_template: >-
       {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         formats: [zip]
+  # The Apple CLI archives carry their own archive id: the Homebrew cask selects
+  # by *archive* id, and it must ship the Apple build only. Same name template,
+  # so the published artifact names do not change.
+  - formats: [tar.gz]
+    id: permguard_cli_darwin
+    ids: ["permguard_cli_darwin"]
+    name_template: >-
+      {{ .ProjectName }}_cli_{{- title .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else if eq .Arch "386" }}i386{{- else }}{{ .Arch }}{{ end }}{{- if .Arm }}v{{ .Arm }}{{ end }}
   - formats: [tar.gz]
     id: permguard_all_in_one
     ids: ["permguard_all_in_one", "permguard_all_in_one_darwin"]

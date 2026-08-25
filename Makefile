@@ -17,7 +17,7 @@ CONFIG    ?= config.local.yml
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-changelog check-core-deps check-headers check-seams check-systems cli help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
+.PHONY: clean coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-changelog check-core-deps check-headers check-seams check-systems cli help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -103,6 +103,15 @@ lab-down: ## Stop the compose lab, keeping its data: metrics, logs and dashboard
 
 lab-clean: ## Stop the compose lab AND discard its data: the next up starts with empty dashboards.
 	docker compose -f docker-compose.lab.yml --profile lab --profile all-in-one --profile observability down -v
+
+clean: ## Remove build artifacts. STALE=7 removes only what nothing has touched for 7 days.
+	@set -eu; \
+	if [ -n "$(STALE)" ]; then \
+		command -v cargo-sweep >/dev/null 2>&1 || { echo "cargo-sweep is not installed: cargo install cargo-sweep" >&2; exit 1; }; \
+		cargo sweep --time "$(STALE)"; \
+	else \
+		cargo clean; \
+	fi
 
 lab-logs: ## Follow the compose lab's logs. SERVICE names one service.
 	docker compose -f docker-compose.lab.yml logs --follow --tail 50 $(SERVICE)
