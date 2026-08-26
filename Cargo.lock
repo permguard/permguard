@@ -2017,7 +2017,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "permguard-all-in-one"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "permguard-control-plane",
  "permguard-core",
@@ -2028,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2051,7 +2051,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-control-client"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-stream",
  "base64 0.23.1",
@@ -2075,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-control-plane"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -2104,7 +2104,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "serde",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-data-plane"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -2144,7 +2144,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-decisions"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64 0.23.1",
  "hmac",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-languages"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cedar-policy",
  "permguard-objects",
@@ -2170,7 +2170,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-notp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "permguard-objects",
  "proptest",
@@ -2178,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-objects"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "flate2",
  "proptest",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -2210,7 +2210,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-std"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-telemetry"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "permguard-transport"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",

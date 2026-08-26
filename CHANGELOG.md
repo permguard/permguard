@@ -16,6 +16,10 @@ default that is no longer the same. A release cannot be cut without an entry her
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.2] - 2026-08-26
+
 ### Fixed
 
 - Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
