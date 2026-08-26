@@ -524,6 +524,12 @@ make coverage
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and
 [COMPATIBILITY.md](COMPATIBILITY.md) for compatibility promises.
 
+## Documentation
+
+| Area | Guide |
+| --- | --- |
+| Operations | [Verify released container images](docs/operations/container-verification.md) |
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).

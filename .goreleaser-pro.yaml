@@ -4,9 +4,11 @@
 # .goreleaser-pro.yaml
 #
 # What the licensed runner adds on top of `.goreleaser.yaml`: SBOMs for every
-# archive, a cosign signature over the checksums file, container-image signing,
-# macOS signing and notarization when the secrets are present, and the Homebrew
-# cask. Same shape as the Go repository's, so one team runs one release process.
+# archive, a cosign signature over the checksums file, macOS signing and notarization when the
+# secrets are present, and the Homebrew cask. Container provenance is published by the workflow's
+# GitHub Artifact Attestations step: using Cosign here as well stores `sha256-*.sig` beside every
+# image, and both GHCR and Docker Hub misleadingly present those signature artifacts as pullable
+# image versions.
 
 version: 2
 pro: true
@@ -32,15 +34,6 @@ signs:
     artifacts: checksum
     output: true
 
-docker_signs:
-  - cmd: cosign
-    args:
-      - sign
-      - "${artifact}@${digest}"
-      - "--yes"
-    artifacts: all
-    output: true
-
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
@@ -57,11 +50,10 @@ notarize:
         wait: true
         timeout: 20m
 
-# A distinct cask name for as long as the Go CLI and this one share the tap:
-# `brew install permguard/tap/cli-rust`. When this CLI becomes *the* CLI, the
-# cask takes the `cli` name over and this one becomes an alias.
+# This is the Permguard CLI, so it owns the unqualified cask name. Versioned alternatives let a
+# caller pin the release line without exposing the implementation language in the package name.
 homebrew_casks:
-  - name: cli-rust
+  - name: cli
     binaries: ["permguard"]
     # A cask installs on macOS, so it carries the Apple build.
     ids: ["permguard_cli_darwin"]
@@ -70,10 +62,10 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
     alternative_names:
-      - cli-rust@{{ .Version }}
-      - cli-rust@{{ .Major }}
+      - cli@{{ .Version }}
+      - cli@{{ .Major }}
     homepage: "https://docs.permguard.com/"
-    description: "Permguard CLI (Rust)"
+    description: "Permguard CLI"
     commit_author:
       name: Permguard Team
       email: opensource@permguard.com

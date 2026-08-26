@@ -214,7 +214,7 @@ nfpms:
 #                                        v0.1.0, so `0.1.0` and `0.1` are free while `latest` and
 #                                        every `0.0.x` stay where they are. When the Rust build
 #                                        becomes *the* Permguard, `latest` moves here in one commit
-#                                        — the same handover the `cli-rust` Homebrew cask is waiting
+#                                        — the same handover the `cli` Homebrew cask is waiting
 #                                        on. Until then a `docker pull permguard/all-in-one` gets
 #                                        what it has always got.
 #

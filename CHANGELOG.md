@@ -16,7 +16,13 @@ default that is no longer the same. A release cannot be cut without an entry her
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
+  versions. Image provenance remains available through GitHub Artifact Attestations, while release
+  checksums remain signed with Cosign.
+- Homebrew publishes the current CLI as `permguard/tap/cli` and its versioned aliases as
+  `cli@<version>` and `cli@<major>`, without leaking the implementation language into the cask name.
 
 ## [0.1.1] - 2026-08-26
 
