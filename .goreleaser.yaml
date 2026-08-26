@@ -8,8 +8,10 @@
 # packages, checksums and container images all come from these builds — the same
 # structure the Go repository releases with, so one team runs one process.
 #
-# The tagged source already carries its version (scripts/release.sh bumps
-# Cargo.toml before tagging), so nothing here injects one.
+# The version of a release is its tag, and this is where it enters the binaries:
+# every build stamps PERMGUARD_BUILD_VERSION={{ .Version }}, which permguard-core's
+# `build::VERSION` reads. Cargo.toml never moves — a build nobody stamped reports
+# the workspace version, which is exactly what a working-tree build is.
 
 version: 2
 
@@ -36,6 +38,7 @@ builds:
       - x86_64-pc-windows-gnu
       - aarch64-pc-windows-gnullvm
     env:
+      - PERMGUARD_BUILD_VERSION={{ .Version }}
       - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
 
   - id: permguard_all_in_one
@@ -46,6 +49,7 @@ builds:
     flags: ["--release", "--locked", "--package=permguard-all-in-one"]
     targets: *targets
     env:
+      - PERMGUARD_BUILD_VERSION={{ .Version }}
       - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
 
   - id: permguard_control_plane
@@ -56,6 +60,7 @@ builds:
     flags: ["--release", "--locked", "--package=permguard-control-plane"]
     targets: *targets
     env:
+      - PERMGUARD_BUILD_VERSION={{ .Version }}
       - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
 
   - id: permguard_data_plane
@@ -66,6 +71,7 @@ builds:
     flags: ["--release", "--locked", "--package=permguard-data-plane"]
     targets: *targets
     env:
+      - PERMGUARD_BUILD_VERSION={{ .Version }}
       - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
 
   # The Apple binaries are not cross-compiled: they are built on macOS, by the `macos-binaries` job,

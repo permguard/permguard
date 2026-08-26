@@ -111,13 +111,6 @@ tasks:
     cmds:
       - cargo llvm-cov --workspace --lcov --output-path lcov.info
 
-  check:changelog:
-    desc: Check that the version being released is described in CHANGELOG.md.
-    vars:
-      TAG: '{{.TAG | default ""}}'
-    cmds:
-      - ./scripts/check-changelog.sh {{if .TAG}}{{.TAG}}{{else}}v$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1){{end}}
-
   prepare:release:
     desc: Move the repository to a version, so that tagging it is safe.
     vars:

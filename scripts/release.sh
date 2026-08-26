@@ -21,9 +21,11 @@
 # The prompt shows commit subjects since the previous tag, so work committed straight to main is
 # visible before the tag is pushed. GoReleaser builds the final release notes in CI.
 #
-# In this repository `prepare-release.sh` owns the bump. Keeping the local and Actions entry points
-# on that one implementation matters: the workspace package, internal dependency pins, lockfile,
-# chart and changelog must move in the same commit before the tag is created.
+# The version of a release is its tag: GoReleaser passes it into every build as
+# `PERMGUARD_BUILD_VERSION` and the binaries report it, so Cargo.toml never moves and no release
+# churns the lockfile. What still has to be committed before the tag is the chart — its `appVersion`
+# is the image tag it deploys, and Helm reads a file. `prepare-release.sh` owns that write, so the
+# local and the Actions entry points stay on one implementation.
 
 set -euo pipefail
 
@@ -31,14 +33,11 @@ cd "$(git rev-parse --show-toplevel)"
 
 product="$(basename "$(pwd)")"
 
-# The version the working tree declares: the first `version = "…"` line inside a
-# `[workspace.package]` or `[package]` section — and only inside one, so a dependency pin in some
-# other section can never masquerade as the product version. Empty when there is no Cargo.toml,
-# which is what makes the bump below optional rather than assumed.
-declared_version() {
-  [[ -f Cargo.toml ]] || return 0
-  awk -F'"' '/^\[/ { in_section = ($0 ~ /^\[(workspace\.)?package\]/) }
-             in_section && /^version = "/ { print $2; exit }' Cargo.toml
+# What the chart currently deploys. This is the one number in the tree that a release moves, and
+# the one the preparation below is checked against.
+chart_version() {
+  [[ -f charts/permguard/Chart.yaml ]] || return 0
+  sed -n 's/^version: \(.*\)$/\1/p' charts/permguard/Chart.yaml | head -1
 }
 
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -50,18 +49,16 @@ fi
 git fetch --tags --quiet origin
 
 latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)"
-workspace_version="$(declared_version)"
+chart="$(chart_version)"
 
 if [[ $# -ge 1 && -n "$1" ]]; then
   version="${1#v}"
 elif [[ -n "${latest}" ]]; then
   IFS=. read -r major minor patch <<<"${latest#v}"
   version="${major}.${minor}.$((patch + 1))"
-elif [[ -n "${workspace_version}" ]]; then
-  # No tag yet: the first release is whatever the working tree already says it is.
-  version="${workspace_version}"
 else
-  echo "no tag to bump and no Cargo.toml to read: name the version, e.g. $0 0.1.0" >&2
+  # Nothing to bump from, and the workspace version is no longer a release number to fall back on.
+  echo "no tag to bump: name the first version, e.g. $0 0.1.0" >&2
   exit 1
 fi
 
@@ -95,8 +92,8 @@ else
 fi
 
 # The warnings appear in both modes: YES silences the question, never the risks.
-if [[ -n "${workspace_version}" && "${workspace_version}" != "${version}" ]]; then
-  echo "  bump          Cargo.toml ${workspace_version} -> ${version}, committed and pushed before tagging"
+if [[ -n "${chart}" && "${chart}" != "${version}" ]]; then
+  echo "  chart         Chart.yaml ${chart} -> ${version}, committed and pushed before tagging"
 fi
 if [[ "${branch}" != "main" ]]; then
   echo "  NOTE: this is not main"
@@ -116,21 +113,22 @@ if [[ -z "${YES:-}" ]]; then
   esac
 fi
 
-# The declared version follows the tag, so the tagged source builds binaries that say what the tag
-# says. The bump is its own pushed commit, and the tag lands on it. Run the preparation even when
-# Cargo.toml already has the requested number: it also validates the lockfile, chart and changelog.
-if [[ -n "${workspace_version}" ]]; then
+# The binaries take their version from the tag, so nothing here has to be in the commit for them.
+# The chart does: it names the image tag it deploys, in a file. That write is its own pushed commit
+# and the tag lands on it. Run the preparation even when the chart already has the requested
+# number — it validates the whole version surface, which a retried release needs.
+if [[ -n "${chart}" ]]; then
   ./scripts/prepare-release.sh "${version}"
-  bumped="$(declared_version)"
-  if [[ "${bumped}" != "${version}" ]]; then
-    echo "bumping Cargo.toml did not take: it now says \`${bumped}\`, not ${version}" >&2
+  prepared="$(chart_version)"
+  if [[ "${prepared}" != "${version}" ]]; then
+    echo "moving Chart.yaml did not take: it now says \`${prepared}\`, not ${version}" >&2
     exit 1
   fi
-  git add Cargo.toml Cargo.lock charts/permguard/Chart.yaml CHANGELOG.md
+  git add charts/permguard/Chart.yaml CHANGELOG.md
   if ! git diff --cached --quiet; then
     git commit --quiet --message "${product} v${version}"
     git push --quiet origin HEAD
-    echo "bumped the workspace to ${version}"
+    echo "moved the chart to ${version}"
   fi
 fi
 

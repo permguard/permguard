@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use permguard_core::{
     AuditDestination, AuditSink, BuildSettings, Config, KeyManager, SecretProvider, SecretStore,
-    brand,
+    brand, build,
 };
 use permguard_std::audit::FileAuditSink;
 use permguard_std::catalog::FileCatalog;
@@ -24,7 +24,7 @@ pub fn build_settings(version: &'static str) -> BuildSettings {
         option_env!("PERMGUARD_COPYRIGHT_YEAR").unwrap_or(brand::PERMGUARD_COPYRIGHT_YEAR),
         option_env!("PERMGUARD_COPYRIGHT_HOLDER").unwrap_or(brand::PERMGUARD_COPYRIGHT_HOLDER),
     )
-    .with_commit(option_env!("PERMGUARD_BUILD_COMMIT").unwrap_or("unknown"))
+    .with_commit(build::COMMIT)
 }
 
 pub(crate) fn audit_sink_for(

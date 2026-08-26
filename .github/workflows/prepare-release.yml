@@ -1,15 +1,14 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# Cuts a release: moves the version, promotes the changelog, and creates the tag that the release
+# Cuts a release: moves the chart, promotes the changelog, and creates the tag that the release
 # pipeline reacts to.
 #
-# The release pipeline verifies that the tag matches the version already in Cargo.toml, and it does
-# not bump anything itself — deliberately. GoReleaser builds the commit the tag points at, so a
-# version written during the build would either leave the tree dirty (which GoReleaser refuses) or
-# describe a binary that no commit produces. The number has to be in the commit before the tag
-# exists. This is what puts it there, so that nobody has to remember at the one moment it is
-# expensive to forget: after a public tag has already failed.
+# The version of a release is its tag. GoReleaser stamps it into every build as
+# `PERMGUARD_BUILD_VERSION`, so Cargo.toml stays where it is and no release churns the lockfile.
+# What still has to be in the commit the tag points at is the chart: its `appVersion` is the image
+# tag it deploys, and Helm reads a file, not an environment variable. This is what puts it there,
+# and then proves — by running the binaries it just built — that the tag is what they report.
 
 name: Prepare Release
 
@@ -41,8 +40,8 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
 
-      # The toolchain the release is built with, because this regenerates Cargo.lock and then runs
-      # the same checks the release pipeline will run against it.
+      # The toolchain the release is built with, because this runs the same checks the release
+      # pipeline will run, against the same lockfile.
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
         with:
           toolchain: "1.97"
@@ -52,18 +51,19 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Move the version
+      - name: Move the chart
         run: ./scripts/prepare-release.sh "${{ inputs.version }}"
 
       # Everything the release pipeline's `verify` job would refuse the tag for, refused here
       # instead — while the tag is still hypothetical and costs nothing to not create.
-      - name: The tag would match the workspace version
+      - name: The chart would name this version
         run: |
-          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
           expected="${{ inputs.version }}"
           expected="${expected#v}"
-          if [ "${version}" != "${expected}" ]; then
-            echo "Cargo.toml says ${version}, the release was asked for ${expected}" >&2
+          if ! grep -qx "version: ${expected}" charts/permguard/Chart.yaml ||
+             ! grep -qx "appVersion: \"${expected}\"" charts/permguard/Chart.yaml; then
+            echo "Chart.yaml does not carry version and appVersion ${expected}" >&2
+            grep -E '^(version|appVersion):' charts/permguard/Chart.yaml >&2
             exit 1
           fi
       - name: formatting
@@ -81,13 +81,16 @@ jobs:
       - name: tests
         run: cargo test --workspace --all-features --locked
 
-      # These are the four artifacts GoReleaser ships. Running their version command proves that
-      # the workflow input reached the package metadata embedded by rustc, not merely a YAML field.
-      - name: Every binary contains the requested version
+      # These are the four artifacts GoReleaser ships. Built the way the release builds them —
+      # with the version stamped in — and then asked what they are, because a stamp that never
+      # reaches rustc is exactly the failure this whole scheme could have.
+      - name: Every binary reports the requested version
         run: |
           set -euo pipefail
           expected="${{ inputs.version }}"
           expected="${expected#v}"
+          export PERMGUARD_BUILD_VERSION="${expected}"
+          export PERMGUARD_BUILD_COMMIT="${GITHUB_SHA}"
           cargo build --locked \
             --package permguard-cli \
             --package permguard-all-in-one \
@@ -114,7 +117,7 @@ jobs:
           version="${version#v}"
           git config user.name "Permguard Team"
           git config user.email "opensource@permguard.com"
-          git add Cargo.toml Cargo.lock charts/permguard/Chart.yaml CHANGELOG.md
+          git add charts/permguard/Chart.yaml CHANGELOG.md
           if ! git diff --cached --quiet; then
             git commit -m "chore(release): ${version}"
             git push origin HEAD:main

@@ -5,7 +5,7 @@
 
 use std::io::{self, Write};
 
-use permguard_core::brand;
+use permguard_core::{brand, build};
 use serde::Serialize;
 
 use crate::output::Report;
@@ -29,10 +29,11 @@ pub struct VersionReport {
 pub fn version() -> VersionReport {
     VersionReport {
         binary: "permguard",
-        version: env!("CARGO_PKG_VERSION"),
-        // The same environment variable the planes read, so every Permguard binary in a release
-        // reports the same commit, and an unstamped local build says so instead of guessing.
-        commit: option_env!("PERMGUARD_BUILD_COMMIT").unwrap_or("unknown"),
+        // The release tag, stamped in at build time — not the workspace version, which stays
+        // where it is between releases. The planes read the very same constants, so every
+        // Permguard binary in a release reports one version and one commit.
+        version: build::VERSION,
+        commit: build::COMMIT,
         copyright_year: brand::PERMGUARD_COPYRIGHT_YEAR,
         copyright_holder: brand::PERMGUARD_COPYRIGHT_HOLDER,
     }

@@ -127,8 +127,9 @@ default set and a plain run never compiles the tests that cover it.
 Two more things a reviewer will look for:
 
 - **A changelog entry** in `CHANGELOG.md` under *Unreleased*, if the change is visible to somebody
-  running Permguard. A release cannot be cut without one for its version — `scripts/check-changelog.sh`
-  is what stops it — and writing it at release time means writing it from memory.
+  running Permguard. Nothing blocks a release without one, which is exactly why it is a review
+  question: written at release time, it is written from memory. `scripts/prepare-release.sh` promotes
+  whatever is under *Unreleased* into the released version's section.
 - **A versioned interface, treated as one.** Configuration keys, environment variables, CLI flags and
   exit statuses, HTTP routes, gRPC messages, metric names and labels, chart values: these are what
   people automate against. [COMPATIBILITY.md](COMPATIBILITY.md) lists them, and says what changing one

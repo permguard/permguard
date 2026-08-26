@@ -75,11 +75,10 @@ mod tests {
 
         // Under a test harness stdout is not a terminal, so the styling is off
         // and the columns can be measured directly.
-        let art_edge = lines[1].find('|').expect("the art has a left edge");
-        let text_edge = lines[lines.len() - 1]
-            .find("Docs:")
-            .expect("the small print is there");
+        let art_edge = lines[1].find('|');
+        let text_edge = lines[lines.len() - 1].find("Docs:");
 
+        assert!(art_edge.is_some(), "the art has a left edge to measure");
         assert_eq!(art_edge, text_edge);
     }
 

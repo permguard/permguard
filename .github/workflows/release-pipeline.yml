@@ -30,17 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: The tag must match the workspace version
+      # The binaries take their version from this tag, so there is nothing in Cargo.toml to agree
+      # with. The chart is the exception: its appVersion is the image tag it deploys, and Helm
+      # reads a file — a chart left behind would deploy images this release does not publish.
+      - name: The chart must name this version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
-          if [ "$tag" != "$version" ]; then
-            echo "the tag v$tag does not match the workspace version $version in Cargo.toml" >&2
+          if ! grep -qx "version: ${tag}" charts/permguard/Chart.yaml ||
+             ! grep -qx "appVersion: \"${tag}\"" charts/permguard/Chart.yaml; then
+            echo "Chart.yaml does not carry version and appVersion ${tag}" >&2
+            grep -E '^(version|appVersion):' charts/permguard/Chart.yaml >&2
             exit 1
           fi
-
-      - name: The changelog must have an entry for this version
-        run: ./scripts/check-changelog.sh "${GITHUB_REF_NAME}"
 
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
         with:
@@ -106,6 +107,9 @@ jobs:
           PERMGUARD_BUILD_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # Without the `v`, the way GoReleaser's `{{ .Version }}` reaches the Linux builds — the
+          # two halves of this release must report the same string.
+          export PERMGUARD_BUILD_VERSION="${GITHUB_REF_NAME#v}"
           for target in x86_64-apple-darwin aarch64-apple-darwin; do
             cargo build --release --locked --target "${target}" \
               --package permguard-cli \

@@ -20,6 +20,7 @@
 pub mod api;
 pub mod audit;
 pub mod brand;
+pub mod build;
 pub mod catalog;
 pub mod config;
 pub mod config_file;

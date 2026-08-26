@@ -3,7 +3,7 @@
 
 use std::process::ExitCode;
 
-use permguard_core::{ProductIdentity, brand};
+use permguard_core::{ProductIdentity, brand, build};
 use permguard_server::plane::{PlaneServer, addresses_for_plane, build_settings};
 
 const BINARY_NAME: &str = "permguard-data-plane";
@@ -20,7 +20,7 @@ async fn main() -> ExitCode {
         brand::PERMGUARD_ART,
     );
 
-    PlaneServer::new(identity, build_settings(env!("CARGO_PKG_VERSION")))
+    PlaneServer::new(identity, build_settings(build::VERSION))
         .with_plane(
             permguard_data_plane::module(),
             addresses_for_plane("data").expect("data plane addresses are known"),

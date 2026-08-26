@@ -11,8 +11,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as described 
 
 Release notes on GitHub are generated from commit subjects. This file is the other half: what changed
 for somebody *running* Permguard — a setting that moved, an exit status that gained a meaning, a
-default that is no longer the same. A release cannot be cut without an entry here, and
-`scripts/check-changelog.sh` is what enforces that.
+default that is no longer the same. Nothing enforces it: write the bullets under *Unreleased* while
+the change is fresh, and `scripts/prepare-release.sh` gives them their version number when a release
+is cut.
 
 ## [Unreleased]
 

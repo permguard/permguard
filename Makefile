@@ -17,7 +17,7 @@ CONFIG    ?= config.local.yml
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: clean coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-changelog check-core-deps check-headers check-seams check-systems cli help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
+.PHONY: clean coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -153,9 +153,6 @@ bench-grafana: ## Print the k6 flags that push client metrics into the lab's Pro
 	@printf '  K6_PROMETHEUS_RW_SERVER_URL=http://127.0.0.1:%s/api/v1/write \\\n' "$${PERMGUARD_PROMETHEUS_PORT:-7591}"
 	@printf '  K6_PROMETHEUS_RW_TREND_STATS="p(50),p(95),p(99),avg,max" \\\n'
 	@printf '  make bench-ladder\n\nGrafana: Permguard - Load test, http://127.0.0.1:%s\n' "$${PERMGUARD_GRAFANA_PORT:-7590}"
-
-check-changelog: ## Check that the version being released is described in CHANGELOG.md.
-	./scripts/check-changelog.sh $(if $(TAG),$(TAG),v$(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -1))
 
 prepare-release: ## Move the repository to a version, so that tagging it is safe.
 	./scripts/prepare-release.sh $(VERSION)
