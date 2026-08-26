@@ -9,6 +9,8 @@
 //! decided when the banner is rendered, not when the binary is compiled.
 //! Piped or `NO_COLOR`, the very same call returns plain text (see `style`).
 
+use std::sync::OnceLock;
+
 use permguard_core::brand;
 
 use crate::style;
@@ -21,8 +23,18 @@ const ART_INDENT: &str = "   ";
 /// Prefix for the wording under the art.
 const TEXT_INDENT: &str = "    ";
 
-/// The banner shown by `--help`, by the bare `permguard`, and by `version`.
-pub fn banner() -> String {
+/// The banner shown by every help, by the bare `permguard`, and by `version`.
+///
+/// Built once. It is stamped onto every command in the tree, and the tree is
+/// built on every invocation, so building it per command would be the same few
+/// hundred bytes of gradient computed fifty times to say one thing.
+pub fn banner() -> &'static str {
+    static BANNER: OnceLock<String> = OnceLock::new();
+
+    BANNER.get_or_init(render).as_str()
+}
+
+fn render() -> String {
     let art = style::brand_gradient(brand::PERMGUARD_ART);
     let mut lines: Vec<String> = art
         .lines()

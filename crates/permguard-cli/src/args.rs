@@ -26,24 +26,35 @@ pub fn command() -> clap::Command {
     one_help(Cli::command())
 }
 
-/// `-h` and `--help` print the long help, here and in every subcommand below.
+/// `-h` and `--help` print the long help — with the banner above it — here and
+/// in every subcommand below.
 ///
-/// The flag is declared rather than mutated: clap generates its own only while
-/// building, and reaching for it before that is a panic. Declaring it means
-/// turning clap's off, which is what `disable_help_flag` is for.
+/// The banner is on every command rather than only the root because every help
+/// is a place somebody arrives at cold, and `permguard init -h` is as likely to
+/// be the first thing a person sees as `permguard --help` is. It costs nothing
+/// elsewhere: help is the one output that carries no data, so unlike a report
+/// there is no `-o json` for the decoration to corrupt.
+///
+/// The help flag is declared rather than mutated: clap generates its own only
+/// while building, and reaching for it before that is a panic. Declaring it
+/// means turning clap's off, which is what `disable_help_flag` is for.
 fn one_help(command: clap::Command) -> clap::Command {
     let subcommands: Vec<String> = command
         .get_subcommands()
         .map(|subcommand| subcommand.get_name().to_owned())
         .collect();
 
-    let mut command = command.disable_help_flag(true).arg(
-        clap::Arg::new("help")
-            .short('h')
-            .long("help")
-            .action(clap::ArgAction::HelpLong)
-            .help("Print help"),
-    );
+    let mut command = command
+        .before_help(crate::banner::banner())
+        .before_long_help(crate::banner::banner())
+        .disable_help_flag(true)
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(clap::ArgAction::HelpLong)
+                .help("Print help"),
+        );
 
     // clap builds a help flag per command, so the whole tree has to be walked:
     // consistency that stops at the first level is the inconsistency again.
@@ -57,9 +68,9 @@ fn one_help(command: clap::Command) -> clap::Command {
 #[derive(Debug, Parser)]
 #[command(
     name = "permguard",
-    about = "Permguard command-line interface",
-    before_help = crate::banner::banner(),
-    before_long_help = crate::banner::banner()
+    // The banner is not here: `one_help` puts it on this command and on every one below it,
+    // from a single place, so the root cannot end up wearing a different one.
+    about = "Permguard command-line interface"
 )]
 pub struct Cli {
     #[command(flatten)]
@@ -590,6 +601,25 @@ mod tests {
         });
 
         // A tree that stopped being walked would pass every assertion above.
+        assert!(checked > 20, "only {checked} commands were checked");
+    }
+
+    #[test]
+    fn test_every_help_in_the_tree_carries_the_banner() {
+        let banner = crate::banner::banner();
+        let mut checked = 0;
+
+        walk(&command(), &mut |command| {
+            for before in [command.get_before_help(), command.get_before_long_help()] {
+                let rendered = before.map(ToString::to_string).unwrap_or_else(|| {
+                    format!("{} has no banner above its help", command.get_name())
+                });
+
+                assert_eq!(rendered, banner, "{}", command.get_name());
+            }
+            checked += 1;
+        });
+
         assert!(checked > 20, "only {checked} commands were checked");
     }
 
