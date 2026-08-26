@@ -122,4 +122,3 @@ separate: `gh auth login` does not perform `docker login`.
 Releases `0.1.0` and `0.1.1` used Cosign's legacy registry storage, which represented a signature as
 a `sha256-....sig` tag. It is signature metadata, not a runnable image, and `docker pull` must not be
 used on it. Current releases use GitHub Artifact Attestations and do not create new `.sig` tags.
-
