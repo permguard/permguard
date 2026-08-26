@@ -16,6 +16,10 @@ default that is no longer the same. A release cannot be cut without an entry her
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] - 2026-08-26
+
 ### Fixed
 
 - Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
