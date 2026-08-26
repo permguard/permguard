@@ -10,9 +10,49 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::output::OutputFormat;
+
+/// The command tree, with one help instead of two.
+///
+/// clap answers `-h` with a summary and `--help` with an expanded form, so the
+/// same question asked two ways gets two different answers — and the short one
+/// says "see more with '--help'", which tells a user that what they just read
+/// was abridged. A CLI's help is a contract, and a contract with an abridged
+/// edition is two contracts. Both spell the full help, on every command in the
+/// tree, and the flag says so: "Print help".
+pub fn command() -> clap::Command {
+    one_help(Cli::command())
+}
+
+/// `-h` and `--help` print the long help, here and in every subcommand below.
+///
+/// The flag is declared rather than mutated: clap generates its own only while
+/// building, and reaching for it before that is a panic. Declaring it means
+/// turning clap's off, which is what `disable_help_flag` is for.
+fn one_help(command: clap::Command) -> clap::Command {
+    let subcommands: Vec<String> = command
+        .get_subcommands()
+        .map(|subcommand| subcommand.get_name().to_owned())
+        .collect();
+
+    let mut command = command.disable_help_flag(true).arg(
+        clap::Arg::new("help")
+            .short('h')
+            .long("help")
+            .action(clap::ArgAction::HelpLong)
+            .help("Print help"),
+    );
+
+    // clap builds a help flag per command, so the whole tree has to be walked:
+    // consistency that stops at the first level is the inconsistency again.
+    for name in subcommands {
+        command = command.mut_subcommand(name, one_help);
+    }
+
+    command
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -25,8 +65,18 @@ pub struct Cli {
     #[command(flatten)]
     pub globals: Globals,
 
+    /// Report this CLI's version and the build it came from.
+    ///
+    /// The same answer `permguard version` gives, in whichever format was asked for — one
+    /// question, one answer, however it is spelled. `-V` rather than `-v`, which is `--verbose`.
+    #[arg(short = 'V', long)]
+    pub version: bool,
+
+    /// Optional so that `--version` can be asked without naming a command — and so that a bare
+    /// `permguard` is a question rather than a mistake: it is answered with the help, on stdout,
+    /// and a zero status. Nothing was typed wrong.
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 /// What applies to every command.
@@ -52,11 +102,14 @@ pub struct Globals {
     #[arg(long, global = true, env = "PERMGUARD_CONFIG", value_name = "FILE")]
     pub config: Option<String>,
 
-    /// Where the control plane is reached.
+    // Not clap's `env`: `config show` reports which of flag, environment and file a value came
+    // from, and a value clap resolved would arrive indistinguishable from a flag. `settings` reads
+    // the variable itself — so the help has to say so, rather than showing clap's `[env: …]`.
+    /// Where the control plane is reached [env: PERMGUARD_CONTROL_PLANE_ENDPOINT]
     #[arg(long, global = true, alias = "endpoint", value_name = "URL")]
     pub control_endpoint: Option<String>,
 
-    /// Where the data plane is reached.
+    /// Where the data plane is reached [env: PERMGUARD_DATA_PLANE_ENDPOINT]
     #[arg(long, global = true, value_name = "URL")]
     pub data_endpoint: Option<String>,
 
@@ -237,7 +290,7 @@ pub enum DecisionsAction {
 #[derive(Debug, clap::Args)]
 pub struct DecisionsQuery {
     /// The zone whose decisions to read, overriding the workspace.
-    #[arg(long, value_name = "ZONE")]
+    #[arg(long, alias = "zone-id", value_name = "ZONE")]
     pub zone: Option<String>,
 
     /// The ledger whose decisions to read, overriding the workspace.
@@ -472,7 +525,7 @@ pub struct CheckArgs {
     pub file: Option<String>,
 
     /// The zone to ask about, overriding the workspace and the document.
-    #[arg(long, value_name = "ZONE")]
+    #[arg(long, alias = "zone-id", value_name = "ZONE")]
     pub zone: Option<String>,
 
     /// The ledger to ask about, overriding the workspace and the document.
@@ -502,4 +555,81 @@ pub struct CheckArgs {
     /// Send the document exactly as written, even inside a workspace.
     #[arg(long)]
     pub ignore_workspace: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every command in the tree, the root included.
+    fn walk(command: &clap::Command, visit: &mut dyn FnMut(&clap::Command)) {
+        visit(command);
+        for subcommand in command.get_subcommands() {
+            walk(subcommand, visit);
+        }
+    }
+
+    #[test]
+    fn test_every_command_answers_h_and_help_the_same_way() {
+        let mut checked = 0;
+
+        walk(&command(), &mut |command| {
+            let help = command
+                .get_arguments()
+                .find(|arg| arg.get_id() == "help")
+                .unwrap_or_else(|| panic!("{} has no help flag", command.get_name()));
+
+            assert_eq!(help.get_short(), Some('h'), "{}", command.get_name());
+            assert_eq!(help.get_long(), Some("help"), "{}", command.get_name());
+            assert!(
+                matches!(help.get_action(), clap::ArgAction::HelpLong),
+                "{} answers -h with something other than the full help",
+                command.get_name()
+            );
+            checked += 1;
+        });
+
+        // A tree that stopped being walked would pass every assertion above.
+        assert!(checked > 20, "only {checked} commands were checked");
+    }
+
+    #[test]
+    fn test_zone_answers_to_the_same_two_spellings_everywhere() {
+        let mut checked = 0;
+
+        walk(&command(), &mut |command| {
+            for arg in command.get_arguments() {
+                // Positionals cannot carry an alias, and do not need one.
+                if arg.get_id() != "zone" || arg.get_long().is_none() {
+                    continue;
+                }
+
+                let aliases = arg.get_all_aliases().unwrap_or_default();
+                assert!(
+                    aliases.contains(&"zone-id"),
+                    "{} takes --zone but not --zone-id",
+                    command.get_name()
+                );
+                checked += 1;
+            }
+        });
+
+        assert!(checked > 5, "only {checked} --zone flags were checked");
+    }
+
+    #[test]
+    fn test_no_option_is_reachable_by_a_short_name_alone() {
+        walk(&command(), &mut |command| {
+            for arg in command.get_arguments() {
+                if arg.get_short().is_some() {
+                    assert!(
+                        arg.get_long().is_some(),
+                        "{} has -{} with no long spelling",
+                        command.get_name(),
+                        arg.get_short().unwrap_or('?')
+                    );
+                }
+            }
+        });
+    }
 }

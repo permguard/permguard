@@ -86,6 +86,23 @@ fn version_answers_in_all_three_formats() {
     assert!(stdout(&yaml).contains("version:"));
 }
 
+/// `--version`, `-V` and `version` are one question. A flag that grew its own answer would be a
+/// second version report to keep in step with the first, which is how the two drift apart.
+#[test]
+fn the_version_flag_answers_exactly_as_the_version_command_does() {
+    let dir = scratch("version-flag");
+
+    for format in ["terminal", "json", "yaml"] {
+        let command = run(&dir, &["-o", format, "version"]);
+        let long = run(&dir, &["-o", format, "--version"]);
+        let short = run(&dir, &["-o", format, "-V"]);
+
+        assert!(command.status.success());
+        assert_eq!(stdout(&long), stdout(&command), "-o {format}");
+        assert_eq!(stdout(&short), stdout(&command), "-o {format}");
+    }
+}
+
 #[test]
 fn completion_prints_a_shell_script() {
     let dir = scratch("completion");

@@ -49,8 +49,6 @@ mod workspace_out;
 
 use std::process::ExitCode;
 
-use clap::Parser;
-
 use crate::args::{Cli, Command};
 use crate::commands::catalog::{CatalogAction, catalog_command};
 use crate::commands::config::config_command;
@@ -65,7 +63,10 @@ pub use crate::failure::{EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNREACH
 fn main() -> ExitCode {
     // Parsed by hand so that a wrong command line exits `EX_USAGE` rather than clap's default of
     // 2 — which is a status this CLI has already given a meaning of its own.
-    let cli = match Cli::try_parse() {
+    let cli = match args::command()
+        .try_get_matches()
+        .and_then(|matches| <Cli as clap::FromArgMatches>::from_arg_matches(&matches))
+    {
         Ok(cli) => cli,
         Err(error) => {
             let requested = !error.use_stderr();
@@ -90,7 +91,25 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let format = globals.output;
 
-    match cli.command {
+    // `--version` is answered by the command that answers `version`, so the two spellings cannot
+    // drift apart and `-o json` works for both. A command named alongside it is not a conflict
+    // worth an error: the question was asked, and it is answered.
+    let command = match (cli.version, cli.command) {
+        (true, _) => Command::Version,
+        (false, Some(command)) => command,
+        // A bare `permguard`, or global flags with no command. Neither is a usage error — the
+        // question is "and now what?", and the help is its answer: stdout, status zero.
+        (false, None) => {
+            let mut out = std::io::stdout();
+            crate::args::command()
+                .write_help(&mut out)
+                .map_err(Failure::internal)?;
+
+            return Ok(ExitCode::from(EXIT_READY));
+        }
+    };
+
+    match command {
         Command::Version => {
             render(&version::version(), format, &trace)?;
 
@@ -101,7 +120,7 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             // report wrapper would be syntax errors in someone's rc file.
             clap_complete::generate(
                 shell,
-                &mut <Cli as clap::CommandFactory>::command(),
+                &mut args::command(),
                 "permguard",
                 &mut std::io::stdout(),
             );
