@@ -11,7 +11,6 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use permguard_core::brand;
 
 use crate::output::OutputFormat;
 
@@ -19,8 +18,8 @@ use crate::output::OutputFormat;
 #[command(
     name = "permguard",
     about = "Permguard command-line interface",
-    before_help = brand::PERMGUARD_CLI_BANNER,
-    before_long_help = brand::PERMGUARD_CLI_BANNER
+    before_help = crate::banner::banner(),
+    before_long_help = crate::banner::banner()
 )]
 pub struct Cli {
     #[command(flatten)]

@@ -21,7 +21,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
 license = "Apache-2.0"
@@ -42,20 +42,20 @@ debug = "line-tables-only"
 debug = "line-tables-only"
 
 [workspace.dependencies]
-permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.2" }
-permguard-cli = { path = "crates/permguard-cli", version = "0.1.2" }
-permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.2" }
-permguard-core = { path = "crates/permguard-core", version = "0.1.2" }
-permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.2" }
-permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.2" }
-permguard-notp = { path = "crates/permguard-notp", version = "0.1.2" }
-permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.2" }
-permguard-objects = { path = "crates/permguard-objects", version = "0.1.2" }
-permguard-languages = { path = "crates/permguard-languages", version = "0.1.2" }
-permguard-server = { path = "crates/permguard-server", version = "0.1.2" }
-permguard-std = { path = "crates/permguard-std", version = "0.1.2", default-features = false }
-permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.2" }
-permguard-transport = { path = "crates/permguard-transport", version = "0.1.2" }
+permguard-all-in-one = { path = "crates/permguard-all-in-one", version = "0.1.0" }
+permguard-cli = { path = "crates/permguard-cli", version = "0.1.0" }
+permguard-control-plane = { path = "crates/permguard-control-plane", version = "0.1.0" }
+permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
+permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
+permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
+permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
+permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
+permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
+permguard-languages = { path = "crates/permguard-languages", version = "0.1.0" }
+permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
+permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
+permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.0" }
+permguard-transport = { path = "crates/permguard-transport", version = "0.1.0" }
 
 anyhow = "1"
 async-stream = "0.3"

@@ -30,6 +30,7 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 mod args;
+mod banner;
 mod commands;
 mod config;
 mod decision_out;

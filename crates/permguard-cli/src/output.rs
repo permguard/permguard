@@ -7,7 +7,6 @@ use std::io::{self, Write};
 
 use anyhow::Result;
 use clap::ValueEnum;
-use permguard_core::brand;
 use serde::Serialize;
 
 /// How an answer is rendered.
@@ -65,7 +64,7 @@ pub fn render<R: Report>(report: &R, format: OutputFormat, out: &mut dyn Write) 
             // The banner belongs to the terminal rendering and to nothing else: it is decoration,
             // and decoration in a JSON document is a parse error waiting to happen.
             if report.wants_banner() {
-                writeln!(out, "{}", brand::PERMGUARD_CLI_BANNER)?;
+                writeln!(out, "{}", crate::banner::banner())?;
                 writeln!(out)?;
             }
 
