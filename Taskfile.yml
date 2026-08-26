@@ -118,6 +118,13 @@ tasks:
     cmds:
       - ./scripts/check-changelog.sh {{if .TAG}}{{.TAG}}{{else}}v$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1){{end}}
 
+  prepare:release:
+    desc: Move the repository to a version, so that tagging it is safe.
+    vars:
+      VERSION: '{{.VERSION | default ""}}'
+    cmds:
+      - ./scripts/prepare-release.sh {{.VERSION}}
+
   check:headers:
     desc: Check that every source file carries the licence header.
     cmds:

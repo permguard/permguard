@@ -1,0 +1,108 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Cuts a release: moves the version, promotes the changelog, and creates the tag that the release
+# pipeline reacts to.
+#
+# The release pipeline verifies that the tag matches the version already in Cargo.toml, and it does
+# not bump anything itself — deliberately. GoReleaser builds the commit the tag points at, so a
+# version written during the build would either leave the tree dirty (which GoReleaser refuses) or
+# describe a binary that no commit produces. The number has to be in the commit before the tag
+# exists. This is what puts it there, so that nobody has to remember at the one moment it is
+# expensive to forget: after a public tag has already failed.
+
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the leading v — e.g. 0.1.1. The tag becomes v<version>."
+        required: true
+        type: string
+      dry_run:
+        description: "Do everything, verify it, and push nothing."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Move to ${{ inputs.version }} and tag
+    runs-on: ubuntu-latest
+    steps:
+      # `GH_TOKEN` rather than the job's own: a tag pushed with the default `GITHUB_TOKEN` does not
+      # trigger other workflows, so the release pipeline would never see it and the release would
+      # silently never happen. The same token the release already uses to publish.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
+
+      # The toolchain the release is built with, because this regenerates Cargo.lock and then runs
+      # the same checks the release pipeline will run against it.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-08
+        with:
+          toolchain: "1.97"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Move the version
+        run: ./scripts/prepare-release.sh "${{ inputs.version }}"
+
+      # Everything the release pipeline's `verify` job would refuse the tag for, refused here
+      # instead — while the tag is still hypothetical and costs nothing to not create.
+      - name: The tag would match the workspace version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          expected="${{ inputs.version }}"
+          expected="${expected#v}"
+          if [ "${version}" != "${expected}" ]; then
+            echo "Cargo.toml says ${version}, the release was asked for ${expected}" >&2
+            exit 1
+          fi
+      - name: formatting
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: only the binary composes collaborators
+        run: ./scripts/check-composition-root.sh
+      - name: permguard-core keeps its dependency allowlist
+        run: ./scripts/check-core-dependencies.sh
+      - name: the build systems agree
+        run: ./scripts/check-build-systems.sh
+      - name: every source file carries the licence header
+        run: ./scripts/check-license-headers.sh
+      - name: tests
+        run: cargo test --workspace --all-features --locked
+
+      - name: What changed
+        run: git --no-pager diff --stat
+
+      - name: Commit and tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          version="${version#v}"
+          git config user.name "Permguard Team"
+          git config user.email "opensource@permguard.com"
+          git add Cargo.toml Cargo.lock charts/permguard/Chart.yaml CHANGELOG.md
+          git commit -m "chore(release): ${version}"
+          git tag -a "v${version}" -m "v${version}"
+          # The commit first: a tag that arrives before the commit it points at is a release built
+          # from a commit nobody can fetch.
+          git push origin HEAD:main
+          git push origin "v${version}"
+          echo "tagged v${version} — the release pipeline takes it from here"
+
+      - name: Nothing was pushed
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "dry run: the working tree holds ${{ inputs.version }} and every check passed,"
+          echo "but no commit and no tag left this runner."

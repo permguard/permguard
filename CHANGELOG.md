@@ -16,7 +16,20 @@ default that is no longer the same. A release cannot be cut without an entry her
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
+  then pushed nowhere near it: no `images:` entry ever named it. Versioned tags only — `latest` and
+  `0.0` on those names still carry the Go implementation, and move when it does.
+- The Helm chart's default images exist. `registry: ghcr.io` used to render
+  `ghcr.io/permguard/control-plane`, a name that was never published; the registry value carries the
+  namespace now, so `docker.io/permguard` and `ghcr.io/permguard/permguard` both resolve.
+
+### Added
+
+- `scripts/prepare-release.sh` and the `Prepare Release` workflow move the version, the lock, the
+  chart and the changelog together, and create the tag from the result — so a tag can no longer
+  reach the release pipeline describing a version the commit does not contain.
 
 ## [0.1.0] - 2026-08-25
 
