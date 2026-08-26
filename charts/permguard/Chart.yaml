@@ -8,9 +8,9 @@ description: >-
   the all-in-one runtime as a single one.
 type: application
 # The chart's own version. Bumped when the templates change, independently of what they deploy.
-version: 0.1.0
+version: 0.1.3
 # What it deploys by default, which is this repository's version.
-appVersion: "0.1.0"
+appVersion: "0.1.3"
 home: https://www.permguard.com
 sources:
   - https://github.com/permguard/permguard
