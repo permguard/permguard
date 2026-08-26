@@ -21,11 +21,9 @@
 # The prompt shows commit subjects since the previous tag, so work committed straight to main is
 # visible before the tag is pushed. GoReleaser builds the final release notes in CI.
 #
-# Nothing here is specific to this repository. When a Cargo.toml declares a version — under
-# `[workspace.package]` or `[package]`, wherever it sits in the file — the version follows the tag:
-# the script bumps it, commits `<product> v<version>` and pushes, and only then tags, so the tagged
-# source always builds a binary that reports the version the tag claims. A repository without a
-# Cargo.toml skips the bump and just tags.
+# In this repository `prepare-release.sh` owns the bump. Keeping the local and Actions entry points
+# on that one implementation matters: the workspace package, internal dependency pins, lockfile,
+# chart and changelog must move in the same commit before the tag is created.
 
 set -euo pipefail
 
@@ -83,7 +81,6 @@ branch="$(git rev-parse --abbrev-ref HEAD)"
 
 # What the release will say: every commit since the previous tag, newest first.
 range="${latest:+${latest}..}HEAD"
-notes="$(git log --format='- %s (%h)' "${range}")"
 
 if [[ -n "${YES:-}" ]]; then
   echo "releasing ${tag} — ${product} v${version}, from $(git rev-parse --short HEAD) on ${branch}"
@@ -119,30 +116,22 @@ if [[ -z "${YES:-}" ]]; then
   esac
 fi
 
-# The declared version follows the tag, so the tagged source builds a binary that says what the tag
-# says. The bump is its own pushed commit, and the tag lands on it.
-if [[ -n "${workspace_version}" && "${workspace_version}" != "${version}" ]]; then
-  # The same section rule as the read above, line by line: only the first `version = "…"` inside a
-  # package section is rewritten, wherever that section sits and whatever brackets it contains.
-  VERSION="${version}" perl -pi -e '
-    $in_section = /^\[(?:workspace\.)?package\]/ ? 1 : 0 if /^\[/;
-    s/^version = "[^"]*"/version = "$ENV{VERSION}"/ if $in_section && !$bumped && /^version = "/ && ++$bumped;
-  ' Cargo.toml
-  if [[ -f Cargo.lock ]]; then
-    cargo update --workspace --quiet
-  fi
+# The declared version follows the tag, so the tagged source builds binaries that say what the tag
+# says. The bump is its own pushed commit, and the tag lands on it. Run the preparation even when
+# Cargo.toml already has the requested number: it also validates the lockfile, chart and changelog.
+if [[ -n "${workspace_version}" ]]; then
+  ./scripts/prepare-release.sh "${version}"
   bumped="$(declared_version)"
   if [[ "${bumped}" != "${version}" ]]; then
     echo "bumping Cargo.toml did not take: it now says \`${bumped}\`, not ${version}" >&2
     exit 1
   fi
-  git add Cargo.toml
-  if [[ -f Cargo.lock ]]; then
-    git add Cargo.lock
+  git add Cargo.toml Cargo.lock charts/permguard/Chart.yaml CHANGELOG.md
+  if ! git diff --cached --quiet; then
+    git commit --quiet --message "${product} v${version}"
+    git push --quiet origin HEAD
+    echo "bumped the workspace to ${version}"
   fi
-  git commit --quiet --message "${product} v${version}"
-  git push --quiet origin HEAD
-  echo "bumped the workspace to ${version}"
 fi
 
 git tag --annotate "${tag}" --message "${product} v${version}"

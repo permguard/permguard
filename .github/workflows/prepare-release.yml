@@ -81,6 +81,28 @@ jobs:
       - name: tests
         run: cargo test --workspace --all-features --locked
 
+      # These are the four artifacts GoReleaser ships. Running their version command proves that
+      # the workflow input reached the package metadata embedded by rustc, not merely a YAML field.
+      - name: Every binary contains the requested version
+        run: |
+          set -euo pipefail
+          expected="${{ inputs.version }}"
+          expected="${expected#v}"
+          cargo build --locked \
+            --package permguard-cli \
+            --package permguard-all-in-one \
+            --package permguard-control-plane \
+            --package permguard-data-plane
+          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+            output="$("target/debug/${binary}" version 2>&1)"
+            if ! grep -Fq "${expected}" <<<"${output}"; then
+              echo "${binary} does not report ${expected}:" >&2
+              echo "${output}" >&2
+              exit 1
+            fi
+            echo "${binary}: ${expected}"
+          done
+
       - name: What changed
         run: git --no-pager diff --stat
 
@@ -93,11 +115,13 @@ jobs:
           git config user.name "Permguard Team"
           git config user.email "opensource@permguard.com"
           git add Cargo.toml Cargo.lock charts/permguard/Chart.yaml CHANGELOG.md
-          git commit -m "chore(release): ${version}"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): ${version}"
+            git push origin HEAD:main
+          else
+            echo "the version commit is already on main; only the tag was missing"
+          fi
           git tag -a "v${version}" -m "v${version}"
-          # The commit first: a tag that arrives before the commit it points at is a release built
-          # from a commit nobody can fetch.
-          git push origin HEAD:main
           git push origin "v${version}"
           echo "tagged v${version} — the release pipeline takes it from here"
 

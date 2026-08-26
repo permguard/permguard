@@ -52,87 +52,115 @@ if [ -z "${current}" ]; then
     exit 1
 fi
 
-if [ "${current}" = "${version}" ]; then
-    echo "the workspace is already at ${version}" >&2
-    exit 1
-fi
-
 if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
     echo "the tag ${tag} already exists locally — delete it first if it was never released:" >&2
     echo "  git tag -d ${tag} && git push origin :refs/tags/${tag}" >&2
     exit 1
 fi
 
-# An entry that is only a heading is an entry nobody wrote, and the release check will say so later.
-# Better here, before anything has been edited.
-unreleased_bullets="$(
-    awk '
-        /^## \[Unreleased\]/ { inside = 1; next }
-        inside && /^## / { exit }
-        inside { print }
-    ' CHANGELOG.md | grep -cE '^\s*[-*]' || true
-)"
+if [ "${current}" != "${version}" ]; then
+    # An entry that is only a heading is an entry nobody wrote, and the release check will say so
+    # later. Better here, before anything has been edited.
+    unreleased_bullets="$(
+        awk '
+            /^## \[Unreleased\]/ { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+        ' CHANGELOG.md | grep -cE '^\s*[-*]' || true
+    )"
 
-if [ "${unreleased_bullets}" -eq 0 ]; then
-    echo "the '## [Unreleased]' section of CHANGELOG.md lists nothing" >&2
-    echo "write what changed for whoever runs this, as bullets, then run this again" >&2
-    exit 1
+    if [ "${unreleased_bullets}" -eq 0 ]; then
+        echo "the '## [Unreleased]' section of CHANGELOG.md lists nothing" >&2
+        echo "write what changed for whoever runs this, as bullets, then run this again" >&2
+        exit 1
+    fi
+
+    printf 'releasing %s -> %s\n' "${current}" "${version}"
+
+    # The workspace version, and the path dependencies that pin it beside themselves. Anchored
+    # rather than a blanket substitution: a third-party dependency that happens to sit at the same
+    # version is not ours to move.
+    sed -i.bak -E \
+        -e "s/^version = \"${current}\"\$/version = \"${version}\"/" \
+        -e "s/^(permguard-[a-z-]+ = \{[^}]*version = )\"${current}\"/\1\"${version}\"/" \
+        Cargo.toml
+    rm -f Cargo.toml.bak
+
+    moved="$(grep -c "\"${version}\"" Cargo.toml || true)"
+    printf 'Cargo.toml: %s version(s) moved\n' "${moved}"
+
+    if grep -q "^version = \"${current}\"\$" Cargo.toml; then
+        echo "the workspace version in Cargo.toml did not move" >&2
+        exit 1
+    fi
+
+    # The pipeline builds with --locked, so a lock that still names the old version fails the build.
+    # -w touches the workspace members and leaves the dependency graph alone.
+    cargo update --workspace --quiet
+    printf 'Cargo.lock: regenerated\n'
+
+    # `version` is the chart's own, `appVersion` is what it deploys — which is the image tag, so a
+    # chart left behind deploys images that this release does not publish.
+    sed -i.bak -E \
+        -e "s/^version: ${current}\$/version: ${version}/" \
+        -e "s/^appVersion: \"${current}\"\$/appVersion: \"${version}\"/" \
+        charts/permguard/Chart.yaml
+    rm -f charts/permguard/Chart.yaml.bak
+    printf 'Chart.yaml: version and appVersion at %s\n' "${version}"
+
+    # The Unreleased section becomes this version, and a fresh empty one takes its place. The bullets
+    # are moved, not generated: they were written by whoever made the change.
+    today="$(date -u +%Y-%m-%d)"
+    awk -v version="${version}" -v today="${today}" '
+        /^## \[Unreleased\]/ && !done {
+            print "## [Unreleased]"
+            print ""
+            print "Nothing yet."
+            print ""
+            print "## [" version "] - " today
+            done = 1
+            inside = 1
+            next
+        }
+        inside && /^## / { inside = 0; print; next }
+        # The placeholder does not follow the bullets it stood in for.
+        inside && $0 == "Nothing yet." { next }
+        { print }
+    ' CHANGELOG.md > CHANGELOG.md.new
+    mv CHANGELOG.md.new CHANGELOG.md
+    printf 'CHANGELOG.md: Unreleased promoted to %s - %s\n' "${version}" "${today}"
+else
+    # This is a valid retry state: the version commit may have reached main while pushing the tag
+    # failed. Do not force somebody to manufacture another version just to finish that release.
+    printf 'workspace already prepared at %s; creating its missing tag\n' "${version}"
 fi
 
-printf 'releasing %s -> %s\n' "${current}" "${version}"
-
-# The workspace version, and the path dependencies that pin it beside themselves. Anchored rather
-# than a blanket substitution: a third-party dependency that happens to sit at the same version is
-# not ours to move.
-sed -i.bak -E \
-    -e "s/^version = \"${current}\"\$/version = \"${version}\"/" \
-    -e "s/^(permguard-[a-z-]+ = \{[^}]*version = )\"${current}\"/\1\"${version}\"/" \
-    Cargo.toml
-rm -f Cargo.toml.bak
-
-moved="$(grep -c "\"${version}\"" Cargo.toml || true)"
-printf 'Cargo.toml: %s version(s) moved\n' "${moved}"
-
-if grep -q "^version = \"${current}\"\$" Cargo.toml; then
-    echo "the workspace version in Cargo.toml did not move" >&2
-    exit 1
-fi
-
-# The pipeline builds with --locked, so a lock that still names the old version fails the build.
-# -w touches the workspace members and leaves the dependency graph alone.
-cargo update --workspace --quiet
-printf 'Cargo.lock: regenerated\n'
-
-# `version` is the chart's own, `appVersion` is what it deploys — which is the image tag, so a
-# chart left behind deploys images that this release does not publish.
-sed -i.bak -E \
-    -e "s/^version: ${current}\$/version: ${version}/" \
-    -e "s/^appVersion: \"${current}\"\$/appVersion: \"${version}\"/" \
-    charts/permguard/Chart.yaml
-rm -f charts/permguard/Chart.yaml.bak
-printf 'Chart.yaml: version and appVersion at %s\n' "${version}"
-
-# The Unreleased section becomes this version, and a fresh empty one takes its place. The bullets
-# are moved, not generated: they were written by whoever made the change.
-today="$(date -u +%Y-%m-%d)"
-awk -v version="${version}" -v today="${today}" '
-    /^## \[Unreleased\]/ && !done {
-        print "## [Unreleased]"
-        print ""
-        print "Nothing yet."
-        print ""
-        print "## [" version "] - " today
-        done = 1
-        inside = 1
-        next
+# Retrying an already-prepared release takes this path too, so validate the whole version surface
+# instead of assuming the earlier run completed every write.
+if awk -v expected="${version}" '
+    /^permguard-[a-z-]+ = \{/ && /path = / {
+        if ($0 !~ "version = \"" expected "\"") {
+            print "internal dependency has the wrong version: " $0 > "/dev/stderr"
+            bad = 1
+        }
     }
-    inside && /^## / { inside = 0; print; next }
-    # The placeholder does not follow the bullets it stood in for.
-    inside && $0 == "Nothing yet." { next }
-    { print }
-' CHANGELOG.md > CHANGELOG.md.new
-mv CHANGELOG.md.new CHANGELOG.md
-printf 'CHANGELOG.md: Unreleased promoted to %s - %s\n' "${version}" "${today}"
+    END { exit bad }
+' Cargo.toml; then
+    printf 'Cargo.toml: every internal dependency is pinned at %s\n' "${version}"
+else
+    exit 1
+fi
+
+# `--locked` checks that Cargo.lock agrees without compiling anything.
+cargo metadata --locked --no-deps --format-version 1 >/dev/null
+printf 'Cargo.lock: agrees with Cargo.toml\n'
+
+if ! grep -qx "version: ${version}" charts/permguard/Chart.yaml ||
+    ! grep -qx "appVersion: \"${version}\"" charts/permguard/Chart.yaml; then
+    echo "Chart.yaml does not carry version and appVersion ${version}" >&2
+    exit 1
+fi
+printf 'Chart.yaml: version and appVersion at %s\n' "${version}"
 
 # What the release pipeline checks first, checked here while the tag is still hypothetical.
 ./scripts/check-changelog.sh "${tag}"
