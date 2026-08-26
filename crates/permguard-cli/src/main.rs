@@ -55,6 +55,7 @@ use crate::commands::config::config_command;
 use crate::commands::inspect::inspect_command;
 use crate::commands::workspace::{WorkspaceOp, workspace_command};
 use crate::failure::Failure;
+use crate::output::OutputFormat;
 use crate::session::render;
 use crate::trace::Trace;
 
@@ -63,16 +64,26 @@ pub use crate::failure::{EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNREACH
 fn main() -> ExitCode {
     // Parsed by hand so that a wrong command line exits `EX_USAGE` rather than clap's default of
     // 2 — which is a status this CLI has already given a meaning of its own.
-    let cli = match args::command().try_get_matches().and_then(|matches| {
-        // `permguard help zones create` asks what `permguard zones create -h` asks, and is answered
-        // the same way — before the matches are derived, because the stand-in that parsed it has no
-        // variant in `Command` to be derived into.
-        if let Some(path) = args::help_request(&matches) {
-            return Err(help_error(&path));
-        }
+    let matches = match args::command().try_get_matches() {
+        Ok(matches) => matches,
+        Err(error) => {
+            let requested = !error.use_stderr();
+            let _ = error.print();
 
-        <Cli as clap::FromArgMatches>::from_arg_matches(&matches)
-    }) {
+            // `--help` and `--version` are errors only in clap's plumbing: the user asked, and got
+            // what they asked for.
+            return ExitCode::from(if requested { EXIT_READY } else { EXIT_USAGE });
+        }
+    };
+
+    // `permguard help zones create` asks what `permguard zones create -h` asks, and is answered the
+    // same way — here rather than in `run`, because the stand-in that parsed it deliberately has no
+    // variant in `Command` to be derived into.
+    if let Some(path) = args::help_request(&matches) {
+        return print_help(&path);
+    }
+
+    let cli = match <Cli as clap::FromArgMatches>::from_arg_matches(&matches) {
         Ok(cli) => cli,
         Err(error) => {
             let requested = !error.use_stderr();
@@ -92,36 +103,38 @@ fn main() -> ExitCode {
     }
 }
 
-/// The one help, for a `permguard help [COMMAND]...`, dressed as the error kind clap uses to mean
-/// "the user asked, and this is the answer": printed on stdout, and a zero status.
+/// Answers `permguard help [COMMAND]...` with the help the named command answers `-h` with: the
+/// same bytes, on stdout, and a zero status. A name that is not a command is a usage error, told
+/// the way clap tells it for a name typed without `help` in front.
 ///
 /// The tree is built before it is walked so that each command already knows its own name in full —
 /// otherwise `permguard help zones create` answers with a usage line reading `create`.
-fn help_error(path: &[String]) -> clap::Error {
+fn print_help(path: &[String]) -> ExitCode {
     let mut root = args::command();
     root.build();
 
     let mut current = &root;
 
     for name in path {
-        match current.find_subcommand(name) {
-            Some(found) => current = found,
-            None => {
-                return clap::Error::raw(
+        let Some(found) = current.find_subcommand(name) else {
+            let _ = current
+                .clone()
+                .error(
                     clap::error::ErrorKind::InvalidSubcommand,
-                    format!(
-                        "error: '{name}' is not a {} command\n",
-                        current.get_display_name().unwrap_or(current.get_name())
-                    ),
-                );
-            }
-        }
+                    format!("unrecognized subcommand '{name}'"),
+                )
+                .print();
+
+            return ExitCode::from(EXIT_USAGE);
+        };
+
+        current = found;
     }
 
-    clap::Error::raw(
-        clap::error::ErrorKind::DisplayHelp,
-        current.clone().render_help(),
-    )
+    match current.clone().print_help() {
+        Ok(()) => ExitCode::from(EXIT_READY),
+        Err(error) => Failure::internal(error).report(OutputFormat::Terminal),
+    }
 }
 
 fn run(cli: Cli) -> Result<ExitCode, Failure> {
