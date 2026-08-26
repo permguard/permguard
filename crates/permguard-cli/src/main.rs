@@ -63,10 +63,16 @@ pub use crate::failure::{EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNREACH
 fn main() -> ExitCode {
     // Parsed by hand so that a wrong command line exits `EX_USAGE` rather than clap's default of
     // 2 — which is a status this CLI has already given a meaning of its own.
-    let cli = match args::command()
-        .try_get_matches()
-        .and_then(|matches| <Cli as clap::FromArgMatches>::from_arg_matches(&matches))
-    {
+    let cli = match args::command().try_get_matches().and_then(|matches| {
+        // `permguard help zones create` asks what `permguard zones create -h` asks, and is answered
+        // the same way — before the matches are derived, because the stand-in that parsed it has no
+        // variant in `Command` to be derived into.
+        if let Some(path) = args::help_request(&matches) {
+            return Err(help_error(&path));
+        }
+
+        <Cli as clap::FromArgMatches>::from_arg_matches(&matches)
+    }) {
         Ok(cli) => cli,
         Err(error) => {
             let requested = !error.use_stderr();
@@ -84,6 +90,38 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(failure) => failure.report(format),
     }
+}
+
+/// The one help, for a `permguard help [COMMAND]...`, dressed as the error kind clap uses to mean
+/// "the user asked, and this is the answer": printed on stdout, and a zero status.
+///
+/// The tree is built before it is walked so that each command already knows its own name in full —
+/// otherwise `permguard help zones create` answers with a usage line reading `create`.
+fn help_error(path: &[String]) -> clap::Error {
+    let mut root = args::command();
+    root.build();
+
+    let mut current = &root;
+
+    for name in path {
+        match current.find_subcommand(name) {
+            Some(found) => current = found,
+            None => {
+                return clap::Error::raw(
+                    clap::error::ErrorKind::InvalidSubcommand,
+                    format!(
+                        "error: '{name}' is not a {} command\n",
+                        current.get_display_name().unwrap_or(current.get_name())
+                    ),
+                );
+            }
+        }
+    }
+
+    clap::Error::raw(
+        clap::error::ErrorKind::DisplayHelp,
+        current.clone().render_help(),
+    )
 }
 
 fn run(cli: Cli) -> Result<ExitCode, Failure> {

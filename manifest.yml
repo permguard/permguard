@@ -1,0 +1,11 @@
+metadata:
+  kind: policy
+  name: help
+runtimes:
+  cedar:
+    language: { name: cedar, constraint: ">=4.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  cedar: { runtime: cedar, schema: false }
+profiles:
+  default: { type: permguard.pdp.v1, partitions: [cedar] }

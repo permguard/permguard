@@ -20,14 +20,22 @@ use crate::output::OutputFormat;
 /// same question asked two ways gets two different answers — and the short one
 /// says "see more with '--help'", which tells a user that what they just read
 /// was abridged. A CLI's help is a contract, and a contract with an abridged
-/// edition is two contracts. Both spell the full help, on every command in the
+/// edition is two contracts. Both spell the same help, on every command in the
 /// tree, and the flag says so: "Print help".
 pub fn command() -> clap::Command {
     one_help(Cli::command())
 }
 
-/// `-h` and `--help` print the long help — with the banner above it — here and
-/// in every subcommand below.
+/// `-h` and `--help` print the same help — the compact one, with the banner
+/// above it — here and in every subcommand below.
+///
+/// Compact rather than expanded because the expanded form puts every argument's
+/// description on its own line below the flag, which turns one screenful into
+/// several and buries the command list a reader is scanning. Nothing is lost:
+/// the compact form still carries the defaults, the possible values and the
+/// `[env: …]` names. Only the second paragraph of a doc comment is left out, and
+/// that is rationale for whoever reads the source, not an answer somebody at a
+/// terminal is looking for.
 ///
 /// The banner is on every command rather than only the root because every help
 /// is a place somebody arrives at cold, and `permguard init -h` is as likely to
@@ -38,21 +46,29 @@ pub fn command() -> clap::Command {
 /// The help flag is declared rather than mutated: clap generates its own only
 /// while building, and reaching for it before that is a panic. Declaring it
 /// means turning clap's off, which is what `disable_help_flag` is for.
+///
+/// The same goes for the `help` subcommand, the third spelling of the question:
+/// clap's own answers it with the expanded form, and answers it from inside the
+/// parser, where there is nothing left to intervene on. It is turned off and
+/// replaced by a stand-in that parses but does nothing, so that `help_request`
+/// can read it back out of the matches and `main` can print the one help.
 fn one_help(command: clap::Command) -> clap::Command {
     let subcommands: Vec<String> = command
         .get_subcommands()
         .map(|subcommand| subcommand.get_name().to_owned())
         .collect();
+    let has_subcommands = !subcommands.is_empty();
 
     let mut command = command
         .before_help(crate::banner::banner())
         .before_long_help(crate::banner::banner())
         .disable_help_flag(true)
+        .disable_help_subcommand(true)
         .arg(
             clap::Arg::new("help")
                 .short('h')
                 .long("help")
-                .action(clap::ArgAction::HelpLong)
+                .action(clap::ArgAction::HelpShort)
                 .help("Print help"),
         );
 
@@ -62,7 +78,56 @@ fn one_help(command: clap::Command) -> clap::Command {
         command = command.mut_subcommand(name, one_help);
     }
 
+    // Only where clap would have put one, so that `permguard version help` stays
+    // the usage error it always was.
+    if has_subcommands {
+        command = command.subcommand(one_help(help_subcommand()));
+    }
+
     command
+}
+
+/// The stand-in for clap's `help` subcommand: the same name, the same summary,
+/// the same trailing list of command names, and no behaviour of its own.
+fn help_subcommand() -> clap::Command {
+    clap::Command::new("help")
+        .about("Print this message or the help of the given subcommand(s)")
+        .arg(
+            clap::Arg::new("command")
+                .value_name("COMMAND")
+                .num_args(0..)
+                .help("The command to describe, and its own subcommand"),
+        )
+}
+
+/// The path of command names a `help` invocation asks about, when the invocation
+/// is one — empty for a bare `permguard help`.
+///
+/// Read off the matches rather than off the derived `Command`, because the
+/// stand-in lives in the clap tree and has no variant there: reaching it means
+/// the question was help, and it is answered before anything is derived.
+pub fn help_request(matches: &clap::ArgMatches) -> Option<Vec<String>> {
+    let mut path = Vec::new();
+    let mut current = matches;
+
+    loop {
+        let (name, inner) = current.subcommand()?;
+
+        if name == "help" {
+            path.extend(
+                inner
+                    .get_many::<String>("command")
+                    .into_iter()
+                    .flatten()
+                    .cloned(),
+            );
+
+            return Some(path);
+        }
+
+        path.push(name.to_owned());
+        current = inner;
+    }
 }
 
 #[derive(Debug, Parser)]
@@ -593,8 +658,8 @@ mod tests {
             assert_eq!(help.get_short(), Some('h'), "{}", command.get_name());
             assert_eq!(help.get_long(), Some("help"), "{}", command.get_name());
             assert!(
-                matches!(help.get_action(), clap::ArgAction::HelpLong),
-                "{} answers -h with something other than the full help",
+                matches!(help.get_action(), clap::ArgAction::HelpShort),
+                "{} answers -h with something other than the compact help",
                 command.get_name()
             );
             checked += 1;
