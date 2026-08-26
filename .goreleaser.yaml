@@ -203,16 +203,31 @@ nfpms:
     ids:
       - permguard_cli
 
-# Container images from the same tested binaries — a distroless base and one
-# static musl binary, nothing else in the filesystem. Published to GHCR under
-# this repository's own namespace: no name can collide with the Go images on
-# Docker Hub, and adding Docker Hub later is one more `images:` entry.
+# Container images from the same tested binaries — a distroless base and one static musl binary,
+# nothing else in the filesystem. Every image is published twice, from one build, to two registries:
+#
+#   ghcr.io/permguard/permguard/<name>   the full set of tags, `latest` included. GHCR nests under
+#                                        this repository, so nothing here can collide with anything.
+#   permguard/<name>                     Docker Hub, **versioned tags only**. Those names still
+#                                        carry the Go images, whose last release was v0.0.52 and
+#                                        whose `latest` still points at it. This CLI starts at
+#                                        v0.1.0, so `0.1.0` and `0.1` are free while `latest` and
+#                                        every `0.0.x` stay where they are. When the Rust build
+#                                        becomes *the* Permguard, `latest` moves here in one commit
+#                                        — the same handover the `cli-rust` Homebrew cask is waiting
+#                                        on. Until then a `docker pull permguard/all-in-one` gets
+#                                        what it has always got.
+#
+# Two blocks per image rather than one, because `tags` applies to every entry in `images`: a single
+# block cannot give GHCR a `latest` and withhold it from Docker Hub. The second build is a cache hit
+# on the first — only the push is real work.
 dockers_v2:
   # `extra_files` is not decoration: the build context GoReleaser assembles holds the Dockerfile and
   # the prebuilt binary at `${TARGETPLATFORM}/${BINARY_NAME}`, and nothing else. Anything else a
   # COPY names — the licence, the state directory the image ships — has to be listed here or the
   # build fails at release time, which is the worst possible moment to find out.
-  - id: permguard_all_in_one
+
+  - id: permguard_all_in_one_ghcr
     dockerfile: ./docker/release/all-in-one.Dockerfile
     ids:
       - permguard_all_in_one
@@ -236,7 +251,31 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "github.com/permguard/permguard"
 
-  - id: permguard_control_plane
+  # Docker Hub: the same digest, versioned tags only — see the note above.
+  - id: permguard_all_in_one_dockerhub
+    dockerfile: ./docker/release/all-in-one.Dockerfile
+    ids:
+      - permguard_all_in_one
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "permguard/all-in-one"
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-all-in-one
+    labels:
+      org.opencontainers.image.title: "permguard-all-in-one"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
+  - id: permguard_control_plane_ghcr
     dockerfile: ./docker/release/control-plane.Dockerfile
     ids:
       - permguard_control_plane
@@ -260,7 +299,31 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "github.com/permguard/permguard"
 
-  - id: permguard_data_plane
+  # Docker Hub: the same digest, versioned tags only — see the note above.
+  - id: permguard_control_plane_dockerhub
+    dockerfile: ./docker/release/control-plane.Dockerfile
+    ids:
+      - permguard_control_plane
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "permguard/control-plane"
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-control-plane
+    labels:
+      org.opencontainers.image.title: "permguard-control-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
+  - id: permguard_data_plane_ghcr
     dockerfile: ./docker/release/data-plane.Dockerfile
     ids:
       - permguard_data_plane
@@ -284,10 +347,34 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.source: "github.com/permguard/permguard"
 
+  # Docker Hub: the same digest, versioned tags only — see the note above.
+  - id: permguard_data_plane_dockerhub
+    dockerfile: ./docker/release/data-plane.Dockerfile
+    ids:
+      - permguard_data_plane
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "permguard/data-plane"
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard-data-plane
+    labels:
+      org.opencontainers.image.title: "permguard-data-plane"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
   # The CLI, published as an image too: a pipeline step that runs `permguard check` or `permguard
   # apply` wants the binary without installing it, and the Dockerfile already existed with nothing
   # releasing it.
-  - id: permguard_cli
+  - id: permguard_cli_ghcr
     dockerfile: ./docker/release/cli.Dockerfile
     ids:
       - permguard_cli
@@ -299,6 +386,30 @@ dockers_v2:
     tags:
       - "{{ .Version }}"
       - "latest"
+      - "{{ .Major }}.{{ .Minor }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_NAME: permguard
+    labels:
+      org.opencontainers.image.title: "permguard-cli"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "github.com/permguard/permguard"
+
+  # Docker Hub: the same digest, versioned tags only — see the note above.
+  - id: permguard_cli_dockerhub
+    dockerfile: ./docker/release/cli.Dockerfile
+    ids:
+      - permguard_cli
+    extra_files:
+      - LICENSE
+      - docker/rootfs
+    images:
+      - "permguard/cli"
+    tags:
+      - "{{ .Version }}"
       - "{{ .Major }}.{{ .Minor }}"
     platforms:
       - linux/amd64

@@ -9,11 +9,17 @@
 # to run the single-process runtime instead, which is what a small installation or a test environment
 # wants.
 
-# Which registry the images come from. Both carry the same digests; this exists so a cluster that
-# mirrors one of them does not have to override four image names.
+# Where the images come from — registry *and* namespace, because the two registries do not agree on
+# the namespace: Docker Hub publishes `permguard/<name>`, while GHCR nests under the repository as
+# `permguard/permguard/<name>`. Holding the whole prefix in one value is the point: a cluster that
+# mirrors one of them overrides this one string, not four image names.
 image:
-  registry: docker.io
-  # `ghcr.io` is the other one. Set `registry: ghcr.io` and every image below follows.
+  registry: docker.io/permguard
+  # `ghcr.io/permguard/permguard` is the other one, digest for digest the same images.
+  #
+  # One caveat on Docker Hub: these names still carry the Go implementation, whose `latest` and `0.0`
+  # tags were never moved. The release publishes versioned tags there and nothing else, so pin `tag`
+  # (or leave it empty and let the chart's appVersion pin it) — never reach for `latest` here.
   pullPolicy: IfNotPresent
   # Empty means the chart's appVersion, so an upgrade of the chart is an upgrade of the product
   # unless something says otherwise.
@@ -22,7 +28,7 @@ image:
 
 controlPlane:
   enabled: true
-  repository: permguard/control-plane
+  repository: control-plane
   replicaCount: 2
   # The public surface, and the telemetry surface which must never be part of it.
   ports:
@@ -67,7 +73,7 @@ controlPlane:
 
 dataPlane:
   enabled: true
-  repository: permguard/data-plane
+  repository: data-plane
   replicaCount: 3
   ports:
     http: 7656
@@ -148,7 +154,7 @@ dataPlane:
 
 allInOne:
   enabled: false
-  repository: permguard/all-in-one
+  repository: all-in-one
   replicaCount: 1
   ports:
     controlHttp: 7556
