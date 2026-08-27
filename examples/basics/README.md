@@ -620,6 +620,11 @@ task cli -- -w examples/basics test
 4 case(s), 4 passed, 0 failed.
 ```
 
+These cases are checked twice, from the same file: by `permguard test`, which
+compiles the workspace here, and by
+`cargo test -p permguard-data-plane --test examples`, which builds a mirror and asks
+the real decision path. An example cannot claim something neither can produce.
+
 The first line is the whole point of two partitions in one profile: **both** permit
 the read, and the decision cites both. The fourth is the schema doing its job — under
 `default`, `create` is an action the Cedar partition cannot evaluate, and a partition

@@ -420,12 +420,14 @@ task cli -- -w examples/release-pipeline test
 <summary>The same example, through the data plane's own decision path</summary>
 
 ```bash
-cargo test -p permguard-data-plane --test release_pipeline_example
+cargo test -p permguard-data-plane --test examples
 ```
 
-That test reads this directory — manifest, policies and all eleven requests —
-builds a mirror and asks the real `Decider`. It covers what `permguard test` does
-not: the ledger as a plane actually loads it. It also asserts that each profile
-names only the partitions it needs.
+That test reads this directory — manifest, policies, requests **and the very cases
+above** — builds a mirror and asks the real `Decider`. It covers what `permguard
+test` does not: the ledger as a plane actually loads it. Both examples go through
+it, and neither keeps a second copy of its expectations: the `.yml` is the only
+place they are written. It also asserts that each profile names only the partitions
+it needs.
 
 </details>

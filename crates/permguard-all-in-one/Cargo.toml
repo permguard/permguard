@@ -22,6 +22,10 @@ path = "src/main.rs"
 [[bin]]
 name = "permguard_all_in_one"
 path = "src/bin/permguard_all_in_one.rs"
+# The underscore spelling of the same entry point. It documents to the same path as the
+# dashed one, which makes `cargo doc --workspace` a filename collision rather than a
+# build — and there is nothing to document either way: both are `include!` of one file.
+doc = false
 
 [dependencies]
 permguard-control-plane.workspace = true

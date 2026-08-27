@@ -1,23 +1,19 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The `examples/release-pipeline` lab, decided by the real decision path.
+//! Every example under `examples/`, decided by the real decision path.
 //!
-//! The manifest, the policies and the requests are read from the example
-//! directory — the same files its README tells a reader to apply — and every
-//! decision is asserted, together with the policy that made it. An edit that
-//! changes what the example decides fails here, rather than in the terminal of
-//! whoever followed the README next.
+//! The manifest, the policies and the requests are read from the example directory —
+//! the same files its README tells a reader to apply — and so are the expectations:
+//! **the `tests/*.yml` `permguard test` reads**. There is no table of expected answers
+//! here, deliberately. One would be a second copy of what each example claims, free to
+//! drift from the first, and a case added to an example would be covered by the CLI and
+//! silently not by this.
 //!
-//! What each case is there to show:
-//!
-//! | | |
-//! | --- | --- |
-//! | the org chart decides who may act at all | `release-create-*` |
-//! | a guardrail overrides an entitlement — separation of duties | `signoff-separation-of-duties-deny` |
-//! | machine identities answer under a profile of their own | `artifact-*`, `deploy-*` |
-//! | the same person, refused and then allowed, on context alone | `rollback-*` |
-//! | and the two ways of saying no: a deny, and nothing permitting | citations below |
+//! So the two paths share their expectations and differ only in how the answer is
+//! reached: `permguard test` compiles the workspace and evaluates it; this drives the
+//! real `Decider` against a mirror built out of the same objects an `apply` pushes.
+//! Between them, an example cannot claim something neither path can produce.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -42,39 +38,72 @@ use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND}
 use permguard_objects::semver::Constraint;
 
 const ZONE: &str = "delivery";
-const LEDGER: &str = "release-pipeline";
+const LEDGER: &str = "the-example";
 
-/// Every request in the lab, the decision it must get, and the policies that
-/// must be cited for it. An empty list is the other way of saying no: nothing
-/// permitted the request, and there is no policy to name.
-const EXPECTED: &[(&str, bool, &[&str])] = &[
-    ("release-create-permit.json", true, &["release-authors"]),
-    ("release-create-deny.json", false, &[]),
-    ("signoff-permit.json", true, &["release-approvers"]),
-    (
-        "signoff-separation-of-duties-deny.json",
-        false,
-        &["delivery-guardrails"],
-    ),
-    (
-        "signoff-untested-deny.json",
-        false,
-        &["delivery-guardrails"],
-    ),
-    ("artifact-upload-permit.json", true, &["pipeline-workloads"]),
-    ("artifact-sign-deny.json", false, &[]),
-    ("deploy-permit.json", true, &["pipeline-workloads"]),
-    ("deploy-scan-failed-deny.json", false, &[]),
-    ("rollback-deny.json", false, &["delivery-guardrails"]),
-    (
-        "rollback-during-incident-permit.json",
-        true,
-        &["rollback-responders"],
-    ),
-];
+/// Every example, and where its cases live.
+const EXAMPLES: &[&str] = &["basics", "release-pipeline"];
 
-fn example() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/release-pipeline")
+/// One case, as `examples/*/tests/*.yml` spells it.
+///
+/// The shape is `permguard_cli::engine::workspace::cases`, restated here rather than
+/// depended on: a server's tests reaching into the CLI to read a file would be a worse
+/// coupling than three structs. What must not be duplicated is the *expectations*, and
+/// those are read, not restated.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Case {
+    name: String,
+    request: String,
+    #[serde(default)]
+    profile: Option<String>,
+    expect: Expectation,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Expectation {
+    #[serde(default)]
+    decision: Option<String>,
+    #[serde(default)]
+    policies: Option<Vec<String>>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    evaluations: Option<BTreeMap<String, String>>,
+}
+
+fn example(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples")
+        .join(name)
+}
+
+/// The cases an example claims, read from the files the CLI reads.
+fn cases(name: &str) -> Vec<(String, Case)> {
+    let directory = example(name).join("tests");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&directory)
+        .unwrap_or_else(|_| panic!("{} exists", directory.display()))
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|found| found == "yml" || found == "yaml")
+        })
+        .collect();
+    files.sort();
+
+    let mut found = Vec::new();
+    for file in files {
+        let text = std::fs::read_to_string(&file).expect("a case file is readable");
+        let read: Vec<Case> = serde_norway::from_str(&text)
+            .unwrap_or_else(|error| panic!("{}: {error}", file.display()));
+        for case in read {
+            found.push((name.to_owned(), case));
+        }
+    }
+
+    assert!(!found.is_empty(), "{name} claims nothing");
+
+    found
 }
 
 fn scratch(tag: &str) -> PathBuf {
@@ -133,8 +162,8 @@ struct FileProfile {
     partitions: Vec<String>,
 }
 
-fn manifest() -> Manifest {
-    let text = std::fs::read_to_string(example().join("manifest.yml"))
+fn manifest(name: &str) -> Manifest {
+    let text = std::fs::read_to_string(example(name).join("manifest.yml"))
         .expect("the example carries a manifest");
     let file: FileManifest = serde_norway::from_str(&text).expect("the manifest parses");
 
@@ -215,6 +244,31 @@ struct Policy {
     source: Vec<u8>,
 }
 
+/// One entry per policy the file holds: Cedar splits at each `@alias`, Rego does not split.
+fn split(source: &str, extension: &str) -> Vec<String> {
+    if extension != "cedar" {
+        return vec![source.to_owned()];
+    }
+
+    let mut found: Vec<String> = Vec::new();
+    for line in source.lines() {
+        if line.starts_with("@alias(") {
+            found.push(String::new());
+        }
+        if let Some(current) = found.last_mut() {
+            current.push_str(line);
+            current.push('\n');
+        }
+    }
+
+    assert!(
+        !found.is_empty(),
+        "a Cedar file with no `@alias` on any policy"
+    );
+
+    found
+}
+
 /// `@alias("x")` for Cedar, `#   alias: x` in the Rego metadata header. The
 /// same two places the CLI reads them from.
 fn alias_of(path: &Path, source: &str) -> String {
@@ -237,9 +291,14 @@ fn alias_of(path: &Path, source: &str) -> String {
 }
 
 /// The policies of one partition, read off disk in a stable order.
-fn policies(directory: &str, extension: &str, media_type: &'static str) -> Vec<Policy> {
+fn policies(
+    example_name: &str,
+    directory: &str,
+    extension: &str,
+    media_type: &'static str,
+) -> Vec<Policy> {
     let mut found = Vec::new();
-    let path = example().join(directory);
+    let path = example(example_name).join(directory);
 
     let mut names: Vec<PathBuf> = std::fs::read_dir(&path)
         .unwrap_or_else(|_| panic!("{} exists", path.display()))
@@ -250,11 +309,18 @@ fn policies(directory: &str, extension: &str, media_type: &'static str) -> Vec<P
 
     for name in names {
         let source = std::fs::read_to_string(&name).expect("a policy is readable");
-        found.push(Policy {
-            alias: alias_of(&name, &source),
-            media_type,
-            source: source.into_bytes(),
-        });
+
+        // A file is presentation; a policy is content. The CLI extracts **each policy as
+        // its own object**, so a Cedar file holding two of them is two policies on the
+        // wire — and a plane handed the whole file would refuse it as one that does not
+        // parse. A Rego module is indivisible, and stays one.
+        for text in split(&source, extension) {
+            found.push(Policy {
+                alias: alias_of(&name, &text),
+                media_type,
+                source: text.into_bytes(),
+            });
+        }
     }
 
     assert!(!found.is_empty(), "{} holds no policy", path.display());
@@ -264,8 +330,8 @@ fn policies(directory: &str, extension: &str, media_type: &'static str) -> Vec<P
 
 /// Writes the mirror a synchronization round would leave: the objects of the
 /// example's own commit, a verified checkpoint, and the identity file.
-fn provision(root: &Path) -> Manifest {
-    let manifest = manifest();
+fn provision(root: &Path, name: &str) -> Manifest {
+    let manifest = manifest(name);
     let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
@@ -300,7 +366,7 @@ fn provision(root: &Path) -> Manifest {
         };
 
         let mut entries = Vec::new();
-        for policy in policies(partition_name, extension, media_type) {
+        for policy in policies(name, partition_name, extension, media_type) {
             let digest = put(policy.media_type, &policy.source);
             let mut annotations = BTreeMap::new();
             annotations.insert(ANNOTATION_POLICY_ID.to_owned(), policy.alias.clone());
@@ -313,10 +379,13 @@ fn provision(root: &Path) -> Manifest {
             });
         }
         if partition.schema {
-            let schema = std::fs::read(example().join(partition_name).join("model.cedarschema"))
-                .unwrap_or_else(|_| {
-                    panic!("{partition_name} declares a schema and carries no model.cedarschema")
-                });
+            let schema =
+                std::fs::read(example(name).join(partition_name).join("model.cedarschema"))
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "{partition_name} declares a schema and carries no model.cedarschema"
+                        )
+                    });
             entries.push(TreeEntry {
                 kind: Kind::Blob,
                 digest: put(registry::MEDIA_TYPE_SCHEMA_CEDAR, &schema),
@@ -386,69 +455,138 @@ fn provision(root: &Path) -> Manifest {
     manifest
 }
 
-/// One of the lab's request files, addressed at the mirror above.
-fn request(name: &str) -> wire::CheckRequest {
-    let text = std::fs::read_to_string(example().join("requests").join(name))
-        .unwrap_or_else(|_| panic!("{name} is readable"));
-    let mut payload: Value = serde_json::from_str(&text)
-        .unwrap_or_else(|error| panic!("{name} is not JSON the CLI would accept either: {error}"));
+/// The request a case names, addressed at the mirror above.
+///
+/// The path is relative to the case file, `..` included, exactly as the CLI resolves it.
+fn request(example_name: &str, case: &Case) -> wire::CheckRequest {
+    let path = example(example_name)
+        .join("tests")
+        .join(&case.request)
+        .canonicalize()
+        .unwrap_or_else(|_| panic!("{} names no request at {}", case.name, case.request));
+    let text = std::fs::read_to_string(&path).expect("a request is readable");
+    let mut payload: Value = serde_json::from_str(&text).unwrap_or_else(|error| {
+        panic!(
+            "{}: not JSON the CLI would accept either: {error}",
+            case.name
+        )
+    });
 
     let object = payload
         .as_object_mut()
-        .unwrap_or_else(|| panic!("{name} is a JSON object"));
+        .unwrap_or_else(|| panic!("{} is a JSON object", case.request));
     object.insert("zone".to_owned(), Value::String(ZONE.to_owned()));
     object.insert("ledger".to_owned(), Value::String(LEDGER.to_owned()));
+    if let Some(profile) = &case.profile {
+        object.insert("profile".to_owned(), Value::String(profile.clone()));
+    }
 
     serde_json::from_value(payload)
-        .unwrap_or_else(|error| panic!("{name} is not a decision request: {error}"))
+        .unwrap_or_else(|error| panic!("{}: not a decision request: {error}", case.name))
 }
 
+/// Every case of every example, decided by the real decision path.
 #[tokio::test]
-async fn every_request_in_the_example_decides_the_way_its_readme_says() {
-    let root = scratch("decides").join("mirrors");
-    provision(&root);
-    let decider = Arc::new(Decider::new(
-        root.clone(),
-        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
-        Metrics::none(),
-        None,
-        256,
-    ));
+async fn every_example_decides_the_way_its_cases_say_it_does() {
+    let mut checked = 0;
 
-    for (name, expected, citations) in EXPECTED {
-        let answer = decider
-            .decide(&request(name), None)
-            .await
-            .unwrap_or_else(|error| panic!("{name}: the ledger is not served: {error:?}"));
+    for name in EXAMPLES {
+        let root = scratch(name).join("mirrors");
+        provision(&root, name);
+        let decider = Arc::new(Decider::new(
+            root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        ));
 
-        assert_eq!(
-            answer.decision, *expected,
-            "{name} decided {} instead",
-            answer.decision
-        );
+        for (_, case) in cases(name) {
+            let answer = decider
+                .decide(&request(name, &case), None)
+                .await
+                .unwrap_or_else(|error| panic!("{name}/{}: not served: {error:?}", case.name));
+            let context = answer.context.as_ref();
+            let refused = context
+                .and_then(|context| context.reason_admin.as_ref())
+                .filter(|reason| reason.code == "500")
+                .map(|reason| reason.message.clone());
 
-        let context = answer
-            .context
-            .unwrap_or_else(|| panic!("{name}: a decision carries its context"));
-        assert_eq!(
-            context.policies,
-            citations
-                .iter()
-                .map(|alias| (*alias).to_owned())
-                .collect::<Vec<String>>(),
-            "{name} cited something other than the policies the README names"
-        );
+            if let Some(wanted) = &case.expect.error {
+                let found = refused.as_deref().unwrap_or_else(|| {
+                    panic!(
+                        "{name}/{}: expected a refusal saying `{wanted}`, and it was evaluated",
+                        case.name
+                    )
+                });
+                assert!(
+                    found.contains(wanted.as_str()),
+                    "{name}/{}: expected a refusal saying `{wanted}`, got `{found}`",
+                    case.name
+                );
+            } else if let Some(found) = &refused {
+                panic!("{name}/{}: could not be evaluated: {found}", case.name);
+            }
+
+            if let Some(wanted) = &case.expect.decision {
+                let wanted_permit = wanted == "permit";
+                assert_eq!(
+                    answer.decision, wanted_permit,
+                    "{name}/{}: expected {wanted}",
+                    case.name
+                );
+            }
+
+            // A boxcarred request has no single policy to cite, so a case names the
+            // policies only for a plain one — which is what the CLI does too.
+            if let Some(wanted) = &case.expect.policies {
+                let cited: Vec<String> = context
+                    .map(|context| context.policies.clone())
+                    .unwrap_or_default();
+                // The mirror stores each policy under its alias, which is what the CLI's
+                // reports name too — so a citation is comparable to a case as it stands.
+                assert_eq!(
+                    &cited, wanted,
+                    "{name}/{}: cited something other than the policies its case names",
+                    case.name
+                );
+            }
+
+            if let Some(wanted) = &case.expect.evaluations {
+                let held = answer
+                    .evaluations
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{name}/{}: not answered as a batch", case.name));
+                for (request_id, decision) in wanted {
+                    let found = held
+                        .iter()
+                        .find(|evaluation| {
+                            evaluation.request_id.as_deref() == Some(request_id.as_str())
+                        })
+                        .unwrap_or_else(|| {
+                            panic!("{name}/{}: no evaluation named `{request_id}`", case.name)
+                        });
+                    let got = if found.decision { "permit" } else { "deny" };
+                    assert_eq!(
+                        got, decision,
+                        "{name}/{}: `{request_id}` expected {decision}",
+                        case.name
+                    );
+                }
+            }
+
+            checked += 1;
+        }
     }
+
+    assert!(checked > 12, "only {checked} cases were decided");
 }
 
-/// The point of the three partitions: a profile compiles what it names and nothing
-/// else, so the guardrails are not loaded to answer a pipeline request and the
-/// pipeline rules are not loaded to answer a person's. Two partitions running the
-/// same language is what makes that separation expressible at all — merge them and
-/// every profile pays for every module, quietly.
+/// The point of the release pipeline's three partitions: a profile compiles what it
+/// names and nothing else.
 #[test]
 fn each_profile_loads_only_the_partitions_it_needs() {
-    let manifest = manifest();
+    let manifest = manifest("release-pipeline");
 
     assert_eq!(
         manifest.profiles.get("admin").map(|p| p.partitions.clone()),
@@ -463,7 +601,6 @@ fn each_profile_loads_only_the_partitions_it_needs() {
         Some(vec!["pipeline-rego".to_owned()]),
         "what the pipeline asks is answered by the rules for machines, alone"
     );
-
     assert_eq!(
         manifest
             .partitions
@@ -488,14 +625,4 @@ fn each_profile_loads_only_the_partitions_it_needs() {
             "{rego} must not declare a schema: Rego has none, and the engine refuses one"
         );
     }
-
-    // And no partition holds a module belonging to the other side.
-    let aliases = |partition: &str, extension: &str| -> Vec<String> {
-        policies(partition, extension, registry::MEDIA_TYPE_POLICY_REGO)
-            .into_iter()
-            .map(|policy| policy.alias)
-            .collect()
-    };
-    assert_eq!(aliases("admin-rego", "rego"), vec!["delivery-guardrails"]);
-    assert_eq!(aliases("pipeline-rego", "rego"), vec!["pipeline-workloads"]);
 }

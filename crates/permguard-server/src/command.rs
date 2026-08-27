@@ -27,11 +27,41 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
+use clap::builder::TypedValueParser as _;
 use permguard_core::config::{
     SETTING_ADMIN_ADDR, SETTING_LOG_FORMAT, SETTING_LOG_LEVEL, SETTING_PUBLIC_GRPC_ADDR,
     SETTING_PUBLIC_HTTP_ADDR, SETTING_TELEMETRY_ADDR,
 };
 use permguard_core::{LogFormat, LogLevel};
+
+/// The spellings `--log-level` accepts, and which of them the help lists.
+///
+/// `LogLevel::ALL` is the canonical set and is what a reader is shown; `from_str` also takes
+/// `warning`, which stays accepted and stays out of the listing — an alias in a `[possible values:]`
+/// reads as a sixth level rather than a second name for one. A test below asserts that every
+/// spelling here parses and that no canonical one is missing, so the two cannot drift.
+const LOG_LEVEL_ALIASES: &[&str] = &["warning"];
+
+/// The same, for `--log-format`: `text` and `pretty` are `terminal`.
+const LOG_FORMAT_ALIASES: &[&str] = &["text", "pretty"];
+
+/// Declares the accepted values so that `--help` lists them the way every other enumerated flag in
+/// this product lists them — `[possible values: …]`, not a sentence in the description that no
+/// completion script and no `-o json` consumer can read.
+fn spellings(
+    canonical: &[&'static str],
+    aliases: &[&'static str],
+) -> Vec<clap::builder::PossibleValue> {
+    canonical
+        .iter()
+        .map(|name| clap::builder::PossibleValue::new(*name))
+        .chain(
+            aliases
+                .iter()
+                .map(|name| clap::builder::PossibleValue::new(*name).hide(true)),
+        )
+        .collect()
+}
 
 /// Reads a log level, reporting an unknown name as `clap` reports any other bad value.
 fn parse_log_level(value: &str) -> Result<LogLevel, String> {
@@ -169,12 +199,29 @@ pub struct ServeArgs {
     #[arg(long, value_name = "ADDR")]
     admin_addr: Option<String>,
 
-    /// Override how much the server says: error, warn, info, debug, or trace.
-    #[arg(long, value_name = "LEVEL", value_parser = parse_log_level)]
+    /// Override how much the server says.
+    #[arg(
+        long,
+        value_name = "LEVEL",
+        // The listed spellings are exactly the ones `parse_log_level` takes, so `try_map`
+        // never actually refuses — and if somebody adds one to only half of that, it
+        // refuses rather than guessing.
+        value_parser = clap::builder::PossibleValuesParser::new(spellings(
+            &LogLevel::ALL.map(|level| level.as_str()),
+            LOG_LEVEL_ALIASES,
+        )).try_map(|value| parse_log_level(&value)),
+    )]
     log_level: Option<LogLevel>,
 
-    /// Override the shape records are written in: json or terminal.
-    #[arg(long, value_name = "FORMAT", value_parser = parse_log_format)]
+    /// Override the shape records are written in.
+    #[arg(
+        long,
+        value_name = "FORMAT",
+        value_parser = clap::builder::PossibleValuesParser::new(spellings(
+            &LogFormat::ALL.map(|format| format.as_str()),
+            LOG_FORMAT_ALIASES,
+        )).try_map(|value| parse_log_format(&value)),
+    )]
     log_format: Option<LogFormat>,
 }
 
@@ -241,5 +288,81 @@ impl ServeArgs {
                     .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value))),
             )
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every spelling the help offers is a spelling the parser takes, and every canonical one is
+    /// offered.
+    ///
+    /// The two live apart on purpose — the parser is `permguard-core`'s, which may not depend on
+    /// `clap`, and the listing is this crate's — so this is what keeps them one contract. Add a
+    /// level to the enum, or an alias to `from_str`, and this fails until the listing follows.
+    #[test]
+    fn every_listed_spelling_parses_and_every_level_is_listed() {
+        let levels = spellings(
+            &LogLevel::ALL.map(|level| level.as_str()),
+            LOG_LEVEL_ALIASES,
+        );
+        for value in &levels {
+            let name = value.get_name();
+            assert!(
+                parse_log_level(name).is_ok(),
+                "`{name}` is offered and not accepted"
+            );
+        }
+        for level in LogLevel::ALL {
+            assert!(
+                levels
+                    .iter()
+                    .any(|value| value.get_name() == level.as_str() && !value.is_hide_set()),
+                "`{}` is a level and is not listed",
+                level.as_str()
+            );
+        }
+
+        let formats = spellings(
+            &LogFormat::ALL.map(|format| format.as_str()),
+            LOG_FORMAT_ALIASES,
+        );
+        for value in &formats {
+            let name = value.get_name();
+            assert!(
+                parse_log_format(name).is_ok(),
+                "`{name}` is offered and not accepted"
+            );
+        }
+        for format in LogFormat::ALL {
+            assert!(
+                formats
+                    .iter()
+                    .any(|value| value.get_name() == format.as_str() && !value.is_hide_set()),
+                "`{}` is a format and is not listed",
+                format.as_str()
+            );
+        }
+    }
+
+    /// An alias is accepted and not advertised: a `[possible values:]` that listed `warning` beside
+    /// `warn` would read as a sixth level rather than a second name for one.
+    #[test]
+    fn an_alias_is_accepted_and_stays_out_of_the_listing() {
+        let levels = spellings(
+            &LogLevel::ALL.map(|level| level.as_str()),
+            LOG_LEVEL_ALIASES,
+        );
+
+        for alias in LOG_LEVEL_ALIASES {
+            let listed = levels
+                .iter()
+                .find(|value| &value.get_name() == alias)
+                .unwrap_or_else(|| panic!("`{alias}` is not offered at all"));
+
+            assert!(listed.is_hide_set(), "`{alias}` is advertised as a level");
+            assert!(parse_log_level(alias).is_ok(), "`{alias}` is not accepted");
+        }
     }
 }
