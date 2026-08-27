@@ -71,7 +71,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
     }
 
     let state = Discovery {
-        document: permguard_server::plane::plane_configuration_document(context.config(), PLANE),
+        document: data_plane_configuration_document(context),
         keys: context.data_signing_keys().cloned(),
     };
 
@@ -79,6 +79,28 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
         .route("/.well-known/server-configuration", get(configuration))
         .route("/data-plane/keys", get(keys))
         .with_state(state)
+}
+
+/// This plane's own discovery document: who it is, what it signs with, and **which interfaces it
+/// exposes** — each with the address of its own configuration.
+///
+/// The link is the point. Discovery is layered — the process names its planes, a plane names its
+/// interfaces, an interface describes itself — so a caller given one URL reaches the rest without
+/// ever having a path compiled into it. A client that knew `/.well-known/permguard-pdp-v1-configuration`
+/// in advance would be a client that breaks the day the interface gains a version.
+fn data_plane_configuration_document(context: &ServerContext<'_>) -> String {
+    let base =
+        permguard_server::plane::plane_http_base(context.config(), PLANE).unwrap_or_default();
+    let generic = permguard_server::plane::plane_configuration_document(context.config(), PLANE);
+    let Some(head) = generic.strip_suffix('}') else {
+        return generic;
+    };
+
+    format!(
+        "{head},\"interfaces\":{{\"{interface}\":{{\"configuration\":\"{base}{path}\"}}}}}}",
+        interface = permguard_languages::request::INTERFACE,
+        path = permguard_languages::request::CONFIGURATION_PATH,
+    )
 }
 
 pub struct DataPlaneModule;

@@ -253,7 +253,8 @@ Same over gRPC, and straight at the API:
 ```bash
 permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
 
-curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
+# what `permguard.pdp.v1` offers here — the endpoints below come from this document
+curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
@@ -265,7 +266,8 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
 ```bash
 task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
 
-curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
+# what `permguard.pdp.v1` offers here — the endpoints below come from this document
+curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq

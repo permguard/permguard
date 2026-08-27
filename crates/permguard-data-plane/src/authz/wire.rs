@@ -3,35 +3,27 @@
 
 //! The `permguard.pdp.v1` payloads: what a PEP sends, and what it gets back.
 //!
-//! # Lineage, stated plainly
+//! # An interface Permguard owns
 //!
-//! The shape is **OpenID AuthZEN Authorization API 1.0** — `subject`,
-//! `action`, `resource`, `context` in, `{decision, context}` out, with
-//! `evaluations[]` for boxcarring and `options.evaluations_semantic` for how a
-//! batch resolves. What the standard leaves to the implementation, this profile
-//! fills in; what the standard does not cover, this profile adds as extensions
-//! the standard itself provides for (a receiver ignores what it does not know).
-//! The Search APIs are deliberately **not** served, and their absence from the
-//! metadata document is — per the standard's own rule — how a PEP learns that.
+//! `permguard.pdp.v1` is Permguard's **native** policy decision interface — not an implementation
+//! of, nor a compatibility claim for, any other authorization API. What it offers, and what it
+//! refuses, is defined in [`permguard_languages::request`] and published by this plane at
+//! `/.well-known/permguard-pdp-v1-configuration`.
 //!
-//! We do not claim conformance. We implement the contract and say where we
-//! differ, which is worth more than a badge.
+//! | | |
+//! | --- | --- |
+//! | policy store | **`zone` and `ledger` in the payload**, required — never the URL |
+//! | which policies answer | **`profile`**, naming the partitions of the ledger |
+//! | runtime data | **`partition_inputs`**, addressed to a partition by name |
+//! | who is asking | **`principal`**, recorded for the audit, distinct from the subject |
+//! | reasons | **`reason_admin` / `reason_user`**, the disclosure split the whole server speaks |
+//! | many questions at once | **`evaluations[]`** with `options.evaluations_semantic` |
 //!
-//! # Where we differ, and why
-//!
-//! | | Standard | Here |
-//! | --- | --- | --- |
-//! | Policy store | the URL the PEP was configured with | **`zone` and `ledger` in the payload**, required |
-//! | Search APIs | optional | not served |
-//! | `principal`, `partition_inputs` | — | extensions: who is asking, and what each partition of the profile is given |
-//! | Reasons | free-form `context` | `reason_admin` / `reason_user`, the disclosure split the whole server speaks |
-//!
-//! One endpoint that carries the store in the body is the choice a caller
-//! asked for: a PEP that talks to several ledgers keeps one address and one
-//! connection pool, and the ledger becomes data — which is also what makes a
-//! request loggable and auditable as one record. A payload that names neither
-//! is **refused**, never answered against a default: silently deciding against
-//! the wrong policy store is the one failure mode nobody can debug.
+//! One endpoint that carries the store in the body is the choice a caller asked for: a PEP that
+//! talks to several ledgers keeps one address and one connection pool, and the ledger becomes data
+//! — which is also what makes a request loggable and auditable as one record. A payload that names
+//! neither is **refused**, never answered against a default: silently deciding against the wrong
+//! policy store is the one failure mode nobody can debug.
 
 // The payloads themselves live beside the engines, so that a plane serving a request and
 // `permguard test` deciding one off disk cannot disagree about what a request is.

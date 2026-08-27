@@ -32,11 +32,11 @@ use axum::{Json, Router};
 
 use permguard_core::{ApiError, Disclosure, ErrorClass};
 
+use super::configuration;
 use super::decide::Decider;
-use super::metadata;
 use super::wire::{CheckRequest, TraceContext};
 
-/// The header the standard names, echoed verbatim when the caller sends it.
+/// The correlation header, echoed verbatim when the caller sends it.
 const REQUEST_ID: &str = "x-request-id";
 /// The W3C Trace Context header, so a decision joins the request that caused it.
 const TRACEPARENT: &str = "traceparent";
@@ -46,18 +46,26 @@ const TRACEPARENT: &str = "traceparent";
 pub struct Surface {
     pub decider: std::sync::Arc<Decider>,
     pub disclosure: Disclosure,
-    /// The base URL this plane is reached at, for the metadata document.
+    /// The base URL this plane is reached at, for the configuration document.
     pub base_url: String,
 }
 
 /// The routes the decision endpoint answers.
 pub fn routes(surface: Surface) -> Router {
+    // Mounted from the interface's own constants, which is also what the configuration document
+    // advertises — so the document cannot name a path this plane does not answer.
     Router::new()
-        .route("/access/v1/evaluation", post(evaluation))
-        .route("/access/v1/evaluations", post(evaluations))
         .route(
-            "/.well-known/authzen-configuration",
-            get(authzen_configuration),
+            permguard_languages::request::EVALUATION_PATH,
+            post(evaluation),
+        )
+        .route(
+            permguard_languages::request::EVALUATIONS_PATH,
+            post(evaluations),
+        )
+        .route(
+            permguard_languages::request::CONFIGURATION_PATH,
+            get(pdp_configuration),
         )
         .with_state(surface)
 }
@@ -71,7 +79,7 @@ async fn evaluation(
 }
 
 /// The boxcarred endpoint. The same handler: a request with no `evaluations[]`
-/// is a single check, which is what the standard says it is.
+/// is a single check.
 async fn evaluations(
     State(surface): State<Surface>,
     headers: HeaderMap,
@@ -129,12 +137,11 @@ async fn answer(
     with_request_id(response, request_id.as_deref())
 }
 
-/// The PDP metadata document: what this plane serves, and — by their absence —
-/// what it does not.
-async fn authzen_configuration(State(surface): State<Surface>) -> Response {
+/// The `permguard.pdp.v1` configuration: what this interface offers here.
+async fn pdp_configuration(State(surface): State<Surface>) -> Response {
     (
         [(axum::http::header::CONTENT_TYPE, "application/json")],
-        metadata::document(&surface.base_url),
+        configuration::document(&surface.base_url),
     )
         .into_response()
 }

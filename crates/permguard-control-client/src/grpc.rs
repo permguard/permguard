@@ -859,23 +859,34 @@ impl crate::pdp::Pdp for GrpcPdp {
         Ok(answer_of(answer))
     }
 
-    fn metadata(&self) -> Result<serde_json::Value, CatalogFailure> {
+    /// What `permguard.pdp.v1` offers here, shaped exactly as the HTTP document — so a caller
+    /// reading it cannot tell which transport fetched it.
+    fn configuration(&self) -> Result<serde_json::Value, CatalogFailure> {
         let mut client = self.client();
         let answer = self
             .0
             .call(
-                "GetMetadata",
-                client.get_metadata(pdp::GetMetadataRequest {}),
+                "GetConfiguration",
+                client.get_configuration(pdp::GetConfigurationRequest {}),
             )
             .map_err(GrpcAdmin::failure)?;
+        let endpoints = answer.endpoints.unwrap_or_default();
+        let scope = answer.store_scope.unwrap_or_default();
 
         Ok(serde_json::json!({
-            "policy_decision_point": answer.policy_decision_point,
-            "access_evaluation_endpoint": answer.access_evaluation_endpoint,
-            "access_evaluations_endpoint": answer.access_evaluations_endpoint,
+            "interface": answer.r#interface,
+            "pdp": answer.pdp,
+            "endpoints": {
+                "evaluation": endpoints.evaluation,
+                "evaluations": endpoints.evaluations,
+            },
             "capabilities": answer.capabilities,
-            "permguard_profile": answer.permguard_profile,
-            "permguard_store_scope": answer.permguard_store_scope,
+            "store_scope": {
+                "in": scope.r#in,
+                "zone": scope.zone,
+                "ledger": scope.ledger,
+                "profile": scope.profile,
+            },
         }))
     }
 }

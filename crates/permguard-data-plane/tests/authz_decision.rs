@@ -63,6 +63,14 @@ const CEDAR_READ: Policy = Policy {
     source: r#"permit (principal, action == Action::"read", resource);"#,
 };
 
+/// Permits only through the group the request's entity store carries — so having that store or
+/// not is the difference between permit and deny.
+const CEDAR_GROUP: Policy = Policy {
+    id: "01a0-cedar-group",
+    media_type: registry::MEDIA_TYPE_POLICY_CEDAR,
+    source: r#"permit (principal in Group::"finance", action == Action::"read", resource);"#,
+};
+
 const CEDAR_NOT_BOB: Policy = Policy {
     id: "01a0-cedar-not-bob",
     media_type: registry::MEDIA_TYPE_POLICY_CEDAR,
@@ -890,7 +898,11 @@ mod surface {
         })
     }
 
-    async fn post(root: &Path, path: &str, body: Value) -> (StatusCode, Value, Option<String>) {
+    pub(crate) async fn post(
+        root: &Path,
+        path: &str,
+        body: Value,
+    ) -> (StatusCode, Value, Option<String>) {
         let request = Request::builder()
             .method("POST")
             .uri(path)
@@ -1031,35 +1043,109 @@ mod surface {
         assert_eq!(body["code"], json!("ledger_incompatible"));
     }
 
-    #[tokio::test]
-    async fn the_metadata_document_says_what_is_served_and_what_is_not() {
-        let root = scratch("http-meta").join("mirrors");
-        std::fs::create_dir_all(&root).expect("the root exists");
-
+    /// One helper for both discovery documents, so the two tests below differ only in the path.
+    async fn fetch(root: &Path, path: &str) -> (StatusCode, Value) {
         let request = Request::builder()
-            .uri("/.well-known/authzen-configuration")
+            .uri(path)
             .body(Body::empty())
             .expect("the request builds");
-        let response = router(&root)
+        let response = router(root)
             .oneshot(request)
             .await
             .expect("the router answers");
-        assert_eq!(response.status(), StatusCode::OK);
+        let status = response.status();
         let bytes = response
             .into_body()
             .collect()
             .await
             .expect("the body reads")
             .to_bytes();
-        let document: Value = serde_json::from_slice(&bytes).expect("it is JSON");
 
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// The interface names itself, the endpoints it advertises are the ones mounted, and it is
+    /// published at **exactly one** path.
+    ///
+    /// The last clause is the one worth stating carefully. Asserting that some particular foreign
+    /// path answers `404` proves nothing on its own: every path this surface does not mount
+    /// answers `404`, so such a test passes for a reason that has nothing to do with the name in
+    /// it. What actually matters is narrower and stronger — a caller must not be able to find this
+    /// document under a second name, because the moment two paths serve it, one of them becomes a
+    /// compatibility surface somebody has to keep honest.
+    ///
+    /// So the assertion is a count: of every path a reasonable person might reach for, exactly one
+    /// answers, and it is the interface's own constant.
+    #[tokio::test]
+    async fn the_configuration_is_published_at_exactly_one_path_and_describes_this_interface() {
+        let root = scratch("http-config").join("mirrors");
+        std::fs::create_dir_all(&root).expect("the root exists");
+
+        let declared = permguard_languages::request::CONFIGURATION_PATH;
+        let (status, document) = fetch(&root, declared).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(document["interface"], json!("permguard.pdp.v1"));
         assert_eq!(
-            document["access_evaluation_endpoint"],
+            document["endpoints"]["evaluation"],
             json!("http://127.0.0.1:7656/access/v1/evaluation")
         );
-        assert!(
-            document.get("search_subject_endpoint").is_none(),
-            "absence is the declaration"
+        assert_eq!(
+            document["endpoints"]["evaluations"],
+            json!("http://127.0.0.1:7656/access/v1/evaluations")
+        );
+        assert_eq!(document["store_scope"]["zone"], json!("required"));
+
+        // Every capability is this interface's own. A URN borrowed from somebody else's
+        // specification would be claiming their contract along with it.
+        for capability in document["capabilities"]
+            .as_array()
+            .expect("capabilities is an array")
+        {
+            let urn = capability.as_str().expect("a URN is a string");
+            assert!(urn.starts_with("urn:permguard:pdp:v1:"), "{urn}");
+        }
+
+        // The advertised endpoints really answer — an advertisement nobody honours is worse than
+        // none, because a caller configures itself from it.
+        for endpoint in ["evaluation", "evaluations"] {
+            let path = document["endpoints"][endpoint]
+                .as_str()
+                .expect("an endpoint")
+                .trim_start_matches("http://127.0.0.1:7656")
+                .to_owned();
+            let (status, _, _) = post(&root, &path, json!({})).await;
+            assert_ne!(
+                status,
+                StatusCode::NOT_FOUND,
+                "{endpoint} is advertised and not mounted"
+            );
+        }
+
+        // And one path publishes it. The candidates are the shapes a second surface would take if
+        // anyone added one: the interface's name without its version, and a bare product name.
+        // Neither is served, and this is what says so — the generic `404` for an unknown path
+        // would not, because it says nothing about *which* paths were meant to exist.
+        let candidates = [
+            declared,
+            "/.well-known/permguard-pdp-configuration",
+            "/.well-known/permguard-configuration",
+        ];
+        let mut publishing = Vec::new();
+        for candidate in candidates {
+            let (status, body) = fetch(&root, candidate).await;
+            if status == StatusCode::OK && body["interface"] == json!("permguard.pdp.v1") {
+                publishing.push(candidate);
+            }
+        }
+
+        assert_eq!(
+            publishing,
+            vec![declared],
+            "this document has exactly one address, and it is the one the interface declares"
         );
     }
 
@@ -1254,4 +1340,198 @@ async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph()
             .contains("teams"),
         "{refused:?}"
     );
+}
+
+/// The PDP over a **real socket**: the production client, the production server, and TCP between
+/// them.
+///
+/// # Why this exists on top of everything above
+///
+/// The HTTP tests drive the router in process, and the conversion tests check each side of the
+/// protobuf mapping on its own. Neither can see a field that is *lost between them* — and one was.
+/// `partition_inputs` inside a boxcarred evaluation was a bare proto3 map, and a map cannot tell an
+/// absent field from an empty one, so an evaluation stating `{}` arrived as "unset" and inherited
+/// the request's defaults. The same payload was refused over HTTP and answered over gRPC.
+///
+/// So this asks both transports the same two questions and requires the same two answers. Nothing
+/// is faked: the client is `permguard_control_client::pdp::client`, the one the CLI uses, and the
+/// server is `PdpApi` over the same `Decider` the HTTP surface holds.
+mod grpc_socket {
+    use super::*;
+
+    use permguard_data_plane::authz::grpc::PdpApi;
+
+    /// Serves a real PDP on an ephemeral port, and answers its `grpc://` URL.
+    fn serve(root: &Path) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port is free");
+        let address = listener.local_addr().expect("the address is known");
+        listener
+            .set_nonblocking(true)
+            .expect("the listener goes non-blocking for tokio");
+
+        let api = PdpApi {
+            decider: decider(root),
+            disclosure: Disclosure::Full,
+            base_url: format!("http://{address}"),
+        };
+
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("the server runtime starts");
+            runtime.block_on(async move {
+                let listener =
+                    tokio::net::TcpListener::from_std(listener).expect("tokio adopts it");
+                let incoming = async_stream::stream! {
+                    loop {
+                        match listener.accept().await {
+                            Ok((stream, _)) => yield Ok(stream),
+                            Err(error) => yield Err(error),
+                        }
+                    }
+                };
+                let _ = tonic::transport::Server::builder()
+                    .add_service(
+                        permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(api),
+                    )
+                    .serve_with_incoming(incoming)
+                    .await;
+            });
+        });
+
+        format!("grpc://{address}")
+    }
+
+    /// The two payloads: one whose evaluation inherits the request's inputs, one whose evaluation
+    /// states `{}` — which replaces them with nothing.
+    fn payloads() -> (Value, Value) {
+        let store = json!({
+            "type": permguard_languages::input::CEDAR_ENTITIES_V1,
+            "data": [
+                {"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []},
+                {"uid": {"type": "user", "id": "alice"}, "attrs": {},
+                 "parents": [{"type": "Group", "id": "finance"}]}
+            ]
+        });
+        let base = json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": "read"},
+            "partition_inputs": {"cedar": store}
+        });
+
+        let mut inherits = base.clone();
+        inherits["evaluations"] = json!([{"request_id": "one"}]);
+
+        let mut states_none = base;
+        states_none["evaluations"] = json!([{"request_id": "one", "partition_inputs": {}}]);
+
+        (inherits, states_none)
+    }
+
+    /// The two bindings describe the same interface, or "same contract, two transports" is a
+    /// claim nobody checks.
+    ///
+    /// A caller configures itself from whichever document it can reach. If the gRPC one named a
+    /// capability the HTTP one did not — or a different endpoint, or a different interface — a
+    /// deployment would behave differently depending on how its PEP happened to connect.
+    #[test]
+    fn both_transports_publish_the_same_configuration() {
+        let root = scratch("grpc-config").join("mirrors");
+        std::fs::create_dir_all(&root).expect("the root exists");
+
+        let url = serve(&root);
+        let over_grpc = permguard_control_client::pdp::client(
+            &url,
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses")
+        .configuration()
+        .expect("the plane answers");
+
+        // The HTTP document the same plane would serve, built by the one function both call.
+        let base = over_grpc["pdp"].as_str().expect("a pdp identifier");
+        let over_http: Value =
+            serde_json::from_str(&permguard_data_plane::authz::configuration::document(base))
+                .expect("it is JSON");
+
+        assert_eq!(
+            over_grpc, over_http,
+            "the same interface, described the same way, whichever transport asked"
+        );
+        assert_eq!(over_grpc["interface"], json!("permguard.pdp.v1"));
+    }
+
+    #[test]
+    fn an_evaluation_stating_no_inputs_is_answered_the_same_over_both_transports() {
+        let root = scratch("grpc-socket").join("mirrors");
+        // One Cedar partition whose policy only permits through the group the store carries, so
+        // *having* the store or not is the difference between permit and deny — which is exactly
+        // what the lost field decided.
+        let manifest = manifest(&[("cedar", "cedar", false)], ">=0.0.0");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest,
+            &[("cedar", vec![&CEDAR_GROUP], None)],
+        );
+
+        let url = serve(&root);
+        let client = permguard_control_client::pdp::client(
+            &url,
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses");
+
+        let (inherits, states_none) = payloads();
+
+        // Over the socket.
+        let over_grpc_inherits = client.evaluate(&inherits).expect("the plane answers");
+        let over_grpc_states_none = client.evaluate(&states_none).expect("the plane answers");
+
+        // And the same two, in process, over HTTP.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let over_http = |body: Value| {
+            let root = root.clone();
+            runtime.block_on(async move {
+                let (_, answer, _) =
+                    crate::surface::post(&root, "/access/v1/evaluation", body).await;
+
+                answer
+            })
+        };
+        let over_http_inherits = over_http(inherits);
+        let over_http_states_none = over_http(states_none);
+
+        // Inheriting, the store is there and the group permits.
+        assert_eq!(
+            over_grpc_inherits["decision"],
+            json!(true),
+            "gRPC: what an evaluation does not state, it inherits"
+        );
+        assert_eq!(
+            over_http_inherits["decision"], over_grpc_inherits["decision"],
+            "and both transports say so"
+        );
+
+        // Stating `{}`, the store is gone: `alice` is in no group, and nothing permits.
+        assert_eq!(
+            over_grpc_states_none["decision"],
+            json!(false),
+            "gRPC: `{{}}` replaces the defaults whole — a bare map read it as `unset` and \
+             inherited them, which is the bug this test exists for"
+        );
+        assert_eq!(
+            over_http_states_none["decision"], over_grpc_states_none["decision"],
+            "and both transports say so"
+        );
+    }
 }

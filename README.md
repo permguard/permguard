@@ -73,10 +73,15 @@ the reason, and **keyed commitments** over what the caller supplied — proof of
 keeping them. The log is hash-chained, shipped to the control plane, and verifiable afterwards by
 somebody who does not trust the plane that wrote it.
 
-**Standard on the wire.** The decision API is the **OpenID AuthZEN** shape — `subject`, `action`,
-`resource`, `context`, boxcarring, the metadata document — with the extensions stated plainly and
-the differences written down, in [`crates/permguard-languages/src/request.rs`](crates/permguard-languages/src/request.rs).
-No badge, no surprises.
+**An interface Permguard owns.** `permguard.pdp.v1` is Permguard's native policy decision
+interface, designed for profile-based decisions evaluated across one or more heterogeneous policy
+partitions. It is not an implementation of, nor a compatibility claim for, anybody else's
+authorization API. The shape will look familiar — a subject, an action, a resource, a context in; a
+decision and a reason out — because that is the obvious shape for the question. What owning it
+buys is that the parts nobody else specifies are specified *here*, in
+[`crates/permguard-languages/src/request.rs`](crates/permguard-languages/src/request.rs), and can
+change when Permguard needs them to. No badge, and no promise somebody else's document still
+holds.
 
 ## Install
 
@@ -97,6 +102,123 @@ Needs Rust `1.97`+, `cargo`, and `task` or `make`. Docker Compose for the observ
 `jq` for the JSON examples, `k6` only for load testing.
 
 </details>
+
+## Ask a plane what it is
+
+Start with what the planes say about themselves, because it is the shape of everything below.
+Nothing is agreed out of band: a client is handed **one URL** and reads the rest off it — where to
+push policy, where to ask for a decision, which keys sign what, and which parts of the standard are
+not served here.
+
+Both are up after `task run:all`, which is the first command of the next section.
+
+### The control plane — where policy is published
+
+```sh
+curl -s http://127.0.0.1:7556/.well-known/server-configuration | jq
+```
+
+```json
+{
+  "plane": "control-plane",
+  "transports": {
+    "http": true,
+    "grpc": true
+  },
+  "jwks_uri": "http://127.0.0.1:7556/control-plane/keys",
+  "notp": {
+    "media_type": "application/vnd.permguard.notp.v1+cbor",
+    "compression": "deflate",
+    "ref_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
+    "push_negotiation_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate",
+    "push_commit_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit",
+    "pull_negotiation_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate",
+    "object_upload_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/objects",
+    "object_fetch_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch"
+  },
+  "zones_endpoint": "http://127.0.0.1:7556/v1/zones",
+  "ledgers_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers"
+}
+```
+
+That `notp` block is the whole distribution protocol, discovered rather than agreed in advance: the
+media type, the compression, and the endpoints for negotiating a push, uploading only the objects
+the other side is missing, committing a ref, and pulling back. `jwks_uri` is where the keys that
+sign a head statement are published — which is what makes a mirror able to refuse a ledger it
+cannot verify.
+
+### The data plane — where decisions are made
+
+```sh
+curl -s http://127.0.0.1:7656/.well-known/server-configuration | jq
+```
+
+```json
+{
+  "plane": "data-plane",
+  "jwks_uri": "http://127.0.0.1:7656/data-plane/keys",
+  "interfaces": {
+    "permguard.pdp.v1": {
+      "configuration": "http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration"
+    }
+  }
+}
+```
+
+A plane says who it is, what it signs with, and **which interfaces it exposes** — each pointing at
+its own configuration. Nothing has to know a path in advance:
+
+```sh
+curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
+```
+
+```json
+{
+  "interface": "permguard.pdp.v1",
+  "pdp": "http://127.0.0.1:7656",
+  "endpoints": {
+    "evaluation": "http://127.0.0.1:7656/access/v1/evaluation",
+    "evaluations": "http://127.0.0.1:7656/access/v1/evaluations"
+  },
+  "capabilities": [
+    "urn:permguard:pdp:v1:store-in-payload",
+    "urn:permguard:pdp:v1:profile-selection",
+    "urn:permguard:pdp:v1:partition-inputs",
+    "urn:permguard:pdp:v1:principal",
+    "urn:permguard:pdp:v1:structured-reasons",
+    "urn:permguard:pdp:v1:boxcarring"
+  ],
+  "store_scope": {
+    "in": "payload",
+    "zone": "required",
+    "ledger": "required",
+    "profile": "optional"
+  }
+}
+```
+
+`interface` says exactly what this is, in one field. `endpoints` are the routes actually mounted —
+they come from the same constants the router does, so the document cannot advertise a path the
+plane does not answer. `store_scope` states the thing a caller would otherwise have to read prose
+to learn: `zone` and `ledger` travel in the body, `profile` is optional.
+
+`capabilities` are promises, so each one is implemented here, tested here, and answered identically
+over HTTP and gRPC — the store in the payload, profile selection, partition inputs, `principal`,
+the split reasons, boxcarring. Nothing is listed because it is planned, and nothing that is only
+half-true: a caller that configures itself from this document and is then refused by the same
+server has been lied to.
+
+So discovery is three layers, and each answers a different question:
+
+| Document | Question |
+| --- | --- |
+| `/.well-known/server-configuration` on the process | which planes does this process host, and where |
+| `/.well-known/server-configuration` on a plane | who is this plane, what keys, which interfaces |
+| `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.pdp.v1` offer here |
+
+Below that sit two more layers, in the ledger rather than on the wire: a **profile** names which
+partitions answer a request, and each **partition** declares the input contract a request may hand
+it. The examples are about those.
 
 ## Five minutes
 
@@ -220,11 +342,9 @@ permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requ
 permguard -w examples/basics test --remote   # the same cases, against the plane
 ```
 
-Straight at the API, which is AuthZEN:
+Straight at the API — the endpoint the discovery document above named:
 
 ```sh
-curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
-
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq

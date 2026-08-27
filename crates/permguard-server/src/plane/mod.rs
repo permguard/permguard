@@ -20,6 +20,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, anyhow};
 use axum::Router;
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse as _, Response};
 use tracing::info;
 
 use permguard_core::{
@@ -285,9 +287,10 @@ impl Service for PlaneService {
                     vec![(
                         addr,
                         "http+grpc",
-                        self.module
-                            .http_routes(context)
-                            .merge(self.module.grpc_routes(context)),
+                        shared_port(
+                            self.module.http_routes(context),
+                            self.module.grpc_routes(context),
+                        ),
                         http_tls,
                     )]
                 }
@@ -514,4 +517,57 @@ impl PlaneServer {
 
         app.run().await
     }
+}
+
+/// HTTP and gRPC on one port, with each protocol answering its own "no such thing".
+///
+/// # Why this is not a plain `merge`
+///
+/// The gRPC router carries a fallback of its own — the `UNIMPLEMENTED` a gRPC client expects for a
+/// method a server does not serve — and merging hands that fallback every unmatched path. So an
+/// **HTTP** client asking a shared port for a path that does not exist was answered `200 OK`, with
+/// `content-type: application/grpc`, `grpc-status: 12` and an empty body. Nothing was wrong with
+/// the server and nothing was wrong with the request except the path, and the one thing the answer
+/// did not say was *404*.
+///
+/// That is worse than unhelpful for discovery in particular: a client probing for a document, or a
+/// person checking whether an endpoint they read about is still served, is told "yes, 200" by a
+/// port that serves nothing there.
+///
+/// So the fallback asks which protocol is speaking — a gRPC request says so in its content type —
+/// and answers in that protocol's own vocabulary.
+fn shared_port(http: Router, grpc: Router) -> Router {
+    http.merge(grpc).fallback(unmatched)
+}
+
+/// The answer for a path neither surface serves.
+async fn unmatched(headers: HeaderMap) -> Response {
+    let grpc = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/grpc"));
+
+    if grpc {
+        // What tonic answers for a method it does not serve: the status rides in the trailer-style
+        // header, not in the HTTP status, which is how gRPC works.
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "application/grpc"),
+                (
+                    header::HeaderName::from_static("grpc-status"),
+                    // 12 is UNIMPLEMENTED.
+                    "12",
+                ),
+            ],
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::NOT_FOUND,
+        [(header::CONTENT_TYPE, "application/json")],
+        r#"{"class":"not_found","code":"route_unknown","message":"this plane serves no such path"}"#,
+    )
+        .into_response()
 }

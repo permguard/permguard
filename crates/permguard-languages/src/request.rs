@@ -15,28 +15,32 @@
 //! So the types and [`CheckRequest::asked`] are here, next to [`Query`], and the
 //! serving half — routing, tracing, disclosure — stays in the plane.
 //!
-//! # Lineage, stated plainly
+//! # An interface Permguard owns
 //!
-//! The shape is **OpenID AuthZEN Authorization API 1.0** — `subject`, `action`,
-//! `resource`, `context` in, `{decision, context}` out, with `evaluations[]` for
-//! boxcarring and `options.evaluations_semantic` for how a batch resolves. What the
-//! standard leaves to the implementation, this profile fills in; what the standard
-//! does not cover, this profile adds as extensions the standard itself provides for
-//! (a receiver ignores what it does not know). The Search APIs are deliberately
-//! **not** served, and their absence from the metadata document is — per the
-//! standard's own rule — how a PEP learns that.
+//! `permguard.pdp.v1` is Permguard's **native** policy decision interface. It is designed for
+//! profile-based decisions evaluated across one or more heterogeneous policy partitions, and it is
+//! **not** an implementation of, nor a compatibility claim for, any other authorization API.
 //!
-//! We do not claim conformance. We implement the contract and say where we differ,
-//! which is worth more than a badge.
+//! The shape will look familiar to anyone who has read an authorization API — a subject, an
+//! action, a resource, a context in; a decision and a reason out — because that shape is the
+//! obvious one for the question, and good designs converge. What follows from *owning* the
+//! contract is that the parts nobody else specifies are specified here, and can change when
+//! Permguard needs them to, without anyone having to ask whether some other document still holds:
 //!
-//! # Where we differ, and why
+//! | | |
+//! | --- | --- |
+//! | policy store | **`zone` and `ledger` in the payload**, required — never the URL |
+//! | which policies answer | **`profile`**, naming the partitions of the ledger |
+//! | runtime data | **`partition_inputs`**, addressed to a partition by name |
+//! | who is asking | **`principal`**, recorded for the audit, distinct from the subject |
+//! | reasons | **`reason_admin` / `reason_user`**, the disclosure split the whole server speaks |
+//! | many questions at once | **`evaluations[]`** with `options.evaluations_semantic` |
 //!
-//! | | Standard | Here |
-//! | --- | --- | --- |
-//! | Policy store | the URL the PEP was configured with | **`zone` and `ledger` in the payload**, required |
-//! | Search APIs | optional | not served |
-//! | `principal`, `partition_inputs` | — | extensions: who is asking, and what each partition of the profile is given |
-//! | Reasons | free-form `context` | `reason_admin` / `reason_user`, the disclosure split the whole server speaks |
+//! One endpoint that carries the store in the body is the choice a caller asked for: a PEP that
+//! talks to several ledgers keeps one address and one connection pool, and the ledger becomes data
+//! — which is also what makes a request loggable and auditable as one record. A payload that names
+//! neither is **refused**, never answered against a default: silently deciding against the wrong
+//! policy store is the one failure mode nobody can debug.
 //!
 //! # The one breaking change this profile has made
 //!
@@ -50,13 +54,6 @@
 //! permitted or denied for a reason nothing on the wire explains. See [`CheckRequest::removed`],
 //! which every binding calls, including the ones whose own schema has no field to carry it.
 //!
-//! One endpoint that carries the store in the body is the choice a caller asked
-//! for: a PEP that talks to several ledgers keeps one address and one connection
-//! pool, and the ledger becomes data — which is also what makes a request loggable
-//! and auditable as one record. A payload that names neither is **refused**, never
-//! answered against a default: silently deciding against the wrong policy store is
-//! the one failure mode nobody can debug.
-
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -66,6 +63,49 @@ use permguard_objects::manifest::InputContract;
 
 /// The default profile, when a request names none.
 pub const DEFAULT_PROFILE: &str = "default";
+
+/// The name of this interface, as a ledger's `profiles.<name>.type` declares it and as the
+/// discovery document identifies it.
+pub const INTERFACE: &str = "permguard.pdp.v1";
+
+/// Where a data plane publishes what this interface offers.
+///
+/// Named for the interface and its version, not for a standard: what is served here is
+/// `permguard.pdp.v1` and nothing else, and a path that said otherwise would be promising a
+/// document somebody else specifies.
+pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-pdp-v1-configuration";
+
+/// Where one question is asked.
+pub const EVALUATION_PATH: &str = "/access/v1/evaluation";
+
+/// Where many are, in one exchange.
+pub const EVALUATIONS_PATH: &str = "/access/v1/evaluations";
+
+/// What this interface offers, as a caller configures itself from it.
+///
+/// # The rule for this list
+///
+/// A capability is a **promise**, so each of these names something implemented here, tested here,
+/// and answered identically over both transports. Nothing is listed because it is planned, and
+/// nothing is listed that is only half-true: a caller that reads this document and is then refused
+/// by the same server has been lied to, which is worse than a document that said less.
+///
+/// | URN | What it promises | Where it is proved |
+/// | --- | --- | --- |
+/// | `store-in-payload` | `zone` and `ledger` name the store in the body, not the URL | `a_request_that_names_no_store_is_refused_by_name` |
+/// | `profile-selection` | `profile` chooses which partitions of the ledger answer | the `gateway` profile in `examples/basics` |
+/// | `partition-inputs` | runtime data is addressed to a partition by name | `each_partition_reads_the_input_addressed_to_it_and_no_other` |
+/// | `principal` | who is *asking*, recorded for the audit, distinct from the subject | `a_principal_is_stated_whole_or_refused` |
+/// | `structured-reasons` | every decision carries `reason_admin` and `reason_user` | `a_deny_is_an_answer_and_says_why` |
+/// | `boxcarring` | `evaluations[]`, resolved by `options.evaluations_semantic` | `a_batch_resolves_by_the_operator_its_semantic_names` |
+pub const CAPABILITIES: [&str; 6] = [
+    "urn:permguard:pdp:v1:store-in-payload",
+    "urn:permguard:pdp:v1:profile-selection",
+    "urn:permguard:pdp:v1:partition-inputs",
+    "urn:permguard:pdp:v1:principal",
+    "urn:permguard:pdp:v1:structured-reasons",
+    "urn:permguard:pdp:v1:boxcarring",
+];
 
 /// One entity as the wire carries it.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

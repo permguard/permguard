@@ -1,13 +1,12 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-// The `permguard.pdp.v1` profile over gRPC.
+// The `permguard.pdp.v1` interface over gRPC.
 //
-// The same contract the HTTPS binding serves — OpenID AuthZEN 1.0 with the
-// Permguard extensions — expressed in protobuf. The standard defines the JSON
-// binding and leaves other transports to profiles; this is ours, and it is
-// field-for-field the same request and the same answer, so a deployment can
-// choose a transport without choosing semantics.
+// Permguard's native policy decision interface, expressed in protobuf. It is
+// field-for-field the same request and the same answer the HTTP binding serves,
+// so a deployment chooses a transport without choosing semantics — and the
+// discovery below describes the same interface the HTTP document does.
 //
 // Free-form parts of the contract (`properties`, `context`, a partition's own
 // input) ride as `google.protobuf.Struct` / `Value`: they are policy data, and
@@ -25,8 +24,9 @@ service PolicyDecisionPoint {
   rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
   // Many, in one exchange, resolved by the requested semantic.
   rpc EvaluateMany(EvaluateRequest) returns (EvaluateResponse);
-  // What this PDP serves, and — by their absence — what it does not.
-  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
+  // What `permguard.pdp.v1` offers here — the same thing the HTTP binding
+  // publishes at `/.well-known/permguard-pdp-v1-configuration`.
+  rpc GetConfiguration(GetConfigurationRequest) returns (GetConfigurationResponse);
 }
 
 // Whom a decision is about, or what it targets.
@@ -169,13 +169,32 @@ message EvaluateResponse {
   repeated Decision evaluations = 4;
 }
 
-message GetMetadataRequest {}
+message GetConfigurationRequest {}
 
-message GetMetadataResponse {
-  string policy_decision_point = 1;
-  string access_evaluation_endpoint = 2;
-  string access_evaluations_endpoint = 3;
+// Where one question is asked, and where many are.
+message Endpoints {
+  string evaluation = 1;
+  string evaluations = 2;
+}
+
+// Which fields name the policy store, and whether a caller must state them.
+message StoreScope {
+  // Where the store is named: `payload` — never the URL.
+  string in = 1;
+  string zone = 2;
+  string ledger = 3;
+  string profile = 4;
+}
+
+// What this plane publishes about the interface it serves. Field for field the
+// JSON document, so a caller learns the same thing over either transport.
+message GetConfigurationResponse {
+  // The contract and its version: `permguard.pdp.v1`.
+  string interface = 1;
+  // This PDP's identifier.
+  string pdp = 2;
+  Endpoints endpoints = 3;
+  // Every entry is implemented and tested here. A capability is a promise.
   repeated string capabilities = 4;
-  string permguard_profile = 5;
-  string permguard_store_scope = 6;
+  StoreScope store_scope = 5;
 }

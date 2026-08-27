@@ -19,6 +19,24 @@ is cut.
 
 ### Changed — breaking, pre-release
 
+- **`permguard.pdp.v1` is named as what it is: Permguard's own interface.** It is not an
+  implementation of, nor a compatibility claim for, any other authorization API, and the code and
+  documentation no longer say otherwise. The shape will look familiar, because that is the obvious
+  shape for the question; what changes is that the contract is Permguard's to specify and to
+  evolve, without anyone having to ask whether somebody else's document still holds.
+
+  - The discovery endpoint is now `GET /.well-known/permguard-pdp-v1-configuration`. The old path
+    is **not mounted** and answers `404`.
+  - The document is Permguard's own, identified by `interface: "permguard.pdp.v1"`, with
+    `endpoints`, `capabilities` and `store_scope` — no longer borrowing another specification's
+    field names.
+  - Capabilities are namespaced `urn:permguard:pdp:v1:*`. Each names something implemented, tested,
+    and answered identically over HTTP and gRPC.
+  - A data plane's own `/.well-known/server-configuration` now carries `interfaces`, linking to the
+    configuration above — so a client is given one URL and finds the rest.
+  - Over gRPC, `GetMetadata` becomes `GetConfiguration` and returns the same document field for
+    field.
+
 - **`entities` is replaced by `partition_inputs`.** A request used to carry one entity graph for the
   whole profile, addressed to a *runtime*. That is unanswerable the moment a profile holds two
   partitions of the same runtime with different schemas: a graph legal for one is refused by the
@@ -75,6 +93,12 @@ is cut.
 
 ### Fixed
 
+- **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
+  fallback took every unmatched path, so an HTTP client asking for a missing route was told
+  `200 OK` with `grpc-status: 12` and an empty body. A gRPC caller still gets `UNIMPLEMENTED`; an
+  HTTP caller now gets a `404` that says so. It matters most for discovery: a client probing for a
+  document was being told "yes" by a port that serves nothing there.
+
 - **gRPC and HTTP resolve a boxcarred batch the same way.** An evaluation stating
   `"partition_inputs": {}` replaces the request's defaults with nothing; one stating none inherits
   them. A proto3 `map` cannot tell an absent field from an empty one, so over gRPC `{}` was read as
@@ -115,6 +139,12 @@ is cut.
 
 ### Fixed
 
+- **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
+  fallback took every unmatched path, so an HTTP client asking for a missing route was told
+  `200 OK` with `grpc-status: 12` and an empty body. A gRPC caller still gets `UNIMPLEMENTED`; an
+  HTTP caller now gets a `404` that says so. It matters most for discovery: a client probing for a
+  document was being told "yes" by a port that serves nothing there.
+
 - Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
   versions. Image provenance remains available through GitHub Artifact Attestations, while release
   checksums remain signed with Cosign.
@@ -124,6 +154,12 @@ is cut.
 ## [0.1.1] - 2026-08-26
 
 ### Fixed
+
+- **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
+  fallback took every unmatched path, so an HTTP client asking for a missing route was told
+  `200 OK` with `grpc-status: 12` and an empty body. A gRPC caller still gets `UNIMPLEMENTED`; an
+  HTTP caller now gets a `404` that says so. It matters most for discovery: a client probing for a
+  document was being told "yes" by a port that serves nothing there.
 
 - Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
   then pushed nowhere near it: no `images:` entry ever named it. Versioned tags only — `latest` and
@@ -215,15 +251,13 @@ more than the tidiness of dropping them.
   across the deployment, ledgers within their zone). The CLI grows `permguard zones …` and
   `permguard ledgers --zone <name-or-id> …`, and every reference accepts the name or the id. All
   mutations land in the audit trail.
-- **Authorization decisions** on the data plane: the `permguard.pdp.v1` profile — OpenID AuthZEN
-  1.0 with Permguard's extensions — served identically over HTTP
-  (`POST /access/v1/evaluation`, `/access/v1/evaluations`,
-  `GET /.well-known/authzen-configuration`) and gRPC
+- **Authorization decisions** on the data plane: the `permguard.pdp.v1` interface — served
+  identically over HTTP (`POST /access/v1/evaluation`, `/access/v1/evaluations`, and a discovery
+  document) and gRPC
   (`permguard.data.v1.PolicyDecisionPoint`). `zone` and `ledger` are **required fields of the
   payload**, by name or by identity: one endpoint answers for every ledger a plane holds, and a
   request naming neither is refused with `400` rather than answered against a default. Boxcarring
-  and the three `options.evaluations_semantic` values are implemented; the standard's Search APIs
-  are not served, and their absence from the metadata document is the declaration. Both built-in
+  and the three `options.evaluations_semantic` values are implemented. Both built-in
   languages answer the same contract — Cedar through `cedar-policy`, Rego through `regorus` with a
   written convention (`allow` permits, `deny` overrides, absent means no). A deny is a `200` with
   `decision: false`; a ledger this plane does not mirror is `404`; one it may not serve is `503`.

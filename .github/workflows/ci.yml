@@ -255,9 +255,10 @@ jobs:
             "" \
             "--values charts/permguard/values-production.yaml" \
             "--set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
-            "--set persistence.enabled=true" \
+            "--set persistence.enabled=true,dataPlane.persistence.enabled=false" \
+            "--set persistence.enabled=true,dataPlane.replicaCount=1" \
             "--set metrics.serviceMonitor.enabled=true" \
-            "--set controlPlane.autoscaling.enabled=true,dataPlane.autoscaling.enabled=true" \
+            "--set dataPlane.autoscaling.enabled=true" \
             "--set image.registry=ghcr.io" \
             "--set developmentMode=true,autogenerate=true"; do
             echo "helm template ${values:-(defaults)}"
@@ -276,6 +277,24 @@ jobs:
           if helm template permguard charts/permguard \
                --set controlPlane.enabled=false --set dataPlane.enabled=false > /dev/null 2>&1; then
             echo "the chart rendered an install that installs nothing" >&2
+            exit 1
+          fi
+          # One PersistentVolumeClaim mounted in three replicas is three mirrors writing over each
+          # other. The chart gives a component one claim, so persistence and replication are only
+          # compatible where each replica gets its own state — and asking for the other shape has
+          # to fail at template time rather than in a cluster at three in the morning.
+          if helm template permguard charts/permguard \
+               --set persistence.enabled=true > /dev/null 2>&1; then
+            echo "the chart rendered a replicated data plane sharing one volume" >&2
+            exit 1
+          fi
+          # A control plane holds the authority: the catalog, the refs, the key ring. Two of them
+          # behind one Service either fight over a volume or diverge. An autoscaler that can reach
+          # more than one replica is asking for exactly that, so it is refused the same way a
+          # replicaCount above one is.
+          if helm template permguard charts/permguard \
+               --set controlPlane.autoscaling.enabled=true > /dev/null 2>&1; then
+            echo "the chart rendered a control plane that can autoscale past one replica" >&2
             exit 1
           fi
           echo "ok: the mixed shape and the empty shape are both refused"

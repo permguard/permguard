@@ -62,3 +62,6 @@ http.workspace = true
 http-body-util.workspace = true
 permguard-std.workspace = true
 tower.workspace = true
+# The PDP over a real socket: a listener already bound, handed to tonic.
+async-stream.workspace = true
+futures-core.workspace = true

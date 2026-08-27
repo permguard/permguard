@@ -27,11 +27,14 @@ use tonic::{Request, Response, Status};
 
 use permguard_core::{ApiError, Disclosure, ErrorClass};
 
+use super::configuration;
 use super::decide::Decider;
-use super::metadata;
 use super::translate;
 use crate::v1::policy_decision_point_server::PolicyDecisionPoint;
-use crate::v1::{EvaluateRequest, EvaluateResponse, GetMetadataRequest, GetMetadataResponse};
+use crate::v1::{
+    Endpoints, EvaluateRequest, EvaluateResponse, GetConfigurationRequest,
+    GetConfigurationResponse, StoreScope,
+};
 
 /// The gRPC metadata keys carrying the structured half of a refusal — the same
 /// keys the control plane uses, because a client should learn one convention.
@@ -63,19 +66,30 @@ impl PolicyDecisionPoint for PdpApi {
         self.answer(request).await
     }
 
-    async fn get_metadata(
+    /// The same configuration the HTTP binding publishes, field for field.
+    ///
+    /// Built from the one [`configuration::configuration`] both transports call, so a caller
+    /// cannot learn a different interface depending on how it asked.
+    async fn get_configuration(
         &self,
-        _request: Request<GetMetadataRequest>,
-    ) -> Result<Response<GetMetadataResponse>, Status> {
-        let document = metadata::metadata(&self.base_url);
+        _request: Request<GetConfigurationRequest>,
+    ) -> Result<Response<GetConfigurationResponse>, Status> {
+        let document = configuration::configuration(&self.base_url);
 
-        Ok(Response::new(GetMetadataResponse {
-            policy_decision_point: document.policy_decision_point,
-            access_evaluation_endpoint: document.access_evaluation_endpoint,
-            access_evaluations_endpoint: document.access_evaluations_endpoint,
+        Ok(Response::new(GetConfigurationResponse {
+            r#interface: document.interface.to_owned(),
+            pdp: document.pdp,
+            endpoints: Some(Endpoints {
+                evaluation: document.endpoints.evaluation,
+                evaluations: document.endpoints.evaluations,
+            }),
             capabilities: document.capabilities,
-            permguard_profile: document.permguard_profile,
-            permguard_store_scope: document.permguard_store_scope,
+            store_scope: Some(StoreScope {
+                r#in: document.store_scope.r#in.to_owned(),
+                zone: document.store_scope.zone.to_owned(),
+                ledger: document.store_scope.ledger.to_owned(),
+                profile: document.store_scope.profile.to_owned(),
+            }),
         }))
     }
 }

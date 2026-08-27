@@ -5,23 +5,22 @@
 //!
 //! # What this is
 //!
-//! The `permguard.pdp.v1` profile — OpenID AuthZEN 1.0 with Permguard's
-//! extensions — served over HTTP and gRPC from the ledgers on this plane's
-//! volume. A PEP asks *may this subject do this to this?*; this answers, out of
-//! memory, in microseconds, from policies whose whole chain of custody is
+//! `permguard.pdp.v1`, Permguard's native policy decision interface, served over HTTP and gRPC
+//! from the ledgers on this plane's volume. A PEP asks *may this subject do this to this?*; this
+//! answers, out of memory, in microseconds, from policies whose whole chain of custody is
 //! verifiable.
 //!
 //! # The files, and why each exists
 //!
 //! | File | Owns |
 //! | --- | --- |
-//! | [`wire`] | the payload: the standard's shape, the extensions, the defaults and boxcarring rules |
+//! | [`wire`] | the payload: the interface's shape, its defaults and its boxcarring rules |
 //! | [`store`] | which mirror a zone/ledger names — directories are identities, requests are names |
 //! | [`snapshot`] | the volume walk: checkpoint, commit, manifest, load gate, partitions, compile |
 //! | [`block`] | the memory of a refusal, so an unserveable ledger is refused once and not every round |
 //! | [`cache`] | what stays compiled in memory, inside the two bounds a deployment sets |
 //! | [`decide`] | the decision itself: one path, whatever transport arrived |
-//! | [`metadata`] | what this PDP publishes about itself, including what it does *not* serve |
+//! | [`configuration`] | what this PDP publishes about the interface it serves |
 //! | [`http`] / [`grpc`] / [`translate`] | the two bindings, and the mapping that keeps them identical |
 //! | [`measure`] | what it counts about itself |
 //!
@@ -41,11 +40,11 @@
 pub mod audit;
 pub mod block;
 pub mod cache;
+pub mod configuration;
 pub mod decide;
 pub mod grpc;
 pub mod http;
 pub mod measure;
-pub mod metadata;
 pub mod snapshot;
 pub mod store;
 pub mod translate;
@@ -102,7 +101,7 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
     }))
 }
 
-/// The base URL this plane publishes in its metadata document.
+/// The base URL this plane publishes in its configuration document.
 ///
 /// What a PEP would have dialled to reach it: the configured public address,
 /// with the scheme its TLS settings imply. A deployment behind a proxy states

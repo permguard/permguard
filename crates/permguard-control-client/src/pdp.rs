@@ -39,8 +39,8 @@ pub trait Pdp {
     /// is the server's, unchanged.
     fn evaluate(&self, payload: &Value) -> Result<Value, Failure>;
 
-    /// What this PDP publishes about itself.
-    fn metadata(&self) -> Result<Value, Failure>;
+    /// What `permguard.pdp.v1` offers at this endpoint.
+    fn configuration(&self) -> Result<Value, Failure>;
 }
 
 /// The client for an endpoint, chosen by its scheme.
@@ -116,16 +116,22 @@ impl Pdp for HttpPdp {
             .and_then(Value::as_array)
             .is_some_and(|evaluations| !evaluations.is_empty())
         {
-            "/access/v1/evaluations"
+            permguard_languages::request::EVALUATIONS_PATH
         } else {
-            "/access/v1/evaluation"
+            permguard_languages::request::EVALUATION_PATH
         };
 
         self.call("POST", path, Some(&payload.to_string()))
     }
 
-    fn metadata(&self) -> Result<Value, Failure> {
-        self.call("GET", "/.well-known/authzen-configuration", None)
+    fn configuration(&self) -> Result<Value, Failure> {
+        // The interface's own constant, so the client cannot ask for a path the plane does not
+        // mount — and cannot keep asking for one it used to.
+        self.call(
+            "GET",
+            permguard_languages::request::CONFIGURATION_PATH,
+            None,
+        )
     }
 }
 
