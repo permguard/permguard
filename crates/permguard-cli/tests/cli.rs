@@ -451,3 +451,68 @@ fn verify_asks_for_the_producers_keys_rather_than_pretending() {
         stderr(&output)
     );
 }
+
+/// `-h`, `--help`, `help <command>` and — where the command has subcommands of its own —
+/// `<command> help` are spellings of one question, and the CLI answers them with the same bytes on
+/// stdout and a zero status, at the root and at every depth. The unit tests walk the tree and prove
+/// the flags are declared alike; only running the binary proves the `help` subcommand is answered
+/// by them too.
+///
+/// A command with no subcommands has no trailing `help`, exactly as it had none before: there,
+/// `help` is a value for the positional — `permguard zones create help` names a zone.
+#[test]
+fn every_spelling_of_help_prints_the_same_help() {
+    let dir = scratch("one-help");
+
+    for (path, has_subcommands) in [
+        (vec![], true),
+        (vec!["zones"], true),
+        (vec!["objects"], true),
+        (vec!["zones", "create"], false),
+        (vec!["decisions", "tail"], false),
+        (vec!["objects", "cat"], false),
+    ] {
+        let mut flag = path.clone();
+        flag.push("-h");
+        let expected = run(&dir, &flag);
+
+        assert!(expected.status.success(), "{path:?} -h");
+        assert!(expected.stderr.is_empty(), "{path:?} -h wrote to stderr");
+        assert!(
+            !stdout(&expected).contains("see more with"),
+            "{path:?} -h says its help is abridged"
+        );
+
+        let mut long = path.clone();
+        long.push("--help");
+
+        let mut before = vec!["help"];
+        before.extend(path.iter().copied());
+
+        let mut spellings = vec![long, before];
+
+        if has_subcommands {
+            let mut after = path.clone();
+            after.push("help");
+            spellings.push(after);
+        }
+
+        for spelling in spellings {
+            let got = run(&dir, &spelling);
+
+            assert_eq!(stdout(&got), stdout(&expected), "{spelling:?}");
+            assert_eq!(got.status.code(), Some(0), "{spelling:?}");
+        }
+    }
+}
+
+/// A name that is not a command is a usage error, whether or not `help` is typed in front of it.
+#[test]
+fn help_for_something_that_is_not_a_command_is_a_usage_error() {
+    let dir = scratch("help-unknown");
+    let output = run(&dir, &["help", "nope"]);
+
+    assert_eq!(output.status.code(), Some(64));
+    assert!(output.stdout.is_empty());
+    assert!(stderr(&output).contains("nope"), "{}", stderr(&output));
+}

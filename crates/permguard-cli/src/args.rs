@@ -22,6 +22,9 @@ use crate::output::OutputFormat;
 /// the command's own flags, then the ones that are the same everywhere.
 const GLOBAL_HEADING: &str = "Global options";
 
+/// A display order past anything the tree declares, so that `-h` closes every help.
+const HELP_LAST: usize = 1000;
+
 /// The command tree, with one help instead of two.
 ///
 /// clap answers `-h` with a summary and `--help` with an expanded form, so the
@@ -78,7 +81,11 @@ fn one_help(command: clap::Command) -> clap::Command {
                 .long("help")
                 .action(clap::ArgAction::HelpShort)
                 .help("Print help")
-                .help_heading(GLOBAL_HEADING),
+                .help_heading(GLOBAL_HEADING)
+                // Last, always. Without an order of its own it takes the one its insertion index
+                // gives it, which is a count of the command's own arguments — so it lands in a
+                // different place in every command's help, which is the thing being fixed.
+                .display_order(HELP_LAST),
         )
         // One dialect for the environment, everywhere: `[env: NAME]`. clap's own rendering appends
         // the variable's current value, which the two endpoints — read by `settings` rather than by
@@ -163,7 +170,7 @@ pub struct Cli {
     ///
     /// The same answer `permguard version` gives, in whichever format was asked for — one
     /// question, one answer, however it is spelled. `-V` rather than `-v`, which is `--verbose`.
-    #[arg(short = 'V', long)]
+    #[arg(short = 'V', long, help_heading = GLOBAL_HEADING)]
     pub version: bool,
 
     /// Optional so that `--version` can be asked without naming a command — and so that a bare
@@ -293,14 +300,14 @@ pub enum Command {
     },
     /// Clone a remote ledger into a fresh workspace directory.
     Clone {
-        /// https://host[:port][/prefix]/<zone>/<ledger>
+        /// The ledger to clone, as `https://host[:port][/prefix]/<zone>/<ledger>`.
         url: String,
         /// Where to clone; defaults to the ledger name.
         directory: Option<std::path::PathBuf>,
     },
     /// Bind this workspace to a remote ledger and materialize it.
     Checkout {
-        /// <remote>/<zone>/<ledger>[@<ref>]
+        /// The ledger to bind to, as `<remote>/<zone>/<ledger>[@<ref>]`.
         reference: String,
     },
     /// Fetch the latest changes, verify them, and materialize what is missing.
@@ -382,6 +389,19 @@ pub enum DecisionsAction {
     Export(DecisionsQuery),
 }
 
+/// Which way a decision went, as `--decision` spells it.
+///
+/// An enumeration rather than a free string, so that a misspelling is refused at the command line
+/// instead of quietly filtering to the other answer, and so that the help lists the two values the
+/// way `--output` lists its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Decision {
+    /// Only the requests that were allowed.
+    Permit,
+    /// Only the requests that were refused.
+    Deny,
+}
+
 /// Which decisions, and how they are checked.
 #[derive(Debug, clap::Args)]
 pub struct DecisionsQuery {
@@ -417,8 +437,8 @@ pub struct DecisionsQuery {
     pub since: Option<String>,
 
     /// Only permits, or only denies.
-    #[arg(long, value_name = "permit|deny")]
-    pub decision: Option<String>,
+    #[arg(long, value_enum, value_name = "DECISION")]
+    pub decision: Option<Decision>,
 
     /// Re-compute the chain, and the signatures when a key set is given.
     ///
@@ -442,14 +462,18 @@ pub struct DecisionsQuery {
 pub enum RemoteAction {
     /// Add (or replace) a named remote.
     Add {
+        /// The name this remote is known by.
         name: String,
-        /// https://host[:port][/prefix]
+        /// Where it is reached, as `https://host[:port][/prefix]`.
         url: String,
     },
     /// List the remotes.
     List,
     /// Remove a remote.
-    Remove { name: String },
+    Remove {
+        /// The remote to remove, by name.
+        name: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -475,6 +499,7 @@ pub enum ObjectsAction {
     },
     /// Print one object. Default view: a blob's content; otherwise `--human`.
     Cat {
+        /// The object, by the digest `objects list` reports.
         digest: String,
         /// The exact stored bytes (canonical CBOR), for piping.
         #[arg(long, conflicts_with_all = ["content", "inspect", "human"])]
@@ -520,7 +545,10 @@ pub enum ZonesAction {
     #[command(
         after_help = "Examples:\n  permguard zones create pharma\n  permguard zones create pharma -o json"
     )]
-    Create { name: String },
+    Create {
+        /// The zone's name.
+        name: String,
+    },
     /// List zones — every one, or a page at a time.
     #[command(
         after_help = "Examples:\n  permguard zones list\n  permguard zones list --page 2 --size 50\n  permguard zones list -o json | jq '.zones[].name'"
@@ -537,12 +565,16 @@ pub enum ZonesAction {
     #[command(
         after_help = "Examples:\n  permguard zones get pharma\n  permguard zones get 01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6 -o json"
     )]
-    Get { zone: String },
+    Get {
+        /// The zone, by name or id.
+        zone: String,
+    },
     /// Update a zone — today its name, with `--name`. The id never changes.
     #[command(
         after_help = "Examples:\n  permguard zones update pharma --name pharma-eu\n  permguard zones update 01a02b7b-e9e8-73c2-9aa9-a95039e7bdf6 --name pharma-eu -o json"
     )]
     Update {
+        /// The zone, by name or id.
         zone: String,
         /// The new name.
         #[arg(long)]
@@ -552,7 +584,10 @@ pub enum ZonesAction {
     #[command(
         after_help = "Examples:\n  permguard zones delete pharma\n  permguard zones delete pharma -o json"
     )]
-    Delete { zone: String },
+    Delete {
+        /// The zone, by name or id.
+        zone: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -565,6 +600,7 @@ pub enum LedgersAction {
         /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
+        /// The ledger's name.
         name: String,
     },
     /// List a zone's ledgers — every one, or a page at a time.
@@ -572,6 +608,7 @@ pub enum LedgersAction {
         after_help = "Examples:\n  permguard ledgers list --zone pharma\n  permguard ledgers list --zone pharma --page 2 --size 50\n  permguard ledgers list --zone pharma -o json | jq '.ledgers[].id'"
     )]
     List {
+        /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
         /// Which page of the listing, starting at 1. Absent: everything.
@@ -586,8 +623,10 @@ pub enum LedgersAction {
         after_help = "Examples:\n  permguard ledgers get --zone pharma policies\n  permguard ledgers get --zone pharma 01a02b87-818c-79d7-b171-e9f7d3645083 -o json"
     )]
     Get {
+        /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
+        /// The ledger, by name or id.
         ledger: String,
     },
     /// Update a ledger — today its name, with `--name`. The id never changes.
@@ -595,17 +634,22 @@ pub enum LedgersAction {
         after_help = "Examples:\n  permguard ledgers update --zone pharma policies --name policies-v2\n  permguard ledgers update --zone pharma policies --name policies-v2 -o json"
     )]
     Update {
+        /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
+        /// The ledger, by name or id.
         ledger: String,
+        /// The new name.
         #[arg(long)]
         name: String,
     },
     /// Delete a ledger.
     #[command(after_help = "Examples:\n  permguard ledgers delete --zone pharma policies")]
     Delete {
+        /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
+        /// The ledger, by name or id.
         ledger: String,
     },
 }
@@ -657,6 +701,15 @@ pub struct CheckArgs {
 mod tests {
     use super::*;
 
+    /// The tree as a command line actually sees it: `global = true` arguments reach the commands
+    /// that inherit them only once clap has built it, and it is the built tree that answers `-h`.
+    fn built() -> clap::Command {
+        let mut command = command();
+        command.build();
+
+        command
+    }
+
     /// Every command in the tree, the root included.
     fn walk(command: &clap::Command, visit: &mut dyn FnMut(&clap::Command)) {
         visit(command);
@@ -706,6 +759,113 @@ mod tests {
         });
 
         assert!(checked > 20, "only {checked} commands were checked");
+    }
+
+    /// The `help` subcommand is the third way of asking, and it has to be there to be answered.
+    #[test]
+    fn test_help_is_a_subcommand_of_every_command_that_has_subcommands() {
+        let mut checked = 0;
+
+        walk(&command(), &mut |command| {
+            let others = command
+                .get_subcommands()
+                .filter(|subcommand| subcommand.get_name() != "help")
+                .count();
+            let stand_in = command
+                .get_subcommands()
+                .any(|subcommand| subcommand.get_name() == "help");
+
+            assert_eq!(
+                stand_in,
+                others > 0,
+                "{} has {others} subcommands and {} a help subcommand",
+                command.get_name(),
+                if stand_in { "does have" } else { "has no" }
+            );
+            checked += 1;
+        });
+
+        assert!(checked > 20, "only {checked} commands were checked");
+    }
+
+    /// The flags that are the same everywhere are listed together, in the same order, and `-h`
+    /// closes the block — in every command, or the help stops reading the same way twice.
+    #[test]
+    fn test_the_global_flags_are_one_block_ending_in_help_everywhere() {
+        let mut expected: Option<Vec<String>> = None;
+        let mut checked = 0;
+
+        walk(&built(), &mut |command| {
+            let mut global: Vec<&clap::Arg> = command
+                .get_arguments()
+                .filter(|arg| arg.get_help_heading() == Some(GLOBAL_HEADING))
+                .collect();
+            global.sort_by_key(|arg| arg.get_display_order());
+
+            let names: Vec<String> = global
+                .iter()
+                .filter_map(|arg| arg.get_long())
+                // Only the root can be asked its version without naming a command.
+                .filter(|long| *long != "version")
+                .map(ToOwned::to_owned)
+                .collect();
+
+            assert_eq!(
+                names.last().map(String::as_str),
+                Some("help"),
+                "{} does not close its global block with --help",
+                command.get_name()
+            );
+
+            match &expected {
+                None => expected = Some(names),
+                Some(first) => assert_eq!(first, &names, "{}", command.get_name()),
+            }
+
+            checked += 1;
+        });
+
+        assert!(checked > 20, "only {checked} commands were checked");
+    }
+
+    /// A flag or an argument with nothing beside it in the help is one the reader has to guess at.
+    #[test]
+    fn test_every_argument_in_the_tree_says_what_it_is() {
+        let mut checked = 0;
+
+        walk(&built(), &mut |command| {
+            for arg in command.get_arguments() {
+                assert!(
+                    arg.get_help().is_some(),
+                    "{} {} carries no description",
+                    command.get_name(),
+                    arg.get_id()
+                );
+                checked += 1;
+            }
+        });
+
+        assert!(checked > 100, "only {checked} arguments were checked");
+    }
+
+    /// One dialect for the environment: `[env: NAME]`, never `[env: NAME=whatever is set]`.
+    #[test]
+    fn test_no_help_in_the_tree_prints_the_value_of_an_environment_variable() {
+        let mut checked = 0;
+
+        walk(&built(), &mut |command| {
+            for arg in command.get_arguments() {
+                assert!(
+                    arg.is_hide_env_values_set(),
+                    "{} {} would print what its variable is set to",
+                    command.get_name(),
+                    arg.get_id()
+                );
+                checked += 1;
+            }
+        });
+
+        assert!(checked > 100, "only {checked} arguments were checked");
     }
 
     #[test]
