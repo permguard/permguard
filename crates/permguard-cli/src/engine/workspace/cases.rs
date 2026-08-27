@@ -463,6 +463,32 @@ impl Answered {
     }
 }
 
+/// The aliases of the policies a decision cited, collecting any identity this workspace
+/// does not contain.
+///
+/// A decision cites identities; a case is written in the aliases their authors wrote. An
+/// identity with no alias here is not a naming problem — it is a policy these sources do
+/// not have, which means what answered is not what they would apply.
+fn name(
+    policies: &[String],
+    aliases: &BTreeMap<String, String>,
+    foreign: &mut Vec<String>,
+) -> Vec<String> {
+    policies
+        .iter()
+        .map(|id| match aliases.get(id) {
+            Some(alias) => alias.clone(),
+            None => {
+                if !foreign.contains(id) {
+                    foreign.push(id.clone());
+                }
+
+                id.clone()
+            }
+        })
+        .collect()
+}
+
 /// Compares one answer with what its case expected.
 ///
 /// The same judgement for a decision reached here and for one a plane reached, so that
@@ -482,27 +508,11 @@ pub fn judge(
     let mut foreign: Vec<String> = Vec::new();
 
     // Naming a policy is also how drift is caught, so every identity a decision cited
-    // has to pass through here — including the ones inside a boxcarred batch, whose
+    // has to pass through `name` — including the ones inside a boxcarred batch, whose
     // policies the overall answer does not carry. Before this, a batch whose booleans
     // matched passed even when a plane decided it with policies these sources do not
     // contain, which is precisely the drift `--remote` exists to find.
-    let mut name = |policies: &[String]| -> Vec<String> {
-        policies
-            .iter()
-            .map(|id| match aliases.get(id) {
-                Some(alias) => alias.clone(),
-                None => {
-                    if !foreign.contains(id) {
-                        foreign.push(id.clone());
-                    }
-
-                    id.clone()
-                }
-            })
-            .collect()
-    };
-
-    let decided = name(&answered.policies);
+    let decided = name(&answered.policies, aliases, &mut foreign);
     let per_evaluation: Vec<(Option<String>, bool, Vec<String>)> = answered
         .evaluations
         .iter()
@@ -510,11 +520,10 @@ pub fn judge(
             (
                 held.request_id.clone(),
                 held.permitted,
-                name(&held.policies),
+                name(&held.policies, aliases, &mut foreign),
             )
         })
         .collect();
-    drop(name);
 
     for id in &foreign {
         problems.push(format!(
