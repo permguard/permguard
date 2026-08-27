@@ -10,48 +10,50 @@
     "type": "Document",
     "id": "budget-2026"
   },
-  "entities": {
-    "schema": "cedar",
-    "items": [
-      {
-        "uid": {
-          "type": "Group",
-          "id": "finance"
+  "partition_inputs": {
+    "cedar": {
+      "type": "permguard.cedar.entities.v1",
+      "data": [
+        {
+          "uid": {
+            "type": "Group",
+            "id": "finance"
+          },
+          "attrs": {},
+          "parents": []
         },
-        "attrs": {},
-        "parents": []
-      },
-      {
-        "uid": {
-          "type": "User",
-          "id": "bob"
+        {
+          "uid": {
+            "type": "User",
+            "id": "bob"
+          },
+          "attrs": {},
+          "parents": []
         },
-        "attrs": {},
-        "parents": []
-      },
-      {
-        "uid": {
-          "type": "User",
-          "id": "carol"
+        {
+          "uid": {
+            "type": "User",
+            "id": "carol"
+          },
+          "attrs": {},
+          "parents": []
         },
-        "attrs": {},
-        "parents": []
-      },
-      {
-        "uid": {
-          "type": "Document",
-          "id": "budget-2026"
-        },
-        "attrs": {
-          "owner": {
-            "__entity": {
-              "type": "User",
-              "id": "carol"
+        {
+          "uid": {
+            "type": "Document",
+            "id": "budget-2026"
+          },
+          "attrs": {
+            "owner": {
+              "__entity": {
+                "type": "User",
+                "id": "carol"
+              }
             }
-          }
-        },
-        "parents": []
-      }
-    ]
+          },
+          "parents": []
+        }
+      ]
+    }
   }
 }

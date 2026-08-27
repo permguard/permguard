@@ -17,7 +17,74 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed — breaking, pre-release
+
+- **`entities` is replaced by `partition_inputs`.** A request used to carry one entity graph for the
+  whole profile, addressed to a *runtime*. That is unanswerable the moment a profile holds two
+  partitions of the same runtime with different schemas: a graph legal for one is refused by the
+  other, so the shape only ever worked while all but one partition ignored it. An input is now
+  addressed to a **partition by name**, which is the only identity that separates them.
+
+  ```json
+  "partition_inputs": {
+    "admin-cedar": { "type": "permguard.cedar.entities.v1", "data": [ … ] },
+    "admin-rego":  { "type": "permguard.rego.data.v1",      "data": { … } }
+  }
+  ```
+
+  `entities` is **refused**, never ignored — `field_removed`, on every binding, including gRPC,
+  whose schema has no field to carry it and would otherwise have dropped it silently. The proto
+  tags and names are reserved so nothing can be given them later.
+
+- **A ledger declares what each partition accepts**, in `manifest.yml`:
+
+  ```yaml
+  admin-cedar:
+    input: { type: permguard.cedar.entities.v1, required: true }
+  ```
+
+  The types are a fixed registry this build implements — `permguard.cedar.entities.v1` (a Cedar
+  entity store) and `permguard.rego.data.v1` (a JSON document) — not names a caller invents. The
+  `type` a request states is an assertion checked against the manifest's, never a selector: a
+  caller cannot choose the parser for bytes it also supplies. `required: true` refuses a request
+  that omits an input the partition's policies read, instead of deciding against an empty world.
+
+- **Rego reads its input at `input.partition`**, not `data.entities`. `data` is the partition's own
+  compiled world, identical for every request; grafting a caller's document into it made a global
+  store that changed per evaluation — a shared surface nothing could validate.
+
+- **The Helm chart's PodDisruptionBudget is one name and one number** (`budget: minAvailable`,
+  `value: 1`) rather than two optional keys. A values file choosing one had to null the other out,
+  and `helm template` honoured that null while `helm lint` did not: the same files rendered
+  correctly and linted as a mistake nobody had made.
+
+### Added
+
+- **A Rego partition can declare a schema.** `schema: true` plus one `.regoschema` file — JSON
+  Schema, draft 2020-12, compiled once when the partition loads — and `input.partition` is checked
+  against it before any rule runs. Rego is untyped by design and that is a virtue in a rule; it is
+  not one in the data a rule reads, where a renamed field turns a guardrail into a rule that
+  quietly never fires. Local only: a schema naming a remote `$ref` fails to compile rather than
+  reaching for the network.
+
+- **A profile's partitions are evaluated in parallel**, on a bounded process-wide pool, with the
+  first job run by the calling thread — so a single-partition profile dispatches nothing and costs
+  what it always did. Results come back in the manifest's order whatever order they finished in,
+  and a partition that comes apart is a missing answer, which denies. The data plane runs the whole
+  batch off the async runtime.
+
+### Fixed
+
+- **gRPC no longer answers a request it did not fully receive.** The client hand-walked the JSON
+  and dropped what it could not represent: a `context` that was not an object became no context,
+  `evaluations: null` became no evaluations, an unknown `evaluations_semantic` became the default.
+  It now reads the payload with the same `CheckRequest` the HTTP binding reads, then converts. The
+  server refuses an enum value nobody defined instead of reading it as `execute_all`.
+
+- **A schema file in a partition that declares none is refused**, not walked past. Skipping it was
+  the worst of the three outcomes: the author sees the file, believes their inputs are validated,
+  and nothing validates anything. The file extensions are asked of the language rather than
+  hard-coded, so a second language with a schema is found.
 
 ## [0.1.2] - 2026-08-26
 

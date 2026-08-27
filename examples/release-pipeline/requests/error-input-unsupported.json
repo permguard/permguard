@@ -1,0 +1,30 @@
+{
+  "profile": "pipeline",
+  "subject": {
+    "type": "Workload",
+    "id": "ci-pipeline",
+    "properties": {
+      "identity_verified": true,
+      "repository": "payments-api"
+    }
+  },
+  "action": {
+    "name": "artifact:upload"
+  },
+  "resource": {
+    "type": "Artifact",
+    "id": "payments-api-2.5.0",
+    "properties": {
+      "service": "payments-api"
+    }
+  },
+  "context": {},
+  "partition_inputs": {
+    "pipeline-rego": {
+      "type": "permguard.rego.data.v1",
+      "data": {
+        "anything": true
+      }
+    }
+  }
+}

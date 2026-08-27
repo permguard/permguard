@@ -28,7 +28,7 @@
 //! Policy text (it is in the ledger, addressed by the commit), the entity
 //! graph itself, and any caller attribute nobody named in `include`. A
 //! decision log is not a request archive. What is always kept is a **keyed
-//! commitment** over the caller's context and entities: it proves what the
+//! commitment** over the caller's context and partition inputs: it proves what the
 //! decision saw, and lets two decisions be compared, without keeping either.
 
 use std::collections::BTreeMap;
@@ -83,7 +83,7 @@ pub struct Decided<'a> {
     /// The caller's context, for the commitment.
     pub context: Option<Value>,
     /// The entity graph, for the commitment.
-    pub entities: Option<Value>,
+    pub partition_inputs: Option<Value>,
     /// The answer.
     pub permit: bool,
     /// Which policies decided.
@@ -734,7 +734,7 @@ impl Journal {
                     .map(|principal| party(principal, None)),
                 inputs: Inputs {
                     context: self.commit_to(decided.context.as_ref()),
-                    entities: self.commit_to(decided.entities.as_ref()),
+                    partition_inputs: self.commit_to(decided.partition_inputs.as_ref()),
                     external: Vec::new(),
                 },
                 decision: decided.permit,

@@ -1,0 +1,25 @@
+{
+  "profile": "admin",
+  "subject": {
+    "type": "User",
+    "id": "alice"
+  },
+  "action": {
+    "name": "deployment:rollback"
+  },
+  "resource": {
+    "type": "Service",
+    "id": "payments-api"
+  },
+  "context": {
+    "environment": "production",
+    "on_call": true,
+    "incident_active": true
+  },
+  "partition_inputs": {
+    "admin-cedar": {
+      "type": "permguard.rego.data.v1",
+      "data": {}
+    }
+  }
+}

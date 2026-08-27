@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "delivery guardrail inputs",
+  "description": "What a request may hand the admin-rego partition. Rego is untyped by design and that is a virtue in a rule; it is not one in the data a rule reads, where a renamed field turns a guardrail into a rule that quietly never fires.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "frozen_services": {
+      "description": "Services nothing may be deployed to right now, by id.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

@@ -840,10 +840,15 @@ impl crate::pdp::Pdp for GrpcPdp {
         let mut client = self.client();
         // Refused here rather than carried across as less than it says: a payload this transport
         // cannot represent is a bad request, and the caller hears the same thing HTTP tells them.
+        // The code is the contract's own — `field_removed` for a field this contract retired,
+        // `payload_malformed` for a body its types would not read — so a caller switching on it
+        // hears the same word whichever transport carried the request. A field the generated
+        // message has no tag for would otherwise be *dropped* here and the plane would answer a
+        // request it never saw the whole of.
         let request = request_of(payload).map_err(|why| CatalogFailure {
             class: "validation".to_owned(),
-            reason: "payload_malformed".to_owned(),
-            detail: format!("the request body is not a valid payload: {why}"),
+            reason: why.code.to_owned(),
+            detail: why.message,
             usage: true,
         })?;
         let answer = self
@@ -875,64 +880,67 @@ impl crate::pdp::Pdp for GrpcPdp {
     }
 }
 
-/// The payload, as the generated request. Total: every field of the profile
-/// has a field here, which is what makes the two transports one contract.
 /// The proto request a JSON payload means, **or a refusal**.
 ///
-/// Every conversion here can fail, and that is the point. It used to answer a payload it could not
-/// represent by dropping the part it could not: a `context` that was not an object became no
-/// context, `entities.items` that was not a list became no items, a `name` that was not a string
-/// became an empty one. HTTP refuses each of those, so the same request was refused on one
-/// transport and quietly answered against less than it said on the other — which is the contract
-/// differing by transport, not the transport differing.
-fn request_of(payload: &serde_json::Value) -> Result<pdp::EvaluateRequest, String> {
-    Ok(pdp::EvaluateRequest {
-        zone: text(payload, "zone")?,
-        ledger: text(payload, "ledger")?,
-        profile: text(payload, "profile")?,
-        subject: entity_of(payload.get("subject"), "subject")?,
-        resource: entity_of(payload.get("resource"), "resource")?,
-        action: action_of(payload.get("action"))?,
-        context: structure(payload.get("context"), "context")?,
-        principal: entity_of(payload.get("principal"), "principal")?,
-        entities: entities_of(payload.get("entities"))?,
-        evaluations: match payload.get("evaluations") {
-            None | Some(serde_json::Value::Null) => Vec::new(),
-            Some(serde_json::Value::Array(items)) => items
-                .iter()
-                .map(evaluation_of)
-                .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
-            Some(_) => return Err("`evaluations` is not a list".to_owned()),
-        },
-        evaluations_semantic: semantic_of(payload),
-        request_id: text(payload, "request_id")?,
+/// # One validation, not two
+///
+/// The payload is first read into `permguard_languages::request::CheckRequest` — **the very type
+/// the data plane deserializes an HTTP body into** — and only then mapped onto the generated
+/// message. That ordering is the whole point. This function used to walk the JSON itself, and a
+/// hand-written walk is partial by construction: it answered a payload it could not represent by
+/// dropping the part it could not, and it drifted from the HTTP reading every time either side
+/// gained a field. `context` that was not an object became no context; `evaluations: null` became
+/// no evaluations; an unknown `evaluations_semantic` became the default. Each of those was a
+/// request refused on one transport and quietly answered against less than it said on the other,
+/// which is the contract differing by transport rather than the transport differing.
+///
+/// What remains here is the one thing serde cannot know: proto carries a single IEEE-754 double,
+/// so an integer past 2^53 cannot cross and come back as itself.
+fn request_of(
+    payload: &serde_json::Value,
+) -> Result<pdp::EvaluateRequest, permguard_languages::Malformed> {
+    let request: permguard_languages::CheckRequest = serde_json::from_value(payload.clone())
+        .map_err(|error| permguard_languages::Malformed {
+            code: "payload_malformed",
+            message: error.to_string(),
+        })?;
+    // Carried with its own code, not flattened into one. A caller that switches on `field_removed`
+    // over HTTP switches on `field_removed` over gRPC: a structured refusal whose code depended on
+    // the transport would be two contracts with one name.
+    request.removed()?;
+
+    to_proto(&request).map_err(|message| permguard_languages::Malformed {
+        code: "payload_malformed",
+        message,
     })
 }
 
-/// A string field: absent is empty, present and not a string is a refusal.
-fn text(value: &serde_json::Value, field: &str) -> Result<String, String> {
-    match value.get(field) {
-        None | Some(serde_json::Value::Null) => Ok(String::new()),
-        Some(serde_json::Value::String(held)) => Ok(held.clone()),
-        Some(_) => Err(format!("`{field}` is not a string")),
-    }
+/// The generated message a contract request means. Total, and fallible only on numbers.
+fn to_proto(request: &permguard_languages::CheckRequest) -> Result<pdp::EvaluateRequest, String> {
+    Ok(pdp::EvaluateRequest {
+        zone: text(&request.zone),
+        ledger: text(&request.ledger),
+        profile: text(&request.profile),
+        subject: entity_of(request.subject.as_ref())?,
+        resource: entity_of(request.resource.as_ref())?,
+        action: action_of(request.action.as_ref())?,
+        context: structure(request.context.as_ref())?,
+        principal: entity_of(request.principal.as_ref())?,
+        partition_inputs: inputs_of(&request.partition_inputs)?,
+        evaluations: request
+            .evaluations
+            .iter()
+            .map(evaluation_of)
+            .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
+        evaluations_semantic: semantic_of(request),
+        request_id: text(&request.request_id),
+    })
 }
 
-/// An object field, as a proto struct.
-fn structure(
-    value: Option<&serde_json::Value>,
-    field: &str,
-) -> Result<Option<prost_types::Struct>, String> {
-    match value {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::Object(held)) => Ok(Some(prost_types::Struct {
-            fields: held
-                .iter()
-                .map(|(key, value)| Ok((key.clone(), proto_value(value)?)))
-                .collect::<Result<_, String>>()?,
-        })),
-        Some(_) => Err(format!("`{field}` is not an object")),
-    }
+/// An absent string is an empty one: proto3 has no other way to say it, and the contract's
+/// "absent" and "empty" mean the same thing for a name nobody wrote.
+fn text(value: &Option<String>) -> String {
+    value.clone().unwrap_or_default()
 }
 
 /// One JSON value, as proto carries values.
@@ -987,123 +995,108 @@ fn proto_value(value: &serde_json::Value) -> Result<prost_types::Value, String> 
     Ok(prost_types::Value { kind: Some(kind) })
 }
 
-fn entity_of(
-    value: Option<&serde_json::Value>,
-    field: &str,
-) -> Result<Option<pdp::Entity>, String> {
-    let Some(value) = value else {
+fn structure(
+    map: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Result<Option<prost_types::Struct>, String> {
+    let Some(map) = map else {
         return Ok(None);
     };
-    if value.is_null() {
+
+    Ok(Some(prost_types::Struct {
+        fields: map
+            .iter()
+            .map(|(key, value)| Ok((key.clone(), proto_value(value)?)))
+            .collect::<Result<_, String>>()?,
+    }))
+}
+
+fn entity_of(
+    entity: Option<&permguard_languages::request::EntityBody>,
+) -> Result<Option<pdp::Entity>, String> {
+    let Some(entity) = entity else {
         return Ok(None);
-    }
-    if !value.is_object() {
-        return Err(format!("`{field}` is not an object"));
-    }
+    };
 
     Ok(Some(pdp::Entity {
-        r#type: text(value, "type")?,
-        id: text(value, "id")?,
-        properties: structure(value.get("properties"), "properties")?,
+        r#type: text(&entity.kind),
+        id: text(&entity.id),
+        properties: structure(entity.properties.as_ref())?,
     }))
 }
 
-fn action_of(value: Option<&serde_json::Value>) -> Result<Option<pdp::Action>, String> {
-    let Some(value) = value else {
+fn action_of(
+    action: Option<&permguard_languages::request::ActionBody>,
+) -> Result<Option<pdp::Action>, String> {
+    let Some(action) = action else {
         return Ok(None);
     };
-    if value.is_null() {
-        return Ok(None);
-    }
-    if !value.is_object() {
-        return Err("`action` is not an object".to_owned());
-    }
 
     Ok(Some(pdp::Action {
-        name: text(value, "name")?,
-        properties: structure(value.get("properties"), "action.properties")?,
+        name: text(&action.name),
+        properties: structure(action.properties.as_ref())?,
     }))
 }
 
-fn items_of(value: &serde_json::Value, field: &str) -> Result<Vec<prost_types::Value>, String> {
-    match value.get("items") {
-        None | Some(serde_json::Value::Null) => Ok(Vec::new()),
-        Some(serde_json::Value::Array(items)) => items
-            .iter()
-            .map(proto_value)
-            .collect::<Result<Vec<prost_types::Value>, String>>(),
-        Some(_) => Err(format!("`{field}.items` is not a list")),
-    }
+/// The partition inputs, by the name each is addressed to.
+///
+/// Carried whole, because a transport that dropped one would change which world a partition
+/// decides against — the same request answered differently depending on how it travelled.
+fn inputs_of(
+    inputs: &std::collections::BTreeMap<String, permguard_languages::PartitionInputBody>,
+) -> Result<std::collections::HashMap<String, pdp::PartitionInput>, String> {
+    inputs
+        .iter()
+        .map(|(name, held)| {
+            Ok((
+                name.clone(),
+                pdp::PartitionInput {
+                    r#type: text(&held.kind),
+                    data: held.data.as_ref().map(proto_value).transpose()?,
+                },
+            ))
+        })
+        .collect()
 }
 
-fn entities_of(value: Option<&serde_json::Value>) -> Result<Option<pdp::Entities>, String> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    if value.is_null() {
-        return Ok(None);
-    }
-    if !value.is_object() {
-        return Err("`entities` is not an object".to_owned());
-    }
-
-    let mut partitions = std::collections::HashMap::new();
-    match value.get("partitions") {
-        None | Some(serde_json::Value::Null) => {}
-        Some(serde_json::Value::Object(held)) => {
-            for (name, own) in held {
-                if !own.is_object() {
-                    return Err(format!("`entities.partitions.{name}` is not an object"));
-                }
-                partitions.insert(
-                    name.clone(),
-                    pdp::PartitionEntities {
-                        schema: text(own, "schema")?,
-                        items: items_of(own, &format!("entities.partitions.{name}"))?,
-                    },
-                );
-            }
-        }
-        Some(_) => return Err("`entities.partitions` is not an object".to_owned()),
-    }
-
-    Ok(Some(pdp::Entities {
-        schema: text(value, "schema")?,
-        items: items_of(value, "entities")?,
-        // The per-partition overrides ride gRPC too: a client that addressed a partition over HTTP
-        // and silently lost it over gRPC would get a different decision for the same request.
-        partitions,
-    }))
-}
-
-fn evaluation_of(value: &serde_json::Value) -> Result<pdp::Evaluation, String> {
-    if !value.is_object() {
-        return Err("an entry of `evaluations` is not an object".to_owned());
-    }
-
+fn evaluation_of(
+    evaluation: &permguard_languages::request::EvaluationBody,
+) -> Result<pdp::Evaluation, String> {
     Ok(pdp::Evaluation {
-        subject: entity_of(value.get("subject"), "subject")?,
-        resource: entity_of(value.get("resource"), "resource")?,
-        action: action_of(value.get("action"))?,
-        context: structure(value.get("context"), "context")?,
-        entities: entities_of(value.get("entities"))?,
-        request_id: text(value, "request_id")?,
+        subject: entity_of(evaluation.subject.as_ref())?,
+        resource: entity_of(evaluation.resource.as_ref())?,
+        action: action_of(evaluation.action.as_ref())?,
+        context: structure(evaluation.context.as_ref())?,
+        // Wrapped, so that "states none" survives the trip. An evaluation carrying `{}` replaces
+        // the request's defaults with nothing; one carrying no inputs at all inherits them. A
+        // bare map cannot tell those apart, and the plane read `{}` as "inherit".
+        partition_inputs: match &evaluation.partition_inputs {
+            Some(inputs) => Some(pdp::PartitionInputs {
+                inputs: inputs_of(inputs)?,
+            }),
+            None => None,
+        },
+        request_id: text(&evaluation.request_id),
     })
 }
 
-fn semantic_of(payload: &serde_json::Value) -> i32 {
-    let named = payload
-        .get("options")
-        .and_then(|options| options.get("evaluations_semantic"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
-
-    match named {
-        "deny_on_first_deny" => pdp::EvaluationsSemantic::DenyOnFirstDeny as i32,
-        "permit_on_first_permit" => pdp::EvaluationsSemantic::PermitOnFirstPermit as i32,
-        "execute_all" => pdp::EvaluationsSemantic::ExecuteAll as i32,
-        // Absent, which the server reads as the default.
-        _ => pdp::EvaluationsSemantic::Unspecified as i32,
+fn semantic_of(request: &permguard_languages::CheckRequest) -> i32 {
+    match request
+        .options
+        .as_ref()
+        .and_then(|options| options.evaluations_semantic)
+    {
+        Some(permguard_languages::Semantic::DenyOnFirstDeny) => {
+            pdp::EvaluationsSemantic::DenyOnFirstDeny as i32
+        }
+        Some(permguard_languages::Semantic::PermitOnFirstPermit) => {
+            pdp::EvaluationsSemantic::PermitOnFirstPermit as i32
+        }
+        Some(permguard_languages::Semantic::ExecuteAll) => {
+            pdp::EvaluationsSemantic::ExecuteAll as i32
+        }
+        // Absent, which the server reads as the default. An unknown spelling never reaches here:
+        // the contract's own enum refused it while the payload was being read.
+        None => pdp::EvaluationsSemantic::Unspecified as i32,
     }
 }
 
@@ -1227,7 +1220,7 @@ mod request_tests {
         for refused in [EXACT + 1, i64::MAX, i64::MIN] {
             let why = request_of(&payload(json!({"context": {"n": refused}})))
                 .expect_err("{refused} cannot cross exactly");
-            assert!(why.contains("2^53"), "{refused}: {why}");
+            assert!(why.message.contains("2^53"), "{refused}: {}", why.message);
         }
 
         // `u64::MAX` and 2^64 are the pair that used to slip through: `u64::MAX as f64` rounds up
@@ -1235,56 +1228,65 @@ mod request_tests {
         let big = serde_json::Number::from(u64::MAX);
         let why = request_of(&payload(json!({"context": {"n": big}})))
             .expect_err("u64::MAX cannot cross exactly");
-        assert!(why.contains("2^53"), "{why}");
+        assert!(why.message.contains("2^53"), "{}", why.message);
 
         // A fraction is a double either way, and crosses unchanged.
         let request = request_of(&payload(json!({"context": {"n": 1.5}}))).expect("1.5 crosses");
         assert!(request.context.is_some());
     }
 
-    /// A shape this transport cannot represent is refused, not emptied. HTTP refuses each of
-    /// these; answering them over gRPC against less than the caller said would be the contract
-    /// differing by transport.
+    /// A shape the contract does not accept is refused, not emptied. Every one of these is
+    /// refused by the HTTP binding, because both bindings now read the payload with the same
+    /// type: answering any of them over gRPC against less than the caller said would be the
+    /// contract differing by transport.
     #[test]
-    fn a_shape_this_transport_cannot_represent_is_refused_rather_than_dropped() {
+    fn a_shape_the_contract_does_not_accept_is_refused_rather_than_dropped() {
         for (what, extra) in [
             (
                 "a context that is not an object",
                 json!({"context": "nope"}),
-            ),
-            (
-                "entities that are not an object",
-                json!({"entities": "nope"}),
-            ),
-            (
-                "entity items that are not a list",
-                json!({"entities": {"items": "nope"}}),
-            ),
-            (
-                "partition items that are not a list",
-                json!({"entities": {"partitions": {"p": {"items": 7}}}}),
-            ),
-            (
-                "a partition override that is not an object",
-                json!({"entities": {"partitions": {"p": "nope"}}}),
             ),
             ("a subject that is not an object", json!({"subject": 7})),
             (
                 "a name that is not a string",
                 json!({"action": {"name": 7}}),
             ),
-            (
-                "a schema that is not a string",
-                json!({"entities": {"schema": 7}}),
-            ),
             ("evaluations that are not a list", json!({"evaluations": 7})),
+            // `null` for a list is not an empty list. It used to become one here and was refused
+            // over HTTP: serde applies a default to a *missing* field, never to a stated null.
+            ("evaluations that are null", json!({"evaluations": null})),
             (
                 "an evaluation that is not an object",
                 json!({"evaluations": [7]}),
             ),
+            ("options that are not an object", json!({"options": 7})),
+            (
+                "a semantic nobody defined",
+                json!({"options": {"evaluations_semantic": "whatever_i_like"}}),
+            ),
+            (
+                "a semantic that is not a string",
+                json!({"options": {"evaluations_semantic": 7}}),
+            ),
             (
                 "properties that are not an object",
                 json!({"subject": {"type": "User", "id": "a", "properties": 7}}),
+            ),
+            (
+                "partition inputs that are not an object",
+                json!({"partition_inputs": 7}),
+            ),
+            (
+                "a partition input that is not an object",
+                json!({"partition_inputs": {"p": 7}}),
+            ),
+            (
+                "a partition input type that is not a string",
+                json!({"partition_inputs": {"p": {"type": 7, "data": {}}}}),
+            ),
+            (
+                "partition inputs that are null",
+                json!({"partition_inputs": null}),
             ),
         ] {
             assert!(
@@ -1294,26 +1296,117 @@ mod request_tests {
         }
     }
 
-    /// And what the contract does accept still crosses, overrides included.
+    /// And what the contract does accept still crosses, whole and by name.
     #[test]
     fn a_request_this_transport_can_represent_crosses_whole() {
         let request = request_of(&payload(json!({
             "context": {"branch": "main"},
             "action": {"name": "release:signoff", "properties": {"risk": "high"}},
-            "entities": {
-                "schema": "cedar",
-                "items": [{"uid": {"type": "Group", "id": "finance"}}],
-                "partitions": {"admin-rego": {"schema": "rego", "items": [{"team": "payments"}]}}
+            "options": {"evaluations_semantic": "deny_on_first_deny"},
+            "partition_inputs": {
+                "admin-cedar": {
+                    "type": "permguard.cedar.entities.v1",
+                    "data": [{"uid": {"type": "Group", "id": "finance"}}]
+                },
+                "admin-rego": {
+                    "type": "permguard.rego.data.v1",
+                    "data": {"frozen_services": ["payments-api"]}
+                }
             }
         })))
         .expect("every part of this is representable");
 
-        let entities = request.entities.expect("the graphs");
-        assert_eq!(entities.schema, "cedar");
-        assert_eq!(entities.items.len(), 1);
-        let own = entities.partitions.get("admin-rego").expect("the override");
-        assert_eq!(own.schema, "rego");
-        assert_eq!(own.items.len(), 1);
+        assert_eq!(
+            request.evaluations_semantic,
+            pdp::EvaluationsSemantic::DenyOnFirstDeny as i32
+        );
+        let cedar = request
+            .partition_inputs
+            .get("admin-cedar")
+            .expect("the store");
+        assert_eq!(cedar.r#type, "permguard.cedar.entities.v1");
+        assert!(matches!(
+            cedar.data.as_ref().and_then(|held| held.kind.as_ref()),
+            Some(prost_types::value::Kind::ListValue(_))
+        ));
+        let rego = request
+            .partition_inputs
+            .get("admin-rego")
+            .expect("the document");
+        assert_eq!(rego.r#type, "permguard.rego.data.v1");
+        assert!(matches!(
+            rego.data.as_ref().and_then(|held| held.kind.as_ref()),
+            Some(prost_types::value::Kind::StructValue(_))
+        ));
         assert!(request.action.expect("an action").properties.is_some());
+    }
+
+    /// The removed extension is refused **here**, with the contract's own code.
+    ///
+    /// It has no tag in the generated message, so a conversion that did not check would drop it
+    /// and the plane would answer a request it never saw the whole of: `permit`, against an empty
+    /// world, over gRPC — and `field_removed` over HTTP. Same field, same code, either way.
+    #[test]
+    fn the_old_entities_field_does_not_cross_this_transport_either() {
+        let refused = request_of(&payload(
+            json!({"entities": {"schema": "cedar", "items": []}}),
+        ))
+        .expect_err("the field is gone");
+
+        assert_eq!(refused.code, "field_removed");
+        assert!(
+            refused.message.contains("partition_inputs"),
+            "{}",
+            refused.message
+        );
+
+        // And inside a boxcarred evaluation, where a per-transport check would most easily miss it.
+        let refused = request_of(&payload(json!({
+            "evaluations": [{"request_id": "one", "entities": {"items": []}}]
+        })))
+        .expect_err("the field is gone there too");
+        assert_eq!(refused.code, "field_removed");
+    }
+
+    /// Boxcarred evaluations carry their own inputs across, and the three cases stay apart:
+    /// stating nothing inherits, stating something replaces, and stating `{}` replaces with
+    /// nothing. A bare map on the wire collapsed the last two — see the wrapper in the proto.
+    #[test]
+    fn a_boxcarred_evaluation_carries_its_own_inputs() {
+        let request = request_of(&payload(json!({
+            "partition_inputs": {"p": {"type": "permguard.rego.data.v1", "data": {"from": "top"}}},
+            "evaluations": [
+                {"request_id": "inherits"},
+                {"request_id": "its-own",
+                 "partition_inputs": {
+                     "p": {"type": "permguard.rego.data.v1", "data": {"from": "the evaluation"}}
+                 }},
+                {"request_id": "states-none", "partition_inputs": {}}
+            ]
+        })))
+        .expect("it is representable");
+
+        assert!(
+            request.evaluations[0].partition_inputs.is_none(),
+            "an evaluation that states nothing inherits: the defaults are the request's"
+        );
+        assert_eq!(
+            request.evaluations[1]
+                .partition_inputs
+                .as_ref()
+                .expect("its own")
+                .inputs
+                .get("p")
+                .expect("its own")
+                .r#type,
+            "permguard.rego.data.v1"
+        );
+        // Present with no entries: it crosses as present, because "replace the defaults with
+        // nothing" is a thing a caller can mean and a bare map could not say.
+        let states_none = request.evaluations[2]
+            .partition_inputs
+            .as_ref()
+            .expect("stated, and empty");
+        assert!(states_none.inputs.is_empty());
     }
 }

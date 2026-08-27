@@ -11,8 +11,18 @@ mod evaluate;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
-/// This language's name, as a manifest's `runtime.language.name` and an `entities.schema` spell it.
+/// This language's name, as a manifest's `runtime.language.name` spells it.
 pub const NAME: &str = "rego";
+
+/// The registered media type of a Rego partition's schema.
+///
+/// The content is **JSON Schema**, not Rego: what a schema describes here is the document a
+/// request hands the partition (`input.partition`), and JSON Schema is what describes JSON. The
+/// media type says so in its suffix, so nothing has to guess from a file name.
+pub const SCHEMA_MEDIA_TYPE: &str = "application/vnd.permguard.schema.rego+json";
+
+/// The extension an authored Rego partition schema carries.
+pub const SCHEMA_EXTENSION: &str = "regoschema";
 
 /// The Rego plugin.
 pub struct Rego;
@@ -32,7 +42,11 @@ impl Language for Rego {
     }
 
     fn schema_media_type(&self) -> Option<&'static str> {
-        None
+        Some(SCHEMA_MEDIA_TYPE)
+    }
+
+    fn validate_schema(&self, bytes: &[u8]) -> Result<(), String> {
+        evaluate::compile_schema(bytes).map(|_| ())
     }
 
     fn validate_policy(&self, bytes: &[u8]) -> Result<(), String> {
@@ -98,6 +112,10 @@ impl Authoring for Rego {
         &["rego"]
     }
 
+    fn schema_file_extensions(&self) -> &'static [&'static str] {
+        &[SCHEMA_EXTENSION]
+    }
+
     fn extract(&self, source: &[u8]) -> Result<Vec<ExtractedPolicy>, String> {
         self.validate_policy(source)?;
         let text = std::str::from_utf8(source)
@@ -111,6 +129,8 @@ impl Authoring for Rego {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
 
     const MODULE: &str = r#"# METADATA
@@ -146,5 +166,27 @@ allow if {
     #[test]
     fn broken_rego_is_refused() {
         assert!(Rego.validate_policy(b"package ???").is_err());
+    }
+
+    #[test]
+    fn a_partition_schema_is_json_schema_and_is_checked_as_such() {
+        assert!(
+            Rego.validate_schema(br#"{"type": "object", "required": ["frozen_services"]}"#)
+                .is_ok()
+        );
+        assert!(Rego.validate_schema(b"not json at all").is_err());
+        // A schema whose own keywords are wrong is refused at load, not at the first request.
+        assert!(Rego.validate_schema(br#"{"type": 7}"#).is_err());
+    }
+
+    #[test]
+    fn a_schema_that_reaches_for_the_network_does_not_compile() {
+        // No retriever is configured, so a remote `$ref` cannot resolve. A policy load that made
+        // an outbound request would be one an operator cannot reason about.
+        let refused = Rego
+            .validate_schema(br#"{"$ref": "https://example.test/schema.json"}"#)
+            .expect_err("a remote reference cannot resolve here");
+
+        assert!(refused.contains("rego:"), "{refused}");
     }
 }

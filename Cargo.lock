@@ -2057,6 +2057,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-core",
  "http",
+ "permguard-languages",
  "permguard-notp",
  "permguard-objects",
  "prost",
@@ -2163,6 +2164,7 @@ name = "permguard-languages"
 version = "0.1.0"
 dependencies = [
  "cedar-policy",
+ "jsonschema",
  "permguard-objects",
  "regorus",
  "serde",

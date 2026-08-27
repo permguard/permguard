@@ -427,32 +427,26 @@ impl Decider {
 
         let partitions = self.partitions(&mirror, &head, &resolved)?;
 
-        // What each partition of this profile actually sees. Routed by `Asking::route` — the same
-        // function `permguard test` calls — because an entity graph belongs to a runtime and a
-        // Cedar policy reads an action's properties somewhere a Rego module does not. A request
-        // whose routing does not add up is refused here, before any policy is consulted: an
-        // override naming a partition nobody has, or a graph in a shape no partition can read, is
-        // a bad request and not a deny.
-        let targets: Vec<PartitionTarget> = partitions
-            .iter()
-            .map(|partition| PartitionTarget::new(&partition.name, &partition.language))
-            .collect();
-
-        let mut decisions = Vec::new();
-        for (asking, request_id) in &resolved.queries {
-            let queries = asking.route(&targets).map_err(|malformed| {
-                self.metrics
-                    .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
-
-                ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
-            })?;
-            let decision = self.evaluate(&resolved, &partitions, &queries, request_id.clone());
-            let stop = resolved.semantic.stops(decision.decision);
-            decisions.push(decision);
-            if stop {
-                break;
-            }
-        }
+        // Off the async worker, and once for the whole batch. Deciding is CPU work — parsing
+        // nothing, but running an engine over a policy set — and a Tokio worker inside an engine
+        // is a worker not accepting connections. One hop, not one per evaluation: the batch is
+        // sequential by contract (a semantic that stops at the first deny has to stop), so there
+        // is nothing to interleave and every extra hop would be latency for its own sake.
+        let plan = Plan {
+            head: Arc::clone(&head),
+            partitions,
+            resolved: resolved.clone(),
+            metrics: self.metrics.clone(),
+        };
+        let decisions = tokio::task::spawn_blocking(move || plan.run())
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Internal,
+                    "decision_failed",
+                    format!("the evaluation did not complete: {error}"),
+                )
+            })??;
 
         // The whole request's verdict: for a plain request it is the one decision; for a
         // batch it is the operator its semantic names — `&&` for `execute_all` and
@@ -576,97 +570,6 @@ impl Decider {
         Ok(compiled)
     }
 
-    /// Evaluates one query against every partition, and combines the answers.
-    /// Evaluates one question against every partition, each with the query it was given.
-    ///
-    /// `queries` is `partitions` materialised, in the same order: one graph per partition, and the
-    /// runtime's own reading of the action. They are paired by position, which `Asking::route`
-    /// guarantees.
-    fn evaluate(
-        &self,
-        resolved: &Resolved,
-        partitions: &[Arc<Partition>],
-        queries: &[Query],
-        request_id: Option<String>,
-    ) -> Decision {
-        let mut verdicts = Vec::with_capacity(partitions.len());
-
-        for (partition, query) in partitions.iter().zip(queries) {
-            let started = Instant::now();
-            let verdict = partition.evaluator().evaluate(query);
-            self.metrics.observe(
-                &super::measure::EVALUATION_SECONDS,
-                &[
-                    ("zone", resolved.zone.as_str()),
-                    ("ledger", resolved.ledger.as_str()),
-                    ("partition", partition.name.as_str()),
-                ],
-                started.elapsed().as_secs_f64(),
-            );
-            verdicts.push(verdict);
-        }
-
-        // The resolution is `permguard_languages::evaluate::resolve`, not a rule of
-        // this crate's own: `permguard test` decides a workspace before it is ever
-        // pushed here, and the two must not be able to disagree about what a set of
-        // verdicts means.
-        let outcome = resolve(verdicts);
-        let id = self.decision_id();
-        let permit = outcome.permitted;
-        let context = DecisionContext {
-            id: Some(id),
-            reason_admin: Some(self.reason_admin(
-                permit,
-                &outcome.permits,
-                &outcome.denials,
-                &outcome.errors,
-            )),
-            reason_user: Some(reason_user(permit)),
-            policies: outcome.determining().to_vec(),
-        };
-
-        Decision {
-            decision: permit,
-            request_id,
-            context: Some(context),
-        }
-    }
-
-    fn reason_admin(
-        &self,
-        permit: bool,
-        permitted: &[String],
-        denied: &[String],
-        errors: &[String],
-    ) -> Reason {
-        if !errors.is_empty() {
-            return Reason {
-                code: "500".to_owned(),
-                message: format!(
-                    "the request could not be evaluated, so it is denied: {}",
-                    errors.join("; ")
-                ),
-            };
-        }
-        if permit {
-            return Reason {
-                code: "200".to_owned(),
-                message: format!("permitted by {}", permitted.join(", ")),
-            };
-        }
-        if denied.is_empty() {
-            return Reason {
-                code: "403".to_owned(),
-                message: "no policy permits this request".to_owned(),
-            };
-        }
-
-        Reason {
-            code: "403".to_owned(),
-            message: format!("denied by {}", denied.join(", ")),
-        }
-    }
-
     /// Turns a load refusal into the answer a PEP can act on, and remembers
     /// the ones that will not fix themselves.
     fn refuse(
@@ -712,17 +615,6 @@ impl Decider {
         }
 
         ApiError::new(class, code, format!("`{}`: {refusal}", mirror.label()))
-    }
-
-    /// A handle that joins a response to its audit record.
-    ///
-    /// A UUIDv7, exactly as a stream incarnation is minted: time-ordered for a
-    /// human reading two of them, random enough that replicas, restarts and
-    /// crash loops never mint the same one. A counter seeded from the process
-    /// start would collide on precisely those — autoscaling and crash loops —
-    /// which are the moments an investigation needs the handle to hold.
-    fn decision_id(&self) -> String {
-        permguard_decisions::instance::mint()
     }
 
     fn publish_cache_gauges(&self) {
@@ -838,7 +730,7 @@ struct OwnedDecided {
     action: String,
     principal: Option<(String, String)>,
     context: Option<serde_json::Value>,
-    entities: Option<serde_json::Value>,
+    partition_inputs: Option<serde_json::Value>,
     permit: bool,
     policies: Vec<String>,
     reason: String,
@@ -865,7 +757,7 @@ impl OwnedDecided {
             action: self.action.clone(),
             principal: self.principal.clone(),
             context: self.context.clone(),
-            entities: self.entities.clone(),
+            partition_inputs: self.partition_inputs.clone(),
             permit: self.permit,
             policies: self.policies.clone(),
             reason: self.reason.clone(),
@@ -956,7 +848,7 @@ impl Decider {
                     .as_ref()
                     .map(|principal| ("Principal".to_owned(), token(principal))),
                 context: serde_json::to_value(&query.context).ok(),
-                entities: serde_json::to_value(&query.entities).ok(),
+                partition_inputs: serde_json::to_value(&query.partition_inputs).ok(),
                 permit: decision.decision,
                 policies: context
                     .map(|context| context.policies.clone())
@@ -1082,6 +974,156 @@ fn now_rfc3339() -> String {
         .unwrap_or_default();
 
     permguard_core::time::to_rfc3339(seconds)
+}
+
+/// One request's evaluation, owned, so it can be handed to a blocking thread whole.
+///
+/// Everything it needs is a handle: the head and each compiled partition are already shared, and
+/// what is copied is the request itself. Built so the decision path can leave the async runtime
+/// without the borrow checker having an opinion about where a mirror lives.
+struct Plan {
+    head: Arc<Head>,
+    partitions: Vec<Arc<Partition>>,
+    resolved: Resolved,
+    metrics: permguard_core::Metrics,
+}
+
+impl Plan {
+    /// Every evaluation of the batch, in order, stopping where the semantic says to stop.
+    fn run(self) -> Result<Vec<Decision>, ApiError> {
+        // What each partition of this profile is given. Routed by `Asking::route` — the same
+        // function `permguard test` calls — because an input belongs to the partition it names
+        // and a Cedar policy reads an action's properties somewhere a Rego module does not. A
+        // request whose addressing does not add up is refused here, before any policy is
+        // consulted: an input naming a partition nobody has, of a type the ledger does not
+        // declare, or one this partition's schema refuses, is a bad request and not a deny.
+        let targets: Vec<PartitionTarget<'_>> = self
+            .partitions
+            .iter()
+            .map(|partition| {
+                PartitionTarget::new(&partition.name, &partition.language)
+                    .accepting(
+                        self.head
+                            .manifest
+                            .partitions
+                            .get(&partition.name)
+                            .and_then(|declared| declared.input.as_ref()),
+                    )
+                    .evaluated_by(partition.evaluator())
+            })
+            .collect();
+
+        let mut decisions = Vec::with_capacity(self.resolved.queries.len());
+        for (asking, request_id) in &self.resolved.queries {
+            let queries = asking.route(&targets).map_err(|malformed| {
+                self.metrics
+                    .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
+
+                ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
+            })?;
+            let decision = self.evaluate(queries, request_id.clone());
+            let stop = self.resolved.semantic.stops(decision.decision);
+            decisions.push(decision);
+            if stop {
+                break;
+            }
+        }
+
+        Ok(decisions)
+    }
+
+    /// Evaluates one question against every partition of the profile — together — and combines
+    /// the answers.
+    ///
+    /// `queries` is `partitions` materialised, in the same order: one input per partition, and
+    /// the runtime's own reading of the action. They are paired by position, which
+    /// `Asking::route` guarantees, and `evaluate_all` answers in that same order however the
+    /// engines finished.
+    fn evaluate(&self, queries: Vec<Query>, request_id: Option<String>) -> Decision {
+        let work: Vec<(Arc<dyn permguard_languages::Evaluator>, Query)> = self
+            .partitions
+            .iter()
+            .map(Arc::as_ref)
+            .map(Partition::evaluator_shared)
+            .zip(queries)
+            .collect();
+        let answered = permguard_languages::evaluate::evaluate_all(work);
+
+        // Recorded here, on one thread and in the profile's order, from what each partition
+        // reported: a metric written from inside a worker would be a metric whose order depended
+        // on a race.
+        for (partition, answer) in self.partitions.iter().zip(&answered) {
+            self.metrics.observe(
+                &super::measure::EVALUATION_SECONDS,
+                &[
+                    ("zone", self.resolved.zone.as_str()),
+                    ("ledger", self.resolved.ledger.as_str()),
+                    ("partition", partition.name.as_str()),
+                ],
+                answer.elapsed.as_secs_f64(),
+            );
+        }
+
+        // The resolution is `permguard_languages::evaluate::resolve`, not a rule of this crate's
+        // own: `permguard test` decides a workspace before it is ever pushed here, and the two
+        // must not be able to disagree about what a set of verdicts means.
+        let outcome = resolve(answered.into_iter().map(|answer| answer.verdict));
+        let permit = outcome.permitted;
+
+        Decision {
+            decision: permit,
+            request_id,
+            context: Some(DecisionContext {
+                id: Some(permguard_decisions::instance::mint()),
+                reason_admin: Some(reason_admin(
+                    permit,
+                    &outcome.permits,
+                    &outcome.denials,
+                    &outcome.errors,
+                )),
+                reason_user: Some(reason_user(permit)),
+                policies: outcome.determining().to_vec(),
+            }),
+        }
+    }
+}
+
+/// The operator's half of a reason: what decided, or what went wrong.
+///
+/// A free function rather than a method, because two callers need it and neither owns the other:
+/// the decider that answers a request, and the plan that evaluates one on a blocking thread.
+fn reason_admin(
+    permit: bool,
+    permitted: &[String],
+    denied: &[String],
+    errors: &[String],
+) -> Reason {
+    if !errors.is_empty() {
+        return Reason {
+            code: "500".to_owned(),
+            message: format!(
+                "the request could not be evaluated, so it is denied: {}",
+                errors.join("; ")
+            ),
+        };
+    }
+    if permit {
+        return Reason {
+            code: "200".to_owned(),
+            message: format!("permitted by {}", permitted.join(", ")),
+        };
+    }
+    if denied.is_empty() {
+        return Reason {
+            code: "403".to_owned(),
+            message: "no policy permits this request".to_owned(),
+        };
+    }
+
+    Reason {
+        code: "403".to_owned(),
+        message: format!("denied by {}", denied.join(", ")),
+    }
 }
 
 fn reason_user(permit: bool) -> Reason {

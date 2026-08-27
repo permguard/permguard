@@ -236,17 +236,21 @@ pg/error-context-action-reserved.json
 # field_reserved: `context.action` is populated from `action.properties`
 ```
 
-**Entity graphs are addressed.** A graph is written in one runtime's shape, and this profile runs
-two. So a graph says who it is for: `entities.schema` names a runtime, `entities.partitions` names
-one partition — the only identity that separates two partitions of the same language.
+**A partition's input is addressed to it by name.** Cedar reads an entity store; a Rego module
+reads a JSON document. Neither can read the other's, and two Cedar partitions with different
+schemas cannot read each other's either — so there is no addressing by language. There is only the
+name:
 
 ```json
 {
-  "entities": {
-    "schema": "cedar",
-    "items": [ … the org chart … ],
-    "partitions": {
-      "admin-rego": { "schema": "rego", "items": [ { "frozen_services": ["payments-api"] } ] }
+  "partition_inputs": {
+    "admin-cedar": {
+      "type": "permguard.cedar.entities.v1",
+      "data": [ … the org chart, in Cedar's shape … ]
+    },
+    "admin-rego": {
+      "type": "permguard.rego.data.v1",
+      "data": { "frozen_services": ["payments-api"] }
     }
   }
 }
@@ -256,20 +260,74 @@ one partition — the only identity that separates two partitions of the same la
 pg/rollback-frozen-service-deny.json     # DENY — delivery-guardrails
 ```
 
-Cedar reads the org chart and still entitles `alice`; the guardrail reads its **own** list, out of
-`data.entities`, and refuses. Neither could have read the other's, which is why one shared graph
-only ever worked when all but one partition ignored it.
+Cedar reads the org chart and still entitles `alice`; the guardrail reads its **own** list, at
+`input.partition.frozen_services`, and refuses. One question, two inputs, neither reachable from
+the other side.
 
-| | |
+**The ledger decides what each partition accepts, not the caller.** `manifest.yml` says it:
+
+```yaml
+admin-cedar:
+  input: { type: permguard.cedar.entities.v1, required: true }
+admin-rego:
+  input: { type: permguard.rego.data.v1, required: false }
+pipeline-rego:
+  # no `input`: these rules read the request alone
+```
+
+`type` in the request is an **assertion**, checked against that and never obeyed. If a caller could
+name the type, a caller would be choosing which parser runs over bytes it also supplies — and
+`acme.anything.v1` is not a type anybody can invent: Permguard implements two, and a manifest
+naming a third is refused when it is pushed.
+
+`required: true` on `admin-cedar` is not decoration: its policies traverse that store, so a request
+without one would be decided against an empty world and denied for a reason that has nothing to do
+with the rules.
+
+| what a request does | what happens |
 | --- | --- |
-| a graph naming a runtime | reaches the partitions running it, and no others |
-| a graph naming a partition | reaches that one, whatever the global one says |
-| a graph naming neither | refused where a profile runs more than one runtime — `schema_required` |
-| a name the profile does not hold | refused — `partition_unknown` |
-| a shape the partition cannot read | refused — `schema_mismatch` |
+| addresses a partition of the profile, with the declared type and shape | it is read |
+| addresses nothing, `required: false` | the type's **empty** input — an empty store, an empty document |
+| addresses nothing, `required: true` | refused — `partition_input_required` |
+| addresses `pipeline-rego`, which declares no input | refused — `partition_input_unsupported` |
+| names a partition the profile does not hold | refused — `partition_unknown` |
+| states a type the ledger does not declare | refused — `partition_input_type_mismatch` |
+| states a type nobody registered | refused — `partition_input_type_unknown` |
+| sends an object where the type carries an array | refused — `partition_input_malformed` |
+| sends a document the partition's schema refuses | refused — `partition_input_schema` |
 
-An override supplies **data**. It cannot add a partition, skip one, or choose which policies
-answer: the profile decides that.
+Every one of those is refused **before a policy is consulted**, and that is the point: a caller who
+addressed the wrong partition has made a mistake nobody's rules have an opinion about. `deny` would
+send them reading policies that were never the problem. The suite asserts all of them —
+`permguard test` runs the six cases at the end of `tests/release.yml`.
+
+An input supplies **data**. It cannot add a partition, skip one, or choose which policies answer:
+the profile decides that.
+
+**Rego's own schema.** `admin-rego` declares `schema: true` and carries
+`guardrails.regoschema` — a JSON Schema describing the document above:
+
+```json
+{ "type": "object", "additionalProperties": false,
+  "properties": { "frozen_services": { "type": "array", "items": { "type": "string" } } } }
+```
+
+Rego is untyped by design, and that is a virtue in a rule. It is not a virtue in the data a rule
+reads: send `frozen` instead of `frozen_services` and the guardrail reads nothing, decides nothing,
+and the release goes out. A rename turning a control into silence is exactly what the schema is
+for — compiled once when the partition loads, and checked before any rule runs:
+
+```bash
+pg/error-input-schema.json
+# partition_input_schema: `partition_inputs.admin-rego`: rego: the document does not
+#                         satisfy this partition's schema
+```
+
+**Where the input rides, and why it matters.** `input.partition`, not `data`. `data` is the
+partition's own compiled world — identical for every request; `input` is what this request said.
+Grafting a caller's document into `data` made a global store that changed per evaluation: a shared
+surface a caller could write into, and one nothing could validate, because a schema describes a
+request and not a store.
 
 ### 4d. Context — the same person, refused and then allowed
 

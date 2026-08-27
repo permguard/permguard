@@ -20,6 +20,7 @@ use crate::role::Language;
 pub const MEDIA_TYPE_POLICY_CEDAR: &str = "application/vnd.permguard.policy.cedar";
 pub const MEDIA_TYPE_SCHEMA_CEDAR: &str = "application/vnd.permguard.schema.cedar";
 pub const MEDIA_TYPE_POLICY_REGO: &str = "application/vnd.permguard.policy.rego";
+pub const MEDIA_TYPE_SCHEMA_REGO: &str = crate::rego::SCHEMA_MEDIA_TYPE;
 pub const MEDIA_TYPE_MANIFEST: &str = permguard_objects::manifest::MEDIA_TYPE;
 
 /// The engine identity of this build, for the manifest load gate.
@@ -61,6 +62,23 @@ pub fn provided_runtimes() -> Vec<ProvidedRuntime> {
         .collect()
 }
 
+/// Everything a manifest must satisfy before this build will serve it, in one call.
+///
+/// Two gates, and they are asked together because forgetting the second one is the failure this
+/// exists to prevent: the runtime gate refuses a ledger whose engine this is not, and the input
+/// gate refuses a partition whose declared input type nothing here implements — or one written for
+/// another runtime. Three call sites ask this question (the plane at load, the control plane at
+/// ingest, the CLI at validate) and each of them asking it in its own words is how they drift.
+pub fn check_manifest(
+    manifest: &Manifest,
+) -> Result<(), permguard_objects::manifest::ManifestError> {
+    permguard_objects::manifest::check_load_gate(manifest, &provided_runtimes())?;
+    permguard_objects::manifest::check_input_contracts(
+        manifest,
+        &crate::input::provided_input_types(),
+    )
+}
+
 /// Validates one blob against its registered media type — the ingest rule,
 /// run by the server on what arrives and by the client on what it builds.
 /// An unregistered media type is rejected, fail-closed, never stored as
@@ -69,10 +87,14 @@ pub fn validate_blob(media_type: &str, data: &[u8]) -> Result<(), BlobRejected> 
     let rejected = |code: &'static str, message: String| BlobRejected { code, message };
 
     if media_type == MEDIA_TYPE_MANIFEST {
-        // The manifest is the model's own object, and the model validates it.
-        return Manifest::decode(data)
-            .map(|_| ())
-            .map_err(|e| rejected("manifest_rejected", e.to_string()));
+        // The manifest is the model's own object, and the model validates it — then this build
+        // says whether it is one it can serve at all, input contracts included. A manifest
+        // declaring an input type nobody implements is refused where it is pushed, not discovered
+        // by the first caller who addresses that partition.
+        let manifest =
+            Manifest::decode(data).map_err(|e| rejected("manifest_rejected", e.to_string()))?;
+
+        return check_manifest(&manifest).map_err(|e| rejected("manifest_rejected", e.detail));
     }
     let Some(language) = language_for_media_type(media_type) else {
         return Err(rejected(

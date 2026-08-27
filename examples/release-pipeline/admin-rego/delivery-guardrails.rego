@@ -45,12 +45,17 @@ deny if {
 
 # A service the request declares frozen is not deployed to, whoever asks.
 #
-# The list arrives as this partition's own entity graph — `entities.partitions`
-# addressed to `admin-rego`, in a shape a Rego module reads. The Cedar partition
-# beside it receives its own graph in Cedar's shape, from the same request: one
-# question, two graphs, neither readable by the other.
+# The list arrives as this partition's own input — `partition_inputs["admin-rego"]`,
+# a `permguard.rego.data.v1` document, readable at `input.partition`. The Cedar
+# partition beside it receives its own store, in Cedar's shape, from the same
+# request: one question, two inputs, neither readable by the other.
+#
+# `input` and not `data`: `data` is this partition's own compiled world, the same
+# for every request, and grafting a caller's document into it would be a shared
+# surface nothing could validate. The schema beside this file describes what
+# arrives here, and a document that does not satisfy it never reaches this rule.
 deny if {
-	some frozen in data.entities[_].frozen_services
+	some frozen in input.partition.frozen_services
 	frozen == input.resource.id
 }
 

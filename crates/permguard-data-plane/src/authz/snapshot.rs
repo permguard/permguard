@@ -51,7 +51,7 @@ use permguard_control_client::store::{FsStore, Store};
 use permguard_languages::Evaluator;
 use permguard_languages::registry;
 use permguard_objects::digest::Digest;
-use permguard_objects::manifest::{self, Manifest};
+use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{self, Kind, Object};
 
 /// Why a ledger cannot be served.
@@ -117,7 +117,7 @@ pub struct Partition {
     pub policies: usize,
     /// Roughly how much memory it holds, for the cache's bounds.
     pub footprint: usize,
-    evaluator: Box<dyn Evaluator>,
+    evaluator: Arc<dyn Evaluator>,
 }
 
 impl std::fmt::Debug for Partition {
@@ -137,10 +137,19 @@ impl Partition {
         self.evaluator.as_ref()
     }
 
+    /// The same program, shareable.
+    ///
+    /// The fan-out hands each partition's evaluation to a worker that outlives the borrow, so what
+    /// crosses is a handle and never a copy: a compiled policy set is the expensive thing in this
+    /// process, and it is compiled once per commit and shared by every request after it.
+    pub fn evaluator_shared(&self) -> Arc<dyn Evaluator> {
+        Arc::clone(&self.evaluator)
+    }
+
     /// A partition built by hand, for a test that is about something else —
     /// the cache's bounds, say, which do not care what compiled them.
     #[cfg(test)]
-    pub fn for_test(name: &str, footprint: usize, evaluator: Box<dyn Evaluator>) -> Self {
+    pub fn for_test(name: &str, footprint: usize, evaluator: Arc<dyn Evaluator>) -> Self {
         Self {
             name: name.to_owned(),
             language: "test".to_owned(),
@@ -179,8 +188,9 @@ pub fn head(mirror: &Path) -> Result<Head, Refusal> {
     let manifest = Manifest::decode(&blob.data)
         .map_err(|error| Refusal::Damaged(format!("the manifest does not decode: {error}")))?;
 
-    // The gate, before anything is compiled or answered.
-    manifest::check_load_gate(&manifest, &registry::provided_runtimes()).map_err(|error| {
+    // The gate, before anything is compiled or answered: the engine this build carries, and the
+    // input contracts it implements. Both, from one call, so neither can be forgotten here.
+    registry::check_manifest(&manifest).map_err(|error| {
         Refusal::Incompatible(format!(
             "this engine cannot serve this ledger: {}",
             error.detail
@@ -251,9 +261,10 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
 
     let footprint = collected.footprint();
     let policies = collected.policies.len();
-    let evaluator = engine
+    let evaluator: Arc<dyn Evaluator> = engine
         .compile(&collected.policies, collected.schema.as_deref())
-        .map_err(Refusal::Incompatible)?;
+        .map_err(Refusal::Incompatible)?
+        .into();
 
     Ok(Arc::new(Partition {
         name: partition.to_owned(),

@@ -17,11 +17,10 @@ controlPlane:
       memory: 1Gi
   podDisruptionBudget:
     # `maxUnavailable: 0` on a single replica: voluntary disruption waits for a human, which is the
-    # right trade for the component that holds the authority. `minAvailable` is unset — the two are
-    # mutually exclusive, and `templates/pdb.yaml` refuses both.
+    # right trade for the component that holds the authority. One budget, named — nothing to unset.
     enabled: true
-    minAvailable: null
-    maxUnavailable: 0
+    budget: maxUnavailable
+    value: 0
   autoscaling:
     enabled: false
   # What a control plane keeps is on a volume, and a volume is bound to a node.
@@ -72,7 +71,8 @@ dataPlane:
       memory: 2Gi
   podDisruptionBudget:
     enabled: true
-    minAvailable: 2
+    budget: minAvailable
+    value: 2
   autoscaling:
     enabled: true
     minReplicas: 3

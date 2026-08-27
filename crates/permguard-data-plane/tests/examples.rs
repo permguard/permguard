@@ -32,10 +32,9 @@ use permguard_data_plane::authz::decide::Decider;
 use permguard_data_plane::authz::store::Identity;
 use permguard_data_plane::authz::wire;
 use permguard_languages::registry;
-use permguard_objects::manifest::{Manifest, Partition, Profile, Requirement, Runtime};
+use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
-use permguard_objects::semver::Constraint;
 
 const ZONE: &str = "delivery";
 const LEDGER: &str = "the-example";
@@ -118,121 +117,17 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
-// The manifest as the file spells it. Read rather than restated, so that a
-// partition or a profile renamed in the lab reaches this test.
-#[derive(Deserialize)]
-struct FileManifest {
-    metadata: FileMetadata,
-    runtimes: BTreeMap<String, FileRuntime>,
-    partitions: BTreeMap<String, FilePartition>,
-    profiles: BTreeMap<String, FileProfile>,
-}
-
-#[derive(Deserialize)]
-struct FileMetadata {
-    kind: String,
-    name: String,
-    description: String,
-    author: String,
-    license: String,
-}
-
-#[derive(Deserialize)]
-struct FileRuntime {
-    language: FileRequirement,
-    engine: FileRequirement,
-}
-
-#[derive(Deserialize)]
-struct FileRequirement {
-    name: String,
-    constraint: String,
-}
-
-#[derive(Deserialize)]
-struct FilePartition {
-    runtime: String,
-    schema: bool,
-}
-
-#[derive(Deserialize)]
-struct FileProfile {
-    #[serde(rename = "type")]
-    r#type: String,
-    partitions: Vec<String>,
-}
-
+/// The example's authored manifest, as the model.
+///
+/// Read through `permguard_languages::manifest_file` — the same conversion the CLI performs when
+/// it builds a workspace. This test used to restate the YAML shape in its own structs and default
+/// the media types by hand; the day a partition gained a field, the copy here kept parsing and
+/// silently produced a different manifest than the one the example ships.
 fn manifest(name: &str) -> Manifest {
-    let text = std::fs::read_to_string(example(name).join("manifest.yml"))
-        .expect("the example carries a manifest");
-    let file: FileManifest = serde_norway::from_str(&text).expect("the manifest parses");
+    let bytes =
+        std::fs::read(example(name).join("manifest.yml")).expect("the example carries a manifest");
 
-    let runtimes = file
-        .runtimes
-        .into_iter()
-        .map(|(name, runtime)| {
-            let requirement = |declared: FileRequirement| Requirement {
-                name: declared.name,
-                constraint: Constraint::parse(&declared.constraint).expect("a constraint"),
-            };
-
-            (
-                name,
-                Runtime {
-                    language: requirement(runtime.language),
-                    engine: requirement(runtime.engine),
-                },
-            )
-        })
-        .collect();
-
-    let partitions = file
-        .partitions
-        .into_iter()
-        .map(|(name, partition)| {
-            let media_types = match partition.runtime.as_str() {
-                "cedar" => vec![
-                    registry::MEDIA_TYPE_POLICY_CEDAR.to_owned(),
-                    registry::MEDIA_TYPE_SCHEMA_CEDAR.to_owned(),
-                ],
-                _ => vec![registry::MEDIA_TYPE_POLICY_REGO.to_owned()],
-            };
-
-            (
-                name,
-                Partition {
-                    runtime: partition.runtime,
-                    media_types,
-                    schema: partition.schema,
-                },
-            )
-        })
-        .collect();
-
-    let profiles = file
-        .profiles
-        .into_iter()
-        .map(|(name, profile)| {
-            (
-                name,
-                Profile {
-                    r#type: profile.r#type,
-                    partitions: profile.partitions,
-                },
-            )
-        })
-        .collect();
-
-    Manifest {
-        kind: file.metadata.kind,
-        name: file.metadata.name,
-        description: file.metadata.description,
-        author: file.metadata.author,
-        license: file.metadata.license,
-        runtimes,
-        partitions,
-        profiles,
-    }
+    permguard_languages::manifest_file::from_yaml(&bytes).expect("the manifest is well formed")
 }
 
 /// One policy as the lab keeps it: the source, and the alias the author wrote
@@ -379,17 +274,43 @@ fn provision(root: &Path, name: &str) -> Manifest {
             });
         }
         if partition.schema {
-            let schema =
-                std::fs::read(example(name).join(partition_name).join("model.cedarschema"))
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "{partition_name} declares a schema and carries no model.cedarschema"
-                        )
-                    });
+            // Found by the language's own schema extensions and stored under the language's own
+            // schema media type — asked, not assumed. `model.cedarschema` was hard-coded here,
+            // which meant a second language with a schema would have gone looking for a Cedar
+            // file that was never there.
+            let plugin = permguard_languages::language(language)
+                .unwrap_or_else(|| panic!("this build carries `{language}`"));
+            let authoring = plugin
+                .authoring()
+                .unwrap_or_else(|| panic!("`{language}` can be authored"));
+            let directory = example(name).join(partition_name);
+            let found = std::fs::read_dir(&directory)
+                .expect("the partition is a directory")
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.extension()
+                        .and_then(std::ffi::OsStr::to_str)
+                        .is_some_and(|extension| {
+                            authoring.schema_file_extensions().contains(&extension)
+                        })
+                })
+                .unwrap_or_else(|| {
+                    panic!("{partition_name} declares a schema and carries no schema file")
+                });
+            let schema = std::fs::read(&found).expect("the schema reads");
+            let media_type = plugin
+                .schema_media_type()
+                .unwrap_or_else(|| panic!("`{language}` has a schema media type"));
+            let file_name = found
+                .file_name()
+                .and_then(std::ffi::OsStr::to_str)
+                .expect("a name")
+                .to_owned();
             entries.push(TreeEntry {
                 kind: Kind::Blob,
-                digest: put(registry::MEDIA_TYPE_SCHEMA_CEDAR, &schema),
-                name: "schema.cedarschema".to_owned(),
+                digest: put(media_type, &schema),
+                name: file_name,
                 annotations: BTreeMap::new(),
             });
         }
@@ -641,10 +562,30 @@ fn each_profile_loads_only_the_partitions_it_needs() {
             .is_some_and(|p| p.schema),
         "the Cedar partition carries a schema, and the example depends on it being checked"
     );
-    for rego in ["admin-rego", "pipeline-rego"] {
-        assert!(
-            manifest.partitions.get(rego).is_some_and(|p| !p.schema),
-            "{rego} must not declare a schema: Rego has none, and the engine refuses one"
-        );
-    }
+    // Each partition declares what a request may hand it, and the three differ on purpose: the
+    // org chart the Cedar rules traverse is required, the guardrails' list is optional, and the
+    // pipeline rules read the request alone and accept nothing.
+    let input = |name: &str| {
+        manifest
+            .partitions
+            .get(name)
+            .and_then(|held| held.input.clone())
+    };
+    let cedar = input("admin-cedar").expect("admin-cedar accepts an entity store");
+    assert_eq!(cedar.r#type, permguard_languages::input::CEDAR_ENTITIES_V1);
+    assert!(cedar.required, "its policies traverse that store");
+    let rego = input("admin-rego").expect("admin-rego accepts a document");
+    assert_eq!(rego.r#type, permguard_languages::input::REGO_DATA_V1);
+    assert!(!rego.required, "the guardrails hold without one");
+    assert!(
+        input("pipeline-rego").is_none(),
+        "the pipeline rules read the request alone: anything addressed to them is refused"
+    );
+    assert!(
+        manifest
+            .partitions
+            .get("admin-rego")
+            .is_some_and(|p| p.schema),
+        "and the document a request hands the guardrails is described by a JSON Schema"
+    );
 }

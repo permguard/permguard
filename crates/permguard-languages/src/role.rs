@@ -102,6 +102,17 @@ pub trait Authoring: Send + Sync {
     /// The file extensions `refresh` reads for this language.
     fn file_extensions(&self) -> &'static [&'static str];
 
+    /// The file extensions that hold this language's **schema**, when it has one.
+    ///
+    /// Asked of the language rather than spelled out by whoever walks a source tree: `cedarschema`
+    /// was hard-coded in the CLI's walk, so adding a schema to a second language meant editing a
+    /// file that has no business knowing what Cedar calls things — and forgetting to would have
+    /// left the schema sitting there, read by nobody, with the partition reporting that it
+    /// declares one and carries none.
+    fn schema_file_extensions(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Splits a source file into its policies, each with verbatim bytes and
     /// its declared alias. A language whose unit is the file returns one.
     fn extract(&self, source: &[u8]) -> Result<Vec<ExtractedPolicy>, String>;

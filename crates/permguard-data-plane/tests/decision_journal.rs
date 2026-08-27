@@ -76,7 +76,7 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         action: "read".to_owned(),
         principal: None,
         context: Some(json!({ "ip": "10.0.0.1" })),
-        entities: Some(json!([])),
+        partition_inputs: Some(json!({})),
         permit,
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),
@@ -355,7 +355,7 @@ fn a_caller_supplied_float_neither_breaks_the_record_nor_the_commitment() {
     let journal = journal("floats", "1.0", WhenFull::Open, bounds());
     let mut asked = decided("float-1", true);
     asked.context = Some(json!({ "risk": 0.7, "amount": 12.5, "attempts": 3 }));
-    asked.entities =
+    asked.partition_inputs =
         Some(json!([{ "uid": {"type": "User", "id": "alice"}, "attrs": {"score": 0.25} }]));
     asked.subject_properties = Some(
         json!({ "clearance": 2, "trust": 0.9 })
@@ -391,10 +391,10 @@ fn a_caller_supplied_float_neither_breaks_the_record_nor_the_commitment() {
         "the context commitment is present, not silently omitted: {decision}"
     );
     assert!(
-        decision["inputs"]["entities"]
+        decision["inputs"]["partition_inputs"]
             .as_str()
             .is_some_and(|commitment| commitment.starts_with("hmac-sha256:v1:")),
-        "the entities commitment too: {decision}"
+        "the partition-input commitment too: {decision}"
     );
     assert_eq!(
         decision["subject"]["properties"]["trust"],

@@ -12,6 +12,12 @@ requests — not a snippet.
 | **[basics](basics)** | users, groups, documents | the platform end to end, on a domain small enough to stay out of the way: apply, mirror, decide, read the decisions back, verify them, and two workspaces pushing at each other |
 | **[release-pipeline](release-pipeline)** | software delivery | a realistic set of controls — team ownership, machine identities, separation of duties, incident-only rollback — and the audit evidence they leave |
 
+Both show the same thing about a request: `subject`, `action`, `resource` and `context` reach every
+partition of a profile, and `partition_inputs` reaches **one**, by the partition's own name. What
+each partition accepts is the ledger's decision, declared in `manifest.yml`; a request states the
+type too, and the two are compared. `release-pipeline` covers every way that can go wrong, each
+with a case asserting it.
+
 Start with **basics** to see how a workspace reaches a decision, and read
 **release-pipeline** to see what a set of controls looks like when the domain is
 one somebody is actually audited on.

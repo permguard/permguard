@@ -372,15 +372,46 @@ fn nested_folders_and_schemas() {
     assert!(refused.contains("at most one"), "{refused}");
     std::fs::remove_file(dir.join("cedar/second.cedarschema")).unwrap();
 
-    // …and schema: true on a language without schemas is refused too.
-    let broken = manifest.replace(
+    // Rego has a schema of its own now — JSON Schema, describing the document a request hands the
+    // partition — and the same three rules hold for it as for Cedar's.
+    let with_schema = manifest.replace(
         "rego: { runtime: rego, schema: false }",
         "rego: { runtime: rego, schema: true }",
     );
-    store.write("manifest.yml", broken.as_bytes()).unwrap();
+    store.write("manifest.yml", with_schema.as_bytes()).unwrap();
+    // Declared and absent: refused.
     let refused = ws.refresh().unwrap_err().to_string();
-    assert!(refused.contains("has no schema"), "{refused}");
+    assert!(refused.contains("hold none"), "{refused}");
+    // Declared and present, exactly one: accepted.
+    store
+        .write(
+            "rego/gateway/model.regoschema",
+            br#"{"type": "object", "properties": {"teams": {"type": "array"}}}"#,
+        )
+        .unwrap();
+    let with_rego_schema = ws.refresh().unwrap();
+    assert_eq!(
+        with_rego_schema.policies.len(),
+        2,
+        "the schema is not a policy"
+    );
+    // Two: refused, the same ambiguity rule Cedar's schema has.
+    store
+        .write("rego/other.regoschema", br#"{"type": "object"}"#)
+        .unwrap();
+    let refused = ws.refresh().unwrap_err().to_string();
+    assert!(refused.contains("at most one"), "{refused}");
+    std::fs::remove_file(dir.join("rego/other.regoschema")).unwrap();
+    // Present while the manifest declares none: refused.
     store.write("manifest.yml", manifest.as_bytes()).unwrap();
+    let refused = ws.refresh().unwrap_err().to_string();
+    assert!(
+        refused.contains("does not declare") || refused.contains("declares"),
+        "{refused}"
+    );
+    std::fs::remove_file(dir.join("rego/gateway/model.regoschema")).unwrap();
+    // Back to what was applied, so the clone below has something to match.
+    assert_eq!(ws.refresh().unwrap().root, snapshot.root);
 
     // A fresh clone rebuilds the folder structure exactly.
     let dir_b = scratch("nested-clone");

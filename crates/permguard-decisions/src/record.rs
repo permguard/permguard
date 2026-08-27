@@ -110,9 +110,9 @@ pub struct Inputs {
     /// A keyed commitment over the caller's context.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub context: Option<String>,
-    /// A keyed commitment over the entity graph.
+    /// A keyed commitment over the inputs the request addressed to the profile's partitions.
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub entities: Option<String>,
+    pub partition_inputs: Option<String>,
     /// Anything fetched at decision time. Empty until a PIP exists.
     #[serde(default)]
     pub external: Vec<Value>,

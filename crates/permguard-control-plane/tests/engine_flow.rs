@@ -46,6 +46,7 @@ fn cedar_manifest() -> Manifest {
                 runtime: "cedar".into(),
                 media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                 schema: false,
+                input: None,
             },
         )]),
         profiles: BTreeMap::from([(

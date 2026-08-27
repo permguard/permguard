@@ -55,7 +55,11 @@ controlPlane:
   # A rollout that takes the last ready replica with it is a rollout with an outage in it.
   podDisruptionBudget:
     enabled: true
-    minAvailable: 1
+    # One budget: its name, and its number. `minAvailable` or `maxUnavailable` — a
+    # PodDisruptionBudget takes one, so this says one, and an override that chooses the
+    # other replaces a string rather than having to null a key out.
+    budget: minAvailable
+    value: 1
   autoscaling:
     enabled: false
     minReplicas: 2
@@ -102,7 +106,8 @@ dataPlane:
       memory: 256Mi
   podDisruptionBudget:
     enabled: true
-    minAvailable: 2
+    budget: minAvailable
+    value: 2
   autoscaling:
     enabled: false
     minReplicas: 3

@@ -6,61 +6,101 @@
 [![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
-**Permguard is trustworthy authorization infrastructure for AI agents and
-regulated systems.**
+**Authorization policy, versioned like code and shipped like code.**
 
-It implements a **Policy Decision Point (PDP)**: applications, agents and
-services send authorization questions such as "can this subject perform this
-action on this resource?", and Permguard answers with a decision that can be
-recorded, audited and tied back to the exact policy version that produced it.
-
-Permguard is built for environments where authorization must be explainable:
-
-- AI agents that need external, policy-governed permission checks before acting;
-- regulated systems that need repeatable decisions and audit evidence;
-- multi-tenant platforms that separate policy authoring from runtime evaluation;
-- teams that want Cedar and Rego policies in the same authorization workflow.
-
-## What It Does
-
-Permguard separates policy distribution from policy evaluation:
+Permguard keeps your policies in a content-addressed, Git-like ledger, distributes signed
+versions over a protocol built for it, and answers `can this subject do this to this?` —
+either from its own data plane, or from **inside your process, at zero network cost**.
 
 ```text
-policy authors + CI
-        |
-        v
-permguard CLI  --apply-->  control plane  --mirror-->  data plane / PDP
-                                |                         |
-                                |                         v
-                                |                  authorization decision
-                                |                         |
-                                v                         v
-                         policy objects            signed decision log
+       authors + CI                     ┌──────────────────┐
+            │                           │  CONTROL  PLANE  │        the ledger
+     permguard apply ────── NOTP ──────►│                  │   commits · trees · blobs
+            │                           │  zones · ledgers │   signed heads · audit
+            │                           └────────┬─────────┘
+            │                                    │  NOTP: pull the objects,
+            ▼                                    │  verify the signed head
+    ┌───────────────┐                            │
+    │   workspace   │                ┌───────────┴───────────┐
+    │  manifest.yml │                ▼                       ▼
+    │  cedar/ rego/ │       ┌─────────────────┐    ┌───────────────────────┐
+    │  requests/    │       │   DATA  PLANE   │    │   YOUR  RUNTIME       │
+    │  tests/       │       │  Permguard PDP  │    │  embed · sidecar      │
+    └───────┬───────┘       │  HTTP · gRPC    │    │  same objects,        │
+            │               └────────┬────────┘    │  same engines         │
+    permguard test                   │             └───────────┬───────────┘
+   (decide it offline,               └──────────┬──────────────┘
+    no plane at all)                            │
+                                       decisions + signed log
+                                                │
+                                                ▼
+                                        back to the control plane,
+                                        verifiable after the fact
 ```
 
-- The **control plane** stores zones, ledgers, policy objects and decision logs.
-- The **data plane** mirrors policy ledgers and serves the PDP decision endpoint.
-- The **CLI** initializes workspaces, validates policies, **tests what they decide
-  offline**, pushes versions, checks decisions and reads/verifies decision records.
-- The **object model** is content-addressed, so a decision can name the exact
-  policy state that was evaluated.
-- The **decision log** is designed for audit: records are produced by the data
-  plane, shipped to the control plane and can be verified later.
+## Why this is not another policy server
 
-## Multi-Language Policies
+**Policy is a repository, not a blob.** `init`, `validate`, `plan`, `apply`, `pull`, `history` —
+a workspace on disk, commits, trees and blobs, all content-addressed. A decision does not cite
+"the policy that was live"; it cites the **exact commit** and the **identity of the policy** that
+decided, and those identities survive a rename. You can check out the state a decision was made
+against, months later, and re-ask the question.
 
-A Permguard policy workspace is described by a manifest. One ledger can contain
-multiple language partitions and expose one or more PDP profiles.
+**One question, many engines.** A ledger holds **partitions** — Cedar here, Rego there — and a
+**profile** says which of them answer. `admin` consults the org chart *and* the guardrails;
+`pipeline` consults the rules for machines and loads nothing else. An explicit deny from any
+partition beats a permit from another, so "who is entitled" and "is it safe right now" can be
+written by different people, in different languages, and still compose.
 
-Example from `examples/basics/manifest.yml`:
+**Bring your own data plane.** The objects are self-describing and the engines are a library.
+Run Permguard's data plane, or pull the ledger and evaluate **in your own process** — no PDP hop,
+no network on the decision path, the same manifest, the same engines, the same answer.
+`permguard test` is that path, in the CLI: it decides a workspace off disk, before anything is
+pushed anywhere.
+
+**NOTP, not "an API".** Policy distribution is content-addressed transfer with negotiation — send
+what the other side is missing, and nothing else — over HTTP or gRPC, with a **signed head** at
+the end of it. A data plane refuses a ledger whose head it cannot verify, and refuses one whose
+engine range it is outside: an engine interpreting the same policies differently is a silent
+authorization bypass, not a compatibility note.
+
+**Decisions are evidence.** Every decision can be recorded with the commit, the policy identity,
+the reason, and **keyed commitments** over what the caller supplied — proof of the inputs without
+keeping them. The log is hash-chained, shipped to the control plane, and verifiable afterwards by
+somebody who does not trust the plane that wrote it.
+
+**Standard on the wire.** The decision API is the **OpenID AuthZEN** shape — `subject`, `action`,
+`resource`, `context`, boxcarring, the metadata document — with the extensions stated plainly and
+the differences written down, in [`crates/permguard-languages/src/request.rs`](crates/permguard-languages/src/request.rs).
+No badge, no surprises.
+
+## Install
+
+```sh
+brew install permguard/tap/cli
+permguard --help
+```
+
+<details>
+<summary>From this checkout instead</summary>
+
+```sh
+cargo install --path crates/permguard-cli --bin permguard --force
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Needs Rust `1.97`+, `cargo`, and `task` or `make`. Docker Compose for the observability lab,
+`jq` for the JSON examples, `k6` only for load testing.
+
+</details>
+
+## Five minutes
+
+### 1. A workspace is a directory
+
+`examples/basics/manifest.yml` — what this ledger is, what it holds, and how it may be asked:
 
 ```yaml
-metadata:
-  kind: policy
-  name: basics
-  description: The smallest Permguard workspace - Cedar and Rego side by side.
-  author: Nitro Agility S.r.l.
-  license: Apache-2.0
 runtimes:
   cedar:
     language: { name: cedar, constraint: ">=4.0.0" }
@@ -68,15 +108,22 @@ runtimes:
   rego:
     language: { name: rego, constraint: ">=1.0.0" }
     engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+
 partitions:
-  cedar: { runtime: cedar, schema: true }
-  rego:  { runtime: rego, schema: false }
+  cedar:
+    runtime: cedar
+    schema: true                                     # and every policy type-checks against it
+    input: { type: permguard.cedar.entities.v1, required: false }   # what a request may hand it
+  rego:
+    runtime: rego
+    schema: false
+
 profiles:
-  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }
-  gateway: { type: permguard.pdp.v1, partitions: [rego] }
+  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }   # both answer
+  gateway: { type: permguard.pdp.v1, partitions: [rego] }          # only the machine rules
 ```
 
-Cedar policy example:
+Beside it, the policies. Cedar:
 
 ```cedar
 @alias("document-readers")
@@ -94,7 +141,11 @@ permit (
 ) when { resource.owner == principal };
 ```
 
-Rego policy example:
+`@alias` is a handle for people. What a decision cites is the **identity** Permguard derives and
+keeps across renames — so the audit trail still names the same policy after somebody tidies the
+file.
+
+And Rego, in the same ledger, answering under its own profile:
 
 ```rego
 # METADATA
@@ -107,141 +158,150 @@ import rego.v1
 default allow := false
 
 allow if {
-    input.subject.type == "User"
-    input.action.name == "read"
-}
-
-allow if {
     input.subject.properties.role == "admin"
     input.action.name in {"create", "update", "delete"}
 }
 ```
 
-Decision request example:
-
-```json
-{
-  "subject": { "type": "User", "id": "alice" },
-  "action": { "name": "read" },
-  "resource": { "type": "Document", "id": "budget-2026" },
-  "context": { "time": "2026-08-24T10:00:00Z" }
-}
-```
-
-## Requirements
-
-- Rust `1.97` or newer.
-- `cargo`.
-- `task` or `make`.
-- Docker Compose, for the lab and observability stack.
-- `jq`, for JSON examples.
-- `k6`, only for load testing.
-
-## Install The CLI
-
-Install the `permguard` command from this checkout:
+### 2. Ask it, with no server anywhere
 
 ```sh
-cargo install --path crates/permguard-cli --bin permguard
+permguard -w examples/basics validate    # parses, type-checks against the schema, derives identities
+permguard -w examples/basics test        # and does it decide what you meant?
 ```
-
-Make sure Cargo's binary directory is on your `PATH`:
-
-```sh
-export PATH="$HOME/.cargo/bin:$PATH"
-permguard --help
-```
-
-During development, reinstall after CLI changes:
-
-```sh
-cargo install --path crates/permguard-cli --bin permguard --force
-```
-
-## Quick Start
-
-Build everything:
-
-```sh
-task build
-# or
-make build
-```
-
-Start the all-in-one runtime:
-
-```sh
-task run:all
-# or
-make run-all
-```
-
-The local runtime exposes:
 
 ```text
-control plane  http://127.0.0.1:7556
-data plane     http://127.0.0.1:7656
-telemetry      http://127.0.0.1:7558
+  ok    a member of the finance group may read a document      [default] permit by document-readers, gateway-access
+  ok    writing a document somebody else owns is refused       [default] deny, nothing permitted it
+  ok    the gateway profile answers with Rego alone            [gateway] permit by gateway-access
+
+  asked these sources, compiled here
+
+5 case(s), 5 passed, 0 failed.
 ```
 
-Inspect the planes:
+Same engines a data plane uses, same routing, same resolution — compiled from the working tree.
+This is the "bring your own data plane" path, and it is also your test suite.
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```sh
-permguard inspect
+task cli -- -w examples/basics validate
+task cli -- -w examples/basics test
 ```
 
-Create a zone and a ledger:
+</details>
+
+### 3. Now publish it and ask a real PDP
 
 ```sh
-permguard zones create acme --endpoint http://127.0.0.1:7556
-permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
-```
+task run:all                             # control plane :7556, data plane :7656, telemetry :7558
 
-Initialize and publish the included basics example:
+permguard zones create acme
+permguard ledgers create main-ledger --zone acme
 
-```sh
-permguard -w examples/basics init basics --language cedar,rego
+permguard -w examples/basics init basics --language cedar,rego   # the example ships the sources; this tracks them
 permguard -w examples/basics remote add origin http://127.0.0.1:7556
-permguard -w examples/basics validate
 permguard -w examples/basics checkout origin/acme/main-ledger
 permguard -w examples/basics plan
 permguard -w examples/basics apply -m "lab policies"
 ```
 
-Wait for the data plane to mirror the ledger, then ask for decisions:
+The data plane mirrors it, verifies the signed head, compiles each partition once, and serves:
 
 ```sh
-sleep 20
 permguard -w examples/basics check -f requests/permit.json
-permguard -w examples/basics check -f requests/deny.json
-permguard -w examples/basics check -f requests/gateway-permit.json
-permguard -w examples/basics check -f requests/boxcarred.json -o json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
+permguard -w examples/basics test --remote   # the same cases, against the plane
 ```
 
-Read the decision log:
-
-```sh
-permguard decisions list --zone acme --ledger main-ledger
-permguard decisions tail --zone acme --ledger main-ledger --follow
-permguard decisions export --zone acme --ledger main-ledger -o json
-```
-
-Call the PDP HTTP API directly:
+Straight at the API, which is AuthZEN:
 
 ```sh
 curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
 
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
-  -H 'content-type: application/json' \
-  -H 'x-request-id: lab-1' \
+  -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
 
-Use gRPC instead of HTTP:
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```sh
-permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
-permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+task run:all
+
+task cli -- zones create acme
+task cli -- ledgers create main-ledger --zone acme
+
+task cli -- -w examples/basics init basics --language cedar,rego
+task cli -- -w examples/basics remote add origin http://127.0.0.1:7556
+task cli -- -w examples/basics checkout origin/acme/main-ledger
+task cli -- -w examples/basics apply -m "lab policies"
+task cli -- -w examples/basics check -f requests/permit.json
+```
+
+</details>
+
+### 4. What a request looks like
+
+```json
+{
+  "subject":  { "type": "User", "id": "alice" },
+  "action":   { "name": "read", "properties": { "risk": "high" } },
+  "resource": { "type": "Document", "id": "budget-2026" },
+  "context":  { "environment": "production" },
+
+  "partition_inputs": {
+    "cedar": {
+      "type": "permguard.cedar.entities.v1",
+      "data": [ { "uid": { "type": "Group", "id": "finance" } } ]
+    }
+  }
+}
+```
+
+`subject`, `action`, `resource` and `context` reach **every** partition of the profile.
+`partition_inputs` reaches **one**, by the partition's own name — because an entity store is
+written in Cedar's shape, a Rego document in JSON, and two Cedar partitions with different schemas
+hold different worlds. The **ledger** decides what each partition accepts; the `type` in the
+request is checked against that and never obeyed, so a caller can never pick the parser for bytes
+it also supplies.
+
+An action's properties reach Rego at `input.action.properties`. Cedar cannot carry attributes on an
+action at all, so Permguard projects them into `context.action` — and refuses a caller who writes
+that key. One request, two readings, nothing for a caller to keep in step.
+
+### 5. Read the decisions back, and verify them
+
+```sh
+permguard decisions list --zone acme --ledger main-ledger
+permguard decisions tail --zone acme --ledger main-ledger --follow
+permguard decisions get  <decision-id> --zone acme --ledger main-ledger
+
+# and check the chain and the signatures, with the plane's published keys
+permguard decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
+```
+
+The `decision id` a caller gets back is the one the record carries: an answer and its evidence are
+joined by an identifier, not by a timestamp and a guess.
+
+## Examples
+
+| Example | Domain | What it shows |
+| --- | --- | --- |
+| [`examples/basics`](examples/basics) | users, groups, documents | the platform end to end — apply, mirror, decide, read the decisions back, verify them, and two workspaces pushing at each other |
+| [`examples/release-pipeline`](examples/release-pipeline) | software delivery | a realistic set of controls — team ownership, machine identities, separation of duties, incident-only rollback — and the evidence they leave |
+
+The reasoning behind the second, written for somebody who has never used Permguard, is in
+[`docs/use-cases/release-pipeline.md`](docs/use-cases/release-pipeline.md).
+
+Copy one into a scratch directory and take it apart:
+
+```sh
+mkdir -p playground/basics && cd playground/basics
+task cp-basics          # or: task cp-rspipe
 ```
 
 ## Run Commands
@@ -368,59 +428,28 @@ permguard decisions export --zone acme --ledger main-ledger -o json
 permguard decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
 ```
 
-## Examples
-
-Two policy workspaces under `examples/`, each a real workspace rather than a
-snippet:
-
-| Example | Domain | What it is for |
-| --- | --- | --- |
-| [`examples/basics`](examples/basics) | users, groups, documents | the platform end to end on a domain small enough to stay out of the way |
-| [`examples/release-pipeline`](examples/release-pipeline) | software delivery | team ownership, machine identities, separation of duties, incident-only rollback — and the evidence they leave |
+## Inside an example
 
 ```text
 examples/release-pipeline/
-|-- manifest.yml         three partitions, two pdp profiles
-|-- admin-cedar/         the org chart - teams, ownership, roles (schema, checked)
-|-- admin-rego/          the guardrails - deny only, read the state of the moment
-|-- pipeline-rego/       what CI, the signer and the controller may do
-`-- requests/*.json      eleven decision requests
+|-- manifest.yml            three partitions, two pdp profiles, one input contract each
+|-- admin-cedar/            the org chart — teams, ownership, roles (schema, type-checked)
+|   `-- model.cedarschema
+|-- admin-rego/             the guardrails — deny only, and a JSON Schema over their own input
+|   `-- guardrails.regoschema
+|-- pipeline-rego/          what CI, the signer and the controller may do
+|-- requests/*.json         twenty-three decision requests, refusals included
+`-- tests/release.yml       what this workspace claims its own policies decide
 ```
 
-Two of the three partitions run Rego. A profile compiles the partitions it names
-and nothing else, so `pipeline` never loads the guardrails and `admin` never loads
-the rules for machines.
+Two of the three partitions run Rego. A profile compiles the partitions it names and nothing else,
+so `pipeline` never loads the guardrails and `admin` never loads the rules for machines. Each
+partition declares what a request may hand it — the org chart is **required**, the guardrails' list
+is optional, and the pipeline rules accept nothing — and the suite asserts every way a caller can
+get that wrong.
 
-Run the basics lab end to end:
-
-```sh
-task run:all
-
-permguard zones create acme --endpoint http://127.0.0.1:7556
-permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
-
-permguard -w examples/basics init basics --language cedar,rego
-permguard -w examples/basics remote add origin http://127.0.0.1:7556
-permguard -w examples/basics validate
-permguard -w examples/basics checkout origin/acme/main-ledger
-permguard -w examples/basics plan
-permguard -w examples/basics apply -m "lab policies"
-
-sleep 20
-
-permguard -w examples/basics check -f requests/permit.json
-permguard -w examples/basics check -f requests/deny.json
-permguard -w examples/basics check -f requests/gateway-permit.json
-permguard decisions list --zone acme --ledger main-ledger
-```
-
-Each example has its own README with the commands and the decisions they produce.
-`examples/release-pipeline` is the runnable half of a use case written for a reader
-who has never used Permguard: [Release and deployment
-operations](docs/use-cases/release-pipeline.md).
-
-Note that `lab/` is something else — the configuration of the observability stack
-below, not a policy workspace.
+Each example has its own README with the commands and the decisions they produce. `lab/` at the
+repository root is something else: the configuration of the observability stack below.
 
 ## Observability Lab
 

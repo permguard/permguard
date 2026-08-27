@@ -22,13 +22,18 @@
 //! | `resource {type,id}` | the resource `type::"id"` |
 //! | `action {name}` | `Action::"name"`, or `T::"name"` when the name is qualified `T::name` |
 //! | `context {…}` | the request context record |
-//! | `subject.properties`, `resource.properties` | attributes of the two entities, synthesized unless `entities` already carries that uid |
-//! | `entities[]` | the entity graph verbatim, in Cedar's own JSON shape |
+//! | `subject.properties`, `resource.properties` | attributes of the two entities, synthesized unless the store already carries that uid |
+//! | `permguard.cedar.entities.v1` | the entity store verbatim, in Cedar's own JSON shape |
 //!
 //! Synthesizing the two named entities is what lets a policy read
-//! `resource.status` without the caller restating the resource inside
-//! `entities` — and checking first for the uid is what lets a caller who
-//! *does* state it (with parents, say) win.
+//! `resource.status` without the caller restating the resource inside the
+//! store — and checking first for the uid is what lets a caller who *does*
+//! state it (with parents, say) win.
+//!
+//! The store is addressed to **this partition by name**. Two Cedar partitions
+//! with different schemas are two different worlds: an entity legal in one is
+//! refused by the other, so a store was never something to hand to "the Cedar
+//! partitions".
 
 use std::str::FromStr as _;
 
@@ -127,6 +132,20 @@ impl Evaluator for CedarEvaluator {
         }
     }
 
+    /// The entity store, against this partition's own schema, before any policy runs.
+    ///
+    /// A store the schema refuses is a bad request rather than a denied one, and the difference
+    /// matters to whoever has to fix it: `deny` sends them reading policies, and this sends them
+    /// to the entity they mistyped.
+    fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
+        Entities::from_json_value(
+            Value::Array(input.cedar_entities().to_vec()),
+            self.schema.as_ref(),
+        )
+        .map(|_| ())
+        .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
+    }
+
     fn footprint(&self) -> usize {
         self.footprint
     }
@@ -152,7 +171,7 @@ impl CedarEvaluator {
     }
 
     fn entities(&self, query: &Query) -> Result<Entities, String> {
-        let mut items = query.entities.clone();
+        let mut items = query.input.cedar_entities().to_vec();
         for (kind, id, properties) in [
             (
                 &query.subject.kind,
@@ -251,8 +270,12 @@ mod tests {
                 properties: Map::new(),
             },
             context: Map::new(),
-            entities: Vec::new(),
+            input: crate::input::PartitionData::default(),
         }
+    }
+
+    fn store(items: Vec<Value>) -> crate::input::PartitionData {
+        crate::input::PartitionData::CedarEntities(std::sync::Arc::new(items))
     }
 
     #[test]
@@ -348,11 +371,11 @@ mod tests {
             .expect("the policies compile");
 
         let mut asked = query("alice", "read", "budget");
-        asked.entities = vec![
+        asked.input = store(vec![
             json!({"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []}),
             json!({"uid": {"type": "User", "id": "alice"}, "attrs": {},
                    "parents": [{"type": "Group", "id": "finance"}]}),
-        ];
+        ]);
 
         assert!(
             compiled.evaluate(&asked).permitted,

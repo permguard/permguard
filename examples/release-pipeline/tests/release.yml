@@ -89,3 +89,44 @@
   request: ../requests/rollback-frozen-service-deny.json
   # The org chart still entitles alice — the guardrail's own graph is what refuses.
   expect: { decision: deny, policies: [delivery-guardrails] }
+
+# --- what a request may hand a partition, and what happens when it gets it wrong.
+#
+#     Every one of these is refused *before a policy is consulted*, and that is the
+#     point: a caller who addressed the wrong partition, or sent the wrong shape,
+#     has made a mistake nobody's rules have an opinion about. Answering `deny`
+#     would send them reading policies that were never the problem.
+- name: the org chart is required, and a request without it is refused by name
+  request: ../requests/error-input-required.json
+  # `admin-cedar` declares `required: true`: its policies traverse that store, and
+  # deciding against an empty one would deny for the wrong reason.
+  expect: { error: partition_input_required }
+
+- name: a partition that reads only the request is not addressable
+  request: ../requests/error-input-unsupported.json
+  # `pipeline-rego` declares no input. Ignoring one sent to it would look, from the
+  # caller's side, exactly like a policy ignoring it.
+  expect: { error: partition_input_unsupported }
+
+- name: the type a request states is checked against the ledger, never obeyed
+  request: ../requests/error-input-type-mismatch.json
+  # Stating `permguard.rego.data.v1` does not switch `admin-cedar` to a Rego reading:
+  # a caller cannot choose the parser for data it also supplies.
+  expect: { error: partition_input_type_mismatch }
+
+- name: a document its partition's schema refuses never reaches a rule
+  request: ../requests/error-input-schema.json
+  # `frozen` is not `frozen_services`. Without the schema the guardrail would read
+  # nothing, decide nothing, and the release would go out — a rename turning a
+  # control into silence is exactly what a schema is for.
+  expect: { error: partition_input_schema }
+
+- name: the removed entities extension is refused rather than ignored
+  request: ../requests/error-entities-removed.json
+  # Ignoring it is the one unacceptable outcome: the request would be decided
+  # against an empty world and nothing on the wire would say why.
+  expect: { error: field_removed }
+
+- name: an input addressed to a partition the profile does not hold is refused
+  request: ../requests/error-partition-unknown.json
+  expect: { error: partition_unknown }

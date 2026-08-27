@@ -888,20 +888,20 @@ fn test_refuses_a_payload_the_data_plane_would_not_read() {
             whole(r#","evaluations":"invalid""#),
         ),
         (
-            "an entity schema that is not a string",
-            whole(r#","entities":{"schema":7,"items":[]}"#),
+            "partition inputs that are not an object",
+            whole(r#","partition_inputs":"invalid""#),
         ),
         (
-            "entity items that are null",
-            whole(r#","entities":{"items":null}"#),
+            "a partition input that is not an object",
+            whole(r#","partition_inputs":{"admin-cedar":"invalid"}"#),
         ),
         (
-            "entities that are not an object",
-            whole(r#","entities":"invalid""#),
+            "a partition input type that is not a string",
+            whole(r#","partition_inputs":{"admin-cedar":{"type":7,"data":[]}}"#),
         ),
         (
-            "entity items that are not a list",
-            whole(r#","entities":{"items":"invalid"}"#),
+            "partition inputs that are null",
+            whole(r#","partition_inputs":null"#),
         ),
         (
             "properties that are not an object",

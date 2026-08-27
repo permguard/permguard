@@ -14,8 +14,16 @@ runtimes:
     language: { name: rego, constraint: ">=1.0.0" }
     engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
 partitions:
-  cedar: { runtime: cedar, schema: true }
-  rego:  { runtime: rego, schema: false }
+  # `input` is what a request may hand each partition, and the ledger decides it.
+  # The Cedar partition reads an entity store; the Rego module here reads the
+  # request alone, so it declares no input and anything addressed to it is refused.
+  cedar:
+    runtime: cedar
+    schema: true
+    input: { type: permguard.cedar.entities.v1, required: false }
+  rego:
+    runtime: rego
+    schema: false
 profiles:
   # Both partitions answer one request. They therefore share one vocabulary:
   # the entity types the Cedar schema declares (`User`, `Document`, `Group`)

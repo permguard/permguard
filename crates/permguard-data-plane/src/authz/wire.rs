@@ -23,7 +23,7 @@
 //! | --- | --- | --- |
 //! | Policy store | the URL the PEP was configured with | **`zone` and `ledger` in the payload**, required |
 //! | Search APIs | optional | not served |
-//! | `principal`, `entities` | — | extensions: who is asking, and the entity graph |
+//! | `principal`, `partition_inputs` | — | extensions: who is asking, and what each partition of the profile is given |
 //! | Reasons | free-form `context` | `reason_admin` / `reason_user`, the disclosure split the whole server speaks |
 //!
 //! One endpoint that carries the store in the body is the choice a caller

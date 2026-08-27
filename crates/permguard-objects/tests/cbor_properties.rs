@@ -93,6 +93,7 @@ fn manifest() -> impl Strategy<Value = Manifest> {
                         runtime: runtime_name,
                         media_types,
                         schema: false,
+                        input: None,
                     },
                 );
 

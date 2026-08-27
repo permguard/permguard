@@ -20,6 +20,10 @@ permguard-objects.workspace = true
 # reviewed and shipped — plugins are a build, not a deployment action.
 cedar-policy = "4.12"
 regorus = "0.11"
+# The Rego partition schema: JSON Schema, compiled once at load. Already in this
+# workspace's graph — regorus carries it — so it is a direct dependency of the
+# crate that actually validates with it rather than a transitive accident.
+jsonschema = { version = "0.47", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true

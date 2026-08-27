@@ -99,7 +99,13 @@ impl PdpApi {
             .get("traceparent")
             .and_then(|value| value.to_str().ok())
             .and_then(super::wire::TraceContext::parse);
-        let mut wire = translate::request_from_proto(request.into_inner());
+        let mut wire =
+            translate::request_from_proto(request.into_inner()).map_err(|malformed| {
+                status_of(
+                    &ApiError::new(ErrorClass::Validation, malformed.code, malformed.message),
+                    self.disclosure,
+                )
+            })?;
         if wire.request_id.is_none() {
             wire.request_id = carried;
         }

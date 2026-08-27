@@ -196,7 +196,7 @@ fn beside(case_file: &str, request: &str) -> String {
 
 /// The compiled partitions of the working tree, ready to answer.
 pub struct Compiled {
-    partitions: BTreeMap<String, Box<dyn Evaluator>>,
+    partitions: BTreeMap<String, std::sync::Arc<dyn Evaluator>>,
     /// Each partition's runtime, which is half of what routes an entity graph.
     languages: BTreeMap<String, String>,
     /// Policy identity → the alias its author wrote, when there is one.
@@ -216,7 +216,7 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
     let aliases = aliases(snapshot);
 
     let root = tree_at(snapshot, &snapshot.root.to_string())?;
-    let mut partitions: BTreeMap<String, Box<dyn Evaluator>> = BTreeMap::new();
+    let mut partitions: BTreeMap<String, std::sync::Arc<dyn Evaluator>> = BTreeMap::new();
     let mut languages: BTreeMap<String, String> = BTreeMap::new();
 
     for entry in &root.entries {
@@ -247,9 +247,10 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
         .map_err(|why| err(why.to_string()))?;
         let (policies, schema) = (held.policies, held.schema);
 
-        let evaluator = evaluating
+        let evaluator: std::sync::Arc<dyn Evaluator> = evaluating
             .compile(&policies, schema.as_deref())
-            .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?;
+            .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?
+            .into();
         partitions.insert(entry.name.clone(), evaluator);
         languages.insert(entry.name.clone(), runtime.language.name.clone());
     }
@@ -389,19 +390,34 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
     };
 
     // What each partition of this profile is given, routed by `Asking::route` — the function the
-    // data plane calls. An entity graph belongs to a runtime and Cedar reads an action's properties
-    // somewhere Rego does not, so no single query fits every partition; and a routing this
-    // workspace would be refused for has to be refused here too.
+    // data plane calls. An input belongs to the partition it names and Cedar reads an action's
+    // properties somewhere Rego does not, so no single query fits every partition; and an
+    // addressing this workspace would be refused for has to be refused here too.
     let mut targets = Vec::with_capacity(declared.partitions.len());
     for name in &declared.partitions {
-        let Some(language) = compiled.languages.get(name) else {
+        let (Some(language), Some(evaluator)) =
+            (compiled.languages.get(name), compiled.partitions.get(name))
+        else {
             return Ok(failed(
                 located,
                 &profile,
                 format!("the profile names the partition `{name}`, which holds nothing"),
             ));
         };
-        targets.push(languages::request::PartitionTarget::new(name, language));
+        targets.push(
+            languages::request::PartitionTarget::new(name, language)
+                // The ledger's own declaration of what this partition accepts, and the compiled
+                // partition that checks it against its schema — both, or a workspace would pass
+                // here on a request the plane refuses.
+                .accepting(
+                    compiled
+                        .manifest
+                        .partitions
+                        .get(name)
+                        .and_then(|held| held.input.as_ref()),
+                )
+                .evaluated_by(evaluator.as_ref()),
+        );
     }
 
     let mut evaluations = Vec::new();
@@ -423,18 +439,20 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
             }
         };
 
-        let mut verdicts = Vec::new();
-        for (name, query) in declared.partitions.iter().zip(&queries) {
-            let Some(evaluator) = compiled.partitions.get(name) else {
-                return Ok(failed(
-                    located,
-                    &profile,
-                    format!("the profile names the partition `{name}`, which holds nothing"),
-                ));
-            };
-            verdicts.push(evaluator.evaluate(query));
-        }
-        let outcome = resolve(verdicts);
+        // Every partition, together and in the profile's order — `evaluate_all`, which is what
+        // the data plane calls. Not a loop of its own: a workspace evaluated one way and served
+        // another is a workspace whose tests prove nothing about the thing that will answer.
+        let work: Vec<(std::sync::Arc<dyn Evaluator>, languages::Query)> = declared
+            .partitions
+            .iter()
+            .filter_map(|name| compiled.partitions.get(name).map(std::sync::Arc::clone))
+            .zip(queries)
+            .collect();
+        let outcome = resolve(
+            languages::evaluate::evaluate_all(work)
+                .into_iter()
+                .map(|answered| answered.verdict),
+        );
         let decided = Decided {
             request_id: request_id.clone(),
             permitted: outcome.permitted,

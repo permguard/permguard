@@ -190,6 +190,33 @@ task cli -- -w examples/basics check -f requests/deny.json
 
 </details>
 
+**What the request handed the policies.** `requests/permit.json` carries the org chart the Cedar
+rules traverse, addressed to the partition that reads it:
+
+```json
+{
+  "subject":  { "type": "User", "id": "alice" },
+  "action":   { "name": "read" },
+  "resource": { "type": "Document", "id": "budget-2026" },
+  "partition_inputs": {
+    "cedar": {
+      "type": "permguard.cedar.entities.v1",
+      "data": [ { "uid": { "type": "Group", "id": "finance" } }, … ]
+    }
+  }
+}
+```
+
+`subject`, `action`, `resource` and `context` reach **every** partition of the profile.
+`partition_inputs` reaches **one**, by name — because an entity store is written in Cedar's shape
+and a Rego module could not read it, and because two Cedar partitions with different schemas hold
+different worlds. `manifest.yml` says which type each partition accepts; the `type` here is checked
+against it, never obeyed. The `rego` partition declares no input, so it reads the request alone —
+and anything addressed to it is refused rather than quietly dropped.
+
+`examples/release-pipeline` takes this further: two runtimes reading one question, a Rego partition
+with a JSON Schema over its own document, and every way a request can get the addressing wrong.
+
 **The other profile**, **boxcarring**, and **two ways to be wrong**:
 
 ```bash
@@ -616,8 +643,9 @@ task cli -- -w examples/basics test
   ok    writing a document somebody else owns is refused                    [default] deny, nothing permitted it
   ok    the gateway profile answers with Rego alone                         [gateway] permit by gateway-access
   ok    the same request under the default profile leaves the Cedar schema  [default] not evaluated
+  ok    three questions in one request, and the batch is their conjunction  [gateway] deny — read=permit(gateway-access) create=permit(gateway-access) purge=deny
 
-4 case(s), 4 passed, 0 failed.
+5 case(s), 5 passed, 0 failed.
 ```
 
 These cases are checked twice, from the same file: by `permguard test`, which

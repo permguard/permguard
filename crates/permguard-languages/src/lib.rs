@@ -30,7 +30,10 @@ mod cedar;
 mod rego;
 
 pub mod evaluate;
+pub mod fanout;
+pub mod input;
 pub mod lookup;
+pub mod manifest_file;
 pub mod partition;
 pub mod registry;
 pub mod request;
@@ -39,6 +42,7 @@ pub mod role;
 pub use evaluate::{
     Action, Entity, Evaluating, Evaluator, Outcome, Query, StoredPolicy, Verdict, resolve,
 };
+pub use input::{PartitionData, PartitionInputBody, input_type, input_types};
 pub use lookup::{language, language_for_media_type, languages};
 pub use registry::evaluating;
 pub use request::{

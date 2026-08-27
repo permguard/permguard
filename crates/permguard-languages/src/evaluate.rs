@@ -58,9 +58,13 @@ pub struct Query {
     pub action: Action,
     /// Environmental attributes — time, address, whatever a policy reads.
     pub context: Map<String, Value>,
-    /// The entity graph, in the language's own JSON shape. The Permguard
-    /// extension: what a policy traverses beyond the three entities above.
-    pub entities: Vec<Value>,
+    /// This partition's own input, normalised into what its runtime reads.
+    ///
+    /// Addressed to the partition by name and to no other: two partitions of one profile — two
+    /// Cedar partitions with different schemas included — hold different worlds, and a store
+    /// legal in one is refused by the other. A partition nobody addressed reads its type's empty
+    /// input, never a neighbour's.
+    pub input: crate::input::PartitionData,
 }
 
 /// One policy as the store holds it: its derived identity, the optional
@@ -183,6 +187,60 @@ pub fn resolve(verdicts: impl IntoIterator<Item = Verdict>) -> Outcome {
     outcome
 }
 
+/// One partition's answer, and what it cost.
+#[derive(Debug)]
+pub struct Answered {
+    pub verdict: Verdict,
+    pub elapsed: std::time::Duration,
+}
+
+/// Evaluates every partition of a profile — together, and in the profile's order.
+///
+/// # Why this is one function
+///
+/// The data plane serving a request and `permguard test` deciding one off disk must not be able to
+/// disagree about *how many* partitions answered, in what order their verdicts were combined, or
+/// what happens when one of them comes apart. Written twice, the second one is sequential for a
+/// while and then is not, and a workspace that passed locally denies in production for a reason
+/// nobody can see.
+///
+/// # What parallel does not change
+///
+/// The answers come back in the order the partitions were given, whatever order they finished in,
+/// and [`resolve`] then combines them exactly as it did when they were asked one at a time. Deny
+/// still overrides, silence is still not a deny, and a partition that could not answer at all is
+/// still an objection.
+pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<Answered> {
+    let count = work.len();
+    let jobs: Vec<Box<dyn FnOnce() -> Answered + Send + 'static>> = work
+        .into_iter()
+        .map(|(evaluator, query)| {
+            Box::new(move || {
+                let started = std::time::Instant::now();
+                let verdict = evaluator.evaluate(&query);
+
+                Answered {
+                    verdict,
+                    elapsed: started.elapsed(),
+                }
+            }) as Box<dyn FnOnce() -> Answered + Send + 'static>
+        })
+        .collect();
+
+    match crate::fanout::Fanout::shared().run(jobs) {
+        Ok(answered) => answered,
+        // An answer short of a partition is not this request's answer. Every partition is reported
+        // as unable to evaluate, which denies — the same fail-closed rule as any other engine
+        // fault, applied to the one fault that has no engine to blame.
+        Err(lost) => (0..count)
+            .map(|_| Answered {
+                verdict: Verdict::refused(lost.to_string()),
+                elapsed: std::time::Duration::ZERO,
+            })
+            .collect(),
+    }
+}
+
 /// A compiled, immutable set of policies, ready to answer requests.
 ///
 /// Shared across threads and across requests: everything expensive already
@@ -191,6 +249,21 @@ pub trait Evaluator: Send + Sync {
     /// Answers one request. Never errors: a request that cannot be evaluated
     /// is a [`Verdict::refused`], which denies.
     fn evaluate(&self, query: &Query) -> Verdict;
+
+    /// Checks a materialised input against this partition's compiled schema.
+    ///
+    /// Run **before any policy is consulted**, which is the difference between a bad request and a
+    /// denied one: a caller that sent an entity its schema does not declare has made a mistake
+    /// nobody's policy can express an opinion about, and hearing `deny` for it would send them
+    /// looking through the rules. The schema is already compiled — this is a check, not a parse.
+    ///
+    /// The default accepts: a partition whose type has nothing beyond its shape to check has
+    /// nothing to do here, and the shape was checked when the input was normalised.
+    fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
+        let _ = input;
+
+        Ok(())
+    }
 
     /// Roughly how much memory this compiled program holds, for the cache
     /// that decides what to keep. An estimate — the sources it was built
@@ -280,6 +353,91 @@ mod tests {
     }
 
     use super::*;
+
+    /// Two partitions of one profile really are evaluated at the same time.
+    ///
+    /// Not "both were called" — a sequential loop satisfies that. Each evaluator waits on a
+    /// barrier the other must reach, so the pair answers only if they overlap in time. A
+    /// sequential `evaluate_all` deadlocks here and the test times out rather than passing.
+    #[test]
+    fn two_partitions_of_a_profile_are_evaluated_at_the_same_time() {
+        struct Meeting(std::sync::Arc<std::sync::Barrier>, &'static str);
+        impl Evaluator for Meeting {
+            fn evaluate(&self, _query: &Query) -> Verdict {
+                self.0.wait();
+
+                Verdict::permit(vec![self.1.to_owned()])
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                vec![self.1.to_owned()]
+            }
+        }
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let work: Vec<(std::sync::Arc<dyn Evaluator>, Query)> = ["first", "second"]
+            .into_iter()
+            .map(|name| {
+                (
+                    std::sync::Arc::new(Meeting(std::sync::Arc::clone(&barrier), name))
+                        as std::sync::Arc<dyn Evaluator>,
+                    Query::default(),
+                )
+            })
+            .collect();
+
+        let answered = evaluate_all(work);
+        assert_eq!(answered.len(), 2);
+        // And in the order they were given, not the order they finished.
+        assert_eq!(answered[0].verdict.determining, ["first".to_owned()]);
+        assert_eq!(answered[1].verdict.determining, ["second".to_owned()]);
+        // The combination is the same one a sequential run reached: both permitted, nothing
+        // objected, so the profile permits.
+        assert!(resolve(answered.into_iter().map(|held| held.verdict)).permitted);
+    }
+
+    /// A partition that comes apart mid-evaluation is a deny, not a short answer.
+    #[test]
+    fn a_partition_that_panics_denies_the_whole_request() {
+        struct Fine;
+        struct Broken;
+        impl Evaluator for Fine {
+            fn evaluate(&self, _query: &Query) -> Verdict {
+                Verdict::permit(vec!["p1".to_owned()])
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+        impl Evaluator for Broken {
+            fn evaluate(&self, _query: &Query) -> Verdict {
+                panic!("an engine came apart")
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let work: Vec<(std::sync::Arc<dyn Evaluator>, Query)> = vec![
+            (std::sync::Arc::new(Fine), Query::default()),
+            (std::sync::Arc::new(Broken), Query::default()),
+        ];
+        let outcome = resolve(evaluate_all(work).into_iter().map(|held| held.verdict));
+
+        assert!(!outcome.permitted, "fail-closed, whatever else permitted");
+        assert!(
+            !outcome.errors.is_empty(),
+            "and it says an answer is missing"
+        );
+    }
 
     #[test]
     fn a_refused_request_denies_and_says_why() {

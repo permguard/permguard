@@ -220,7 +220,7 @@ mod tests {
         Arc::new(Partition::for_test(
             name,
             footprint,
-            Box::new(Nothing(footprint)),
+            Arc::new(Nothing(footprint)),
         ))
     }
 

@@ -26,14 +26,33 @@
 //! language answered:
 //!
 //! ```text
-//! input.subject  {type, id, properties}
-//! input.resource {type, id, properties}
-//! input.action   {name, properties}
-//! input.context  {…}
+//! input.subject   {type, id, properties}
+//! input.resource  {type, id, properties}
+//! input.action    {name, properties}
+//! input.context   {…}
+//! input.partition {…}   this partition's own input, or {}
 //! ```
 //!
-//! The entity graph the request may carry is handed to Rego as `data.entities`
-//! — Rego traverses data, not entities, so the graph is data.
+//! `input.partition` is the `permguard.rego.data.v1` document the request
+//! addressed to **this partition by name** — never to "the Rego partitions",
+//! because two of them hold different rules and reading each other's data is
+//! exactly the confusion a name prevents.
+//!
+//! It rides on `input` and not on `data`, and that is the whole difference
+//! between a document and a database. `data` is the partition's own compiled
+//! world, identical for every request; `input` is what this request said.
+//! Grafting request data into `data` meant a global store mutated per
+//! evaluation — a shared surface a caller could write into, and one nothing
+//! could validate, because a schema describes a request and not a store.
+//!
+//! # The schema a partition may declare
+//!
+//! A Rego partition with `schema: true` carries exactly one **JSON Schema**
+//! (`application/vnd.permguard.schema.rego+json`), compiled once at load, and
+//! `input.partition` is checked against it before any rule runs. Rego is
+//! untyped by design and that is a virtue in a rule; it is not a virtue in the
+//! data the rule reads, where a renamed field turns a guardrail into a rule
+//! that quietly never fires.
 //!
 //! # Compile once
 //!
@@ -91,14 +110,9 @@ impl Evaluating for Rego {
         policies: &[StoredPolicy],
         schema: Option<&[u8]>,
     ) -> Result<Box<dyn Evaluator>, String> {
-        // Rego has no schema in this model, and a partition that declares one
-        // is a partition somebody misconfigured: refuse it here as well as at
-        // ingest, because this is the last place before serving.
-        if schema.is_some() {
-            return Err(
-                "rego: this language has no schema, so a schema partition is refused".into(),
-            );
-        }
+        // Compiled once, here, and never again: a schema recompiled per request would be the
+        // most expensive thing on the decision path and would say the same thing every time.
+        let validator = schema.map(compile_schema).transpose()?;
 
         let mut engine = Engine::new();
         engine.set_execution_timer_config(ExecutionTimerConfig {
@@ -124,7 +138,8 @@ impl Evaluating for Rego {
         Ok(Box::new(RegoEvaluator {
             engine,
             modules,
-            footprint,
+            validator,
+            footprint: footprint + schema.map_or(0, <[u8]>::len),
         }))
     }
 }
@@ -133,6 +148,8 @@ impl Evaluating for Rego {
 struct RegoEvaluator {
     engine: Engine,
     modules: Vec<Module>,
+    /// The partition's compiled JSON Schema, when it declares one.
+    validator: Option<jsonschema::Validator>,
     footprint: usize,
 }
 
@@ -142,21 +159,12 @@ impl Evaluator for RegoEvaluator {
             Ok(input) => input,
             Err(error) => return Verdict::refused(error),
         };
-        // One prepared engine, cloned per request: the modules are already
-        // parsed, and an evaluation must never mutate what the next one reads.
+        // One prepared engine, cloned per request: the modules are already parsed, and an
+        // evaluation must never mutate what the next one reads. Nothing is added to `data` here —
+        // the request rides on `input`, where a schema can describe it and where one request
+        // cannot leave anything behind for the next.
         let mut engine = self.engine.clone();
         engine.set_input(input);
-        if !query.entities.is_empty() {
-            let data = match value_of(&json!({"entities": query.entities})) {
-                Ok(data) => data,
-                Err(error) => return Verdict::refused(error),
-            };
-            if let Err(error) = engine.add_data(data) {
-                return Verdict::refused(format!(
-                    "rego: the entity graph is not legal data: {error}"
-                ));
-            }
-        }
 
         let mut permitted = Vec::new();
         let mut denied = Vec::new();
@@ -186,6 +194,25 @@ impl Evaluator for RegoEvaluator {
         Verdict::permit(permitted)
     }
 
+    /// `input.partition` against this partition's own JSON Schema, before any rule runs.
+    ///
+    /// Fail-closed: a document the schema refuses never reaches a rule, and never becomes a
+    /// silent `undefined` that reads as "the guardrail did not fire".
+    fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
+        let Some(validator) = &self.validator else {
+            return Ok(());
+        };
+        let empty = serde_json::Map::new();
+        let document = Value::Object(input.rego_data().cloned().unwrap_or(empty));
+
+        validator.validate(&document).map_err(|error| {
+            format!(
+                "rego: the document does not satisfy this partition's schema: {error} (at {})",
+                error.instance_path()
+            )
+        })
+    }
+
     fn footprint(&self) -> usize {
         self.footprint
     }
@@ -193,6 +220,24 @@ impl Evaluator for RegoEvaluator {
     fn policies(&self) -> Vec<String> {
         self.modules.iter().map(|m| m.id.clone()).collect()
     }
+}
+
+/// Compiles a partition's JSON Schema, once.
+///
+/// Draft 2020-12, and **local**: `$ref` may only reach inside the document. There is no retriever
+/// configured, so a schema naming a remote reference fails to compile rather than reaching for the
+/// network — a policy load that made an outbound request would be a policy load an operator cannot
+/// reason about, and one an attacker could aim.
+pub(super) fn compile_schema(bytes: &[u8]) -> Result<jsonschema::Validator, String> {
+    let text =
+        std::str::from_utf8(bytes).map_err(|_| "rego: the schema is not valid UTF-8".to_owned())?;
+    let document: Value = serde_json::from_str(text)
+        .map_err(|error| format!("rego: the schema is not JSON: {error}"))?;
+
+    jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&document)
+        .map_err(|error| format!("rego: the schema is not a usable JSON Schema: {error}"))
 }
 
 /// Whether a module defines this rule at all. Asked once, at compile time:
@@ -242,6 +287,10 @@ fn input_document(query: &Query) -> Value {
             "properties": Value::Object(query.action.properties.clone()),
         },
         "context": Value::Object(query.context.clone()),
+        // Always present, even when nothing was addressed to this partition: a rule written
+        // against `input.partition.frozen[_]` should read an empty document, not trip over an
+        // undefined path and answer nothing at all.
+        "partition": Value::Object(query.input.rego_data().cloned().unwrap_or_default()),
     })
 }
 
@@ -310,8 +359,14 @@ deny if input.subject.id == "bob"
                 properties: Map::new(),
             },
             context: Map::new(),
-            entities: Vec::new(),
+            input: crate::input::PartitionData::default(),
         }
+    }
+
+    fn document(value: serde_json::Value) -> crate::input::PartitionData {
+        crate::input::PartitionData::RegoData(std::sync::Arc::new(
+            value.as_object().cloned().unwrap_or_default(),
+        ))
     }
 
     #[test]
@@ -424,7 +479,7 @@ import rego.v1
 default allow := false
 
 allow if {
-    some entity in data.entities
+    some entity in input.partition.entities
     entity.id == input.subject.id
     entity.role == "reader"
 }
@@ -434,22 +489,94 @@ allow if {
             .expect("the module compiles");
 
         let mut asked = query("alice", "read", "open");
-        asked.entities = vec![json!({"id": "alice", "role": "reader"})];
+        asked.input = document(json!({"entities": [{"id": "alice", "role": "reader"}]}));
         assert!(compiled.evaluate(&asked).permitted);
 
         let mut other = query("alice", "read", "open");
-        other.entities = vec![json!({"id": "alice", "role": "auditor"})];
+        other.input = document(json!({"entities": [{"id": "alice", "role": "auditor"}]}));
         assert!(!compiled.evaluate(&other).permitted);
     }
 
     #[test]
-    fn a_schema_partition_is_refused_because_rego_has_no_schema() {
+    fn a_schema_that_is_not_json_schema_refuses_the_load() {
         let refused = Rego
             .compile(&[stored("01a0-readers", READERS)], Some(b"anything"))
             .map(|_| ())
-            .expect_err("rego has no schema");
+            .expect_err("that is not a schema");
 
-        assert!(refused.contains("no schema"), "{refused}");
+        assert!(refused.contains("not JSON"), "{refused}");
+    }
+
+    #[test]
+    fn a_document_the_schema_refuses_never_reaches_a_rule() {
+        const SCHEMA: &[u8] = br#"{
+            "type": "object",
+            "required": ["frozen_services"],
+            "properties": {"frozen_services": {"type": "array", "items": {"type": "string"}}}
+        }"#;
+        let compiled = Rego
+            .compile(&[stored("01a0-readers", READERS)], Some(SCHEMA))
+            .expect("the module and the schema compile");
+
+        // What the schema describes, accepted.
+        assert!(
+            compiled
+                .check_input(&document(json!({"frozen_services": ["payments-api"]})))
+                .is_ok()
+        );
+        // A field renamed: the shape a rule would read as `undefined`, which is indistinguishable
+        // from a guardrail deciding not to fire. Refused instead.
+        let refused = compiled
+            .check_input(&document(json!({"frozen": ["payments-api"]})))
+            .expect_err("a required property is missing");
+        assert!(refused.contains("schema"), "{refused}");
+        // And the wrong type inside it.
+        assert!(
+            compiled
+                .check_input(&document(json!({"frozen_services": "payments-api"})))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_partition_that_declares_no_schema_checks_nothing_and_reads_the_document() {
+        let compiled = Rego
+            .compile(&[stored("01a0-readers", READERS)], None)
+            .expect("the module compiles");
+
+        assert!(
+            compiled
+                .check_input(&document(json!({"anything": 1})))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_document_arrives_at_input_partition_and_an_absent_one_is_empty() {
+        const MODULE: &str = r#"package frozen
+
+import rego.v1
+
+default deny := false
+
+deny if input.resource.id in input.partition.frozen_services
+"#;
+        let compiled = Rego
+            .compile(&[stored("01a0-frozen", MODULE)], None)
+            .expect("the module compiles");
+
+        let mut asked = query("alice", "read", "open");
+        asked.resource.id = "payments-api".to_owned();
+        asked.input = document(json!({"frozen_services": ["payments-api"]}));
+        assert!(!compiled.evaluate(&asked).permitted, "the guardrail fires");
+
+        // Nothing addressed to this partition: an empty document, and a rule that reads a path
+        // through it answers no rather than erroring.
+        let mut nothing = query("alice", "read", "open");
+        nothing.resource.id = "payments-api".to_owned();
+        let verdict = compiled.evaluate(&nothing);
+        assert!(verdict.error.is_none(), "{:?}", verdict.error);
+        assert!(verdict.determining.is_empty(), "nothing denied it");
     }
 
     #[test]

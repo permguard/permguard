@@ -43,7 +43,9 @@ use permguard_data_plane::authz::{block, http, wire};
 use permguard_data_plane::decisions::journal::{Epoch, Journal, WhenFull};
 use permguard_decisions::spool::Bounds;
 use permguard_languages::registry;
-use permguard_objects::manifest::{Manifest, Partition, Profile, Requirement, Runtime};
+use permguard_objects::manifest::{
+    InputContract, Manifest, Partition, Profile, Requirement, Runtime,
+};
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND};
 use permguard_objects::semver::Constraint;
@@ -117,6 +119,17 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
                 runtime: (*language).to_owned(),
                 media_types,
                 schema: *schema,
+                // Every test partition accepts its runtime's own input, optionally: the tests
+                // that address one need it declared, and the tests that do not are unaffected —
+                // an optional input nobody sends is an empty one.
+                input: Some(InputContract {
+                    r#type: match *language {
+                        "cedar" => permguard_languages::input::CEDAR_ENTITIES_V1,
+                        _ => permguard_languages::input::REGO_DATA_V1,
+                    }
+                    .to_owned(),
+                    required: false,
+                }),
             },
         );
     }
@@ -1140,11 +1153,11 @@ async fn a_mirror_nobody_synchronizes_is_not_bounded_by_expiry() {
     assert!(answer.decision);
 }
 
-/// Two Cedar partitions with **different schemas**, each given its own entity graph.
+/// Two Cedar partitions with **different schemas**, each given its own entity store.
 ///
-/// This is the case the language alone cannot route: both partitions are Cedar, so an
-/// `entities.schema: "cedar"` addresses both — and a graph legal for one schema is refused by the
-/// other, which used to mean a profile like this could not be answered at all. The override
+/// This is the case a language cannot route: both partitions are Cedar, so anything addressed to
+/// "the Cedar partitions" reaches both — and a store legal for one schema is refused by the other,
+/// which used to mean a profile like this could not be answered at all. `partition_inputs`
 /// addresses a partition by name, which is the only identity that separates them.
 #[tokio::test]
 async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph() {
@@ -1185,25 +1198,26 @@ async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph()
             "subject": {"type": "User", "id": "alice"},
             "resource": {"type": "Document", "id": "budget"},
             "action": {"name": "read"},
-            "entities": {"partitions": partitions}
+            "partition_inputs": partitions
         }))
         .expect("the payload parses")
     };
+    let store = |items: serde_json::Value| json!({"type": permguard_languages::input::CEDAR_ENTITIES_V1, "data": items});
 
     // Each partition is handed the graph its own schema declares.
     let answer = decider
         .decide(
             &ask(json!({
-                "groups": {"schema": "cedar", "items": [
+                "groups": store(json!([
                     {"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []},
                     {"uid": {"type": "User", "id": "alice"}, "attrs": {},
                      "parents": [{"type": "Group", "id": "finance"}]}
-                ]},
-                "teams": {"schema": "cedar", "items": [
+                ])),
+                "teams": store(json!([
                     {"uid": {"type": "Team", "id": "payments"}, "attrs": {}, "parents": []},
                     {"uid": {"type": "User", "id": "alice"}, "attrs": {},
                      "parents": [{"type": "Team", "id": "payments"}]}
-                ]}
+                ]))
             })),
             None,
         )
@@ -1217,28 +1231,27 @@ async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph()
         "both partitions decided, not one: {cited:?}"
     );
 
-    // And the graphs are genuinely separate: give `teams` the group graph and its schema refuses
-    // it, which is exactly what one shared graph used to do to every profile like this.
-    let answer = decider
+    // And the stores are genuinely separate: give `teams` the group store and its own schema
+    // refuses it — before any policy runs, because a store the schema does not declare is a bad
+    // request and not a decision anybody's rules have an opinion about.
+    let refused = decider
         .decide(
             &ask(json!({
-                "teams": {"schema": "cedar", "items": [
+                "teams": store(json!([
                     {"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []}
-                ]}
+                ]))
             })),
             None,
         )
         .await
-        .expect("the ledger is served");
+        .expect_err("a store its schema does not declare");
 
+    assert_eq!(refused.code(), "partition_input_schema");
+    assert_eq!(refused.class(), permguard_core::ErrorClass::Validation);
     assert!(
-        !answer.decision,
-        "a graph its schema does not declare is refused"
+        refused
+            .disclosed_message(permguard_core::Disclosure::Full)
+            .contains("teams"),
+        "{refused:?}"
     );
-    let reason = answer
-        .context
-        .expect("a context")
-        .reason_admin
-        .expect("an operator reason");
-    assert_eq!(reason.code, "500", "and it fails closed, with a diagnosis");
 }

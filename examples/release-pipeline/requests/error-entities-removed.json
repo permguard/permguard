@@ -2,24 +2,19 @@
   "profile": "admin",
   "subject": {
     "type": "User",
-    "id": "bob"
+    "id": "alice"
   },
   "action": {
-    "name": "release:signoff",
-    "properties": {
-      "risk": "critical"
-    }
+    "name": "deployment:rollback"
   },
   "resource": {
-    "type": "Release",
-    "id": "v2.4.0",
-    "properties": {
-      "created_by": "alice"
-    }
+    "type": "Service",
+    "id": "payments-api"
   },
   "context": {
-    "tests_passed": true,
-    "artifact_signed": true
+    "environment": "production",
+    "on_call": true,
+    "incident_active": true
   },
   "partition_inputs": {
     "admin-cedar": {
@@ -145,5 +140,9 @@
         }
       ]
     }
+  },
+  "entities": {
+    "schema": "cedar",
+    "items": []
   }
 }

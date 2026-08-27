@@ -20,9 +20,26 @@ partitions:
   # and the pipeline rules are never loaded to answer a person's.
   #
   # A partition is also a directory: these names are the folders beside this file.
-  admin-cedar:   { runtime: cedar, schema: true }
-  admin-rego:    { runtime: rego,  schema: false }
-  pipeline-rego: { runtime: rego,  schema: false }
+  #
+  # `input` is what a request may hand each one, and the ledger decides it — not the
+  # caller. The type names a contract Permguard implements; a request states it too,
+  # and the two are compared. `required` says whether a request must address the
+  # partition at all: the org chart is what the Cedar rules traverse, so a request
+  # that omitted it would be denied for the wrong reason.
+  admin-cedar:
+    runtime: cedar
+    schema: true
+    input: { type: permguard.cedar.entities.v1, required: true }
+  admin-rego:
+    runtime: rego
+    # A JSON Schema (`guardrails.regoschema`) describing the document below.
+    schema: true
+    input: { type: permguard.rego.data.v1, required: false }
+  pipeline-rego:
+    runtime: rego
+    schema: false
+    # The pipeline rules read the request and nothing else: no partition input, so
+    # anything addressed to this partition is refused rather than ignored.
 profiles:
   # What a person asks. The org chart says whether they are entitled; the guardrails
   # can refuse anyway — and an explicit deny from either partition beats a permit

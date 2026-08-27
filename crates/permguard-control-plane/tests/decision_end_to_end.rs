@@ -205,7 +205,7 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         action: "read".to_owned(),
         principal: None,
         context: Some(json!({ "ip": "10.0.0.1" })),
-        entities: Some(json!([])),
+        partition_inputs: Some(json!({})),
         permit,
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),

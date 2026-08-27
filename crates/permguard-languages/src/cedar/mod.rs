@@ -17,7 +17,7 @@ use std::str::FromStr as _;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
-/// This language's name, as a manifest's `runtime.language.name` and an `entities.schema` spell it.
+/// This language's name, as a manifest's `runtime.language.name` spells it.
 pub const NAME: &str = "cedar";
 
 /// The Cedar plugin.
@@ -206,6 +206,10 @@ fn is_blank(slice: &str) -> bool {
 }
 
 impl Authoring for Cedar {
+    fn schema_file_extensions(&self) -> &'static [&'static str] {
+        &["cedarschema"]
+    }
+
     fn file_extensions(&self) -> &'static [&'static str] {
         &["cedar"]
     }

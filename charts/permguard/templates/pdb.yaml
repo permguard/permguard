@@ -12,24 +12,27 @@ metadata:
     {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
 spec:
   {{- /*
-  Exactly one of the two, because Kubernetes accepts exactly one — and because a budget written
-  one way and rendered the other is worse than no budget: the values file says what an operator
-  believes, and the manifest says what the cluster enforces.
+  Exactly one budget, and the values file can only say one — which is not the same as being
+  told off for saying two.
+  #
+  It used to be two optional keys with a `fail` when both were set, and a values file that chose
+  `maxUnavailable` had to write `minAvailable: null` to take the chart default's back. `helm
+  template` honours that null and drops the key; `helm lint` does not, so the very same files
+  rendered correctly and linted as a mistake nobody had made. A check that disagrees with the
+  render is worse than no check: an operator reads `fail` and goes looking.
+  #
+  So the choice is a name and a number. There is no way to write both, nothing to null out, and
+  nothing left to check beyond "is that a budget Kubernetes has".
   */ -}}
   {{- $budget := $plane.podDisruptionBudget }}
-  {{- $min := hasKey $budget "minAvailable" }}
-  {{- $max := hasKey $budget "maxUnavailable" }}
-  {{- if and $min $max }}
-  {{- fail (printf "%s.podDisruptionBudget sets both minAvailable and maxUnavailable: a PodDisruptionBudget takes one" $component) }}
+  {{- $kind := $budget.budget | default "" }}
+  {{- if not (has $kind (list "minAvailable" "maxUnavailable")) }}
+  {{- fail (printf "%s.podDisruptionBudget.budget is %q: write minAvailable or maxUnavailable" $component $kind) }}
   {{- end }}
-  {{- if not (or $min $max) }}
-  {{- fail (printf "%s.podDisruptionBudget is enabled and sets neither minAvailable nor maxUnavailable" $component) }}
+  {{- if kindIs "invalid" $budget.value }}
+  {{- fail (printf "%s.podDisruptionBudget.budget is %s and sets no value" $component $kind) }}
   {{- end }}
-  {{- if $min }}
-  minAvailable: {{ $budget.minAvailable }}
-  {{- else }}
-  maxUnavailable: {{ $budget.maxUnavailable }}
-  {{- end }}
+  {{ $kind }}: {{ $budget.value }}
   selector:
     matchLabels:
       {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}

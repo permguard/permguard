@@ -81,6 +81,7 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
             plugin,
             authoring,
             has_schema: partition.schema,
+            partition: partition_name.clone(),
             ignores: &ignores,
             previous_by_path: &previous_by_path,
             previous_by_alias: &previous_by_alias,
@@ -195,6 +196,8 @@ struct PartitionContext<'a> {
     /// language, and says so where the language is looked up.
     authoring: &'static dyn permguard_languages::Authoring,
     has_schema: bool,
+    /// The partition being walked, for an error that has to name it.
+    partition: String,
     ignores: &'a [String],
     previous_by_path: &'a BTreeMap<String, String>,
     previous_by_alias: &'a BTreeMap<String, String>,
@@ -258,7 +261,25 @@ fn build_directory(
             continue;
         };
         let is_policy_file = context.authoring.file_extensions().contains(&extension);
-        let is_schema_file = context.has_schema && extension == "cedarschema";
+        // Asked of the language, not spelled out here: `cedarschema` was hard-coded, so the day a
+        // second language gained a schema its files would have been walked past in silence — the
+        // partition reporting that it declares a schema and carries none, with the schema sitting
+        // right there.
+        let looks_like_schema = context
+            .authoring
+            .schema_file_extensions()
+            .contains(&extension);
+        // A schema sitting in a partition that declares none is refused, not walked past. Skipping
+        // it is the worst of the three outcomes: the author sees the file, believes their inputs
+        // are validated, and nothing validates anything.
+        if looks_like_schema && !context.has_schema {
+            return Err(err(format!(
+                "`{child_fs}` is a schema and the partition `{}` declares none: set `schema: true` \
+                 for it in the manifest, or remove the file",
+                context.partition
+            )));
+        }
+        let is_schema_file = context.has_schema && looks_like_schema;
         if !is_policy_file && !is_schema_file {
             continue;
         }

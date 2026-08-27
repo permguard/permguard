@@ -9,9 +9,9 @@
 // field-for-field the same request and the same answer, so a deployment can
 // choose a transport without choosing semantics.
 //
-// Free-form parts of the contract (`properties`, `context`, the entity graph)
-// ride as `google.protobuf.Struct` / `Value`: they are policy data, and a
-// schema for them belongs to the policy language, not to this file.
+// Free-form parts of the contract (`properties`, `context`, a partition's own
+// input) ride as `google.protobuf.Struct` / `Value`: they are policy data, and
+// a schema for them belongs to the policy language, not to this file.
 
 syntax = "proto3";
 
@@ -42,37 +42,55 @@ message Action {
   google.protobuf.Struct properties = 2;
 }
 
-// One partition's own entity graph, addressed by the partition's name.
-message PartitionEntities {
-  // The runtime shape these items are in, checked against the partition's own
-  // runtime: an override cannot hand Cedar entities to a Rego module.
-  string schema = 1;
-  repeated google.protobuf.Value items = 2;
+// One partition's own input, addressed to it by name.
+//
+// `type` is a registered partition input contract — `permguard.cedar.entities.v1`
+// carries an array of Cedar entities, `permguard.rego.data.v1` a JSON object
+// that arrives at `input.partition`. It is an *assertion*: the ledger's manifest
+// decides what each partition accepts, and a `type` that disagrees with it is
+// refused rather than obeyed. A caller cannot pick the parser for data it also
+// supplies.
+message PartitionInput {
+  string type = 1;
+  google.protobuf.Value data = 2;
 }
 
-// The Permguard `entities` extension: the entity graphs a request carries.
+// The inputs of one boxcarred evaluation, wrapped so that **stating none** and
+// **stating nothing** are different messages.
 //
-// A graph is written in one runtime's shape, and a profile may hold partitions
-// in different runtimes — or two in the same runtime with different schemas. So
-// a graph says who it is for: `schema` addresses a runtime, `partitions`
-// addresses one partition by name. A graph naming neither is ambiguous the
-// moment a profile runs more than one runtime, and is refused there.
-message Entities {
-  string schema = 1;
-  repeated google.protobuf.Value items = 2;
-  // Keyed by the partition's name as the ledger's manifest declares it. A name
-  // the profile does not hold is refused, not ignored.
-  map<string, PartitionEntities> partitions = 3;
+// A proto3 `map` cannot tell an absent field from an empty one: both arrive as
+// zero entries. For a top-level request that costs nothing — no inputs is no
+// inputs — but inside an evaluation the two mean opposite things. An evaluation
+// that states `{}` replaces the request's defaults with nothing; one that states
+// no inputs at all inherits them. Read as a plain map, `{}` inherited, so the
+// same request was decided against the defaults over gRPC and against nothing
+// over HTTP.
+//
+// A message field has explicit presence, so the wrapper *is* the distinction —
+// rather than a parallel `bool` beside the map, which can disagree with it and
+// then needs a rule for which one wins.
+message PartitionInputs {
+  map<string, PartitionInput> inputs = 1;
 }
 
 // One entry of a boxcarred request: whatever it sets overrides the defaults.
 message Evaluation {
+  // 5 was `entities`, removed. 7 was `partition_inputs` as a bare map, which
+  // could not express "states none" — the tag is reserved rather than reused,
+  // because a map and a message are different encodings and a peer still
+  // sending the old shape would be decoded as something else.
+  reserved 5, 7;
+  reserved "entities";
+
   Entity subject = 1;
   Entity resource = 2;
   Action action = 3;
   google.protobuf.Struct context = 4;
-  Entities entities = 5;
   string request_id = 6;
+  // Present — even with no entries — this replaces the request's defaults
+  // whole, exactly as `subject` and `context` do. Never merged key by key.
+  // Absent, the evaluation inherits them.
+  PartitionInputs partition_inputs = 8;
 }
 
 // How a batch resolves.
@@ -84,6 +102,12 @@ enum EvaluationsSemantic {
 }
 
 message EvaluateRequest {
+  // The removed `entities` extension. The tag and the name are reserved so no
+  // future field can be given them: a peer still sending the old message would
+  // otherwise have its entity graph decoded as whatever took its place.
+  reserved 9;
+  reserved "entities";
+
   // Which policy store to decide against. Required, both of them: there is no
   // default, and deciding against the wrong store is the one failure nobody
   // can debug.
@@ -100,11 +124,20 @@ message EvaluateRequest {
 
   // Extensions.
   Entity principal = 8;
-  Entities entities = 9;
 
   repeated Evaluation evaluations = 10;
   EvaluationsSemantic evaluations_semantic = 11;
   string request_id = 12;
+  // What each partition of the profile is given, by the partition's own name.
+  // The only way a request supplies runtime data: there is no addressing by
+  // language, because two partitions of one runtime hold different worlds.
+  //
+  // A bare map here, and a `PartitionInputs` inside an evaluation, because the
+  // two fields genuinely differ: at the top level "absent" and "empty" both
+  // mean *no defaults*, and inside an evaluation they mean *inherit* and
+  // *replace with nothing*. The wire mirrors the contract rather than
+  // flattening it into one shape that is wrong in one of the two places.
+  map<string, PartitionInput> partition_inputs = 13;
 }
 
 // The two audiences of one reason.
