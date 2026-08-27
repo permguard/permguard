@@ -1,0 +1,51 @@
+// The org chart the release policies are written against.
+//
+// A schema is what makes the structure checkable: a request naming an entity
+// type or a context attribute nobody declared is refused, rather than evaluated
+// against policies that could never read it.
+
+entity Team;
+
+entity User in [Team] = {
+  role: String,
+};
+
+entity Service = {
+  owner: Team,
+};
+
+entity Release = {
+  service: Service,
+  created_by: User,
+};
+
+// Creating a release is asked about the service it belongs to.
+action "release:create" appliesTo {
+  principal: [User],
+  resource: [Service],
+  context: {
+    branch?: String,
+  },
+};
+
+// Signing one off is asked about the release itself, because that is where the
+// author is recorded — and the author is what separation of duties turns on.
+action "release:signoff" appliesTo {
+  principal: [User],
+  resource: [Release],
+  context: {
+    tests_passed?: Bool,
+    artifact_signed?: Bool,
+  },
+};
+
+// A rollback is asked about the service, under the conditions of the moment.
+action "deployment:rollback" appliesTo {
+  principal: [User],
+  resource: [Service],
+  context: {
+    environment?: String,
+    incident_active?: Bool,
+    on_call?: Bool,
+  },
+};

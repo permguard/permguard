@@ -224,7 +224,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         let catalog = Arc::new(FileCatalog::new(root.join("zones")));
-        let zone = catalog.create_zone("pharma").expect("a zone");
+        let zone = catalog.create_zone("delivery").expect("a zone");
         let ledger = catalog
             .create_ledger(
                 &permguard_core::catalog::Selector::Id(zone.id.clone()),

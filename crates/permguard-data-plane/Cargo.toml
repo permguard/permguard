@@ -49,6 +49,9 @@ tonic-prost-build.workspace = true
 
 [dev-dependencies]
 permguard-control-plane.workspace = true
+# The release-pipeline example is read from disk, manifest included, so the test
+# cannot drift from the files the lab's README tells a reader to apply.
+serde_norway.workspace = true
 permguard-control-client.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 http.workspace = true

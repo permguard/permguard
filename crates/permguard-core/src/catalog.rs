@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_what_a_name_may_be() {
-        for good in ["abc", "pharma-authz", "zone_2", "a1", "a-b_c9"] {
+        for good in ["abc", "delivery-authz", "zone_2", "a1", "a-b_c9"] {
             if good.len() >= NAME_SHORTEST {
                 assert!(validate_name(good).is_ok(), "refused {good:?}");
             }
@@ -304,8 +304,8 @@ mod tests {
             Selector::Id("0198f2a0-1234-7abc-8def-0123456789ab".to_owned())
         );
         assert_eq!(
-            Selector::parse("pharma-authz"),
-            Selector::Name("pharma-authz".to_owned())
+            Selector::parse("delivery-authz"),
+            Selector::Name("delivery-authz".to_owned())
         );
         // 36 characters but not hex in the right places: a name.
         assert_eq!(

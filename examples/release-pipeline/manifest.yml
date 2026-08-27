@@ -1,0 +1,33 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+metadata:
+  kind: policy
+  name: release-pipeline
+  description: Authorization for a software delivery pipeline - who may release, and what may deploy.
+  author: Nitro Agility S.r.l.
+  license: Apache-2.0
+runtimes:
+  cedar:
+    language: { name: cedar, constraint: ">=4.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+  rego:
+    language: { name: rego, constraint: ">=1.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  # Three partitions, not two, and the split is by *what is asked* rather than by
+  # language. Two of them run Rego: a profile compiles the partitions it names and
+  # nothing else, so the guardrails are never loaded to answer a pipeline request,
+  # and the pipeline rules are never loaded to answer a person's.
+  #
+  # A partition is also a directory: these names are the folders beside this file.
+  admin-cedar:   { runtime: cedar, schema: true }
+  admin-rego:    { runtime: rego,  schema: false }
+  pipeline-rego: { runtime: rego,  schema: false }
+profiles:
+  # What a person asks. The org chart says whether they are entitled; the guardrails
+  # can refuse anyway — and an explicit deny from either partition beats a permit
+  # from the other.
+  admin:    { type: permguard.pdp.v1, partitions: [admin-cedar, admin-rego] }
+  # What the pipeline asks. The subjects are workloads and the actions are not in the
+  # Cedar schema, so this profile names one partition: the rules for machines.
+  pipeline: { type: permguard.pdp.v1, partitions: [pipeline-rego] }

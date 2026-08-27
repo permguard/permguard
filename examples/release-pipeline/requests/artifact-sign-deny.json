@@ -1,0 +1,22 @@
+{
+  "profile": "pipeline",
+  "subject": {
+    "type": "Workload",
+    "id": "ci-pipeline",
+    "properties": {
+      "identity_verified": true,
+      "repository": "payments-api"
+    }
+  },
+  "action": {
+    "name": "artifact:sign"
+  },
+  "resource": {
+    "type": "Release",
+    "id": "v2.4.0",
+    "properties": {
+      "service": "payments-api"
+    }
+  },
+  "context": {}
+}

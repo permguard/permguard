@@ -21,13 +21,13 @@ fn scratch(name: &str) -> std::path::PathBuf {
 fn test_a_zone_lives_from_creation_to_deletion() {
     let catalog = FileCatalog::new(scratch("lifecycle"));
 
-    let zone = catalog.create_zone("pharma").expect("a zone is created");
-    assert_eq!(zone.name, "pharma");
+    let zone = catalog.create_zone("delivery").expect("a zone is created");
+    assert_eq!(zone.name, "delivery");
     assert_eq!(zone.id.len(), 36, "the id is a guid");
 
     // Referable by name and by id, and both answers are the same zone.
     let by_name = catalog
-        .get_zone(&Selector::parse("pharma"))
+        .get_zone(&Selector::parse("delivery"))
         .expect("found by name");
     let by_id = catalog
         .get_zone(&Selector::parse(&zone.id))
@@ -35,7 +35,7 @@ fn test_a_zone_lives_from_creation_to_deletion() {
     assert_eq!(by_name, by_id);
 
     let renamed = catalog
-        .rename_zone(&Selector::parse("pharma"), "pharma-eu")
+        .rename_zone(&Selector::parse("delivery"), "delivery-eu")
         .expect("renamed");
     assert_eq!(
         renamed.id, zone.id,
@@ -43,7 +43,7 @@ fn test_a_zone_lives_from_creation_to_deletion() {
     );
 
     let deleted = catalog
-        .delete_zone(&Selector::parse("pharma-eu"))
+        .delete_zone(&Selector::parse("delivery-eu"))
         .expect("deleted");
     assert_eq!(deleted.id, zone.id);
     assert!(catalog.get_zone(&Selector::parse(&zone.id)).is_err());

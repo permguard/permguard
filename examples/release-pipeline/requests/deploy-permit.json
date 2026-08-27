@@ -1,0 +1,24 @@
+{
+  "profile": "pipeline",
+  "subject": {
+    "type": "Workload",
+    "id": "deployment-controller",
+    "properties": {
+      "identity_verified": true
+    }
+  },
+  "action": {
+    "name": "deployment:execute"
+  },
+  "resource": {
+    "type": "Release",
+    "id": "v2.4.0"
+  },
+  "context": {
+    "environment": "production",
+    "cluster": "eu-prod-1",
+    "release_approved": true,
+    "artifact_signed": true,
+    "security_scan": "passed"
+  }
+}

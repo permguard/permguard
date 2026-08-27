@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 metadata:
   kind: policy
-  name: pdp-lab
-  description: The Permguard PDP laboratory - Cedar and Rego side by side.
+  name: basics
+  description: The smallest Permguard workspace - Cedar and Rego side by side.
   author: Nitro Agility S.r.l.
   license: Apache-2.0
 runtimes:

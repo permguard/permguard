@@ -229,11 +229,11 @@ mod tests {
     async fn test_every_refusal_is_the_shared_shape_with_the_promised_status() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 201, "{body}");
-        assert!(body.contains(r#""name":"pharma""#), "{body}");
+        assert!(body.contains(r#""name":"delivery""#), "{body}");
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""class":"conflict""#), "{body}");
         assert!(body.contains(r#""code":"name_taken""#), "{body}");
@@ -251,13 +251,13 @@ mod tests {
         let (status, body) = send(
             &routes,
             "POST",
-            "/v1/zones/pharma/ledgers",
+            "/v1/zones/delivery/ledgers",
             Some(r#"{"name":"policies"}"#),
         )
         .await;
         assert_eq!(status, 201, "{body}");
 
-        let (status, body) = send(&routes, "DELETE", "/v1/zones/pharma", None).await;
+        let (status, body) = send(&routes, "DELETE", "/v1/zones/delivery", None).await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""code":"zone_not_empty""#), "{body}");
     }
@@ -315,8 +315,8 @@ mod tests {
         });
 
         // A success, then the same name again: one created record, one refused record.
-        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
-        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
+        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         // A validation refusal is trail material too, under the switch.
         send(&routes, "POST", "/v1/zones", Some(r#"{"name":"Pharma"}"#)).await;
 
@@ -349,10 +349,10 @@ mod tests {
         // regression guard on the default itself.
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, _) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
+        let (status, _) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 201);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"pharma"}"#)).await;
+        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 409, "{body}");
         // No recorder is attached in testing_routes, so the assertion above is that the refusal
         // path with audit_refusals=false neither panics nor changes the answer.

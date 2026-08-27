@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn references_parse() {
-        let (remote, zone, ledger, r#ref) = parse_reference("origin/pharma/main-ledger").unwrap();
+        let (remote, zone, ledger, r#ref) = parse_reference("origin/delivery/main-ledger").unwrap();
         assert_eq!(
             (
                 remote.as_str(),
@@ -59,9 +59,9 @@ mod tests {
                 ledger.as_str(),
                 r#ref.as_str()
             ),
-            ("origin", "pharma", "main-ledger", "main")
+            ("origin", "delivery", "main-ledger", "main")
         );
-        let (.., r#ref) = parse_reference("origin/pharma/main-ledger@feature/login").unwrap();
+        let (.., r#ref) = parse_reference("origin/delivery/main-ledger@feature/login").unwrap();
         assert_eq!(r#ref, "feature/login");
         assert!(parse_reference("just-a-name").is_err());
     }
@@ -69,10 +69,10 @@ mod tests {
     #[test]
     fn clone_urls_parse() {
         let (base, zone, ledger) =
-            parse_clone_url("https://permguard.acme.com/pharma/main-ledger").unwrap();
+            parse_clone_url("https://permguard.acme.com/delivery/main-ledger").unwrap();
         assert_eq!(base, "https://permguard.acme.com");
-        assert_eq!((zone.as_str(), ledger.as_str()), ("pharma", "main-ledger"));
-        let (base, ..) = parse_clone_url("https://saas.io/acme-corp/pharma/main-ledger").unwrap();
+        assert_eq!((zone.as_str(), ledger.as_str()), ("delivery", "main-ledger"));
+        let (base, ..) = parse_clone_url("https://saas.io/acme-corp/delivery/main-ledger").unwrap();
         assert_eq!(base, "https://saas.io/acme-corp");
     }
 }

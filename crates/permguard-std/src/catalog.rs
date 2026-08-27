@@ -16,7 +16,7 @@
 //! Reads never lock. Every index is replaced by writing a sibling and renaming it, so a reader gets
 //! the old file or the new one and never half of either — the same discipline `ring.json` already
 //! uses. What has to be serialised is the read-check-write of a mutation: two threads creating the
-//! name `pharma` must not both find it absent. So mutations take a mutex, and the mutex is scoped to
+//! name `delivery` must not both find it absent. So mutations take a mutex, and the mutex is scoped to
 //! what the mutation can actually damage:
 //!
 //! * zone mutations share one lock, because zone names are unique across the deployment;

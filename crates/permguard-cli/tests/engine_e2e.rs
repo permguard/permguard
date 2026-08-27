@@ -189,7 +189,7 @@ fn the_whole_developer_flow() {
 
     // Checkout binds the ledger (resolving names to GUIDs) — the ref does
     // not exist yet, so the pull inside reports it cleanly.
-    let checkout = ws_a.checkout(&remote, "origin", "pharma", "main-ledger", "main");
+    let checkout = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
     assert!(checkout.is_err(), "the ref does not exist yet");
 
     // Plan: two creates, one per language.
@@ -219,7 +219,7 @@ fn the_whole_developer_flow() {
     // A clone materializes the manifest and every policy file.
     std::fs::remove_file(dir_b.join("manifest.yml")).unwrap();
     let pulled = ws_b
-        .checkout(&remote, "origin", "pharma", "main-ledger", "main")
+        .checkout(&remote, "origin", "delivery", "main-ledger", "main")
         .unwrap();
     assert_eq!(pulled.counter, 1);
     assert!(

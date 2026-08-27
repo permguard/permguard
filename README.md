@@ -52,13 +52,13 @@ permguard CLI  --apply-->  control plane  --mirror-->  data plane / PDP
 A Permguard policy workspace is described by a manifest. One ledger can contain
 multiple language partitions and expose one or more PDP profiles.
 
-Example from `pdp-lab/manifest.yml`:
+Example from `examples/basics/manifest.yml`:
 
 ```yaml
 metadata:
   kind: policy
-  name: pdp-lab
-  description: The Permguard PDP laboratory - Cedar and Rego side by side.
+  name: basics
+  description: The smallest Permguard workspace - Cedar and Rego side by side.
   author: Nitro Agility S.r.l.
   license: Apache-2.0
 runtimes:
@@ -197,25 +197,25 @@ permguard zones create acme --endpoint http://127.0.0.1:7556
 permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 ```
 
-Initialize and publish the included PDP lab:
+Initialize and publish the included basics example:
 
 ```sh
-permguard -w pdp-lab init pdp-lab --language cedar,rego
-permguard -w pdp-lab remote add origin http://127.0.0.1:7556
-permguard -w pdp-lab validate
-permguard -w pdp-lab checkout origin/acme/main-ledger
-permguard -w pdp-lab plan
-permguard -w pdp-lab apply -m "lab policies"
+permguard -w examples/basics init basics --language cedar,rego
+permguard -w examples/basics remote add origin http://127.0.0.1:7556
+permguard -w examples/basics validate
+permguard -w examples/basics checkout origin/acme/main-ledger
+permguard -w examples/basics plan
+permguard -w examples/basics apply -m "lab policies"
 ```
 
 Wait for the data plane to mirror the ledger, then ask for decisions:
 
 ```sh
 sleep 20
-permguard -w pdp-lab check -f pdp-lab/requests/permit.json
-permguard -w pdp-lab check -f pdp-lab/requests/deny.json
-permguard -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
-permguard -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json
+permguard -w examples/basics check -f examples/basics/requests/permit.json
+permguard -w examples/basics check -f examples/basics/requests/deny.json
+permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
+permguard -w examples/basics check -f examples/basics/requests/boxcarred.json -o json
 ```
 
 Read the decision log:
@@ -234,13 +234,13 @@ curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -H 'content-type: application/json' \
   -H 'x-request-id: lab-1' \
-  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' pdp-lab/requests/permit.json)" | jq
+  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
 
 Use gRPC instead of HTTP:
 
 ```sh
-permguard -w pdp-lab --data-endpoint grpc://127.0.0.1:7656 check -f pdp-lab/requests/permit.json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
 permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
 ```
 
@@ -368,20 +368,30 @@ permguard decisions export --zone acme --ledger main-ledger -o json
 permguard decisions list --zone acme --ledger main-ledger --verify --keys data-plane-keys.json
 ```
 
-## PDP Lab
+## Examples
 
-`pdp-lab/` is a complete example policy workspace:
+Two policy workspaces under `examples/`, each a real workspace rather than a
+snippet:
+
+| Example | Domain | What it is for |
+| --- | --- | --- |
+| [`examples/basics`](examples/basics) | users, groups, documents | the platform end to end on a domain small enough to stay out of the way |
+| [`examples/release-pipeline`](examples/release-pipeline) | software delivery | team ownership, machine identities, separation of duties, incident-only rollback — and the evidence they leave |
 
 ```text
-pdp-lab/
-|-- manifest.yml
-|-- cedar/documents.cedar
-|-- cedar/model.cedarschema
-|-- rego/gateway.rego
-`-- requests/*.json
+examples/release-pipeline/
+|-- manifest.yml         three partitions, two pdp profiles
+|-- admin-cedar/         the org chart - teams, ownership, roles (schema, checked)
+|-- admin-rego/          the guardrails - deny only, read the state of the moment
+|-- pipeline-rego/       what CI, the signer and the controller may do
+`-- requests/*.json      eleven decision requests
 ```
 
-Run it end to end:
+Two of the three partitions run Rego. A profile compiles the partitions it names
+and nothing else, so `pipeline` never loads the guardrails and `admin` never loads
+the rules for machines.
+
+Run the basics lab end to end:
 
 ```sh
 task run:all
@@ -389,20 +399,28 @@ task run:all
 permguard zones create acme --endpoint http://127.0.0.1:7556
 permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 
-permguard -w pdp-lab init pdp-lab --language cedar,rego
-permguard -w pdp-lab remote add origin http://127.0.0.1:7556
-permguard -w pdp-lab validate
-permguard -w pdp-lab checkout origin/acme/main-ledger
-permguard -w pdp-lab plan
-permguard -w pdp-lab apply -m "lab policies"
+permguard -w examples/basics init basics --language cedar,rego
+permguard -w examples/basics remote add origin http://127.0.0.1:7556
+permguard -w examples/basics validate
+permguard -w examples/basics checkout origin/acme/main-ledger
+permguard -w examples/basics plan
+permguard -w examples/basics apply -m "lab policies"
 
 sleep 20
 
-permguard -w pdp-lab check -f pdp-lab/requests/permit.json
-permguard -w pdp-lab check -f pdp-lab/requests/deny.json
-permguard -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+permguard -w examples/basics check -f examples/basics/requests/permit.json
+permguard -w examples/basics check -f examples/basics/requests/deny.json
+permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
 permguard decisions list --zone acme --ledger main-ledger
 ```
+
+Each example has its own README with the commands and the decisions they produce.
+`examples/release-pipeline` is the runnable half of a use case written for a reader
+who has never used Permguard: [Release and deployment
+operations](docs/use-cases/release-pipeline.md).
+
+Note that `lab/` is something else — the configuration of the observability stack
+below, not a policy workspace.
 
 ## Observability Lab
 

@@ -1,13 +1,20 @@
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# The PDP lab
+# The basics lab
+
+The smallest workspace that exercises the whole platform: a deliberately
+trivial domain — users, groups and documents — so that what you are looking at
+is Permguard rather than the policies.
+
+For a realistic domain, see **[the release pipeline lab](../release-pipeline)**
+and the use case it implements.
 
 A ready-made workspace — **one manifest, two partitions (Cedar and Rego), example
 policies** — and two use cases you can run end to end.
 
 ```text
-pdp-lab/
+examples/basics/
 ├── manifest.yml            two runtimes, two partitions, two pdp profiles
 ├── cedar/documents.cedar   two Cedar policies (@alias on each)
 ├── cedar/model.cedarschema the Cedar schema — one per partition, at most
@@ -21,7 +28,7 @@ pdp-lab/
 | **[B — Two workspaces](#use-case-b--two-workspaces)** | a second author, pushes crossing in both directions, and what that does to the decisions |
 
 Every command runs **from the repository root**. The CLI is invoked through the
-Taskfile (`task cli -- …`) and `-w pdp-lab` points it at this workspace.
+Taskfile (`task cli -- …`) and `-w examples/basics` points it at this workspace.
 
 ## What `task run:all` already wires up
 
@@ -64,12 +71,12 @@ task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7
 ### A2. Push the policies
 
 ```bash
-task cli -- -w pdp-lab init pdp-lab --language cedar,rego    # adopts the existing manifest.yml
-task cli -- -w pdp-lab remote add origin http://127.0.0.1:7556
-task cli -- -w pdp-lab validate                              # Cedar + Rego parse, schema, identities
-task cli -- -w pdp-lab checkout origin/acme/main-ledger      # bind + resolve GUIDs
-task cli -- -w pdp-lab plan
-task cli -- -w pdp-lab apply -m "lab policies"               # negotiate → upload → signed commit
+task cli -- -w examples/basics init basics --language cedar,rego    # adopts the existing manifest.yml
+task cli -- -w examples/basics remote add origin http://127.0.0.1:7556
+task cli -- -w examples/basics validate                              # Cedar + Rego parse, schema, identities
+task cli -- -w examples/basics checkout origin/acme/main-ledger      # bind + resolve GUIDs
+task cli -- -w examples/basics plan
+task cli -- -w examples/basics apply -m "lab policies"               # negotiate → upload → signed commit
 ```
 
 Expected plan:
@@ -82,9 +89,9 @@ Plan: 3 to create, 0 to update, 0 to delete (0 unchanged).
 ```
 
 ```bash
-task cli -- -w pdp-lab verify        # the head statement + the local closure
-task cli -- -w pdp-lab history
-task cli -- -w pdp-lab status        # tracked ledger, checkpoint, pending
+task cli -- -w examples/basics verify        # the head statement + the local closure
+task cli -- -w examples/basics history
+task cli -- -w examples/basics status        # tracked ledger, checkpoint, pending
 ```
 
 ### A3. Ask for decisions
@@ -93,7 +100,7 @@ The data plane serves what it mirrors, so give it one round:
 
 ```bash
 sleep 20
-task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
+task cli -- -w examples/basics check -f examples/basics/requests/permit.json
 ```
 
 `check` runs from inside the workspace, so the zone and ledger come from the
@@ -116,20 +123,20 @@ Permitted.
 **A deny.** `bob` asks to *write* a document `carol` owns:
 
 ```bash
-task cli -- -w pdp-lab check -f pdp-lab/requests/deny.json
+task cli -- -w examples/basics check -f examples/basics/requests/deny.json
 # decision DENY … and exit status 0, because a deny is an answer.
 ```
 
 **The other profile**, **boxcarring**, and **two ways to be wrong**:
 
 ```bash
-task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json    # Rego alone
-task cli -- -w pdp-lab check -f pdp-lab/requests/boxcarred.json -o json | jq '.evaluations'
+task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json    # Rego alone
+task cli -- -w examples/basics check -f examples/basics/requests/boxcarred.json -o json | jq '.evaluations'
 
-task cli -- -w pdp-lab check -f pdp-lab/requests/error-no-store.json --ignore-workspace
+task cli -- -w examples/basics check -f examples/basics/requests/error-no-store.json --ignore-workspace
 # no zone and no ledger anywhere: refused before a round trip (exit 64)
 
-task cli -- -w pdp-lab check -f pdp-lab/requests/error-unknown-ledger.json --ignore-workspace
+task cli -- -w examples/basics check -f examples/basics/requests/error-unknown-ledger.json --ignore-workspace
 # a ledger this plane does not mirror: 404, not a deny — a PEP must tell "no"
 # from "ask somebody else"
 ```
@@ -137,12 +144,12 @@ task cli -- -w pdp-lab check -f pdp-lab/requests/error-unknown-ledger.json --ign
 Same over gRPC, and straight at the API:
 
 ```bash
-task cli -- -w pdp-lab --data-endpoint grpc://127.0.0.1:7656 check -f pdp-lab/requests/permit.json
+task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
 
 curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
-  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' pdp-lab/requests/permit.json)" | jq
+  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
 
 ### A4. Read what was decided
@@ -260,8 +267,8 @@ sed -i '' 's/Group::"finance"/Group::"analysts"/' /tmp/lab-b/cedar/document-read
 task cli -- -w /tmp/lab-b plan                # ~ document-readers: update — same id, identity kept
 task cli -- -w /tmp/lab-b apply -m "readers are the analysts group"
 
-task cli -- -w pdp-lab pull                   # counter advances; your files stay yours
-task cli -- -w pdp-lab history                # both commits, newest first
+task cli -- -w examples/basics pull                   # counter advances; your files stay yours
+task cli -- -w examples/basics history                # both commits, newest first
 ```
 
 > **Stay inside the schema.** This partition declares one, so `read` and `write`
@@ -277,7 +284,7 @@ Wait for the mirror, then ask the same question again:
 
 ```bash
 sleep 20
-task cli -- -w pdp-lab check -f pdp-lab/requests/permit.json
+task cli -- -w examples/basics check -f examples/basics/requests/permit.json
 task cli -- decisions list --zone acme --ledger main-ledger -o json \
   | jq -r '.decisions[] | "\(.seq) \(.decision) \(.commit[0:19]) \(.policies)"'
 ```
@@ -297,7 +304,7 @@ did**, and the log is where that is visible.
 This is what recording the commit and the policy identities buys, and why
 neither is a file name: `at commit` says *which policy state* produced each
 answer, `policies` says *which policies inside it* actually decided, and both
-survive a rename. `task cli -- -w pdp-lab history` shows the same two states
+survive a rename. `task cli -- -w examples/basics history` shows the same two states
 from the other side.
 
 > To see the answer itself flip, change the policy the *other* partition would
@@ -308,12 +315,12 @@ from the other side.
 Edit here, push, and let the clone pull it:
 
 ```bash
-sed -i '' 's/admin/operator/' pdp-lab/rego/gateway.rego
-task cli -- -w pdp-lab apply -m "operators mutate"
+sed -i '' 's/admin/operator/' examples/basics/rego/gateway.rego
+task cli -- -w examples/basics apply -m "operators mutate"
 task cli -- -w /tmp/lab-b pull
 
 sleep 20
-task cli -- -w pdp-lab check -f pdp-lab/requests/gateway-permit.json
+task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json
 ```
 
 Now a **DENY**, and it should be: `gateway-permit.json` asks as `dora` with
@@ -360,24 +367,24 @@ before the spool fills and the stream has to end.
 ## Things that refuse, on purpose
 
 ```bash
-echo 'permit (principal' >> pdp-lab/cedar/broken.cedar
-task cli -- -w pdp-lab validate                                   # Cedar parse error
-rm pdp-lab/cedar/broken.cedar
+echo 'permit (principal' >> examples/basics/cedar/broken.cedar
+task cli -- -w examples/basics validate                                   # Cedar parse error
+rm examples/basics/cedar/broken.cedar
 
-cp pdp-lab/manifest.yml pdp-lab/manifest.yaml
-task cli -- -w pdp-lab validate                                   # two manifests = ambiguity
-rm pdp-lab/manifest.yaml
+cp examples/basics/manifest.yml examples/basics/manifest.yaml
+task cli -- -w examples/basics validate                                   # two manifests = ambiguity
+rm examples/basics/manifest.yaml
 
-cp pdp-lab/cedar/model.cedarschema pdp-lab/cedar/second.cedarschema
-task cli -- -w pdp-lab validate                                   # two schemas = ambiguity
-rm pdp-lab/cedar/second.cedarschema
+cp examples/basics/cedar/model.cedarschema examples/basics/cedar/second.cedarschema
+task cli -- -w examples/basics validate                                   # two schemas = ambiguity
+rm examples/basics/cedar/second.cedarschema
 
-task cli -- -w pdp-lab apply -m x   # after someone else pushed: conflict — pull, re-plan, re-apply
+task cli -- -w examples/basics apply -m x   # after someone else pushed: conflict — pull, re-plan, re-apply
 
 # Raise the engine range past anything that exists, and the CLI's own load gate
 # refuses before a server is asked — every consumer runs that gate:
-#   sed -i '' 's/>=0.1.0 <0.2.0/>=9.0.0/' pdp-lab/manifest.yml
-#   task cli -- -w pdp-lab apply -m x
+#   sed -i '' 's/>=0.1.0 <0.2.0/>=9.0.0/' examples/basics/manifest.yml
+#   task cli -- -w examples/basics apply -m x
 #   # error: manifest rejected: runtime `cedar`: engine permguard 0.1.0 does not satisfy `>=9.0.0`
 ```
 
