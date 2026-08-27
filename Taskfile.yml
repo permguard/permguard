@@ -152,6 +152,21 @@ tasks:
       - cmd: cargo run -q {{if .RELEASE}}--release{{end}} -p permguard-cli --bin permguard -- {{.RUN_ARGS}}
         ignore_error: true
 
+  cp:rspipe:
+    # `task cp-rspipe` too: the Makefile spells it with a dash, and somebody who read
+    # the Makefile should not have to learn that Task spells it with a colon.
+    aliases: [cp-rspipe]
+    desc: Copy the release-pipeline example into the directory this was run from.
+    cmds:
+      # The source is this repository's; the destination is wherever the caller stood.
+      - ./scripts/copy-example.sh release-pipeline '{{.USER_WORKING_DIR}}'
+
+  cp:basics:
+    aliases: [cp-basics]
+    desc: Copy the basics example into the directory this was run from.
+    cmds:
+      - ./scripts/copy-example.sh basics '{{.USER_WORKING_DIR}}'
+
   lint:
     desc: Run clippy over every crate and target.
     vars:

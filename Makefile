@@ -14,10 +14,14 @@ FEATURES  ?= --all-features
 PLANE     ?= control
 CONFIG    ?= config.local.yml
 
+# Where this Makefile lives, so that `make -f .../Makefile cp-rspipe` from a playground copies
+# *from* the repository while `$(CURDIR)` stays the directory make was invoked in.
+REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
+
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: clean coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
+.PHONY: clean coverage coverage-html coverage-lcov bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli cp-basics cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -52,6 +56,12 @@ help: ## Show this help.
 	@printf 'Permguard Rust workspace\n\n'
 	@printf 'Usage: make <target> [VAR=value ...]\n\n'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_.-]+:.*?## /{printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+cp-rspipe: ## Copy the release-pipeline example into the current directory.
+	$(REPO_DIR)/scripts/copy-example.sh release-pipeline "$(CURDIR)"
+
+cp-basics: ## Copy the basics example into the current directory.
+	$(REPO_DIR)/scripts/copy-example.sh basics "$(CURDIR)"
 
 lint: ## Run clippy over every crate and target.
 	cargo clippy $(scope) --all-targets --all-features $(ARGS) -- -D warnings

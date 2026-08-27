@@ -20,6 +20,22 @@ The reasoning behind the release pipeline example, written for a reader who has
 never used Permguard, is in
 **[docs/use-cases/release-pipeline.md](../docs/use-cases/release-pipeline.md)**.
 
+## Copy one into a playground
+
+To try things without editing the example itself, make a directory and fill it:
+
+```bash
+mkdir -p playground/rspipe && cd playground/rspipe
+task cp-rspipe          # or: task cp-basics
+```
+
+The source is resolved against this repository, the destination against wherever
+you are standing, and `.permguard/` is left behind — a playground gets the
+policies, not another workspace's history. `playground/` is git-ignored, so what
+happens there stays there.
+
+`make cp-rspipe` does the same for whoever uses the Makefile.
+
 ## Not to be confused with `lab/`
 
 `lab/` at the repository root is something else: the configuration of the local

@@ -38,9 +38,15 @@ Two consequences worth knowing before the demo:
   partition declares no schema:
 
   ```bash
-  task cli -- check --profile pipeline --zone delivery --ledger release-pipeline \
+  permguard check --profile pipeline --zone delivery --ledger release-pipeline \
     --subject Workload:ci-pipeline --action artifact:upload --resource Release:v2.4.0
   ```
+
+> **Two ways to type these, and you want one or the other.** Every block is written
+> for the installed `permguard` binary, run from the repository root. Folded under each
+> one is the same thing through the Taskfile, for a checkout with nothing installed.
+> Prefer the binary where the exit status matters: `task cli` reports a clean refusal as
+> success on purpose, so it always exits `0`.
 
 ---
 
@@ -56,11 +62,33 @@ already wired.
 ## Step 2 — Create the zone and the ledger
 
 ```bash
+permguard zones create delivery
+permguard ledgers create --zone delivery release-pipeline
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- zones create delivery
 task cli -- ledgers create --zone delivery release-pipeline
 ```
 
+</details>
+
 ## Step 3 — Publish the policies
+
+```bash
+permguard -w examples/release-pipeline init release-pipeline --language cedar,rego
+permguard -w examples/release-pipeline remote add origin http://127.0.0.1:7556
+permguard -w examples/release-pipeline validate
+permguard -w examples/release-pipeline checkout origin/delivery/release-pipeline
+permguard -w examples/release-pipeline plan
+permguard -w examples/release-pipeline apply -m "release pipeline policies"
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 task cli -- -w examples/release-pipeline init release-pipeline --language cedar,rego
@@ -70,6 +98,8 @@ task cli -- -w examples/release-pipeline checkout origin/delivery/release-pipeli
 task cli -- -w examples/release-pipeline plan
 task cli -- -w examples/release-pipeline apply -m "release pipeline policies"
 ```
+
+</details>
 
 `plan` names policies, not files — the identity comes from the `@alias` and
 survives a rename:
@@ -97,8 +127,17 @@ sleep 20
 Shortcut for the four blocks below:
 
 ```bash
+alias pg='permguard -w examples/release-pipeline check -f examples/release-pipeline/requests'
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 alias pg='task cli -- -w examples/release-pipeline check -f examples/release-pipeline/requests'
 ```
+
+</details>
 
 ### 4a. Ownership decides who may act at all
 
@@ -175,8 +214,17 @@ Nothing about `alice`, the action or the service changed. Three context fields d
 ## Step 5 — Read the evidence
 
 ```bash
+permguard decisions list --zone delivery --ledger release-pipeline
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- decisions list --zone delivery --ledger release-pipeline
 ```
+
+</details>
 
 ```text
   +     51  2026-08-27T09:19:49Z  User:v1:788cb7ea… release:signoff Release:v2.4.0
@@ -196,9 +244,20 @@ Verify it without trusting the server that served it:
 
 ```bash
 curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+permguard decisions list --zone delivery --ledger release-pipeline \
+  --verify --keys /tmp/pdp-keys.json
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone delivery --ledger release-pipeline \
   --verify --keys /tmp/pdp-keys.json
 ```
+
+</details>
 
 ```text
   inclusion   52 record(s) proven in a signed batch
@@ -208,10 +267,21 @@ task cli -- decisions list --zone delivery --ledger release-pipeline \
 More of the same log:
 
 ```bash
+permguard decisions list --zone delivery --ledger release-pipeline --decision deny
+permguard decisions tail --zone delivery --ledger release-pipeline --follow
+permguard decisions export --zone delivery --ledger release-pipeline -o json
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- decisions list --zone delivery --ledger release-pipeline --decision deny
 task cli -- decisions tail --zone delivery --ledger release-pipeline --follow
 task cli -- decisions export --zone delivery --ledger release-pipeline -o json
 ```
+
+</details>
 
 ---
 
@@ -228,9 +298,27 @@ sed -i '' 's/input.context.incident_active/true/' \
 ```
 
 ```bash
+permguard -w examples/release-pipeline plan      # an update; the identity is kept
+permguard -w examples/release-pipeline apply -m "loosen the approval rule"
+sleep 20
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- -w examples/release-pipeline plan      # an update; the identity is kept
 task cli -- -w examples/release-pipeline apply -m "loosen the approval rule"
 sleep 20
+```
+
+</details>
+
+## Try it without editing the example
+
+```bash
+mkdir -p playground/rspipe && cd playground/rspipe
+task cp-rspipe          # copies the policies here; `playground/` is git-ignored
 ```
 
 ## Reset
@@ -238,8 +326,19 @@ sleep 20
 ```bash
 git checkout examples/release-pipeline
 rm -rf examples/release-pipeline/.permguard
+permguard ledgers delete --zone delivery release-pipeline
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+git checkout examples/release-pipeline
+rm -rf examples/release-pipeline/.permguard
 task cli -- ledgers delete --zone delivery release-pipeline
 ```
+
+</details>
 
 ## What keeps this page true
 

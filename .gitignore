@@ -536,6 +536,11 @@ $RECYCLE.BIN/
 .volume-docker-compose/
 .permguard
 
+# Somewhere to try things. `task cp-rspipe` fills one of these with an example's policies, and what
+# happens next is nobody else's business: a playground is a scratch workspace, not a contribution.
+playground/
+playground-*/
+
 # The image's own filesystem. The Python packaging block above ignores `lib/` and `var/`, which
 # happens to match every directory of the rootfs this repository *ships* — and an ignored rootfs is
 # a Docker build that fails on a fresh checkout while passing on the machine that wrote it.

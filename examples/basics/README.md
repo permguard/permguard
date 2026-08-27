@@ -27,8 +27,14 @@ examples/basics/
 | **[A — One workspace](#use-case-a--one-workspace)** | policies up, decisions answered, and the decisions read back |
 | **[B — Two workspaces](#use-case-b--two-workspaces)** | a second author, pushes crossing in both directions, and what that does to the decisions |
 
-Every command runs **from the repository root**. The CLI is invoked through the
-Taskfile (`task cli -- …`) and `-w examples/basics` points it at this workspace.
+Every command runs **from the repository root**, and `-w examples/basics` points the
+CLI at this workspace.
+
+> **Two ways to type these, and you want one or the other.** Every block is written
+> for the installed `permguard` binary, run from the repository root. Folded under each
+> one is the same thing through the Taskfile, for a checkout with nothing installed.
+> Prefer the binary where the exit status matters: `task cli` reports a clean refusal as
+> success on purpose, so it always exits `0`.
 
 ## What `task run:all` already wires up
 
@@ -62,13 +68,37 @@ Policies up, decisions answered, decisions read back.
 ### A1. Start, and create the ledger
 
 ```bash
-task run:all                                                    # control :7556, data :7656
+task run:all          # control :7556, data :7656
+```
 
+```bash
+permguard zones create acme --endpoint http://127.0.0.1:7556
+permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- zones create acme --endpoint http://127.0.0.1:7556
 task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
 ```
 
+</details>
+
 ### A2. Push the policies
+
+```bash
+permguard -w examples/basics init basics --language cedar,rego    # adopts the existing manifest.yml
+permguard -w examples/basics remote add origin http://127.0.0.1:7556
+permguard -w examples/basics validate                              # Cedar + Rego parse, schema, identities
+permguard -w examples/basics checkout origin/acme/main-ledger      # bind + resolve GUIDs
+permguard -w examples/basics plan
+permguard -w examples/basics apply -m "lab policies"               # negotiate → upload → signed commit
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 task cli -- -w examples/basics init basics --language cedar,rego    # adopts the existing manifest.yml
@@ -78,6 +108,8 @@ task cli -- -w examples/basics checkout origin/acme/main-ledger      # bind + re
 task cli -- -w examples/basics plan
 task cli -- -w examples/basics apply -m "lab policies"               # negotiate → upload → signed commit
 ```
+
+</details>
 
 Expected plan:
 
@@ -89,10 +121,21 @@ Plan: 3 to create, 0 to update, 0 to delete (0 unchanged).
 ```
 
 ```bash
+permguard -w examples/basics verify        # the head statement + the local closure
+permguard -w examples/basics history
+permguard -w examples/basics status        # tracked ledger, checkpoint, pending
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- -w examples/basics verify        # the head statement + the local closure
 task cli -- -w examples/basics history
 task cli -- -w examples/basics status        # tracked ledger, checkpoint, pending
 ```
+
+</details>
 
 ### A3. Ask for decisions
 
@@ -100,8 +143,18 @@ The data plane serves what it mirrors, so give it one round:
 
 ```bash
 sleep 20
+permguard -w examples/basics check -f examples/basics/requests/permit.json
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+sleep 20
 task cli -- -w examples/basics check -f examples/basics/requests/permit.json
 ```
+
+</details>
 
 `check` runs from inside the workspace, so the zone and ledger come from the
 checkout — the requests in `requests/` name neither, which is what makes them
@@ -123,11 +176,36 @@ Permitted.
 **A deny.** `bob` asks to *write* a document `carol` owns:
 
 ```bash
+permguard -w examples/basics check -f examples/basics/requests/deny.json
+# decision DENY … and exit status 0, because a deny is an answer.
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- -w examples/basics check -f examples/basics/requests/deny.json
 # decision DENY … and exit status 0, because a deny is an answer.
 ```
 
+</details>
+
 **The other profile**, **boxcarring**, and **two ways to be wrong**:
+
+```bash
+permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json    # Rego alone
+permguard -w examples/basics check -f examples/basics/requests/boxcarred.json -o json | jq '.evaluations'
+
+permguard -w examples/basics check -f examples/basics/requests/error-no-store.json --ignore-workspace
+# no zone and no ledger anywhere: refused before a round trip (exit 64)
+
+permguard -w examples/basics check -f examples/basics/requests/error-unknown-ledger.json --ignore-workspace
+# a ledger this plane does not mirror: 404, not a deny — a PEP must tell "no"
+# from "ask somebody else"
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json    # Rego alone
@@ -141,7 +219,21 @@ task cli -- -w examples/basics check -f examples/basics/requests/error-unknown-l
 # from "ask somebody else"
 ```
 
+</details>
+
 Same over gRPC, and straight at the API:
+
+```bash
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
+
+curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
+curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+  -H 'content-type: application/json' -H 'x-request-id: lab-1' \
+  -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
@@ -152,14 +244,25 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
 
+</details>
+
 ### A4. Read what was decided
 
 Every answer above was recorded on the data plane and shipped to the control
 plane. Ask the **control plane** for them:
 
 ```bash
+permguard decisions list --zone acme --ledger main-ledger
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- decisions list --zone acme --ledger main-ledger
 ```
+
+</details>
 
 ```text
   scope    acme/main-ledger
@@ -190,6 +293,17 @@ Three things in that output are worth stopping on:
 Everything else the command does:
 
 ```bash
+permguard decisions tail --zone acme --ledger main-ledger --follow   # as they arrive
+permguard decisions get 68aa1f3c9e2b47d0 --zone acme --ledger main-ledger
+permguard decisions export --zone acme --ledger main-ledger -o json  # bulk, resumable
+permguard decisions list --zone acme --ledger main-ledger -o yaml --limit 5
+permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- decisions tail --zone acme --ledger main-ledger --follow   # as they arrive
 task cli -- decisions get 68aa1f3c9e2b47d0 --zone acme --ledger main-ledger
 task cli -- decisions export --zone acme --ledger main-ledger -o json  # bulk, resumable
@@ -197,12 +311,24 @@ task cli -- decisions list --zone acme --ledger main-ledger -o yaml --limit 5
 task cli -- --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
 ```
 
+</details>
+
 **Verify it yourself**, without trusting the server that served it:
+
+```bash
+curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+permguard decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
 ```
+
+</details>
 
 ```text
   inclusion   3 record(s) proven in a signed batch
@@ -218,9 +344,21 @@ signed. Ask for the whole producer stream and the **chain** is what verifies:
 ```bash
 PDP=all-in-one-local
 INST=$(ls .volume/all-in-one/data/decisions/store/streams/$PDP | head -1)
+permguard decisions list --pdp $PDP --instance $INST --verify --keys /tmp/pdp-keys.json
+# chain  intact
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+PDP=all-in-one-local
+INST=$(ls .volume/all-in-one/data/decisions/store/streams/$PDP | head -1)
 task cli -- decisions list --pdp $PDP --instance $INST --verify --keys /tmp/pdp-keys.json
 # chain  intact
 ```
+
+</details>
 
 **Where the offset comes in.** The control plane keeps no cursor: each page
 returns an opaque offset that belongs to you, and presenting it is how you
@@ -228,9 +366,19 @@ continue. It is **bound to the scope that issued it** — one from `acme`
 presented under another zone is refused rather than reinterpreted:
 
 ```bash
+NEXT=$(permguard decisions list --zone acme --ledger main-ledger -o json --limit 1 | jq -r .next)
+permguard decisions list --zone acme --ledger main-ledger --from "$NEXT"
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 NEXT=$(task cli -- decisions list --zone acme --ledger main-ledger -o json --limit 1 | jq -r .next)
 task cli -- decisions list --zone acme --ledger main-ledger --from "$NEXT"
 ```
+
+</details>
 
 ---
 
@@ -246,10 +394,31 @@ Two ways — pick either.
 **Clone** (one command, fetches everything into a fresh directory):
 
 ```bash
+permguard -w /tmp clone http://127.0.0.1:7556/acme/main-ledger lab-clone
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- -w /tmp clone http://127.0.0.1:7556/acme/main-ledger lab-clone
 ```
 
+</details>
+
 **Or checkout from an empty folder** (init first, then bind — same result):
+
+```bash
+mkdir -p /tmp/lab-b
+permguard -w /tmp/lab-b init lab-b --language cedar,rego
+rm /tmp/lab-b/manifest.yml                    # the manifest arrives from the ledger
+permguard -w /tmp/lab-b remote add origin http://127.0.0.1:7556
+permguard -w /tmp/lab-b checkout origin/acme/main-ledger
+ls /tmp/lab-b/cedar /tmp/lab-b/rego           # policies and schema, materialized by alias
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 mkdir -p /tmp/lab-b
@@ -260,7 +429,21 @@ task cli -- -w /tmp/lab-b checkout origin/acme/main-ledger
 ls /tmp/lab-b/cedar /tmp/lab-b/rego           # policies and schema, materialized by alias
 ```
 
+</details>
+
 ### B2. They push, you pull
+
+```bash
+sed -i '' 's/Group::"finance"/Group::"analysts"/' /tmp/lab-b/cedar/document-readers.cedar
+permguard -w /tmp/lab-b plan                # ~ document-readers: update — same id, identity kept
+permguard -w /tmp/lab-b apply -m "readers are the analysts group"
+
+permguard -w examples/basics pull                   # counter advances; your files stay yours
+permguard -w examples/basics history                # both commits, newest first
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
 
 ```bash
 sed -i '' 's/Group::"finance"/Group::"analysts"/' /tmp/lab-b/cedar/document-readers.cedar
@@ -270,6 +453,8 @@ task cli -- -w /tmp/lab-b apply -m "readers are the analysts group"
 task cli -- -w examples/basics pull                   # counter advances; your files stay yours
 task cli -- -w examples/basics history                # both commits, newest first
 ```
+
+</details>
 
 > **Stay inside the schema.** This partition declares one, so `read` and `write`
 > are the actions that exist and `Group`, `User`, `Document` are the types. Name
@@ -284,10 +469,22 @@ Wait for the mirror, then ask the same question again:
 
 ```bash
 sleep 20
+permguard -w examples/basics check -f examples/basics/requests/permit.json
+permguard decisions list --zone acme --ledger main-ledger -o json \
+  | jq -r '.decisions[] | "\(.seq) \(.decision) \(.commit[0:19]) \(.policies)"'
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+sleep 20
 task cli -- -w examples/basics check -f examples/basics/requests/permit.json
 task cli -- decisions list --zone acme --ledger main-ledger -o json \
   | jq -r '.decisions[] | "\(.seq) \(.decision) \(.commit[0:19]) \(.policies)"'
 ```
+
+</details>
 
 ```text
 2 true  sha256:0cbe3f9459d2 ["af4c4260-…","e63ec998-…"]   ← Cedar and Rego both permitted
@@ -304,7 +501,7 @@ did**, and the log is where that is visible.
 This is what recording the commit and the policy identities buys, and why
 neither is a file name: `at commit` says *which policy state* produced each
 answer, `policies` says *which policies inside it* actually decided, and both
-survive a rename. `task cli -- -w examples/basics history` shows the same two states
+survive a rename. `permguard -w examples/basics history` shows the same two states
 from the other side.
 
 > To see the answer itself flip, change the policy the *other* partition would
@@ -316,12 +513,26 @@ Edit here, push, and let the clone pull it:
 
 ```bash
 sed -i '' 's/admin/operator/' examples/basics/rego/gateway.rego
+permguard -w examples/basics apply -m "operators mutate"
+permguard -w /tmp/lab-b pull
+
+sleep 20
+permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+sed -i '' 's/admin/operator/' examples/basics/rego/gateway.rego
 task cli -- -w examples/basics apply -m "operators mutate"
 task cli -- -w /tmp/lab-b pull
 
 sleep 20
 task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json
 ```
+
+</details>
 
 Now a **DENY**, and it should be: `gateway-permit.json` asks as `dora` with
 `role: admin`, and the module was just changed to permit `operator`. The
@@ -330,8 +541,17 @@ partition to permit it instead — which is exactly the difference between the t
 profiles, made visible by one edit.
 
 ```bash
+permguard decisions tail --zone acme --ledger main-ledger --follow
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- decisions tail --zone acme --ledger main-ledger --follow
 ```
+
+</details>
 
 Leave that running in one terminal and re-run a `check` in another: the record
 appears within a second or two, because the shipper batches on a one-second
@@ -342,8 +562,17 @@ Every flow above also rides gRPC — the scheme is the transport, nothing else
 changes:
 
 ```bash
+permguard -w /tmp clone grpc://127.0.0.1:7556/acme/main-ledger lab-grpc
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
 task cli -- -w /tmp clone grpc://127.0.0.1:7556/acme/main-ledger lab-grpc
 ```
+
+</details>
 
 ---
 
@@ -368,6 +597,31 @@ before the spool fills and the stream has to end.
 
 ```bash
 echo 'permit (principal' >> examples/basics/cedar/broken.cedar
+permguard -w examples/basics validate                                   # Cedar parse error
+rm examples/basics/cedar/broken.cedar
+
+cp examples/basics/manifest.yml examples/basics/manifest.yaml
+permguard -w examples/basics validate                                   # two manifests = ambiguity
+rm examples/basics/manifest.yaml
+
+cp examples/basics/cedar/model.cedarschema examples/basics/cedar/second.cedarschema
+permguard -w examples/basics validate                                   # two schemas = ambiguity
+rm examples/basics/cedar/second.cedarschema
+
+permguard -w examples/basics apply -m x   # after someone else pushed: conflict — pull, re-plan, re-apply
+
+# Raise the engine range past anything that exists, and the CLI's own load gate
+# refuses before a server is asked — every consumer runs that gate:
+#   sed -i '' 's/>=0.1.0 <0.2.0/>=9.0.0/' examples/basics/manifest.yml
+#   permguard -w examples/basics apply -m x
+#   # error: manifest rejected: runtime `cedar`: engine permguard 0.1.0 does not satisfy `>=9.0.0`
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+echo 'permit (principal' >> examples/basics/cedar/broken.cedar
 task cli -- -w examples/basics validate                                   # Cedar parse error
 rm examples/basics/cedar/broken.cedar
 
@@ -387,6 +641,8 @@ task cli -- -w examples/basics apply -m x   # after someone else pushed: conflic
 #   task cli -- -w examples/basics apply -m x
 #   # error: manifest rejected: runtime `cedar`: engine permguard 0.1.0 does not satisfy `>=9.0.0`
 ```
+
+</details>
 
 What happens underneath is the specification, live: policies (not files) as
 content-addressed objects, identities carried by alias, one NOTP push —
