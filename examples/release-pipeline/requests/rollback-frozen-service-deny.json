@@ -1,0 +1,154 @@
+{
+  "profile": "admin",
+  "subject": {
+    "type": "User",
+    "id": "alice"
+  },
+  "action": {
+    "name": "deployment:rollback"
+  },
+  "resource": {
+    "type": "Service",
+    "id": "payments-api"
+  },
+  "context": {
+    "environment": "production",
+    "on_call": true,
+    "incident_active": true
+  },
+  "entities": {
+    "schema": "cedar",
+    "items": [
+      {
+        "uid": {
+          "type": "Team",
+          "id": "payments"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Team",
+          "id": "platform"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "alice"
+        },
+        "attrs": {
+          "role": "Developer"
+        },
+        "parents": [
+          {
+            "type": "Team",
+            "id": "payments"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "bob"
+        },
+        "attrs": {
+          "role": "ReleaseManager"
+        },
+        "parents": [
+          {
+            "type": "Team",
+            "id": "payments"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "Service",
+          "id": "payments-api"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "Team",
+              "id": "payments"
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Service",
+          "id": "platform-api"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "Team",
+              "id": "platform"
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Release",
+          "id": "v2.4.0"
+        },
+        "attrs": {
+          "service": {
+            "__entity": {
+              "type": "Service",
+              "id": "payments-api"
+            }
+          },
+          "created_by": {
+            "__entity": {
+              "type": "User",
+              "id": "alice"
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Release",
+          "id": "v2.5.0"
+        },
+        "attrs": {
+          "service": {
+            "__entity": {
+              "type": "Service",
+              "id": "payments-api"
+            }
+          },
+          "created_by": {
+            "__entity": {
+              "type": "User",
+              "id": "bob"
+            }
+          }
+        },
+        "parents": []
+      }
+    ],
+    "partitions": {
+      "admin-rego": {
+        "schema": "rego",
+        "items": [
+          {
+            "frozen_services": [
+              "payments-api"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

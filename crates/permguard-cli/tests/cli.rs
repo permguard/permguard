@@ -614,7 +614,7 @@ fn test_answers_in_every_format_and_says_when_there_is_nothing_to_run() {
     .expect("the request is written");
     std::fs::write(
         dir.join("tests/cases.yml"),
-        "- name: alice reads\n  request: ../requests/read.json\n  expect: {}\n",
+        "- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit, policies: [readers] }\n",
     )
     .expect("the cases are written");
 
@@ -1016,7 +1016,7 @@ fn test_names_the_policies_of_every_evaluation_in_a_batch() {
     .expect("the request is written");
     std::fs::write(
         dir.join("tests/cases.yml"),
-        "- name: two in one\n  request: ../requests/batch.json\n  expect: {}\n",
+        "- name: two in one\n  request: ../requests/batch.json\n  expect: { decision: permit }\n",
     )
     .expect("the cases are written");
 

@@ -13,6 +13,18 @@ pub const MAX_TREE_ENTRIES: usize = 10_000;
 /// Maximum tree depth.
 pub const MAX_TREE_DEPTH: usize = 32;
 
+/// Maximum nesting depth of one decoded CBOR value.
+///
+/// The decoder walks arrays and maps by recursing, and every byte of a hostile payload can open
+/// another level: `0x81` repeated is one array per byte, so a body well inside `MAX_OBJECT_BYTES`
+/// can exhaust the stack and abort the process. A limit is what makes the recursion bounded, and it
+/// is checked on the way *down*, before the frame is taken.
+///
+/// Twice `MAX_TREE_DEPTH` because a tree at full depth is itself a nested value and its encoding
+/// adds levels of its own — a limit that refused the deepest legal object would be a limit on the
+/// model rather than on the decoder.
+pub const MAX_VALUE_DEPTH: usize = MAX_TREE_DEPTH * 2;
+
 /// Maximum number of annotations on one tree entry.
 pub const MAX_ANNOTATIONS_PER_ENTRY: usize = 32;
 

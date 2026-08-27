@@ -30,6 +30,9 @@ use crate::{logging, signal, witness};
 /// Turns one configuration-file section into settings of the configuration-file layer.
 type SectionReader = Box<dyn Fn(&Value) -> Result<Vec<(String, String)>> + Send + Sync>;
 
+/// A check a composed build makes on the assembled configuration.
+type StartupCheck = Box<dyn Fn(&Config) -> Result<()> + Send + Sync>;
+
 /// Builds the privacy policy from the key and key version the effective configuration named.
 ///
 /// It is a factory rather than a composed instance because the key is configuration, and the app is
@@ -131,6 +134,12 @@ pub struct App {
     /// build installs something, so nothing has to check whether it is there.
     metrics: Metrics,
     services: Vec<Box<dyn Service>>,
+    /// Checks a composed build makes on the assembled configuration.
+    ///
+    /// The layered pipeline validates a setting against the contract; these validate it against
+    /// *this* build — a configuration that names a surface nothing here serves, say. Whoever
+    /// composes the binary knows what it serves; the contract does not.
+    startup_checks: Vec<StartupCheck>,
     pseudonymizer_factory: Option<PseudonymizerFactory>,
     shutdown_factory: Option<ShutdownFactory>,
     secrets_factory: Option<SecretStoreFactory>,
@@ -171,6 +180,7 @@ impl App {
             secrets: None,
             metrics: Metrics::none(),
             services: Vec::new(),
+            startup_checks: Vec::new(),
             pseudonymizer_factory: None,
             shutdown_factory: None,
             secrets_factory: None,
@@ -377,6 +387,18 @@ impl App {
     }
 
     /// Registers a service the server host is expected to start, after the ones already registered.
+    /// Adds a check the assembled configuration must pass before anything starts.
+    ///
+    /// Runs on every path that builds a config, `serve` and the named actions alike: a
+    /// configuration that is wrong for this build is wrong whatever it was asked to do.
+    pub fn with_startup_check<F>(mut self, check: F) -> Self
+    where
+        F: Fn(&Config) -> Result<()> + Send + Sync + 'static,
+    {
+        self.startup_checks.push(Box::new(check));
+        self
+    }
+
     pub fn with_service(mut self, service: Box<dyn Service>) -> Self {
         self.services.push(service);
 
@@ -866,10 +888,16 @@ impl App {
                 .with_context(|| format!("in the configuration file {}", path.display()))?;
         }
 
-        match &file {
-            Some((path, parsed)) => self.apply_sections(config, path, parsed),
-            None => Ok(config),
+        let config = match &file {
+            Some((path, parsed)) => self.apply_sections(config, path, parsed)?,
+            None => config,
+        };
+
+        for check in &self.startup_checks {
+            check(&config)?;
         }
+
+        Ok(config)
     }
 
     /// Reads and parses the configuration file, rejecting sections nothing in this build accounts for.

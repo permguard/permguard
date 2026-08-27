@@ -109,3 +109,37 @@ prometheus.io/path: /metrics
 prometheus.io/port: {{ .telemetryPort | quote }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Whether one component keeps its state on a PersistentVolume.
+
+`persistence.enabled` is the default for every component, and a component may override it —
+because one switch cannot express what a real installation needs: a control plane holds authority
+and wants a volume, while a replicated data plane is a mirror and must NOT share one with its own
+replicas. Takes `(dict "root" $ "plane" $plane)`, answers "true" or "".
+*/}}
+{{- define "permguard.persists" -}}
+{{- $plane := .plane -}}
+{{- $default := .root.Values.persistence.enabled -}}
+{{- if and $plane $plane.persistence (kindIs "bool" $plane.persistence.enabled) -}}
+{{- if $plane.persistence.enabled }}true{{ end -}}
+{{- else -}}
+{{- if $default }}true{{ end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+This release's own control plane, in the cluster.
+
+The Service is named after the release, so only a template knows the address — which is why a
+values file that wrote one was right for exactly one release name. `http`, because the chart has
+no certificate to point at; a deployment that does not trust its own network sets `servers`
+explicitly with `https` and the authority to check.
+*/}}
+{{- define "permguard.controlPlaneUrl" -}}
+{{- if .Values.allInOne.enabled -}}
+http://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}
+{{- else -}}
+http://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
+{{- end -}}
+{{- end -}}

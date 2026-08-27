@@ -386,6 +386,69 @@ mod tests {
         )
     }
 
+    /// A CBOR body that nests deeper than the decoder will walk, on every NOTP entry point.
+    ///
+    /// One array per byte: `0x81` repeated is a legal-looking payload that opens a level for every
+    /// byte of it, comfortably inside any body limit, and a recursive decoder walks it until the
+    /// stack is gone. That is a remote abort of the control plane, from an unauthenticated socket.
+    ///
+    /// The decoder's own limit is asserted where it lives. What is asserted here is the thing that
+    /// actually matters: the **network path** answers, with a refusal, and the process is still
+    /// there to answer the next request.
+    #[tokio::test]
+    async fn test_a_deeply_nested_body_is_refused_rather_than_taking_the_process_down() {
+        let (routes, zone, ledger) = testing_routes();
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+
+        // 50 001 bytes, 50 000 levels: the payload that aborted the process before the limit.
+        let mut deep = vec![0x81u8; 50_000];
+        deep.push(0x00);
+
+        for path in [
+            format!("{base}/notp/push/negotiate"),
+            format!("{base}/notp/objects"),
+            format!("{base}/notp/push/commit"),
+            format!("{base}/notp/pull/negotiate"),
+            format!("{base}/notp/objects/fetch"),
+        ] {
+            let (status, body) = post(&routes, &path, deep.clone()).await;
+
+            // 422: the body is well-formed CBOR framing that this decoder will not walk, which
+            // is the status this surface gives an unprocessable message.
+            assert_eq!(
+                status,
+                422,
+                "{path} did not refuse a body it cannot read: {}",
+                String::from_utf8_lossy(&body)
+            );
+            assert!(
+                String::from_utf8_lossy(&body).contains("nests deeper"),
+                "{path} refused it for some other reason: {}",
+                String::from_utf8_lossy(&body)
+            );
+            assert!(
+                String::from_utf8_lossy(&body).contains("body_rejected"),
+                "{path} refused it as something other than a bad body: {}",
+                String::from_utf8_lossy(&body)
+            );
+        }
+
+        // Still serving: the point of the limit is that the next caller is answered.
+        let request = NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: build_commit().1,
+            expected_old: None,
+            closure: Vec::new(),
+        };
+        let (status, _) = post(
+            &routes,
+            &format!("{base}/notp/push/negotiate"),
+            request.encode(),
+        )
+        .await;
+        assert_eq!(status, 200, "the plane stopped answering after the refusal");
+    }
+
     /// The whole protocol over HTTP: negotiate, upload, commit, ref, pull.
     #[tokio::test]
     async fn test_push_then_pull_over_http() {

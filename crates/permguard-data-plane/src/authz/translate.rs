@@ -18,8 +18,8 @@ use prost_types::{ListValue, Struct, Value as ProtoValue, value::Kind};
 use serde_json::{Map, Value};
 
 use super::wire::{
-    ActionBody, CheckRequest, CheckResponse, Decision, DecisionContext, EntitiesBody, EntityBody,
-    EvaluationBody, OptionsBody, Reason, Semantic,
+    ActionBody, CheckRequest, CheckResponse, Decision, DecisionContext, EntityBody, EntitySetBody,
+    EvaluationBody, OptionsBody, PartitionEntitySet, Reason, Semantic,
 };
 use crate::v1::{
     Action as ProtoAction, Decision as ProtoDecision, DecisionContext as ProtoContext,
@@ -81,10 +81,25 @@ fn action_from_proto(action: ProtoAction) -> ActionBody {
     }
 }
 
-fn entities_from_proto(entities: ProtoEntities) -> EntitiesBody {
-    EntitiesBody {
+fn entities_from_proto(entities: ProtoEntities) -> EntitySetBody {
+    EntitySetBody {
         schema: some(entities.schema),
         items: entities.items.into_iter().map(json_from_proto).collect(),
+        // The per-partition overrides, by name. gRPC and HTTP carry the same extension or the
+        // transport would decide what a policy sees, which is the one thing a transport may not do.
+        partitions: entities
+            .partitions
+            .into_iter()
+            .map(|(name, held)| {
+                (
+                    name,
+                    PartitionEntitySet {
+                        schema: some(held.schema),
+                        items: held.items.into_iter().map(json_from_proto).collect(),
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
@@ -145,6 +160,31 @@ fn some(value: String) -> Option<String> {
     }
 }
 
+/// A proto number that is a whole number, as JSON writes whole numbers.
+///
+/// `f64` is the only number proto carries, and `serde_json` renders `42f64` as `42.0`. Every
+/// integer a caller wrote would arrive at a policy as a decimal — legal JSON, and not the value
+/// they sent.
+fn integral(value: f64) -> Option<serde_json::Number> {
+    if value.fract() != 0.0 || !value.is_finite() {
+        return None;
+    }
+
+    // Bounded by what a double represents *exactly*, not by what a `u64` holds. `u64::MAX as f64`
+    // rounds up to 2^64, so a bound written that way accepts 2^64 and the cast then saturates it
+    // back to `u64::MAX` — a number changed on the way through, silently. Past 2^53 a double no
+    // longer counts one at a time, so nothing there is an integer anybody sent.
+    if value.abs() > EXACT_INTEGER {
+        return None;
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    Some(serde_json::Number::from(value as i64))
+}
+
+/// The largest integer an IEEE-754 double represents exactly: 2^53.
+const EXACT_INTEGER: f64 = 9_007_199_254_740_992.0;
+
 fn map_from_struct(value: Struct) -> Map<String, Value> {
     value
         .fields
@@ -157,7 +197,12 @@ fn json_from_proto(value: ProtoValue) -> Value {
     match value.kind {
         None | Some(Kind::NullValue(_)) => Value::Null,
         Some(Kind::BoolValue(value)) => Value::Bool(value),
-        Some(Kind::NumberValue(value)) => serde_json::Number::from_f64(value)
+        // proto has one number type and JSON has two readings of it. A caller that sent `42` over
+        // HTTP must not have it arrive as `42.0` over gRPC: Cedar has no floating-point type at
+        // all, so the same request answered on one transport and refused as unreadable on the
+        // other — the diagnosis differed, which is the same as the contract differing.
+        Some(Kind::NumberValue(value)) => integral(value)
+            .or_else(|| serde_json::Number::from_f64(value))
             .map(Value::Number)
             .unwrap_or(Value::Null),
         Some(Kind::StringValue(value)) => Value::String(value),
@@ -234,6 +279,14 @@ mod tests {
             entities: Some(ProtoEntities {
                 schema: "cedar".to_owned(),
                 items: vec![proto_from_json(&json!({"uid": {"type": "Group"}}))],
+                // The per-partition override rides gRPC as well, and is addressed by name.
+                partitions: std::collections::HashMap::from([(
+                    "admin-rego".to_owned(),
+                    crate::v1::PartitionEntities {
+                        schema: "rego".to_owned(),
+                        items: vec![proto_from_json(&json!({"team": "payments"}))],
+                    },
+                )]),
             }),
             evaluations: vec![ProtoEvaluation {
                 action: Some(ProtoAction {
@@ -259,9 +312,20 @@ mod tests {
         assert_eq!(request_id.as_deref(), Some("one"));
         assert_eq!(query.action.name, "delete", "the evaluation overrides");
         assert_eq!(query.subject.properties["department"], json!("sales"));
-        assert_eq!(query.context["attempts"], json!(2.0));
+        // `2`, not `2.0`: what a caller sent over HTTP is what arrives over gRPC.
+        assert_eq!(query.context["attempts"], json!(2));
         assert_eq!(query.context["trusted"], json!(true));
-        assert_eq!(query.entities.len(), 1);
+        // The graphs arrive as the caller addressed them: the global one for Cedar, and the
+        // override for the partition it names. Who receives which is decided at materialisation.
+        let entities = query.entities.as_ref().expect("a graph survived the trip");
+        assert_eq!(entities.schema.as_deref(), Some("cedar"));
+        assert_eq!(entities.items.len(), 1);
+        let own = entities
+            .partitions
+            .get("admin-rego")
+            .expect("the override survived the trip");
+        assert_eq!(own.schema.as_deref(), Some("rego"));
+        assert_eq!(own.items.len(), 1, "and carries its own items");
     }
 
     #[test]
@@ -304,12 +368,14 @@ mod tests {
 
     #[test]
     fn every_json_shape_crosses_and_comes_back() {
-        // Protobuf's `Value` has one number type, an IEEE-754 double — the
-        // same range the standard tells JSON implementations to stay inside.
-        // So `1` comes back as `1.0`: the same number, spelled the way this
-        // transport spells numbers. Everything else is identical.
+        // Protobuf's `Value` has one number type, an IEEE-754 double, and JSON has two readings of
+        // it. A whole number therefore comes back whole: `1` used to arrive as `1.0`, and a policy
+        // language with no floating-point type at all — Cedar — could not read it, so the same
+        // request was answered over HTTP and refused as unreadable over gRPC. Everything else
+        // crosses untouched, `1.5` included.
         let value = json!({
             "string": "s", "number": 1.5, "bool": false, "null": null,
+            "whole": 42, "negative": -7,
             "list": [1, "two", {"three": 3}],
             "nested": {"deep": {"deeper": true}}
         });
@@ -317,17 +383,16 @@ mod tests {
 
         let round_tripped = Value::Object(map_from_struct(struct_from_map(&object)));
         assert_eq!(
-            round_tripped,
-            json!({
-                "string": "s", "number": 1.5, "bool": false, "null": null,
-                "list": [1.0, "two", {"three": 3.0}],
-                "nested": {"deep": {"deeper": true}}
-            })
+            round_tripped, value,
+            "what a caller sent is what a policy is given, on either transport"
         );
-        assert_eq!(
-            round_tripped["list"][0].as_f64(),
-            Some(1.0),
-            "the value is the same number, whichever way it is spelled"
+        assert!(
+            round_tripped["whole"].is_u64() && round_tripped["negative"].is_i64(),
+            "a whole number stays whole: {round_tripped}"
+        );
+        assert!(
+            round_tripped["number"].as_f64() == Some(1.5),
+            "and one that is not stays as it was"
         );
     }
 

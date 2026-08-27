@@ -17,12 +17,15 @@ use std::str::FromStr as _;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
+/// This language's name, as a manifest's `runtime.language.name` and an `entities.schema` spell it.
+pub const NAME: &str = "cedar";
+
 /// The Cedar plugin.
 pub struct Cedar;
 
 impl Language for Cedar {
     fn name(&self) -> &'static str {
-        "cedar"
+        NAME
     }
 
     fn language_version(&self) -> &'static str {

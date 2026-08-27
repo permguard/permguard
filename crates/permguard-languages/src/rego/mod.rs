@@ -11,12 +11,15 @@ mod evaluate;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
+/// This language's name, as a manifest's `runtime.language.name` and an `entities.schema` spell it.
+pub const NAME: &str = "rego";
+
 /// The Rego plugin.
 pub struct Rego;
 
 impl Language for Rego {
     fn name(&self) -> &'static str {
-        "rego"
+        NAME
     }
 
     fn language_version(&self) -> &'static str {

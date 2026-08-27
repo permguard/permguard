@@ -171,8 +171,19 @@ fn read_decision(
 
     // The types are not the whole contract. An answer has to be an answer *to this request*:
     // one decision per evaluation, in the order asked, under the names asked, and a verdict that
-    // is the conjunction of them. A body like `{"decision":false,"evaluations":[]}` typechecks
+    // resolves by the operator its semantic names. A body like `{"decision":false,"evaluations":[]}` typechecks
     // and no plane can produce it — and it would have satisfied a case that only checks the deny.
+    // The request's own name, back. A response carrying another request's id, or none where one
+    // was given, is not an answer to this one — and the per-evaluation ids below say nothing about
+    // the request as a whole.
+    if answered.request_id != asked.request_id {
+        return Err(format!(
+            "the request was named `{}` and the answer names `{}`",
+            asked.request_id.as_deref().unwrap_or("nothing"),
+            answered.request_id.as_deref().unwrap_or("nothing")
+        ));
+    }
+
     match (&answered.evaluations, asked.boxcarred) {
         (Some(held), true) => {
             if held.is_empty() {
@@ -191,13 +202,8 @@ fn read_decision(
             // that should have ended it would have passed too. So the rule is exact — every
             // evaluation but the last must not have met the stop condition, and the last must
             // have met it unless there was simply nothing left to ask.
-            let stops = |permitted: bool| match asked.semantic {
-                permguard_languages::Semantic::ExecuteAll => false,
-                permguard_languages::Semantic::DenyOnFirstDeny => !permitted,
-                permguard_languages::Semantic::PermitOnFirstPermit => permitted,
-            };
             for (index, evaluation) in held.iter().enumerate().take(held.len() - 1) {
-                if stops(evaluation.decision) {
+                if asked.semantic.stops(evaluation.decision) {
                     return Err(format!(
                         "evaluation {index} answered {} and `{}` ends the batch there, yet {} more \
                          were answered",
@@ -212,7 +218,7 @@ fn read_decision(
                 }
             }
             let last = held.len() - 1;
-            if held.len() < asked.queries.len() && !stops(held[last].decision) {
+            if held.len() < asked.queries.len() && !asked.semantic.stops(held[last].decision) {
                 return Err(format!(
                     "{} of {} evaluations were answered, and nothing in them ends a `{}` batch",
                     held.len(),
@@ -230,16 +236,16 @@ fn read_decision(
                     ));
                 }
             }
-            let conjunction = held.iter().all(|evaluation| evaluation.decision);
-            if answered.decision != conjunction {
+            // The verdict its own evaluations imply, under the operator the caller asked for.
+            let implied = asked
+                .semantic
+                .combine(held.iter().map(|evaluation| evaluation.decision));
+            if answered.decision != implied {
                 return Err(format!(
-                    "the batch answered {} and its evaluations are {}",
+                    "the batch answered {} and `{}` of its evaluations is {}",
                     if answered.decision { "permit" } else { "deny" },
-                    if conjunction {
-                        "all permits"
-                    } else {
-                        "not all permits"
-                    }
+                    semantic_named(asked.semantic),
+                    if implied { "permit" } else { "deny" }
                 ));
             }
         }
@@ -288,7 +294,7 @@ fn read_decision(
         None => vec![decided(answered.decision, answered.context.as_ref(), None)],
     };
 
-    let mut carried = cases::Answered::of(evaluations);
+    let mut carried = cases::Answered::of(asked.semantic, evaluations);
     // The plane has already resolved the batch; its word on the whole request stands.
     carried.permitted = answered.decision;
 

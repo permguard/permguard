@@ -21,12 +21,9 @@
 
 use std::collections::BTreeMap;
 
-use permguard_languages::{
-    self as languages, Evaluator, Semantic, StoredPolicy, registry, resolve,
-};
+use permguard_languages::{self as languages, Evaluator, Semantic, registry, resolve};
 use permguard_objects::manifest::Manifest;
-use permguard_objects::object::{Blob, Object, Tree};
-use permguard_objects::policy_id::ANNOTATION_POLICY_ID;
+use permguard_objects::object::{Object, Tree};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -141,6 +138,16 @@ pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Vec<Located>> {
             .map_err(|error| err(format!("{file}: not a list of cases: {error}")))?;
 
         for case in read {
+            // A case with an empty `expect` runs a request and asserts nothing about the answer.
+            // It reads as coverage and is not: the suite goes green whatever the policies decide.
+            if case.expect == Expectation::default() {
+                return Err(err(format!(
+                    "{file}: the case `{}` expects nothing — state a `decision`, the `policies` \
+                     that must decide, an `error`, or what each evaluation must answer",
+                    case.name
+                )));
+            }
+
             let request = beside(&file, &case.request);
             cases.push(Located {
                 case,
@@ -190,6 +197,8 @@ fn beside(case_file: &str, request: &str) -> String {
 /// The compiled partitions of the working tree, ready to answer.
 pub struct Compiled {
     partitions: BTreeMap<String, Box<dyn Evaluator>>,
+    /// Each partition's runtime, which is half of what routes an entity graph.
+    languages: BTreeMap<String, String>,
     /// Policy identity → the alias its author wrote, when there is one.
     aliases: BTreeMap<String, String>,
     manifest: Manifest,
@@ -208,6 +217,7 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
 
     let root = tree_at(snapshot, &snapshot.root.to_string())?;
     let mut partitions: BTreeMap<String, Box<dyn Evaluator>> = BTreeMap::new();
+    let mut languages: BTreeMap<String, String> = BTreeMap::new();
 
     for entry in &root.entries {
         let Some(declared) = manifest.partitions.get(&entry.name) else {
@@ -224,47 +234,52 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
             ))
         })?;
 
-        let held = tree_at(snapshot, &entry.digest.to_string())?;
-        let mut policies = Vec::new();
-        let mut schema = None;
-
-        for item in &held.entries {
-            let blob = blob_at(snapshot, &item.digest.to_string())?;
-            match item.annotations.get(ANNOTATION_POLICY_ID) {
-                // A schema is the entry with no policy identity on it.
-                None => schema = Some(blob.data),
-                Some(id) => policies.push(StoredPolicy {
-                    id: id.clone(),
-                    alias: aliases.get(id).cloned(),
-                    source: blob.data,
-                }),
-            }
-        }
+        // Read by `permguard_languages::partition::collect` — the walk the data plane performs.
+        // Not a second implementation of it: the first one this file carried lost the recursion
+        // into nested folders, and the one that replaced it lost the two checks that a partition
+        // declaring a schema has one and a partition declaring none carries none.
+        let held = languages::partition::collect(
+            &Objects(snapshot),
+            &entry.digest.to_string(),
+            &entry.name,
+            declared.schema,
+        )
+        .map_err(|why| err(why.to_string()))?;
+        let (policies, schema) = (held.policies, held.schema);
 
         let evaluator = evaluating
             .compile(&policies, schema.as_deref())
             .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?;
         partitions.insert(entry.name.clone(), evaluator);
+        languages.insert(entry.name.clone(), runtime.language.name.clone());
     }
 
     Ok(Compiled {
         partitions,
+        languages,
         aliases,
         manifest: manifest.clone(),
     })
+}
+
+/// A built snapshot, as the shared partition walk reads it.
+struct Objects<'a>(&'a Snapshot);
+
+impl languages::partition::Objects for Objects<'_> {
+    fn get(&self, digest: &str) -> std::result::Result<Vec<u8>, String> {
+        self.0
+            .objects
+            .iter()
+            .find(|(held, _)| held.to_string() == digest)
+            .map(|(_, bytes)| bytes.clone())
+            .ok_or_else(|| format!("the snapshot is missing {digest}"))
+    }
 }
 
 fn tree_at(snapshot: &Snapshot, digest: &str) -> Result<Tree> {
     match decode_at(snapshot, digest)? {
         Object::Tree(tree) => Ok(tree),
         other => Err(err(format!("{digest} is a {:?}, not a tree", other.kind()))),
-    }
-}
-
-fn blob_at(snapshot: &Snapshot, digest: &str) -> Result<Blob> {
-    match decode_at(snapshot, digest)? {
-        Object::Blob(blob) => Ok(blob),
-        other => Err(err(format!("{digest} is a {:?}, not a blob", other.kind()))),
     }
 }
 
@@ -373,10 +388,43 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
         }
     };
 
+    // What each partition of this profile is given, routed by `Asking::route` — the function the
+    // data plane calls. An entity graph belongs to a runtime and Cedar reads an action's properties
+    // somewhere Rego does not, so no single query fits every partition; and a routing this
+    // workspace would be refused for has to be refused here too.
+    let mut targets = Vec::with_capacity(declared.partitions.len());
+    for name in &declared.partitions {
+        let Some(language) = compiled.languages.get(name) else {
+            return Ok(failed(
+                located,
+                &profile,
+                format!("the profile names the partition `{name}`, which holds nothing"),
+            ));
+        };
+        targets.push(languages::request::PartitionTarget::new(name, language));
+    }
+
     let mut evaluations = Vec::new();
-    for (query, request_id) in &asked.queries {
+    for (asking, request_id) in &asked.queries {
+        let queries = match asking.route(&targets) {
+            Ok(queries) => queries,
+            Err(refusal) => {
+                return Ok(judge(
+                    located,
+                    &profile,
+                    Answered {
+                        permitted: false,
+                        policies: Vec::new(),
+                        error: Some(format!("{}: {}", refusal.code, refusal.message)),
+                        evaluations: Vec::new(),
+                    },
+                    &compiled.aliases,
+                ));
+            }
+        };
+
         let mut verdicts = Vec::new();
-        for name in &declared.partitions {
+        for (name, query) in declared.partitions.iter().zip(&queries) {
             let Some(evaluator) = compiled.partitions.get(name) else {
                 return Ok(failed(
                     located,
@@ -396,11 +444,7 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
 
         // The batch stops where the caller's semantic says it stops, so that a case
         // sees the same evaluations a plane would have run — and no more.
-        let stop = match asked.semantic {
-            Semantic::ExecuteAll => false,
-            Semantic::DenyOnFirstDeny => !decided.permitted,
-            Semantic::PermitOnFirstPermit => decided.permitted,
-        };
+        let stop = asked.semantic.stops(decided.permitted);
         evaluations.push(decided);
         if stop {
             break;
@@ -410,7 +454,7 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
     Ok(judge(
         located,
         &profile,
-        Answered::of(evaluations),
+        Answered::of(asked.semantic, evaluations),
         &compiled.aliases,
     ))
 }
@@ -443,15 +487,13 @@ pub struct Answered {
 impl Answered {
     /// The answer to a whole request, from what each of its evaluations decided.
     ///
-    /// The overall verdict of a batch is the **conjunction** — every evaluation
-    /// permitted — whatever semantic ran it, because that is what a PEP enforcing a
-    /// batch has to know, and it is what the data plane answers.
-    pub fn of(evaluations: Vec<Decided>) -> Self {
+    /// The verdict is `Semantic::combine`: the operator the caller's semantic names, which is
+    /// the same function the data plane answers with.
+    pub fn of(semantic: Semantic, evaluations: Vec<Decided>) -> Self {
         let single = evaluations.len() == 1 && evaluations[0].request_id.is_none();
 
         Self {
-            permitted: !evaluations.is_empty()
-                && evaluations.iter().all(|decided| decided.permitted),
+            permitted: semantic.combine(evaluations.iter().map(|decided| decided.permitted)),
             policies: if single {
                 evaluations[0].policies.clone()
             } else {

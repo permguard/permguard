@@ -890,12 +890,13 @@ fn remote_args(address: &str) -> Vec<String> {
 #[test]
 fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
     // `deny_on_first_deny`: three asked.
-    for (what, body, ok) in [
+    for (what, body, ok, expect) in [
         (
             "stopped at the first deny, as it must",
             r#"{"decision":false,"evaluations":[
                  {"decision":true,"request_id":"read"},{"decision":false,"request_id":"create"}]}"#,
             true,
+            "expect: { decision: deny }",
         ),
         (
             "every answer a permit, so every one runs",
@@ -903,11 +904,13 @@ fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
                  {"decision":true,"request_id":"read"},{"decision":true,"request_id":"create"},
                  {"decision":true,"request_id":"purge"}]}"#,
             true,
+            "expect: { decision: permit }",
         ),
         (
             "one permit offered as the whole batch",
             r#"{"decision":true,"evaluations":[{"decision":true,"request_id":"read"}]}"#,
             false,
+            "expect: { decision: permit }",
         ),
         (
             "kept going past the deny that ends it",
@@ -915,10 +918,11 @@ fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
                  {"decision":false,"request_id":"read"},{"decision":true,"request_id":"create"},
                  {"decision":true,"request_id":"purge"}]}"#,
             false,
+            "expect: { decision: deny }",
         ),
     ] {
         let dir = scratch("remote-stop-deny");
-        stopping_workspace(&dir, "deny_on_first_deny");
+        stopping_workspace(&dir, "deny_on_first_deny", expect);
 
         let mut routes = HashMap::new();
         routes.insert(
@@ -953,29 +957,33 @@ fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
         }
     }
 
-    // `permit_on_first_permit`: the mirror image.
-    for (what, body, ok) in [
+    // `permit_on_first_permit`: the mirror image. The overall verdict under OR is the
+    // disjunction, so a batch that reached a permit is a permit.
+    for (what, body, ok, expect) in [
         (
             "stopped at the first permit, as it must",
-            r#"{"decision":false,"evaluations":[
+            r#"{"decision":true,"evaluations":[
                  {"decision":false,"request_id":"read"},{"decision":true,"request_id":"create"}]}"#,
             true,
+            "expect: { decision: permit }",
         ),
         (
             "one deny offered as the whole batch",
             r#"{"decision":false,"evaluations":[{"decision":false,"request_id":"read"}]}"#,
             false,
+            "expect: { decision: deny }",
         ),
         (
             "kept going past the permit that ends it",
-            r#"{"decision":false,"evaluations":[
+            r#"{"decision":true,"evaluations":[
                  {"decision":true,"request_id":"read"},{"decision":false,"request_id":"create"},
                  {"decision":false,"request_id":"purge"}]}"#,
             false,
+            "expect: { decision: permit }",
         ),
     ] {
         let dir = scratch("remote-stop-permit");
-        stopping_workspace(&dir, "permit_on_first_permit");
+        stopping_workspace(&dir, "permit_on_first_permit", expect);
 
         let mut routes = HashMap::new();
         routes.insert(
@@ -1007,7 +1015,7 @@ fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
 }
 
 /// A workspace whose one case boxcars three questions under a named semantic.
-fn stopping_workspace(dir: &Path, semantic: &str) {
+fn stopping_workspace(dir: &Path, semantic: &str, expect: &str) {
     std::fs::create_dir_all(dir.join("cedar")).expect("the partition directory is created");
     std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
     std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
@@ -1027,11 +1035,12 @@ fn stopping_workspace(dir: &Path, semantic: &str) {
         ),
     )
     .expect("the request is written");
-    // The case asserts nothing about the outcome: what is under test is whether the answer is
-    // accepted as an answer at all.
+    // What is under test is whether the answer is accepted as an answer at all, so the case
+    // states the verdict the caller's own bodies imply — a case that asserted nothing would go
+    // green whatever came back, which is what this suite is here to prevent.
     std::fs::write(
         dir.join("tests/cases.yml"),
-        "- name: three in one\n  request: ../requests/batch.json\n  expect: {}\n",
+        format!("- name: three in one\n  request: ../requests/batch.json\n  {expect}\n"),
     )
     .expect("the cases are written");
 

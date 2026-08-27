@@ -57,6 +57,12 @@ pub enum CborError {
     TrailingBytes,
     /// An integer does not fit the model (beyond i64).
     IntRange,
+    /// The value nests deeper than [`crate::limits::MAX_VALUE_DEPTH`].
+    ///
+    /// Refused rather than decoded: the walk is recursive, and a payload that nests once per byte
+    /// would take the process down with it. This is the one limit that has to be enforced while
+    /// reading rather than after.
+    Depth,
 }
 
 impl fmt::Display for CborError {
@@ -70,6 +76,11 @@ impl fmt::Display for CborError {
             CborError::NotCanonical => write!(f, "input is not the canonical encoding"),
             CborError::TrailingBytes => write!(f, "trailing bytes after value"),
             CborError::IntRange => write!(f, "integer out of the supported range"),
+            CborError::Depth => write!(
+                f,
+                "the value nests deeper than {} levels",
+                crate::limits::MAX_VALUE_DEPTH
+            ),
         }
     }
 }
@@ -142,7 +153,11 @@ fn encode_head(major: u8, arg: u64, out: &mut Vec<u8>) {
 /// Decode exactly one value, then require the input to be byte-identical to
 /// the canonical re-encoding — the ingest rule of the specification.
 pub fn decode_canonical(input: &[u8]) -> Result<Value, CborError> {
-    let mut cursor = Cursor { input, pos: 0 };
+    let mut cursor = Cursor {
+        input,
+        pos: 0,
+        depth: 0,
+    };
     let value = cursor.decode_value()?;
     if cursor.pos != input.len() {
         return Err(CborError::TrailingBytes);
@@ -156,6 +171,8 @@ pub fn decode_canonical(input: &[u8]) -> Result<Value, CborError> {
 struct Cursor<'a> {
     input: &'a [u8],
     pos: usize,
+    /// How many arrays and maps are open above the value being read.
+    depth: usize,
 }
 
 impl Cursor<'_> {
@@ -223,6 +240,23 @@ impl Cursor<'_> {
 
     fn decode_value(&mut self) -> Result<Value, CborError> {
         let (major, arg) = self.decode_head()?;
+
+        // Checked before the frame is taken, not after: the point is to never make the call.
+        if matches!(major, 4 | 5) {
+            if self.depth >= crate::limits::MAX_VALUE_DEPTH {
+                return Err(CborError::Depth);
+            }
+            self.depth += 1;
+        }
+        let value = self.decode_body(major, arg);
+        if matches!(major, 4 | 5) {
+            self.depth -= 1;
+        }
+
+        value
+    }
+
+    fn decode_body(&mut self, major: u8, arg: u64) -> Result<Value, CborError> {
         match major {
             0 => i64::try_from(arg)
                 .map(Value::Int)
@@ -373,5 +407,67 @@ mod tests {
             encode(&Value::Bytes(vec![1, 2, 3, 4])),
             vec![0x44, 1, 2, 3, 4]
         );
+    }
+}
+
+#[cfg(test)]
+mod depth_tests {
+    use super::*;
+    use crate::limits::MAX_VALUE_DEPTH;
+
+    /// One array per byte: the cheapest way to ask a recursive decoder to exhaust the stack.
+    fn nested_arrays(depth: usize) -> Vec<u8> {
+        let mut bytes = vec![0x81u8; depth];
+        bytes.push(0x00);
+
+        bytes
+    }
+
+    /// One map per level, which nests through the other recursive arm.
+    fn nested_maps(depth: usize) -> Vec<u8> {
+        // {0: {0: … 0}} — a1 00 per level, then the innermost value.
+        let mut bytes = Vec::new();
+        for _ in 0..depth {
+            bytes.push(0xa1);
+            bytes.push(0x00);
+        }
+        bytes.push(0x00);
+
+        bytes
+    }
+
+    #[test]
+    fn the_deepest_legal_value_decodes_and_one_deeper_is_refused() {
+        for build in [
+            nested_arrays as fn(usize) -> Vec<u8>,
+            nested_maps as fn(usize) -> Vec<u8>,
+        ] {
+            assert!(
+                decode_canonical(&build(MAX_VALUE_DEPTH - 1)).is_ok(),
+                "one inside the limit must decode"
+            );
+            assert!(
+                decode_canonical(&build(MAX_VALUE_DEPTH)).is_ok(),
+                "the limit itself must decode"
+            );
+            assert_eq!(
+                decode_canonical(&build(MAX_VALUE_DEPTH + 1)),
+                Err(CborError::Depth),
+                "one past the limit is refused, and refused by depth"
+            );
+        }
+    }
+
+    /// The payload that aborted the process: 50 000 levels in 50 001 bytes, comfortably inside
+    /// `MAX_OBJECT_BYTES`. It has to come back as an error rather than take the process with it.
+    #[test]
+    fn a_payload_that_would_exhaust_the_stack_is_an_error() {
+        for depth in [1_000, 10_000, 50_000] {
+            assert_eq!(
+                decode_canonical(&nested_arrays(depth)),
+                Err(CborError::Depth),
+                "{depth} levels must be refused, not survived"
+            );
+        }
     }
 }

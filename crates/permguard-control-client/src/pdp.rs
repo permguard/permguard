@@ -159,50 +159,11 @@ fn refusal(parsed: &Value, status: u16) -> Failure {
     }
 }
 
-/// The two conversions the gRPC binding needs, kept beside the trait so both
-/// halves of this file agree on what a payload means.
-pub(crate) mod json {
-    use prost_types::{ListValue, Struct, Value as ProtoValue, value::Kind};
-    use serde_json::{Map, Value};
-
-    /// The text of a field, or an empty string — which is how proto3 spells
-    /// "absent", and what the server reads back as absent.
-    pub fn text(payload: &Value, field: &str) -> String {
-        payload
-            .get(field)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned()
-    }
-
-    pub fn proto_struct(map: &Map<String, Value>) -> Struct {
-        Struct {
-            fields: map
-                .iter()
-                .map(|(key, value)| (key.clone(), proto_value(value)))
-                .collect(),
-        }
-    }
-
-    pub fn structure(value: Option<&Value>) -> Option<Struct> {
-        value.and_then(Value::as_object).map(proto_struct)
-    }
-
-    pub fn proto_value(value: &Value) -> ProtoValue {
-        let kind = match value {
-            Value::Null => Kind::NullValue(0),
-            Value::Bool(value) => Kind::BoolValue(*value),
-            Value::Number(value) => Kind::NumberValue(value.as_f64().unwrap_or_default()),
-            Value::String(value) => Kind::StringValue(value.clone()),
-            Value::Array(items) => Kind::ListValue(ListValue {
-                values: items.iter().map(proto_value).collect(),
-            }),
-            Value::Object(map) => Kind::StructValue(proto_struct(map)),
-        };
-
-        ProtoValue { kind: Some(kind) }
-    }
-}
+// The JSON→proto conversions used to live here, and answered a payload they could not represent
+// by dropping the part they could not — a `context` that was not an object became no context, a
+// number past 2^53 became a different number. They are gone rather than deprecated: the gRPC
+// binding builds its request in `grpc.rs`, where every one of those is a refusal, and a lossy
+// helper left in reach is a lossy helper somebody reaches for.
 
 /// A decision request built from parts, for callers that have the parts
 /// rather than a document — the CLI's `check` with flags, a test, an SDK.

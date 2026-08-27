@@ -477,6 +477,32 @@ impl PlaneServer {
             }
         }
 
+        // A configured administrative surface that nothing serves.
+        //
+        // `admin.addr`, `admin.tls` and `admin.allow` are read and validated — mutual TLS
+        // demanded, the allow list required outside development — and then no listener binds them.
+        // The planes registered here serve one public surface and one telemetry surface, and the
+        // catalog's mutations, the policy push and the audit reads are answered on the public one.
+        //
+        // The danger is not the missing listener. It is an operator reading a configuration that
+        // names an admin address behind mutual TLS and an allow list, concluding that
+        // administration is separated, and leaving the public endpoint open to the cluster. So a
+        // configuration that describes the boundary is refused until something serves it: the
+        // check disappears on its own the day a plane answers there.
+        app = app.with_startup_check(|config| {
+            let Some(address) = config.admin_addr() else {
+                return Ok(());
+            };
+
+            anyhow::bail!(
+                "`admin.addr` is {address}, and this build serves no administrative surface: the \
+                 catalog's mutations, the policy push and the audit reads are answered on the \
+                 public endpoint. Remove the setting and restrict the public endpoint instead — \
+                 leaving it describes a separation that does not exist. \
+                 docs/operations/administrative-surface.md says what does protect it"
+            );
+        });
+
         for plane in self.planes {
             // The plane's own background work first: it starts before the
             // listeners it feeds, and stops after them.

@@ -5,7 +5,10 @@
 # allowed namespaces and sizing) in the deployment repository that owns the cluster.
 
 controlPlane:
-  replicaCount: 3
+  # One, and not a compromise: see the note beside `controlPlane.replicaCount` in values.yaml. The
+  # budget below and a fast restart are what availability means here until the catalog lives in
+  # something that arbitrates.
+  replicaCount: 1
   resources:
     requests:
       cpu: 250m
@@ -13,29 +16,51 @@ controlPlane:
     limits:
       memory: 1Gi
   podDisruptionBudget:
+    # `maxUnavailable: 0` on a single replica: voluntary disruption waits for a human, which is the
+    # right trade for the component that holds the authority. `minAvailable` is unset — the two are
+    # mutually exclusive, and `templates/pdb.yaml` refuses both.
     enabled: true
-    minAvailable: 2
+    minAvailable: null
+    maxUnavailable: 0
   autoscaling:
-    enabled: true
-    minReplicas: 3
-    maxReplicas: 9
-    targetCPUUtilizationPercentage: 65
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: permguard
-              app.kubernetes.io/component: control-plane
-          topologyKey: kubernetes.io/hostname
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: ScheduleAnyway
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/name: permguard
-          app.kubernetes.io/component: control-plane
+    enabled: false
+  # What a control plane keeps is on a volume, and a volume is bound to a node.
+  affinity: {}
+  topologySpreadConstraints: []
+  extraConfig:
+    controlPlane:
+      # The signing ring. Without it a control plane serves no NOTP and no decision routes at all
+      # — fail-closed, by design — so a "production" install that leaves it out is three healthy
+      # pods that no data plane can pull from and no producer can ship to. The directory is on the
+      # volume below; the material itself is what a cluster's secret manager should place there,
+      # and `autogenerate` stays off for exactly that reason.
+      keys:
+        enabled: "true"
+        directory: "operations/keys"
+      # The decision log is NOT enabled here, and that is the honest baseline rather than a
+      # missing line. Turning it on needs material this chart cannot invent:
+      #
+      #   * a data-plane signing ring, or the plane refuses to start;
+      #   * a commitment secret and a pseudonymisation key, which the runtime requires;
+      #   * `controlPlane.decisions.producer_keys` — the published keys of each producer, or the
+      #     control plane serves no decision routes at all and the records have nowhere to go;
+      #   * storage that survives a restart for the ring and the spool, per replica.
+      #
+      # A values file that switched it on without those renders and then fails to start, or starts
+      # and loses the producer identity on the first restart — which ends the audit stream it was
+      # turned on for. Supply them in an overlay that owns the cluster's secrets:
+      #
+      #   controlPlane:
+      #     extraConfig:
+      #       controlPlane:
+      #         decisions: { enabled: "true", directory: "data/decisions/store", retention: "90d" }
+      #         producer_keys: …          # the JWKS of each data plane that ships here
+      #   dataPlane:
+      #     persistence: { enabled: true }  # per replica: a StatefulSet, not this chart yet
+      #     extraConfig:
+      #       dataPlane:
+      #         keys: { enabled: "true", directory: "operations/keys" }
+      #         decisions: { log: { enabled: "true" } }
 
 dataPlane:
   replicaCount: 3
@@ -53,6 +78,26 @@ dataPlane:
     minReplicas: 3
     maxReplicas: 15
     targetCPUUtilizationPercentage: 65
+  # A mirror's state is its own: each replica mirrors into its own volume, which is what lets it
+  # scale at all.
+  persistence:
+    enabled: false
+  # A replicated mirror needs policies to mirror, or it is three pods answering `deny` to
+  # everything. The URL alone means every zone and every ledger that control plane lists.
+  extraConfig:
+    dataPlane:
+      mirrors:
+        enabled: "true"
+        interval: "30s"
+        # `servers` is deliberately absent: the chart fills in this release's own control plane,
+        # whose Service is named after the release — an address a values file cannot know. Set it
+        # here to follow something else, or to reach it over `https` with an authority to check,
+        # which is what a deployment that does not trust its own network should do.
+      # The decision log is left off here for the reasons spelled out under `controlPlane`: it
+      # needs a signing ring, a commitment secret, a pseudonymisation key, producer keys on the
+      # control plane, and storage that survives a restart. When an overlay turns it on, `pdp_id`
+      # still comes from the pod name — the chart sets it, and `templates/checks.yaml` refuses a
+      # values file or an `extraEnv` that pins it.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -71,6 +116,8 @@ dataPlane:
           app.kubernetes.io/component: data-plane
 
 persistence:
+  # The control plane's catalog, key ring and audit store live here. The data plane is a mirror and
+  # keeps its own state per replica, which is what lets it scale — see the notes in values.yaml.
   enabled: true
   size: 20Gi
 

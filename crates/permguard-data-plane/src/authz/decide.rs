@@ -42,14 +42,14 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use permguard_core::{ApiError, AuditRecorder, ErrorClass, Metrics, Subject};
+use permguard_languages::request::PartitionTarget;
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
 
 use super::cache::Cache;
 use super::snapshot::{self, Head, Partition, Refusal};
 use super::wire::{
-    CheckRequest, CheckResponse, Decision, DecisionContext, Reason, Resolved, Semantic,
-    TraceContext,
+    CheckRequest, CheckResponse, Decision, DecisionContext, Reason, Resolved, TraceContext,
 };
 use super::{block, store};
 
@@ -426,24 +426,42 @@ impl Decider {
         block::clear_if_present(&mirror.path);
 
         let partitions = self.partitions(&mirror, &head, &resolved)?;
+
+        // What each partition of this profile actually sees. Routed by `Asking::route` — the same
+        // function `permguard test` calls — because an entity graph belongs to a runtime and a
+        // Cedar policy reads an action's properties somewhere a Rego module does not. A request
+        // whose routing does not add up is refused here, before any policy is consulted: an
+        // override naming a partition nobody has, or a graph in a shape no partition can read, is
+        // a bad request and not a deny.
+        let targets: Vec<PartitionTarget> = partitions
+            .iter()
+            .map(|partition| PartitionTarget::new(&partition.name, &partition.language))
+            .collect();
+
         let mut decisions = Vec::new();
-        for (query, request_id) in &resolved.queries {
-            let decision = self.evaluate(&resolved, &partitions, query, request_id.clone());
-            let stop = match resolved.semantic {
-                Semantic::ExecuteAll => false,
-                Semantic::DenyOnFirstDeny => !decision.decision,
-                Semantic::PermitOnFirstPermit => decision.decision,
-            };
+        for (asking, request_id) in &resolved.queries {
+            let queries = asking.route(&targets).map_err(|malformed| {
+                self.metrics
+                    .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
+
+                ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
+            })?;
+            let decision = self.evaluate(&resolved, &partitions, &queries, request_id.clone());
+            let stop = resolved.semantic.stops(decision.decision);
             decisions.push(decision);
             if stop {
                 break;
             }
         }
 
-        // The whole request's verdict: for a plain request it is the one
-        // decision; for a batch it is the conjunction, which is what a PEP
-        // enforcing a batch has to know.
-        let overall = decisions.iter().all(|decision| decision.decision);
+        // The whole request's verdict: for a plain request it is the one decision; for a
+        // batch it is the operator its semantic names — `&&` for `execute_all` and
+        // `deny_on_first_deny`, `||` for `permit_on_first_permit`. Computed by
+        // `Semantic::combine`, which is also what the CLI uses to decide a batch offline and
+        // to check that an answer of ours is coherent.
+        let overall = resolved
+            .semantic
+            .combine(decisions.iter().map(|decision| decision.decision));
         for decision in &decisions {
             self.metrics.count(
                 &super::measure::EVALUATIONS,
@@ -559,16 +577,21 @@ impl Decider {
     }
 
     /// Evaluates one query against every partition, and combines the answers.
+    /// Evaluates one question against every partition, each with the query it was given.
+    ///
+    /// `queries` is `partitions` materialised, in the same order: one graph per partition, and the
+    /// runtime's own reading of the action. They are paired by position, which `Asking::route`
+    /// guarantees.
     fn evaluate(
         &self,
         resolved: &Resolved,
         partitions: &[Arc<Partition>],
-        query: &Query,
+        queries: &[Query],
         request_id: Option<String>,
     ) -> Decision {
         let mut verdicts = Vec::with_capacity(partitions.len());
 
-        for partition in partitions {
+        for (partition, query) in partitions.iter().zip(queries) {
             let started = Instant::now();
             let verdict = partition.evaluator().evaluate(query);
             self.metrics.observe(

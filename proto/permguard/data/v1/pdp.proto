@@ -42,10 +42,27 @@ message Action {
   google.protobuf.Struct properties = 2;
 }
 
-// The Permguard `entities` extension: the entity graph, in the runtime's shape.
+// One partition's own entity graph, addressed by the partition's name.
+message PartitionEntities {
+  // The runtime shape these items are in, checked against the partition's own
+  // runtime: an override cannot hand Cedar entities to a Rego module.
+  string schema = 1;
+  repeated google.protobuf.Value items = 2;
+}
+
+// The Permguard `entities` extension: the entity graphs a request carries.
+//
+// A graph is written in one runtime's shape, and a profile may hold partitions
+// in different runtimes — or two in the same runtime with different schemas. So
+// a graph says who it is for: `schema` addresses a runtime, `partitions`
+// addresses one partition by name. A graph naming neither is ambiguous the
+// moment a profile runs more than one runtime, and is refused there.
 message Entities {
   string schema = 1;
   repeated google.protobuf.Value items = 2;
+  // Keyed by the partition's name as the ledger's manifest declares it. A name
+  // the profile does not hold is refused, not ignored.
+  map<string, PartitionEntities> partitions = 3;
 }
 
 // One entry of a boxcarred request: whatever it sets overrides the defaults.

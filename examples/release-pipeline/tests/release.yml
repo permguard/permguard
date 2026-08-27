@@ -57,3 +57,35 @@
 - name: the same rollback is allowed during an incident, on call
   request: ../requests/rollback-during-incident-permit.json
   expect: { decision: permit, policies: [rollback-responders] }
+
+# --- one field, two readings: Cedar reads `context.action`, Rego reads
+#     `input.action.properties`, and the Cedar schema types it ---------------
+- name: a high-risk release with a signed artifact is approvable
+  request: ../requests/signoff-high-risk-permit.json
+  expect: { decision: permit, policies: [release-approvers] }
+
+- name: a high-risk release with no signature is refused by the guardrails
+  request: ../requests/signoff-high-risk-unsigned-deny.json
+  # Two rules object, and they live in one module: a decision cites the policy that
+  # decided, not the rule inside it.
+  expect: { decision: deny, policies: [delivery-guardrails] }
+
+- name: a critical release is beyond what an approval can permit
+  request: ../requests/signoff-critical-risk-deny.json
+  # Cedar reads `context.action.risk` and stops permitting: nothing else does.
+  expect: { decision: deny, policies: [] }
+
+- name: a risk that is not a string fails closed, with the schema's own diagnosis
+  request: ../requests/signoff-risk-not-a-string-deny.json
+  expect: { error: schema }
+
+- name: a caller may not write the context Permguard fills in
+  request: ../requests/error-context-action-reserved.json
+  expect: { error: field_reserved }
+
+# --- one request, two entity graphs: Cedar reads the org chart, Rego reads its
+#     own list, and neither could read the other's ---------------------------
+- name: a frozen service is not rolled back, incident or not
+  request: ../requests/rollback-frozen-service-deny.json
+  # The org chart still entitles alice — the guardrail's own graph is what refuses.
+  expect: { decision: deny, policies: [delivery-guardrails] }

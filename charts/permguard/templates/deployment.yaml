@@ -51,6 +51,18 @@ spec:
           image: {{ include "permguard.image" (dict "root" $ "repository" $plane.repository) }}
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: ["/etc/permguard/config.yml"]
+          env:
+            # `pdp_id` names the producer of every decision record this pod writes, and two
+            # producers sharing one name write two records at a single (stream, seq) — which closes
+            # the stream at the far end and ends the audit trail. It cannot come from a values file
+            # for a component with replicas, so it comes from the pod.
+            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- with $plane.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           securityContext:
             {{- toYaml $.Values.securityContext | nindent 12 }}
           ports:
@@ -84,7 +96,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: state
-        {{- if $.Values.persistence.enabled }}
+        {{- if include "permguard.persists" (dict "root" $ "plane" $plane) }}
           persistentVolumeClaim:
             claimName: {{ include "permguard.fullname" $ }}-{{ $component }}
         {{- else }}
@@ -156,6 +168,14 @@ spec:
           env:
             - name: PERMGUARD_RUNTIME_PLANES
               value: "control,data"
+            # See the note on the standalone planes: the producer of a decision record is the pod.
+            - name: PERMGUARD_DECISIONS_LOG_PDP_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- with .Values.allInOne.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
@@ -183,7 +203,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: state
-        {{- if .Values.persistence.enabled }}
+        {{- if include "permguard.persists" (dict "root" . "plane" .Values.allInOne) }}
           persistentVolumeClaim:
             claimName: {{ include "permguard.fullname" . }}-all-in-one
         {{- else }}

@@ -48,14 +48,11 @@ use std::sync::Arc;
 
 use permguard_control_client::objects;
 use permguard_control_client::store::{FsStore, Store};
+use permguard_languages::Evaluator;
 use permguard_languages::registry;
-use permguard_languages::{Evaluator, StoredPolicy};
 use permguard_objects::digest::Digest;
 use permguard_objects::manifest::{self, Manifest};
 use permguard_objects::object::{self, Kind, Object};
-use permguard_objects::policy_id::{
-    ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID, POLICY_FAMILY_PREFIX,
-};
 
 /// Why a ledger cannot be served.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,19 +236,18 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
             ))
         })?;
 
-    let mut collected = Collected::default();
-    collect(&store, &subtree.digest, &mut collected)?;
-
-    if declared.schema && collected.schema.is_none() {
-        return Err(Refusal::Incompatible(format!(
-            "the partition `{partition}` declares a schema and the commit carries none"
-        )));
-    }
-    if !declared.schema && collected.schema.is_some() {
-        return Err(Refusal::Incompatible(format!(
-            "the partition `{partition}` carries a schema it does not declare"
-        )));
-    }
+    // Read by `permguard_languages::partition::collect`, which is also what `permguard test`
+    // reads a workspace with: one walk, so a ledger cannot mean one thing here and another there.
+    let collected = permguard_languages::partition::collect(
+        &Mirrored(&store),
+        &subtree.digest.to_string(),
+        partition,
+        declared.schema,
+    )
+    .map_err(|why| match why {
+        permguard_languages::partition::Collecting::Damaged(why) => Refusal::Damaged(why),
+        permguard_languages::partition::Collecting::Incompatible(why) => Refusal::Incompatible(why),
+    })?;
 
     let footprint = collected.footprint();
     let policies = collected.policies.len();
@@ -268,73 +264,18 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
     }))
 }
 
-/// What a partition's subtree holds.
-#[derive(Default)]
-struct Collected {
-    policies: Vec<StoredPolicy>,
-    schema: Option<Vec<u8>>,
-}
+/// A mirror on disk, as the shared partition walk reads it.
+struct Mirrored<'a>(&'a dyn Store);
 
-impl Collected {
-    fn footprint(&self) -> usize {
-        self.policies
-            .iter()
-            .map(|policy| policy.source.len())
-            .sum::<usize>()
-            + self.schema.as_ref().map_or(0, Vec::len)
+impl permguard_languages::partition::Objects for Mirrored<'_> {
+    fn get(&self, digest: &str) -> Result<Vec<u8>, String> {
+        let parsed =
+            Digest::parse(digest).map_err(|error| format!("{digest} is not a digest: {error}"))?;
+
+        objects::get(self.0, "objects", &parsed)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("{parsed} is missing from the mirror"))
     }
-}
-
-/// Walks a partition subtree, gathering the policies and the schema.
-///
-/// Nested directories are nested subtrees — a partition an author organised in
-/// folders is one partition — so the walk recurses and the identity of a
-/// policy is the annotation the commit carries, never the path.
-fn collect(store: &dyn Store, digest: &Digest, into: &mut Collected) -> Result<(), Refusal> {
-    let Object::Tree(tree) = read_object(store, digest)? else {
-        return Err(Refusal::Damaged(format!("{digest} is not a tree")));
-    };
-
-    for entry in &tree.entries {
-        match entry.kind {
-            Kind::Tree => collect(store, &entry.digest, into)?,
-            Kind::Blob => {
-                let Object::Blob(blob) = read_object(store, &entry.digest)? else {
-                    return Err(Refusal::Damaged(format!("{} is not a blob", entry.digest)));
-                };
-                if blob.media_type.starts_with(POLICY_FAMILY_PREFIX) {
-                    let id = entry
-                        .annotations
-                        .get(ANNOTATION_POLICY_ID)
-                        .cloned()
-                        .ok_or_else(|| {
-                            Refusal::Damaged(format!(
-                                "the policy `{}` carries no identity",
-                                entry.name
-                            ))
-                        })?;
-                    into.policies.push(StoredPolicy {
-                        id,
-                        alias: entry.annotations.get(ANNOTATION_POLICY_ALIAS).cloned(),
-                        source: blob.data,
-                    });
-                } else if into.schema.replace(blob.data).is_some() {
-                    // At most one schema per partition — the same ambiguity
-                    // rule the CLI enforces when it builds.
-                    return Err(Refusal::Incompatible(
-                        "the partition carries more than one schema".to_owned(),
-                    ));
-                }
-            }
-            Kind::Commit => {
-                return Err(Refusal::Damaged(
-                    "a partition cannot hold a commit".to_owned(),
-                ));
-            }
-        }
-    }
-
-    Ok(())
 }
 
 fn read_object(store: &dyn Store, digest: &Digest) -> Result<Object, Refusal> {

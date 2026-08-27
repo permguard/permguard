@@ -200,6 +200,77 @@ Note the *kind* of no:
 Nothing permits it, rather than something refusing it. The CLI and the log tell
 the two apart.
 
+### 4e. One question, two runtimes reading it
+
+A request describes what is being asked. It does not say how each runtime reads it — that is
+Permguard's job, and it is what lets one profile hold partitions in two languages.
+
+**An action's properties.** The request states them once, on the action:
+
+```json
+{ "action": { "name": "release:signoff", "properties": { "risk": "high" } } }
+```
+
+Rego reads them where it always did, `input.action.properties.risk`. Cedar cannot: an action there
+is an identifier and carries no attributes. So Permguard projects them into the context Cedar does
+read, under a key of its own:
+
+```json
+{ "branch": "main", "action": { "risk": "high" } }
+```
+
+`admin-cedar/model.cedarschema` declares that key, so the schema checks it like anything else —
+`risk: 42` is refused with Cedar's own diagnosis, not ignored:
+
+```bash
+pg/signoff-risk-not-a-string-deny.json
+# cedar: the request does not satisfy the schema: context `{action: {risk: 42}, …}`
+#        is not valid for `Action::"release:signoff"`
+```
+
+**`context.action` is Permguard's.** A caller may not send it — for any profile, Rego-only
+included, because a contract that changed shape with the profile would not be one:
+
+```bash
+pg/error-context-action-reserved.json
+# field_reserved: `context.action` is populated from `action.properties`
+```
+
+**Entity graphs are addressed.** A graph is written in one runtime's shape, and this profile runs
+two. So a graph says who it is for: `entities.schema` names a runtime, `entities.partitions` names
+one partition — the only identity that separates two partitions of the same language.
+
+```json
+{
+  "entities": {
+    "schema": "cedar",
+    "items": [ … the org chart … ],
+    "partitions": {
+      "admin-rego": { "schema": "rego", "items": [ { "frozen_services": ["payments-api"] } ] }
+    }
+  }
+}
+```
+
+```bash
+pg/rollback-frozen-service-deny.json     # DENY — delivery-guardrails
+```
+
+Cedar reads the org chart and still entitles `alice`; the guardrail reads its **own** list, out of
+`data.entities`, and refuses. Neither could have read the other's, which is why one shared graph
+only ever worked when all but one partition ignored it.
+
+| | |
+| --- | --- |
+| a graph naming a runtime | reaches the partitions running it, and no others |
+| a graph naming a partition | reaches that one, whatever the global one says |
+| a graph naming neither | refused where a profile runs more than one runtime — `schema_required` |
+| a name the profile does not hold | refused — `partition_unknown` |
+| a shape the partition cannot read | refused — `schema_mismatch` |
+
+An override supplies **data**. It cannot add a partition, skip one, or choose which policies
+answer: the profile decides that.
+
 ### 4d. Context — the same person, refused and then allowed
 
 ```bash

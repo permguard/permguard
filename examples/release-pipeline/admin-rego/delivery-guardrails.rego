@@ -29,6 +29,31 @@ deny if {
 	not input.context.artifact_signed
 }
 
+# A release the pipeline marked high risk needs the tests to have passed *and* the
+# artifact signed — which the two rules above already require — and is refused
+# outright when nobody stated the risk at all.
+#
+# The properties of an action reach Rego where they always did, as
+# `input.action.properties`. Cedar reads the same values as `context.action`,
+# because it has nowhere else to read them; one request, two readings, no second
+# field for a caller to keep in step.
+deny if {
+	input.action.name == "release:signoff"
+	input.action.properties.risk == "high"
+	not input.context.artifact_signed
+}
+
+# A service the request declares frozen is not deployed to, whoever asks.
+#
+# The list arrives as this partition's own entity graph — `entities.partitions`
+# addressed to `admin-rego`, in a shape a Rego module reads. The Cedar partition
+# beside it receives its own graph in Cedar's shape, from the same request: one
+# question, two graphs, neither readable by the other.
+deny if {
+	some frozen in data.entities[_].frozen_services
+	frozen == input.resource.id
+}
+
 # Rolling production back is an incident action, not a routine one: the person
 # has to be on call, and there has to be an incident to answer.
 deny if {

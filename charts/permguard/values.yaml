@@ -29,7 +29,12 @@ image:
 controlPlane:
   enabled: true
   repository: control-plane
-  replicaCount: 2
+  # One. A control plane's catalog, refs and key ring have a single maintaining process, so two
+  # replicas either fight over one volume or diverge behind one Service — a zone created through
+  # one pod missing from the other. `templates/checks.yaml` refuses more, rather than letting a
+  # cluster discover it. Availability comes from a PodDisruptionBudget and a fast restart until the
+  # catalog lives in something that arbitrates.
+  replicaCount: 1
   # The public surface, and the telemetry surface which must never be part of it.
   ports:
     http: 7556
@@ -70,10 +75,17 @@ controlPlane:
   #       directory: "data/decisions/store"  # put it on a PersistentVolume: it is an audit store, not a cache
   #       retention: "90d"         # also the bound on how far behind a reader may fall
   extraConfig: {}
+  # Extra environment for the container, as a list of EnvVar. `PERMGUARD_DECISIONS_LOG_PDP_ID` is
+  # already set from the pod name; anything here is merged after it.
+  extraEnv: []
 
 dataPlane:
   enabled: true
   repository: data-plane
+  # A data plane holds no authority: it mirrors a ledger and answers from it, so it scales. What it
+  # may not do is share one volume with its own replicas — with `persistence.enabled` this chart
+  # gives the component one claim and mounts it in all of them, which `templates/checks.yaml`
+  # refuses. Replicated means each replica mirrors into its own volume.
   replicaCount: 3
   ports:
     http: 7656
@@ -151,6 +163,7 @@ dataPlane:
   #           resource_properties: []
   #           context: []
   extraConfig: {}
+  extraEnv: []
 
 allInOne:
   enabled: false
@@ -180,6 +193,7 @@ allInOne:
   #       servers:
   #         - url: "https://control.acme.com"   # the URL alone: everything it lists
   extraConfig: {}
+  extraEnv: []
 
 # What every pod gets, and what it is not allowed to do. These are the defaults because the images
 # were built for them: a static binary from `scratch`, running as 65532, needing nothing writable
@@ -203,9 +217,16 @@ securityContext:
 #
 # `emptyDir` by default, and that is a real decision rather than a placeholder: with `autogenerate`
 # on, a pod that loses this directory mints itself a new signing key on restart, which is fine for a
-# test environment and wrong for anything issuing tokens somebody else verifies. A real installation
-# sets `persistence.enabled` and gets a volume per replica.
+# test environment and wrong for anything issuing tokens somebody else verifies.
+#
+# A real installation turns it on — and gets **one claim per component**, not one per replica: this
+# chart deploys a Deployment, and every replica of a component mounts the same claim. That is why
+# `templates/checks.yaml` refuses persistent storage under a replicated component. A volume per
+# replica needs a StatefulSet, which this chart does not have yet.
 persistence:
+  # The default for every component. A component overrides it with its own
+  # `persistence: { enabled: … }` — one switch cannot say "a volume for the control plane, none for
+  # the replicated data plane", and that is exactly what a real installation needs.
   enabled: false
   storageClass: ""
   accessModes: ["ReadWriteOnce"]
@@ -270,6 +291,15 @@ logging:
 developmentMode: false
 autogenerate: false
 
+# Who may reach a plane, and — for the control plane — who may administer it.
+#
+# There is no separate administrative surface: creating a zone, deleting a ledger, pushing a policy
+# version and reading the decision log are answered on the public endpoint, beside the reads. So
+# `public.from` is not only a reachability control, it is the administration boundary. Narrow it to
+# the namespaces that hold your PEPs and your delivery pipeline, and terminate mutual TLS in front
+# of it if the cluster is not trusted. `docs/operations/administrative-surface.md` says what this
+# does and does not protect.
+#
 # The ports a pod serves are the only ones it accepts, once any NetworkPolicy selects it. On by
 # default: the policy always closes what is not served, and `from` decides who may reach what is.
 # Each `from` is a list of NetworkPolicyPeer (namespaceSelector / podSelector / ipBlock), passed

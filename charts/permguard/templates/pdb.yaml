@@ -11,7 +11,25 @@ metadata:
   labels:
     {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
 spec:
-  minAvailable: {{ $plane.podDisruptionBudget.minAvailable }}
+  {{- /*
+  Exactly one of the two, because Kubernetes accepts exactly one — and because a budget written
+  one way and rendered the other is worse than no budget: the values file says what an operator
+  believes, and the manifest says what the cluster enforces.
+  */ -}}
+  {{- $budget := $plane.podDisruptionBudget }}
+  {{- $min := hasKey $budget "minAvailable" }}
+  {{- $max := hasKey $budget "maxUnavailable" }}
+  {{- if and $min $max }}
+  {{- fail (printf "%s.podDisruptionBudget sets both minAvailable and maxUnavailable: a PodDisruptionBudget takes one" $component) }}
+  {{- end }}
+  {{- if not (or $min $max) }}
+  {{- fail (printf "%s.podDisruptionBudget is enabled and sets neither minAvailable nor maxUnavailable" $component) }}
+  {{- end }}
+  {{- if $min }}
+  minAvailable: {{ $budget.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ $budget.maxUnavailable }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}

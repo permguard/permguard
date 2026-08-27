@@ -4,6 +4,10 @@
 // acceptable — the author is somebody else, the tests passed, the artifact is
 // signed — is decided by the guardrails, which can refuse what this permits.
 
+// A high-risk release needs a Release Manager *of the owning team*; anything else
+// only needs a Release Manager. `context.action` is where an action's properties
+// arrive: Cedar cannot carry attributes on an action entity, so Permguard projects
+// `action.properties` here, and the schema above declares the shape.
 @alias("release-approvers")
 permit (
     principal,
@@ -11,5 +15,6 @@ permit (
     resource
 ) when {
     principal.role == "ReleaseManager" &&
-    principal in resource.service.owner
+    principal in resource.service.owner &&
+    (if context has action then context.action.risk != "critical" else true)
 };

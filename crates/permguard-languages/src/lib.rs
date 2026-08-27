@@ -31,6 +31,7 @@ mod rego;
 
 pub mod evaluate;
 pub mod lookup;
+pub mod partition;
 pub mod registry;
 pub mod request;
 pub mod role;

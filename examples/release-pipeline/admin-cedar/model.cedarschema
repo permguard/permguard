@@ -30,12 +30,19 @@ action "release:create" appliesTo {
 
 // Signing one off is asked about the release itself, because that is where the
 // author is recorded — and the author is what separation of duties turns on.
+//
+// `action` is Permguard's: an action's `properties` reach a Cedar policy here,
+// because Cedar carries no attributes on an action entity. Declared, so the
+// schema checks them like anything else — `risk: 42` is refused, not ignored.
 action "release:signoff" appliesTo {
   principal: [User],
   resource: [Release],
   context: {
     tests_passed?: Bool,
     artifact_signed?: Bool,
+    action?: {
+      risk: String,
+    },
   },
 };
 

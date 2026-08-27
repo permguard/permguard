@@ -486,8 +486,16 @@ async fn boxcarring_resolves_by_the_semantic_the_caller_asked_for() {
         .decide(&batch("deny_on_first_deny"), None)
         .await
         .expect("answered");
+    assert!(
+        !stop_on_deny.decision,
+        "`&&` of a batch that reached a deny is a deny"
+    );
     assert_eq!(
-        stop_on_deny.evaluations.expect("evaluations").len(),
+        stop_on_deny
+            .evaluations
+            .as_ref()
+            .expect("evaluations")
+            .len(),
         2,
         "it stops at the first deny"
     );
@@ -496,10 +504,89 @@ async fn boxcarring_resolves_by_the_semantic_the_caller_asked_for() {
         .decide(&batch("permit_on_first_permit"), None)
         .await
         .expect("answered");
+    assert!(
+        stop_on_permit.decision,
+        "`||` of a batch that reached a permit is a permit"
+    );
     assert_eq!(
-        stop_on_permit.evaluations.expect("evaluations").len(),
+        stop_on_permit
+            .evaluations
+            .as_ref()
+            .expect("evaluations")
+            .len(),
         1,
         "and at the first permit"
+    );
+}
+
+/// The batch's verdict is the operator its semantic names, and `||` is not `&&`.
+///
+/// This is the case the test above cannot reach: its batch opens with a permit, so
+/// `permit_on_first_permit` stops immediately and the conjunction of one permit is a permit by
+/// accident. Open with a **deny** and the two operators disagree — which is the whole difference
+/// between them, and was answered as a conjunction for both.
+#[tokio::test]
+async fn a_batch_that_opens_with_a_deny_resolves_by_its_own_operator() {
+    let root = scratch("boxcar-or").join("mirrors");
+    let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = decider(&root);
+
+    // `delete` is permitted by nothing, `read` by the policy: a deny and then a permit.
+    let batch = |semantic: &str| -> wire::CheckRequest {
+        serde_json::from_value(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": "alice"},
+            "resource": {"type": "document", "id": "budget"},
+            "options": {"evaluations_semantic": semantic},
+            "evaluations": [
+                {"action": {"name": "delete"}, "request_id": "first"},
+                {"action": {"name": "read"}, "request_id": "second"}
+            ]
+        }))
+        .expect("the payload parses")
+    };
+
+    let disjunction = decider
+        .decide(&batch("permit_on_first_permit"), None)
+        .await
+        .expect("answered");
+    let evaluations = disjunction
+        .evaluations
+        .as_ref()
+        .expect("a batch answers a batch");
+    assert_eq!(evaluations.len(), 2, "it runs on until a permit");
+    assert!(!evaluations[0].decision && evaluations[1].decision);
+    assert!(
+        disjunction.decision,
+        "`[deny, permit]` under `||` is a permit — this answered `deny` before"
+    );
+
+    let conjunction = decider
+        .decide(&batch("deny_on_first_deny"), None)
+        .await
+        .expect("answered");
+    assert_eq!(
+        conjunction.evaluations.as_ref().expect("evaluations").len(),
+        1,
+        "`&&` stops on the deny it opened with"
+    );
+    assert!(!conjunction.decision, "and answers deny");
+
+    let all = decider
+        .decide(&batch("execute_all"), None)
+        .await
+        .expect("answered");
+    assert_eq!(all.evaluations.as_ref().expect("evaluations").len(), 2);
+    assert!(
+        !all.decision,
+        "`execute_all` is the conjunction, as documented"
     );
 }
 
@@ -1051,4 +1138,107 @@ async fn a_mirror_nobody_synchronizes_is_not_bounded_by_expiry() {
         .await
         .expect("answered");
     assert!(answer.decision);
+}
+
+/// Two Cedar partitions with **different schemas**, each given its own entity graph.
+///
+/// This is the case the language alone cannot route: both partitions are Cedar, so an
+/// `entities.schema: "cedar"` addresses both — and a graph legal for one schema is refused by the
+/// other, which used to mean a profile like this could not be answered at all. The override
+/// addresses a partition by name, which is the only identity that separates them.
+#[tokio::test]
+async fn two_cedar_partitions_with_different_schemas_each_read_their_own_graph() {
+    const FINANCE: Policy = Policy {
+        id: "01a0-finance",
+        media_type: registry::MEDIA_TYPE_POLICY_CEDAR,
+        source: "@alias(\"finance-readers\")\npermit(principal in Group::\"finance\", action == Action::\"read\", resource);",
+    };
+    const OWNERS: Policy = Policy {
+        id: "01a0-owners",
+        media_type: registry::MEDIA_TYPE_POLICY_CEDAR,
+        source: "@alias(\"team-owners\")\npermit(principal in Team::\"payments\", action == Action::\"read\", resource);",
+    };
+    // One schema knows `Group`, the other knows `Team`. Neither accepts the other's entities.
+    const GROUPS: &str = "entity Group;\nentity User in [Group];\nentity Document;\naction read appliesTo { principal: [User], resource: [Document] };";
+    const TEAMS: &str = "entity Team;\nentity User in [Team];\nentity Document;\naction read appliesTo { principal: [User], resource: [Document] };";
+
+    let root = scratch("two-cedar").join("mirrors");
+    let manifest = manifest(
+        &[("groups", "cedar", true), ("teams", "cedar", true)],
+        ">=0.0.0",
+    );
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[
+            ("groups", vec![&FINANCE], Some(GROUPS)),
+            ("teams", vec![&OWNERS], Some(TEAMS)),
+        ],
+    );
+    let decider = decider(&root);
+
+    let ask = |partitions: serde_json::Value| -> wire::CheckRequest {
+        serde_json::from_value(json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "User", "id": "alice"},
+            "resource": {"type": "Document", "id": "budget"},
+            "action": {"name": "read"},
+            "entities": {"partitions": partitions}
+        }))
+        .expect("the payload parses")
+    };
+
+    // Each partition is handed the graph its own schema declares.
+    let answer = decider
+        .decide(
+            &ask(json!({
+                "groups": {"schema": "cedar", "items": [
+                    {"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []},
+                    {"uid": {"type": "User", "id": "alice"}, "attrs": {},
+                     "parents": [{"type": "Group", "id": "finance"}]}
+                ]},
+                "teams": {"schema": "cedar", "items": [
+                    {"uid": {"type": "Team", "id": "payments"}, "attrs": {}, "parents": []},
+                    {"uid": {"type": "User", "id": "alice"}, "attrs": {},
+                     "parents": [{"type": "Team", "id": "payments"}]}
+                ]}
+            })),
+            None,
+        )
+        .await
+        .expect("the ledger is served");
+
+    assert!(answer.decision, "both schemas were satisfied");
+    let cited = answer.context.expect("a context").policies;
+    assert!(
+        cited.contains(&FINANCE.id.to_owned()) && cited.contains(&OWNERS.id.to_owned()),
+        "both partitions decided, not one: {cited:?}"
+    );
+
+    // And the graphs are genuinely separate: give `teams` the group graph and its schema refuses
+    // it, which is exactly what one shared graph used to do to every profile like this.
+    let answer = decider
+        .decide(
+            &ask(json!({
+                "teams": {"schema": "cedar", "items": [
+                    {"uid": {"type": "Group", "id": "finance"}, "attrs": {}, "parents": []}
+                ]}
+            })),
+            None,
+        )
+        .await
+        .expect("the ledger is served");
+
+    assert!(
+        !answer.decision,
+        "a graph its schema does not declare is refused"
+    );
+    let reason = answer
+        .context
+        .expect("a context")
+        .reason_admin
+        .expect("an operator reason");
+    assert_eq!(reason.code, "500", "and it fails closed, with a diagnosis");
 }

@@ -20,3 +20,96 @@ This file renders nothing; it exists to be able to say no.
 {{- if not (or .Values.allInOne.enabled .Values.controlPlane.enabled .Values.dataPlane.enabled) }}
 {{- fail "nothing is enabled: this values file deploys no plane at all. Enable the two standalone planes (the default), one of them, or the all-in-one — an install that installs nothing is a mistake, not a choice." }}
 {{- end }}
+
+{{- /*
+Replicas of something that holds authority.
+
+A control plane's catalog, its refs and its key ring are guarded by mutexes local to a process.
+`permguard-std`'s catalog says it outright — "this store has one maintaining process, and a
+deployment that wants replicas points them at a catalog backed by something that arbitrates" — and
+no volume layout changes that:
+
+  * one shared PersistentVolumeClaim (what this chart creates) means two processes writing one
+    catalog: lost updates, collisions rotating keys, corruption no restart repairs;
+  * `emptyDir` means two processes with two *different* catalogs behind one Service, so a zone
+    created through one pod is missing when the next request lands on the other.
+
+The second is the quieter mistake, and it is why this refuses replicas rather than refusing shared
+storage. Until a control plane can elect a leader or keep its catalog in something that arbitrates,
+it is one replica — and an all-in-one IS a control plane.
+
+A data plane holds no authority: it mirrors a ledger and answers from it. It may be replicated as
+soon as its state is its own, which today means `dataPlane.persistence.enabled=false` — each
+replica mirrors into its own volume, which is what a mirror is for.
+*/ -}}
+{{- $authority := "a control plane's catalog, refs and key ring have one maintaining process: replicas either fight over one volume or diverge behind one Service. Keep it at 1 until the state lives in something that arbitrates." }}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- if gt (int $plane.replicaCount) 1 }}
+{{- fail (printf "%s.replicaCount=%v: %s" $component $plane.replicaCount $authority) }}
+{{- end }}
+{{- if and $plane.autoscaling $plane.autoscaling.enabled (gt (int $plane.autoscaling.maxReplicas) 1) }}
+{{- fail (printf "%s.autoscaling scales to %v replicas: %s" $component $plane.autoscaling.maxReplicas $authority) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and .Values.dataPlane.enabled (include "permguard.persists" (dict "root" . "plane" .Values.dataPlane)) }}
+{{- $mirror := "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica. A data plane may be replicated, but each replica needs its own state: set dataPlane.persistence.enabled=false and let each mirror into its own volume." }}
+{{- if gt (int .Values.dataPlane.replicaCount) 1 }}
+{{- fail (printf "dataPlane.replicaCount=%v with persistence.enabled=true: %s" .Values.dataPlane.replicaCount $mirror) }}
+{{- end }}
+{{- if and .Values.dataPlane.autoscaling .Values.dataPlane.autoscaling.enabled (gt (int .Values.dataPlane.autoscaling.maxReplicas) 1) }}
+{{- fail (printf "dataPlane.autoscaling scales to %v with persistence.enabled=true: %s" .Values.dataPlane.autoscaling.maxReplicas $mirror) }}
+{{- end }}
+{{- end }}
+
+{{- /*
+A decision log's producer name, and the two ways to take it back.
+
+`pdp_id` names the producer of every record a pod writes. Two producers under one name write two
+records at a single (stream, seq), which closes the stream at the far end and ends the audit trail —
+so the chart takes it from `metadata.name` through the downward API, and neither a values file nor
+an extra environment variable may pin it. The env check matters most: the chart sets the variable
+first and merges `extraEnv` after it, so a second entry with the same name simply wins.
+
+Replicas are replicas however they arrive, so an autoscaler that can reach more than one counts.
+*/ -}}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $many := or (gt (int $plane.replicaCount) 1) (and $plane.autoscaling $plane.autoscaling.enabled (gt (int $plane.autoscaling.maxReplicas) 1)) }}
+{{- if $many }}
+{{- $pinned := dig "dataPlane" "decisions" "log" "pdp_id" (dig "decisions" "log" "pdp_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
+{{- if $pinned }}
+{{- fail (printf "%s.extraConfig pins the decision log's pdp_id to %q while this component can run more than one replica: two producers under one name write two records at one sequence number and close the stream. Leave it unset — the chart takes it from the pod name." $component $pinned) }}
+{{- end }}
+{{- range $env := ($plane.extraEnv | default list) }}
+{{- if eq $env.name "PERMGUARD_DECISIONS_LOG_PDP_ID" }}
+{{- fail (printf "%s.extraEnv redefines PERMGUARD_DECISIONS_LOG_PDP_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would produce records under one name." $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+A decision log on storage that does not survive a restart.
+
+The log is signed by a ring the data plane keeps beside its spool. On an ephemeral volume both are
+gone at the next restart: the pod mints a new ring, the control plane holds the old producer's
+published keys, and every batch it ships is refused — the audit stream ends where the pod did. It is
+the failure that looks like nothing at all until somebody reads the trail.
+
+The chart cannot check that a ring, a commitment secret and a pseudonymisation key were supplied —
+they arrive as secrets it never sees — but it can refuse the one combination that is wrong however
+they arrive.
+*/ -}}
+{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $log := dig "dataPlane" "decisions" "log" "enabled" "" ($plane.extraConfig | default dict) }}
+{{- if and $log (ne (toString $log) "false") }}
+{{- if not (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
+{{- fail (printf "%s enables the decision log with ephemeral state: the signing ring and the spool live on the volume, and a restart mints a new ring whose batches the control plane will refuse. Set %s.persistence.enabled=true — and remember that this chart gives a component one claim, so the log and replicas need a StatefulSet, not a Deployment." $component $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

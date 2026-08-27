@@ -838,7 +838,14 @@ impl GrpcPdp {
 impl crate::pdp::Pdp for GrpcPdp {
     fn evaluate(&self, payload: &serde_json::Value) -> Result<serde_json::Value, CatalogFailure> {
         let mut client = self.client();
-        let request = request_of(payload);
+        // Refused here rather than carried across as less than it says: a payload this transport
+        // cannot represent is a bad request, and the caller hears the same thing HTTP tells them.
+        let request = request_of(payload).map_err(|why| CatalogFailure {
+            class: "validation".to_owned(),
+            reason: "payload_malformed".to_owned(),
+            detail: format!("the request body is not a valid payload: {why}"),
+            usage: true,
+        })?;
         let answer = self
             .0
             .call("Evaluate", client.evaluate_many(request))
@@ -870,75 +877,218 @@ impl crate::pdp::Pdp for GrpcPdp {
 
 /// The payload, as the generated request. Total: every field of the profile
 /// has a field here, which is what makes the two transports one contract.
-fn request_of(payload: &serde_json::Value) -> pdp::EvaluateRequest {
-    use crate::pdp::json::{structure, text};
-
-    pdp::EvaluateRequest {
-        zone: text(payload, "zone"),
-        ledger: text(payload, "ledger"),
-        profile: text(payload, "profile"),
-        subject: entity_of(payload.get("subject")),
-        resource: entity_of(payload.get("resource")),
-        action: action_of(payload.get("action")),
-        context: structure(payload.get("context")),
-        principal: entity_of(payload.get("principal")),
-        entities: entities_of(payload.get("entities")),
-        evaluations: payload
-            .get("evaluations")
-            .and_then(serde_json::Value::as_array)
-            .map(|items| items.iter().map(evaluation_of).collect())
-            .unwrap_or_default(),
+/// The proto request a JSON payload means, **or a refusal**.
+///
+/// Every conversion here can fail, and that is the point. It used to answer a payload it could not
+/// represent by dropping the part it could not: a `context` that was not an object became no
+/// context, `entities.items` that was not a list became no items, a `name` that was not a string
+/// became an empty one. HTTP refuses each of those, so the same request was refused on one
+/// transport and quietly answered against less than it said on the other — which is the contract
+/// differing by transport, not the transport differing.
+fn request_of(payload: &serde_json::Value) -> Result<pdp::EvaluateRequest, String> {
+    Ok(pdp::EvaluateRequest {
+        zone: text(payload, "zone")?,
+        ledger: text(payload, "ledger")?,
+        profile: text(payload, "profile")?,
+        subject: entity_of(payload.get("subject"), "subject")?,
+        resource: entity_of(payload.get("resource"), "resource")?,
+        action: action_of(payload.get("action"))?,
+        context: structure(payload.get("context"), "context")?,
+        principal: entity_of(payload.get("principal"), "principal")?,
+        entities: entities_of(payload.get("entities"))?,
+        evaluations: match payload.get("evaluations") {
+            None | Some(serde_json::Value::Null) => Vec::new(),
+            Some(serde_json::Value::Array(items)) => items
+                .iter()
+                .map(evaluation_of)
+                .collect::<Result<Vec<pdp::Evaluation>, String>>()?,
+            Some(_) => return Err("`evaluations` is not a list".to_owned()),
+        },
         evaluations_semantic: semantic_of(payload),
-        request_id: text(payload, "request_id"),
+        request_id: text(payload, "request_id")?,
+    })
+}
+
+/// A string field: absent is empty, present and not a string is a refusal.
+fn text(value: &serde_json::Value, field: &str) -> Result<String, String> {
+    match value.get(field) {
+        None | Some(serde_json::Value::Null) => Ok(String::new()),
+        Some(serde_json::Value::String(held)) => Ok(held.clone()),
+        Some(_) => Err(format!("`{field}` is not a string")),
     }
 }
 
-fn entity_of(value: Option<&serde_json::Value>) -> Option<pdp::Entity> {
-    use crate::pdp::json::{structure, text};
-    let value = value?;
-
-    Some(pdp::Entity {
-        r#type: text(value, "type"),
-        id: text(value, "id"),
-        properties: structure(value.get("properties")),
-    })
-}
-
-fn action_of(value: Option<&serde_json::Value>) -> Option<pdp::Action> {
-    use crate::pdp::json::{structure, text};
-    let value = value?;
-
-    Some(pdp::Action {
-        name: text(value, "name"),
-        properties: structure(value.get("properties")),
-    })
-}
-
-fn entities_of(value: Option<&serde_json::Value>) -> Option<pdp::Entities> {
-    use crate::pdp::json::{proto_value, text};
-    let value = value?;
-
-    Some(pdp::Entities {
-        schema: text(value, "schema"),
-        items: value
-            .get("items")
-            .and_then(serde_json::Value::as_array)
-            .map(|items| items.iter().map(proto_value).collect())
-            .unwrap_or_default(),
-    })
-}
-
-fn evaluation_of(value: &serde_json::Value) -> pdp::Evaluation {
-    use crate::pdp::json::{structure, text};
-
-    pdp::Evaluation {
-        subject: entity_of(value.get("subject")),
-        resource: entity_of(value.get("resource")),
-        action: action_of(value.get("action")),
-        context: structure(value.get("context")),
-        entities: entities_of(value.get("entities")),
-        request_id: text(value, "request_id"),
+/// An object field, as a proto struct.
+fn structure(
+    value: Option<&serde_json::Value>,
+    field: &str,
+) -> Result<Option<prost_types::Struct>, String> {
+    match value {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Object(held)) => Ok(Some(prost_types::Struct {
+            fields: held
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), proto_value(value)?)))
+                .collect::<Result<_, String>>()?,
+        })),
+        Some(_) => Err(format!("`{field}` is not an object")),
     }
+}
+
+/// One JSON value, as proto carries values.
+///
+/// proto has one number type, an IEEE-754 double. Past 2^53 a double no longer counts one at a
+/// time, so an integer beyond it cannot cross and come back as itself — refused rather than
+/// rounded, because a number a policy compares against is not a number to approximate.
+fn proto_value(value: &serde_json::Value) -> Result<prost_types::Value, String> {
+    use prost_types::value::Kind;
+
+    let kind = match value {
+        serde_json::Value::Null => Kind::NullValue(0),
+        serde_json::Value::Bool(held) => Kind::BoolValue(*held),
+        serde_json::Value::Number(held) => {
+            // Checked on the integer, not on the double: converting first is what loses the
+            // information the check is for — 2^53+1 becomes 2^53 on the way, and a test of the
+            // result would say it fits.
+            const EXACT: u64 = 9_007_199_254_740_992; // 2^53
+            let beyond = match (held.as_i64(), held.as_u64()) {
+                (Some(value), _) => value.unsigned_abs() > EXACT,
+                (None, Some(value)) => value > EXACT,
+                // Not an integer at all: a double either way, and it crosses as itself.
+                (None, None) => false,
+            };
+            if beyond {
+                return Err(format!(
+                    "`{held}` is beyond the largest integer this transport represents exactly \
+                     (2^53): it would arrive as a different number"
+                ));
+            }
+
+            Kind::NumberValue(
+                held.as_f64()
+                    .ok_or_else(|| format!("`{held}` is not a number this transport carries"))?,
+            )
+        }
+        serde_json::Value::String(held) => Kind::StringValue(held.clone()),
+        serde_json::Value::Array(items) => Kind::ListValue(prost_types::ListValue {
+            values: items
+                .iter()
+                .map(proto_value)
+                .collect::<Result<Vec<prost_types::Value>, String>>()?,
+        }),
+        serde_json::Value::Object(held) => Kind::StructValue(prost_types::Struct {
+            fields: held
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), proto_value(value)?)))
+                .collect::<Result<_, String>>()?,
+        }),
+    };
+
+    Ok(prost_types::Value { kind: Some(kind) })
+}
+
+fn entity_of(
+    value: Option<&serde_json::Value>,
+    field: &str,
+) -> Result<Option<pdp::Entity>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if !value.is_object() {
+        return Err(format!("`{field}` is not an object"));
+    }
+
+    Ok(Some(pdp::Entity {
+        r#type: text(value, "type")?,
+        id: text(value, "id")?,
+        properties: structure(value.get("properties"), "properties")?,
+    }))
+}
+
+fn action_of(value: Option<&serde_json::Value>) -> Result<Option<pdp::Action>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if !value.is_object() {
+        return Err("`action` is not an object".to_owned());
+    }
+
+    Ok(Some(pdp::Action {
+        name: text(value, "name")?,
+        properties: structure(value.get("properties"), "action.properties")?,
+    }))
+}
+
+fn items_of(value: &serde_json::Value, field: &str) -> Result<Vec<prost_types::Value>, String> {
+    match value.get("items") {
+        None | Some(serde_json::Value::Null) => Ok(Vec::new()),
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .map(proto_value)
+            .collect::<Result<Vec<prost_types::Value>, String>>(),
+        Some(_) => Err(format!("`{field}.items` is not a list")),
+    }
+}
+
+fn entities_of(value: Option<&serde_json::Value>) -> Result<Option<pdp::Entities>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    if !value.is_object() {
+        return Err("`entities` is not an object".to_owned());
+    }
+
+    let mut partitions = std::collections::HashMap::new();
+    match value.get("partitions") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(serde_json::Value::Object(held)) => {
+            for (name, own) in held {
+                if !own.is_object() {
+                    return Err(format!("`entities.partitions.{name}` is not an object"));
+                }
+                partitions.insert(
+                    name.clone(),
+                    pdp::PartitionEntities {
+                        schema: text(own, "schema")?,
+                        items: items_of(own, &format!("entities.partitions.{name}"))?,
+                    },
+                );
+            }
+        }
+        Some(_) => return Err("`entities.partitions` is not an object".to_owned()),
+    }
+
+    Ok(Some(pdp::Entities {
+        schema: text(value, "schema")?,
+        items: items_of(value, "entities")?,
+        // The per-partition overrides ride gRPC too: a client that addressed a partition over HTTP
+        // and silently lost it over gRPC would get a different decision for the same request.
+        partitions,
+    }))
+}
+
+fn evaluation_of(value: &serde_json::Value) -> Result<pdp::Evaluation, String> {
+    if !value.is_object() {
+        return Err("an entry of `evaluations` is not an object".to_owned());
+    }
+
+    Ok(pdp::Evaluation {
+        subject: entity_of(value.get("subject"), "subject")?,
+        resource: entity_of(value.get("resource"), "resource")?,
+        action: action_of(value.get("action"))?,
+        context: structure(value.get("context"), "context")?,
+        entities: entities_of(value.get("entities"))?,
+        request_id: text(value, "request_id")?,
+    })
 }
 
 fn semantic_of(payload: &serde_json::Value) -> i32 {
@@ -1027,4 +1177,143 @@ fn context_of(context: pdp::DecisionContext) -> serde_json::Value {
     }
 
     Value::Object(object)
+}
+
+#[cfg(test)]
+mod request_tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use super::*;
+    use serde_json::json;
+
+    fn payload(extra: serde_json::Value) -> serde_json::Value {
+        let mut body = json!({
+            "zone": "z", "ledger": "l",
+            "subject": {"type": "User", "id": "alice"},
+            "resource": {"type": "Document", "id": "budget"},
+            "action": {"name": "read"}
+        });
+        for (key, value) in extra.as_object().expect("an object") {
+            body[key] = value.clone();
+        }
+
+        body
+    }
+
+    /// proto carries one number type, an IEEE-754 double. Up to 2^53 a double counts one at a
+    /// time; past it, it does not — so an integer beyond that cannot cross and come back as
+    /// itself. Refused, rather than arriving at a policy as a different number.
+    #[test]
+    fn an_integer_this_transport_cannot_carry_exactly_is_refused() {
+        const EXACT: i64 = 9_007_199_254_740_992; // 2^53
+
+        for carried in [0, 1, -1, 42, EXACT - 1, EXACT, -EXACT] {
+            let request = request_of(&payload(json!({"context": {"n": carried}})))
+                .unwrap_or_else(|why| panic!("{carried} must cross: {why}"));
+            let held = request
+                .context
+                .expect("a context")
+                .fields
+                .remove("n")
+                .expect("the number");
+            match held.kind {
+                Some(prost_types::value::Kind::NumberValue(value)) => {
+                    assert_eq!(value as i64, carried, "{carried} changed on the way")
+                }
+                other => panic!("{carried} became {other:?}"),
+            }
+        }
+
+        for refused in [EXACT + 1, i64::MAX, i64::MIN] {
+            let why = request_of(&payload(json!({"context": {"n": refused}})))
+                .expect_err("{refused} cannot cross exactly");
+            assert!(why.contains("2^53"), "{refused}: {why}");
+        }
+
+        // `u64::MAX` and 2^64 are the pair that used to slip through: `u64::MAX as f64` rounds up
+        // to 2^64, so a bound written that way accepted 2^64 and the cast saturated it back.
+        let big = serde_json::Number::from(u64::MAX);
+        let why = request_of(&payload(json!({"context": {"n": big}})))
+            .expect_err("u64::MAX cannot cross exactly");
+        assert!(why.contains("2^53"), "{why}");
+
+        // A fraction is a double either way, and crosses unchanged.
+        let request = request_of(&payload(json!({"context": {"n": 1.5}}))).expect("1.5 crosses");
+        assert!(request.context.is_some());
+    }
+
+    /// A shape this transport cannot represent is refused, not emptied. HTTP refuses each of
+    /// these; answering them over gRPC against less than the caller said would be the contract
+    /// differing by transport.
+    #[test]
+    fn a_shape_this_transport_cannot_represent_is_refused_rather_than_dropped() {
+        for (what, extra) in [
+            (
+                "a context that is not an object",
+                json!({"context": "nope"}),
+            ),
+            (
+                "entities that are not an object",
+                json!({"entities": "nope"}),
+            ),
+            (
+                "entity items that are not a list",
+                json!({"entities": {"items": "nope"}}),
+            ),
+            (
+                "partition items that are not a list",
+                json!({"entities": {"partitions": {"p": {"items": 7}}}}),
+            ),
+            (
+                "a partition override that is not an object",
+                json!({"entities": {"partitions": {"p": "nope"}}}),
+            ),
+            ("a subject that is not an object", json!({"subject": 7})),
+            (
+                "a name that is not a string",
+                json!({"action": {"name": 7}}),
+            ),
+            (
+                "a schema that is not a string",
+                json!({"entities": {"schema": 7}}),
+            ),
+            ("evaluations that are not a list", json!({"evaluations": 7})),
+            (
+                "an evaluation that is not an object",
+                json!({"evaluations": [7]}),
+            ),
+            (
+                "properties that are not an object",
+                json!({"subject": {"type": "User", "id": "a", "properties": 7}}),
+            ),
+        ] {
+            assert!(
+                request_of(&payload(extra)).is_err(),
+                "{what} was carried across as something else"
+            );
+        }
+    }
+
+    /// And what the contract does accept still crosses, overrides included.
+    #[test]
+    fn a_request_this_transport_can_represent_crosses_whole() {
+        let request = request_of(&payload(json!({
+            "context": {"branch": "main"},
+            "action": {"name": "release:signoff", "properties": {"risk": "high"}},
+            "entities": {
+                "schema": "cedar",
+                "items": [{"uid": {"type": "Group", "id": "finance"}}],
+                "partitions": {"admin-rego": {"schema": "rego", "items": [{"team": "payments"}]}}
+            }
+        })))
+        .expect("every part of this is representable");
+
+        let entities = request.entities.expect("the graphs");
+        assert_eq!(entities.schema, "cedar");
+        assert_eq!(entities.items.len(), 1);
+        let own = entities.partitions.get("admin-rego").expect("the override");
+        assert_eq!(own.schema, "rego");
+        assert_eq!(own.items.len(), 1);
+        assert!(request.action.expect("an action").properties.is_some());
+    }
 }

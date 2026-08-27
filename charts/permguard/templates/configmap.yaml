@@ -26,6 +26,16 @@ data:
     ) }}
     {{- $_ := set $config $section $public }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
+    {{- /*
+    A data plane that mirrors and names no server follows this release's own control plane.
+    A values file cannot write that address: the Service is named after the release, so a
+    literal `permguard-control-plane` is only right when the release happens to be called
+    `permguard` — and wrong in a way that renders, installs, and mirrors nothing.
+    */ -}}
+    {{- $mirrors := dig "dataPlane" "mirrors" dict $merged }}
+    {{- if and (eq $component "data-plane") $mirrors (not (dig "servers" list $mirrors)) }}
+    {{- $_ := set $mirrors "servers" (list (dict "url" (include "permguard.controlPlaneUrl" $))) }}
+    {{- end }}
     {{- toYaml $merged | nindent 4 }}
 ---
 {{- end }}

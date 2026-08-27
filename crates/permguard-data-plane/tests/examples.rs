@@ -502,10 +502,32 @@ async fn every_example_decides_the_way_its_cases_say_it_does() {
         ));
 
         for (_, case) in cases(name) {
-            let answer = decider
-                .decide(&request(name, &case), None)
-                .await
-                .unwrap_or_else(|error| panic!("{name}/{}: not served: {error:?}", case.name));
+            // A request may be refused two ways, and a case expecting an error means either: the
+            // plane declines to read it at all — a reserved field, an override naming a partition
+            // nobody has — or it reads it and an engine cannot evaluate it. The CLI reports both
+            // as an error, so this must too, or the two would judge the same case differently.
+            let answer = match decider.decide(&request(name, &case), None).await {
+                Ok(answer) => answer,
+                Err(error) => {
+                    let refusal = format!(
+                        "{}: {}",
+                        error.code(),
+                        error.disclosed_message(permguard_core::Disclosure::Full)
+                    );
+                    let wanted =
+                        case.expect.error.as_deref().unwrap_or_else(|| {
+                            panic!("{name}/{}: not served: {refusal}", case.name)
+                        });
+                    assert!(
+                        refusal.contains(wanted),
+                        "{name}/{}: expected a refusal saying `{wanted}`, got `{refusal}`",
+                        case.name
+                    );
+                    checked += 1;
+
+                    continue;
+                }
+            };
             let context = answer.context.as_ref();
             let refused = context
                 .and_then(|context| context.reason_admin.as_ref())
