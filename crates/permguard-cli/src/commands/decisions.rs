@@ -55,7 +55,7 @@ pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode
 fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
-    let keys = key_set(query)?;
+    let keys = key_set(globals, query)?;
 
     let mut read = Read {
         records: Vec::new(),
@@ -91,7 +91,7 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
 fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
-    let keys = key_set(query)?;
+    let keys = key_set(globals, query)?;
     let mut offset = query.from.clone();
 
     loop {
@@ -238,12 +238,14 @@ fn connect(
 }
 
 /// The producer's published key set, when one was given.
-fn key_set(query: &DecisionsQuery) -> Result<Option<Vec<Jwk>>, Failure> {
+fn key_set(globals: &Globals, query: &DecisionsQuery) -> Result<Option<Vec<Jwk>>, Failure> {
     let Some(path) = &query.keys else {
         return Ok(None);
     };
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| Failure::usage(format!("reading {path}: {error}")))?;
+    // `-w` says where a relative path is read from, and this is one.
+    let named = crate::session::rooted(globals, path);
+    let text = std::fs::read_to_string(&named)
+        .map_err(|error| Failure::usage(format!("reading {}: {error}", named.display())))?;
     let parsed: Value = serde_json::from_str(&text)
         .map_err(|error| Failure::usage(format!("{path} is not a JWKS: {error}")))?;
     let keys = parsed.get("keys").cloned().unwrap_or(parsed);

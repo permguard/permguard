@@ -42,7 +42,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use permguard_core::{ApiError, AuditRecorder, ErrorClass, Metrics, Subject};
-use permguard_languages::{Query, Verdict};
+use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
 
 use super::cache::Cache;
@@ -566,9 +566,7 @@ impl Decider {
         query: &Query,
         request_id: Option<String>,
     ) -> Decision {
-        let mut permitted: Vec<String> = Vec::new();
-        let mut denied: Vec<String> = Vec::new();
-        let mut errors: Vec<String> = Vec::new();
+        let mut verdicts = Vec::with_capacity(partitions.len());
 
         for partition in partitions {
             let started = Instant::now();
@@ -582,16 +580,26 @@ impl Decider {
                 ],
                 started.elapsed().as_secs_f64(),
             );
-            absorb(verdict, &mut permitted, &mut denied, &mut errors);
+            verdicts.push(verdict);
         }
 
+        // The resolution is `permguard_languages::evaluate::resolve`, not a rule of
+        // this crate's own: `permguard test` decides a workspace before it is ever
+        // pushed here, and the two must not be able to disagree about what a set of
+        // verdicts means.
+        let outcome = resolve(verdicts);
         let id = self.decision_id();
-        let permit = errors.is_empty() && denied.is_empty() && !permitted.is_empty();
+        let permit = outcome.permitted;
         let context = DecisionContext {
             id: Some(id),
-            reason_admin: Some(self.reason_admin(permit, &permitted, &denied, &errors)),
+            reason_admin: Some(self.reason_admin(
+                permit,
+                &outcome.permits,
+                &outcome.denials,
+                &outcome.errors,
+            )),
             reason_user: Some(reason_user(permit)),
-            policies: if permit { permitted } else { denied },
+            policies: outcome.determining().to_vec(),
         };
 
         Decision {
@@ -1053,27 +1061,6 @@ fn now_rfc3339() -> String {
     permguard_core::time::to_rfc3339(seconds)
 }
 
-/// Folds one partition's verdict into the request's running answer.
-fn absorb(
-    verdict: Verdict,
-    permitted: &mut Vec<String>,
-    denied: &mut Vec<String>,
-    errors: &mut Vec<String>,
-) {
-    if let Some(error) = verdict.error {
-        errors.push(error);
-
-        return;
-    }
-    if verdict.permitted {
-        permitted.extend(verdict.determining);
-    } else {
-        // A deny with nothing determining it is "no policy said yes", which is
-        // not the same as a policy saying no — only the latter overrides.
-        denied.extend(verdict.determining);
-    }
-}
-
 fn reason_user(permit: bool) -> Reason {
     if permit {
         Reason {
@@ -1104,57 +1091,23 @@ fn current_commit(mirror: &std::path::Path) -> String {
 mod tests {
     use super::*;
 
+    use permguard_languages::Verdict;
+
+    /// The resolution itself is asserted where it lives — `permguard_languages::
+    /// evaluate::resolve`. What is this crate's to keep true is that the decision
+    /// path uses it, and reports what it returned.
     #[test]
-    fn an_explicit_deny_overrides_a_permit_and_an_absent_one_does_not() {
-        let mut permitted = Vec::new();
-        let mut denied = Vec::new();
-        let mut errors = Vec::new();
-
-        absorb(
+    fn a_decision_reports_what_resolve_concluded() {
+        let outcome = resolve([
             Verdict::permit(vec!["p1".to_owned()]),
-            &mut permitted,
-            &mut denied,
-            &mut errors,
-        );
-        // Nothing determined this deny: it is "no policy said yes".
-        absorb(
-            Verdict::deny(Vec::new()),
-            &mut permitted,
-            &mut denied,
-            &mut errors,
-        );
-        assert_eq!(permitted, vec!["p1".to_owned()]);
-        assert!(denied.is_empty(), "silence is not a refusal");
-
-        absorb(
             Verdict::deny(vec!["f1".to_owned()]),
-            &mut permitted,
-            &mut denied,
-            &mut errors,
-        );
-        assert_eq!(denied, vec!["f1".to_owned()], "a forbid is");
-    }
+        ]);
 
-    #[test]
-    fn an_error_is_carried_and_never_becomes_a_permit() {
-        let mut permitted = Vec::new();
-        let mut denied = Vec::new();
-        let mut errors = Vec::new();
-
-        absorb(
-            Verdict::permit(vec!["p1".to_owned()]),
-            &mut permitted,
-            &mut denied,
-            &mut errors,
+        assert!(!outcome.permitted, "an explicit deny still decides");
+        assert_eq!(
+            outcome.determining(),
+            ["f1".to_owned()],
+            "and a decision cites what refused it, not what permitted it"
         );
-        absorb(
-            Verdict::refused("the action is not in the schema"),
-            &mut permitted,
-            &mut denied,
-            &mut errors,
-        );
-
-        assert_eq!(errors.len(), 1);
-        assert!(!errors.is_empty(), "and an error decides the request");
     }
 }

@@ -34,7 +34,9 @@ pub mod lookup;
 pub mod registry;
 pub mod role;
 
-pub use evaluate::{Action, Entity, Evaluating, Evaluator, Query, StoredPolicy, Verdict};
+pub use evaluate::{
+    Action, Entity, Evaluating, Evaluator, Outcome, Query, StoredPolicy, Verdict, resolve,
+};
 pub use lookup::{language, language_for_media_type, languages};
 pub use registry::evaluating;
 pub use role::{Authoring, ExtractedPolicy, Language};

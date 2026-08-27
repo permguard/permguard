@@ -118,6 +118,71 @@ impl Verdict {
     }
 }
 
+/// What a request concluded once every partition of a profile has answered.
+///
+/// The three lists are kept apart because a reason has to tell them apart: a
+/// request that nothing permitted and a request a policy refused are both a
+/// deny, and only the second has something to name.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Outcome {
+    /// The answer. `false` unless something permitted and nothing objected.
+    pub permitted: bool,
+    /// What permitted it, across every partition.
+    pub permits: Vec<String>,
+    /// What refused it — policies that said no, not partitions that said
+    /// nothing.
+    pub denials: Vec<String>,
+    /// Partitions that could not evaluate the request at all.
+    pub errors: Vec<String>,
+}
+
+impl Outcome {
+    /// The policies a decision cites: what permitted it, or what refused it.
+    pub fn determining(&self) -> &[String] {
+        if self.permitted {
+            &self.permits
+        } else {
+            &self.denials
+        }
+    }
+}
+
+/// Combines what every partition of a profile answered into one decision.
+///
+/// The resolution, in one line: **an explicit deny wins, and silence is not a
+/// deny.** A partition that permits nothing has said nothing; a partition that
+/// names a policy refusing the request has objected, and one objection is
+/// enough. A partition that could not evaluate at all is an objection too —
+/// fail-closed is the only resolution an authorization system can defend.
+///
+/// It lives here, beside [`Verdict`], rather than in whoever asks: the data
+/// plane serving a PDP and the CLI testing a workspace before it is pushed have
+/// to agree about what a set of verdicts means, and the way to guarantee that
+/// is for there to be one definition of it.
+pub fn resolve(verdicts: impl IntoIterator<Item = Verdict>) -> Outcome {
+    let mut outcome = Outcome::default();
+
+    for verdict in verdicts {
+        if let Some(error) = verdict.error {
+            outcome.errors.push(error);
+
+            continue;
+        }
+        if verdict.permitted {
+            outcome.permits.extend(verdict.determining);
+        } else {
+            // A deny with nothing determining it is "no policy said yes", which
+            // is not the same as a policy saying no — only the latter overrides.
+            outcome.denials.extend(verdict.determining);
+        }
+    }
+
+    outcome.permitted =
+        outcome.errors.is_empty() && outcome.denials.is_empty() && !outcome.permits.is_empty();
+
+    outcome
+}
+
 /// A compiled, immutable set of policies, ready to answer requests.
 ///
 /// Shared across threads and across requests: everything expensive already
@@ -174,6 +239,46 @@ pub fn named_entities(query: &Query) -> BTreeMap<(String, String), Map<String, V
 
 #[cfg(test)]
 mod tests {
+    /// The rule the whole system rests on, stated once and asserted here.
+    #[test]
+    fn an_explicit_deny_overrides_a_permit_and_silence_does_not() {
+        let outcome = resolve([
+            Verdict::permit(vec!["p1".to_owned()]),
+            // Nothing determined this deny: it is "no policy said yes".
+            Verdict::deny(Vec::new()),
+        ]);
+
+        assert!(outcome.permitted, "silence is not a refusal");
+        assert_eq!(outcome.determining(), ["p1".to_owned()]);
+
+        let outcome = resolve([
+            Verdict::permit(vec!["p1".to_owned()]),
+            Verdict::deny(vec!["f1".to_owned()]),
+        ]);
+
+        assert!(!outcome.permitted, "a policy saying no is");
+        assert_eq!(outcome.determining(), ["f1".to_owned()]);
+    }
+
+    #[test]
+    fn nothing_permitting_is_a_deny_with_nothing_to_cite() {
+        let outcome = resolve([Verdict::deny(Vec::new()), Verdict::deny(Vec::new())]);
+
+        assert!(!outcome.permitted);
+        assert!(outcome.determining().is_empty());
+    }
+
+    #[test]
+    fn a_partition_that_could_not_evaluate_never_becomes_a_permit() {
+        let outcome = resolve([
+            Verdict::permit(vec!["p1".to_owned()]),
+            Verdict::refused("the entity graph is not legal"),
+        ]);
+
+        assert!(!outcome.permitted, "fail-closed, whatever else permitted");
+        assert_eq!(outcome.errors.len(), 1);
+    }
+
     use super::*;
 
     #[test]

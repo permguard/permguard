@@ -20,6 +20,20 @@ The reasoning behind the release pipeline example, written for a reader who has
 never used Permguard, is in
 **[docs/use-cases/release-pipeline.md](../docs/use-cases/release-pipeline.md)**.
 
+## Check what an example decides
+
+Both carry cases — what the workspace claims its own policies decide — and
+`permguard test` checks them offline, with the same engines a data plane uses:
+
+```bash
+permguard -w examples/release-pipeline test
+permguard -w examples/basics test
+```
+
+Exit `0` when every case passes, `2` when one does not. It is the step between
+`validate` (is this well formed?) and `plan` (push it): *does it decide what I
+meant?*
+
 ## Copy one into a playground
 
 To try things without editing the example itself, make a directory and fill it:

@@ -408,3 +408,99 @@ fn inspect_with_nobody_listening_exits_unreachable() {
 
     assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
 }
+
+/// `permguard test --remote` asks a plane the cases instead of deciding them here, and judges the
+/// answer the way the local run judges its own.
+///
+/// The point of the flag is the case this test builds: sources that are right, and a plane that is
+/// serving something else. A local run passes and must; a remote run has to fail, and has to say
+/// that what answered is not what these sources contain.
+#[test]
+fn test_remote_asks_the_plane_and_reports_what_it_answered() {
+    let dir = scratch("test-remote");
+
+    // A workspace with one Cedar policy, and a case for it.
+    std::fs::create_dir_all(dir.join("cedar")).expect("the partition directory is created");
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("cedar/readers.cedar"),
+        "@alias(\"readers\")\npermit (principal, action == Action::\"read\", resource);\n",
+    )
+    .expect("the policy is written");
+    std::fs::write(
+        dir.join("requests/read.json"),
+        r#"{"subject":{"type":"User","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"Document","id":"budget"}}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit, policies: [readers] }\n",
+    )
+    .expect("the cases are written");
+
+    // The plane permits, but cites a policy this workspace does not contain: the ledger it is
+    // serving is not the one these sources describe.
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("GET".to_owned(), "/.well-known/server-configuration".to_owned()),
+        (200, r#"{"product":"Permguard","version":"0.1.0"}"#.to_owned()),
+    );
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            200,
+            r#"{"decision":true,"context":{"id":"01","policies":["a-policy-from-another-commit"]}}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let endpoint = format!("http://{}", stub.address);
+
+    run(&dir, &["init", "remote-cases"]);
+
+    let output = run(
+        &dir,
+        &[
+            "test",
+            "--remote",
+            "--zone",
+            "delivery",
+            "--ledger",
+            "release-pipeline",
+            "--data-endpoint",
+            &endpoint,
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a plane serving another commit is a failing run: {}",
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains("a-policy-from-another-commit"),
+        "the report names what the plane cited: {}",
+        stdout(&output)
+    );
+    assert!(
+        stdout(&output).contains("no policy of this workspace"),
+        "and says the plane is not deciding with these sources: {}",
+        stdout(&output)
+    );
+    assert!(
+        stdout(&output).contains(&endpoint),
+        "and says which plane it asked: {}",
+        stdout(&output)
+    );
+
+    // The same cases, decided here, pass: the sources are not what is wrong.
+    let output = run(&dir, &["test"]);
+    assert!(
+        output.status.success(),
+        "the local run judges the sources, and they are right: {}",
+        stdout(&output)
+    );
+}

@@ -127,14 +127,14 @@ sleep 20
 Shortcut for the four blocks below:
 
 ```bash
-alias pg='permguard -w examples/release-pipeline check -f examples/release-pipeline/requests'
+alias pg='permguard -w examples/release-pipeline check -f requests'
 ```
 
 <details>
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-alias pg='task cli -- -w examples/release-pipeline check -f examples/release-pipeline/requests'
+alias pg='task cli -- -w examples/release-pipeline check -f requests'
 ```
 
 </details>
@@ -342,11 +342,85 @@ task cli -- ledgers delete --zone delivery release-pipeline
 
 ## What keeps this page true
 
+Every decision above is a case in [`tests/release.yml`](tests/release.yml), and
+`permguard test` checks all eleven **offline** — the policies are compiled here,
+with the same engines a data plane uses, before anything is pushed:
+
+```bash
+permguard -w examples/release-pipeline test
+```
+
+```text
+  ok    a release manager approves somebody else's release         [admin] permit by release-approvers
+  ok    nobody approves the release they created themselves        [admin] deny by delivery-guardrails
+  ok    signing is not the build's job                             [pipeline] deny, nothing permitted it
+  …
+11 case(s), 11 passed, 0 failed.
+```
+
+A case states not only the answer but **which policy gave it**, which is what
+separates a deny by the guardrail from a deny because nothing permitted:
+
+```yaml
+- name: nobody approves the release they created themselves
+  request: ../requests/signoff-separation-of-duties-deny.json
+  expect: { decision: deny, policies: [delivery-guardrails] }
+```
+
+Exit `0` when every case passes, `2` when one does not — a pipeline can gate on it.
+`--list` shows the cases without deciding, `--name` runs one.
+
+### After the apply: ask the plane the same cases
+
+```bash
+permguard -w examples/release-pipeline test --remote
+```
+
+```text
+  ok    nobody approves the release they created themselves        [admin] deny by delivery-guardrails
+  …
+  asked http://127.0.0.1:7656 about delivery/release-pipeline [workspace]
+
+11 case(s), 11 passed, 0 failed.
+```
+
+A different question from the one above, and the one worth asking after `apply`:
+not *do my sources decide this*, but *does the ledger that is deployed still
+decide this*. It catches what a local run structurally cannot — a mirror that has
+not caught up, a commit the plane refuses to serve, a ledger somebody else applied
+to. When the plane cites a policy this workspace does not contain, the report says
+so, because that is the finding:
+
+```text
+  fail  nobody approves the release they created themselves        [admin] permit by release-approvers
+        the decision cites `7b3f…`, which is no policy of this workspace —
+        what answered is not what these sources would apply
+```
+
+> **It writes to the decision log.** A Permguard plane records every decision, and
+> one that cannot record refuses to decide rather than decide unrecorded — so a
+> suite run this way leaves its cases in the log as real decisions. Point it at a
+> plane whose log you are willing to have them in.
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+task cli -- -w examples/release-pipeline test
+```
+
+</details>
+
+<details>
+<summary>The same example, through the data plane's own decision path</summary>
+
 ```bash
 cargo test -p permguard-data-plane --test release_pipeline_example
 ```
 
 That test reads this directory — manifest, policies and all eleven requests —
-builds a mirror and asks the real decision path. Every decision above, and the
-policy cited for it, is asserted there. It also asserts that each profile names
-only the partitions it needs.
+builds a mirror and asks the real `Decider`. It covers what `permguard test` does
+not: the ledger as a plane actually loads it. It also asserts that each profile
+names only the partitions it needs.
+
+</details>

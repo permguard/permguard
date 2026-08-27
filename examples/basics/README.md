@@ -143,7 +143,7 @@ The data plane serves what it mirrors, so give it one round:
 
 ```bash
 sleep 20
-permguard -w examples/basics check -f examples/basics/requests/permit.json
+permguard -w examples/basics check -f requests/permit.json
 ```
 
 <details>
@@ -151,7 +151,7 @@ permguard -w examples/basics check -f examples/basics/requests/permit.json
 
 ```bash
 sleep 20
-task cli -- -w examples/basics check -f examples/basics/requests/permit.json
+task cli -- -w examples/basics check -f requests/permit.json
 ```
 
 </details>
@@ -176,7 +176,7 @@ Permitted.
 **A deny.** `bob` asks to *write* a document `carol` owns:
 
 ```bash
-permguard -w examples/basics check -f examples/basics/requests/deny.json
+permguard -w examples/basics check -f requests/deny.json
 # decision DENY … and exit status 0, because a deny is an answer.
 ```
 
@@ -184,7 +184,7 @@ permguard -w examples/basics check -f examples/basics/requests/deny.json
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w examples/basics check -f examples/basics/requests/deny.json
+task cli -- -w examples/basics check -f requests/deny.json
 # decision DENY … and exit status 0, because a deny is an answer.
 ```
 
@@ -193,13 +193,13 @@ task cli -- -w examples/basics check -f examples/basics/requests/deny.json
 **The other profile**, **boxcarring**, and **two ways to be wrong**:
 
 ```bash
-permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json    # Rego alone
-permguard -w examples/basics check -f examples/basics/requests/boxcarred.json -o json | jq '.evaluations'
+permguard -w examples/basics check -f requests/gateway-permit.json    # Rego alone
+permguard -w examples/basics check -f requests/boxcarred.json -o json | jq '.evaluations'
 
-permguard -w examples/basics check -f examples/basics/requests/error-no-store.json --ignore-workspace
+permguard -w examples/basics check -f requests/error-no-store.json --ignore-workspace
 # no zone and no ledger anywhere: refused before a round trip (exit 64)
 
-permguard -w examples/basics check -f examples/basics/requests/error-unknown-ledger.json --ignore-workspace
+permguard -w examples/basics check -f requests/error-unknown-ledger.json --ignore-workspace
 # a ledger this plane does not mirror: 404, not a deny — a PEP must tell "no"
 # from "ask somebody else"
 ```
@@ -208,13 +208,13 @@ permguard -w examples/basics check -f examples/basics/requests/error-unknown-led
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json    # Rego alone
-task cli -- -w examples/basics check -f examples/basics/requests/boxcarred.json -o json | jq '.evaluations'
+task cli -- -w examples/basics check -f requests/gateway-permit.json    # Rego alone
+task cli -- -w examples/basics check -f requests/boxcarred.json -o json | jq '.evaluations'
 
-task cli -- -w examples/basics check -f examples/basics/requests/error-no-store.json --ignore-workspace
+task cli -- -w examples/basics check -f requests/error-no-store.json --ignore-workspace
 # no zone and no ledger anywhere: refused before a round trip (exit 64)
 
-task cli -- -w examples/basics check -f examples/basics/requests/error-unknown-ledger.json --ignore-workspace
+task cli -- -w examples/basics check -f requests/error-unknown-ledger.json --ignore-workspace
 # a ledger this plane does not mirror: 404, not a deny — a PEP must tell "no"
 # from "ask somebody else"
 ```
@@ -224,7 +224,7 @@ task cli -- -w examples/basics check -f examples/basics/requests/error-unknown-l
 Same over gRPC, and straight at the API:
 
 ```bash
-permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
 
 curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
@@ -236,7 +236,7 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
+task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
 
 curl -s http://127.0.0.1:7656/.well-known/authzen-configuration | jq
 curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
@@ -469,7 +469,7 @@ Wait for the mirror, then ask the same question again:
 
 ```bash
 sleep 20
-permguard -w examples/basics check -f examples/basics/requests/permit.json
+permguard -w examples/basics check -f requests/permit.json
 permguard decisions list --zone acme --ledger main-ledger -o json \
   | jq -r '.decisions[] | "\(.seq) \(.decision) \(.commit[0:19]) \(.policies)"'
 ```
@@ -479,7 +479,7 @@ permguard decisions list --zone acme --ledger main-ledger -o json \
 
 ```bash
 sleep 20
-task cli -- -w examples/basics check -f examples/basics/requests/permit.json
+task cli -- -w examples/basics check -f requests/permit.json
 task cli -- decisions list --zone acme --ledger main-ledger -o json \
   | jq -r '.decisions[] | "\(.seq) \(.decision) \(.commit[0:19]) \(.policies)"'
 ```
@@ -517,7 +517,7 @@ permguard -w examples/basics apply -m "operators mutate"
 permguard -w /tmp/lab-b pull
 
 sleep 20
-permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
+permguard -w examples/basics check -f requests/gateway-permit.json
 ```
 
 <details>
@@ -529,7 +529,7 @@ task cli -- -w examples/basics apply -m "operators mutate"
 task cli -- -w /tmp/lab-b pull
 
 sleep 20
-task cli -- -w examples/basics check -f examples/basics/requests/gateway-permit.json
+task cli -- -w examples/basics check -f requests/gateway-permit.json
 ```
 
 </details>
@@ -592,6 +592,38 @@ task lab:where       # the URLs
 The one number to watch is `permguard_decisions_unshipped_records`. It climbing
 and not coming back is a shipper that is not shipping, and it is visible long
 before the spool fills and the stream has to end.
+
+## Check what it decides, without a plane
+
+[`tests/documents.yml`](tests/documents.yml) states what these policies decide, and
+`permguard test` compiles them here and checks it — no server, nothing applied:
+
+```bash
+permguard -w examples/basics test
+```
+
+<details>
+<summary>Run it through the Taskfile instead</summary>
+
+```bash
+task cli -- -w examples/basics test
+```
+
+</details>
+
+```text
+  ok    a member of the finance group may read a document                   [default] permit by document-readers, gateway-access
+  ok    writing a document somebody else owns is refused                    [default] deny, nothing permitted it
+  ok    the gateway profile answers with Rego alone                         [gateway] permit by gateway-access
+  ok    the same request under the default profile leaves the Cedar schema  [default] not evaluated
+
+4 case(s), 4 passed, 0 failed.
+```
+
+The first line is the whole point of two partitions in one profile: **both** permit
+the read, and the decision cites both. The last is the schema doing its job — under
+`default`, `create` is an action the Cedar partition cannot evaluate, and a partition
+that cannot evaluate denies.
 
 ## Things that refuse, on purpose
 

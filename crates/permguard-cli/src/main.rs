@@ -18,13 +18,15 @@
 //! | -----: | ------- |
 //! | `0` | the command succeeded, and every plane it asked about is ready |
 //! | `1` | no plane answered — there was nothing to inspect |
-//! | `2` | planes answered, and not all of them are ready |
+//! | `2` | the command ran and its subject did not pass: planes answered and not all are ready, or cases failed |
 //! | `64` | the command line, or something it named, was wrong (`EX_USAGE`) |
 //! | `70` | the command failed for an internal reason (`EX_SOFTWARE`) |
 //!
 //! The distinction between `1` and `2` is what makes `permguard inspect` usable as a gate: a
 //! deployment that waits for `0` waits for a runtime that is actually serving, and can tell "not up
-//! yet" apart from "up, still draining" while it waits.
+//! yet" apart from "up, still draining" while it waits. `permguard test` draws the same line from
+//! the other side: `2` is a workspace whose cases did not all pass, which is not the CLI failing —
+//! it did exactly what it was asked, and the answer is no.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
@@ -203,6 +205,27 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Pull => workspace_command(&globals, WorkspaceOp::Pull, &trace),
         Command::Refresh => workspace_command(&globals, WorkspaceOp::Refresh, &trace),
         Command::Validate => workspace_command(&globals, WorkspaceOp::Validate, &trace),
+        Command::Test {
+            path,
+            name,
+            profile,
+            list,
+            remote,
+            zone,
+            ledger,
+        } => workspace_command(
+            &globals,
+            WorkspaceOp::Test {
+                paths: path,
+                name,
+                profile,
+                list,
+                remote,
+                zone,
+                ledger,
+            },
+            &trace,
+        ),
         Command::Plan => workspace_command(&globals, WorkspaceOp::Plan, &trace),
         Command::Apply { message } => {
             workspace_command(&globals, WorkspaceOp::Apply { message }, &trace)

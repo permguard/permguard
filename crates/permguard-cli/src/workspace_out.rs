@@ -1377,3 +1377,131 @@ fn bytes_of(bytes: u64) -> String {
         format!("{value:.1} {}", UNITS[unit])
     }
 }
+
+/// `test --list`: the cases and what each one claims, decided against nothing.
+#[derive(Debug, Serialize)]
+pub struct TestListReport {
+    pub cases: Vec<TestListLine>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TestListLine {
+    pub name: String,
+    pub source: String,
+    pub request: String,
+    pub expects: String,
+}
+
+impl Report for TestListReport {
+    fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        for case in &self.cases {
+            writeln!(out, "  {}", case.name)?;
+            writeln!(
+                out,
+                "    {} {}",
+                style::dim("expects"),
+                style::dim(&case.expects)
+            )?;
+            writeln!(
+                out,
+                "    {} {}",
+                style::dim("request"),
+                style::id(&case.request)
+            )?;
+        }
+        writeln!(out)?;
+        writeln!(
+            out,
+            "{}",
+            style::bold(&format!("{} case(s), decided none.", self.cases.len()))
+        )
+    }
+}
+
+/// `test`.
+///
+/// A case that failed says what it expected and what it got on its own lines, because
+/// the two together are the whole message and a reader should not have to reconstruct
+/// it from a diff.
+#[derive(Debug, Serialize)]
+pub struct TestReport {
+    pub cases: Vec<TestCaseLine>,
+    pub passed: usize,
+    pub failed: usize,
+    /// What was actually asked: these sources, or a named plane. A report that does not say
+    /// cannot be read six months later, and `--remote` makes the two look alike.
+    pub asked: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TestCaseLine {
+    pub name: String,
+    pub source: String,
+    pub profile: String,
+    pub passed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision: Option<bool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub policies: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub problems: Vec<String>,
+}
+
+impl Report for TestReport {
+    fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        // Padded to the longest name so the outcomes line up: the column is what
+        // makes a run of thirty cases scannable instead of readable.
+        let width = self
+            .cases
+            .iter()
+            .map(|case| case.name.chars().count())
+            .max()
+            .unwrap_or_default();
+
+        for case in &self.cases {
+            let mark = if case.passed {
+                style::ok("ok  ")
+            } else {
+                style::delete("fail")
+            };
+            let decided = match (case.decision, case.policies.as_slice()) {
+                (Some(true), []) => "permit".to_owned(),
+                (Some(true), cited) => format!("permit by {}", cited.join(", ")),
+                (Some(false), []) => "deny, nothing permitted it".to_owned(),
+                (Some(false), cited) => format!("deny by {}", cited.join(", ")),
+                (None, _) => "not evaluated".to_owned(),
+            };
+            let padding = " ".repeat(width.saturating_sub(case.name.chars().count()));
+            writeln!(
+                out,
+                "  {mark}  {}{padding}  {}",
+                case.name,
+                style::dim(&format!("[{}] {decided}", case.profile))
+            )?;
+            for problem in &case.problems {
+                writeln!(out, "        {}", style::delete(problem))?;
+            }
+            if !case.passed {
+                writeln!(out, "        {}", style::dim(&case.source))?;
+            }
+        }
+        writeln!(out)?;
+        writeln!(out, "  {} {}", style::dim("asked"), style::dim(&self.asked))?;
+        writeln!(out)?;
+
+        let summary = format!(
+            "{} case(s), {} passed, {} failed.",
+            self.cases.len(),
+            self.passed,
+            self.failed
+        );
+
+        if self.failed == 0 {
+            writeln!(out, "{}", style::ok(&style::bold(&summary)))
+        } else {
+            writeln!(out, "{}", style::delete(&style::bold(&summary)))
+        }
+    }
+}

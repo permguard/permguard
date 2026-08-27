@@ -516,3 +516,257 @@ fn help_for_something_that_is_not_a_command_is_a_usage_error() {
     assert!(output.stdout.is_empty());
     assert!(stderr(&output).contains("nope"), "{}", stderr(&output));
 }
+
+/// `permguard test` decides a workspace from its own sources — no plane, no network — and says
+/// which case failed and why. The exit status is the contract a pipeline gates on: `0` all passed,
+/// `2` the command ran and the workspace did not.
+#[test]
+fn test_runs_the_cases_of_a_workspace_offline() {
+    let dir = scratch("test-cases");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::write(
+        dir.join("requests/read.json"),
+        r#"{"subject":{"type":"user","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"document","id":"budget"}}"#,
+    )
+    .or_else(|_| {
+        std::fs::create_dir_all(dir.join("requests")).and_then(|()| {
+            std::fs::write(
+                dir.join("requests/read.json"),
+                r#"{"subject":{"type":"user","id":"alice"},"action":{"name":"read"},
+                    "resource":{"type":"document","id":"budget"}}"#,
+            )
+        })
+    })
+    .expect("the request is written");
+
+    // What the sources actually decide, asserted; then the same case with the answer
+    // inverted, to prove the command reports a failure rather than passing everything.
+    let truth = {
+        std::fs::write(
+            dir.join("tests/cases.yml"),
+            "- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit }\n",
+        )
+        .expect("the cases are written");
+
+        let output = run(&dir, &["test", "-o", "json"]);
+        let report: serde_json::Value =
+            serde_json::from_str(&stdout(&output)).expect("the report is json");
+
+        report["cases"][0]["decision"].as_bool().unwrap_or_default()
+    };
+
+    let (right, wrong) = if truth {
+        ("permit", "deny")
+    } else {
+        ("deny", "permit")
+    };
+
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        format!("- name: alice reads\n  request: ../requests/read.json\n  expect: {{ decision: {right} }}\n"),
+    )
+    .expect("the cases are written");
+    let output = run(&dir, &["test"]);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    assert!(stdout(&output).contains("1 passed"), "{}", stdout(&output));
+
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        format!("- name: alice reads\n  request: ../requests/read.json\n  expect: {{ decision: {wrong} }}\n"),
+    )
+    .expect("the cases are written");
+    let output = run(&dir, &["test"]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a failed case is the workspace's failure, not the command's"
+    );
+    assert!(stdout(&output).contains("1 failed"), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains(&format!("expected {wrong}")),
+        "the report says what it expected: {}",
+        stdout(&output)
+    );
+}
+
+/// The three formats, and a workspace with nothing to run.
+#[test]
+fn test_answers_in_every_format_and_says_when_there_is_nothing_to_run() {
+    let dir = scratch("test-formats");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+
+    let output = run(&dir, &["test"]);
+    assert_eq!(output.status.code(), Some(64), "no cases is a usage error");
+    assert!(stderr(&output).contains("no cases"), "{}", stderr(&output));
+
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("requests/read.json"),
+        r#"{"subject":{"type":"user","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"document","id":"budget"}}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: alice reads\n  request: ../requests/read.json\n  expect: {}\n",
+    )
+    .expect("the cases are written");
+
+    for format in ["terminal", "json", "yaml"] {
+        let output = run(&dir, &["-o", format, "test"]);
+        assert!(output.status.success(), "{format}: {}", stderr(&output));
+        assert!(!stdout(&output).is_empty(), "{format} answered nothing");
+    }
+
+    let output = run(&dir, &["test", "--list"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stdout(&output).contains("decided none"),
+        "--list decides nothing: {}",
+        stdout(&output)
+    );
+}
+
+/// `-w` says it is "the directory relative paths are resolved against", and every flag that names
+/// a file has to mean it. Before this was true of the TLS material and of nothing else a person
+/// types by hand, so `permguard -w somewhere check -f request.json` looked for the request beside
+/// the terminal instead of beside the workspace.
+#[test]
+fn every_path_a_flag_names_is_read_from_the_working_directory() {
+    let dir = scratch("workdir-contract");
+    let inside = dir.join("inside");
+    std::fs::create_dir_all(&inside).expect("the inner directory is created");
+    std::fs::write(
+        inside.join("request.json"),
+        r#"{"subject":{"type":"user","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"document","id":"budget"}}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(inside.join("keys.json"), r#"{"keys":[]}"#).expect("the key set is written");
+
+    // Run from `dir`, with `-w inside`: a bare name is the workspace's, not the terminal's.
+    let run_from_outside = |args: &[&str]| -> Output {
+        Command::new(env!("CARGO_BIN_EXE_permguard"))
+            .current_dir(&dir)
+            .args(args)
+            .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+            .env_remove("PERMGUARD_TLS_CA_FILE")
+            .env("NO_COLOR", "1")
+            .output()
+            .expect("the binary runs")
+    };
+
+    // `check -f`: found beside the workspace, so the run reaches the network and fails there.
+    let output = run_from_outside(&[
+        "-w",
+        "inside",
+        "check",
+        "-f",
+        "request.json",
+        "--ignore-workspace",
+        "--zone",
+        "z",
+        "--ledger",
+        "l",
+    ]);
+    assert!(
+        !stderr(&output).contains("No such file"),
+        "the request was looked for outside the working directory: {}",
+        stderr(&output)
+    );
+
+    // And the path that would have worked before is the one that fails now.
+    let output = run_from_outside(&[
+        "-w",
+        "inside",
+        "check",
+        "-f",
+        "inside/request.json",
+        "--ignore-workspace",
+        "--zone",
+        "z",
+        "--ledger",
+        "l",
+    ]);
+    assert!(
+        stderr(&output).contains("No such file"),
+        "a path relative to the terminal must not resolve: {}",
+        stderr(&output)
+    );
+
+    // `decisions --keys`, the same way.
+    let output = run_from_outside(&[
+        "-w",
+        "inside",
+        "decisions",
+        "list",
+        "--zone",
+        "z",
+        "--ledger",
+        "l",
+        "--verify",
+        "--keys",
+        "keys.json",
+        "--control-endpoint",
+        "http://127.0.0.1:1",
+    ]);
+    assert!(
+        !stderr(&output).contains("No such file"),
+        "the key set was looked for outside the working directory: {}",
+        stderr(&output)
+    );
+
+    // `--config`: written and read back through the same relative name.
+    let written = run_from_outside(&[
+        "-w",
+        "inside",
+        "--config",
+        "cli.yml",
+        "config",
+        "set",
+        "control-plane.endpoint",
+        "http://written.invalid:9999",
+    ]);
+    assert!(written.status.success(), "{}", stderr(&written));
+    assert!(
+        inside.join("cli.yml").exists(),
+        "the configuration was written outside the working directory"
+    );
+
+    let read = run_from_outside(&[
+        "-w",
+        "inside",
+        "--config",
+        "cli.yml",
+        "config",
+        "get",
+        "control-plane.endpoint",
+    ]);
+    assert!(
+        stdout(&read).contains("http://written.invalid:9999"),
+        "{}",
+        stdout(&read)
+    );
+
+    // An absolute path is already an answer, and `-w` leaves it alone.
+    let read = run_from_outside(&[
+        "-w",
+        "inside",
+        "--config",
+        inside.join("cli.yml").to_str().unwrap_or_default(),
+        "config",
+        "get",
+        "control-plane.endpoint",
+    ]);
+    assert!(
+        stdout(&read).contains("http://written.invalid:9999"),
+        "{}",
+        stdout(&read)
+    );
+}

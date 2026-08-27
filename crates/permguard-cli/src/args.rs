@@ -323,6 +323,53 @@ pub enum Command {
     /// Refresh plus every local check: manifest, identities, duplicates.
     #[command(after_help = "Examples:\n  permguard validate\n  permguard validate -o json")]
     Validate,
+    /// Check that the policies decide what the cases say they decide — offline.
+    ///
+    /// The step between `validate` and `plan`: `validate` answers whether the workspace is well
+    /// formed, this answers whether it is *right*, against the same engines a data plane uses and
+    /// before anything is pushed.
+    #[command(
+        after_help = "Examples:\n  permguard test\n  permguard -w examples/release-pipeline test\n  permguard test tests/release.yml\n  permguard test --name separation -v\n  permguard test --remote\n  permguard test -o json | jq '.failed'"
+    )]
+    Test {
+        /// The case files or folders to run. The workspace's `tests` folder when left out.
+        #[arg(value_name = "PATH")]
+        path: Vec<String>,
+
+        /// Only cases whose name contains this text.
+        #[arg(long, value_name = "PATTERN")]
+        name: Option<String>,
+
+        /// Ask every case under this profile, whatever its request names.
+        #[arg(long, value_name = "PROFILE")]
+        profile: Option<String>,
+
+        /// List the cases and what they expect, and decide nothing.
+        #[arg(long)]
+        list: bool,
+
+        /// Ask the tracked data plane instead of deciding here.
+        ///
+        /// A different question, and the one worth asking after `apply`: not *do my sources decide
+        /// this*, but *does the ledger that is deployed still decide this*. It is what catches a
+        /// mirror that has not caught up, a commit a plane refuses to serve, and a ledger somebody
+        /// else applied to.
+        ///
+        /// A Permguard plane records every decision — one that cannot record refuses to decide
+        /// rather than decide unrecorded — so a suite run this way writes its cases into the
+        /// decision log as real decisions. Point it at a plane whose log you are willing to have
+        /// them in.
+        #[arg(long)]
+        remote: bool,
+
+        /// The zone to ask, overriding the workspace.
+        #[arg(long, alias = "zone-id", value_name = "ZONE", requires = "remote")]
+        zone: Option<String>,
+
+        /// The ledger to ask, overriding the workspace.
+        #[arg(long, value_name = "LEDGER", requires = "remote")]
+        ledger: Option<String>,
+    },
     /// Show what apply would change on the remote ledger.
     #[command(after_help = "Examples:\n  permguard plan\n  permguard plan -o json")]
     Plan,

@@ -62,7 +62,7 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
         &trace,
     )?;
 
-    let mut payload = document(args)?;
+    let mut payload = document(globals, args)?;
     apply_store(&mut payload, &target)?;
     if let Some(profile) = &args.profile {
         payload["profile"] = Value::String(profile.clone());
@@ -94,7 +94,7 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
 }
 
 /// The request: a document, or the flags that describe one.
-fn document(args: &CheckArgs) -> Result<Value, Failure> {
+fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
     if let Some(path) = &args.file {
         let text = if path == "-" {
             let mut text = String::new();
@@ -103,8 +103,11 @@ fn document(args: &CheckArgs) -> Result<Value, Failure> {
                 .map_err(|error| Failure::usage(format!("reading the request: {error}")))?;
             text
         } else {
-            std::fs::read_to_string(path)
-                .map_err(|error| Failure::usage(format!("reading {path}: {error}")))?
+            // `-w` says where a relative path is read from, and this is one.
+            let named = crate::session::rooted(globals, path);
+            std::fs::read_to_string(&named).map_err(|error| {
+                Failure::usage(format!("reading {}: {error}", named.display()))
+            })?
         };
         let payload: Value = serde_json::from_str(&text)
             .map_err(|error| Failure::usage(format!("the request is not valid JSON: {error}")))?;
@@ -201,6 +204,24 @@ mod tests {
 
     use super::*;
 
+    /// The globals a flag-built request needs: only `-w`, and only to resolve `-f`, which these
+    /// cases do not use.
+    fn globals() -> Globals {
+        Globals {
+            output: crate::output::OutputFormat::Terminal,
+            verbose: false,
+            workdir: std::path::PathBuf::from("."),
+            config: None,
+            control_endpoint: None,
+            data_endpoint: None,
+            tls_ca_file: None,
+            tls_cert_file: None,
+            tls_key_file: None,
+            tls_server_name: None,
+            tls_skip_verify: false,
+        }
+    }
+
     fn args() -> CheckArgs {
         CheckArgs {
             file: None,
@@ -223,7 +244,7 @@ mod tests {
         asked.resource = Some("document:budget".to_owned());
         asked.context = Some(r#"{"time": "2026-08-24T10:00:00Z"}"#.to_owned());
 
-        let payload = document(&asked)
+        let payload = document(&globals(), &asked)
             .map_err(|failure| failure.message)
             .expect("the flags describe a request");
         assert_eq!(payload["subject"]["type"], "user");
@@ -240,7 +261,7 @@ mod tests {
         asked.action = Some("read".to_owned());
         asked.resource = Some("document:budget".to_owned());
 
-        let refused = document(&asked)
+        let refused = document(&globals(), &asked)
             .err()
             .map(|failure| failure.message)
             .expect("`alice` is not `type:id`");

@@ -1,0 +1,29 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# What this workspace claims its policies decide. Run with `permguard -w
+# examples/basics test`, offline: the policies are compiled here, not asked of a
+# plane, so this holds before anything is applied.
+
+- name: a member of the finance group may read a document
+  request: ../requests/permit.json
+  # Both partitions permit it, and the decision cites both: the Cedar policy that
+  # permits the finance group, and the Rego module that lets any User read. Either
+  # alone would be enough — which is why the reason names them.
+  expect: { decision: permit, policies: [document-readers, gateway-access] }
+
+- name: writing a document somebody else owns is refused
+  request: ../requests/deny.json
+  # Nothing permitted it: neither partition said yes.
+  expect: { decision: deny, policies: [] }
+
+- name: the gateway profile answers with Rego alone
+  request: ../requests/gateway-permit.json
+  expect: { decision: permit, policies: [gateway-access] }
+
+- name: the same request under the default profile leaves the Cedar schema
+  request: ../requests/gateway-permit.json
+  profile: default
+  # `create` is not an action the Cedar schema declares, so that partition cannot
+  # evaluate the request — and a partition that cannot evaluate denies.
+  expect: { error: schema }

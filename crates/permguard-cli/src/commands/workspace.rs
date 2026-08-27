@@ -12,15 +12,182 @@ use std::process::ExitCode;
 
 use crate::args::{Globals, ObjectsAction, RemoteAction};
 use crate::commands::objects::{inspect_report, write_human};
-use crate::failure::{EXIT_READY, Failure};
+use crate::failure::{EXIT_NOT_READY, EXIT_READY, Failure};
 use crate::narrator;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::Trace;
 use permguard_control_client::AnyRemote;
 use permguard_control_client::TlsOptions;
 
+use permguard_cli::engine::workspace::cases;
 use crate::reference;
 use crate::workspace_out;
+
+/// Where an answer comes from: these sources, or a plane serving the ledger they track.
+enum Decider {
+    Local(Box<cases::Compiled>),
+    Remote(Plane),
+}
+
+/// A data plane, and what it took to name it.
+struct Plane {
+    client: Box<dyn permguard_control_client::pdp::Pdp>,
+    endpoint: String,
+    zone: String,
+    ledger: String,
+    origin: &'static str,
+    aliases: std::collections::BTreeMap<String, String>,
+}
+
+impl Decider {
+    /// The line a report ends with, saying what was actually asked.
+    fn describe(&self) -> String {
+        match self {
+            Decider::Local(_) => "these sources, compiled here".to_owned(),
+            Decider::Remote(plane) => format!(
+                "{} about {}/{} [{}]",
+                plane.endpoint, plane.zone, plane.ledger, plane.origin
+            ),
+        }
+    }
+
+    fn decide(
+        &self,
+        store: &dyn permguard_control_client::Store,
+        located: &cases::Located,
+    ) -> Result<cases::Outcome, permguard_cli::engine::workspace::WorkspaceError> {
+        match self {
+            Decider::Local(compiled) => cases::run(compiled, store, located),
+            Decider::Remote(plane) => plane.decide(store, located),
+        }
+    }
+}
+
+impl Plane {
+    /// Asks the plane one case, and judges the answer the way the local run judges its own.
+    fn decide(
+        &self,
+        store: &dyn permguard_control_client::Store,
+        located: &cases::Located,
+    ) -> Result<cases::Outcome, permguard_cli::engine::workspace::WorkspaceError> {
+        let (mut payload, profile) = cases::request_of(store, located)?;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("zone".to_owned(), serde_json::Value::String(self.zone.clone()));
+            object.insert(
+                "ledger".to_owned(),
+                serde_json::Value::String(self.ledger.clone()),
+            );
+            object.insert(
+                "profile".to_owned(),
+                serde_json::Value::String(profile.clone()),
+            );
+        }
+
+        let answer = match self.client.evaluate(&payload) {
+            Ok(answer) => answer,
+            // A plane that will not serve this ledger — a mirror behind, a commit it refuses —
+            // is the finding, not a transport failure to abort the run over.
+            Err(failure) => {
+                return Ok(cases::failed(
+                    located,
+                    &profile,
+                    format!("the plane did not answer: {}", failure.reason),
+                ));
+            }
+        };
+
+        let context = answer.get("context");
+        let answered = cases::Answered {
+            permitted: answer
+                .get("decision")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or_default(),
+            policies: context
+                .and_then(|context| context.get("policies"))
+                .and_then(serde_json::Value::as_array)
+                .map(|policies| {
+                    policies
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            error: None,
+        };
+
+        Ok(cases::judge(located, &profile, answered, &self.aliases))
+    }
+}
+
+/// Resolves the plane to ask, the way `check` resolves it: the checkout, unless told otherwise.
+fn remote_plane(
+    globals: &Globals,
+    trace: &Trace,
+    zone: Option<String>,
+    ledger: Option<String>,
+    snapshot: &permguard_cli::engine::workspace::Snapshot,
+) -> Result<Plane, Failure> {
+    let settings = crate::session::open_store(globals, trace)?;
+    let target = crate::target::resolve(
+        "data-plane.endpoint",
+        globals.data_endpoint.as_deref(),
+        &crate::target::Asked {
+            zone,
+            ledger,
+            ignore_workspace: false,
+        },
+        globals,
+        &settings,
+        trace,
+    )?;
+    let (Some(zone), Some(ledger)) = (target.zone.clone(), target.ledger.clone()) else {
+        return Err(Failure::usage(
+            "no zone and ledger: check this workspace out, or name them with --zone and --ledger",
+        ));
+    };
+
+    trace.say(format!("asking {} about {zone}/{ledger}", target.endpoint));
+
+    let client = permguard_control_client::pdp::client(
+        &target.endpoint,
+        &crate::target::tls(globals),
+        crate::narrator::for_run(globals.verbose),
+    )
+    .map_err(Failure::usage)?;
+
+    Ok(Plane {
+        client,
+        endpoint: target.endpoint.to_string(),
+        zone,
+        ledger,
+        origin: target.origin,
+        aliases: cases::aliases(snapshot),
+    })
+}
+
+/// What a case claims, in one line, for `--list`.
+fn expectation_line(expect: &cases::Expectation) -> String {
+    let mut said = Vec::new();
+    if let Some(decision) = &expect.decision {
+        said.push(decision.clone());
+    }
+    if let Some(policies) = &expect.policies {
+        said.push(if policies.is_empty() {
+            "decided by nothing".to_owned()
+        } else {
+            format!("by {}", policies.join(", "))
+        });
+    }
+    if let Some(error) = &expect.error {
+        said.push(format!("refused with `{error}`"));
+    }
+    if said.is_empty() {
+        return "nothing — the case asserts no outcome".to_owned();
+    }
+
+    said.join(", ")
+}
 
 /// One workspace operation, dispatched below.
 pub enum WorkspaceOp {
@@ -39,6 +206,15 @@ pub enum WorkspaceOp {
     Pull,
     Refresh,
     Validate,
+    Test {
+        paths: Vec<String>,
+        name: Option<String>,
+        profile: Option<String>,
+        list: bool,
+        remote: bool,
+        zone: Option<String>,
+        ledger: Option<String>,
+    },
     Plan,
     Apply {
         message: String,
@@ -590,6 +766,109 @@ pub fn workspace_command(
                 }
             }
         },
+        WorkspaceOp::Test {
+            paths,
+            name,
+            profile,
+            list,
+            remote,
+            zone,
+            ledger,
+        } => {
+            let mut cases = cases::collect(&store, &paths).map_err(usage)?;
+            if let Some(pattern) = &name {
+                cases.retain(|located| located.case.name.contains(pattern.as_str()));
+            }
+            if let Some(profile) = &profile {
+                for located in &mut cases {
+                    located.case.profile = Some(profile.clone());
+                }
+            }
+            if cases.is_empty() {
+                return Err(usage(if paths.is_empty() {
+                    format!(
+                        "no cases: this workspace has no `{}` folder, and none was named",
+                        cases::DEFAULT_DIRECTORY
+                    )
+                } else {
+                    "no cases matched".to_owned()
+                }));
+            }
+
+            if list {
+                render(
+                    &TestListReport {
+                        cases: cases
+                            .iter()
+                            .map(|located| TestListLine {
+                                name: located.case.name.clone(),
+                                source: located.source.clone(),
+                                request: located.request.clone(),
+                                expects: expectation_line(&located.case.expect),
+                            })
+                            .collect(),
+                    },
+                    format,
+                    trace,
+                )?;
+
+                return Ok(ExitCode::from(EXIT_READY));
+            }
+
+            let snapshot = ws.refresh().map_err(usage)?;
+            let manifest = ws.manifest().map_err(usage)?;
+
+            // Two ways to reach an answer, one way to judge it: `cases::judge` is what
+            // decides whether a case passed, whoever decided the request.
+            let decider = if remote {
+                Decider::Remote(remote_plane(globals, trace, zone, ledger, &snapshot)?)
+            } else {
+                trace.say("compiling the working tree, the way a plane compiles a ledger");
+                Decider::Local(Box::new(
+                    cases::compile(&snapshot, &manifest).map_err(usage)?,
+                ))
+            };
+            let asked = decider.describe();
+
+            let mut lines = Vec::new();
+            let (mut passed, mut failed) = (0, 0);
+            for located in &cases {
+                let outcome = decider.decide(&store, located).map_err(usage)?;
+                trace.say(format!(
+                    "{}: {}",
+                    outcome.name,
+                    if outcome.passed { "ok" } else { "failed" }
+                ));
+                if outcome.passed { passed += 1 } else { failed += 1 }
+                lines.push(TestCaseLine {
+                    name: outcome.name,
+                    source: outcome.source,
+                    profile: outcome.profile,
+                    passed: outcome.passed,
+                    decision: outcome.decision,
+                    policies: outcome.policies,
+                    error: outcome.error,
+                    problems: outcome.problems,
+                });
+            }
+
+            render(
+                &TestReport {
+                    cases: lines,
+                    passed,
+                    failed,
+                    asked,
+                },
+                format,
+                trace,
+            )?;
+
+            // The command worked; the workspace is what did not. Same distinction
+            // `inspect` draws between "nothing answered" and "answered, not ready".
+            if failed > 0 {
+                return Ok(ExitCode::from(EXIT_NOT_READY));
+            }
+        }
         WorkspaceOp::Verify => {
             let remote = tracked_remote(trace)?;
             let verified = ws.verify(&remote).map_err(usage)?;

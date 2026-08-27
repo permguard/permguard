@@ -40,8 +40,8 @@ permguard CLI  --apply-->  control plane  --mirror-->  data plane / PDP
 
 - The **control plane** stores zones, ledgers, policy objects and decision logs.
 - The **data plane** mirrors policy ledgers and serves the PDP decision endpoint.
-- The **CLI** initializes workspaces, validates policies, pushes versions, checks
-  decisions and reads/verifies decision records.
+- The **CLI** initializes workspaces, validates policies, **tests what they decide
+  offline**, pushes versions, checks decisions and reads/verifies decision records.
 - The **object model** is content-addressed, so a decision can name the exact
   policy state that was evaluated.
 - The **decision log** is designed for audit: records are produced by the data
@@ -212,10 +212,10 @@ Wait for the data plane to mirror the ledger, then ask for decisions:
 
 ```sh
 sleep 20
-permguard -w examples/basics check -f examples/basics/requests/permit.json
-permguard -w examples/basics check -f examples/basics/requests/deny.json
-permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
-permguard -w examples/basics check -f examples/basics/requests/boxcarred.json -o json
+permguard -w examples/basics check -f requests/permit.json
+permguard -w examples/basics check -f requests/deny.json
+permguard -w examples/basics check -f requests/gateway-permit.json
+permguard -w examples/basics check -f requests/boxcarred.json -o json
 ```
 
 Read the decision log:
@@ -240,7 +240,7 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
 Use gRPC instead of HTTP:
 
 ```sh
-permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f examples/basics/requests/permit.json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
 permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
 ```
 
@@ -408,9 +408,9 @@ permguard -w examples/basics apply -m "lab policies"
 
 sleep 20
 
-permguard -w examples/basics check -f examples/basics/requests/permit.json
-permguard -w examples/basics check -f examples/basics/requests/deny.json
-permguard -w examples/basics check -f examples/basics/requests/gateway-permit.json
+permguard -w examples/basics check -f requests/permit.json
+permguard -w examples/basics check -f requests/deny.json
+permguard -w examples/basics check -f requests/gateway-permit.json
 permguard decisions list --zone acme --ledger main-ledger
 ```
 

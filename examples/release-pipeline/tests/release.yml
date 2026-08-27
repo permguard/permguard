@@ -1,0 +1,59 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# What this workspace claims its policies decide. `permguard test` compiles the
+# policies beside this file and checks every claim, offline, before anything is
+# pushed.
+#
+# `policies` names the authored aliases, not the identities: an alias is what an
+# author wrote and what survives a rename, and it means the same thing in every
+# ledger this workspace is applied to.
+
+# --- the org chart decides who may act at all ------------------------------
+- name: a developer opens a release for a service their team owns
+  request: ../requests/release-create-permit.json
+  expect: { decision: permit, policies: [release-authors] }
+
+- name: nobody opens a release for another team's service
+  request: ../requests/release-create-deny.json
+  # Nothing permitted it. The quiet no, and not the same as a policy refusing.
+  expect: { decision: deny, policies: [] }
+
+# --- separation of duties: a guardrail overrides an entitlement -------------
+- name: a release manager approves somebody else's release
+  request: ../requests/signoff-permit.json
+  expect: { decision: permit, policies: [release-approvers] }
+
+- name: nobody approves the release they created themselves
+  request: ../requests/signoff-separation-of-duties-deny.json
+  expect: { decision: deny, policies: [delivery-guardrails] }
+
+- name: an untested release is not approvable, whoever asks
+  request: ../requests/signoff-untested-deny.json
+  expect: { decision: deny, policies: [delivery-guardrails] }
+
+# --- machine identities, under a profile of their own -----------------------
+- name: the build uploads an artifact for the service it builds
+  request: ../requests/artifact-upload-permit.json
+  expect: { decision: permit, policies: [pipeline-workloads] }
+
+- name: signing is not the build's job
+  request: ../requests/artifact-sign-deny.json
+  expect: { decision: deny, policies: [] }
+
+- name: the controller deploys a release that cleared every gate
+  request: ../requests/deploy-permit.json
+  expect: { decision: permit, policies: [pipeline-workloads] }
+
+- name: a failed security scan stops the deployment
+  request: ../requests/deploy-scan-failed-deny.json
+  expect: { decision: deny, policies: [] }
+
+# --- context: the same person, refused and then allowed ---------------------
+- name: a routine production rollback is refused
+  request: ../requests/rollback-deny.json
+  expect: { decision: deny, policies: [delivery-guardrails] }
+
+- name: the same rollback is allowed during an incident, on call
+  request: ../requests/rollback-during-incident-permit.json
+  expect: { decision: permit, policies: [rollback-responders] }
