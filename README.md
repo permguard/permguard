@@ -3,12 +3,12 @@
 
 # Permguard
 
+[![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
+[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
+
 <p align="center">
   <img src="assets/permguard-banner.png" alt="Permguard" width="820">
 </p>
-
-[![ci](https://github.com/permguard/permguard/actions/workflows/ci.yml/badge.svg)](https://github.com/permguard/permguard/actions/workflows/ci.yml)
-[![licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
 
 **Authorization policy, versioned like code and shipped like code.**
 
