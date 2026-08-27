@@ -15,7 +15,10 @@
 //! | `/.well-known/server-configuration` on a plane | who is this plane, what keys does it sign with, and which interfaces does it expose |
 //! | `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.pdp.v1` offer here |
 //!
-//! The plane's own document links to this one, so nothing has to know this path in advance.
+//! The plane's own document links to this one, so a caller that does not already know the
+//! interface can find it. A caller that *does* — Permguard's own client, which is versioned
+//! against `permguard.pdp.v1` — links against the same constants the routes are mounted from and
+//! posts straight to them.
 //!
 //! # It is ours, and it says so
 //!
@@ -92,9 +95,16 @@ pub fn configuration(base_url: &str) -> Configuration {
     }
 }
 
-/// The document as JSON — what the endpoint answers.
-pub fn document(base_url: &str) -> String {
-    serde_json::to_string_pretty(&configuration(base_url)).unwrap_or_else(|_| "{}".to_owned())
+/// The document as JSON, for a caller that wants the text rather than the value — a test
+/// comparing two transports, say.
+///
+/// The HTTP route does **not** go through here: it answers with the value and lets the response
+/// type serialize it. This used to fall back to `"{}"` when serialization failed, which would have
+/// answered `200` with a configuration describing an interface that offers nothing — a caller
+/// would have configured itself from it and found no endpoints, with no error anywhere to explain
+/// why.
+pub fn document(base_url: &str) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&configuration(base_url))
 }
 
 #[cfg(test)]
@@ -104,7 +114,7 @@ mod tests {
     use super::*;
 
     fn parsed(base: &str) -> serde_json::Value {
-        serde_json::from_str(&document(base)).expect("the document is JSON")
+        serde_json::from_str(&document(base).expect("it serializes")).expect("the document is JSON")
     }
 
     #[test]

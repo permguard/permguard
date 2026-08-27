@@ -139,12 +139,6 @@ is cut.
 
 ### Fixed
 
-- **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
-  fallback took every unmatched path, so an HTTP client asking for a missing route was told
-  `200 OK` with `grpc-status: 12` and an empty body. A gRPC caller still gets `UNIMPLEMENTED`; an
-  HTTP caller now gets a `404` that says so. It matters most for discovery: a client probing for a
-  document was being told "yes" by a port that serves nothing there.
-
 - Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
   versions. Image provenance remains available through GitHub Artifact Attestations, while release
   checksums remain signed with Cosign.
@@ -154,12 +148,6 @@ is cut.
 ## [0.1.1] - 2026-08-26
 
 ### Fixed
-
-- **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
-  fallback took every unmatched path, so an HTTP client asking for a missing route was told
-  `200 OK` with `grpc-status: 12` and an empty body. A gRPC caller still gets `UNIMPLEMENTED`; an
-  HTTP caller now gets a `404` that says so. It matters most for discovery: a client probing for a
-  document was being told "yes" by a port that serves nothing there.
 
 - Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
   then pushed nowhere near it: no `images:` entry ever named it. Versioned tags only — `latest` and

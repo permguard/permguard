@@ -25,6 +25,9 @@ permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "met
 permguard-telemetry.workspace = true
 permguard-transport.workspace = true
 serde.workspace = true
+# Discovery documents are types, not hand-written strings: a plane that adds a field to
+# its own document composes a value rather than slicing a closing brace off some text.
+serde_json.workspace = true
 serde_norway.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tracing.workspace = true

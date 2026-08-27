@@ -695,7 +695,7 @@ impl CheckRequest {
     ///
     /// The top-level `subject`, `resource`, `action` and `context` are the
     /// defaults each evaluation inherits, and each evaluation overrides what it
-    /// declares — the standard's boxcarring rule. A field missing from both is
+    /// declares — the interface's boxcarring rule. A field missing from both is
     /// a refusal that names it, because a PDP that guessed would be answering a
     /// question nobody asked.
     pub fn resolve(&self, max_evaluations: usize) -> Result<Resolved, Malformed> {

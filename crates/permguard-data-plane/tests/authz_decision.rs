@@ -1067,20 +1067,17 @@ mod surface {
         )
     }
 
-    /// The interface names itself, the endpoints it advertises are the ones mounted, and it is
-    /// published at **exactly one** path.
+    /// The interface names itself, the endpoints it advertises are the ones mounted, and the
+    /// obvious aliases of its path are not served.
     ///
-    /// The last clause is the one worth stating carefully. Asserting that some particular foreign
-    /// path answers `404` proves nothing on its own: every path this surface does not mount
-    /// answers `404`, so such a test passes for a reason that has nothing to do with the name in
-    /// it. What actually matters is narrower and stronger — a caller must not be able to find this
-    /// document under a second name, because the moment two paths serve it, one of them becomes a
-    /// compatibility surface somebody has to keep honest.
-    ///
-    /// So the assertion is a count: of every path a reasonable person might reach for, exactly one
-    /// answers, and it is the interface's own constant.
+    /// The last clause is deliberately modest, because a test cannot enumerate every path a router
+    /// does not mount. What it *can* do is check the ones a well-meaning person would add — the
+    /// name without its version, the bare product name — since a second address for this document
+    /// is a compatibility surface somebody then has to keep honest. That the router mounts the
+    /// document only at [`CONFIGURATION_PATH`](permguard_languages::request::CONFIGURATION_PATH)
+    /// is guaranteed by construction, not by this test: the route is that constant.
     #[tokio::test]
-    async fn the_configuration_is_published_at_exactly_one_path_and_describes_this_interface() {
+    async fn the_configuration_describes_this_interface_and_its_aliases_are_not_served() {
         let root = scratch("http-config").join("mirrors");
         std::fs::create_dir_all(&root).expect("the root exists");
 
@@ -1125,10 +1122,10 @@ mod surface {
             );
         }
 
-        // And one path publishes it. The candidates are the shapes a second surface would take if
-        // anyone added one: the interface's name without its version, and a bare product name.
-        // Neither is served, and this is what says so — the generic `404` for an unknown path
-        // would not, because it says nothing about *which* paths were meant to exist.
+        // The aliases a second surface would most likely take: the interface's name without its
+        // version, and a bare product name. Neither is served — and the point of naming them is
+        // that the generic `404` for an unknown path says nothing about *which* paths somebody
+        // might have meant to add.
         let candidates = [
             declared,
             "/.well-known/permguard-pdp-configuration",
@@ -1145,7 +1142,7 @@ mod surface {
         assert_eq!(
             publishing,
             vec![declared],
-            "this document has exactly one address, and it is the one the interface declares"
+            "of these, only the declared path publishes the configuration"
         );
     }
 
@@ -1454,9 +1451,11 @@ mod grpc_socket {
 
         // The HTTP document the same plane would serve, built by the one function both call.
         let base = over_grpc["pdp"].as_str().expect("a pdp identifier");
-        let over_http: Value =
-            serde_json::from_str(&permguard_data_plane::authz::configuration::document(base))
-                .expect("it is JSON");
+        let over_http: Value = serde_json::from_str(
+            &permguard_data_plane::authz::configuration::document(base)
+                .expect("the configuration serializes"),
+        )
+        .expect("it is JSON");
 
         assert_eq!(
             over_grpc, over_http,

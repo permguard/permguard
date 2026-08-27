@@ -15,12 +15,27 @@
 //!
 //! # One payload, two transports
 //!
-//! The payload is the profile's JSON, verbatim: it is what a caller wrote and
+//! The payload is the interface's JSON, verbatim: it is what a caller wrote and
 //! what the server documents, so the CLI never re-shapes a request behind an
 //! operator's back. Over `http`/`https` it is the body of a `POST`; over
 //! `grpc`/`grpcs` it is mapped onto the generated request and back, so the
 //! answer is the same JSON either way and `-o json` prints what the server
 //! decided rather than what this client made of it.
+//!
+//! # This client knows its own paths, and that is the point
+//!
+//! It does **not** fetch the discovery document to find out where to post. It is a *versioned*
+//! client: it implements `permguard.pdp.v1`, and the paths of that interface are part of what
+//! `v1` means — they come from the same constants the server mounts its routes from, in
+//! [`permguard_languages::request`], so the two cannot drift apart. A round trip to be told a
+//! constant it already links against would buy nothing, and following a URL out of a document
+//! would mean deciding what to do when that URL points at another origin.
+//!
+//! Discovery exists for the clients that need it: something generic, written against no particular
+//! version, or an operator with an address and a question. A caller in that position starts at the
+//! plane's `/.well-known/server-configuration`, follows `interfaces` to the interface's own
+//! configuration, and reads the endpoints from there. Both routes lead to the same paths — one
+//! because it was compiled against them, the other because it asked.
 
 use serde_json::{Map, Value};
 

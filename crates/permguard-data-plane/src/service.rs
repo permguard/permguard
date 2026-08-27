@@ -48,17 +48,16 @@ struct HealthBody {
 fn discovery_routes(context: &ServerContext<'_>) -> Router {
     #[derive(Clone)]
     struct Discovery {
-        document: String,
+        document: permguard_server::plane::PlaneConfiguration,
         keys: Option<std::sync::Arc<dyn permguard_core::keys::KeyManager>>,
     }
 
-    async fn configuration(State(state): State<Discovery>) -> axum::response::Response {
-        use axum::response::IntoResponse as _;
-        (
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            state.document,
-        )
-            .into_response()
+    /// Serialized by the response type, not by hand. A document that could not be rendered is a
+    /// server error and says so — never an empty object that reads as a plane offering nothing.
+    async fn configuration(
+        State(state): State<Discovery>,
+    ) -> Json<permguard_server::plane::PlaneConfiguration> {
+        Json(state.document)
     }
 
     async fn keys(State(state): State<Discovery>) -> Json<permguard_core::keys::JwkSet> {
@@ -71,7 +70,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
     }
 
     let state = Discovery {
-        document: data_plane_configuration_document(context),
+        document: data_plane_configuration(context),
         keys: context.data_signing_keys().cloned(),
     };
 
@@ -85,22 +84,32 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 /// exposes** — each with the address of its own configuration.
 ///
 /// The link is the point. Discovery is layered — the process names its planes, a plane names its
-/// interfaces, an interface describes itself — so a caller given one URL reaches the rest without
-/// ever having a path compiled into it. A client that knew `/.well-known/permguard-pdp-v1-configuration`
-/// in advance would be a client that breaks the day the interface gains a version.
-fn data_plane_configuration_document(context: &ServerContext<'_>) -> String {
+/// interfaces, an interface describes itself — so a client holding only a plane's address can
+/// reach the rest by following it.
+///
+/// That is for callers who need it: something generic, written against no particular version of
+/// the interface, or an operator with an address and a question. Permguard's own client does not
+/// walk this chain — it is a versioned client for `permguard.pdp.v1` and links against that
+/// interface's constants directly, which is the same place these links are built from.
+///
+/// Composed as a value and serialized by the response type, never assembled as text: this used to
+/// slice the closing brace off the generic document and concatenate, with a fallback that returned
+/// the *unextended* document when the surgery did not find what it expected. A caller following a
+/// link that silently was not there concludes the plane offers nothing.
+fn data_plane_configuration(
+    context: &ServerContext<'_>,
+) -> permguard_server::plane::PlaneConfiguration {
     let base =
         permguard_server::plane::plane_http_base(context.config(), PLANE).unwrap_or_default();
-    let generic = permguard_server::plane::plane_configuration_document(context.config(), PLANE);
-    let Some(head) = generic.strip_suffix('}') else {
-        return generic;
-    };
+    let mut configuration = permguard_server::plane::plane_configuration(context.config(), PLANE);
+    configuration.interfaces.insert(
+        permguard_languages::request::INTERFACE.to_owned(),
+        permguard_server::plane::InterfaceLink {
+            configuration: format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
+        },
+    );
 
-    format!(
-        "{head},\"interfaces\":{{\"{interface}\":{{\"configuration\":\"{base}{path}\"}}}}}}",
-        interface = permguard_languages::request::INTERFACE,
-        path = permguard_languages::request::CONFIGURATION_PATH,
-    )
+    configuration
 }
 
 pub struct DataPlaneModule;

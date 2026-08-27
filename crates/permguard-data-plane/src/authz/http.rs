@@ -5,7 +5,7 @@
 //!
 //! Three lines per handler, because everything that can be wrong lives in
 //! [`super::decide`] and everything about *saying* it lives in
-//! [`crate::authz::wire`]. What is here is the binding the standard defines: `POST`,
+//! [`crate::authz::wire`]. What is here is the interface's HTTP binding: `POST`,
 //! `application/json`, `X-Request-ID` echoed, and the status codes a PEP
 //! switches on.
 //!
@@ -138,12 +138,11 @@ async fn answer(
 }
 
 /// The `permguard.pdp.v1` configuration: what this interface offers here.
-async fn pdp_configuration(State(surface): State<Surface>) -> Response {
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/json")],
-        configuration::document(&surface.base_url),
-    )
-        .into_response()
+///
+/// Answered as a value: the response type serializes it, so there is no path where a failure to
+/// render becomes a `200` carrying an empty object.
+async fn pdp_configuration(State(surface): State<Surface>) -> Json<configuration::Configuration> {
+    Json(configuration::configuration(&surface.base_url))
 }
 
 /// Turns a refusal into the answer the contract names.

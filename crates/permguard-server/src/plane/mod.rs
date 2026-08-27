@@ -43,8 +43,8 @@ pub mod factories;
 pub mod settings;
 
 pub use discovery::{
-    DiscoveredPlane, discovered_planes, plane_configuration_document, plane_http_base,
-    server_configuration_document,
+    DiscoveredPlane, InterfaceLink, PlaneConfiguration, discovered_planes, plane_configuration,
+    plane_http_base, server_configuration_document,
 };
 pub use factories::build_settings;
 pub use settings::*;

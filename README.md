@@ -107,8 +107,7 @@ Needs Rust `1.97`+, `cargo`, and `task` or `make`. Docker Compose for the observ
 
 Start with what the planes say about themselves, because it is the shape of everything below.
 Nothing is agreed out of band: a client is handed **one URL** and reads the rest off it — where to
-push policy, where to ask for a decision, which keys sign what, and which parts of the standard are
-not served here.
+push policy, where to ask for a decision, which keys sign what, and what the interface offers.
 
 Both are up after `task run:all`, which is the first command of the next section.
 
@@ -166,7 +165,7 @@ curl -s http://127.0.0.1:7656/.well-known/server-configuration | jq
 ```
 
 A plane says who it is, what it signs with, and **which interfaces it exposes** — each pointing at
-its own configuration. Nothing has to know a path in advance:
+its own configuration. Follow the link and the interface describes itself:
 
 ```sh
 curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
@@ -207,6 +206,11 @@ over HTTP and gRPC — the store in the payload, profile selection, partition in
 the split reasons, boxcarring. Nothing is listed because it is planned, and nothing that is only
 half-true: a caller that configures itself from this document and is then refused by the same
 server has been lied to.
+
+A **generic** client walks that chain: plane, then interface, then endpoints. Permguard's own CLI
+does not — it is a versioned client for `permguard.pdp.v1` and links against the same constants the
+server mounts its routes from, so the two cannot drift and there is no round trip to be told a path
+it already knows. Both arrive at the same endpoints.
 
 So discovery is three layers, and each answers a different question:
 

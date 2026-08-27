@@ -73,22 +73,58 @@ pub fn plane_http_base(config: &Config, plane_id: &str) -> Option<String> {
         .map(|plane| plane.http_base)
 }
 
-/// One plane's own configuration document, as JSON text — what that plane's
-/// public port answers at `/.well-known/server-configuration`: itself, and
-/// nothing else. A client configured to talk to a plane discovers that
-/// plane; the cross-plane registry is the process's business and lives on
-/// the telemetry surface.
-pub fn plane_configuration_document(config: &Config, plane_id: &str) -> String {
+/// Where one interface publishes what it offers.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InterfaceLink {
+    /// The address of that interface's own configuration document.
+    pub configuration: String,
+}
+
+/// One plane's own configuration document — what that plane's public port answers at
+/// `/.well-known/server-configuration`: itself, and nothing else. A client configured to talk to a
+/// plane discovers that plane; the cross-plane registry is the process's business and lives on the
+/// telemetry surface.
+///
+/// # Why this is a type and not a `format!`
+///
+/// It used to be a hand-written JSON string, and a plane that needed to add a field to it had to
+/// slice the closing brace off the text and concatenate — which is not composition, it is string
+/// surgery on a document, and it carried a fallback that returned the *unextended* document when
+/// the surgery did not find what it expected. A discovery document silently missing the half a
+/// caller came for is worse than an error: the caller concludes the plane offers nothing there.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PlaneConfiguration {
+    /// `control-plane` or `data-plane`.
+    pub plane: String,
+    /// Where this plane's signing keys are published.
+    pub jwks_uri: String,
+    /// The interfaces this plane exposes, each pointing at its own configuration. Absent when a
+    /// plane exposes none, rather than present and empty: nothing to follow is not an empty list
+    /// of things to follow.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub interfaces: std::collections::BTreeMap<String, InterfaceLink>,
+}
+
+/// One plane's own configuration: who it is, and what it signs with.
+///
+/// Interfaces are added by whoever serves them — the plane knows its own name and keys, and only
+/// the module that mounts an interface knows that it did.
+pub fn plane_configuration(config: &Config, plane_id: &str) -> PlaneConfiguration {
     let public_name = match plane_id {
         "control" => "control-plane",
         _ => "data-plane",
     };
-    let jwks = discovered_planes(config)
+    let jwks_uri = discovered_planes(config)
         .into_iter()
         .find(|plane| plane.id == public_name)
         .map(|plane| format!("{}/{}/keys", plane.http_base, plane.id))
         .unwrap_or_default();
-    format!("{{\"plane\":\"{public_name}\",\"jwks_uri\":\"{jwks}\"}}")
+
+    PlaneConfiguration {
+        plane: public_name.to_owned(),
+        jwks_uri,
+        interfaces: std::collections::BTreeMap::new(),
+    }
 }
 
 /// The process-level registry, as JSON text — what the telemetry surface
@@ -184,7 +220,8 @@ mod document_tests {
     fn the_plane_document_names_itself_and_its_keys() {
         let config = config_with(&[(SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556")]);
 
-        let document = plane_configuration_document(&config, "control");
+        let document = serde_json::to_string(&plane_configuration(&config, "control"))
+            .expect("the plane configuration serializes");
         assert!(
             document.contains("\"plane\":\"control-plane\""),
             "{document}"
