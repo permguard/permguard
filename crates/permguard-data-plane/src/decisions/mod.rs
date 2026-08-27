@@ -20,7 +20,7 @@
 //! - **A record is durable before it is shipped.** A restart loses nothing,
 //!   and a control plane that is down for a day costs spool, not availability.
 //!
-//! [`shipper`] is the sending half. [`journal`] is the writing half: it turns a decision into a record at the
+//! [`shipper`] is the sending half. [`mod@journal`] is the writing half: it turns a decision into a record at the
 //! position the chain demands, and ends the stream when the spool reaches a
 //! bound. [`measure`] is what it reports about itself.
 

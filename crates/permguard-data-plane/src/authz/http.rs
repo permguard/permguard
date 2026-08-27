@@ -5,7 +5,7 @@
 //!
 //! Three lines per handler, because everything that can be wrong lives in
 //! [`super::decide`] and everything about *saying* it lives in
-//! [`crate::wire`]. What is here is the binding the standard defines: `POST`,
+//! [`crate::authz::wire`]. What is here is the binding the standard defines: `POST`,
 //! `application/json`, `X-Request-ID` echoed, and the status codes a PEP
 //! switches on.
 //!

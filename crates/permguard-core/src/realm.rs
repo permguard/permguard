@@ -224,7 +224,8 @@ pub struct RealmInput {
 ///
 /// The rest of the build reads only this — never the raw override, never "the server's value unless
 /// the realm said otherwise". Resolution happened once, where the server's defaults were known; from
-/// here a realm is a complete, self-describing configuration. Built by [`Config::with_realms`]; the
+/// here a realm is a complete, self-describing configuration. Built by
+/// [`crate::config::Config::with_realms`]; the
 /// fields are set there and read everywhere else through the getters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RealmConfig {

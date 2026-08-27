@@ -32,7 +32,7 @@
 //! permguard-std = { version = "0.1", default-features = false, features = ["secrets", "storage"] }
 //! ```
 //!
-//! [`provision`] is **not** in the default set, and deliberately: it is the one that can mint a
+//! `provision` is **not** in the default set, and deliberately: it is the one that can mint a
 //! certificate authority. Getting it has to be something written down — `features = ["provision"]` —
 //! rather than something inherited by writing the crate's name.
 

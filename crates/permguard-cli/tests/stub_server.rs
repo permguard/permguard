@@ -881,3 +881,159 @@ fn remote_args(address: &str) -> Vec<String> {
         format!("http://{address}"),
     ]
 }
+
+/// The two stopping semantics are validated exactly, not as "any prefix will do".
+///
+/// Under `deny_on_first_deny` a batch ends at the first deny and not before, so the number of
+/// evaluations answered is decided by the answers themselves. Accepting any prefix let a single
+/// `permit` pass as a whole batch, and let a batch that kept going past its own stop pass too.
+#[test]
+fn test_remote_holds_a_stopping_batch_to_the_length_its_answers_imply() {
+    // `deny_on_first_deny`: three asked.
+    for (what, body, ok) in [
+        (
+            "stopped at the first deny, as it must",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"read"},{"decision":false,"request_id":"create"}]}"#,
+            true,
+        ),
+        (
+            "every answer a permit, so every one runs",
+            r#"{"decision":true,"evaluations":[
+                 {"decision":true,"request_id":"read"},{"decision":true,"request_id":"create"},
+                 {"decision":true,"request_id":"purge"}]}"#,
+            true,
+        ),
+        (
+            "one permit offered as the whole batch",
+            r#"{"decision":true,"evaluations":[{"decision":true,"request_id":"read"}]}"#,
+            false,
+        ),
+        (
+            "kept going past the deny that ends it",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":false,"request_id":"read"},{"decision":true,"request_id":"create"},
+                 {"decision":true,"request_id":"purge"}]}"#,
+            false,
+        ),
+    ] {
+        let dir = scratch("remote-stop-deny");
+        stopping_workspace(&dir, "deny_on_first_deny");
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            ("POST".to_owned(), "/access/v1/evaluations".to_owned()),
+            (200, body.to_owned()),
+        );
+        let stub = serve_owned(routes);
+        let args = remote_args(&stub.address);
+        let output = run(
+            &dir,
+            &args.iter().map(String::as_str).collect::<Vec<&str>>(),
+        );
+
+        if ok {
+            assert!(
+                output.status.success(),
+                "{what} was refused: {}",
+                stdout(&output)
+            );
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{what} passed: {}",
+                stdout(&output)
+            );
+            assert!(
+                stdout(&output).contains("not a decision"),
+                "{what}: {}",
+                stdout(&output)
+            );
+        }
+    }
+
+    // `permit_on_first_permit`: the mirror image.
+    for (what, body, ok) in [
+        (
+            "stopped at the first permit, as it must",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":false,"request_id":"read"},{"decision":true,"request_id":"create"}]}"#,
+            true,
+        ),
+        (
+            "one deny offered as the whole batch",
+            r#"{"decision":false,"evaluations":[{"decision":false,"request_id":"read"}]}"#,
+            false,
+        ),
+        (
+            "kept going past the permit that ends it",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"read"},{"decision":false,"request_id":"create"},
+                 {"decision":false,"request_id":"purge"}]}"#,
+            false,
+        ),
+    ] {
+        let dir = scratch("remote-stop-permit");
+        stopping_workspace(&dir, "permit_on_first_permit");
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            ("POST".to_owned(), "/access/v1/evaluations".to_owned()),
+            (200, body.to_owned()),
+        );
+        let stub = serve_owned(routes);
+        let args = remote_args(&stub.address);
+        let output = run(
+            &dir,
+            &args.iter().map(String::as_str).collect::<Vec<&str>>(),
+        );
+
+        if ok {
+            assert!(
+                output.status.success(),
+                "{what} was refused: {}",
+                stdout(&output)
+            );
+        } else {
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{what} passed: {}",
+                stdout(&output)
+            );
+        }
+    }
+}
+
+/// A workspace whose one case boxcars three questions under a named semantic.
+fn stopping_workspace(dir: &Path, semantic: &str) {
+    std::fs::create_dir_all(dir.join("cedar")).expect("the partition directory is created");
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("cedar/readers.cedar"),
+        "@alias(\"readers\")\npermit (principal, action == Action::\"read\", resource);\n",
+    )
+    .expect("the policy is written");
+    std::fs::write(
+        dir.join("requests/batch.json"),
+        format!(
+            r#"{{"subject":{{"type":"User","id":"dora"}},"resource":{{"type":"Document","id":"q4"}},
+                "options":{{"evaluations_semantic":"{semantic}"}},
+                "evaluations":[{{"action":{{"name":"read"}},"request_id":"read"}},
+                               {{"action":{{"name":"create"}},"request_id":"create"}},
+                               {{"action":{{"name":"purge"}},"request_id":"purge"}}]}}"#
+        ),
+    )
+    .expect("the request is written");
+    // The case asserts nothing about the outcome: what is under test is whether the answer is
+    // accepted as an answer at all.
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: three in one\n  request: ../requests/batch.json\n  expect: {}\n",
+    )
+    .expect("the cases are written");
+
+    run(dir, &["init", "stop-cases"]);
+}

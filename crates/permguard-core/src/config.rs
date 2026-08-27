@@ -262,7 +262,7 @@ pub const SETTING_NOTP_LEDGER_QUOTA_BYTES: &str = "PERMGUARD_NOTP_LEDGER_QUOTA_B
 /// Runtime setting keys for a mirroring plane's synchronization loop.
 ///
 /// The *servers* it follows are a structured record and come from the configuration file (see
-/// [`crate::sync`]); everything measurable about the loop is a flat setting, so a deployment can
+/// [`crate::mirrors`]); everything measurable about the loop is a flat setting, so a deployment can
 /// tune a cadence from the environment without rewriting a file.
 pub const SETTING_MIRRORS_ENABLED: &str = "PERMGUARD_MIRRORS_ENABLED";
 

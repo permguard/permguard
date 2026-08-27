@@ -185,15 +185,39 @@ fn read_decision(
                     held.len()
                 ));
             }
-            // Fewer is legal only where the semantic stops the batch early, and only by
-            // stopping: the ones answered are the first ones asked, in order.
-            if held.len() < asked.queries.len()
-                && asked.semantic == permguard_languages::Semantic::ExecuteAll
-            {
+            // Fewer is legal only where the semantic stops the batch, and only *by* stopping.
+            // Accepting any prefix was too lax: under `deny_on_first_deny`, a single `permit`
+            // would have passed as a whole batch, and a batch that kept going after the deny
+            // that should have ended it would have passed too. So the rule is exact — every
+            // evaluation but the last must not have met the stop condition, and the last must
+            // have met it unless there was simply nothing left to ask.
+            let stops = |permitted: bool| match asked.semantic {
+                permguard_languages::Semantic::ExecuteAll => false,
+                permguard_languages::Semantic::DenyOnFirstDeny => !permitted,
+                permguard_languages::Semantic::PermitOnFirstPermit => permitted,
+            };
+            for (index, evaluation) in held.iter().enumerate().take(held.len() - 1) {
+                if stops(evaluation.decision) {
+                    return Err(format!(
+                        "evaluation {index} answered {} and `{}` ends the batch there, yet {} more \
+                         were answered",
+                        if evaluation.decision {
+                            "permit"
+                        } else {
+                            "deny"
+                        },
+                        semantic_named(asked.semantic),
+                        held.len() - index - 1
+                    ));
+                }
+            }
+            let last = held.len() - 1;
+            if held.len() < asked.queries.len() && !stops(held[last].decision) {
                 return Err(format!(
-                    "every evaluation runs under `execute_all`, and {} of {} were answered",
+                    "{} of {} evaluations were answered, and nothing in them ends a `{}` batch",
                     held.len(),
-                    asked.queries.len()
+                    asked.queries.len(),
+                    semantic_named(asked.semantic)
                 ));
             }
             for (index, evaluation) in held.iter().enumerate() {
@@ -269,6 +293,15 @@ fn read_decision(
     carried.permitted = answered.decision;
 
     Ok(carried)
+}
+
+/// A semantic in the words the wire uses for it, for a message that has to name one.
+fn semantic_named(semantic: permguard_languages::Semantic) -> &'static str {
+    match semantic {
+        permguard_languages::Semantic::ExecuteAll => "execute_all",
+        permguard_languages::Semantic::DenyOnFirstDeny => "deny_on_first_deny",
+        permguard_languages::Semantic::PermitOnFirstPermit => "permit_on_first_permit",
+    }
 }
 
 /// Resolves the plane to ask, the way `check` resolves it: the checkout, unless told otherwise.
@@ -395,7 +428,7 @@ fn httpdate_now() -> Option<String> {
 
 /// The workspace commands: parse, call the engine module, report. The engine
 /// is `engine::workspace`; the CLI owns arguments, transport and output —
-/// every answer is a [`output::Report`], so terminal, JSON and YAML all work
+/// every answer is a [`crate::output::Report`], so terminal, JSON and YAML all work
 /// for every command.
 pub fn workspace_command(
     globals: &Globals,
