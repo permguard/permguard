@@ -75,6 +75,31 @@ is cut.
 
 ### Fixed
 
+- **gRPC and HTTP resolve a boxcarred batch the same way.** An evaluation stating
+  `"partition_inputs": {}` replaces the request's defaults with nothing; one stating none inherits
+  them. A proto3 `map` cannot tell an absent field from an empty one, so over gRPC `{}` was read as
+  "unset" and *inherited* — the same request refused over HTTP and permitted over gRPC. The
+  evaluation's field is a `PartitionInputs` message now, which has explicit presence; the old tag
+  is reserved rather than reused, because a map and a message are different encodings.
+
+- **The manifest refuses a key it does not know.** `deny_unknown_fields` on every YAML section, and
+  the CBOR decoder — which documented itself as fail-closed and was not — rejects an unknown map
+  key. `requred: true` was accepted and `required` stayed `false`: one transposed letter turning a
+  partition whose data is mandatory into one where it is optional, silently, in the file whose
+  whole job is to say what is mandatory. Forward compatibility is not lost, it is where the
+  manifest already puts it: a ledger needing a newer reader says so in `runtimes.<key>.engine`, and
+  the load gate refuses by name.
+
+- **A profile must name at least one partition, and none of them twice**, and a manifest must
+  declare at least one profile. A profile naming none can only ever deny, with nothing to cite; one
+  naming a partition twice would ask it twice and cite it twice. Profile names now follow the same
+  grammar as everything else the model names.
+
+- **A boxcarred batch no longer copies its inputs once per evaluation.** With the default of 256
+  evaluations, a one-megabyte entity store became hundreds of megabytes of identical copies before
+  a policy had been consulted. Evaluations that inherit share one map; the resolved request is
+  shared with the blocking evaluation rather than cloned into it.
+
 - **gRPC no longer answers a request it did not fully receive.** The client hand-walked the JSON
   and dropped what it could not represent: a `context` that was not an object became no context,
   `evaluations: null` became no evaluations, an unknown `evaluations_semantic` became the default.
