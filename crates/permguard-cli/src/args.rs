@@ -14,6 +14,14 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::output::OutputFormat;
 
+/// The heading the flags that apply to every command are listed under.
+///
+/// Their own block, rather than mixed into each command's: clap appends a global flag wherever it
+/// is inherited, which interleaves `--tls-ca-file` with `--follow` in an order nobody chose and
+/// which comes out different per command. The heading is what makes every help read the same way —
+/// the command's own flags, then the ones that are the same everywhere.
+const GLOBAL_HEADING: &str = "Global options";
+
 /// The command tree, with one help instead of two.
 ///
 /// clap answers `-h` with a summary and `--help` with an expanded form, so the
@@ -69,8 +77,14 @@ fn one_help(command: clap::Command) -> clap::Command {
                 .short('h')
                 .long("help")
                 .action(clap::ArgAction::HelpShort)
-                .help("Print help"),
-        );
+                .help("Print help")
+                .help_heading(GLOBAL_HEADING),
+        )
+        // One dialect for the environment, everywhere: `[env: NAME]`. clap's own rendering appends
+        // the variable's current value, which the two endpoints — read by `settings` rather than by
+        // clap, so that `config show` can still say where a value came from — cannot produce, and
+        // which would put a machine's TLS paths into the output of `--help`.
+        .mut_args(|arg| arg.hide_env_values(true));
 
     // clap builds a help flag per command, so the whole tree has to be walked:
     // consistency that stops at the first level is the inconsistency again.
@@ -135,7 +149,11 @@ pub fn help_request(matches: &clap::ArgMatches) -> Option<Vec<String>> {
     name = "permguard",
     // The banner is not here: `one_help` puts it on this command and on every one below it,
     // from a single place, so the root cannot end up wearing a different one.
-    about = "Permguard command-line interface"
+    about = "Permguard command-line interface",
+    // Spelled out because clap hands a flattened struct's doc comment to whichever of the two the
+    // command has not set, and `Globals` explains itself to a reader of the source, not to somebody
+    // asking what `permguard` is.
+    long_about = "Permguard command-line interface"
 )]
 pub struct Cli {
     #[command(flatten)]
@@ -161,6 +179,7 @@ pub struct Cli {
 /// Permguard* is being talked to, which every command that talks to one needs, and because an
 /// operator should not have to learn where a flag lives per command.
 #[derive(Debug, Args)]
+#[command(next_help_heading = GLOBAL_HEADING)]
 pub struct Globals {
     /// Output format.
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Terminal, global = true)]
@@ -180,7 +199,8 @@ pub struct Globals {
 
     // Not clap's `env`: `config show` reports which of flag, environment and file a value came
     // from, and a value clap resolved would arrive indistinguishable from a flag. `settings` reads
-    // the variable itself — so the help has to say so, rather than showing clap's `[env: …]`.
+    // the variable itself — so the help has to say so by hand, in the same `[env: NAME]` that
+    // `one_help` makes clap render for the variables clap does read.
     /// Where the control plane is reached [env: PERMGUARD_CONTROL_PLANE_ENDPOINT]
     #[arg(long, global = true, alias = "endpoint", value_name = "URL")]
     pub control_endpoint: Option<String>,
