@@ -71,7 +71,10 @@ mod tests {
         let (base, zone, ledger) =
             parse_clone_url("https://permguard.acme.com/delivery/main-ledger").unwrap();
         assert_eq!(base, "https://permguard.acme.com");
-        assert_eq!((zone.as_str(), ledger.as_str()), ("delivery", "main-ledger"));
+        assert_eq!(
+            (zone.as_str(), ledger.as_str()),
+            ("delivery", "main-ledger")
+        );
         let (base, ..) = parse_clone_url("https://saas.io/acme-corp/delivery/main-ledger").unwrap();
         assert_eq!(base, "https://saas.io/acme-corp");
     }

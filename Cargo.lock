@@ -2165,6 +2165,7 @@ dependencies = [
  "cedar-policy",
  "permguard-objects",
  "regorus",
+ "serde",
  "serde_json",
  "serde_norway",
 ]

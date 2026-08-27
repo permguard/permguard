@@ -32,6 +32,7 @@ mod rego;
 pub mod evaluate;
 pub mod lookup;
 pub mod registry;
+pub mod request;
 pub mod role;
 
 pub use evaluate::{
@@ -39,4 +40,7 @@ pub use evaluate::{
 };
 pub use lookup::{language, language_for_media_type, languages};
 pub use registry::evaluating;
+pub use request::{
+    Asked, CheckRequest, CheckResponse, Decision, DecisionContext, Malformed, Semantic,
+};
 pub use role::{Authoring, ExtractedPolicy, Language};

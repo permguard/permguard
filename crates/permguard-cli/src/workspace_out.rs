@@ -1443,6 +1443,9 @@ pub struct TestCaseLine {
     pub decision: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<String>,
+    /// One per boxcarred evaluation, as `id=permit`. Empty for a plain request.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub evaluations: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1466,12 +1469,26 @@ impl Report for TestReport {
             } else {
                 style::delete("fail")
             };
-            let decided = match (case.decision, case.policies.as_slice()) {
-                (Some(true), []) => "permit".to_owned(),
-                (Some(true), cited) => format!("permit by {}", cited.join(", ")),
-                (Some(false), []) => "deny, nothing permitted it".to_owned(),
-                (Some(false), cited) => format!("deny by {}", cited.join(", ")),
-                (None, _) => "not evaluated".to_owned(),
+            // A boxcarred request has no single policy to cite: what it decided is what
+            // each of its evaluations decided, and the batch is their conjunction.
+            let decided = if !case.evaluations.is_empty() {
+                format!(
+                    "{} — {}",
+                    match case.decision {
+                        Some(true) => "permit",
+                        Some(false) => "deny",
+                        None => "not evaluated",
+                    },
+                    case.evaluations.join(" ")
+                )
+            } else {
+                match (case.decision, case.policies.as_slice()) {
+                    (Some(true), []) => "permit".to_owned(),
+                    (Some(true), cited) => format!("permit by {}", cited.join(", ")),
+                    (Some(false), []) => "deny, nothing permitted it".to_owned(),
+                    (Some(false), cited) => format!("deny by {}", cited.join(", ")),
+                    (None, _) => "not evaluated".to_owned(),
+                }
             };
             let padding = " ".repeat(width.saturating_sub(case.name.chars().count()));
             writeln!(

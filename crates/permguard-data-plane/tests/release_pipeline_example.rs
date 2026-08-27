@@ -56,7 +56,11 @@ const EXPECTED: &[(&str, bool, &[&str])] = &[
         false,
         &["delivery-guardrails"],
     ),
-    ("signoff-untested-deny.json", false, &["delivery-guardrails"]),
+    (
+        "signoff-untested-deny.json",
+        false,
+        &["delivery-guardrails"],
+    ),
     ("artifact-upload-permit.json", true, &["pipeline-workloads"]),
     ("artifact-sign-deny.json", false, &[]),
     ("deploy-permit.json", true, &["pipeline-workloads"]),
@@ -386,9 +390,8 @@ fn provision(root: &Path) -> Manifest {
 fn request(name: &str) -> wire::CheckRequest {
     let text = std::fs::read_to_string(example().join("requests").join(name))
         .unwrap_or_else(|_| panic!("{name} is readable"));
-    let mut payload: Value = serde_json::from_str(&text).unwrap_or_else(|error| {
-        panic!("{name} is not JSON the CLI would accept either: {error}")
-    });
+    let mut payload: Value = serde_json::from_str(&text)
+        .unwrap_or_else(|error| panic!("{name} is not JSON the CLI would accept either: {error}"));
 
     let object = payload
         .as_object_mut()
@@ -453,13 +456,19 @@ fn each_profile_loads_only_the_partitions_it_needs() {
         "what a person asks is answered by the org chart and the guardrails together"
     );
     assert_eq!(
-        manifest.profiles.get("pipeline").map(|p| p.partitions.clone()),
+        manifest
+            .profiles
+            .get("pipeline")
+            .map(|p| p.partitions.clone()),
         Some(vec!["pipeline-rego".to_owned()]),
         "what the pipeline asks is answered by the rules for machines, alone"
     );
 
     assert_eq!(
-        manifest.partitions.get("admin-rego").map(|p| p.runtime.clone()),
+        manifest
+            .partitions
+            .get("admin-rego")
+            .map(|p| p.runtime.clone()),
         manifest
             .partitions
             .get("pipeline-rego")

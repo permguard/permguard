@@ -770,3 +770,300 @@ fn every_path_a_flag_names_is_read_from_the_working_directory() {
         stdout(&read)
     );
 }
+
+/// A request the data plane would refuse is refused here too, in the same words.
+///
+/// This used to be the hole under the whole command: a missing `subject` became an empty type and
+/// an empty id, the engines were asked about *that*, and they answered — while the same request
+/// sent to a plane was refused before any policy saw it. A local run that answers where a remote
+/// one refuses is the promise of `permguard test` broken quietly, so the refusal is the answer, and
+/// a case may expect it.
+#[test]
+fn test_refuses_a_request_the_data_plane_would_refuse() {
+    let dir = scratch("test-malformed");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+
+    for (name, request, wanted) in [
+        (
+            "no resource at all",
+            r#"{"subject":{"type":"u","id":"a"},"action":{"name":"read"}}"#,
+            "resource",
+        ),
+        (
+            "a subject with no id",
+            r#"{"subject":{"type":"u"},"action":{"name":"read"},"resource":{"type":"d","id":"b"}}"#,
+            "subject.id",
+        ),
+        (
+            "an action named by whitespace",
+            r#"{"subject":{"type":"u","id":"a"},"action":{"name":"  "},"resource":{"type":"d","id":"b"}}"#,
+            "action",
+        ),
+        // A struct reads from a sequence too, in serde and therefore in the plane: an
+        // empty one is every field defaulted, and the refusal is the first field missing.
+        ("a request that is a sequence", "[]", "subject"),
+    ] {
+        std::fs::write(dir.join("requests/probe.json"), request).expect("the request is written");
+
+        // Expecting a decision: the refusal has to fail the case, and name the field.
+        std::fs::write(
+            dir.join("tests/cases.yml"),
+            "- name: probe\n  request: ../requests/probe.json\n  expect: { decision: deny }\n",
+        )
+        .expect("the cases are written");
+        let output = run(&dir, &["test"]);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{name} was evaluated instead of refused: {}",
+            stdout(&output)
+        );
+        assert!(
+            stdout(&output).contains("field_required") && stdout(&output).contains(wanted),
+            "{name}: the refusal does not name the field: {}",
+            stdout(&output)
+        );
+
+        // And expecting the refusal: the case passes, the same way it would against a plane.
+        std::fs::write(
+            dir.join("tests/cases.yml"),
+            "- name: probe\n  request: ../requests/probe.json\n  expect: { error: field_required }\n",
+        )
+        .expect("the cases are written");
+        let output = run(&dir, &["test"]);
+        assert!(
+            output.status.success(),
+            "{name}: a case may expect the refusal: {}",
+            stdout(&output)
+        );
+    }
+}
+
+/// A payload of the wrong JSON *type* is refused here too, and with the plane's own code.
+///
+/// The plane deserializes into typed bodies, so a `context` of `"invalid"` never reaches a policy
+/// there. Defaulting it to an empty object here would have this command answer where a plane
+/// refuses — the same divergence as a missing field, one layer down.
+#[test]
+fn test_refuses_a_payload_the_data_plane_would_not_read() {
+    let dir = scratch("test-types");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+
+    let whole = |extra: &str| {
+        format!(
+            r#"{{"subject":{{"type":"u","id":"a"}},"action":{{"name":"read"}},
+                "resource":{{"type":"d","id":"b"}}{extra}}}"#
+        )
+    };
+
+    for (name, request) in [
+        (
+            "a context that is not an object",
+            whole(r#","context":"invalid""#),
+        ),
+        (
+            "a principal that is not an entity",
+            whole(r#","principal":"invalid""#),
+        ),
+        (
+            "options that are not an object",
+            whole(r#","options":"invalid""#),
+        ),
+        (
+            "a semantic the contract does not have",
+            whole(r#","options":{"evaluations_semantic":"whenever"}"#),
+        ),
+        (
+            "a request_id that is not a string",
+            whole(r#","request_id":7"#),
+        ),
+        (
+            "evaluations that are not a list",
+            whole(r#","evaluations":"invalid""#),
+        ),
+        (
+            "an entity schema that is not a string",
+            whole(r#","entities":{"schema":7,"items":[]}"#),
+        ),
+        (
+            "entity items that are null",
+            whole(r#","entities":{"items":null}"#),
+        ),
+        (
+            "entities that are not an object",
+            whole(r#","entities":"invalid""#),
+        ),
+        (
+            "entity items that are not a list",
+            whole(r#","entities":{"items":"invalid"}"#),
+        ),
+        (
+            "properties that are not an object",
+            r#"{"subject":{"type":"u","id":"a","properties":"invalid"},
+                "action":{"name":"read"},"resource":{"type":"d","id":"b"}}"#
+                .to_owned(),
+        ),
+        (
+            "a type that is not a string",
+            r#"{"subject":{"type":7,"id":"a"},"action":{"name":"read"},
+                "resource":{"type":"d","id":"b"}}"#
+                .to_owned(),
+        ),
+        (
+            "a subject that is not an object",
+            r#"{"subject":"alice","action":{"name":"read"},"resource":{"type":"d","id":"b"}}"#
+                .to_owned(),
+        ),
+    ] {
+        std::fs::write(dir.join("requests/probe.json"), &request).expect("the request is written");
+        std::fs::write(
+            dir.join("tests/cases.yml"),
+            "- name: probe\n  request: ../requests/probe.json\n  expect: { decision: deny }\n",
+        )
+        .expect("the cases are written");
+
+        let output = run(&dir, &["test"]);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{name} was evaluated instead of refused: {}",
+            stdout(&output)
+        );
+        assert!(
+            stdout(&output).contains("payload_malformed"),
+            "{name}: not reported the way a plane reports it: {}",
+            stdout(&output)
+        );
+
+        std::fs::write(
+            dir.join("tests/cases.yml"),
+            "- name: probe\n  request: ../requests/probe.json\n  expect: { error: payload_malformed }\n",
+        )
+        .expect("the cases are written");
+        assert!(
+            run(&dir, &["test"]).status.success(),
+            "{name}: a case may expect the refusal"
+        );
+    }
+}
+
+/// A profile the ledger does not declare is `profile_unknown` here as it is there.
+#[test]
+fn test_reports_an_unknown_profile_the_way_a_plane_reports_it() {
+    let dir = scratch("test-profile");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("requests/probe.json"),
+        r#"{"subject":{"type":"u","id":"a"},"action":{"name":"read"},
+            "resource":{"type":"d","id":"b"}}"#,
+    )
+    .expect("the request is written");
+
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: probe\n  request: ../requests/probe.json\n  profile: nowhere\n  expect: { decision: permit }\n",
+    )
+    .expect("the cases are written");
+    let output = run(&dir, &["test"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("profile_unknown"),
+        "{}",
+        stdout(&output)
+    );
+
+    // And a case may expect it, which before went through a path that never looked at
+    // the expectation at all.
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: probe\n  request: ../requests/probe.json\n  profile: nowhere\n  expect: { error: profile_unknown }\n",
+    )
+    .expect("the cases are written");
+    assert!(
+        run(&dir, &["test"]).status.success(),
+        "a case may expect an unknown profile"
+    );
+}
+
+/// Inside a boxcarred batch, every evaluation's policies are named — and an identity this
+/// workspace does not contain is reported as drift.
+///
+/// `Answered::of` leaves a batch's *overall* policies empty, because a batch has no single policy
+/// to cite. That used to mean the per-evaluation ones were never looked at, so `--remote` accepted
+/// a batch decided by another commit's policies whenever the booleans lined up.
+#[test]
+fn test_names_the_policies_of_every_evaluation_in_a_batch() {
+    let dir = scratch("test-batch-policies");
+    write_sources(&dir);
+    run(&dir, &["init", "batch"]);
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("requests/batch.json"),
+        r#"{"subject":{"type":"user","id":"alice"},"resource":{"type":"document","id":"budget"},
+            "evaluations":[{"action":{"name":"read"},"request_id":"first"},
+                           {"action":{"name":"write"},"request_id":"second"}]}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: two in one\n  request: ../requests/batch.json\n  expect: {}\n",
+    )
+    .expect("the cases are written");
+
+    let output = run(&dir, &["test"]);
+    assert!(output.status.success(), "{}", stderr(&output));
+
+    // Each evaluation is reported by its own name and its own answer, and where something
+    // permitted it, by the alias of what did — not by the identity underneath.
+    let report = stdout(&output);
+    assert!(
+        report.contains("first=") && report.contains("second="),
+        "the evaluations are not reported one by one: {report}"
+    );
+    assert!(
+        !report.contains("no policy of this workspace"),
+        "the workspace's own policies were not recognised: {report}"
+    );
+    assert!(
+        report.contains('('),
+        "no evaluation names what decided it: {report}"
+    );
+
+    // And a case may name what each one must answer.
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: two in one\n  request: ../requests/batch.json\n  expect:\n    evaluations: { first: deny, second: deny }\n",
+    )
+    .expect("the cases are written");
+    let output = run(&dir, &["test"]);
+    let wrong = !output.status.success();
+    assert!(
+        wrong || report.contains("first=deny"),
+        "a per-evaluation expectation is not checked: {}",
+        stdout(&output)
+    );
+
+    // An evaluation the request never asked is a mistake in the case, and is said so.
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: two in one\n  request: ../requests/batch.json\n  expect:\n    evaluations: { third: permit }\n",
+    )
+    .expect("the cases are written");
+    let output = run(&dir, &["test"]);
+    assert_eq!(output.status.code(), Some(2), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("no evaluation named `third`"),
+        "{}",
+        stdout(&output)
+    );
+}

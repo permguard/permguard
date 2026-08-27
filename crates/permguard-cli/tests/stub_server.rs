@@ -444,8 +444,14 @@ fn test_remote_asks_the_plane_and_reports_what_it_answered() {
     // serving is not the one these sources describe.
     let mut routes = HashMap::new();
     routes.insert(
-        ("GET".to_owned(), "/.well-known/server-configuration".to_owned()),
-        (200, r#"{"product":"Permguard","version":"0.1.0"}"#.to_owned()),
+        (
+            "GET".to_owned(),
+            "/.well-known/server-configuration".to_owned(),
+        ),
+        (
+            200,
+            r#"{"product":"Permguard","version":"0.1.0"}"#.to_owned(),
+        ),
     );
     routes.insert(
         ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
@@ -503,4 +509,375 @@ fn test_remote_asks_the_plane_and_reports_what_it_answered() {
         "the local run judges the sources, and they are right: {}",
         stdout(&output)
     );
+}
+
+/// A plane's answer is checked before it is believed.
+///
+/// Reading a missing `decision` as `false` would let a body of `{}` satisfy a case expecting a
+/// deny — a run that goes green against a plane that answered nothing at all. Each of these bodies
+/// is a 200 that is not a decision, and each has to fail the case as a protocol problem rather than
+/// be judged as one.
+#[test]
+fn test_remote_refuses_an_answer_that_is_not_a_decision() {
+    for (what, body) in [
+        ("an empty object", "{}"),
+        ("a body that is not an object", "[]"),
+        ("a decision that is not a boolean", r#"{"decision":"yes"}"#),
+        (
+            "a context that is not an object",
+            r#"{"decision":false,"context":"invalid"}"#,
+        ),
+        (
+            "a reason that is not an object",
+            r#"{"decision":false,"context":{"reason_admin":"nope"}}"#,
+        ),
+        (
+            "a reason code that is not a string",
+            r#"{"decision":false,"context":{"reason_admin":{"code":7,"message":[]}}}"#,
+        ),
+        (
+            "a reason with no message",
+            r#"{"decision":false,"context":{"reason_admin":{"code":"500"}}}"#,
+        ),
+        (
+            "policies that are null",
+            r#"{"decision":false,"context":{"policies":null}}"#,
+        ),
+        (
+            "an evaluation that is not a decision",
+            r#"{"decision":false,"evaluations":[{"request_id":"read"}]}"#,
+        ),
+        (
+            "policies that are not names",
+            r#"{"decision":false,"context":{"policies":[{"id":"x"}]}}"#,
+        ),
+        (
+            "policies that are not an array",
+            r#"{"decision":false,"context":{"policies":"readers"}}"#,
+        ),
+    ] {
+        let dir = scratch("remote-malformed");
+        remote_workspace(&dir, "expect: { decision: deny, policies: [] }");
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+            (200, body.to_owned()),
+        );
+        let stub = serve_owned(routes);
+
+        let output = run(
+            &dir,
+            &[
+                "test",
+                "--remote",
+                "--zone",
+                "z",
+                "--ledger",
+                "l",
+                "--data-endpoint",
+                &format!("http://{}", stub.address),
+            ],
+        );
+
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{what} passed as a deny: {}",
+            stdout(&output)
+        );
+        assert!(
+            stdout(&output).contains("not a decision"),
+            "{what} was not reported as a protocol problem: {}",
+            stdout(&output)
+        );
+    }
+}
+
+/// `expect: { error: … }` means the same thing in both modes.
+///
+/// A plane reports an evaluation it could not perform as `context.reason_admin` with code `500`,
+/// and refuses a request that is missing a field with a `4xx` naming the field. Both are "the
+/// request could not be evaluated", which is what a case expecting an error is asking about.
+#[test]
+fn test_remote_carries_the_planes_refusals_into_the_expectation() {
+    // An evaluation the plane could not perform.
+    let dir = scratch("remote-error");
+    remote_workspace(&dir, "expect: { error: schema }");
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            200,
+            r#"{"decision":false,"context":{"reason_admin":{"code":"500",
+                "message":"the request could not be evaluated, so it is denied: cedar: does not conform to the schema"}}}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let output = run(
+        &dir,
+        &[
+            "test",
+            "--remote",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--data-endpoint",
+            &format!("http://{}", stub.address),
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "a 500-coded reason is the refusal the case expected: {}",
+        stdout(&output)
+    );
+
+    // And a request the plane would not read at all.
+    let dir = scratch("remote-refused");
+    remote_workspace(&dir, "expect: { error: field_required }");
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            400,
+            r#"{"class":"validation","code":"field_required","message":"`resource` is required"}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let output = run(
+        &dir,
+        &[
+            "test",
+            "--remote",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--data-endpoint",
+            &format!("http://{}", stub.address),
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "a refusal of what was asked is an answer a case may expect: {}",
+        stdout(&output)
+    );
+}
+
+/// A workspace with one policy, one request and one case, for the remote tests above.
+fn remote_workspace(dir: &Path, expect: &str) {
+    std::fs::create_dir_all(dir.join("cedar")).expect("the partition directory is created");
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("cedar/readers.cedar"),
+        "@alias(\"readers\")\npermit (principal, action == Action::\"read\", resource);\n",
+    )
+    .expect("the policy is written");
+    std::fs::write(
+        dir.join("requests/read.json"),
+        r#"{"subject":{"type":"User","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"Document","id":"budget"}}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        format!("- name: alice reads\n  request: ../requests/read.json\n  {expect}\n"),
+    )
+    .expect("the cases are written");
+
+    run(dir, &["init", "remote-cases"]);
+}
+
+/// A boxcarred request, end to end through `test --remote`: three evaluations asked, three
+/// answered, and a case that names what each one must decide.
+///
+/// The local run and the data plane's own boxcarring were each covered; the path between them was
+/// not, and a manual check protects nothing from a regression.
+#[test]
+fn test_remote_carries_a_boxcarred_batch_end_to_end() {
+    let dir = scratch("remote-batch");
+    boxcarred_workspace(
+        &dir,
+        "expect:\n    decision: deny\n    policies: []\n    evaluations: { read: permit, create: permit, purge: deny }",
+    );
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluations".to_owned()),
+        (
+            200,
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"read"},
+                 {"decision":true,"request_id":"create"},
+                 {"decision":false,"request_id":"purge"}]}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+
+    let args = remote_args(&stub.address);
+    let output = run(
+        &dir,
+        &args.iter().map(String::as_str).collect::<Vec<&str>>(),
+    );
+    assert!(
+        output.status.success(),
+        "the batch was not judged as asked: {}\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains("read=permit") && stdout(&output).contains("purge=deny"),
+        "the report does not show what each evaluation decided: {}",
+        stdout(&output)
+    );
+}
+
+/// A batch whose policies this workspace does not contain is drift, whatever its booleans say.
+#[test]
+fn test_remote_finds_drift_inside_a_batch() {
+    let dir = scratch("remote-batch-drift");
+    boxcarred_workspace(
+        &dir,
+        "expect:\n    decision: deny\n    evaluations: { read: permit, create: permit, purge: deny }",
+    );
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluations".to_owned()),
+        (
+            200,
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"read","context":{"policies":["from-another-commit"]}},
+                 {"decision":true,"request_id":"create"},
+                 {"decision":false,"request_id":"purge"}]}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+
+    let args = remote_args(&stub.address);
+    let output = run(
+        &dir,
+        &args.iter().map(String::as_str).collect::<Vec<&str>>(),
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the booleans matched and the drift was not reported: {}",
+        stdout(&output)
+    );
+    assert!(
+        stdout(&output).contains("from-another-commit")
+            && stdout(&output).contains("no policy of this workspace"),
+        "{}",
+        stdout(&output)
+    );
+}
+
+/// An answer that typechecks but is not an answer to *this* request.
+#[test]
+fn test_remote_refuses_a_batch_that_does_not_answer_the_request() {
+    for (what, body) in [
+        (
+            "no evaluations at all",
+            r#"{"decision":false,"evaluations":[]}"#,
+        ),
+        ("the evaluations missing", r#"{"decision":false}"#),
+        (
+            "more evaluations than were asked",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"read"},{"decision":true,"request_id":"create"},
+                 {"decision":false,"request_id":"purge"},{"decision":false,"request_id":"extra"}]}"#,
+        ),
+        (
+            "fewer than were asked, under execute_all",
+            r#"{"decision":false,"evaluations":[{"decision":false,"request_id":"read"}]}"#,
+        ),
+        (
+            "the evaluations out of order",
+            r#"{"decision":false,"evaluations":[
+                 {"decision":true,"request_id":"create"},{"decision":true,"request_id":"read"},
+                 {"decision":false,"request_id":"purge"}]}"#,
+        ),
+        (
+            "a verdict its evaluations do not add up to",
+            r#"{"decision":true,"evaluations":[
+                 {"decision":true,"request_id":"read"},{"decision":true,"request_id":"create"},
+                 {"decision":false,"request_id":"purge"}]}"#,
+        ),
+    ] {
+        let dir = scratch("remote-batch-broken");
+        boxcarred_workspace(&dir, "expect: { decision: deny }");
+
+        let mut routes = HashMap::new();
+        routes.insert(
+            ("POST".to_owned(), "/access/v1/evaluations".to_owned()),
+            (200, body.to_owned()),
+        );
+        let stub = serve_owned(routes);
+
+        let args = remote_args(&stub.address);
+        let output = run(
+            &dir,
+            &args.iter().map(String::as_str).collect::<Vec<&str>>(),
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{what} passed as an answer: {}",
+            stdout(&output)
+        );
+        assert!(
+            stdout(&output).contains("not a decision"),
+            "{what} was not reported as a protocol problem: {}",
+            stdout(&output)
+        );
+    }
+}
+
+/// A workspace whose one case asks three questions in one request.
+fn boxcarred_workspace(dir: &Path, expect: &str) {
+    std::fs::create_dir_all(dir.join("cedar")).expect("the partition directory is created");
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("cedar/readers.cedar"),
+        "@alias(\"readers\")\npermit (principal, action == Action::\"read\", resource);\n",
+    )
+    .expect("the policy is written");
+    std::fs::write(
+        dir.join("requests/batch.json"),
+        r#"{"subject":{"type":"User","id":"dora"},"resource":{"type":"Document","id":"q4"},
+            "evaluations":[{"action":{"name":"read"},"request_id":"read"},
+                           {"action":{"name":"create"},"request_id":"create"},
+                           {"action":{"name":"purge"},"request_id":"purge"}]}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        format!("- name: three in one\n  request: ../requests/batch.json\n  {expect}\n"),
+    )
+    .expect("the cases are written");
+
+    run(dir, &["init", "batch-cases"]);
+}
+
+fn remote_args(address: &str) -> Vec<String> {
+    vec![
+        "test".to_owned(),
+        "--remote".to_owned(),
+        "--zone".to_owned(),
+        "z".to_owned(),
+        "--ledger".to_owned(),
+        "l".to_owned(),
+        "--data-endpoint".to_owned(),
+        format!("http://{address}"),
+    ]
 }

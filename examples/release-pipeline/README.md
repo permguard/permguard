@@ -358,6 +358,11 @@ permguard -w examples/release-pipeline test
 11 case(s), 11 passed, 0 failed.
 ```
 
+Requests are read with `permguard.pdp.v1`'s own type — the one the data plane
+deserializes into — so what is refused here is what a plane refuses: a field that is
+not stated, a field of the wrong JSON type, a profile the ledger does not declare.
+A case may expect any of them with `expect: { error: field_required }`.
+
 A case states not only the answer but **which policy gave it**, which is what
 separates a deny by the guardrail from a deny because nothing permitted:
 

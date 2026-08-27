@@ -621,9 +621,24 @@ task cli -- -w examples/basics test
 ```
 
 The first line is the whole point of two partitions in one profile: **both** permit
-the read, and the decision cites both. The last is the schema doing its job — under
+the read, and the decision cites both. The fourth is the schema doing its job — under
 `default`, `create` is an action the Cedar partition cannot evaluate, and a partition
-that cannot evaluate denies.
+that cannot evaluate denies. The last is a **boxcarred** request: three questions in
+one, and a case may name what each of them must answer.
+
+```yaml
+- name: three questions in one request, and the batch is their conjunction
+  request: ../requests/boxcarred.json
+  expect:
+    decision: deny
+    evaluations: { read: permit, create: permit, purge: deny }
+```
+
+The request is parsed with the data plane's own `CheckRequest`, so the boxcarring
+rule — each evaluation inheriting the top-level defaults, the batch stopping where
+`options.evaluations_semantic` says, the whole request being the conjunction — is
+the plane's, not a second implementation of it. `test` and `test --remote` print the
+same line for this case.
 
 ## Things that refuse, on purpose
 

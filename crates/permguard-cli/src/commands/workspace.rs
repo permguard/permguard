@@ -19,9 +19,9 @@ use crate::trace::Trace;
 use permguard_control_client::AnyRemote;
 use permguard_control_client::TlsOptions;
 
-use permguard_cli::engine::workspace::cases;
 use crate::reference;
 use crate::workspace_out;
+use permguard_cli::engine::workspace::cases;
 
 /// Where an answer comes from: these sources, or a plane serving the ledger they track.
 enum Decider {
@@ -71,8 +71,32 @@ impl Plane {
         located: &cases::Located,
     ) -> Result<cases::Outcome, permguard_cli::engine::workspace::WorkspaceError> {
         let (mut payload, profile) = cases::request_of(store, located)?;
+
+        // Validated before it is sent, with the same `CheckRequest` the plane deserializes: a
+        // request this workspace would be refused for is refused here, and not by a round trip.
+        // It is also how the answer's shape is known — which evaluations it must carry, in which
+        // order, and how the batch resolves.
+        let asked = match cases::asked(&payload) {
+            Ok(asked) => asked,
+            Err(refusal) => {
+                return Ok(cases::judge(
+                    located,
+                    &profile,
+                    cases::Answered {
+                        permitted: false,
+                        policies: Vec::new(),
+                        error: Some(refusal),
+                        evaluations: Vec::new(),
+                    },
+                    &self.aliases,
+                ));
+            }
+        };
         if let Some(object) = payload.as_object_mut() {
-            object.insert("zone".to_owned(), serde_json::Value::String(self.zone.clone()));
+            object.insert(
+                "zone".to_owned(),
+                serde_json::Value::String(self.zone.clone()),
+            );
             object.insert(
                 "ledger".to_owned(),
                 serde_json::Value::String(self.ledger.clone()),
@@ -85,39 +109,166 @@ impl Plane {
 
         let answer = match self.client.evaluate(&payload) {
             Ok(answer) => answer,
-            // A plane that will not serve this ledger — a mirror behind, a commit it refuses —
-            // is the finding, not a transport failure to abort the run over.
+            // A refusal of what was asked — `field_required`, an unknown profile — is the plane
+            // saying the request could not be evaluated. That is an answer, and a case may expect
+            // it, so it is judged rather than counted as the run falling over.
+            Err(failure) if failure.usage => {
+                return Ok(cases::judge(
+                    located,
+                    &profile,
+                    cases::Answered {
+                        permitted: false,
+                        policies: Vec::new(),
+                        error: Some(format!("{}: {}", failure.reason, failure.detail)),
+                        evaluations: Vec::new(),
+                    },
+                    &self.aliases,
+                ));
+            }
+            // A plane that is down, or broken, is not an answer about the policies at all.
             Err(failure) => {
                 return Ok(cases::failed(
                     located,
                     &profile,
-                    format!("the plane did not answer: {}", failure.reason),
+                    format!(
+                        "the plane did not answer: {} ({})",
+                        failure.detail, failure.reason
+                    ),
                 ));
             }
         };
 
-        let context = answer.get("context");
-        let answered = cases::Answered {
-            permitted: answer
-                .get("decision")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or_default(),
-            policies: context
-                .and_then(|context| context.get("policies"))
-                .and_then(serde_json::Value::as_array)
-                .map(|policies| {
-                    policies
-                        .iter()
-                        .filter_map(serde_json::Value::as_str)
-                        .map(ToOwned::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default(),
-            error: None,
+        let answered = match read_decision(&answer, &asked) {
+            Ok(answered) => answered,
+            // Not a decision. Letting a missing `decision` mean `false` would let `{}` satisfy a
+            // case expecting a deny — a green run against a plane that answered nothing.
+            Err(problem) => {
+                return Ok(cases::failed(
+                    located,
+                    &profile,
+                    format!("the plane's answer is not a decision: {problem}"),
+                ));
+            }
         };
 
         Ok(cases::judge(located, &profile, answered, &self.aliases))
     }
+}
+
+/// Reads a decision out of what a plane answered, refusing anything that is not one.
+///
+/// Deserialized into `permguard_languages::request::CheckResponse` — **the type the data plane
+/// serializes** — rather than reached into field by field. Reaching in was tried twice and was
+/// partial twice: it read a `context` of `"invalid"` as a deny with no policies, then a
+/// `reason_admin` of `{"code":7,"message":[]}` as an ordinary one. A body the plane could not have
+/// produced is a protocol problem, and the type is what says so.
+fn read_decision(
+    answer: &serde_json::Value,
+    asked: &permguard_languages::Asked,
+) -> Result<cases::Answered, String> {
+    let answered: permguard_languages::CheckResponse =
+        serde_json::from_value(answer.clone()).map_err(|error| error.to_string())?;
+
+    // The types are not the whole contract. An answer has to be an answer *to this request*:
+    // one decision per evaluation, in the order asked, under the names asked, and a verdict that
+    // is the conjunction of them. A body like `{"decision":false,"evaluations":[]}` typechecks
+    // and no plane can produce it — and it would have satisfied a case that only checks the deny.
+    match (&answered.evaluations, asked.boxcarred) {
+        (Some(held), true) => {
+            if held.is_empty() {
+                return Err("a boxcarred request was answered with no evaluations".to_owned());
+            }
+            if held.len() > asked.queries.len() {
+                return Err(format!(
+                    "{} evaluations were asked and {} answered",
+                    asked.queries.len(),
+                    held.len()
+                ));
+            }
+            // Fewer is legal only where the semantic stops the batch early, and only by
+            // stopping: the ones answered are the first ones asked, in order.
+            if held.len() < asked.queries.len()
+                && asked.semantic == permguard_languages::Semantic::ExecuteAll
+            {
+                return Err(format!(
+                    "every evaluation runs under `execute_all`, and {} of {} were answered",
+                    held.len(),
+                    asked.queries.len()
+                ));
+            }
+            for (index, evaluation) in held.iter().enumerate() {
+                let (_, wanted) = &asked.queries[index];
+                if &evaluation.request_id != wanted {
+                    return Err(format!(
+                        "evaluation {index} was asked as `{}` and answered as `{}`",
+                        wanted.as_deref().unwrap_or("unnamed"),
+                        evaluation.request_id.as_deref().unwrap_or("unnamed")
+                    ));
+                }
+            }
+            let conjunction = held.iter().all(|evaluation| evaluation.decision);
+            if answered.decision != conjunction {
+                return Err(format!(
+                    "the batch answered {} and its evaluations are {}",
+                    if answered.decision { "permit" } else { "deny" },
+                    if conjunction {
+                        "all permits"
+                    } else {
+                        "not all permits"
+                    }
+                ));
+            }
+        }
+        (Some(_), false) => {
+            return Err("a request that carried no evaluations was answered with some".to_owned());
+        }
+        (None, true) => {
+            return Err("a boxcarred request was answered without its evaluations".to_owned());
+        }
+        (None, false) => {}
+    }
+
+    let decided = |decision: bool,
+                   context: Option<&permguard_languages::request::DecisionContext>,
+                   request_id: Option<String>| {
+        let reason = context.and_then(|context| context.reason_admin.as_ref());
+
+        cases::Decided {
+            request_id,
+            permitted: decision,
+            policies: context
+                .map(|context| context.policies.clone())
+                .unwrap_or_default(),
+            // The plane reports an evaluation it could not perform as a `500` reason, which is the
+            // same thing the local run calls a refusal, and is carried across as one so that
+            // `expect: { error: … }` means one thing in both modes.
+            error: reason
+                .filter(|reason| reason.code == "500")
+                .map(|reason| reason.message.clone()),
+        }
+    };
+
+    // A boxcarred request is answered with one decision per evaluation, and the overall verdict
+    // beside them. A plain one is answered with the decision alone.
+    let evaluations = match answered.evaluations {
+        Some(held) => held
+            .into_iter()
+            .map(|evaluation| {
+                decided(
+                    evaluation.decision,
+                    evaluation.context.as_ref(),
+                    evaluation.request_id,
+                )
+            })
+            .collect(),
+        None => vec![decided(answered.decision, answered.context.as_ref(), None)],
+    };
+
+    let mut carried = cases::Answered::of(evaluations);
+    // The plane has already resolved the batch; its word on the whole request stands.
+    carried.permitted = answered.decision;
+
+    Ok(carried)
 }
 
 /// Resolves the plane to ask, the way `check` resolves it: the checkout, unless told otherwise.
@@ -839,7 +990,11 @@ pub fn workspace_command(
                     outcome.name,
                     if outcome.passed { "ok" } else { "failed" }
                 ));
-                if outcome.passed { passed += 1 } else { failed += 1 }
+                if outcome.passed {
+                    passed += 1
+                } else {
+                    failed += 1
+                }
                 lines.push(TestCaseLine {
                     name: outcome.name,
                     source: outcome.source,
@@ -847,6 +1002,7 @@ pub fn workspace_command(
                     passed: outcome.passed,
                     decision: outcome.decision,
                     policies: outcome.policies,
+                    evaluations: outcome.evaluations,
                     error: outcome.error,
                     problems: outcome.problems,
                 });

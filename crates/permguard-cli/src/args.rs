@@ -286,7 +286,9 @@ pub enum Command {
         shell: clap_complete::Shell,
     },
     /// Initialize a permguard workspace in the working directory.
-    #[command(after_help = "Examples:\n  permguard init\n  permguard init release-pipeline --language cedar,rego")]
+    #[command(
+        after_help = "Examples:\n  permguard init\n  permguard init release-pipeline --language cedar,rego"
+    )]
     Init {
         /// The workspace name, written into the manifest.
         #[arg(default_value = "permguard-workspace")]
@@ -301,7 +303,9 @@ pub enum Command {
         action: RemoteAction,
     },
     /// Clone a remote ledger into a fresh workspace directory.
-    #[command(after_help = "Examples:\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline ./release-pipeline")]
+    #[command(
+        after_help = "Examples:\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline ./release-pipeline"
+    )]
     Clone {
         /// The ledger to clone, as `https://host[:port][/prefix]/<zone>/<ledger>`.
         url: String,
@@ -309,7 +313,9 @@ pub enum Command {
         directory: Option<std::path::PathBuf>,
     },
     /// Bind this workspace to a remote ledger and materialize it.
-    #[command(after_help = "Examples:\n  permguard checkout origin/delivery/release-pipeline\n  permguard checkout origin/delivery/release-pipeline@main")]
+    #[command(
+        after_help = "Examples:\n  permguard checkout origin/delivery/release-pipeline\n  permguard checkout origin/delivery/release-pipeline@main"
+    )]
     Checkout {
         /// The ledger to bind to, as `<remote>/<zone>/<ledger>[@<ref>]`.
         reference: String,
@@ -318,7 +324,9 @@ pub enum Command {
     #[command(after_help = "Examples:\n  permguard pull\n  permguard pull -v")]
     Pull,
     /// Scan the sources and build the local snapshot.
-    #[command(after_help = "Examples:\n  permguard refresh\n  permguard refresh -o json | jq '.root'")]
+    #[command(
+        after_help = "Examples:\n  permguard refresh\n  permguard refresh -o json | jq '.root'"
+    )]
     Refresh,
     /// Refresh plus every local check: manifest, identities, duplicates.
     #[command(after_help = "Examples:\n  permguard validate\n  permguard validate -o json")]
@@ -374,14 +382,18 @@ pub enum Command {
     #[command(after_help = "Examples:\n  permguard plan\n  permguard plan -o json")]
     Plan,
     /// Plan, then push the changes to the remote ledger.
-    #[command(after_help = "Examples:\n  permguard apply\n  permguard apply -m \"require a signed artifact before approval\"")]
+    #[command(
+        after_help = "Examples:\n  permguard apply\n  permguard apply -m \"require a signed artifact before approval\""
+    )]
     Apply {
         /// The commit message.
         #[arg(short, long, default_value = "apply")]
         message: String,
     },
     /// Show the commit history of the tracked ref.
-    #[command(after_help = "Examples:\n  permguard history\n  permguard history -o json | jq '.commits[].commit'")]
+    #[command(
+        after_help = "Examples:\n  permguard history\n  permguard history -o json | jq '.commits[].commit'"
+    )]
     History,
     /// Show what this workspace tracks and where it stands — offline.
     #[command(after_help = "Examples:\n  permguard status\n  permguard status -o json")]
@@ -395,7 +407,9 @@ pub enum Command {
     #[command(after_help = "Examples:\n  permguard verify\n  permguard verify -o json")]
     Verify,
     /// Ask a data plane for an authorization decision.
-    #[command(after_help = "Examples:\n  permguard check -f request.json\n  cat request.json | permguard check -f -\n  permguard check -f request.json --zone delivery --ledger release-pipeline -o json\n  permguard check --profile pipeline --subject Workload:ci-pipeline --action artifact:upload --resource Release:v2.4.0")]
+    #[command(
+        after_help = "Examples:\n  permguard check -f request.json\n  cat request.json | permguard check -f -\n  permguard check -f request.json --zone delivery --ledger release-pipeline -o json\n  permguard check --profile pipeline --subject Workload:ci-pipeline --action artifact:upload --resource Release:v2.4.0"
+    )]
     Check(CheckArgs),
     /// Read the decisions a data plane recorded.
     ///
@@ -412,7 +426,9 @@ pub enum Command {
     /// line in the report, not a failure of the command. A plane that answers is asked for its
     /// health too, so `ready`, `degraded` and `unhealthy` are told apart rather than all reported
     /// as reachable.
-    #[command(after_help = "Examples:\n  permguard inspect\n  permguard inspect --timeout 2 -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard inspect\n  permguard inspect --timeout 2 -o json"
+    )]
     Inspect {
         /// How long to wait for one request, in seconds.
         #[arg(long, default_value = "5", value_name = "SECONDS")]
@@ -424,10 +440,14 @@ pub enum Command {
 #[derive(Debug, Subcommand)]
 pub enum DecisionsAction {
     /// List a page of decisions, oldest first.
-    #[command(after_help = "Examples:\n  permguard decisions list --zone delivery --ledger release-pipeline\n  permguard decisions list --decision deny --since 2026-08-01T00:00:00Z")]
+    #[command(
+        after_help = "Examples:\n  permguard decisions list --zone delivery --ledger release-pipeline\n  permguard decisions list --decision deny --since 2026-08-01T00:00:00Z"
+    )]
     List(DecisionsQuery),
     /// Follow the decisions as they arrive.
-    #[command(after_help = "Examples:\n  permguard decisions tail --follow\n  permguard decisions tail --decision deny --follow")]
+    #[command(
+        after_help = "Examples:\n  permguard decisions tail --follow\n  permguard decisions tail --decision deny --follow"
+    )]
     Tail {
         #[command(flatten)]
         query: DecisionsQuery,
@@ -436,7 +456,9 @@ pub enum DecisionsAction {
         follow: bool,
     },
     /// Show one decision, by the identifier the caller was given back.
-    #[command(after_help = "Examples:\n  permguard decisions get 0198f3f2-7c1a-7e2b-9f4c-1d2e3a4b5c6d\n  permguard decisions get 0198f3f2-7c1a-7e2b-9f4c-1d2e3a4b5c6d -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard decisions get 0198f3f2-7c1a-7e2b-9f4c-1d2e3a4b5c6d\n  permguard decisions get 0198f3f2-7c1a-7e2b-9f4c-1d2e3a4b5c6d -o json"
+    )]
     Get {
         /// The decision's own identifier, as it appeared in `context.id`.
         id: String,
@@ -444,7 +466,9 @@ pub enum DecisionsAction {
         query: DecisionsQuery,
     },
     /// Read in bulk, resumably: every page, from an offset, to standard output.
-    #[command(after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json")]
+    #[command(
+        after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json"
+    )]
     Export(DecisionsQuery),
 }
 
@@ -520,7 +544,9 @@ pub struct DecisionsQuery {
 #[derive(Debug, Subcommand)]
 pub enum RemoteAction {
     /// Add (or replace) a named remote.
-    #[command(after_help = "Examples:\n  permguard remote add origin https://permguard.internal:7556\n  permguard remote add origin https://permguard.internal:7556 -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard remote add origin https://permguard.internal:7556\n  permguard remote add origin https://permguard.internal:7556 -o json"
+    )]
     Add {
         /// The name this remote is known by.
         name: String,
@@ -528,10 +554,14 @@ pub enum RemoteAction {
         url: String,
     },
     /// List the remotes.
-    #[command(after_help = "Examples:\n  permguard remote list\n  permguard remote list -o json | jq '.remotes[].name'")]
+    #[command(
+        after_help = "Examples:\n  permguard remote list\n  permguard remote list -o json | jq '.remotes[].name'"
+    )]
     List,
     /// Remove a remote.
-    #[command(after_help = "Examples:\n  permguard remote remove origin\n  permguard remote remove origin -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard remote remove origin\n  permguard remote remove origin -o json"
+    )]
     Remove {
         /// The remote to remove, by name.
         name: String,
@@ -541,7 +571,9 @@ pub enum RemoteAction {
 #[derive(Debug, Subcommand)]
 pub enum ObjectsAction {
     /// List the local store: every object, its kind, and who reaches it.
-    #[command(after_help = "Examples:\n  permguard objects list\n  permguard objects list --tracked -o json | jq '.objects[].digest'")]
+    #[command(
+        after_help = "Examples:\n  permguard objects list\n  permguard objects list --tracked -o json | jq '.objects[].digest'"
+    )]
     List {
         /// Only objects reachable from the tracked remote head.
         #[arg(long)]
@@ -561,7 +593,9 @@ pub enum ObjectsAction {
         dry_run: bool,
     },
     /// Print one object. Default view: a blob's content; otherwise `--human`.
-    #[command(after_help = "Examples:\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --human\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --raw > object.cbor")]
+    #[command(
+        after_help = "Examples:\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --human\n  permguard objects cat sha256:0d757bf6828225c716b7b49cda3bde7f5087ca49ed582b85d7ae38ad38e9ee26 --raw > object.cbor"
+    )]
     Cat {
         /// The object, by the digest `objects list` reports.
         digest: String,
@@ -583,16 +617,22 @@ pub enum ObjectsAction {
 #[derive(Debug, Subcommand)]
 pub enum ConfigAction {
     /// Show every setting, its value, and which layer that value came from.
-    #[command(after_help = "Examples:\n  permguard config show\n  permguard config show -o json | jq '.settings[].origin'")]
+    #[command(
+        after_help = "Examples:\n  permguard config show\n  permguard config show -o json | jq '.settings[].origin'"
+    )]
     Show,
     /// Print one setting's value, and nothing else.
-    #[command(after_help = "Examples:\n  permguard config get control-plane.endpoint\n  permguard config get data-plane.endpoint -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard config get control-plane.endpoint\n  permguard config get data-plane.endpoint -o json"
+    )]
     Get {
         /// The setting to read.
         key: String,
     },
     /// Write one setting into the configuration file.
-    #[command(after_help = "Examples:\n  permguard config set control-plane.endpoint https://permguard.internal:7556\n  permguard config set data-plane.endpoint https://permguard.internal:7557")]
+    #[command(
+        after_help = "Examples:\n  permguard config set control-plane.endpoint https://permguard.internal:7556\n  permguard config set data-plane.endpoint https://permguard.internal:7557"
+    )]
     Set {
         /// The setting to write.
         key: String,
@@ -600,7 +640,9 @@ pub enum ConfigAction {
         value: String,
     },
     /// Take settings back out of the configuration file.
-    #[command(after_help = "Examples:\n  permguard config reset control-plane.endpoint\n  permguard config reset")]
+    #[command(
+        after_help = "Examples:\n  permguard config reset control-plane.endpoint\n  permguard config reset"
+    )]
     Reset {
         /// The setting to reset. Every setting, when left out.
         key: Option<String>,
@@ -712,7 +754,9 @@ pub enum LedgersAction {
         name: String,
     },
     /// Delete a ledger.
-    #[command(after_help = "Examples:\n  permguard ledgers delete --zone delivery release-pipeline\n  permguard ledgers delete --zone delivery release-pipeline -o json")]
+    #[command(
+        after_help = "Examples:\n  permguard ledgers delete --zone delivery release-pipeline\n  permguard ledgers delete --zone delivery release-pipeline -o json"
+    )]
     Delete {
         /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
@@ -1025,7 +1069,11 @@ mod tests {
 
             for line in after.to_string().lines().skip(1) {
                 let Some(argv) = invocation(line) else {
-                    panic!("{}: `{}` runs no permguard", command.get_name(), line.trim())
+                    panic!(
+                        "{}: `{}` runs no permguard",
+                        command.get_name(),
+                        line.trim()
+                    )
                 };
 
                 assert!(

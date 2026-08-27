@@ -105,9 +105,8 @@ fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
         } else {
             // `-w` says where a relative path is read from, and this is one.
             let named = crate::session::rooted(globals, path);
-            std::fs::read_to_string(&named).map_err(|error| {
-                Failure::usage(format!("reading {}: {error}", named.display()))
-            })?
+            std::fs::read_to_string(&named)
+                .map_err(|error| Failure::usage(format!("reading {}: {error}", named.display())))?
         };
         let payload: Value = serde_json::from_str(&text)
             .map_err(|error| Failure::usage(format!("the request is not valid JSON: {error}")))?;

@@ -27,3 +27,11 @@
   # `create` is not an action the Cedar schema declares, so that partition cannot
   # evaluate the request — and a partition that cannot evaluate denies.
   expect: { error: schema }
+
+- name: three questions in one request, and the batch is their conjunction
+  request: ../requests/boxcarred.json
+  # `purge` is not a rule the gateway module has, so nothing permits it — and the
+  # whole batch is a deny even though two of the three were allowed.
+  expect:
+    decision: deny
+    evaluations: { read: permit, create: permit, purge: deny }

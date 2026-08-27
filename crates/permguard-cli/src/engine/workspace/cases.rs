@@ -21,12 +21,14 @@
 
 use std::collections::BTreeMap;
 
-use permguard_languages::{Action, Entity, Evaluator, Query, StoredPolicy, registry, resolve};
+use permguard_languages::{
+    self as languages, Evaluator, Semantic, StoredPolicy, registry, resolve,
+};
 use permguard_objects::manifest::Manifest;
 use permguard_objects::object::{Blob, Object, Tree};
 use permguard_objects::policy_id::ANNOTATION_POLICY_ID;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::{Result, err};
 use crate::engine::workspace::build::Snapshot;
@@ -51,6 +53,9 @@ pub struct Expectation {
     pub policies: Option<Vec<String>>,
     /// A fragment of the refusal a request that cannot be evaluated must carry.
     pub error: Option<String>,
+    /// For a boxcarred request: what each evaluation must decide, by the `request_id`
+    /// the caller gave it. Every one named is checked; the rest are not.
+    pub evaluations: Option<BTreeMap<String, String>>,
 }
 
 /// One case, as the file spells it.
@@ -87,6 +92,8 @@ pub struct Outcome {
     pub decision: Option<bool>,
     /// The policies that decided, by alias where one is authored.
     pub policies: Vec<String>,
+    /// For a boxcarred request: what each evaluation decided, as `id=permit`.
+    pub evaluations: Vec<String>,
     /// The refusal, when there was one.
     pub error: Option<String>,
     /// Why it failed. Empty when it passed.
@@ -117,9 +124,7 @@ pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Vec<Located>> {
         let before = files.len();
         gather(store, root, &mut files)?;
         if files.len() == before && !paths.is_empty() {
-            return Err(err(format!(
-                "`{root}` holds no case file, and is not one"
-            )));
+            return Err(err(format!("`{root}` holds no case file, and is not one")));
         }
     }
     files.sort();
@@ -285,10 +290,12 @@ fn object(snapshot: &Snapshot, digest: &str) -> Result<Vec<u8>> {
 /// reading them a second way is how the local and the remote runs would start disagreeing about
 /// what a case even asks.
 pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String)> {
-    let bytes = store
-        .read(&located.request)
-        .map_err(err)?
-        .ok_or_else(|| err(format!("{}: no request at {}", located.source, located.request)))?;
+    let bytes = store.read(&located.request).map_err(err)?.ok_or_else(|| {
+        err(format!(
+            "{}: no request at {}",
+            located.source, located.request
+        ))
+    })?;
     let payload: Value = serde_json::from_slice(&bytes)
         .map_err(|error| err(format!("{}: not JSON: {error}", located.request)))?;
 
@@ -327,42 +334,98 @@ pub fn aliases(snapshot: &Snapshot) -> BTreeMap<String, String> {
 pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<Outcome> {
     let (payload, profile) = request_of(store, located)?;
 
+    // The plane answers this with `profile_unknown`, and so does this: a case that
+    // expects the refusal has to pass in both modes, or the two are not the same test.
     let Some(declared) = compiled.manifest.profiles.get(&profile) else {
-        return Ok(failed(
+        return Ok(judge(
             located,
             &profile,
-            format!(
-                "this ledger declares no profile `{profile}` (it declares: {})",
-                compiled.profiles().join(", ")
-            ),
+            Answered {
+                permitted: false,
+                policies: Vec::new(),
+                error: Some(format!(
+                    "profile_unknown: this ledger declares no profile `{profile}` \
+                     (it declares: {})",
+                    compiled.profiles().join(", ")
+                )),
+                evaluations: Vec::new(),
+            },
+            &compiled.aliases,
         ));
     };
 
-    let query = query_of(&payload);
-    let mut verdicts = Vec::new();
-    for name in &declared.partitions {
-        let Some(evaluator) = compiled.partitions.get(name) else {
-            return Ok(failed(
+    let asked = match asked(&payload) {
+        Ok(asked) => asked,
+        // Refused before any policy sees it, exactly as a plane refuses it. It is an
+        // answer a case may expect, so it is judged rather than thrown.
+        Err(refusal) => {
+            return Ok(judge(
                 located,
                 &profile,
-                format!("the profile names the partition `{name}`, which holds nothing"),
+                Answered {
+                    permitted: false,
+                    policies: Vec::new(),
+                    error: Some(refusal),
+                    evaluations: Vec::new(),
+                },
+                &compiled.aliases,
             ));
-        };
-        verdicts.push(evaluator.evaluate(&query));
-    }
+        }
+    };
 
-    let outcome = resolve(verdicts);
+    let mut evaluations = Vec::new();
+    for (query, request_id) in &asked.queries {
+        let mut verdicts = Vec::new();
+        for name in &declared.partitions {
+            let Some(evaluator) = compiled.partitions.get(name) else {
+                return Ok(failed(
+                    located,
+                    &profile,
+                    format!("the profile names the partition `{name}`, which holds nothing"),
+                ));
+            };
+            verdicts.push(evaluator.evaluate(query));
+        }
+        let outcome = resolve(verdicts);
+        let decided = Decided {
+            request_id: request_id.clone(),
+            permitted: outcome.permitted,
+            policies: outcome.determining().to_vec(),
+            error: outcome.errors.first().cloned(),
+        };
+
+        // The batch stops where the caller's semantic says it stops, so that a case
+        // sees the same evaluations a plane would have run — and no more.
+        let stop = match asked.semantic {
+            Semantic::ExecuteAll => false,
+            Semantic::DenyOnFirstDeny => !decided.permitted,
+            Semantic::PermitOnFirstPermit => decided.permitted,
+        };
+        evaluations.push(decided);
+        if stop {
+            break;
+        }
+    }
 
     Ok(judge(
         located,
         &profile,
-        Answered {
-            permitted: outcome.permitted,
-            policies: outcome.determining().to_vec(),
-            error: outcome.errors.first().cloned(),
-        },
+        Answered::of(evaluations),
         &compiled.aliases,
     ))
+}
+
+/// One evaluation's answer: a plain request has exactly one, a boxcarred request has
+/// one per entry it asked.
+#[derive(Debug, Clone, Default)]
+pub struct Decided {
+    /// The name the caller gave this evaluation, when it gave one.
+    pub request_id: Option<String>,
+    pub permitted: bool,
+    /// The policies that decided, by identity.
+    pub policies: Vec<String>,
+    /// The refusal, when this evaluation could not be performed.
+    pub error: Option<String>,
 }
 
 /// What a decision said, whoever decided it: this workspace, or a plane.
@@ -373,6 +436,31 @@ pub struct Answered {
     pub policies: Vec<String>,
     /// The refusal, when the request could not be evaluated.
     pub error: Option<String>,
+    /// One per boxcarred evaluation, empty for a plain request.
+    pub evaluations: Vec<Decided>,
+}
+
+impl Answered {
+    /// The answer to a whole request, from what each of its evaluations decided.
+    ///
+    /// The overall verdict of a batch is the **conjunction** — every evaluation
+    /// permitted — whatever semantic ran it, because that is what a PEP enforcing a
+    /// batch has to know, and it is what the data plane answers.
+    pub fn of(evaluations: Vec<Decided>) -> Self {
+        let single = evaluations.len() == 1 && evaluations[0].request_id.is_none();
+
+        Self {
+            permitted: !evaluations.is_empty()
+                && evaluations.iter().all(|decided| decided.permitted),
+            policies: if single {
+                evaluations[0].policies.clone()
+            } else {
+                Vec::new()
+            },
+            error: evaluations.iter().find_map(|decided| decided.error.clone()),
+            evaluations: if single { Vec::new() } else { evaluations },
+        }
+    }
 }
 
 /// Compares one answer with what its case expected.
@@ -391,18 +479,47 @@ pub fn judge(
     aliases: &BTreeMap<String, String>,
 ) -> Outcome {
     let mut problems = Vec::new();
-    let mut decided = Vec::new();
+    let mut foreign: Vec<String> = Vec::new();
 
-    for id in &answered.policies {
-        match aliases.get(id) {
-            Some(alias) => decided.push(alias.clone()),
-            None => {
-                decided.push(id.clone());
-                problems.push(format!(
-                    "the decision cites `{id}`, which is no policy of this workspace —                      what answered is not what these sources would apply"
-                ));
-            }
-        }
+    // Naming a policy is also how drift is caught, so every identity a decision cited
+    // has to pass through here — including the ones inside a boxcarred batch, whose
+    // policies the overall answer does not carry. Before this, a batch whose booleans
+    // matched passed even when a plane decided it with policies these sources do not
+    // contain, which is precisely the drift `--remote` exists to find.
+    let mut name = |policies: &[String]| -> Vec<String> {
+        policies
+            .iter()
+            .map(|id| match aliases.get(id) {
+                Some(alias) => alias.clone(),
+                None => {
+                    if !foreign.contains(id) {
+                        foreign.push(id.clone());
+                    }
+
+                    id.clone()
+                }
+            })
+            .collect()
+    };
+
+    let decided = name(&answered.policies);
+    let per_evaluation: Vec<(Option<String>, bool, Vec<String>)> = answered
+        .evaluations
+        .iter()
+        .map(|held| {
+            (
+                held.request_id.clone(),
+                held.permitted,
+                name(&held.policies),
+            )
+        })
+        .collect();
+    drop(name);
+
+    for id in &foreign {
+        problems.push(format!(
+            "the decision cites `{id}`, which is no policy of this workspace — what answered is not what these sources would apply"
+        ));
     }
 
     let error = answered.error;
@@ -411,8 +528,12 @@ pub fn judge(
     if let Some(wanted) = &expect.error {
         match &error {
             Some(found) if found.contains(wanted) => {}
-            Some(found) => problems.push(format!("expected a refusal saying `{wanted}`, got `{found}`")),
-            None => problems.push(format!("expected a refusal saying `{wanted}`, and it was evaluated")),
+            Some(found) => problems.push(format!(
+                "expected a refusal saying `{wanted}`, got `{found}`"
+            )),
+            None => problems.push(format!(
+                "expected a refusal saying `{wanted}`, and it was evaluated"
+            )),
         }
     } else if let Some(found) = &error {
         problems.push(format!("the request could not be evaluated: {found}"));
@@ -429,7 +550,9 @@ pub fn judge(
                     ));
                 }
             }
-            other => problems.push(format!("`{other}` is not a decision — write permit or deny")),
+            other => problems.push(format!(
+                "`{other}` is not a decision — write permit or deny"
+            )),
         }
     }
 
@@ -443,6 +566,26 @@ pub fn judge(
         ));
     }
 
+    if let Some(wanted) = &expect.evaluations {
+        for (request_id, decision) in wanted {
+            match answered
+                .evaluations
+                .iter()
+                .find(|held| held.request_id.as_deref() == Some(request_id.as_str()))
+            {
+                None => problems.push(format!(
+                    "the request asked no evaluation named `{request_id}`"
+                )),
+                Some(held) => {
+                    let got = if held.permitted { "permit" } else { "deny" };
+                    if got != decision {
+                        problems.push(format!("`{request_id}`: expected {decision}, got {got}"));
+                    }
+                }
+            }
+        }
+    }
+
     Outcome {
         name: located.case.name.clone(),
         source: located.source.clone(),
@@ -454,6 +597,22 @@ pub fn judge(
             Some(answered.permitted)
         },
         policies: decided,
+        evaluations: per_evaluation
+            .iter()
+            .map(|(request_id, permitted, policies)| {
+                let cited = if policies.is_empty() {
+                    String::new()
+                } else {
+                    format!("({})", policies.join(", "))
+                };
+
+                format!(
+                    "{}={}{cited}",
+                    request_id.as_deref().unwrap_or("?"),
+                    if *permitted { "permit" } else { "deny" }
+                )
+            })
+            .collect(),
         error,
         problems,
     }
@@ -475,61 +634,37 @@ pub fn failed(located: &Located, profile: &str, problem: String) -> Outcome {
         passed: false,
         decision: None,
         policies: Vec::new(),
+        evaluations: Vec::new(),
         error: Some(problem.clone()),
         problems: vec![problem],
     }
 }
 
-/// The wire payload, as the evaluators want it.
+/// What a request asks, or the refusal a data plane would have answered with.
 ///
-/// The same mapping the data plane performs, and deliberately forgiving in the
-/// same places: a request may name a subject and nothing else, and the policies
-/// decide what that means.
-fn query_of(payload: &Value) -> Query {
-    Query {
-        subject: entity(payload.get("subject")),
-        resource: entity(payload.get("resource")),
-        action: Action {
-            name: payload
-                .get("action")
-                .and_then(|action| action.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            properties: map(payload.get("action").and_then(|action| action.get("properties"))),
-        },
-        context: map(payload.get("context")),
-        entities: payload
-            .get("entities")
-            .and_then(|entities| entities.get("items"))
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
-    }
+/// Deserialized into `permguard_languages::request::CheckRequest` — **the type the
+/// data plane deserializes into** — and then asked with the same `asked()` the plane
+/// calls. Hand-written field checks were tried here twice and were partial twice:
+/// they missed the JSON types, then `principal` and `options`, then boxcarring
+/// altogether. One definition is the only way this stays true, so this is now the
+/// deserialization and nothing else.
+///
+/// The two refusals a plane draws are drawn here with its own codes, so a case may
+/// expect either and mean the same thing in both modes: `payload_malformed` for a
+/// body its types would not read, and whatever `asked()` names for a field the
+/// contract requires — `field_required`, `too_many_evaluations`.
+pub fn asked(payload: &Value) -> std::result::Result<languages::Asked, String> {
+    let request: languages::CheckRequest = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("payload_malformed: {error}"))?;
+
+    request
+        .asked(MAX_EVALUATIONS)
+        .map_err(|refusal| format!("{}: {}", refusal.code, refusal.message))
 }
 
-fn entity(value: Option<&Value>) -> Entity {
-    Entity {
-        kind: value
-            .and_then(|held| held.get("type"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
-        id: value
-            .and_then(|held| held.get("id"))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
-        properties: map(value.and_then(|held| held.get("properties"))),
-    }
-}
-
-fn map(value: Option<&Value>) -> Map<String, Value> {
-    value
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default()
-}
+/// As many evaluations as this plane's own default accepts. A workspace that would
+/// be refused for boxcarring too much has to be refused here too.
+const MAX_EVALUATIONS: usize = 256;
 
 #[cfg(test)]
 mod tests {

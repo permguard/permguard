@@ -229,11 +229,13 @@ mod tests {
     async fn test_every_refusal_is_the_shared_shape_with_the_promised_status() {
         let routes = testing_routes(Disclosure::Minimal);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) =
+            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 201, "{body}");
         assert!(body.contains(r#""name":"delivery""#), "{body}");
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) =
+            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 409, "{body}");
         assert!(body.contains(r#""class":"conflict""#), "{body}");
         assert!(body.contains(r#""code":"name_taken""#), "{body}");
@@ -352,7 +354,8 @@ mod tests {
         let (status, _) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 201);
 
-        let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let (status, body) =
+            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
         assert_eq!(status, 409, "{body}");
         // No recorder is attached in testing_routes, so the assertion above is that the refusal
         // path with audit_refusals=false neither panics nor changes the answer.
