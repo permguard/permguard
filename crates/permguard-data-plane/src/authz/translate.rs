@@ -501,8 +501,7 @@ mod tests {
                 {"request_id": "states-none", "partition_inputs": {}}
             ]
         });
-        let over_http: CheckRequest =
-            serde_json::from_value(json).expect("the contract reads it");
+        let over_http: CheckRequest = serde_json::from_value(json).expect("the contract reads it");
 
         // The same payload, out to the wire and back — which is the trip a gRPC caller's request
         // actually makes.

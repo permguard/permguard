@@ -4,7 +4,7 @@
 # The release pipeline lab
 
 Authorization for a software delivery platform: **who may cut a release, who may
-approve it, and what may deploy it.** One ledger, two languages, eleven requests.
+approve it, and what may deploy it.** One ledger, two languages, twenty-three requests.
 
 Why these controls, in plain terms:
 **[docs/use-cases/release-pipeline.md](../../docs/use-cases/release-pipeline.md)**.
@@ -12,10 +12,11 @@ Why these controls, in plain terms:
 ## What is in here
 
 ```text
-admin-cedar/     the org chart — teams, ownership, roles (schema, checked)
-admin-rego/      the guardrails — deny only, read the state of the moment
+admin-cedar/     the org chart — teams, ownership, roles (Cedar schema, type-checked)
+admin-rego/      the guardrails — deny only, plus a JSON Schema over their own input
 pipeline-rego/   what CI, the signer and the controller may do
-requests/        eleven decision requests
+requests/        twenty-three decision requests, refusals included
+tests/           what this workspace claims its own policies decide
 ```
 
 | Profile | Partitions | Answers |
@@ -299,7 +300,7 @@ with the rules.
 Every one of those is refused **before a policy is consulted**, and that is the point: a caller who
 addressed the wrong partition has made a mistake nobody's rules have an opinion about. `deny` would
 send them reading policies that were never the problem. The suite asserts all of them —
-`permguard test` runs the six cases at the end of `tests/release.yml`.
+`permguard test` runs the six of them at the end of [`tests/release.yml`](tests/release.yml).
 
 An input supplies **data**. It cannot add a partition, skip one, or choose which policies answer:
 the profile decides that.
@@ -472,7 +473,7 @@ task cli -- ledgers delete --zone delivery release-pipeline
 ## What keeps this page true
 
 Every decision above is a case in [`tests/release.yml`](tests/release.yml), and
-`permguard test` checks all eleven **offline** — the policies are compiled here,
+`permguard test` checks all twenty-three **offline** — the policies are compiled here,
 with the same engines a data plane uses, before anything is pushed:
 
 ```bash
@@ -483,8 +484,9 @@ permguard -w examples/release-pipeline test
   ok    a release manager approves somebody else's release         [admin] permit by release-approvers
   ok    nobody approves the release they created themselves        [admin] deny by delivery-guardrails
   ok    signing is not the build's job                             [pipeline] deny, nothing permitted it
+  ok    a document its partition's schema refuses never reaches a rule  [admin] not evaluated
   …
-11 case(s), 11 passed, 0 failed.
+23 case(s), 23 passed, 0 failed.
 ```
 
 Requests are read with `permguard.pdp.v1`'s own type — the one the data plane
@@ -515,7 +517,7 @@ permguard -w examples/release-pipeline test --remote
   …
   asked http://127.0.0.1:7656 about delivery/release-pipeline [workspace]
 
-11 case(s), 11 passed, 0 failed.
+23 case(s), 23 passed, 0 failed.
 ```
 
 A different question from the one above, and the one worth asking after `apply`:

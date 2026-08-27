@@ -287,6 +287,6 @@ task run:all
 ```
 
 then follow **[examples/release-pipeline/README.md](../../examples/release-pipeline/README.md)**,
-which applies these policies and sends eleven requests — including the two that
+which applies these policies and sends twenty-three requests — including the two that
 matter most: Bob refused his own approval, and Alice allowed to roll back only once
 the incident is open.

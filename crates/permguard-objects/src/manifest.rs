@@ -358,7 +358,8 @@ impl Manifest {
                     .collect::<Result<Vec<_>, _>>()?,
                 _ => return Err(bad("profile partitions must be an array")),
             };
-            grammar::validate_entry_name(name).map_err(|e| bad(format!("profile `{name}`: {e}")))?;
+            grammar::validate_entry_name(name)
+                .map_err(|e| bad(format!("profile `{name}`: {e}")))?;
             // A profile is a contract offered *across* partitions. One that names none offers
             // nothing: every request under it would find nothing to ask, and the answer would be
             // a deny with no policy behind it — indistinguishable from a policy refusing, and
@@ -923,8 +924,7 @@ mod profile_tests {
     /// Named twice, a partition is asked twice and cited twice. Nobody means that.
     #[test]
     fn a_profile_that_names_a_partition_twice_is_refused() {
-        let refused =
-            decode(&manifest(vec![("admin", vec!["a", "a"])])).expect_err("once is once");
+        let refused = decode(&manifest(vec![("admin", vec!["a", "a"])])).expect_err("once is once");
 
         assert!(refused.detail.contains("twice"), "{refused}");
     }

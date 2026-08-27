@@ -329,13 +329,16 @@ impl Decider {
         // The decision's own clock, which the log records: how long the plane
         // took, separate from how long the transport took.
         let started = Instant::now();
-        let resolved = request.resolve(self.max_evaluations).map_err(|malformed| {
+        // Shared, never copied. The plan below runs on a blocking thread and needs the request to
+        // outlive this frame; cloning it copied every evaluation's subject, resource and context
+        // a second time, on top of the entity stores the contract already shares.
+        let resolved = Arc::new(request.resolve(self.max_evaluations).map_err(|malformed| {
             self.metrics
                 .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
             // The profile's own status: a payload that is not a request is a
             // bad request, not a decision.
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
-        })?;
+        })?);
 
         let labels = [
             ("zone", resolved.zone.as_str()),
@@ -435,7 +438,7 @@ impl Decider {
         let plan = Plan {
             head: Arc::clone(&head),
             partitions,
-            resolved: resolved.clone(),
+            resolved: Arc::clone(&resolved),
             metrics: self.metrics.clone(),
         };
         let decisions = tokio::task::spawn_blocking(move || plan.run())
@@ -984,7 +987,7 @@ fn now_rfc3339() -> String {
 struct Plan {
     head: Arc<Head>,
     partitions: Vec<Arc<Partition>>,
-    resolved: Resolved,
+    resolved: Arc<Resolved>,
     metrics: permguard_core::Metrics,
 }
 

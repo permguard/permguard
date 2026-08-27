@@ -152,7 +152,13 @@ pub struct Asking {
     /// The context a caller stated. What a runtime is *given* may be more: see `route`.
     pub context: Map<String, Value>,
     /// The inputs the request carries, by the partition each is addressed to.
-    pub partition_inputs: PartitionInputs,
+    ///
+    /// Shared, not copied. A boxcarred request may hold 256 evaluations and most of them state no
+    /// inputs of their own, so they all read the request's defaults — and a deep copy per
+    /// evaluation turned a one-megabyte entity store into hundreds of megabytes before a single
+    /// policy had been consulted. Each evaluation that inherits now holds a handle to the same
+    /// map; only one that states its own pays for its own.
+    pub partition_inputs: std::sync::Arc<PartitionInputs>,
 }
 
 /// The context key Permguard fills in from `action.properties`, and a caller may not.
@@ -216,7 +222,7 @@ impl Asking {
             ));
         }
 
-        for (name, body) in &self.partition_inputs {
+        for (name, body) in self.partition_inputs.iter() {
             let Some(target) = partitions.iter().find(|held| held.name == name) else {
                 return Err(malformed(
                     "partition_unknown",
@@ -748,6 +754,9 @@ impl CheckRequest {
         }
 
         let boxcarred = !self.evaluations.is_empty();
+        // Cloned once, here, and shared by every evaluation that does not state its own. `asked`
+        // borrows the request, so one copy is unavoidable; 256 were not.
+        let defaults = std::sync::Arc::new(self.partition_inputs.clone());
         let mut queries = Vec::new();
         if boxcarred {
             // Two evaluations under one name cannot both be answered: a caller joining the
@@ -772,12 +781,12 @@ impl CheckRequest {
 
             for (index, evaluation) in self.evaluations.iter().enumerate() {
                 queries.push((
-                    self.asking_of(Some(evaluation), index)?,
+                    self.asking_of(Some(evaluation), index, &defaults)?,
                     evaluation.request_id.clone(),
                 ));
             }
         } else {
-            queries.push((self.asking_of(None, 0)?, None));
+            queries.push((self.asking_of(None, 0, &defaults)?, None));
         }
 
         Ok(Asked {
@@ -834,6 +843,7 @@ impl CheckRequest {
         &self,
         evaluation: Option<&EvaluationBody>,
         index: usize,
+        defaults: &std::sync::Arc<PartitionInputs>,
     ) -> Result<Asking, Malformed> {
         let subject = pick(
             evaluation.and_then(|e| e.subject.as_ref()),
@@ -850,10 +860,12 @@ impl CheckRequest {
             .and_then(|e| e.context.as_ref())
             .or(self.context.as_ref());
         // Present, even empty, an evaluation's own map replaces the top-level one whole. The same
-        // rule as every other field: what an evaluation states, it states.
-        let partition_inputs = evaluation
-            .and_then(|e| e.partition_inputs.as_ref())
-            .unwrap_or(&self.partition_inputs);
+        // rule as every other field: what an evaluation states, it states. An evaluation that
+        // states nothing shares the defaults rather than copying them.
+        let partition_inputs = match evaluation.and_then(|e| e.partition_inputs.as_ref()) {
+            Some(own) => std::sync::Arc::new(own.clone()),
+            None => std::sync::Arc::clone(defaults),
+        };
 
         let context = context.cloned().unwrap_or_default();
 
@@ -885,7 +897,7 @@ impl CheckRequest {
                     .unwrap_or_default(),
             },
             context,
-            partition_inputs: partition_inputs.clone(),
+            partition_inputs,
         })
     }
 }
@@ -1674,6 +1686,61 @@ mod routing_tests {
             read(2).input.rego_data().expect("a document").is_empty(),
             "an empty map replaces the defaults whole: stating none is stating none, and merging \
              key by key would make what a partition reads depend on a rule nobody wrote"
+        );
+    }
+
+    /// A batch that inherits its inputs holds **one** copy of them, not one per evaluation.
+    ///
+    /// Not a claim about intent — a pointer comparison. With the default of 256 evaluations, a
+    /// one-megabyte entity store deep-copied per evaluation was hundreds of megabytes allocated
+    /// before a single policy had been consulted, and every byte of it identical.
+    #[test]
+    fn evaluations_that_inherit_their_inputs_share_them() {
+        let mut payload = plain();
+        payload["partition_inputs"] = json!({
+            "p": {"type": REGO_DATA_V1, "data": {"from": "the top"}}
+        });
+        payload["evaluations"] = json!([
+            {"request_id": "one"},
+            {"request_id": "two"},
+            {"request_id": "three", "partition_inputs": {
+                "p": {"type": REGO_DATA_V1, "data": {"from": "its own"}}
+            }}
+        ]);
+        let object = payload.as_object_mut().expect("an object");
+        object.insert("zone".to_owned(), json!("z"));
+        object.insert("ledger".to_owned(), json!("l"));
+        let request: CheckRequest = serde_json::from_value(payload).expect("it parses");
+        let asked = request.asked(256).expect("it is well formed");
+
+        assert!(
+            std::sync::Arc::ptr_eq(
+                &asked.queries[0].0.partition_inputs,
+                &asked.queries[1].0.partition_inputs
+            ),
+            "two evaluations that inherit read the very same map"
+        );
+        assert!(
+            !std::sync::Arc::ptr_eq(
+                &asked.queries[0].0.partition_inputs,
+                &asked.queries[2].0.partition_inputs
+            ),
+            "and one that states its own has its own"
+        );
+        // Sharing is not aliasing the wrong thing: each still reads what it should.
+        assert_eq!(
+            asked.queries[1].0.partition_inputs["p"]
+                .data
+                .as_ref()
+                .expect("data")["from"],
+            json!("the top")
+        );
+        assert_eq!(
+            asked.queries[2].0.partition_inputs["p"]
+                .data
+                .as_ref()
+                .expect("data")["from"],
+            json!("its own")
         );
     }
 

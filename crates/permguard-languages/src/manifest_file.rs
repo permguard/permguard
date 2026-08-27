@@ -305,9 +305,17 @@ profiles:
         // And in every other section of the file, not only that one.
         for (what, from, to) in [
             ("a partition", "schema: false", "schemas: false"),
-            ("a runtime", "language: { name: cedar", "languages: { name: cedar"),
+            (
+                "a runtime",
+                "language: { name: cedar",
+                "languages: { name: cedar",
+            ),
             ("the metadata", "kind: policy", "kinds: policy"),
-            ("a profile", "type: permguard.pdp.v1", "types: permguard.pdp.v1"),
+            (
+                "a profile",
+                "type: permguard.pdp.v1",
+                "types: permguard.pdp.v1",
+            ),
             ("the file itself", "profiles:", "profile:"),
         ] {
             assert!(
