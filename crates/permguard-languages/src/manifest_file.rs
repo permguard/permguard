@@ -32,7 +32,8 @@
 use std::collections::BTreeMap;
 
 use permguard_objects::manifest::{
-    InputContract, Manifest, Partition, Profile, Requirement, Runtime,
+    ArtifactContract, HistoryScope, InputContract, Manifest, Partition, Profile, Requirement,
+    Runtime,
 };
 use permguard_objects::semver::Constraint;
 use serde::{Deserialize, Serialize};
@@ -80,11 +81,70 @@ pub struct PartitionSection {
     pub runtime: String,
     #[serde(default)]
     pub media_types: Vec<String>,
+    /// The legacy one-schema flag, still how Cedar and Rego partitions declare theirs.
     #[serde(default)]
     pub schema: bool,
+    /// The typed artifact contracts this partition declares, for a runtime that has several.
+    ///
+    /// An alternative to `schema`, not an addition: a partition states its contents one way or
+    /// the other, and declaring both is refused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<ArtifactSection>,
+    /// How this partition's temporal history is scoped, when it has to say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<HistorySection>,
     /// What a request may hand this partition, when it may hand it anything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<InputSection>,
+}
+
+/// One artifact contract, by registered type.
+///
+/// The author names a type; the registry answers what part it plays, how many are allowed and how
+/// one is validated. `required` may tighten an optional artifact; it cannot excuse a required one.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactSection {
+    pub r#type: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
+/// How a temporal partition's history is scoped.
+///
+/// Only ever written to acknowledge a schema with no universal pin, whose every evaluation ranges
+/// over the whole retained history. An operator states that out loud or the partition is refused.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HistorySection {
+    pub scope: HistoryScopeSection,
+}
+
+/// The scope as YAML spells it.
+///
+/// A presentation of [`HistoryScope`], not that type with serde bolted on: the canonical model
+/// carries no serialization framework, because what a manifest *is* on the wire is its CBOR
+/// encoding and nothing else. This is the same separation `InputSection` keeps.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryScopeSection {
+    Global,
+}
+
+impl From<HistoryScopeSection> for HistoryScope {
+    fn from(scope: HistoryScopeSection) -> Self {
+        match scope {
+            HistoryScopeSection::Global => Self::Global,
+        }
+    }
+}
+
+impl From<HistoryScope> for HistoryScopeSection {
+    fn from(scope: HistoryScope) -> Self {
+        match scope {
+            HistoryScope::Global => Self::Global,
+        }
+    }
 }
 
 /// The one kind of request-supplied input a partition accepts.
@@ -175,6 +235,15 @@ fn to_model(file: &ManifestFile) -> Result<Manifest, String> {
                 runtime: partition.runtime.clone(),
                 media_types,
                 schema: partition.schema,
+                artifacts: partition
+                    .artifacts
+                    .iter()
+                    .map(|artifact| ArtifactContract {
+                        r#type: artifact.r#type.clone(),
+                        required: artifact.required,
+                    })
+                    .collect(),
+                history: partition.history.as_ref().map(|history| history.scope.into()),
                 input: partition.input.as_ref().map(|input| InputContract {
                     r#type: input.r#type.clone(),
                     required: input.required,
@@ -234,6 +303,17 @@ pub fn to_yaml(manifest: &Manifest) -> Result<String, String> {
                         runtime: partition.runtime.clone(),
                         media_types: partition.media_types.clone(),
                         schema: partition.schema,
+                        artifacts: partition
+                            .artifacts
+                            .iter()
+                            .map(|artifact| ArtifactSection {
+                                r#type: artifact.r#type.clone(),
+                                required: artifact.required,
+                            })
+                            .collect(),
+                        history: partition.history.map(|scope| HistorySection {
+                            scope: scope.into(),
+                        }),
                         input: partition.input.as_ref().map(|input| InputSection {
                             r#type: input.r#type.clone(),
                             required: input.required,

@@ -317,6 +317,8 @@ mod tests {
                     runtime: "cedar".into(),
                     media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                     schema: false,
+                    artifacts: Vec::new(),
+                    history: None,
                     input: None,
                 },
             )]),

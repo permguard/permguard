@@ -136,6 +136,8 @@ fn manifest_bytes() -> Vec<u8> {
             runtime: "cedar".to_owned(),
             media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
             schema: false,
+            artifacts: Vec::new(),
+            history: None,
             input: None,
         },
     );

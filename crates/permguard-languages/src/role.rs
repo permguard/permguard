@@ -40,7 +40,19 @@ pub trait Language: Send + Sync {
     fn policy_media_type(&self) -> &'static str;
 
     /// The registered media type of this language's schema, when it has one.
+    ///
+    /// The legacy one-schema contract. A runtime with several fixed artifacts describes them
+    /// through [`Language::artifacts`] instead, and answers `None` here.
     fn schema_media_type(&self) -> Option<&'static str>;
+
+    /// The typed artifacts this runtime owns, when it describes its contents that way.
+    ///
+    /// Empty for a language whose partitions are "policies and at most one schema" — Cedar and
+    /// Rego today. A runtime needing several distinct fixed artifacts registers them here, and
+    /// everything downstream asks the registry rather than growing a switch of its own.
+    fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+        &[]
+    }
 
     /// Validates one policy: it must parse under this language.
     fn validate_policy(&self, bytes: &[u8]) -> Result<(), String>;

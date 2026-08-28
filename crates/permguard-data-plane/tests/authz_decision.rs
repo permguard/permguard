@@ -127,6 +127,8 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
                 runtime: (*language).to_owned(),
                 media_types,
                 schema: *schema,
+                artifacts: Vec::new(),
+                history: None,
                 // Every test partition accepts its runtime's own input, optionally: the tests
                 // that address one need it declared, and the tests that do not are unaffected —
                 // an optional input nobody sends is an empty one.

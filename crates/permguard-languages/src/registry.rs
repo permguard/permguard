@@ -64,11 +64,13 @@ pub fn provided_runtimes() -> Vec<ProvidedRuntime> {
 
 /// Everything a manifest must satisfy before this build will serve it, in one call.
 ///
-/// Two gates, and they are asked together because forgetting the second one is the failure this
-/// exists to prevent: the runtime gate refuses a ledger whose engine this is not, and the input
-/// gate refuses a partition whose declared input type nothing here implements — or one written for
-/// another runtime. Three call sites ask this question (the plane at load, the control plane at
-/// ingest, the CLI at validate) and each of them asking it in its own words is how they drift.
+/// Three gates, asked together because forgetting one is the failure this exists to prevent: the
+/// runtime gate refuses a ledger whose engine this is not; the input gate refuses a partition
+/// whose declared input type nothing here implements, or one written for another runtime; the
+/// artifact gate does the same for its declared contents, and refuses a partition missing an
+/// artifact its runtime cannot compile without. Three call sites ask this question (the plane at
+/// load, the control plane at ingest, the CLI at validate) and each asking it in its own words is
+/// how they drift.
 pub fn check_manifest(
     manifest: &Manifest,
 ) -> Result<(), permguard_objects::manifest::ManifestError> {

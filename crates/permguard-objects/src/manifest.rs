@@ -40,6 +40,47 @@ pub struct Runtime {
     pub engine: Requirement,
 }
 
+/// One artifact contract a partition declares.
+///
+/// The type is a registered name; the registry — not the author — decides what part it plays, how
+/// many the partition may hold and how one is validated. `required` may tighten an optional
+/// artifact into a mandatory one; it may not excuse one the registry requires.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactContract {
+    pub r#type: String,
+    pub required: bool,
+}
+
+/// How a temporal partition's history is scoped.
+///
+/// Not a Dogwood source field: a Permguard partition contract. A schema whose pins partition every
+/// relevant event kind the same way has bounded, per-key history and needs nothing declared here.
+/// One that does not has *global* history — every evaluation ranges over the whole retained
+/// ledger — and that is a workload an operator must accept out loud rather than inherit from a
+/// pin somebody forgot to write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryScope {
+    /// Every evaluation ranges over the partition's whole retained history.
+    Global,
+}
+
+impl HistoryScope {
+    /// The scope as the manifest spells it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+        }
+    }
+
+    /// The scope a manifest names, or `None` for a word this build does not know.
+    pub fn parse(scope: &str) -> Option<Self> {
+        match scope {
+            "global" => Some(Self::Global),
+            _ => None,
+        }
+    }
+}
+
 /// One partition's rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Partition {
@@ -48,7 +89,18 @@ pub struct Partition {
     /// The registered media types allowed inside.
     pub media_types: Vec<String>,
     /// Whether the partition carries a language schema.
+    ///
+    /// The legacy one-schema contract, still how Cedar and Rego partitions declare theirs. A
+    /// partition that declares `artifacts` states its contracts by name instead; the two are not
+    /// combined, because "there is a schema" cannot say *which* of several schemas is meant.
     pub schema: bool,
+    /// The typed artifact contracts this partition declares.
+    ///
+    /// Empty for a partition using the legacy `schema` flag. Non-empty means the partition's
+    /// contents are described entirely by these, and `schema` is not consulted.
+    pub artifacts: Vec<ArtifactContract>,
+    /// How this partition's temporal history is scoped, when it says so.
+    pub history: Option<HistoryScope>,
     /// The one kind of request-supplied input this partition accepts, when it
     /// accepts any. A partition that declares none is addressed by nobody.
     pub input: Option<InputContract>,
@@ -117,6 +169,10 @@ const PARTITION_RUNTIME: i64 = 1;
 const PARTITION_MEDIA_TYPES: i64 = 2;
 const PARTITION_SCHEMA: i64 = 3;
 const PARTITION_INPUT: i64 = 4;
+const PARTITION_ARTIFACTS: i64 = 5;
+const PARTITION_HISTORY: i64 = 6;
+const ARTIFACT_TYPE: i64 = 1;
+const ARTIFACT_REQUIRED: i64 = 2;
 const INPUT_TYPE: i64 = 1;
 const INPUT_REQUIRED: i64 = 2;
 const PROFILE_TYPE: i64 = 1;
@@ -181,6 +237,39 @@ impl Manifest {
                                         (Value::Int(INPUT_REQUIRED), Value::Bool(input.required)),
                                     ]),
                                 )
+                            }))
+                            // Both absent when the partition declares neither, so a ledger
+                            // written before typed artifacts existed encodes byte for byte as it
+                            // always did.
+                            .chain(
+                                (!partition.artifacts.is_empty())
+                                    .then(|| {
+                                        (
+                                            Value::Int(PARTITION_ARTIFACTS),
+                                            Value::Array(
+                                                partition
+                                                    .artifacts
+                                                    .iter()
+                                                    .map(|artifact| {
+                                                        Value::Map(vec![
+                                                            (
+                                                                Value::Int(ARTIFACT_TYPE),
+                                                                text(&artifact.r#type),
+                                                            ),
+                                                            (
+                                                                Value::Int(ARTIFACT_REQUIRED),
+                                                                Value::Bool(artifact.required),
+                                                            ),
+                                                        ])
+                                                    })
+                                                    .collect(),
+                                            ),
+                                        )
+                                    })
+                                    .into_iter(),
+                            )
+                            .chain(partition.history.iter().map(|history| {
+                                (Value::Int(PARTITION_HISTORY), text(history.as_str()))
                             }))
                             .collect(),
                         ),
@@ -281,6 +370,8 @@ impl Manifest {
                     PARTITION_MEDIA_TYPES,
                     PARTITION_SCHEMA,
                     PARTITION_INPUT,
+                    PARTITION_ARTIFACTS,
+                    PARTITION_HISTORY,
                 ],
             )?;
             let media_types = match need(partition, PARTITION_MEDIA_TYPES, "media_types")? {
@@ -325,12 +416,71 @@ impl Manifest {
                     })
                 }
             };
+            let artifacts = match partition
+                .iter()
+                .find(|(key, _)| *key == Value::Int(PARTITION_ARTIFACTS))
+            {
+                None => Vec::new(),
+                Some((_, Value::Array(items))) => {
+                    let mut declared = Vec::with_capacity(items.len());
+                    let mut named = std::collections::BTreeSet::new();
+                    for item in items {
+                        let pairs = only_known(
+                            item,
+                            "partition.artifacts entry",
+                            &[ARTIFACT_TYPE, ARTIFACT_REQUIRED],
+                        )?;
+                        let required = match need(pairs, ARTIFACT_REQUIRED, "artifact.required")? {
+                            Value::Bool(required) => *required,
+                            _ => return Err(bad("artifact.required must be a boolean")),
+                        };
+                        let r#type = get_text(pairs, ARTIFACT_TYPE, "artifact.type")?;
+                        // Twice is not twice as much: the second declaration would silently win or
+                        // silently lose, and nothing downstream could say which.
+                        if !named.insert(r#type.clone()) {
+                            return Err(bad(format!(
+                                "partition `{name}` declares the artifact type `{type}` twice",
+                                type = r#type
+                            )));
+                        }
+                        declared.push(ArtifactContract { r#type, required });
+                    }
+
+                    declared
+                }
+                Some(_) => return Err(bad("partition.artifacts must be an array")),
+            };
+            // The two ways of describing a partition's contents are alternatives, not layers. A
+            // partition that used both would be saying "there is a schema" *and* naming which
+            // schemas there are, and the first statement cannot be checked against the second.
+            if !artifacts.is_empty() && schema {
+                return Err(bad(format!(
+                    "partition `{name}` declares typed `artifacts` and also `schema: true`: the \
+                     typed contracts say which artifacts there are, so the flag has nothing left \
+                     to add"
+                )));
+            }
+            let history = match partition
+                .iter()
+                .find(|(key, _)| *key == Value::Int(PARTITION_HISTORY))
+            {
+                None => None,
+                Some((_, Value::Text(scope))) => Some(HistoryScope::parse(scope).ok_or_else(|| {
+                    bad(format!(
+                        "partition `{name}` declares the history scope `{scope}`, which this \
+                         build does not know (it knows: global)"
+                    ))
+                })?),
+                Some(_) => return Err(bad("partition.history must be text")),
+            };
             manifest.partitions.insert(
                 name.clone(),
                 Partition {
                     runtime,
                     media_types,
                     schema,
+                    artifacts,
+                    history,
                     input,
                 },
             );
@@ -466,6 +616,98 @@ pub struct ProvidedInputType {
     pub name: String,
     /// The language of the runtime that reads this input, e.g. `cedar`.
     pub language: String,
+}
+
+/// How many of one artifact type a partition may hold, as the registry declares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArtifactCardinality {
+    One,
+    ZeroOrOne,
+    Many,
+}
+
+/// What one consumer implements of the artifact registry.
+///
+/// The third mirror of [`ProvidedRuntime`], for the same reason: the model defines what a manifest
+/// *is* and knows no language, so the catalogue of artifact types is offered to it by whoever
+/// holds the languages.
+#[derive(Debug, Clone)]
+pub struct ProvidedArtifactType {
+    pub name: String,
+    /// The language that owns it.
+    pub language: String,
+    pub cardinality: ArtifactCardinality,
+    /// Whether a partition of that runtime must carry one even when it does not say so.
+    pub required_by_default: bool,
+}
+
+/// The third half of the load gate: every declared artifact contract must name a type this
+/// consumer implements, owned by the partition's own runtime — and every artifact that runtime
+/// requires must be declared.
+///
+/// Fail-closed, like the other two. A type nobody implements is an artifact a ledger would carry
+/// and nothing would read; a type belonging to another runtime is a Cedar schema handed to a Rego
+/// compiler; a missing required artifact is a partition that cannot be compiled at all, and
+/// finding that out at the first request rather than at load is the difference between a refused
+/// push and an outage.
+pub fn check_artifact_contracts(
+    manifest: &Manifest,
+    provided: &[ProvidedArtifactType],
+) -> Result<(), ManifestError> {
+    for (name, partition) in &manifest.partitions {
+        if partition.artifacts.is_empty() {
+            continue;
+        }
+        let runtime = manifest.runtimes.get(&partition.runtime).ok_or_else(|| {
+            bad(format!(
+                "partition `{name}` names the runtime `{}`, which is not declared",
+                partition.runtime
+            ))
+        })?;
+        let language = &runtime.language.name;
+
+        for declared in &partition.artifacts {
+            let offered = provided
+                .iter()
+                .find(|held| held.name == declared.r#type)
+                .ok_or_else(|| {
+                    let known: Vec<&str> = provided.iter().map(|held| held.name.as_str()).collect();
+                    bad(format!(
+                        "partition `{name}` declares the artifact type `{}`, which this build \
+                         does not implement (it implements: {})",
+                        declared.r#type,
+                        known.join(", ")
+                    ))
+                })?;
+            if &offered.language != language {
+                return Err(bad(format!(
+                    "partition `{name}` runs `{language}` and declares the artifact type `{}`, \
+                     which belongs to `{}`: an artifact is read by the runtime that owns it, and \
+                     no other",
+                    declared.r#type, offered.language
+                )));
+            }
+        }
+
+        // An artifact the runtime cannot compile without is not optional because a manifest left
+        // it out. Stated here so the omission is refused where it is written.
+        for offered in provided.iter().filter(|held| &held.language == language) {
+            if offered.required_by_default
+                && !partition
+                    .artifacts
+                    .iter()
+                    .any(|declared| declared.r#type == offered.name)
+            {
+                return Err(bad(format!(
+                    "partition `{name}` runs `{language}` and does not declare `{}`, which that \
+                     runtime requires: a partition without it cannot be compiled",
+                    offered.name
+                )));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// The second half of the load gate: every partition input contract must name a type this
@@ -658,6 +900,8 @@ mod tests {
                         runtime: "cedar".into(),
                         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
                         schema: false,
+                        artifacts: Vec::new(),
+                        history: None,
                         input: None,
                     },
                 ),
@@ -667,6 +911,8 @@ mod tests {
                         runtime: "rego".into(),
                         media_types: vec!["application/vnd.permguard.policy.rego".into()],
                         schema: false,
+                        artifacts: Vec::new(),
+                        history: None,
                         input: None,
                     },
                 ),
@@ -766,6 +1012,8 @@ mod input_contract_tests {
                 runtime: runtime.to_owned(),
                 media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
                 schema: false,
+                artifacts: Vec::new(),
+                history: None,
                 input,
             },
         );
@@ -886,6 +1134,8 @@ mod profile_tests {
                     runtime: "cedar".to_owned(),
                     media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
                     schema: false,
+                    artifacts: Vec::new(),
+                    history: None,
                     input: None,
                 },
             );
@@ -965,5 +1215,225 @@ mod profile_tests {
             Manifest::decode(&crate::cbor::encode(&encoded)).expect_err("nobody here knows key 99");
 
         assert!(refused.detail.contains("99"), "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod artifact_contract_tests {
+    use super::*;
+
+    fn manifest(
+        artifacts: Vec<ArtifactContract>,
+        schema: bool,
+        history: Option<HistoryScope>,
+    ) -> Manifest {
+        let mut built = Manifest {
+            kind: KIND_POLICY.to_owned(),
+            name: "l".to_owned(),
+            ..Manifest::default()
+        };
+        built.runtimes.insert(
+            "dogwood".to_owned(),
+            Runtime {
+                language: Requirement {
+                    name: "dogwood".to_owned(),
+                    constraint: Constraint::parse(">=1.0.0").expect("a constraint"),
+                },
+                engine: Requirement {
+                    name: "permguard".to_owned(),
+                    constraint: Constraint::parse(">=0.1.0").expect("a constraint"),
+                },
+            },
+        );
+        built.partitions.insert(
+            "p".to_owned(),
+            Partition {
+                runtime: "dogwood".to_owned(),
+                media_types: vec!["application/vnd.permguard.policy.dogwood".to_owned()],
+                schema,
+                artifacts,
+                history,
+                input: None,
+            },
+        );
+        built.profiles.insert(
+            "default".to_owned(),
+            Profile {
+                r#type: PROFILE_PDP_V1.to_owned(),
+                partitions: vec!["p".to_owned()],
+            },
+        );
+
+        built
+    }
+
+    fn contract(name: &str, required: bool) -> ArtifactContract {
+        ArtifactContract {
+            r#type: name.to_owned(),
+            required,
+        }
+    }
+
+    fn provided() -> Vec<ProvidedArtifactType> {
+        vec![
+            ProvidedArtifactType {
+                name: "permguard.dogwood.action-schema.v1".to_owned(),
+                language: "dogwood".to_owned(),
+                cardinality: ArtifactCardinality::One,
+                required_by_default: true,
+            },
+            ProvidedArtifactType {
+                name: "permguard.dogwood.event-schema.v1".to_owned(),
+                language: "dogwood".to_owned(),
+                cardinality: ArtifactCardinality::ZeroOrOne,
+                required_by_default: false,
+            },
+            ProvidedArtifactType {
+                name: "permguard.cedar.schema.v1".to_owned(),
+                language: "cedar".to_owned(),
+                cardinality: ArtifactCardinality::ZeroOrOne,
+                required_by_default: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn typed_artifacts_survive_the_canonical_encoding() {
+        let built = manifest(
+            vec![
+                contract("permguard.dogwood.action-schema.v1", true),
+                contract("permguard.dogwood.event-schema.v1", false),
+            ],
+            false,
+            None,
+        );
+        let decoded = Manifest::decode(&built.encode()).expect("it round-trips");
+
+        assert_eq!(
+            decoded.partitions["p"].artifacts,
+            built.partitions["p"].artifacts
+        );
+    }
+
+    /// A ledger written before typed artifacts existed encodes exactly as it always did.
+    #[test]
+    fn a_partition_declaring_none_encodes_as_it_did_before_the_field_existed() {
+        let plain = manifest(Vec::new(), false, None);
+        let decoded = Manifest::decode(&plain.encode()).expect("it round-trips");
+
+        assert!(decoded.partitions["p"].artifacts.is_empty());
+        assert_eq!(decoded.partitions["p"].history, None);
+    }
+
+    /// The two ways of describing a partition's contents are alternatives, not layers.
+    #[test]
+    fn typed_artifacts_beside_the_legacy_schema_flag_are_refused() {
+        let both = manifest(
+            vec![contract("permguard.dogwood.action-schema.v1", true)],
+            true,
+            None,
+        );
+        let refused = Manifest::decode(&both.encode()).expect_err("one way or the other");
+
+        assert!(refused.detail.contains("schema: true"), "{refused}");
+    }
+
+    #[test]
+    fn the_same_artifact_type_declared_twice_is_refused() {
+        let twice = manifest(
+            vec![
+                contract("permguard.dogwood.action-schema.v1", true),
+                contract("permguard.dogwood.action-schema.v1", false),
+            ],
+            false,
+            None,
+        );
+        let refused = Manifest::decode(&twice.encode()).expect_err("once is once");
+
+        assert!(refused.detail.contains("twice"), "{refused}");
+    }
+
+    #[test]
+    fn a_history_scope_survives_the_encoding_and_an_unknown_one_is_refused() {
+        let global = manifest(
+            vec![contract("permguard.dogwood.action-schema.v1", true)],
+            false,
+            Some(HistoryScope::Global),
+        );
+        let decoded = Manifest::decode(&global.encode()).expect("it round-trips");
+        assert_eq!(decoded.partitions["p"].history, Some(HistoryScope::Global));
+
+        assert_eq!(HistoryScope::parse("global"), Some(HistoryScope::Global));
+        assert_eq!(HistoryScope::parse("per-principal"), None);
+    }
+
+    #[test]
+    fn an_artifact_type_this_build_does_not_implement_is_refused() {
+        let refused = check_artifact_contracts(
+            &manifest(vec![contract("acme.thing.v1", true)], false, None),
+            &provided(),
+        )
+        .expect_err("nobody implements it");
+
+        assert!(refused.detail.contains("acme.thing.v1"), "{refused}");
+    }
+
+    #[test]
+    fn an_artifact_owned_by_another_runtime_is_refused() {
+        let refused = check_artifact_contracts(
+            &manifest(
+                vec![
+                    contract("permguard.dogwood.action-schema.v1", true),
+                    contract("permguard.cedar.schema.v1", false),
+                ],
+                false,
+                None,
+            ),
+            &provided(),
+        )
+        .expect_err("a Cedar schema is not Dogwood's to read");
+
+        assert!(refused.detail.contains("belongs to `cedar`"), "{refused}");
+    }
+
+    /// An artifact the runtime cannot compile without is not optional because a manifest omitted it.
+    #[test]
+    fn a_missing_required_artifact_is_refused_where_it_is_written() {
+        let refused = check_artifact_contracts(
+            &manifest(
+                vec![contract("permguard.dogwood.event-schema.v1", false)],
+                false,
+                None,
+            ),
+            &provided(),
+        )
+        .expect_err("the action schema is required");
+
+        assert!(
+            refused.detail.contains("permguard.dogwood.action-schema.v1"),
+            "{refused}"
+        );
+
+        // Declared, and it passes.
+        assert!(
+            check_artifact_contracts(
+                &manifest(
+                    vec![
+                        contract("permguard.dogwood.action-schema.v1", true),
+                        contract("permguard.dogwood.event-schema.v1", false),
+                    ],
+                    false,
+                    None,
+                ),
+                &provided(),
+            )
+            .is_ok()
+        );
+    }
+
+    /// A partition using the legacy flag is not asked for typed artifacts it never declared.
+    #[test]
+    fn the_gate_leaves_a_legacy_partition_alone() {
+        assert!(check_artifact_contracts(&manifest(Vec::new(), true, None), &provided()).is_ok());
     }
 }

@@ -29,6 +29,7 @@
 mod cedar;
 mod rego;
 
+pub mod artifact;
 pub mod evaluate;
 pub mod fanout;
 pub mod input;

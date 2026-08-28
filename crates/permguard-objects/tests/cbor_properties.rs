@@ -93,6 +93,8 @@ fn manifest() -> impl Strategy<Value = Manifest> {
                         runtime: runtime_name,
                         media_types,
                         schema: false,
+                        artifacts: Vec::new(),
+                        history: None,
                         input: None,
                     },
                 );
