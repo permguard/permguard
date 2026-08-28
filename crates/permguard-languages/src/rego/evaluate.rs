@@ -164,6 +164,18 @@ impl Evaluator for RegoEvaluator {
         // the request rides on `input`, where a schema can describe it and where one request
         // cannot leave anything behind for the next.
         let mut engine = self.engine.clone();
+
+        // The request's own deadline, handed to the interpreter. `RULE_BUDGET` bounds a single
+        // rule; a partition with many modules can spend that many times over and still be inside
+        // it, which is why a per-rule limit alone never bounded a *request*. Whichever is smaller
+        // wins, so a decision that is nearly out of time cannot start a rule that would outlive
+        // it — this is the one engine here whose interpreter can be told to stop.
+        if let Some(left) = query.remaining() {
+            engine.set_execution_timer_config(ExecutionTimerConfig {
+                limit: left.min(RULE_BUDGET),
+                check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL).unwrap_or(NonZeroU32::MIN),
+            });
+        }
         engine.set_input(input);
 
         let mut permitted = Vec::new();
@@ -359,6 +371,7 @@ deny if input.subject.id == "bob"
                 properties: Map::new(),
             },
             context: Map::new(),
+            deadline: None,
             input: crate::input::PartitionData::default(),
         }
     }
@@ -367,6 +380,45 @@ deny if input.subject.id == "bob"
         crate::input::PartitionData::RegoData(std::sync::Arc::new(
             value.as_object().cloned().unwrap_or_default(),
         ))
+    }
+
+    #[test]
+    fn a_hostile_rule_is_stopped_by_the_decisions_deadline_long_before_the_rule_budget() {
+        // `RULE_BUDGET` bounds one rule at a second; a decision given 150ms must not spend a
+        // second on it. This is the propagation working: the interpreter is handed whichever
+        // budget is smaller, so a request nearly out of time cannot start a rule that would
+        // outlive it — and a partition with many modules cannot spend the per-rule budget once
+        // per module and still call itself bounded.
+        const HOSTILE: &str = r#"package hostile
+
+import rego.v1
+
+default allow := false
+
+allow if {
+    input.subject.id != ""
+    some x in numbers.range(0, 20000)
+    some y in numbers.range(0, 20000)
+    x + y == -1
+}
+"#;
+        let compiled = Rego
+            .compile(&[stored("01a0-hostile", HOSTILE)], None)
+            .expect("the module compiles");
+
+        let mut asked = query("alice", "read", "open");
+        asked.deadline = Some(std::time::Instant::now() + Duration::from_millis(150));
+
+        let started = std::time::Instant::now();
+        let verdict = compiled.evaluate(&asked);
+        let spent = started.elapsed();
+
+        assert!(!verdict.permitted, "it fails closed");
+        assert!(verdict.error.is_some(), "and says why");
+        assert!(
+            spent < RULE_BUDGET,
+            "the decision's deadline bounded it, not the per-rule budget: {spent:?}"
+        );
     }
 
     #[test]

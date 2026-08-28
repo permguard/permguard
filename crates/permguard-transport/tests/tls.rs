@@ -39,7 +39,11 @@ struct Pki {
 
 impl Pki {
     fn new(name: &str) -> Self {
-        let directory = std::env::temp_dir().join(format!("permguard-tls-{name}"));
+        let directory = std::env::temp_dir().join(format!(
+            "permguard-tls-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         std::fs::create_dir_all(&directory).expect("creating the fixture directory");
 
         let mut params =

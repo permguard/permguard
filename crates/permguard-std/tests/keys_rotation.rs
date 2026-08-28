@@ -42,7 +42,11 @@ impl Clock for SharedClock {
 
 /// A key ring location nothing else is using.
 fn ring(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("permguard-keys-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-keys-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
 
     path

@@ -32,7 +32,11 @@ impl Pseudonymizer for Keyed {
 
 /// A volume nothing else is using.
 fn volume(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("permguard-witness-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-witness-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
 
     path

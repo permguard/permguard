@@ -136,6 +136,30 @@ values file that wrote one was right for exactly one release name. `http`, becau
 no certificate to point at; a deployment that does not trust its own network sets `servers`
 explicitly with `https` and the authority to check.
 */}}
+{{/*
+Where a component tells the world to reach it.
+
+A pod binds `0.0.0.0` — it has to, or it answers only itself — and `0.0.0.0` is not an address
+anything can dial. So the discovery documents must publish something else, and in a cluster the
+something else is the Service: stable, resolvable from every namespace, and named after the
+release, which is why only a template can write it.
+
+`advertisedUrl` overrides it, for the deployment reached through an Ingress or a load balancer
+under its own hostname. Nothing is derived from `Host` or `X-Forwarded-*`: a header a caller
+controls must not decide what this deployment publishes about itself.
+*/}}
+{{- define "permguard.advertisedUrl" -}}
+{{- $component := .component -}}
+{{- $root := .root -}}
+{{- $plane := ternary $root.Values.controlPlane $root.Values.dataPlane (eq $component "control-plane") -}}
+{{- if $plane.advertisedUrl -}}
+{{ $plane.advertisedUrl | trimSuffix "/" }}
+{{- else -}}
+{{- $scheme := ternary "https" "http" (dig "public" "http" "tls" "enabled" false $plane.extraConfig) -}}
+{{ $scheme }}://{{ include "permguard.fullname" $root }}-{{ $component }}:{{ $plane.ports.http }}
+{{- end -}}
+{{- end -}}
+
 {{- define "permguard.controlPlaneUrl" -}}
 {{- if .Values.allInOne.enabled -}}
 http://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}

@@ -69,6 +69,21 @@ controlPlane:
   tolerations: []
   affinity: {}
   topologySpreadConstraints: []
+  # Anything else this deployment needs mounted, passed through verbatim. In practice: TLS
+  # material. The configuration below names certificates and authorities by path, and these are how
+  # a file gets to that path.
+  #
+  # extraVolumes:
+  #   - name: tls
+  #     secret:
+  #       secretName: permguard-control-plane-tls
+  # extraVolumeMounts:
+  #   - name: tls
+  #     mountPath: /etc/permguard/tls
+  #     readOnly: true
+  extraVolumes: []
+  extraVolumeMounts: []
+
   # Extra configuration merged into the generated ConfigMap, so a value that has no field in this
   # file can still be set without forking the chart. This is where a control plane in a cluster says
   # where it keeps the decisions its data planes ship it:
@@ -117,6 +132,10 @@ dataPlane:
   tolerations: []
   affinity: {}
   topologySpreadConstraints: []
+  # Anything else this deployment needs mounted, passed through verbatim. See the note under
+  # `controlPlane.extraVolumes`.
+  extraVolumes: []
+  extraVolumeMounts: []
   # Extra configuration merged into the generated ConfigMap. This is where a data plane in a cluster
   # says where its policies come from: mirroring lives under `dataPlane.mirrors`, and the URL alone means
   # every zone and every ledger that control plane lists. Patterns narrow it; per-server `tls` carries
@@ -181,6 +200,10 @@ allInOne:
   service:
     type: ClusterIP
     annotations: {}
+  # Anything else this deployment needs mounted, passed through verbatim. See the note under
+  # `controlPlane.extraVolumes`.
+  extraVolumes: []
+  extraVolumeMounts: []
   resources:
     requests:
       cpu: 100m

@@ -51,6 +51,11 @@ tasks:
     cmds:
       - k6 run --tag testid=peak-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/peak.js
 
+  bench:decide:
+    desc: What a decision costs — the PDP path, cold and warm, single and boxcarred. Needs a data plane mirroring a ledger.
+    cmds:
+      - k6 run --tag testid=decide-$(date +%Y%m%d-%H%M%S) {{.K6_ARGS}} bench/decide.js
+
   bench:ladder:
     desc: Latency at fixed rising rates (open model) against /version. Needs `task bench:server`.
     cmds:

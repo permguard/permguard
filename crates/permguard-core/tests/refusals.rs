@@ -85,7 +85,12 @@ fn test_the_same_surface_on_loopback_is_allowed() {
 fn test_mutual_tls_without_a_list_of_peers_is_refused_outside_development() {
     // Real files, because validation checks the material before it checks the policy and this test
     // is about the policy.
-    let volume = std::env::temp_dir().join("permguard-refusals-mtls");
+    // Unique per process and per thread: a fixed name is shared with every other run.
+    let volume = std::env::temp_dir().join(format!(
+        "permguard-refusals-mtls-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     std::fs::create_dir_all(volume.join("tls")).expect("the fixture directory is created");
     for name in ["server.pem", "server.key", "ca.pem"] {
         std::fs::write(volume.join("tls").join(name), "placeholder")

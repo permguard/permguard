@@ -69,6 +69,17 @@ static DECIDER: OnceLock<Arc<Decider>> = OnceLock::new();
 
 /// The decision path, built from the plane's configuration on first use and
 /// shared from then on.
+/// How long one decision may spend evaluating: nine tenths of the transport's request timeout.
+///
+/// Under it on purpose. The two bounds answer different questions — the transport's is "how long
+/// may a client wait", this one is "how long may a thread work" — and the second has to expire
+/// first, or the work outlives the answer and holds a thread nobody is waiting for.
+fn decision_budget(config: &permguard_core::Config) -> std::time::Duration {
+    let timeout = config.limits().request_timeout();
+
+    (timeout * 9 / 10).max(std::time::Duration::from_millis(100))
+}
+
 pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
     Arc::clone(DECIDER.get_or_init(|| {
         let config = context.config();
@@ -96,28 +107,26 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
                     .and_then(permguard_core::AuditRecorder::pseudonymizer),
                 config.log_include().clone(),
             )
-            .with_expiry(config.mirrors_expire_after()),
+            .with_expiry(config.mirrors_expire_after())
+            // A little under the transport's own request timeout, so the work stops before the
+            // answer is abandoned rather than after it — the gap is what makes the difference
+            // between a plane that sheds load and one that accumulates it.
+            .with_budget(Some(decision_budget(config))),
         )
     }))
 }
 
 /// The base URL this plane publishes in its configuration document.
 ///
-/// What a PEP would have dialled to reach it: the configured public address,
-/// with the scheme its TLS settings imply. A deployment behind a proxy states
-/// its own — one setting, later; guessing from a `Host` header would let a
-/// caller choose what we publish about ourselves.
+/// **One source**, shared with the plane's own discovery document, because two were one too many:
+/// this used to read the *global* TLS setting while the listener bound with the *data plane's*,
+/// so a plane serving HTTPS could publish `http://` endpoints — and it read the bind address
+/// directly, so behind a Service it published `0.0.0.0`. Both are documents a client cannot
+/// follow, and neither failure shows up anywhere except in a caller that cannot connect.
 pub fn base_url(context: &ServerContext<'_>) -> String {
-    let config = context.config();
-    let scheme = if config.public_tls().is_some() {
-        "https"
-    } else {
-        "http"
-    };
-    let address = config
-        .setting(permguard_server::plane::SETTING_DATA_HTTP_ADDR)
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| "127.0.0.1:7656".to_owned());
-
-    format!("{scheme}://{address}")
+    permguard_server::plane::plane_http_base(
+        context.config(),
+        permguard_server::plane::PlaneId::Data,
+    )
+    .unwrap_or_default()
 }

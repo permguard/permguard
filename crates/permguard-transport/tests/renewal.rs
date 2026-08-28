@@ -38,7 +38,11 @@ struct Authority {
 
 impl Authority {
     fn new(name: &str) -> Self {
-        let directory = std::env::temp_dir().join(format!("permguard-renewal-{name}"));
+        let directory = std::env::temp_dir().join(format!(
+            "permguard-renewal-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("the fixture directory is created");
 

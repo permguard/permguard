@@ -191,6 +191,8 @@ pub struct Asking {
     pub action: Action,
     /// The context a caller stated. What a runtime is *given* may be more: see `route`.
     pub context: Map<String, Value>,
+    /// When this request stops being worth answering. See [`Query::deadline`].
+    pub deadline: Option<std::time::Instant>,
     /// The inputs the request carries, by the partition each is addressed to.
     ///
     /// Shared, not copied. A boxcarred request may hold 256 evaluations and most of them state no
@@ -424,6 +426,7 @@ impl Asking {
             resource: self.resource.clone(),
             action: self.action.clone(),
             context,
+            deadline: self.deadline,
             input,
         }
     }
@@ -926,6 +929,8 @@ impl CheckRequest {
         }
 
         Ok(Asking {
+            // Set by whoever is serving a socket. A workspace decided offline answers to a person.
+            deadline: None,
             subject: entity(subject, "subject", index)?,
             resource: entity(resource, "resource", index)?,
             action: Action {

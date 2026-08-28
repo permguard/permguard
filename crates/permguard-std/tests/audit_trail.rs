@@ -16,8 +16,17 @@ use permguard_core::{AuditEvent, AuditSink, Subject};
 use permguard_std::audit::{FileAuditSink, verify};
 
 /// A trail location nothing else is using.
+///
+/// Unique per process *and* per thread. A fixed name is not "nothing else is using": two
+/// `cargo test` runs at once, or one run after a previous one left a directory behind, share it —
+/// and these tests assert on the exact contents of a trail, so a stray file from somebody else's
+/// run is a failure with no relationship to the code.
 fn trail(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("permguard-trail-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-trail-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
 
     path
@@ -272,7 +281,11 @@ fn ring(name: &str) -> std::sync::Arc<permguard_std::keys::DirectoryKeyManager> 
     use permguard_core::KeyManager;
     use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
 
-    let path = std::env::temp_dir().join(format!("permguard-trail-keys-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-trail-keys-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
 
     let keys = std::sync::Arc::new(DirectoryKeyManager::new(

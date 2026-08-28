@@ -20,8 +20,17 @@ data:
           "log" (dict "level" $.Values.logging.level "format" $.Values.logging.format)
           "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int $plane.ports.telemetry)))
     }}
+    {{- /*
+    A pod binds every interface and publishes its Service. Those are two different addresses and
+    the chart states both: without the second, every discovery document this deployment serves
+    would name `0.0.0.0`, and every client that followed a link would go nowhere.
+    */ -}}
     {{- $public := dict "public" (dict
-          "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.http)))
+          "http" (dict
+            "enabled" true
+            "addr" (printf "0.0.0.0:%d" (int $plane.ports.http))
+            "advertised_url" (include "permguard.advertisedUrl" (dict "root" $ "component" $component))
+          )
           "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.grpc)))
     ) }}
     {{- $_ := set $config $section $public }}

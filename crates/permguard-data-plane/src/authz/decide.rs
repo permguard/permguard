@@ -42,7 +42,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use permguard_core::{ApiError, AuditRecorder, ErrorClass, Metrics, Subject};
-use permguard_languages::request::PartitionTarget;
+use permguard_languages::request::{Asking, PartitionTarget};
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
 
@@ -97,6 +97,9 @@ pub struct Decider {
     /// How old a mirror's last verified synchronization may grow before this
     /// plane refuses to answer from it. `None`: no bound.
     expire_after: Option<std::time::Duration>,
+    /// How long one decision may spend deciding. `None`: no bound, which is what a decider built
+    /// for a test that is about something else wants.
+    budget: Option<std::time::Duration>,
 }
 
 enum AuditTarget {
@@ -123,7 +126,26 @@ impl Decider {
             include: permguard_core::decisions::IncludeSection::default(),
             pseudonymizer: None,
             expire_after: None,
+            budget: None,
         }
+    }
+
+    /// Bounds how long one decision may spend evaluating.
+    ///
+    /// # Why the work needs its own bound
+    ///
+    /// The transport's request timeout ends the *response*, not the work: an evaluation runs on a
+    /// blocking thread, and when the HTTP layer gives up it drops the future holding that thread
+    /// while the thread carries on — having already released the concurrency permit that was
+    /// limiting how many of these could be in flight. Under load that is how a plane accumulates
+    /// work nobody is waiting for.
+    ///
+    /// So the decision is told when to stop. Set a little under the transport's own timeout, so
+    /// the work ends before the answer is abandoned rather than after it.
+    pub fn with_budget(mut self, budget: Option<std::time::Duration>) -> Self {
+        self.budget = budget;
+
+        self
     }
 
     /// Records authorization decisions through the data plane's bounded audit worker.
@@ -440,6 +462,9 @@ impl Decider {
             partitions,
             resolved: Arc::clone(&resolved),
             metrics: self.metrics.clone(),
+            // Measured from here, not from when the request arrived: what this bounds is the
+            // evaluating, which is the part that holds a thread.
+            deadline: self.budget.map(|budget| Instant::now() + budget),
         };
         let decisions = tokio::task::spawn_blocking(move || plan.run())
             .await
@@ -989,6 +1014,9 @@ struct Plan {
     partitions: Vec<Arc<Partition>>,
     resolved: Arc<Resolved>,
     metrics: permguard_core::Metrics,
+    /// When this decision stops being worth making. Carried into every query, so each engine can
+    /// decide whether to start and — where its interpreter allows it — whether to continue.
+    deadline: Option<Instant>,
 }
 
 impl Plan {
@@ -1018,6 +1046,12 @@ impl Plan {
 
         let mut decisions = Vec::with_capacity(self.resolved.queries.len());
         for (asking, request_id) in &self.resolved.queries {
+            // The batch shares one deadline: 256 boxcarred evaluations that each got the full
+            // budget would be 256 times the bound the deployment asked for.
+            let asking = Asking {
+                deadline: self.deadline,
+                ..asking.clone()
+            };
             let queries = asking.route(&targets).map_err(|malformed| {
                 self.metrics
                     .count(&super::measure::REFUSALS, &[("reason", "malformed")]);

@@ -99,9 +99,14 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 fn data_plane_configuration(
     context: &ServerContext<'_>,
 ) -> permguard_server::plane::PlaneConfiguration {
-    let base =
-        permguard_server::plane::plane_http_base(context.config(), PLANE).unwrap_or_default();
-    let mut configuration = permguard_server::plane::plane_configuration(context.config(), PLANE);
+    // The same string the PDP's own document publishes, from the same function: a plane whose two
+    // documents named different addresses would send a client following the link somewhere the
+    // interface does not answer.
+    let base = authz::base_url(context);
+    let mut configuration = permguard_server::plane::plane_configuration(
+        context.config(),
+        permguard_server::plane::PlaneId::Data,
+    );
     configuration.interfaces.insert(
         permguard_languages::request::INTERFACE.to_owned(),
         permguard_server::plane::InterfaceLink {

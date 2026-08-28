@@ -130,7 +130,12 @@ fn app_waiting() -> App {
 
 /// Writes a configuration file under the test's own directory and returns its path.
 fn config_file(name: &str, contents: &str) -> std::path::PathBuf {
-    let dir = env::temp_dir().join("permguard-app-test");
+    // Unique per process and per thread: a fixed name is shared with every other run.
+    let dir = env::temp_dir().join(format!(
+        "permguard-app-test-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     fs::create_dir_all(&dir).expect("creating the fixture directory");
 
     let path = dir.join(format!("{name}.yml"));

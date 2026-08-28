@@ -98,6 +98,14 @@ struct CedarEvaluator {
 
 impl Evaluator for CedarEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
+        // Cedar terminates by construction — no loops, no recursion, no unbounded traversal — so
+        // there is nothing to interrupt mid-evaluation and nothing that needs interrupting. What
+        // is worth checking is whether to start at all: a partition reached after the decision ran
+        // out of time answers nothing anybody is still waiting for.
+        if query.expired() {
+            return Verdict::refused("the decision ran out of time before this partition");
+        }
+
         let request = match self.request(query) {
             Ok(request) => request,
             Err(error) => return Verdict::refused(error),
@@ -270,6 +278,7 @@ mod tests {
                 properties: Map::new(),
             },
             context: Map::new(),
+            deadline: None,
             input: crate::input::PartitionData::default(),
         }
     }

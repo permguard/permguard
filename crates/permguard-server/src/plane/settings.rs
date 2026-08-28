@@ -24,6 +24,8 @@ use super::{PlaneAddresses, PlaneService};
 pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
 
 /// Runtime setting keys for control-plane public addresses.
+/// Where this plane tells the world to reach it. See [`SETTING_DATA_HTTP_ADVERTISED_URL`].
+pub const SETTING_CONTROL_HTTP_ADVERTISED_URL: &str = "PERMGUARD_CONTROL_HTTP_ADVERTISED_URL";
 pub const SETTING_CONTROL_HTTP_ENABLED: &str = "PERMGUARD_CONTROL_HTTP_ENABLED";
 pub const SETTING_CONTROL_HTTP_ADDR: &str = "PERMGUARD_CONTROL_HTTP_ADDR";
 pub const SETTING_CONTROL_HTTP_TLS_ENABLED: &str = "PERMGUARD_CONTROL_HTTP_TLS_ENABLED";
@@ -44,6 +46,13 @@ pub const SETTING_CONTROL_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_CONTROL_GRPC_T
 pub const SETTING_CONTROL_GRPC_TLS_ALLOW: &str = "PERMGUARD_CONTROL_GRPC_TLS_ALLOW";
 
 /// Runtime setting keys for data-plane public addresses.
+/// Where this plane tells the world to reach it, when that is not where it binds.
+///
+/// A listener binds an address; a discovery document publishes one; behind a Service, an Ingress
+/// or a load balancer they are not the same string. `0.0.0.0` in particular is a *listening*
+/// address and nothing can dial it — a document naming it sends every client that follows a link
+/// nowhere.
+pub const SETTING_DATA_HTTP_ADVERTISED_URL: &str = "PERMGUARD_DATA_HTTP_ADVERTISED_URL";
 pub const SETTING_DATA_HTTP_ENABLED: &str = "PERMGUARD_DATA_HTTP_ENABLED";
 pub const SETTING_DATA_HTTP_ADDR: &str = "PERMGUARD_DATA_HTTP_ADDR";
 pub const SETTING_DATA_HTTP_TLS_ENABLED: &str = "PERMGUARD_DATA_HTTP_TLS_ENABLED";
@@ -79,6 +88,10 @@ pub struct PlaneSettingKeys {
 pub struct PlaneEndpointKeys {
     pub(crate) enabled: &'static str,
     pub(crate) addr: &'static str,
+    /// Where this endpoint is advertised, when it differs from where it binds. Empty for gRPC:
+    /// discovery documents publish HTTP addresses, and there is nothing to advertise for a
+    /// surface no document links to.
+    pub(crate) advertised_url: Option<&'static str>,
     pub(crate) tls: PlaneTlsKeys,
 }
 
@@ -105,6 +118,7 @@ impl PlaneSettingKeys {
         http: PlaneEndpointKeys {
             enabled: SETTING_CONTROL_HTTP_ENABLED,
             addr: SETTING_CONTROL_HTTP_ADDR,
+            advertised_url: Some(SETTING_CONTROL_HTTP_ADVERTISED_URL),
             tls: PlaneTlsKeys {
                 enabled: SETTING_CONTROL_HTTP_TLS_ENABLED,
                 cert: SETTING_CONTROL_HTTP_TLS_CERT,
@@ -118,6 +132,7 @@ impl PlaneSettingKeys {
         grpc: PlaneEndpointKeys {
             enabled: SETTING_CONTROL_GRPC_ENABLED,
             addr: SETTING_CONTROL_GRPC_ADDR,
+            advertised_url: None,
             tls: PlaneTlsKeys {
                 enabled: SETTING_CONTROL_GRPC_TLS_ENABLED,
                 cert: SETTING_CONTROL_GRPC_TLS_CERT,
@@ -137,6 +152,7 @@ impl PlaneSettingKeys {
         http: PlaneEndpointKeys {
             enabled: SETTING_DATA_HTTP_ENABLED,
             addr: SETTING_DATA_HTTP_ADDR,
+            advertised_url: Some(SETTING_DATA_HTTP_ADVERTISED_URL),
             tls: PlaneTlsKeys {
                 enabled: SETTING_DATA_HTTP_TLS_ENABLED,
                 cert: SETTING_DATA_HTTP_TLS_CERT,
@@ -150,6 +166,7 @@ impl PlaneSettingKeys {
         grpc: PlaneEndpointKeys {
             enabled: SETTING_DATA_GRPC_ENABLED,
             addr: SETTING_DATA_GRPC_ADDR,
+            advertised_url: None,
             tls: PlaneTlsKeys {
                 enabled: SETTING_DATA_GRPC_TLS_ENABLED,
                 cert: SETTING_DATA_GRPC_TLS_CERT,
@@ -168,7 +185,7 @@ impl PlaneSettingKeys {
         PlaneAddresses::settings(self.http, self.grpc)
     }
 
-    pub(crate) const fn settings(self) -> [&'static str; 20] {
+    pub(crate) const fn settings(self) -> [&'static str; 21] {
         let http = self.http.settings();
         let grpc = self.grpc.settings();
 
@@ -193,6 +210,11 @@ impl PlaneSettingKeys {
             grpc[8],
             self.keys_enabled,
             self.keys_directory,
+            // HTTP only: a discovery document publishes HTTP addresses.
+            match self.http.advertised_url {
+                Some(key) => key,
+                None => self.http.addr,
+            },
         ]
     }
 }
@@ -364,6 +386,10 @@ fn push_endpoint_settings(
 
     if let Some(addr) = endpoint.addr() {
         settings.push((keys.addr.to_owned(), addr));
+    }
+
+    if let (Some(key), Some(url)) = (keys.advertised_url, endpoint.advertised_url()) {
+        settings.push(((*key).to_owned(), url));
     }
 
     if let Some(tls) = endpoint.tls() {
@@ -610,9 +636,12 @@ struct PlanePublicSection {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+// Boxed because the two arms are lopsided — a bare address is a string, the settings form now
+// carries an advertised URL on top of the TLS block — and this is deserialized once at startup,
+// where an indirection costs nothing and the size of the enum matters even less.
 enum EndpointSection {
     Addr(String),
-    Settings(EndpointSettings),
+    Settings(Box<EndpointSettings>),
 }
 
 impl EndpointSection {
@@ -639,6 +668,14 @@ impl EndpointSection {
             Self::Settings(settings) => settings.tls.as_ref(),
         }
     }
+
+    /// Where this endpoint is advertised, when it differs from where it binds.
+    fn advertised_url(&self) -> Option<String> {
+        match self {
+            Self::Addr(_) => None,
+            Self::Settings(settings) => settings.advertised_url.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -648,6 +685,10 @@ struct EndpointSettings {
     enabled: Option<EndpointValue>,
     #[serde(default)]
     addr: Option<String>,
+    /// What the discovery documents publish, when that is not `addr`. A pod binds `0.0.0.0` and
+    /// is reached at its Service; the two are different strings and both have to be stated.
+    #[serde(default)]
+    advertised_url: Option<String>,
     #[serde(default)]
     tls: Option<TlsSection>,
 }

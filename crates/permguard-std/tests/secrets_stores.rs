@@ -26,7 +26,11 @@ fn failure(resolved: Result<Secret, SecretError>, what: &str) -> SecretError {
 
 /// A directory of secrets, of the shape a mounted Kubernetes secret has.
 fn directory(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("permguard-secrets-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-secrets-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
     fs::create_dir_all(&path).expect("creating the fixture directory");
 

@@ -245,8 +245,11 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 /// and nothing else; the base URL is resolved from the same configuration
 /// the listener binds with.
 fn control_configuration_document(context: &ServerContext<'_>) -> String {
-    let base =
-        permguard_server::plane::plane_http_base(context.config(), PLANE).unwrap_or_default();
+    let base = permguard_server::plane::plane_http_base(
+        context.config(),
+        permguard_server::plane::PlaneId::Control,
+    )
+    .unwrap_or_default();
     let ledger = format!("{base}/v1/zones/{{zone}}/ledgers/{{ledger}}");
 
     // Hand-ordered on purpose: `serde_json` maps sort alphabetically, and a

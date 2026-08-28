@@ -30,6 +30,20 @@
 //! Results come back **in the order the jobs were given**, whatever order they finished in. A
 //! decision that depended on which partition won a race would not be a decision.
 //!
+//! # The queue is bounded, and a full queue is not a queue
+//!
+//! Work is handed out through a **bounded** channel. When it is full the submitting thread runs
+//! the job itself instead of waiting for room — which is backpressure with nowhere for work to
+//! accumulate: the depth of the queue is fixed, and the only other place a job can be is on a
+//! thread that is already busy with it.
+//!
+//! An unbounded queue was the wrong shape for a decision path. A request whose transport timeout
+//! has already fired releases the concurrency permit that was limiting how many of these could be
+//! in flight, and the next request is admitted while the previous one's work is still queued. With
+//! nothing bounding the queue, that is how a plane under load accumulates work nobody is waiting
+//! for. The queue cannot grow now, and [`Query::deadline`](crate::evaluate::Query::deadline) is
+//! what ends the work already running.
+//!
 //! # Fail-closed
 //!
 //! A job that panics does not take a worker with it and does not silently shorten the answer:
@@ -66,10 +80,16 @@ impl std::fmt::Display for Lost {
     }
 }
 
-/// A fixed set of worker threads, and the queue they take work from.
+/// How many jobs may wait per worker before a submitting thread does the work itself.
+///
+/// Small on purpose. A deep queue only converts a latency problem into a memory one: the jobs at
+/// the back belong to requests whose callers have long since been answered by a timeout.
+const QUEUE_PER_WORKER: usize = 4;
+
+/// A fixed set of worker threads, and the bounded queue they take work from.
 pub struct Fanout {
     /// Guarded because the pool is shared by every thread that decides; sending is a pointer move.
-    work: Mutex<mpsc::Sender<Job>>,
+    work: Mutex<mpsc::SyncSender<Job>>,
     workers: usize,
 }
 
@@ -77,7 +97,7 @@ impl Fanout {
     /// Builds a pool of exactly this many workers. At least one.
     pub fn with_workers(workers: usize) -> Self {
         let workers = workers.max(1);
-        let (sender, receiver) = mpsc::channel::<Job>();
+        let (sender, receiver) = mpsc::sync_channel::<Job>(workers * QUEUE_PER_WORKER);
         let receiver = Arc::new(Mutex::new(receiver));
 
         for _ in 0..workers {
@@ -153,16 +173,23 @@ impl Fanout {
         };
 
         let (sender, results) = mpsc::channel::<(usize, T)>();
+        // What the queue had no room for. Run here, after dispatching the rest, so the workers are
+        // already busy while this thread catches up — and so that a full pool degrades to "the
+        // caller does the work" rather than to "the caller waits for a slot".
+        let mut mine_too: Vec<Box<dyn FnOnce() + Send + 'static>> = Vec::new();
         for (offset, job) in jobs.enumerate() {
             let index = offset + 1;
             let sender = sender.clone();
-            self.submit(Box::new(move || {
+            let queued = Box::new(move || {
                 let value = job();
                 // A closed receiver means the caller is gone, which cannot happen while it is
                 // blocked below — but a send that cannot be delivered is not an error worth
                 // panicking a worker over.
                 let _ = sender.send((index, value));
-            }));
+            });
+            if let Err(refused) = self.submit(queued) {
+                mine_too.push(refused);
+            }
         }
         // The caller's own handle, dropped so the loop below ends when the last job is done.
         drop(sender);
@@ -170,6 +197,9 @@ impl Fanout {
         let mut slots: Vec<Option<T>> = Vec::with_capacity(count);
         slots.push(Some(mine()));
         slots.resize_with(count, || None);
+        for job in mine_too {
+            job();
+        }
 
         for (index, value) in results {
             if let Some(slot) = slots.get_mut(index) {
@@ -187,12 +217,20 @@ impl Fanout {
         Ok(answered)
     }
 
-    fn submit(&self, job: Job) {
-        // A poisoned queue means a panic while holding the lock, which nothing here does. If it
-        // ever happened, the job is not run and the caller reports a missing answer.
-        if let Ok(sender) = self.work.lock() {
-            let _ = sender.send(job);
-        }
+    /// Queues a job, or answers that the queue is full.
+    ///
+    /// Never blocks waiting for room: a caller holding a slot while the queue drains is a caller
+    /// that has turned a bounded queue back into an unbounded wait.
+    fn submit(&self, job: Job) -> Result<(), Job> {
+        // A poisoned queue means a panic while holding the lock, which nothing here does — the
+        // lock is released before a job runs. If it ever happened, the caller does the work.
+        let Ok(sender) = self.work.lock() else {
+            return Err(job);
+        };
+
+        sender.try_send(job).map_err(|failed| match failed {
+            mpsc::TrySendError::Full(job) | mpsc::TrySendError::Disconnected(job) => job,
+        })
     }
 }
 
@@ -297,6 +335,85 @@ mod tests {
             watch.highest(),
             pool.workers()
         );
+    }
+
+    /// The queue has a depth, and work that does not fit is done rather than accumulated.
+    ///
+    /// This is the shape that matters under load: a request whose transport timeout has fired
+    /// releases the concurrency permit that was limiting how many of these could be in flight, and
+    /// the next request is admitted while the previous one's work is still outstanding. With an
+    /// unbounded queue that is how a plane accumulates work nobody is waiting for. Here the queue
+    /// cannot grow past its bound — everything else is either running or already done.
+    #[test]
+    fn work_that_does_not_fit_in_the_queue_is_done_rather_than_queued() {
+        let pool = Fanout::with_workers(2);
+        let held = Arc::new(Barrier::new(3));
+        let watch = Arc::new(Watch::default());
+
+        // Two jobs that sit on both workers until this thread joins them, so the queue is the only
+        // place anything else could go — and it is bounded.
+        let count = 2 + pool.workers() * QUEUE_PER_WORKER + 8;
+        let jobs: Vec<Box<dyn FnOnce() -> usize + Send + 'static>> = (0..count)
+            .map(|index| {
+                let watch = Arc::clone(&watch);
+                let held = Arc::clone(&held);
+                Box::new(move || {
+                    watch.entered();
+                    if index == 1 || index == 2 {
+                        held.wait();
+                    }
+                    watch.left();
+
+                    index
+                }) as Box<dyn FnOnce() -> usize + Send + 'static>
+            })
+            .collect();
+
+        let answered = std::thread::spawn(move || pool.run(jobs));
+        // Let the two blockers take both workers, then release everything.
+        std::thread::sleep(Duration::from_millis(50));
+        held.wait();
+
+        let answered = answered
+            .join()
+            .expect("the caller finished")
+            .expect("all answered");
+        assert_eq!(
+            answered,
+            (0..count).collect::<Vec<usize>>(),
+            "every job ran, in order, whether it was queued or done by the caller"
+        );
+    }
+
+    /// A submission that does not fit comes back to the caller instead of waiting for room.
+    #[test]
+    fn a_full_queue_hands_the_work_back_rather_than_blocking() {
+        let pool = Fanout::with_workers(1);
+        let held = Arc::new(Barrier::new(2));
+        let blocker = Arc::clone(&held);
+
+        // Occupy the only worker.
+        assert!(
+            pool.submit(Box::new(move || {
+                blocker.wait();
+            }))
+            .is_ok()
+        );
+
+        // Fill the queue to its bound.
+        for _ in 0..(pool.workers() * QUEUE_PER_WORKER) {
+            let _ = pool.submit(Box::new(|| {}));
+        }
+
+        // The next one does not fit, and is handed straight back — not blocked on.
+        let refused = pool.submit(Box::new(|| {}));
+        assert!(
+            refused.is_err(),
+            "a full queue answers immediately; waiting for room is an unbounded wait wearing a \
+             bounded queue's clothes"
+        );
+
+        held.wait();
     }
 
     #[test]

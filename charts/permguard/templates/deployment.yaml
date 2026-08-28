@@ -89,6 +89,9 @@ spec:
             # The root filesystem is read-only, so anything that wants a temporary file needs this.
             - name: tmp
               mountPath: /tmp
+            {{- with $plane.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -101,6 +104,17 @@ spec:
             claimName: {{ include "permguard.fullname" $ }}-{{ $component }}
         {{- else }}
           emptyDir: {}
+        {{- end }}
+        {{- /*
+        Whatever else this deployment needs mounted — and in practice that means TLS material.
+        The configuration talks about certificates and authorities read from files, and the chart
+        used to offer no way to put a file there: an operator wanting mutual TLS had to fork the
+        chart or run a post-renderer to add a Secret volume. Two passthrough lists cost nothing and
+        remove that, and they stay generic on purpose — a `tls.existingSecret` shortcut would have
+        to guess key names, mount paths and which of several files a given deployment uses.
+        */ -}}
+        {{- with $plane.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with $plane.nodeSelector }}
       nodeSelector:
@@ -196,6 +210,9 @@ spec:
               mountPath: /var/lib/permguard
             - name: tmp
               mountPath: /tmp
+            {{- with .Values.allInOne.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -208,5 +225,8 @@ spec:
             claimName: {{ include "permguard.fullname" . }}-all-in-one
         {{- else }}
           emptyDir: {}
+        {{- end }}
+        {{- with .Values.allInOne.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}

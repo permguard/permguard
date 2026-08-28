@@ -58,6 +58,21 @@ pub struct Query {
     pub action: Action,
     /// Environmental attributes — time, address, whatever a policy reads.
     pub context: Map<String, Value>,
+    /// When this request stops being worth answering.
+    ///
+    /// # Why a decision carries its own deadline
+    ///
+    /// The transport has a request timeout, and it ends the *response* — it does not end the work.
+    /// A policy evaluation runs on a blocking thread; when the HTTP layer gives up, the future
+    /// holding that thread is dropped and the thread keeps going, having already released the
+    /// concurrency permit that was limiting how much of this could be happening at once. Under
+    /// load that is how a plane accumulates work nobody is waiting for.
+    ///
+    /// So the work is told when to stop, rather than being told to stop. Every engine checks this
+    /// before it starts and — where its interpreter allows it, which is Rego's — while it runs.
+    /// `None` is no deadline: a workspace decided offline by `permguard test` is answering to a
+    /// person, not to a socket.
+    pub deadline: Option<std::time::Instant>,
     /// This partition's own input, normalised into what its runtime reads.
     ///
     /// Addressed to the partition by name and to no other: two partitions of one profile — two
@@ -65,6 +80,19 @@ pub struct Query {
     /// legal in one is refused by the other. A partition nobody addressed reads its type's empty
     /// input, never a neighbour's.
     pub input: crate::input::PartitionData,
+}
+
+impl Query {
+    /// How long is left, or `None` for a query with no deadline.
+    pub fn remaining(&self) -> Option<std::time::Duration> {
+        self.deadline
+            .map(|deadline| deadline.saturating_duration_since(std::time::Instant::now()))
+    }
+
+    /// Whether there is no point starting.
+    pub fn expired(&self) -> bool {
+        self.remaining().is_some_and(|left| left.is_zero())
+    }
 }
 
 /// One policy as the store holds it: its derived identity, the optional
@@ -217,7 +245,17 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
         .map(|(evaluator, query)| {
             Box::new(move || {
                 let started = std::time::Instant::now();
-                let verdict = evaluator.evaluate(&query);
+                // Checked here, on the thread that is about to do the work, rather than before
+                // dispatching: a job may sit briefly behind others, and the answer to "is this
+                // still worth doing" is only true at the moment of doing it.
+                let verdict = if query.expired() {
+                    Verdict::refused(
+                        "the decision ran out of time before this partition was evaluated"
+                            .to_owned(),
+                    )
+                } else {
+                    evaluator.evaluate(&query)
+                };
 
                 Answered {
                     verdict,
@@ -396,6 +434,60 @@ mod tests {
         // The combination is the same one a sequential run reached: both permitted, nothing
         // objected, so the profile permits.
         assert!(resolve(answered.into_iter().map(|held| held.verdict)).permitted);
+    }
+
+    /// A decision past its deadline refuses its partitions instead of evaluating them.
+    ///
+    /// The point is not that it denies — everything fail-closed denies. It is that the evaluator
+    /// is **never called**: work whose answer nobody is waiting for does not get a thread.
+    #[test]
+    fn a_decision_out_of_time_does_not_start_its_partitions() {
+        struct MustNotRun(std::sync::Arc<std::sync::atomic::AtomicBool>);
+        impl Evaluator for MustNotRun {
+            fn evaluate(&self, _query: &Query) -> Verdict {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+
+                Verdict::permit(vec!["p1".to_owned()])
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let expired = Query {
+            deadline: Some(std::time::Instant::now() - std::time::Duration::from_millis(1)),
+            ..Query::default()
+        };
+        let work: Vec<(std::sync::Arc<dyn Evaluator>, Query)> = vec![(
+            std::sync::Arc::new(MustNotRun(std::sync::Arc::clone(&ran))),
+            expired,
+        )];
+
+        let outcome = resolve(evaluate_all(work).into_iter().map(|held| held.verdict));
+
+        assert!(
+            !ran.load(std::sync::atomic::Ordering::SeqCst),
+            "the evaluator was called for a decision nobody is waiting for"
+        );
+        assert!(!outcome.permitted, "and it fails closed");
+        assert_eq!(outcome.errors.len(), 1, "saying why");
+
+        // And with time left, the very same partition is evaluated.
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let in_time = Query {
+            deadline: Some(std::time::Instant::now() + std::time::Duration::from_secs(30)),
+            ..Query::default()
+        };
+        let work: Vec<(std::sync::Arc<dyn Evaluator>, Query)> = vec![(
+            std::sync::Arc::new(MustNotRun(std::sync::Arc::clone(&ran))),
+            in_time,
+        )];
+        assert!(resolve(evaluate_all(work).into_iter().map(|held| held.verdict)).permitted);
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     /// A partition that comes apart mid-evaluation is a deny, not a short answer.

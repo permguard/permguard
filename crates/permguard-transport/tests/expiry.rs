@@ -75,7 +75,12 @@ struct Authority {
 
 impl Authority {
     fn new() -> Self {
-        let directory = std::env::temp_dir().join("permguard-expiry");
+        // Unique per process and per thread: a fixed name is shared with every other run.
+        let directory = std::env::temp_dir().join(format!(
+            "permguard-expiry-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("the fixture directory is created");
 

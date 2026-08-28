@@ -19,6 +19,19 @@ is cut.
 
 ### Changed — breaking, pre-release
 
+- **A plane publishes where it is reached, not where it binds.** `public.http.advertised_url` is
+  the address the discovery documents name; absent, the bind address is used as before. This was a
+  real defect on Kubernetes: a pod binds `0.0.0.0` because it has to, and every document this
+  deployment served named `http://0.0.0.0:7656` — an address a listener understands and nothing can
+  dial. The chart now sets it to the Service DNS by default and takes an override for an Ingress or
+  a load balancer. A plane that binds a wildcard and was told nothing to advertise warns at
+  startup, beside the line that says where it is listening.
+
+- **One source for the published URL, scheme included.** The PDP document used to derive `http` vs
+  `https` from the *global* TLS setting while the listener bound with the *plane's own*, so a data
+  plane serving HTTPS could publish `http://` endpoints. Both documents now come from the same
+  function, and the scheme from that endpoint's own TLS.
+
 - **`permguard.pdp.v1` is named as what it is: Permguard's own interface.** It is not an
   implementation of, nor a compatibility claim for, any other authorization API, and the code and
   documentation no longer say otherwise. The shape will look familiar, because that is the obvious
@@ -78,6 +91,27 @@ is cut.
 
 ### Added
 
+- **A decision has a deadline, and the engines are told about it.** The transport's request timeout
+  ends the response; it does not end the work, which runs on a blocking thread that keeps going
+  after the concurrency permit is released. Each decision now carries a budget — nine tenths of the
+  transport's timeout — checked before a partition is evaluated and handed to Rego's interpreter as
+  its execution limit. Rego's one-second budget bounded a single *rule*, so a partition with many
+  modules could spend it many times over and still call itself bounded.
+
+- **The evaluation queue is bounded.** Work is handed out through a fixed-depth channel; when it is
+  full the submitting thread does the job itself. An unbounded queue was the wrong shape for a
+  decision path — a request whose timeout has fired releases the permit that was limiting how many
+  of these could be in flight, and with nothing bounding the queue that is how a plane under load
+  accumulates work nobody is waiting for.
+
+- **`extraVolumes` and `extraVolumeMounts` on every component of the chart.** The configuration
+  names TLS certificates and authorities by path and the chart offered no way to put a file there:
+  mutual TLS meant forking the chart or running a post-renderer.
+
+- **`bench/decide.js`** measures the decision path — cold and warm, single and boxcarred — with
+  thresholds on the warm path only. The rest of `bench/` measures the transport with nothing behind
+  it, which was the whole suite until now.
+
 - **A Rego partition can declare a schema.** `schema: true` plus one `.regoschema` file — JSON
   Schema, draft 2020-12, compiled once when the partition loads — and `input.partition` is checked
   against it before any rule runs. Rego is untyped by design and that is a virtue in a rule; it is
@@ -92,6 +126,18 @@ is cut.
   batch off the async runtime.
 
 ### Fixed
+
+- **Tests no longer share fixed temporary directories.** Twelve suites named a directory after
+  themselves, so two `cargo test` runs at once — or one after a run that left files behind —
+  collided and failed for reasons unrelated to the code. Two full suites now run concurrently,
+  green.
+
+- **A plane id that names no plane is no longer read as the data plane.** Four places matched on a
+  string and fell through to `data-plane`, so a typo produced a plausible document about the wrong
+  process. `PlaneId` makes the wrong id unrepresentable.
+
+- **The process registry is built from values, not string concatenation**, like the rest of the
+  discovery documents.
 
 - **A shared HTTP/gRPC port answers `404` for a path it does not serve.** The gRPC router's
   fallback took every unmatched path, so an HTTP client asking for a missing route was told
@@ -139,6 +185,18 @@ is cut.
 
 ### Fixed
 
+- **Tests no longer share fixed temporary directories.** Twelve suites named a directory after
+  themselves, so two `cargo test` runs at once — or one after a run that left files behind —
+  collided and failed for reasons unrelated to the code. Two full suites now run concurrently,
+  green.
+
+- **A plane id that names no plane is no longer read as the data plane.** Four places matched on a
+  string and fell through to `data-plane`, so a typo produced a plausible document about the wrong
+  process. `PlaneId` makes the wrong id unrepresentable.
+
+- **The process registry is built from values, not string concatenation**, like the rest of the
+  discovery documents.
+
 - Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
   versions. Image provenance remains available through GitHub Artifact Attestations, while release
   checksums remain signed with Cosign.
@@ -149,6 +207,18 @@ is cut.
 
 ### Fixed
 
+- **Tests no longer share fixed temporary directories.** Twelve suites named a directory after
+  themselves, so two `cargo test` runs at once — or one after a run that left files behind —
+  collided and failed for reasons unrelated to the code. Two full suites now run concurrently,
+  green.
+
+- **A plane id that names no plane is no longer read as the data plane.** Four places matched on a
+  string and fell through to `data-plane`, so a typo produced a plausible document about the wrong
+  process. `PlaneId` makes the wrong id unrepresentable.
+
+- **The process registry is built from values, not string concatenation**, like the rest of the
+  discovery documents.
+
 - Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
   then pushed nowhere near it: no `images:` entry ever named it. Versioned tags only — `latest` and
   `0.0` on those names still carry the Go implementation, and move when it does.
@@ -157,6 +227,27 @@ is cut.
   namespace now, so `docker.io/permguard` and `ghcr.io/permguard/permguard` both resolve.
 
 ### Added
+
+- **A decision has a deadline, and the engines are told about it.** The transport's request timeout
+  ends the response; it does not end the work, which runs on a blocking thread that keeps going
+  after the concurrency permit is released. Each decision now carries a budget — nine tenths of the
+  transport's timeout — checked before a partition is evaluated and handed to Rego's interpreter as
+  its execution limit. Rego's one-second budget bounded a single *rule*, so a partition with many
+  modules could spend it many times over and still call itself bounded.
+
+- **The evaluation queue is bounded.** Work is handed out through a fixed-depth channel; when it is
+  full the submitting thread does the job itself. An unbounded queue was the wrong shape for a
+  decision path — a request whose timeout has fired releases the permit that was limiting how many
+  of these could be in flight, and with nothing bounding the queue that is how a plane under load
+  accumulates work nobody is waiting for.
+
+- **`extraVolumes` and `extraVolumeMounts` on every component of the chart.** The configuration
+  names TLS certificates and authorities by path and the chart offered no way to put a file there:
+  mutual TLS meant forking the chart or running a post-renderer.
+
+- **`bench/decide.js`** measures the decision path — cold and warm, single and boxcarred — with
+  thresholds on the warm path only. The rest of `bench/` measures the transport with nothing behind
+  it, which was the whole suite until now.
 
 - `scripts/prepare-release.sh` and the `Prepare Release` workflow move the version, the lock, the
   chart and the changelog together, and create the tag from the result — so a tag can no longer
@@ -174,6 +265,27 @@ record decisions taken while this release was being built, kept because the reas
 more than the tidiness of dropping them.
 
 ### Added
+
+- **A decision has a deadline, and the engines are told about it.** The transport's request timeout
+  ends the response; it does not end the work, which runs on a blocking thread that keeps going
+  after the concurrency permit is released. Each decision now carries a budget — nine tenths of the
+  transport's timeout — checked before a partition is evaluated and handed to Rego's interpreter as
+  its execution limit. Rego's one-second budget bounded a single *rule*, so a partition with many
+  modules could spend it many times over and still call itself bounded.
+
+- **The evaluation queue is bounded.** Work is handed out through a fixed-depth channel; when it is
+  full the submitting thread does the job itself. An unbounded queue was the wrong shape for a
+  decision path — a request whose timeout has fired releases the permit that was limiting how many
+  of these could be in flight, and with nothing bounding the queue that is how a plane under load
+  accumulates work nobody is waiting for.
+
+- **`extraVolumes` and `extraVolumeMounts` on every component of the chart.** The configuration
+  names TLS certificates and authorities by path and the chart offered no way to put a file there:
+  mutual TLS meant forking the chart or running a post-renderer.
+
+- **`bench/decide.js`** measures the decision path — cold and warm, single and boxcarred — with
+  thresholds on the warm path only. The rest of `bench/` measures the transport with nothing behind
+  it, which was the whole suite until now.
 
 - **Contracts crate** (`permguard-core`): storage, secrets, signing keys, audit, services and the
   server host, as traits and the types they exchange, with a dependency allowlist enforced by

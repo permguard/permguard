@@ -12,7 +12,11 @@ use permguard_std::provision::{Volume, prepare};
 
 /// A volume location nothing else is using.
 fn volume(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!("permguard-volume-{name}"));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-volume-{name}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let _ = fs::remove_dir_all(&path);
 
     path

@@ -43,8 +43,8 @@ pub mod factories;
 pub mod settings;
 
 pub use discovery::{
-    DiscoveredPlane, InterfaceLink, PlaneConfiguration, discovered_planes, plane_configuration,
-    plane_http_base, server_configuration_document,
+    DiscoveredPlane, InterfaceLink, PlaneConfiguration, PlaneId, discovered_planes,
+    plane_configuration, plane_http_base, server_configuration_document,
 };
 pub use factories::build_settings;
 pub use settings::*;
@@ -394,6 +394,34 @@ impl PlaneService {
             mtls = secured.as_ref().is_some_and(TlsSettings::is_mutual),
             "listening"
         );
+
+        // Beside the line that says where it listens, because that is where an operator looks and
+        // because the two addresses are only confusing together. A plane that binds every
+        // interface and was told nothing to advertise publishes discovery links naming `0.0.0.0`,
+        // which nothing can dial — and the symptom afterwards is a client that cannot connect,
+        // with no error anywhere near this process.
+        //
+        // Warned rather than refused: a process reachable at the address it binds is the normal
+        // local case. Said *here* rather than in a startup check, because those run while the
+        // configuration is still being assembled — before the log subscriber exists, so nobody
+        // hears them.
+        if protocol.contains("http")
+            && let Some(plane) = discovery::PlaneId::parse(self.module.id())
+            && let Some(published) = discovery::plane_http_base(context.config(), plane)
+            && published
+                .split_once("://")
+                .is_some_and(|(_, rest)| discovery::is_wildcard_address(rest))
+        {
+            tracing::warn!(
+                event.name = "plane.unroutable_advertisement",
+                component = self.module.component(),
+                plane = self.module.id(),
+                published = published.as_str(),
+                "this plane publishes an address nothing can dial: it binds every interface and \
+                 was told none to advertise, so every client that follows a discovery link goes \
+                 nowhere. Set `public.http.advertised_url` to where clients actually reach it"
+            );
+        }
 
         Ok(surface)
     }
