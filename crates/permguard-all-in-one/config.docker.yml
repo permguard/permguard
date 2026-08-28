@@ -78,8 +78,13 @@ dataPlane:
     max_evaluations: "128"
 
     # Every decision, recorded where it can be kept and proven. The record is durable on this
-    # volume before it is anybody else's problem: the decision path never waits on the log, and a
-    # control plane that is down costs spool, not availability.
+    # volume before it is anybody else's problem: an answer is not given until its record is on this
+    # disk, and a control plane that is down costs spool, not availability.
+    #
+    # That durability is the dominant cost of a decision — measured at roughly ten times the
+    # evaluation itself, which is what `bench/decide.js` reports — and it is the price of an audit
+    # trail that survives the process. What the decision path does *not* wait for is the record
+    # reaching the control plane; that is the spool's job, off the critical path.
     log:
       enabled: "true"
       pdp_id: all-in-one-docker          # half of every stream identity: two replicas must never share one

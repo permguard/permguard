@@ -5,10 +5,10 @@
 //!
 //! # What it is for
 //!
-//! The decision path may never wait on the log, and a record may never be lost
-//! to a restart. Those two together mean exactly one thing: the record is
-//! written to local durable storage, and the network happens later, from a
-//! different task, against a receiver that may be down for hours.
+//! The decision path may never wait on the *network*, and a record may never be lost to a
+//! restart. Those two together mean exactly one thing: the record is written to local durable
+//! storage before the answer goes out, and the network happens later, from a different task,
+//! against a receiver that may be down for hours.
 //!
 //! # The layout
 //!

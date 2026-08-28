@@ -1796,7 +1796,7 @@
         "x": 12,
         "y": 86
       },
-      "description": "A control plane that is unreachable costs spool, not availability: the decision path never waits on the log. This is that cost, being spent.",
+      "description": "A control plane that is unreachable costs spool, not availability: the decision path never waits on the network. This is that cost, being spent.",
       "targets": [
         {
           "datasource": {

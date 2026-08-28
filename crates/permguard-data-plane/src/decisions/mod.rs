@@ -10,15 +10,19 @@
 //!                        control plane
 //! ```
 //!
-//! Two properties shape everything here, and they are in tension only if the
-//! log is on the decision path — which is why it is not:
+//! Two properties shape everything here:
 //!
-//! - **The decision path never waits on the log.** Not for the network, not
-//!   for an acknowledgement, not in any mode. Even a plane configured to
-//!   refuse rather than decide unrecorded checks a local spool, never a
-//!   socket.
-//! - **A record is durable before it is shipped.** A restart loses nothing,
-//!   and a control plane that is down for a day costs spool, not availability.
+//! - **The decision path never waits on the *network*.** Not for a delivery, not for an
+//!   acknowledgement, not in any mode. Even a plane configured to refuse rather than decide
+//!   unrecorded checks a local spool, never a socket — so a control plane down for a day costs
+//!   spool, not availability.
+//! - **A record is durable before its decision is answered.** A restart loses nothing, and no
+//!   caller holds a permit this plane cannot account for afterwards.
+//!
+//! The second one *is* on the decision path, deliberately, and it is not free: writing the record
+//! durably is measured at roughly ten times the evaluation it records — the dominant cost of a
+//! decision on this plane, and the price of an audit trail that survives the process.
+//! `bench/decide.js` reports both numbers so the trade is a number rather than a belief.
 //!
 //! [`shipper`] is the sending half. [`mod@journal`] is the writing half: it turns a decision into a record at the
 //! position the chain demands, and ends the stream when the spool reaches a
