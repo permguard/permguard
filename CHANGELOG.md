@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.5] - 2026-08-28
+
 ### Changed — breaking, pre-release
 
 - **A plane publishes where it is reached, not where it binds.** `public.http.advertised_url` is
