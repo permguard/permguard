@@ -16,14 +16,47 @@ publish = false
 # The model a language plugs into: manifest runtimes for the load gate, and the
 # manifest's own validation. One direction only — the model knows no language.
 permguard-objects.workspace = true
+# The canonical instant parsing an occurrence is validated against: one definition of what a
+# Dogwood timestamp is, shared with the journal that stores it.
+permguard-events.workspace = true
 # The official engines, pinned: what evaluates policy is exactly what was
 # reviewed and shipped — plugins are a build, not a deployment action.
-cedar-policy = "4.12"
+# Held at 4.11 by Dogwood, not by choice: `cedar-policy-mcp-schema-generator`, a transitive
+# dependency of `amzn-dogwood-language`, pins `cedar-policy-core = "=4.11.0"` exactly. Cedar's
+# core cannot be two versions in one build, so 4.11 is the only line where Permguard's own Cedar
+# engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
+cedar-policy = "4.11"
 regorus = "0.11"
 # The Rego partition schema: JSON Schema, compiled once at load. Already in this
 # workspace's graph — regorus carries it — so it is a direct dependency of the
 # crate that actually validates with it rather than a transitive accident.
 jsonschema = { version = "0.47", default-features = false }
+# Dogwood, the temporal governance language. Experimental and disabled at runtime by
+# `experimental.dogwood.enabled`; the dependency is compiled in either way, because a language is
+# a build and not a deployment action — the gate decides whether a ledger may *use* it, not
+# whether this binary contains it.
+#
+# Pinned to a reviewed immutable revision rather than a branch: the crate is published to an
+# internal registry and is not on crates.io, so the reviewed commit is the only reproducible
+# coordinate. Update procedure: review the upstream diff, run this workspace's Dogwood tests
+# against the new revision, then move the `rev` in one commit.
+# `version` beside `git`/`rev` is not redundant: without it this is a wildcard dependency, which
+# `cargo deny` refuses — and rightly, because a wildcard says "any version at all" about code that
+# ends up in the binary. It also makes the swap to the published crate a one-line deletion of the
+# git coordinates when AWS releases it.
+# `default-features = false` and an empty `features` list are stated rather than left implicit.
+# Upstream declares two optional features and both must stay off here: `corpus` embeds ~13MB of
+# regression data a server has no use for, and `net` registers an `http_get` host function inside
+# the provider sandbox. `net` is what makes provider evaluation non-deterministic and reachable
+# from a policy — upstream's own note says the function performs no host validation, so a script
+# building a URL from an event field is an SSRF into whatever the process can reach. Cargo
+# features are additive across a dependency graph, so "off by default" is a property of this
+# build only while nothing else in the graph asks for it; writing it down is what makes a future
+# `features = ["net"]` a visible decision in a diff rather than a silent one.
+amzn-dogwood-language = { version = "1.0.0", git = "https://github.com/dogwood-policy/dogwood", rev = "c6237c88099b3f492ecc5fcee42df06a19224b97", default-features = false, features = [] }
+# Said once, plainly, when an evaluation worker cannot start: a pool quietly smaller than it was
+# asked for is a plane that got slower for a reason nothing recorded.
+tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true

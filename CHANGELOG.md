@@ -17,7 +17,146 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A second decision interface: `permguard.api.pdp.temporal.v1alpha1`.** The one Permguard has
+  always served answers *may this subject do this to this?* from the request. This one answers *may
+  this happen, given what has happened?* — from the request **and** a durable history. An occurrence
+  is submitted to `POST /temporal/v1alpha1/events` (or `TemporalPolicyDecisionPoint.SubmitEvent`),
+  made durable, observed, and then decided; a history-only kind returns a receipt with **no
+  `decision` field at all**, because a fabricated verdict a caller cannot tell from a decided one is
+  the most dangerous thing such an interface could return. Off unless a deployment enables it.
+
+- **Dogwood as a policy runtime**, through Amazon's `amzn-dogwood-language` at a reviewed immutable
+  revision. Cedar plus history: a policy may ask what has happened recently as well as what is being
+  asked now. Permguard supplies what a production deployment needs around it — the durable journal,
+  provenance, replication, limits, and the failure modes upstream's reference interpreter documents
+  as out of scope.
+
+- **`permguard events list|tail|get|export|verify`**, reading from the control plane's event store.
+  `export` fixes a snapshot from its first page and terminates on a ledger that is still recording;
+  `verify` checks each record against its inclusion path and, with `--keys`, the signature over the
+  batch — and says which of the two it did.
+
+- **Bounded temporal evaluation.** Deciding against a history no longer means reading one: the
+  journal keeps a rebuildable index beside its segments, and a decision range-scans it for one
+  history partition over one time window. Each history partition has its own engine, kept in a
+  bounded least-recently-used set; eviction costs a replay from the durable record and never an
+  answer. `max_window` is a ceiling, not a reason to read everything under it.
+
+- **`/.well-known/permguard-events-native-v1alpha1-configuration`**, and
+  `EventLog.GetEventConfiguration` beside it: where batches go, which event types are accepted, and
+  how read offsets are spelled — so a producer is configured with one URL rather than a runbook.
+
+- **`config.local-experimental.yml` beside each server crate**, with `task run:experimental`,
+  `make run-experimental` and `task cp-dogwood`: a working deployment with every experimental
+  runtime this build carries turned on — today that is Dogwood and the event path it needs.
+
+- **`experimental.<name>.enabled`**, one key per provisional runtime rather than a flag per
+  language. A language declares itself experimental and the gate iterates, so a runtime added or
+  graduated needs no change to the configuration types, the file schema or the composition roots.
+  Naming a runtime this build does not gate is refused at startup instead of doing nothing.
+
+- **`bench/temporal.js`**, measuring what an occurrence costs — recorded, decided, and under overlap.
+
+- **A control-plane event store**: signed batch ingest, tenant-isolated reads, a bounded per-type
+  index so listing one event type does not scan the rest, and retention that removes whole sealed
+  segments while keeping the envelopes and archived keys that prove what stays.
+
+### Changed - breaking, pre-release
+
+- **`permguard.pdp.v1` is now `permguard.api.pdp.native.v1`.** The old name says which product the
+  interface belongs to; the new one says which of the two interfaces it *is*. A manifest that still
+  writes the old name loads and is served identically — there is one contract and one legacy
+  spelling of its name — but nothing generates it any more: the CLI writes the new name, the
+  discovery documents advertise it, and the shipped examples carry it.
+
+- **Read offsets are signed.** A decision-log offset used to be base64 JSON a consumer could edit:
+  it could move itself to a position it was never given, present an offset issued for one tenant
+  under another, or widen a filter after the fact. The API family, the scope, the normalized filters
+  and the export bound are now inside a MAC, and presenting an offset under any of them changed is a
+  stable refusal rather than a reinterpretation. **Outstanding offsets are invalidated by this
+  change**; consumers resume from `oldest_available` or from the beginning.
+
+- **Reads are bounded by bytes as well as records,** and report `oldest_available`,
+  `high_watermark` and `coverage`. A record count alone does not bound a response. `permguard
+  decisions export` now fixes a snapshot and terminates instead of chasing a moving end.
+
+- **The event interfaces take two switches.** `dataPlane.events.enabled` and
+  `controlPlane.events.enabled` now also require `experimental.dogwood.enabled`: one is a statement
+  about disks, the other about accepting a contract whose shape is not yet stable. A plane that has
+  said one and not the other refuses to start rather than serving an interface nobody can reach.
+
+- **A temporal partition declares its history scope.** A schema with no universal symmetric pin
+  ranges over the whole retained ledger on every evaluation, and that is now accepted out loud —
+  `history: { scope: global }` — or refused. Declaring it on a partition that *is* pinned, or on a
+  runtime that keeps no history, is refused too.
+
+- **A partition declares typed artifacts.** `schema: true` remains valid for Cedar and Rego and
+  means what it always did; a runtime that needs several distinct artifacts — Dogwood needs an
+  action schema, and may need an event schema, macros and provider programs — declares them by
+  registered name under `artifacts:`. The authoring walk and the plane's loader both ask the
+  registry, so neither carries a switch that mentions a language.
+
+### Fixed
+
+- **A Rego partition attributed a decision to every policy sharing a package.** Two policies in one
+  package produced a decision citing both, so an audit trail said a rule had decided when it had
+  not. Two policies claiming one package are now refused at load, by name: a package is a namespace,
+  and two files claiming it are two authors who each believe they own it.
+
+- **The stateless request now refuses a field it does not know.** A misspelt member used to parse
+  and be dropped — `"contxt"` beside `"subject"` produced a decision made *without* the context the
+  caller believed it had sent, and the answer looked exactly like a correct one. Every level of the
+  request is strict now; responses stay lenient, because that direction really is the reader's duty.
+
+- **A gRPC number that is not a number is refused rather than becoming `null`.** `NaN`, infinity and
+  a value with no `kind` all converted to JSON `null`, which is a *value a policy can test* — so a
+  malformed request quietly became a well-formed one saying something else. The numeric domain is
+  now stated and enforced, and `null` is spelled `NullValue`.
+
+- **The gRPC client sent every request as a batch.** A single evaluation went over `EvaluateMany`,
+  so the boxcarring semantics applied to a request that had not asked for them. It now picks by
+  whether `evaluations` is non-empty.
+
+- **A thread that failed to start was counted as one that ran.** The parallel evaluator ignored
+  spawn failures, so a partition could be silently skipped and its `forbid` never seen. Started
+  workers are counted, a shortfall is reported, and a fan-out with no workers runs locally.
+
+- **A restarted plane could not reopen its own event journal.** The stream identity was compared
+  including the producer *instance*, which is minted per process — so every restart was refused as
+  somebody else's stream. The comparison is now over what identifies the chain; the instance is
+  adopted from the recovered state, which is what continuing a chain means.
+
+- **A restarted plane decided against an empty history.** The journal is durable and the engine that
+  reads it starts empty, so every decision after a restart — or after a cache eviction — ranged over
+  nothing, returning a `deny` indistinguishable from a correct one. A cold history is now replayed
+  from the durable record before it decides.
+
+- **A shared-mode rebuild discarded the plane's own history.** Absorbing imported events replayed
+  only the imported half, silently dropping everything the plane had recorded itself. Local and
+  imported records are now merged into one ordered run.
+
+- **Two requests arriving on a cold ledger compiled it twice.** Reading a manifest and compiling a
+  policy set are idempotent and expensive; without a gate, every request arriving while the first
+  was compiling repeated the work and threw it away — a stampede at every restart, commit change and
+  cache eviction. One caller now does the work and the rest wait for it, per key.
+
+- **Loading a ledger blocked an async worker thread.** Reading, decoding and compiling now happen on
+  a blocking thread, and the decision budget is measured from the start of the whole decision rather
+  than from after the load it was meant to bound.
+
+- **A commented example in a shipped configuration could not be used.** The `events` blocks sat
+  under `log:`, so uncommenting them produced a file the plane refuses. Every example now lives
+  under the section whose settings it shows, and a test uncomments each one and starts it.
+
+- **`events.stream.group_commit_max_delay` did nothing.** It was read and never used: every
+  submission paid for its own `fsync`. Overlapping submissions now share one.
+
+- **`schema: false` declared nothing, and now does.** A partition with the flag off was treated as
+  declaring an *optional* schema rather than none, so a schema file sitting beside it was accepted
+  in silence — by the CLI at authoring and by the plane at load. Both now refuse it, which is what
+  the flag has always meant.
 
 ## [0.1.5] - 2026-08-28
 
@@ -189,18 +328,6 @@ Nothing yet.
 
 ### Fixed
 
-- **Tests no longer share fixed temporary directories.** Twelve suites named a directory after
-  themselves, so two `cargo test` runs at once — or one after a run that left files behind —
-  collided and failed for reasons unrelated to the code. Two full suites now run concurrently,
-  green.
-
-- **A plane id that names no plane is no longer read as the data plane.** Four places matched on a
-  string and fell through to `data-plane`, so a typo produced a plausible document about the wrong
-  process. `PlaneId` makes the wrong id unrepresentable.
-
-- **The process registry is built from values, not string concatenation**, like the rest of the
-  discovery documents.
-
 - Container registries no longer expose Cosign's internal `sha256-*.sig` artifacts as broken image
   versions. Image provenance remains available through GitHub Artifact Attestations, while release
   checksums remain signed with Cosign.
@@ -211,18 +338,6 @@ Nothing yet.
 
 ### Fixed
 
-- **Tests no longer share fixed temporary directories.** Twelve suites named a directory after
-  themselves, so two `cargo test` runs at once — or one after a run that left files behind —
-  collided and failed for reasons unrelated to the code. Two full suites now run concurrently,
-  green.
-
-- **A plane id that names no plane is no longer read as the data plane.** Four places matched on a
-  string and fell through to `data-plane`, so a typo produced a plausible document about the wrong
-  process. `PlaneId` makes the wrong id unrepresentable.
-
-- **The process registry is built from values, not string concatenation**, like the rest of the
-  discovery documents.
-
 - Container images reach Docker Hub again, alongside GHCR. The release logged in to Docker Hub and
   then pushed nowhere near it: no `images:` entry ever named it. Versioned tags only — `latest` and
   `0.0` on those names still carry the Go implementation, and move when it does.
@@ -231,27 +346,6 @@ Nothing yet.
   namespace now, so `docker.io/permguard` and `ghcr.io/permguard/permguard` both resolve.
 
 ### Added
-
-- **A decision has a deadline, and the engines are told about it.** The transport's request timeout
-  ends the response; it does not end the work, which runs on a blocking thread that keeps going
-  after the concurrency permit is released. Each decision now carries a budget — nine tenths of the
-  transport's timeout — checked before a partition is evaluated and handed to Rego's interpreter as
-  its execution limit. Rego's one-second budget bounded a single *rule*, so a partition with many
-  modules could spend it many times over and still call itself bounded.
-
-- **The evaluation queue is bounded.** Work is handed out through a fixed-depth channel; when it is
-  full the submitting thread does the job itself. An unbounded queue was the wrong shape for a
-  decision path — a request whose timeout has fired releases the permit that was limiting how many
-  of these could be in flight, and with nothing bounding the queue that is how a plane under load
-  accumulates work nobody is waiting for.
-
-- **`extraVolumes` and `extraVolumeMounts` on every component of the chart.** The configuration
-  names TLS certificates and authorities by path and the chart offered no way to put a file there:
-  mutual TLS meant forking the chart or running a post-renderer.
-
-- **`bench/decide.js`** measures the decision path — cold and warm, single and boxcarred — with
-  thresholds on the warm path only. The rest of `bench/` measures the transport with nothing behind
-  it, which was the whole suite until now.
 
 - `scripts/prepare-release.sh` and the `Prepare Release` workflow move the version, the lock, the
   chart and the changelog together, and create the tag from the result — so a tag can no longer
@@ -269,27 +363,6 @@ record decisions taken while this release was being built, kept because the reas
 more than the tidiness of dropping them.
 
 ### Added
-
-- **A decision has a deadline, and the engines are told about it.** The transport's request timeout
-  ends the response; it does not end the work, which runs on a blocking thread that keeps going
-  after the concurrency permit is released. Each decision now carries a budget — nine tenths of the
-  transport's timeout — checked before a partition is evaluated and handed to Rego's interpreter as
-  its execution limit. Rego's one-second budget bounded a single *rule*, so a partition with many
-  modules could spend it many times over and still call itself bounded.
-
-- **The evaluation queue is bounded.** Work is handed out through a fixed-depth channel; when it is
-  full the submitting thread does the job itself. An unbounded queue was the wrong shape for a
-  decision path — a request whose timeout has fired releases the permit that was limiting how many
-  of these could be in flight, and with nothing bounding the queue that is how a plane under load
-  accumulates work nobody is waiting for.
-
-- **`extraVolumes` and `extraVolumeMounts` on every component of the chart.** The configuration
-  names TLS certificates and authorities by path and the chart offered no way to put a file there:
-  mutual TLS meant forking the chart or running a post-renderer.
-
-- **`bench/decide.js`** measures the decision path — cold and warm, single and boxcarred — with
-  thresholds on the warm path only. The rest of `bench/` measures the transport with nothing behind
-  it, which was the whole suite until now.
 
 - **Contracts crate** (`permguard-core`): storage, secrets, signing keys, audit, services and the
   server host, as traits and the types they exchange, with a dependency allowlist enforced by
@@ -355,13 +428,15 @@ more than the tidiness of dropping them.
   across the deployment, ledgers within their zone). The CLI grows `permguard zones …` and
   `permguard ledgers --zone <name-or-id> …`, and every reference accepts the name or the id. All
   mutations land in the audit trail.
-- **Authorization decisions** on the data plane: the `permguard.pdp.v1` interface — served
-  identically over HTTP (`POST /access/v1/evaluation`, `/access/v1/evaluations`, and a discovery
-  document) and gRPC
+- **Authorization decisions** on the data plane: the `permguard.pdp.v1` profile — OpenID AuthZEN
+  1.0 with Permguard's extensions — served identically over HTTP
+  (`POST /access/v1/evaluation`, `/access/v1/evaluations`,
+  `GET /.well-known/authzen-configuration`) and gRPC
   (`permguard.data.v1.PolicyDecisionPoint`). `zone` and `ledger` are **required fields of the
   payload**, by name or by identity: one endpoint answers for every ledger a plane holds, and a
   request naming neither is refused with `400` rather than answered against a default. Boxcarring
-  and the three `options.evaluations_semantic` values are implemented. Both built-in
+  and the three `options.evaluations_semantic` values are implemented; the standard's Search APIs
+  are not served, and their absence from the metadata document is the declaration. Both built-in
   languages answer the same contract — Cedar through `cedar-policy`, Rego through `regorus` with a
   written convention (`allow` permits, `deny` overrides, absent means no). A deny is a `200` with
   `decision: false`; a ledger this plane does not mirror is `404`; one it may not serve is `503`.
@@ -461,5 +536,8 @@ more than the tidiness of dropping them.
 - `permguard_surface_connections_refused_total` now carries a `scope` label — `pool` or `peer` —
   saying which bound refused. Queries that sum by `surface` are unaffected.
 
-[Unreleased]: https://github.com/permguard/permguard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/permguard/permguard/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/permguard/permguard/releases/tag/v0.1.5
+[0.1.2]: https://github.com/permguard/permguard/releases/tag/v0.1.2
+[0.1.1]: https://github.com/permguard/permguard/releases/tag/v0.1.1
 [0.1.0]: https://github.com/permguard/permguard/releases/tag/v0.1.0

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Asking a data plane for a decision: the client half of
-//! `permguard.pdp.v1`.
+//! `permguard.api.pdp.native.v1`.
 //!
 //! # Why it lives here
 //!
@@ -25,7 +25,7 @@
 //! # This client knows its own paths, and that is the point
 //!
 //! It does **not** fetch the discovery document to find out where to post. It is a *versioned*
-//! client: it implements `permguard.pdp.v1`, and the paths of that interface are part of what
+//! client: it implements `permguard.api.pdp.native.v1`, and the paths of that interface are part of what
 //! `v1` means — they come from the same constants the server mounts its routes from, in
 //! [`permguard_languages::request`], so the two cannot drift apart. A round trip to be told a
 //! constant it already links against would buy nothing, and following a URL out of a document
@@ -54,7 +54,7 @@ pub trait Pdp {
     /// is the server's, unchanged.
     fn evaluate(&self, payload: &Value) -> Result<Value, Failure>;
 
-    /// What `permguard.pdp.v1` offers at this endpoint.
+    /// What `permguard.api.pdp.native.v1` offers at this endpoint.
     fn configuration(&self) -> Result<Value, Failure>;
 }
 

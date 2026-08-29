@@ -420,6 +420,19 @@ pub enum Command {
         #[command(subcommand)]
         action: DecisionsAction,
     },
+    /// Read the events a data plane recorded, and verify them.
+    ///
+    /// The control plane is the only supported remote source: a data plane's journal is a shipping
+    /// buffer, holding what its own policies still read and what has not yet been acknowledged, so
+    /// a read there would answer differently depending on which plane it reached.
+    ///
+    /// Every subcommand reads from an offset that belongs to the consumer, and the control plane
+    /// keeps no cursor: two people running `permguard events tail` at once do not interfere, and
+    /// neither can back-pressure the plane that is recording.
+    Events {
+        #[command(subcommand)]
+        action: EventsAction,
+    },
     /// Report what each Permguard plane is, and whether it is willing to be sent work.
     ///
     /// Every plane is probed and reported, whether it answers or not: a plane that is down is a
@@ -470,6 +483,142 @@ pub enum DecisionsAction {
         after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json"
     )]
     Export(DecisionsQuery),
+}
+
+/// What to read, and how far.
+#[derive(Debug, Subcommand)]
+pub enum EventsAction {
+    /// List a page of events, oldest first.
+    #[command(
+        after_help = "Examples:\n  permguard events list --zone acme --ledger agent-governance\n  permguard events list --event-type permguard.dogwood.event.v1 --kind request"
+    )]
+    List(EventsQuery),
+    /// Follow the events as they arrive.
+    #[command(
+        after_help = "Examples:\n  permguard events tail --follow\n  permguard events tail --kind error --follow"
+    )]
+    Tail {
+        #[command(flatten)]
+        query: EventsQuery,
+        /// Keep reading instead of stopping at the end of what is held.
+        #[arg(long)]
+        follow: bool,
+    },
+    /// Show one occurrence, by the identifier its caller stated.
+    #[command(
+        after_help = "Examples:\n  permguard events get 01J8Z9\n  permguard events get 01J8Z9 -o json"
+    )]
+    Get {
+        /// The occurrence's own identifier, as the submission stated it.
+        event_id: String,
+        #[command(flatten)]
+        query: EventsQuery,
+    },
+    /// Read a finite snapshot in bulk, resumably: every page, to standard output.
+    ///
+    /// The snapshot is fixed by the first page's watermark, so an export of a ledger that is still
+    /// recording terminates. Events written after it belong to a later export.
+    #[command(
+        after_help = "Examples:\n  permguard events export -o json > events.json\n  permguard events export --event-type permguard.dogwood.event.v1 --verify --keys plane-keys.json"
+    )]
+    Export(EventsQuery),
+    /// Verify what is held: the chain, the Merkle inclusion, and the signatures.
+    ///
+    /// `--keys` is required: a Merkle path supplied by the same archive proves nothing about who
+    /// produced it until the batch envelope verifies against an independently supplied producer
+    /// key.
+    #[command(
+        after_help = "Examples:\n  permguard events verify --zone acme --ledger agent-governance\n  permguard events verify --file events.json --keys plane-keys.json -o json"
+    )]
+    Verify {
+        /// Verify a JSON or YAML archive produced by `events export`, without contacting a server.
+        #[arg(long, value_name = "FILE")]
+        file: Option<String>,
+        #[command(flatten)]
+        query: EventsQuery,
+    },
+}
+
+/// What to read, and how to narrow it.
+#[derive(Debug, clap::Args)]
+pub struct EventsQuery {
+    /// The zone whose events to read, overriding the workspace.
+    #[arg(long, alias = "zone-id", value_name = "ZONE")]
+    pub zone: Option<String>,
+
+    /// The ledger whose events to read, overriding the workspace.
+    #[arg(long, value_name = "LEDGER")]
+    pub ledger: Option<String>,
+
+    /// Read one producer's whole stream instead of one tenant's records.
+    ///
+    /// The most powerful read in the system — every tenant's events — and the only one from which
+    /// a producer chain can be verified end to end.
+    #[arg(long, value_name = "PRODUCER", requires = "instance")]
+    pub producer: Option<String>,
+
+    /// Which incarnation of that producer.
+    #[arg(long, value_name = "INSTANCE", requires = "producer")]
+    pub instance: Option<String>,
+
+    /// The registered producer class, when reading a stream. Defaults to the data plane's.
+    #[arg(long, value_name = "CLASS")]
+    pub producer_class: Option<String>,
+
+    /// Where to resume from: the opaque offset a previous page returned.
+    #[arg(long, value_name = "OFFSET")]
+    pub from: Option<String>,
+
+    /// How many records to read at once.
+    #[arg(long, default_value = "100", value_name = "N")]
+    pub limit: usize,
+
+    /// How many bytes to read at once. The server clamps both bounds.
+    #[arg(long, value_name = "BYTES")]
+    pub limit_bytes: Option<u64>,
+
+    /// Only events of these registered types. Repeatable.
+    ///
+    /// A first-class filter rather than a predicate over everything: the store keeps a bounded
+    /// index per type, so asking for one does not read every other type the ledger retains.
+    #[arg(long = "event-type", value_name = "TYPE")]
+    pub event_types: Vec<String>,
+
+    /// Only events of this runtime kind — Dogwood's `request`, `response`, `error`.
+    #[arg(long, value_name = "KIND")]
+    pub kind: Option<String>,
+
+    /// Only events decided under this profile.
+    #[arg(long, value_name = "PROFILE")]
+    pub profile: Option<String>,
+
+    /// Only events addressed to this policy partition.
+    #[arg(long, value_name = "PARTITION")]
+    pub policy_partition: Option<String>,
+
+    /// Only events at or after this RFC 3339 instant.
+    #[arg(long, value_name = "TIMESTAMP")]
+    pub since: Option<String>,
+
+    /// Only events at or before this RFC 3339 instant.
+    #[arg(long, value_name = "TIMESTAMP")]
+    pub until: Option<String>,
+
+    /// Only events in this Dogwood history partition, by the key's digest.
+    #[arg(long, value_name = "DIGEST")]
+    pub history: Option<String>,
+
+    /// Ask for the signed envelopes and inclusion paths, and check them.
+    #[arg(long)]
+    pub verify: bool,
+
+    /// The producer's published key set (a JWKS file), for `--verify`.
+    #[arg(long, value_name = "FILE")]
+    pub keys: Option<String>,
+
+    /// Read the document exactly as asked, even inside a workspace.
+    #[arg(long)]
+    pub ignore_workspace: bool,
 }
 
 /// Which way a decision went, as `--decision` spells it.
@@ -772,7 +921,7 @@ pub enum LedgersAction {
 /// see [`crate::target`] for how that is resolved.
 #[derive(Debug, Args)]
 pub struct CheckArgs {
-    /// The request document (the `permguard.pdp.v1` payload). `-` reads standard input.
+    /// The request document (the `permguard.api.pdp.native.v1` payload). `-` reads standard input.
     #[arg(short, long, value_name = "FILE")]
     pub file: Option<String>,
 
@@ -856,7 +1005,10 @@ mod tests {
 
     #[test]
     fn test_every_help_in_the_tree_carries_the_banner() {
-        let banner = crate::banner::banner();
+        // The uncoloured form: clap holds `before_help` as a styled string and
+        // drops the escapes when it renders it back, so the coloured banner and
+        // what clap returns are never equal in a terminal.
+        let banner = crate::banner::plain();
         let mut checked = 0;
 
         walk(&command(), &mut |command| {

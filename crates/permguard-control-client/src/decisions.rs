@@ -127,16 +127,80 @@ pub enum ReadScope {
     },
 }
 
+/// What a reader is asking for: how far, from where, and to what end.
+///
+/// The shared stream-window contract, in the client's own terms. The two bounds are both sent
+/// because a record count alone does not bound a response, and `until` is what separates a finite
+/// export from a tail: an export captures the first page's `high_watermark` and echoes it on every
+/// page after, so it finishes on a stream that is still being written.
+#[derive(Debug, Clone, Default)]
+pub struct ReadWindow {
+    /// The opaque offset a previous page returned. `None` starts at the oldest still held.
+    pub from: Option<String>,
+    /// The export bound, echoed from the first page's `high_watermark`. `None` is a tail.
+    pub until: Option<String>,
+    /// How many records at most. `0` takes the server's default.
+    pub limit_records: usize,
+    /// How many bytes at most. `0` takes the server's default.
+    pub limit_bytes: u64,
+    /// Whether to ask for the signed envelopes and inclusion paths.
+    pub proof: bool,
+}
+
+impl ReadWindow {
+    /// A window that reads at most `records` and nothing else.
+    pub fn of(records: usize) -> Self {
+        Self {
+            limit_records: records,
+            ..Self::default()
+        }
+    }
+
+    /// The same window continued from `offset`.
+    pub fn from(mut self, offset: &str) -> Self {
+        self.from = Some(offset.to_owned());
+
+        self
+    }
+
+    /// The same window bounded to a finite snapshot.
+    pub fn until(mut self, watermark: &str) -> Self {
+        self.until = Some(watermark.to_owned());
+
+        self
+    }
+
+    /// The same window, asking for proofs.
+    pub fn with_proof(mut self) -> Self {
+        self.proof = true;
+
+        self
+    }
+}
+
 /// One page of records, and where to continue.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Page {
     /// The records, verbatim, exactly as the producer signed them.
     pub records: Vec<Value>,
     /// The opaque offset to present next.
+    ///
+    /// Present even for an empty page, because an empty page still advanced over the positions it
+    /// examined. A consumer stops from `more` and its own `until`, never from emptiness.
     pub next: String,
-    /// Whether the scope holds more right now.
+    /// Whether the scope holds more — against this read's `until` when it has one, and against the
+    /// returned watermark otherwise.
     #[serde(default)]
     pub more: bool,
+    /// The oldest offset the scope still holds, to resume from deliberately after a gap.
+    #[serde(default)]
+    pub oldest_available: String,
+    /// The exclusive end this read observed, opaque.
+    ///
+    /// Echoed back as `until` to bound a finite export. Never parsed or compared: for a view
+    /// merged across producers there is no single number to compare.
+    #[serde(default)]
+    pub high_watermark: String,
     /// The signed envelopes attesting these records, when asked for.
     #[serde(default)]
     pub proof: Vec<Value>,
@@ -146,15 +210,39 @@ pub struct Page {
     /// a producer's stream, so the chain cannot be checked across it.
     #[serde(default)]
     pub inclusion: Vec<Value>,
+    /// What this page proves about what it covers.
+    #[serde(default)]
+    pub coverage: Coverage,
+}
+
+/// What a page proves about what it covers.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Coverage {
+    /// Whether the records are a contiguous run of one producer's stream, so the chain links.
+    #[serde(default)]
+    pub contiguous: bool,
+    /// How many positions the server examined to produce this page.
+    #[serde(default)]
+    pub examined: u64,
+    /// Whether a scan bound stopped this page before its record or byte bound did.
+    #[serde(default)]
+    pub scan_bounded: bool,
 }
 
 /// Why a read did not answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
     /// The offset is older than what the scope still holds.
+    ///
+    /// Expected retention behaviour, not corruption. The three fields are what a consumer needs to
+    /// record an honest gap rather than report a clean run it did not have.
     Expired {
         /// Where the remaining records begin.
         oldest: String,
+        /// The first position still held.
+        oldest_sequence: u64,
+        /// Where this consumer stood.
+        requested_sequence: u64,
     },
     /// The server refused, and said why.
     Refused {
@@ -170,9 +258,15 @@ pub enum ReadError {
 impl std::fmt::Display for ReadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Expired { .. } => write!(
+            Self::Expired {
+                oldest_sequence,
+                requested_sequence,
+                ..
+            } => write!(
                 formatter,
-                "this offset is older than what the store still holds: records between it and the oldest available one have left on the retention schedule"
+                "this offset stands at {requested_sequence} and the oldest still held is \
+                 {oldest_sequence}: the {} records in between left on the retention schedule",
+                oldest_sequence.saturating_sub(*requested_sequence)
             ),
             Self::Refused { code, detail } => write!(formatter, "{detail} ({code})"),
             Self::Unavailable(detail) => write!(formatter, "{detail}"),
@@ -182,14 +276,8 @@ impl std::fmt::Display for ReadError {
 
 /// Reading decisions back from a control plane.
 pub trait DecisionReader {
-    /// Reads one page of `scope`, from `offset`.
-    fn read(
-        &self,
-        scope: &ReadScope,
-        offset: Option<&str>,
-        limit: usize,
-        proof: bool,
-    ) -> Result<Page, ReadError>;
+    /// Reads one bounded block of `scope`.
+    fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError>;
 }
 
 /// The HTTP shipper.
@@ -285,28 +373,31 @@ impl DecisionSink for HttpSink {
 }
 
 impl DecisionReader for HttpSink {
-    fn read(
-        &self,
-        scope: &ReadScope,
-        offset: Option<&str>,
-        limit: usize,
-        proof: bool,
-    ) -> Result<Page, ReadError> {
+    fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
         let mut path = match scope {
             ReadScope::Tenant { zone, ledger } => {
-                format!("/zones/{zone}/ledgers/{ledger}/decisions/v1/records?limit={limit}")
+                format!("/zones/{zone}/ledgers/{ledger}/decisions/v1/records?")
             }
             ReadScope::Stream { pdp_id, instance } => {
-                format!("/decisions/v1/records?pdp={pdp_id}&instance={instance}&limit={limit}")
+                format!("/decisions/v1/records?pdp={pdp_id}&instance={instance}")
             }
         };
-        if proof {
+        if window.limit_records > 0 {
+            path.push_str(&format!("&limit_records={}", window.limit_records));
+        }
+        if window.limit_bytes > 0 {
+            path.push_str(&format!("&limit_bytes={}", window.limit_bytes));
+        }
+        if window.proof {
             path.push_str("&proof=true");
         }
-        if let Some(offset) = offset {
-            // The offset is opaque and base64url, so it is already safe in a
-            // query string: encoding it again would change it.
+        // Offsets and watermarks are opaque and base64url, so they are already safe in a query
+        // string: encoding them again would change them.
+        if let Some(offset) = &window.from {
             path.push_str(&format!("&from={offset}"));
+        }
+        if let Some(until) = &window.until {
+            path.push_str(&format!("&until={until}"));
         }
 
         let response = self
@@ -329,8 +420,12 @@ impl DecisionReader for HttpSink {
                 .to_owned()
         };
         if field("code") == "offset_expired" {
+            let number = |name: &str| parsed.get(name).and_then(Value::as_u64).unwrap_or_default();
+
             return Err(ReadError::Expired {
-                oldest: field("oldest"),
+                oldest: field("oldest_available"),
+                oldest_sequence: number("oldest_sequence"),
+                requested_sequence: number("requested_sequence"),
             });
         }
 

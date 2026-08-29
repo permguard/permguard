@@ -44,12 +44,12 @@ pub fn request_from_proto(request: EvaluateRequest) -> Result<CheckRequest, Malf
         zone: some(request.zone),
         ledger: some(request.ledger),
         profile: some(request.profile),
-        subject: request.subject.map(entity_from_proto),
-        resource: request.resource.map(entity_from_proto),
-        action: request.action.map(action_from_proto),
-        context: request.context.map(map_from_struct),
-        principal: request.principal.map(entity_from_proto),
-        partition_inputs: inputs_from_proto(request.partition_inputs),
+        subject: request.subject.map(entity_from_proto).transpose()?,
+        resource: request.resource.map(entity_from_proto).transpose()?,
+        action: request.action.map(action_from_proto).transpose()?,
+        context: request.context.map(map_from_struct).transpose()?,
+        principal: request.principal.map(entity_from_proto).transpose()?,
+        partition_inputs: inputs_from_proto(request.partition_inputs)?,
         // The removed extension has no field here to carry one: its tag is reserved in the
         // schema, so a peer still sending the old message cannot have its graph decoded as
         // something else. A gRPC caller hears about it the way an HTTP one does — from the
@@ -59,7 +59,7 @@ pub fn request_from_proto(request: EvaluateRequest) -> Result<CheckRequest, Malf
             .evaluations
             .into_iter()
             .map(evaluation_from_proto)
-            .collect(),
+            .collect::<Result<Vec<EvaluationBody>, Malformed>>()?,
         options: Some(OptionsBody {
             evaluations_semantic: semantic,
         }),
@@ -82,19 +82,19 @@ pub fn response_to_proto(response: CheckResponse) -> EvaluateResponse {
     }
 }
 
-fn entity_from_proto(entity: ProtoEntity) -> EntityBody {
-    EntityBody {
+fn entity_from_proto(entity: ProtoEntity) -> Result<EntityBody, Malformed> {
+    Ok(EntityBody {
         kind: some(entity.r#type),
         id: some(entity.id),
-        properties: entity.properties.map(map_from_struct),
-    }
+        properties: entity.properties.map(map_from_struct).transpose()?,
+    })
 }
 
-fn action_from_proto(action: ProtoAction) -> ActionBody {
-    ActionBody {
+fn action_from_proto(action: ProtoAction) -> Result<ActionBody, Malformed> {
+    Ok(ActionBody {
         name: some(action.name),
-        properties: action.properties.map(map_from_struct),
-    }
+        properties: action.properties.map(map_from_struct).transpose()?,
+    })
 }
 
 /// The partition inputs a proto request carries, by the partition each names.
@@ -103,17 +103,17 @@ fn action_from_proto(action: ProtoAction) -> ActionBody {
 /// what a policy sees — which is the one thing a transport may not do.
 fn inputs_from_proto(
     inputs: HashMap<String, ProtoPartitionInput>,
-) -> BTreeMap<String, PartitionInputBody> {
+) -> Result<BTreeMap<String, PartitionInputBody>, Malformed> {
     inputs
         .into_iter()
         .map(|(name, held)| {
-            (
+            Ok((
                 name,
                 PartitionInputBody {
                     kind: some(held.r#type),
-                    data: held.data.map(json_from_proto),
+                    data: held.data.map(json_from_proto).transpose()?,
                 },
-            )
+            ))
         })
         .collect()
 }
@@ -136,12 +136,12 @@ pub fn inputs_to_proto(
         .collect()
 }
 
-fn evaluation_from_proto(evaluation: ProtoEvaluation) -> EvaluationBody {
-    EvaluationBody {
-        subject: evaluation.subject.map(entity_from_proto),
-        resource: evaluation.resource.map(entity_from_proto),
-        action: evaluation.action.map(action_from_proto),
-        context: evaluation.context.map(map_from_struct),
+fn evaluation_from_proto(evaluation: ProtoEvaluation) -> Result<EvaluationBody, Malformed> {
+    Ok(EvaluationBody {
+        subject: evaluation.subject.map(entity_from_proto).transpose()?,
+        resource: evaluation.resource.map(entity_from_proto).transpose()?,
+        action: evaluation.action.map(action_from_proto).transpose()?,
+        context: evaluation.context.map(map_from_struct).transpose()?,
         // The wrapper carries the distinction a map cannot: present — even with no entries —
         // replaces the request's defaults with exactly what it states, and absent inherits them.
         // Read as a bare map, `{}` was indistinguishable from "unset" and inherited, so the same
@@ -149,10 +149,11 @@ fn evaluation_from_proto(evaluation: ProtoEvaluation) -> EvaluationBody {
         // HTTP.
         partition_inputs: evaluation
             .partition_inputs
-            .map(|held| inputs_from_proto(held.inputs)),
+            .map(|held| inputs_from_proto(held.inputs))
+            .transpose()?,
         entities: None,
         request_id: some(evaluation.request_id),
-    }
+    })
 }
 
 fn semantic_from_proto(semantic: i32) -> Result<Option<Semantic>, Malformed> {
@@ -209,57 +210,109 @@ fn some(value: String) -> Option<String> {
     }
 }
 
-/// A proto number that is a whole number, as JSON writes whole numbers.
+/// One proto `Struct`, as the JSON both transports agree on.
 ///
-/// `f64` is the only number proto carries, and `serde_json` renders `42f64` as `42.0`. Every
-/// integer a caller wrote would arrive at a policy as a decimal — legal JSON, and not the value
-/// they sent.
-fn integral(value: f64) -> Option<serde_json::Number> {
-    if value.fract() != 0.0 || !value.is_finite() {
-        return None;
-    }
-
-    // Bounded by what a double represents *exactly*, not by what a `u64` holds. `u64::MAX as f64`
-    // rounds up to 2^64, so a bound written that way accepts 2^64 and the cast then saturates it
-    // back to `u64::MAX` — a number changed on the way through, silently. Past 2^53 a double no
-    // longer counts one at a time, so nothing there is an integer anybody sent.
-    if value.abs() > EXACT_INTEGER {
-        return None;
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    Some(serde_json::Number::from(value as i64))
+/// Public because the temporal interface carries its occurrence as a `Struct` and must decode it
+/// exactly as this one does — a second mapping would be a second reading of what `42` means.
+pub fn json_from_struct(value: Struct) -> Result<Map<String, Value>, Malformed> {
+    map_from_struct(value)
 }
 
-/// The largest integer an IEEE-754 double represents exactly: 2^53.
-const EXACT_INTEGER: f64 = 9_007_199_254_740_992.0;
+/// One proto `Value`, as the JSON both transports agree on.
+pub fn value_from_proto(value: ProtoValue) -> Result<Value, Malformed> {
+    json_from_proto(value)
+}
 
-fn map_from_struct(value: Struct) -> Map<String, Value> {
+fn map_from_struct(value: Struct) -> Result<Map<String, Value>, Malformed> {
     value
         .fields
         .into_iter()
-        .map(|(key, value)| (key, json_from_proto(value)))
+        .map(|(key, value)| Ok((key, json_from_proto(value)?)))
         .collect()
 }
 
-fn json_from_proto(value: ProtoValue) -> Value {
-    match value.kind {
-        None | Some(Kind::NullValue(_)) => Value::Null,
+/// The largest magnitude a number may have on either transport.
+///
+/// # The common numeric domain, stated
+///
+/// REST carries JSON, which can spell an integer of any size. gRPC carries
+/// `google.protobuf.Value`, whose only number is an IEEE-754 double. Past 2^53 a double no longer
+/// counts one at a time, so `9007199254740993` and `9007199254740992` are the same double — and a
+/// contract where one transport can express a value the other silently rounds is a contract with
+/// two meanings.
+///
+/// So the domain both transports share is what a double holds exactly, and a number outside it is
+/// **refused on both** rather than accepted on one. A caller with an identifier that large sends it
+/// as the string it is.
+const EXACT_INTEGER: f64 = 9_007_199_254_740_992.0;
+
+fn json_from_proto(value: ProtoValue) -> Result<Value, Malformed> {
+    let held = match value.kind {
+        // A `Value` with no `kind` is not null. proto3 spells null as `NullValue`, so a message
+        // that set nothing at all is one this build did not fully understand — a newer variant, or
+        // a sender that skipped the field. Reading it as null would put a value into a policy's
+        // world that the caller never sent.
+        None => {
+            return Err(Malformed {
+                code: "value_unrepresentable",
+                message: "a value with no kind is not `null`: `null` is spelled `NullValue`, and \
+                          a value that says nothing is one this build cannot read"
+                    .to_owned(),
+            });
+        }
+        Some(Kind::NullValue(_)) => Value::Null,
         Some(Kind::BoolValue(value)) => Value::Bool(value),
         // proto has one number type and JSON has two readings of it. A caller that sent `42` over
         // HTTP must not have it arrive as `42.0` over gRPC: Cedar has no floating-point type at
         // all, so the same request answered on one transport and refused as unreadable on the
         // other — the diagnosis differed, which is the same as the contract differing.
-        Some(Kind::NumberValue(value)) => integral(value)
-            .or_else(|| serde_json::Number::from_f64(value))
-            .map(Value::Number)
-            .unwrap_or(Value::Null),
+        Some(Kind::NumberValue(value)) => Value::Number(number_from_proto(value)?),
         Some(Kind::StringValue(value)) => Value::String(value),
-        Some(Kind::ListValue(list)) => {
-            Value::Array(list.values.into_iter().map(json_from_proto).collect())
-        }
-        Some(Kind::StructValue(value)) => Value::Object(map_from_struct(value)),
+        Some(Kind::ListValue(list)) => Value::Array(
+            list.values
+                .into_iter()
+                .map(json_from_proto)
+                .collect::<Result<Vec<Value>, Malformed>>()?,
+        ),
+        Some(Kind::StructValue(value)) => Value::Object(map_from_struct(value)?),
+    };
+
+    Ok(held)
+}
+
+/// One proto number, as the JSON number it exactly is — or a refusal.
+///
+/// Every refusal here is a value that would otherwise have reached a policy as something else:
+/// `NaN` and the infinities have no JSON spelling at all, and a magnitude past 2^53 is a number
+/// the two transports do not agree about. Silently becoming `null` is the one outcome that must
+/// not happen — a policy reading an absent attribute decides, and decides wrongly.
+fn number_from_proto(value: f64) -> Result<serde_json::Number, Malformed> {
+    let refuse = |what: &str| Malformed {
+        code: "value_unrepresentable",
+        message: format!(
+            "{what} is not a number JSON can carry, so it cannot reach a policy unchanged. \
+             Numbers travel on both transports only inside ±2^53, which is what an IEEE-754 \
+             double holds exactly; send anything larger as the string it is"
+        ),
+    };
+    if value.is_nan() {
+        return Err(refuse("NaN"));
     }
+    if value.is_infinite() {
+        return Err(refuse("an infinity"));
+    }
+    if value.abs() > EXACT_INTEGER {
+        return Err(refuse(&value.to_string()));
+    }
+    // A whole number is written as one: `serde_json` renders `42f64` as `42.0`, and every integer
+    // a caller wrote would otherwise arrive at a policy as a decimal — legal JSON, and not the
+    // value they sent.
+    if value.fract() == 0.0 {
+        #[allow(clippy::cast_possible_truncation)]
+        return Ok(serde_json::Number::from(value as i64));
+    }
+
+    serde_json::Number::from_f64(value).ok_or_else(|| refuse(&value.to_string()))
 }
 
 /// The other direction, for the tests and for any client this workspace writes.
@@ -448,7 +501,9 @@ mod tests {
         });
         let object = value.as_object().expect("an object").clone();
 
-        let round_tripped = Value::Object(map_from_struct(struct_from_map(&object)));
+        let round_tripped = Value::Object(
+            map_from_struct(struct_from_map(&object)).expect("every value here is representable"),
+        );
         assert_eq!(
             round_tripped, value,
             "what a caller sent is what a policy is given, on either transport"
@@ -594,5 +649,90 @@ mod tests {
                 "{defined:?} is a semantic this build defines"
             );
         }
+    }
+
+    /// A value this transport can carry and JSON cannot must not become `null`.
+    ///
+    /// This is the failure the fallible conversion exists to prevent: a policy reading an absent
+    /// attribute *decides*, and decides on less than the caller sent. Refusing is the only answer
+    /// that does not silently change what a request means.
+    #[test]
+    fn a_number_json_cannot_carry_is_refused_rather_than_dropped() {
+        for (name, held) in [
+            ("NaN", f64::NAN),
+            ("infinity", f64::INFINITY),
+            ("negative infinity", f64::NEG_INFINITY),
+            ("beyond 2^53", 9_007_199_254_740_994.0),
+        ] {
+            let refused = json_from_proto(ProtoValue {
+                kind: Some(Kind::NumberValue(held)),
+            })
+            .expect_err(name);
+
+            assert_eq!(refused.code, "value_unrepresentable", "{name}");
+        }
+    }
+
+    /// A `Value` that set nothing is not `null`: proto3 spells `null` as `NullValue`.
+    #[test]
+    fn a_value_with_no_kind_is_refused_rather_than_read_as_null() {
+        let refused = json_from_proto(ProtoValue { kind: None })
+            .expect_err("a value that says nothing is one this build cannot read");
+
+        assert_eq!(refused.code, "value_unrepresentable");
+        assert!(refused.message.contains("NullValue"), "{}", refused.message);
+    }
+
+    /// And an explicit null still means null.
+    #[test]
+    fn an_explicit_null_is_still_null() {
+        assert_eq!(
+            json_from_proto(ProtoValue {
+                kind: Some(Kind::NullValue(0)),
+            })
+            .expect("an explicit null is a value"),
+            Value::Null
+        );
+    }
+
+    /// The domain is the same on both sides of 2^53, and whole numbers stay whole.
+    #[test]
+    fn the_numeric_domain_is_what_both_transports_hold_exactly() {
+        let number = |held: f64| {
+            json_from_proto(ProtoValue {
+                kind: Some(Kind::NumberValue(held)),
+            })
+        };
+
+        assert_eq!(number(42.0).expect("in range"), json!(42));
+        assert_eq!(number(-42.0).expect("in range"), json!(-42));
+        assert_eq!(number(1.5).expect("in range"), json!(1.5));
+        // Exactly 2^53 is the boundary and is inside it.
+        assert!(number(9_007_199_254_740_992.0).is_ok());
+        assert!(number(9_007_199_254_740_994.0).is_err());
+    }
+
+    /// A refusal deep inside a nested value still refuses the whole request.
+    #[test]
+    fn a_bad_value_nested_in_a_request_refuses_the_request() {
+        let request = EvaluateRequest {
+            zone: "acme".to_owned(),
+            ledger: "main".to_owned(),
+            context: Some(Struct {
+                fields: [(
+                    "risk".to_owned(),
+                    ProtoValue {
+                        kind: Some(Kind::NumberValue(f64::NAN)),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            }),
+            ..EvaluateRequest::default()
+        };
+
+        let refused = request_from_proto(request)
+            .expect_err("a context this transport cannot carry is a bad request");
+        assert_eq!(refused.code, "value_unrepresentable");
     }
 }

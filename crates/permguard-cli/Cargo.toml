@@ -28,6 +28,8 @@ permguard-core.workspace = true
 # The record, the chain and the signature — so `--verify` checks what the
 # planes compute, with the same code rather than a second implementation.
 permguard-decisions.workspace = true
+# The event record and its chain, for `permguard events --verify`.
+permguard-events.workspace = true
 permguard-control-client.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true

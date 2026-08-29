@@ -39,7 +39,7 @@ use permguard_decisions::record::{
     ActionRef, Body, Build, Commitments, DecisionBody, DiscontinuityBody, Inputs, Lost, MarkerBody,
     Party, Predecessor, Reason, Record, Sampling, StoreRef, Stream, Trace, VERSION,
 };
-use permguard_decisions::spool::{Bounds, Spool, SpoolError, Terminal};
+use permguard_decisions::spool::{Already, Bounds, Spool, SpoolError, Terminal};
 use permguard_decisions::{Commitment, commitment};
 use serde_json::Value;
 use tracing::{info, warn};
@@ -96,6 +96,68 @@ pub struct Decided<'a> {
     pub request_id: Option<String>,
     /// How long it took.
     pub latency_us: u64,
+    /// The occurrence this decision was made about, for a temporal one.
+    pub event: Option<permguard_decisions::record::EventRef>,
+}
+
+/// The members that say *what* was decided, as opposed to the occasion of
+/// writing it down.
+///
+/// An allow-list rather than a deny-list, and deliberately: a member added to
+/// the record later is excluded until somebody decides it is part of the
+/// decision's identity, which fails towards answering a retry rather than
+/// towards refusing one over a field that describes the write.
+///
+/// `pdp`, `latency_us`, `trace`, `request_id` and `context` are all left out.
+/// The first three describe the occasion — which build, how long, which trace —
+/// and the last two are correlation the caller chose; none of them changes what
+/// was asked or what was answered. The context itself is still covered, because
+/// `inputs` commits to the whole of it.
+const DECIDES: [&str; 10] = [
+    "id",
+    "store",
+    "subject",
+    "resource",
+    "action",
+    "principal",
+    "inputs",
+    "decision",
+    "policies",
+    "reason",
+];
+
+/// How a decision record names the logical write it is.
+///
+/// Returns `None` for anything that is not a decision — a marker, a stream's
+/// terminal record — because those are not retried under a caller's key and
+/// have no identity to be idempotent about.
+fn decision_identity(record: &serde_json::Value) -> Option<permguard_decisions::spool::Identity> {
+    // `Body` is flattened into the record, so the decision's members sit beside
+    // the envelope's rather than under a `body` of their own.
+    let record = record.as_object()?;
+    if record.get("kind").and_then(serde_json::Value::as_str) != Some("decision") {
+        return None;
+    }
+    let id = record.get("id")?.as_str()?.to_owned();
+
+    let mut decides = serde_json::Map::new();
+    for member in DECIDES {
+        if let Some(value) = record.get(member) {
+            decides.insert((*member).to_owned(), value.clone());
+        }
+    }
+    let fingerprint =
+        permguard_decisions::record::digest_of(&serde_json::Value::Object(decides)).ok()?;
+
+    Some(permguard_decisions::spool::Identity { id, fingerprint })
+}
+
+fn identity_conflict(id: &str, seq: u64) -> SpoolError {
+    SpoolError::Malformed(format!(
+        "the decision `{id}` is already recorded at sequence {seq} and this record decides \
+         something else under the same identity: refusing to write a second record nothing could \
+         tell apart"
+    ))
 }
 
 /// What writing one record established.
@@ -114,6 +176,15 @@ pub enum Written {
     Discontinued {
         /// How many written records were discarded.
         lost: u64,
+    },
+    /// Nothing was written because this decision is already durable here.
+    ///
+    /// A retry of a decision the journal already holds, answered from the
+    /// record it holds rather than by appending a second one under the same
+    /// identity.
+    AlreadyRecorded {
+        /// Where the record that answers it sits.
+        seq: u64,
     },
     /// Nothing was written and nothing could be: the plane is configured to
     /// refuse rather than decide unrecorded, and the caller must be refused.
@@ -217,6 +288,14 @@ impl GroupCommit {
     /// what a stream end holds while it settles one and resets the other.
     fn request(&self, seq: u64) -> u64 {
         let mut state = self.lock();
+        // A record may already be appended because the flush that first
+        // covered it failed. A retry of that logical write must re-arm the
+        // flusher; merely waiting would immediately replay the old error and
+        // `next_target` would see nothing newer than `attempted` to try.
+        if state.failed.is_some() && state.attempted >= seq {
+            state.attempted = seq.saturating_sub(1);
+            state.failed = None;
+        }
         state.requested = state.requested.max(seq);
         self.changed.notify_all();
 
@@ -364,7 +443,7 @@ impl Journal {
         commitment: Commitment,
         metrics: Metrics,
     ) -> Result<Self, SpoolError> {
-        let opened = Spool::open(directory, bounds)?;
+        let opened = Spool::open_indexed(directory, bounds, Some(decision_identity))?;
         let durable = opened.seq();
         let spool = Arc::new(Mutex::new(opened));
         let group = GroupCommit::new(durable);
@@ -438,7 +517,13 @@ impl Journal {
             }
         }
 
-        let seq = self.write_decision(decided)?;
+        let (seq, already) = self.write_decision(decided)?;
+        if already {
+            self.metrics
+                .count(&measure::WRITTEN, &[("kind", "decision_retry")]);
+
+            return Ok(Written::AlreadyRecorded { seq });
+        }
         self.metrics
             .count(&measure::WRITTEN, &[("kind", "decision")]);
 
@@ -455,17 +540,49 @@ impl Journal {
     /// sequence, and the loser's record would never be written. The wait is
     /// the only part outside the lock, and it is the point: many writers, one
     /// flush.
-    fn write_decision(&self, decided: &Decided<'_>) -> Result<u64, SpoolError> {
-        let (generation, seq) = {
+    /// Returns where the record sits, and whether this call is what put it
+    /// there: a retry is answered from the journal, and the caller has to be
+    /// able to say so rather than reporting a write it did not make.
+    fn write_decision(&self, decided: &Decided<'_>) -> Result<(u64, bool), SpoolError> {
+        let (generation, seq, already) = {
             let mut spool = self.state.lock().map_err(poisoned)?;
             let record = self.decision_record(&spool, decided)?;
-            let seq = spool.append_unsynced(&record)?.seq;
-            (self.group.request(seq), seq)
+            // Asked under the same lock that assigns the sequence. Reading the
+            // index and then appending as two acquisitions would let two
+            // recoveries of one decision each find nothing and each append.
+            if let Some(identity) = decision_identity(&record) {
+                match spool.already_written(&identity) {
+                    Some(Already::Same(held)) => return Ok((held.seq, true)),
+                    Some(Already::Conflict(held)) => {
+                        return Err(identity_conflict(&identity.id, held.seq));
+                    }
+                    None => {}
+                }
+
+                // An append waiting for the group fsync is not durable yet, so
+                // it cannot answer the retry immediately. It does reserve the
+                // identity: join the first writer's wait instead of appending a
+                // second indistinguishable audit record. The generation is read
+                // under the spool lock, the same lock that stream rollover uses.
+                match spool.pending_write(&identity) {
+                    Some(Already::Same(held)) => (self.group.request(held.seq), held.seq, true),
+                    Some(Already::Conflict(held)) => {
+                        return Err(identity_conflict(&identity.id, held.seq));
+                    }
+                    None => {
+                        let seq = spool.append_unsynced(&record)?.seq;
+                        (self.group.request(seq), seq, false)
+                    }
+                }
+            } else {
+                let seq = spool.append_unsynced(&record)?.seq;
+                (self.group.request(seq), seq, false)
+            }
         };
         self.group.wait_for(generation, seq)?;
         self.publish();
 
-        Ok(seq)
+        Ok((seq, already))
     }
 
     /// Declares a new epoch, when the build or the sampling rate changes.
@@ -749,6 +866,7 @@ impl Journal {
                 request_id: decided.request_id.clone(),
                 context: Self::normalized_map(decided.included_context.clone()),
                 latency_us: decided.latency_us,
+                event: decided.event.clone(),
             })),
         }
         .to_value()
@@ -884,6 +1002,16 @@ fn flush_loop(spool: &Mutex<Spool>, group: &GroupCommit) {
         match token {
             Ok(Some((covered, handle))) => {
                 let outcome = handle.sync_data().map_err(|error| error.to_string());
+                if outcome.is_ok() {
+                    // The disk took them, so the keys they carry may now answer
+                    // a retry. Taken back under the lock, and only for what the
+                    // flush actually covered.
+                    let mut spool = match spool.lock() {
+                        Ok(held) => held,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    spool.promote_through(covered);
+                }
                 group.settled(generation, covered, outcome);
             }
             // Nothing open: nothing unsettled either.

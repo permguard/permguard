@@ -147,17 +147,29 @@ impl DecisionLog for DecisionFacade {
             Scope::Stream { .. } => "stream",
             Scope::Tenant { .. } => "tenant",
         };
-        let limit = usize::try_from(asked.limit).unwrap_or(100).clamp(1, 1_000);
-        let from = (!asked.from.is_empty()).then_some(asked.from);
+        // The same window the HTTP binding builds, from the same fields: `limit_records` where a
+        // caller states it, and the older `limit` where it does not.
+        let window = permguard_stream::Window {
+            from: (!asked.from.is_empty()).then_some(asked.from),
+            until: (!asked.until.is_empty())
+                .then(|| permguard_stream::Frontier::decode(&asked.until))
+                .flatten(),
+            limit_records: usize::try_from(if asked.limit_records > 0 {
+                asked.limit_records
+            } else {
+                asked.limit
+            })
+            .unwrap_or_default(),
+            limit_bytes: asked.limit_bytes,
+            proof: asked.proof,
+        };
 
         // Off the runtime's threads, exactly as on HTTP.
         let page = {
-            let (store, scope) = (self.store.clone(), scope.clone());
-            tokio::task::spawn_blocking(move || {
-                read::page_with(&store, &scope, from.as_deref(), limit, asked.proof)
-            })
-            .await
-            .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+            let (store, scope, key) = (self.store.clone(), scope.clone(), self.cursor_key.clone());
+            tokio::task::spawn_blocking(move || read::read(&store, &scope, &key, &window))
+                .await
+                .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
         };
         match page {
             Ok(page) => {
@@ -169,27 +181,43 @@ impl DecisionLog for DecisionFacade {
                     next: page.next,
                     more: page.more,
                     proof: page.proof.iter().map(render).collect(),
-                    inclusion: page.inclusion.iter().map(render_inclusion).collect(),
+                    inclusion: page.inclusion.iter().map(render).collect(),
+                    oldest_available: page.oldest_available,
+                    high_watermark: page.high_watermark,
+                    coverage: Some(crate::v1::ReadCoverage {
+                        contiguous: page.coverage.contiguous,
+                        examined: page.coverage.examined as u64,
+                        scan_bounded: page.coverage.scan_bounded,
+                    }),
                 }))
             }
-            Err(read::ReadError::Expired { oldest }) => {
+            Err(
+                ref expired @ read::ReadError::Expired {
+                    ref oldest,
+                    oldest_sequence,
+                    requested_sequence,
+                },
+            ) => {
                 self.metrics
                     .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
 
-                // The oldest offset travels in the message, so a consumer
-                // learns where to resume from the refusal itself.
+                // The oldest offset and the size of the gap travel in the metadata, so a consumer
+                // learns where to resume and how much it lost from the refusal itself — the same
+                // three facts the HTTP binding puts in its body.
                 let mut status = refusal(
-                    Status::not_found(format!(
-                        "this offset is older than what this scope still holds; the oldest \
-                         available is `{oldest}`"
-                    )),
+                    Status::not_found(expired.to_string()),
                     "not_found",
                     "offset_expired",
                 );
+                let metadata = status.metadata_mut();
                 if let Ok(value) = oldest.parse() {
-                    status
-                        .metadata_mut()
-                        .insert("permguard-oldest-offset", value);
+                    metadata.insert("permguard-oldest-offset", value);
+                }
+                if let Ok(value) = oldest_sequence.to_string().parse() {
+                    metadata.insert("permguard-oldest-sequence", value);
+                }
+                if let Ok(value) = requested_sequence.to_string().parse() {
+                    metadata.insert("permguard-requested-sequence", value);
                 }
 
                 Err(status)
@@ -223,10 +251,6 @@ impl DecisionFacade {
 
 fn render(value: &Value) -> Vec<u8> {
     serde_json::to_vec(value).unwrap_or_default()
-}
-
-fn render_inclusion(inclusion: &read::Inclusion) -> Vec<u8> {
-    serde_json::to_vec(inclusion).unwrap_or_default()
 }
 
 fn reason_of(refused: &Refused) -> &'static str {

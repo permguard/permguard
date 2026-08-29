@@ -19,6 +19,10 @@ use crate::role::{Authoring, ExtractedPolicy, Language};
 
 /// This language's name, as a manifest's `runtime.language.name` spells it.
 pub const NAME: &str = "cedar";
+/// The registered media type of a Cedar policy.
+pub const POLICY_MEDIA_TYPE: &str = "application/vnd.permguard.policy.cedar";
+/// The registered media type of a Cedar schema.
+pub const SCHEMA_MEDIA_TYPE: &str = "application/vnd.permguard.schema.cedar";
 
 /// The Cedar plugin.
 pub struct Cedar;
@@ -34,11 +38,17 @@ impl Language for Cedar {
     }
 
     fn policy_media_type(&self) -> &'static str {
-        "application/vnd.permguard.policy.cedar"
+        POLICY_MEDIA_TYPE
     }
 
     fn schema_media_type(&self) -> Option<&'static str> {
-        Some("application/vnd.permguard.schema.cedar")
+        Some(SCHEMA_MEDIA_TYPE)
+    }
+
+    fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+        const SCHEMA: &SchemaArtifact = &SchemaArtifact;
+
+        &[SCHEMA]
     }
 
     fn validate_policy(&self, bytes: &[u8]) -> Result<(), String> {
@@ -207,7 +217,7 @@ fn is_blank(slice: &str) -> bool {
 
 impl Authoring for Cedar {
     fn schema_file_extensions(&self) -> &'static [&'static str] {
-        &["cedarschema"]
+        &[SCHEMA_EXTENSION]
     }
 
     fn file_extensions(&self) -> &'static [&'static str] {
@@ -226,6 +236,53 @@ impl Authoring for Cedar {
             });
         }
         Ok(policies)
+    }
+}
+
+/// The registered type of a Cedar partition's schema.
+///
+/// Cedar's one schema, described the same way every other artifact is. It exists so nothing
+/// downstream has to keep a second, older idea of what a partition holds beside the registry: the
+/// legacy manifest flag `schema: true` names *this* type, and the walk that reads a Cedar
+/// partition is the walk that reads a Dogwood one.
+pub const SCHEMA_ARTIFACT: &str = "permguard.cedar.schema.v1";
+/// The file extension a Cedar schema is authored in.
+pub const SCHEMA_EXTENSION: &str = "cedarschema";
+
+/// The Cedar schema artifact.
+pub struct SchemaArtifact;
+
+impl crate::artifact::ArtifactType for SchemaArtifact {
+    fn name(&self) -> &'static str {
+        SCHEMA_ARTIFACT
+    }
+
+    fn media_type(&self) -> &'static str {
+        SCHEMA_MEDIA_TYPE
+    }
+
+    fn runtime(&self) -> &'static str {
+        NAME
+    }
+
+    fn role(&self) -> crate::artifact::ArtifactRole {
+        crate::artifact::ArtifactRole::Schema
+    }
+
+    fn semantic_role(&self) -> &'static str {
+        "schema"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &[SCHEMA_EXTENSION]
+    }
+
+    fn cardinality(&self) -> crate::artifact::Cardinality {
+        crate::artifact::Cardinality::ZeroOrOne
+    }
+
+    fn validate(&self, bytes: &[u8]) -> Result<(), String> {
+        crate::role::Language::validate_schema(&Cedar, bytes)
     }
 }
 

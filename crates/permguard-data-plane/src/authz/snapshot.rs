@@ -166,10 +166,45 @@ impl Partition {
 /// on every request: it is what makes a ledger synchronized a second ago
 /// visible now, without trusting a cache to notice.
 pub fn head(mirror: &Path) -> Result<Head, Refusal> {
-    let store = FsStore::new(mirror);
-    let checkpoint = permguard_control_client::checkpoint::read(&store, "refs/main")
+    head_with(mirror, &registry::Enabled::everything())
+}
+
+/// The same read, told what this deployment has opted into.
+///
+/// Separate from [`head`] rather than replacing it, because the two callers genuinely differ: a
+/// running plane consults its configuration, and a test or a tool reading a mirror off disk has no
+/// deployment to consult and should see what the build carries.
+pub fn head_with(mirror: &Path, enabled: &registry::Enabled) -> Result<Head, Refusal> {
+    let checkpoint = checkpoint_of(mirror)?;
+
+    head_at(mirror, &checkpoint, enabled)
+}
+
+/// What a mirror's ref currently points at, and nothing more.
+///
+/// One small file, read on every request on purpose: it is what makes a synchronization that
+/// advanced a ledger visible *now*, without trusting a cache to notice. Everything expensive —
+/// the commit, the manifest, the load gate — hangs off the commit this names, and is cached by it.
+pub fn checkpoint_of(
+    mirror: &Path,
+) -> Result<permguard_control_client::checkpoint::Checkpoint, Refusal> {
+    permguard_control_client::checkpoint::read(&FsStore::new(mirror), "refs/main")
         .map_err(Refusal::Damaged)?
-        .ok_or(Refusal::Empty)?;
+        .ok_or(Refusal::Empty)
+}
+
+/// The head of one **known** commit: the manifest, decoded, and the load gate run over it.
+///
+/// Split from [`head_with`] so a caller that already read the checkpoint can look the rest up by
+/// commit — which is the whole of the expensive part, and the part that does not change while the
+/// commit does not.
+pub fn head_at(
+    mirror: &Path,
+    checkpoint: &permguard_control_client::checkpoint::Checkpoint,
+    enabled: &registry::Enabled,
+) -> Result<Head, Refusal> {
+    let store = FsStore::new(mirror);
+    let checkpoint = checkpoint.clone();
     let digest = Digest::parse(&checkpoint.head).map_err(|error| {
         Refusal::Damaged(format!("the checkpoint head is not a digest: {error}"))
     })?;
@@ -190,7 +225,7 @@ pub fn head(mirror: &Path) -> Result<Head, Refusal> {
 
     // The gate, before anything is compiled or answered: the engine this build carries, and the
     // input contracts it implements. Both, from one call, so neither can be forgotten here.
-    registry::check_manifest(&manifest).map_err(|error| {
+    registry::check_manifest_with(&manifest, enabled).map_err(|error| {
         Refusal::Incompatible(format!(
             "this engine cannot serve this ledger: {}",
             error.detail
@@ -252,7 +287,7 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
         &Mirrored(&store),
         &subtree.digest.to_string(),
         partition,
-        declared.schema,
+        declared,
     )
     .map_err(|why| match why {
         permguard_languages::partition::Collecting::Damaged(why) => Refusal::Damaged(why),
@@ -262,9 +297,22 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
     let footprint = collected.footprint();
     let policies = collected.policies.len();
     let evaluator: Arc<dyn Evaluator> = engine
-        .compile(&collected.policies, collected.schema.as_deref())
+        .compile(&collected.policies, &collected.artifacts)
         .map_err(Refusal::Incompatible)?
         .into();
+
+    // What the manifest declared about this partition's history, against what its schemas turned
+    // out to say. Checked here rather than only where the ledger was authored, because a mirror is
+    // served by whatever plane holds it and a ledger pushed by an older client is still a ledger
+    // this plane would otherwise evaluate — under a cost model nobody accepted.
+    if let Some(temporal) = evaluator.temporal() {
+        permguard_languages::temporal::check_history_scope(
+            partition,
+            declared.history,
+            temporal.contract(),
+        )
+        .map_err(Refusal::Incompatible)?;
+    }
 
     Ok(Arc::new(Partition {
         name: partition.to_owned(),

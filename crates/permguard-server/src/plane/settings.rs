@@ -12,7 +12,8 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use permguard_core::decisions::{
-    DecisionStoreSection, DecisionsSection, IncludeSection, LogDestination,
+    DecisionStoreSection, DecisionsSection, EventStoreSection, EventsSection, IncludeSection,
+    LogDestination,
 };
 use permguard_core::mirrors::{MirrorSource, MirrorsSection};
 use permguard_core::storage::StorageSection;
@@ -349,6 +350,22 @@ pub fn plane_settings(value: &Value, keys: PlaneSettingKeys) -> Result<Vec<(Stri
         }
     }
 
+    // `events` is the second block both planes declare, because it is one subject seen from its
+    // two ends: under `dataPlane` it is the durable history a plane decides against and ships,
+    // under `controlPlane` the store that receives it. Each plane parses its own shape, so a
+    // member that belongs to the other is refused by name rather than silently ignored.
+    if let Some(events) = &section.events {
+        if keys.id == "data" {
+            let section: EventsSection =
+                serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+            settings.extend(section.settings());
+        } else {
+            let section: EventStoreSection = serde_norway::from_value(events.clone())
+                .context("parsing `controlPlane.events`")?;
+            settings.extend(section.settings());
+        }
+    }
+
     if let Some(storage) = &section.storage {
         if keys.id != "control" {
             anyhow::bail!(
@@ -457,6 +474,21 @@ pub fn log_destination(value: &Value) -> Result<(Option<LogDestination>, Include
     Ok((decisions.destination(), decisions.include().clone()))
 }
 
+/// Where this plane ships event records and reads shared history.
+pub fn events_destination(
+    value: &Value,
+) -> Result<Option<permguard_core::decisions::EventDestination>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(events) = section.events.as_ref() else {
+        return Ok(None);
+    };
+    let events: EventsSection =
+        serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+
+    Ok(events.destination())
+}
+
 /// The producers a control plane accepts decision records from.
 ///
 /// Structured, so it comes from the file only: a list of key-set paths has no
@@ -471,6 +503,25 @@ pub fn producer_keys(value: &Value) -> Result<Vec<String>> {
         serde_norway::from_value(decisions.clone()).context("parsing `controlPlane.decisions`")?;
 
     Ok(decisions.producer_keys().to_vec())
+}
+
+/// The producers a control plane accepts *event* records from.
+///
+/// Read from `controlPlane.events.producer_keys`. Every entry binds key material to one exact
+/// producer and an allowed tenant scope; the unbound decision-log trust list is deliberately not
+/// reused for event ingestion.
+pub fn event_producer_keys(
+    value: &Value,
+) -> Result<Vec<permguard_core::decisions::EventProducerSource>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(events) = section.events.as_ref() else {
+        return Ok(Vec::new());
+    };
+    let events: EventStoreSection =
+        serde_norway::from_value(events.clone()).context("parsing `controlPlane.events`")?;
+
+    Ok(events.producer_keys().to_vec())
 }
 
 pub(crate) fn parse_bool(value: &str) -> Result<bool> {
@@ -604,6 +655,11 @@ pub(crate) struct PlaneSectionConfig {
     /// parses its own shape — see [`plane_settings`].
     #[serde(default)]
     decisions: Option<Value>,
+    /// The event history, from whichever end this plane is: the durable journal a data plane
+    /// decides against and ships (`dataPlane`), or the store that receives it (`controlPlane`).
+    /// Held untyped so each plane parses its own shape — see [`plane_settings`].
+    #[serde(default)]
+    events: Option<Value>,
     /// The store's own maintenance — reclaiming what nothing references.
     /// Control plane only: it is the plane that owns the ledgers.
     #[serde(default)]
@@ -728,6 +784,52 @@ impl EndpointValue {
             Self::Text(value) => value.clone(),
         }
     }
+}
+
+/// The ledgers a data plane imports history from.
+///
+/// Structured rather than a scalar for the same reason `mirrors.servers` is: a subscription is
+/// three facts that travel together, and a scalar form would be a string somebody has to parse —
+/// which is a place two spellings become two subscriptions.
+pub fn pull_ledgers(
+    value: &Value,
+) -> anyhow::Result<Vec<permguard_core::config::PullSubscription>> {
+    let Some(events) = value.get("events") else {
+        return Ok(Vec::new());
+    };
+    let section: EventsSection =
+        serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+
+    section
+        .pull_ledgers()
+        .iter()
+        .map(|held| {
+            if held.zone.trim().is_empty() || held.ledger.trim().is_empty() {
+                anyhow::bail!(
+                    "a pull subscription names a zone and a ledger: there is no default store to \
+                     import history from"
+                );
+            }
+
+            Ok(permguard_core::config::PullSubscription {
+                zone: held.zone.clone(),
+                ledger: held.ledger.clone(),
+                event_types: held.event_types.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn pull_producer_keys(
+    value: &Value,
+) -> anyhow::Result<Vec<permguard_core::decisions::EventProducerSource>> {
+    let Some(events) = value.get("events") else {
+        return Ok(Vec::new());
+    };
+    let section: EventsSection =
+        serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+
+    Ok(section.pull_producer_keys().to_vec())
 }
 
 #[cfg(test)]

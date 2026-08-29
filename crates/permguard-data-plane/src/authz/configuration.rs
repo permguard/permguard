@@ -13,18 +13,18 @@
 //! | --- | --- |
 //! | `/.well-known/server-configuration` on the process | which planes does this process host, and where are they |
 //! | `/.well-known/server-configuration` on a plane | who is this plane, what keys does it sign with, and which interfaces does it expose |
-//! | `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.pdp.v1` offer here |
+//! | `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.api.pdp.native.v1` offer here |
 //!
 //! The plane's own document links to this one, so a caller that does not already know the
 //! interface can find it. A caller that *does* — Permguard's own client, which is versioned
-//! against `permguard.pdp.v1` — links against the same constants the routes are mounted from and
+//! against the native interface — links against the same constants the routes are mounted from and
 //! posts straight to them.
 //!
 //! # It is ours, and it says so
 //!
 //! `interface` names the contract and its version in one field. This document is not a profile of
 //! anybody else's specification and does not borrow field names from one: what is served here is
-//! `permguard.pdp.v1`, defined in [`permguard_languages::request`], and a caller reading this
+//! the native interface, defined in [`permguard_languages::request`], and a caller reading this
 //! learns exactly what that offers rather than what some other document might have led them to
 //! assume.
 //!
@@ -63,7 +63,7 @@ pub struct StoreScope {
 /// What this plane publishes about the interface it serves.
 #[derive(Debug, Clone, Serialize)]
 pub struct Configuration {
-    /// The contract and its version: `permguard.pdp.v1`.
+    /// The contract and its version: `permguard.api.pdp.native.v1`.
     pub interface: &'static str,
     /// This PDP's identifier — the base URL the document was fetched from.
     pub pdp: String,
@@ -119,7 +119,10 @@ mod tests {
 
     #[test]
     fn the_document_says_exactly_which_interface_it_describes() {
-        assert_eq!(parsed("http://host")["interface"], "permguard.pdp.v1");
+        assert_eq!(
+            parsed("http://host")["interface"],
+            permguard_languages::request::INTERFACE
+        );
     }
 
     #[test]

@@ -105,14 +105,16 @@ impl DecisionReader for GrpcSink {
     fn read(
         &self,
         scope: &crate::decisions::ReadScope,
-        offset: Option<&str>,
-        limit: usize,
-        proof: bool,
+        window: &crate::decisions::ReadWindow,
     ) -> Result<Page, ReadError> {
         let mut request = ReadRequest {
-            from: offset.unwrap_or_default().to_owned(),
-            limit: u32::try_from(limit).unwrap_or(100),
-            proof,
+            from: window.from.clone().unwrap_or_default(),
+            until: window.until.clone().unwrap_or_default(),
+            // The shared contract's field. `limit` is left at zero: the server prefers this one
+            // where both are given, and sending both would say the same thing twice.
+            limit_records: u32::try_from(window.limit_records).unwrap_or_default(),
+            limit_bytes: window.limit_bytes,
+            proof: window.proof,
             ..ReadRequest::default()
         };
         match scope {
@@ -133,30 +135,42 @@ impl DecisionReader for GrpcSink {
 
         match answer {
             Ok(answer) => Ok(Page {
-                records: answer
-                    .records
-                    .iter()
-                    .map(Vec::as_slice)
-                    .map(parse)
-                    .collect(),
+                records: parse_all("record", &answer.records)?,
                 next: answer.next,
                 more: answer.more,
-                proof: answer.proof.iter().map(Vec::as_slice).map(parse).collect(),
-                inclusion: answer
-                    .inclusion
-                    .iter()
-                    .map(Vec::as_slice)
-                    .map(parse)
-                    .collect(),
+                oldest_available: answer.oldest_available,
+                high_watermark: answer.high_watermark,
+                proof: parse_all("proof", &answer.proof)?,
+                inclusion: parse_all("inclusion path", &answer.inclusion)?,
+                coverage: answer
+                    .coverage
+                    .map(|held| crate::decisions::Coverage {
+                        contiguous: held.contiguous,
+                        examined: held.examined,
+                        scan_bounded: held.scan_bounded,
+                    })
+                    .unwrap_or_default(),
             }),
-            Err(status) if Self::code_of(&status) == "offset_expired" => Err(ReadError::Expired {
-                oldest: status
-                    .metadata()
-                    .get("permguard-oldest-offset")
-                    .and_then(|value| value.to_str().ok())
-                    .unwrap_or_default()
-                    .to_owned(),
-            }),
+            Err(status) if Self::code_of(&status) == "offset_expired" => {
+                // The same three facts the HTTP body carries, from the metadata this transport
+                // carries them in — so a consumer records the same gap whichever way it asked.
+                let metadata = |name: &str| {
+                    status
+                        .metadata()
+                        .get(name)
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+
+                Err(ReadError::Expired {
+                    oldest: metadata("permguard-oldest-offset"),
+                    oldest_sequence: metadata("permguard-oldest-sequence").parse().unwrap_or(0),
+                    requested_sequence: metadata("permguard-requested-sequence")
+                        .parse()
+                        .unwrap_or(0),
+                })
+            }
             Err(status) if status.code() == tonic::Code::Unavailable => {
                 Err(ReadError::Unavailable(status.message().to_owned()))
             }
@@ -168,6 +182,16 @@ impl DecisionReader for GrpcSink {
     }
 }
 
-fn parse(bytes: &[u8]) -> Value {
-    serde_json::from_slice(bytes).unwrap_or(Value::Null)
+fn parse_all(label: &str, values: &[Vec<u8>]) -> Result<Vec<Value>, ReadError> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| {
+            serde_json::from_slice(bytes).map_err(|error| {
+                ReadError::Unavailable(format!(
+                    "the gRPC page's {label} {index} was not JSON: {error}"
+                ))
+            })
+        })
+        .collect()
 }

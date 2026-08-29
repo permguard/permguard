@@ -1,0 +1,16 @@
+{
+  "store": { "zone": "acme", "ledger": "agent-governance", "profile": "temporal" },
+  "event": {
+    "type": "permguard.dogwood.event.v1",
+    "data": {
+      "event_id": "01J8Z9-undeclared-field",
+      "kind": "request",
+      "action": "Drupe::Action::Read",
+      "principal": "Drupe::OAuthUser::\"alice\"",
+      "resource": "Drupe::Gateway::\"gw1\"",
+      "logged": { "input": { "user": "alice", "document": "doc1", "clearance": "top-secret" } },
+      "request_context": { "input": { "user": "alice", "document": "doc1" } },
+      "occurred_at": "2026-08-28T10:02:00Z"
+    }
+  }
+}

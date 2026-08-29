@@ -13,7 +13,10 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Deployment
+    # The kind the component is actually deployed as. Hardcoding `Deployment` produced an
+    # autoscaler pointing at a resource that does not exist as soon as a component became a
+    # StatefulSet — silently, because a dangling `scaleTargetRef` is not a render error.
+    kind: {{ include "permguard.workloadKind" (dict "root" $ "plane" $plane) }}
     name: {{ include "permguard.fullname" $ }}-{{ $component }}
   minReplicas: {{ $plane.autoscaling.minReplicas }}
   maxReplicas: {{ $plane.autoscaling.maxReplicas }}

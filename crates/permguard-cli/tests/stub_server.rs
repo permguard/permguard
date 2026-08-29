@@ -299,7 +299,7 @@ fn remote_add_verifies_discovery_before_remembering() {
     let stub = serve(routes);
     let endpoint = format!("http://{}", stub.address);
     let dir = scratch("remote-add");
-    std::fs::write(dir.join("manifest.yml"), "metadata:\n  kind: policy\n  name: x\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine: { name: permguard, constraint: \">=0.1.0\" }\npartitions:\n  app: { runtime: cedar, schema: false }\nprofiles:\n  default: { type: permguard.pdp.v1, partitions: [app] }\n").unwrap();
+    std::fs::write(dir.join("manifest.yml"), "metadata:\n  kind: policy\n  name: x\nruntimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n    engine: { name: permguard, constraint: \">=0.1.0\" }\npartitions:\n  app: { runtime: cedar, schema: false }\nprofiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [app] }\n").unwrap();
     assert!(run(&dir, &["init", "x"]).status.success());
 
     let add = run(&dir, &["remote", "add", "origin", &endpoint]);

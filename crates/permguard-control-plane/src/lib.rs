@@ -12,6 +12,7 @@ mod notp;
 // server through it. No production crate imports the control plane.
 pub mod decisions;
 pub mod engine;
+pub mod events;
 pub mod gc;
 pub mod inventory;
 mod service;

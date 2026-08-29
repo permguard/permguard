@@ -16,6 +16,7 @@
 
 import http from 'k6/http';
 import { check } from 'k6';
+import exec from 'k6/execution';
 
 // The endpoint under test. The same script runs against local and remote by changing this alone.
 export const BASE = __ENV.PERMGUARD_URL || 'http://127.0.0.1:7556';
@@ -142,6 +143,100 @@ export function hitDecisionBatch(count = 8) {
     'answered every question': (r) => {
       try {
         return r.json('evaluations').length === count;
+      } catch (_) {
+        return false;
+      }
+    },
+  });
+
+  return answer;
+}
+
+// ─── The temporal interface ──────────────────────────────────────────────────
+
+export const TEMPORAL_ZONE = __ENV.PERMGUARD_TEMPORAL_ZONE || 'acme';
+export const TEMPORAL_LEDGER = __ENV.PERMGUARD_TEMPORAL_LEDGER || 'agent-governance';
+export const TEMPORAL_PROFILE = __ENV.PERMGUARD_TEMPORAL_PROFILE || 'temporal';
+export const TEMPORAL_RUN = __ENV.PERMGUARD_TEMPORAL_RUN_ID || `${Date.now()}`;
+
+// One occurrence, as `examples/dogwood-session-access` shapes them.
+//
+// Every submission carries a distinct `event_id`, because an id already recorded is answered from
+// what was stored — correct, and about a tenth of the work. Benchmarking that would be measuring
+// the deduplication index rather than the write.
+export function occurrenceBody(user, kind, action, at, eventId = null) {
+  return JSON.stringify({
+    store: { zone: TEMPORAL_ZONE, ledger: TEMPORAL_LEDGER, profile: TEMPORAL_PROFILE },
+    event: {
+      type: 'permguard.dogwood.event.v1',
+      data: {
+        // Scenario is part of the identity because k6 may reuse a VU between sequential
+        // scenarios and reset its iteration counter. The run id makes a second benchmark against
+        // the same retained journal new work rather than a conflicting retry.
+        event_id:
+          eventId || `bench-${TEMPORAL_RUN}-${exec.scenario.name}-${__VU}-${__ITER}-${kind}`,
+        kind,
+        action: `Drupe::Action::${action}`,
+        principal: `Drupe::OAuthUser::"${user}"`,
+        resource: 'Drupe::Gateway::"gw1"',
+        logged:
+          action === 'Login'
+            ? { input: { user, server: 's1' }, ...(kind === 'response' ? { output: {} } : {}) }
+            : { input: { user, document: 'doc1' } },
+        request_context: {
+          input: action === 'Login' ? { user, server: 's1' } : { user, document: 'doc1' },
+        },
+        occurred_at: at,
+      },
+    },
+  });
+}
+
+// The instant a submission claims, as the interface spells them: whole seconds, UTC.
+//
+// Taken from the load generator's own clock rather than fixed, because the plane checks it against
+// skew and lateness bounds — a benchmark sending a constant timestamp would start being refused
+// partway through the run, and would measure the refusal.
+export function nowInstant() {
+  return `${new Date().toISOString().slice(0, 19)}Z`;
+}
+
+// One occurrence submitted, checked for what the interface actually promises.
+//
+// Not a status code: a `200` here can be a *recorded* occurrence with no verdict, which is the
+// right answer for a history-only kind and the wrong thing to count as a decision. So the check
+// reads the outcome, and the watermark that proves the record is durable.
+export function hitTemporal(user, kind, action) {
+  const answer = http.post(
+    `${PDP}/temporal/v1alpha1/events`,
+    occurrenceBody(user, kind, action, nowInstant()),
+    {
+      headers: { 'content-type': 'application/json' },
+      tags: { endpoint: 'temporal', kind },
+    },
+  );
+
+  if (answer.status !== 200) {
+    // The benchmark uses synthetic occurrences, so this is safe to print. One failed submission
+    // invalidates the release baseline: stop immediately rather than measuring thousands of fast
+    // refusal paths and flooding CI. Bound the body in case an unexpected proxy page answered.
+    exec.test.abort(
+      `temporal submission failed: status=${answer.status} body=${String(answer.body).slice(0, 512)}`,
+    );
+  }
+
+  check(answer, {
+    'answered 200': (r) => r.status === 200,
+    'durable': (r) => {
+      try {
+        return typeof r.json('watermark.sequence') === 'number';
+      } catch (_) {
+        return false;
+      }
+    },
+    'said which history it ranged over': (r) => {
+      try {
+        return typeof r.json('history.mode') === 'string';
       } catch (_) {
         return false;
       }

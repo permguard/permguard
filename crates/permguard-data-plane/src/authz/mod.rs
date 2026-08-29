@@ -5,7 +5,7 @@
 //!
 //! # What this is
 //!
-//! `permguard.pdp.v1`, Permguard's native policy decision interface, served over HTTP and gRPC
+//! `permguard.api.pdp.native.v1`, Permguard's stateless policy decision interface, served over HTTP and gRPC
 //! from the ledgers on this plane's volume. A PEP asks *may this subject do this to this?*; this
 //! answers, out of memory, in microseconds, from policies whose whole chain of custody is
 //! verifiable.
@@ -45,6 +45,7 @@ pub mod decide;
 pub mod grpc;
 pub mod http;
 pub mod measure;
+pub mod quarantine;
 pub mod snapshot;
 pub mod store;
 pub mod translate;
@@ -97,6 +98,7 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
                 None,
                 config.authz_max_evaluations(),
             )
+            .with_blocking(crate::blocking::shared(context))
             .with_audit(audit::decision_audit(context))
             // The journal is opened once for the plane, not once per decider:
             // there is one spool, and a second writer would share its sequence.
@@ -111,7 +113,12 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
             // A little under the transport's own request timeout, so the work stops before the
             // answer is abandoned rather than after it — the gap is what makes the difference
             // between a plane that sheds load and one that accumulates it.
-            .with_budget(Some(decision_budget(config))),
+            .with_budget(Some(decision_budget(config)))
+            // What this deployment has opted into. A ledger naming a provisional contract it has
+            // not enabled is refused at load rather than served.
+            .with_enabled(permguard_languages::registry::Enabled::from_names(
+                config.experimental_enabled_names(),
+            )),
         )
     }))
 }

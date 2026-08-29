@@ -91,6 +91,15 @@ impl Error {
             Self::Malformed { .. } => "malformed_response",
         }
     }
+
+    /// How a narrated exchange spells this failure: the stable code, where an answer would have
+    /// carried its status.
+    ///
+    /// The same slot a `200` occupies, so a `-v` transcript reads as one column of outcomes rather
+    /// than as two vocabularies an operator has to hold at once.
+    pub fn outcome(&self) -> String {
+        self.reason().to_owned()
+    }
 }
 
 impl fmt::Display for Error {
@@ -180,6 +189,27 @@ impl Client {
     /// Still the smallest client that can do the job: one exchange, `Connection: close`, every wait
     /// bounded. The body is always JSON because that is the only thing these APIs speak.
     pub fn request(
+        &self,
+        endpoint: &Endpoint,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> Result<Response, Error> {
+        let answered = self.exchange(endpoint, method, path, body);
+        // An exchange that failed is still an exchange, and it is the one an operator turns `-v` on
+        // for: "refused" and "timed out" send them to different places, and the trace above this
+        // line says only which endpoint was going to be tried. Narrated here rather than at each
+        // failure inside, so a path added later cannot forget.
+        if let Err(error) = &answered {
+            self.narrator
+                .exchange(method, path, body.map_or(0, str::len), &error.outcome(), 0);
+        }
+
+        answered
+    }
+
+    /// The exchange itself.
+    fn exchange(
         &self,
         endpoint: &Endpoint,
         method: &str,

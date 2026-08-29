@@ -14,6 +14,7 @@ read by whoever owns the process, not only by whoever implements it.
 | Use case | Domain | The controls it turns on |
 | --- | --- | --- |
 | **[Release and deployment operations](release-pipeline.md)** | software delivery | team ownership, verified machine identities, separation of duties on approvals, production rollback restricted to an open incident |
+| **[Session access](session-access.md)** | a gateway in front of documents | a read permitted only while a recent sign-in stands — a control whose answer is not in the request, but in what has already happened |
 
 Every use case has a runnable counterpart under
 **[examples/](../../examples)**: the same controls as real policies, with requests

@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         contract.join("permguard/control/v1/control_plane.proto"),
         contract.join("permguard/control/v1/notp.proto"),
         contract.join("permguard/control/v1/decisions.proto"),
+        contract.join("permguard/control/v1/events.proto"),
         contract.join("permguard/data/v1/pdp.proto"),
     ];
 

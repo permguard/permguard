@@ -35,7 +35,7 @@ use tower::ServiceExt as _;
 
 use permguard_control_client::objects;
 use permguard_control_client::store::FsStore;
-use permguard_core::{Disclosure, Metrics};
+use permguard_core::{Disclosure, Metrics, Recorder};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::{Decider, Warmed};
 use permguard_data_plane::authz::store::{Identity, Mirror};
@@ -127,6 +127,8 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
                 runtime: (*language).to_owned(),
                 media_types,
                 schema: *schema,
+                artifacts: Vec::new(),
+                history: None,
                 // Every test partition accepts its runtime's own input, optionally: the tests
                 // that address one need it declared, and the tests that do not are unaffected —
                 // an optional input nobody sends is an empty one.
@@ -145,7 +147,7 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
     profiles.insert(
         "default".to_owned(),
         Profile {
-            r#type: "permguard.pdp.v1".to_owned(),
+            r#type: permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned(),
             partitions: declared.keys().cloned().collect(),
         },
     );
@@ -766,6 +768,69 @@ async fn a_plane_that_may_not_decide_unrecorded_refuses_instead_of_answering() {
     );
 }
 
+/// Mirror identities are an internal routing key; the existing decision-log API is scoped by the
+/// public names. Changing the two record fields to IDs without changing the read contract makes a
+/// successfully written decision disappear from every REST, gRPC and CLI tenant query.
+#[tokio::test]
+async fn a_decision_addressed_by_identity_is_recorded_under_the_public_names() {
+    let root = scratch("decision-public-scope").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let spool = scratch("decision-public-scope-spool");
+    let journal = Journal::open(
+        &spool,
+        "plane",
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        },
+        WhenFull::Closed,
+        Bounds {
+            bytes: 64 * 1024 * 1024,
+            age: std::time::Duration::from_secs(3600),
+            segment_bytes: 1024 * 1024,
+        },
+        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+        Metrics::none(),
+    )
+    .expect("the journal opens");
+    let decider = decider_with_journal(&root, journal);
+
+    decider
+        .decide(&ask("acme-id", "main-ledger-id", "alice", "read"), None)
+        .await
+        .expect("the mirror is also addressable by identity");
+    drop(decider);
+
+    let mut decisions = Vec::new();
+    for entry in std::fs::read_dir(&spool).expect("the spool can be listed") {
+        let path = entry.expect("the spool entry is readable").path();
+        if path.extension().and_then(std::ffi::OsStr::to_str) != Some("jsonl") {
+            continue;
+        }
+        for line in std::fs::read_to_string(path)
+            .expect("the segment can be read")
+            .lines()
+        {
+            let record: Value = serde_json::from_str(line).expect("the record is JSON");
+            if record["kind"] == json!("decision") {
+                decisions.push(record);
+            }
+        }
+    }
+
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0]["store"]["zone"], json!("acme"));
+    assert_eq!(decisions[0]["store"]["ledger"], json!("main-ledger"));
+}
+
 #[tokio::test]
 async fn a_closed_journal_refuses_runtime_write_errors() {
     let root = scratch("closed-runtime-journal-error").join("mirrors");
@@ -1085,7 +1150,7 @@ mod surface {
         let (status, document) = fetch(&root, declared).await;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(document["interface"], json!("permguard.pdp.v1"));
+        assert_eq!(document["interface"], json!("permguard.api.pdp.native.v1"));
         assert_eq!(
             document["endpoints"]["evaluation"],
             json!("http://127.0.0.1:7656/access/v1/evaluation")
@@ -1134,7 +1199,8 @@ mod surface {
         let mut publishing = Vec::new();
         for candidate in candidates {
             let (status, body) = fetch(&root, candidate).await;
-            if status == StatusCode::OK && body["interface"] == json!("permguard.pdp.v1") {
+            if status == StatusCode::OK && body["interface"] == json!("permguard.api.pdp.native.v1")
+            {
                 publishing.push(candidate);
             }
         }
@@ -1461,7 +1527,7 @@ mod grpc_socket {
             over_grpc, over_http,
             "the same interface, described the same way, whichever transport asked"
         );
-        assert_eq!(over_grpc["interface"], json!("permguard.pdp.v1"));
+        assert_eq!(over_grpc["interface"], json!("permguard.api.pdp.native.v1"));
     }
 
     #[test]
@@ -1533,4 +1599,114 @@ mod grpc_socket {
             "and both transports say so"
         );
     }
+}
+
+/// Sixteen requests arriving on a cold ledger compile it once, not sixteen times.
+///
+/// # What this is actually about
+///
+/// Compiling is idempotent and expensive, so without a gate every request that arrives while the
+/// first is compiling repeats the same work and throws it away. Two requests is merely wasteful; a
+/// fleet's worth at a restart, at a commit change, or the moment an entry is evicted is a stampede
+/// — all of them parsing the same policies at once, on the same machine, while the cache they
+/// would each have hit sits empty until the first one finishes.
+///
+/// The compile counter is what makes it visible: it counts compilations, so N concurrent requests
+/// on one cold partition must leave it at one.
+#[tokio::test]
+async fn concurrent_requests_on_a_cold_ledger_compile_it_once() {
+    let root = scratch("stampede").join("mirrors");
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = Arc::new(Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    ));
+
+    // Sixteen at once, all cold, all for the same partition of the same commit.
+    let mut asked = Vec::new();
+    for _ in 0..16 {
+        let decider = Arc::clone(&decider);
+        asked.push(tokio::spawn(async move {
+            decider
+                .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+                .await
+        }));
+    }
+    for held in asked {
+        let answered = held.await.expect("the task finishes").expect("it decides");
+        assert!(answered.decision, "every one of them is answered");
+    }
+
+    let compiled: f64 = registry
+        .snapshot()
+        .into_iter()
+        .filter(|sample| sample.metric.name() == "permguard_authz_compilations_total")
+        .map(|sample| match sample.reading {
+            permguard_core::metrics::Reading::Value(value) => value,
+            permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+        })
+        .sum();
+    assert_eq!(
+        compiled, 1.0,
+        "sixteen concurrent requests on one cold partition compiled it {compiled} times"
+    );
+    let (entries, _) = decider.cache().holdings();
+    assert_eq!(
+        entries, 2,
+        "and sixteen requests left one head and one partition behind, not sixteen of each"
+    );
+}
+
+/// A decision whose budget the load already spent refuses rather than evaluating past it.
+///
+/// The budget bounds the *work*, and loading holds a blocking thread exactly as evaluating does.
+/// Measured from after the load, a budget could be spent in full on top of a slow one and outlive
+/// the response it was meant to fit inside — so it is measured from the start of the decision, and
+/// a decision that reaches evaluation with nothing left refuses there, fail-closed.
+#[tokio::test]
+async fn a_decision_whose_budget_the_load_already_spent_refuses() {
+    let root = scratch("budget").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    // A budget of one nanosecond: whatever reading and compiling the mirror costs, it costs more
+    // than that, so evaluation begins past the deadline.
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_budget(Some(std::time::Duration::from_nanos(1)));
+
+    let answered = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("a spent budget is an answer, not a transport failure");
+
+    assert!(!answered.decision, "fail-closed");
+    let reason = answered
+        .context
+        .and_then(|context| context.reason_admin)
+        .map(|reason| reason.message)
+        .unwrap_or_default();
+    assert!(
+        reason.contains("time") || reason.contains("budget"),
+        "and it says why, rather than denying mutely: {reason}"
+    );
 }

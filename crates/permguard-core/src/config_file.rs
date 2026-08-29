@@ -20,6 +20,7 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_norway::Value;
 
+use crate::config::experimental_setting_key;
 use crate::config::{
     SETTING_ADMIN_ADDR, SETTING_ADMIN_ALLOW, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA,
     SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION,
@@ -53,7 +54,7 @@ use crate::realm::{
 };
 
 /// The section names this crate parses into typed settings.
-const KNOWN_SECTIONS: [&str; 9] = [
+const KNOWN_SECTIONS: [&str; 10] = [
     "public",
     "telemetry",
     "admin",
@@ -63,6 +64,7 @@ const KNOWN_SECTIONS: [&str; 9] = [
     "shutdown",
     "operations",
     "notp",
+    "experimental",
 ];
 
 /// The parsed contents of a Permguard configuration file.
@@ -98,6 +100,12 @@ pub struct ConfigFile {
     /// The NOTP transfer bounds of the git-like store the control plane serves.
     #[serde(default)]
     notp: NotpSection,
+    /// Contracts this build carries whose wire and replication shapes have not yet proven stable.
+    ///
+    /// A block rather than scattered flags, so what is provisional is visible in one place and a
+    /// deployment can see everything it has opted into at once.
+    #[serde(default)]
+    experimental: ExperimentalSection,
     /// The issuers this deployment hosts. A list, not a flat setting, so it is carried as structured
     /// configuration rather than through the layered key/value pipeline — realms come from the file
     /// (and, later, a database), never from a single environment variable.
@@ -672,6 +680,25 @@ struct ShutdownSection {
     timeout: Option<String>,
 }
 
+/// Contracts whose wire and replication shapes have not yet proven stable, by runtime name.
+///
+/// A map rather than a field per runtime. Which runtimes are provisional is decided by the
+/// languages a build carries — each declares itself — so a struct naming them here would have to be
+/// edited whenever one is added or graduated, and a deployment opting into a runtime this file did
+/// not know about would be refused for the wrong reason.
+///
+/// A name this build does not carry is not rejected here: the file layer only reads. The startup
+/// check reports it, where the list of compiled-in languages is actually available.
+type ExperimentalSection = std::collections::BTreeMap<String, ExperimentalRuntimeSection>;
+
+/// Whether this deployment serves one experimental runtime's partitions.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExperimentalRuntimeSection {
+    #[serde(default)]
+    enabled: Option<String>,
+}
+
 /// The NOTP transfer bounds: batch sizes advertised per negotiate, push
 /// delta caps, and the per-ledger storage quota.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
@@ -1072,6 +1099,15 @@ impl ConfigFile {
                 .into_iter()
                 .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.clone()))),
         );
+
+        // `experimental.<name>.enabled`, one key per runtime the file names. Generated rather than
+        // listed, so a build that grows a new provisional runtime needs no edit here.
+        settings.extend(self.experimental.iter().filter_map(|(name, section)| {
+            section
+                .enabled
+                .as_ref()
+                .map(|enabled| (experimental_setting_key(name), enabled.clone()))
+        }));
 
         settings
     }

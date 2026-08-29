@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
 use permguard_core::Metrics;
@@ -83,6 +84,7 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         trace: None,
         request_id: Some("lab-1".to_owned()),
         latency_us: 143,
+        event: None,
     }
 }
 
@@ -527,4 +529,133 @@ fn after_a_discontinuity_the_successor_still_waits_for_its_own_disk() {
         kinds.iter().filter(|kind| **kind == "decision").count() >= 3,
         "and the decisions written after the break follow it: {kinds:?}"
     );
+}
+
+/// A decision recorded twice under one identity leaves **one** record.
+///
+/// # What this is actually about
+///
+/// The temporal path reserves a decision id durably, writes the audit record,
+/// and only then makes the answer durable. A crash between the last two leaves
+/// the audit written and the answer missing, and the recovery that follows
+/// reaches the same decision — deliberately, from the same journal, under the
+/// same commit — and reserves the same id, because the id is durable too.
+///
+/// Without idempotency here that second pass appends a second audit record
+/// under an identifier the first one already used, and an audit trail with two
+/// records nothing can tell apart is worse than one with none: a reader cannot
+/// know which was answered.
+///
+/// So the count is the assertion. Asserting the id matched would have passed
+/// against the bug.
+#[test]
+fn one_decision_recorded_twice_leaves_one_audit_record() {
+    let journal = journal("idempotent", "1.0", WhenFull::Open, bounds());
+    let decision = decided("d-once", true);
+
+    let first = journal.record(&decision).expect("the first write lands");
+    let seq = match first {
+        Written::Recorded { seq } => seq,
+        other => panic!("the first write appends: {other:?}"),
+    };
+
+    // The recovery pass: same decision, same identity, reached again.
+    let again = journal.record(&decision).expect("the retry is answered");
+    assert_eq!(
+        again,
+        Written::AlreadyRecorded { seq },
+        "a retry is answered from the record already written, not by appending"
+    );
+
+    let decisions: Vec<&Value> = everything(&journal)
+        .iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .cloned()
+        .collect::<Vec<Value>>()
+        .leak()
+        .iter()
+        .collect();
+    assert_eq!(
+        decisions.len(),
+        1,
+        "exactly one audit record, not two sharing an id"
+    );
+    assert_eq!(decisions[0]["id"], json!("d-once"));
+}
+
+/// Concurrent retries join the first write's group commit instead of racing it.
+#[test]
+fn concurrent_retries_leave_one_decision_record() {
+    const WRITERS: usize = 32;
+    let journal = Arc::new(journal(
+        "idempotent-concurrent",
+        "1.0",
+        WhenFull::Open,
+        bounds(),
+    ));
+    let start = Arc::new(Barrier::new(WRITERS));
+    let writers: Vec<_> = (0..WRITERS)
+        .map(|_| {
+            let journal = Arc::clone(&journal);
+            let start = Arc::clone(&start);
+            std::thread::spawn(move || {
+                start.wait();
+                journal
+                    .record(&decided("d-concurrent", true))
+                    .expect("the retry joins the durable write")
+            })
+        })
+        .collect();
+
+    let answers: Vec<_> = writers
+        .into_iter()
+        .map(|writer| writer.join().expect("the writer returns"))
+        .collect();
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|answer| matches!(answer, Written::Recorded { .. }))
+            .count(),
+        1,
+        "exactly one caller appends"
+    );
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|answer| matches!(answer, Written::AlreadyRecorded { .. }))
+            .count(),
+        WRITERS - 1,
+        "every other caller joins the same logical write"
+    );
+    assert_eq!(
+        everything(&journal)
+            .into_iter()
+            .filter(|record| record["kind"] == json!("decision"))
+            .count(),
+        1,
+        "one decision id produces one audit record even before the group flush"
+    );
+}
+
+/// The same identifier over different content is refused, not written.
+#[test]
+fn one_decision_id_reused_for_a_different_answer_is_refused() {
+    let journal = journal("conflict", "1.0", WhenFull::Open, bounds());
+    journal
+        .record(&decided("d-clash", true))
+        .expect("the permit lands");
+
+    let refused = journal
+        .record(&decided("d-clash", false))
+        .expect_err("a deny under the permit's identity is refused");
+    assert!(
+        refused.to_string().contains("d-clash"),
+        "the refusal names the identity: {refused}"
+    );
+
+    let decisions = everything(&journal)
+        .into_iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .count();
+    assert_eq!(decisions, 1, "the conflicting record was not appended");
 }

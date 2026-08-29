@@ -1,0 +1,191 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# config.local.yml with both event interfaces actually on.
+#
+# One process, both planes, and the whole event path inside it: the data plane records occurrences
+# into its own journal, ships them to the control plane's store on the same loopback address, and
+# decides against the history it kept. The shortest way to see the temporal interface work.
+#
+# Everything here is a working value, not a placeholder. If it starts, both interfaces answer.
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/all-in-one
+
+log:
+  level: debug
+  format: terminal
+
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # On, which is half of what each event interface needs. The other half is its own
+    # `events.enabled` — `controlPlane.events` for the store, `dataPlane.events` for the
+    # temporal interface — and a plane that says one and not the other refuses to start
+    # rather than running with an interface nobody can reach.
+    enabled: "true"
+
+telemetry:
+  addr: 127.0.0.1:7558
+
+runtime:
+  planes:
+    - control
+    - data
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7556
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7556
+
+  # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
+  # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "5m"
+      grace: "15m"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "7d"
+
+  # ── The event store ──────────────────────────────────────────────────────────────────────────
+  # The receiving end of this same process's `dataPlane.events` block, and the only supported
+  # remote source for reading events back: a data plane's journal is a shipping buffer, so a
+  # read there would answer differently depending on which plane it reached.
+  events:
+    enabled: "true"
+    directory: data/events/store
+    # Whole segments only: a row removed from the middle would leave a chain with a hole in
+    # it, while a segment that has left is a gap a reader is told about.
+    retention: "90d"
+    producer_keys:
+      - path: trust/data-plane-events.jwks
+        producer: all-in-one-local
+        zone: "*"
+        ledger: "*"
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7656
+
+  # Mirroring, in one process. The control plane in this very binary is where the ledgers are, and
+  # this data plane keeps its own verified copy of them on the same volume — over the loopback, the
+  # same NOTP transfer a remote plane uses. It is not a shortcut: it is what makes `permguard check`
+  # answer straight after `task run:all`, exercising the real path (mirror, load gate, compile) on a
+  # laptop. A deployment that feeds its plane another way turns this off.
+  mirrors:
+    enabled: "true"
+    interval: "15s"        # a cadence somebody watching a terminal can see; the default is 30s
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      # This process's own control plane. The URL alone: every zone and every ledger it lists.
+      - url: "http://127.0.0.1:7556"
+
+  # The decision path, sized for a laptop: a handful of ledgers, a small heap.
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    # Every decision, recorded where it can be kept and proven. The record is durable on this
+    # volume before it is anybody else's problem: an answer is not given until its record is on this
+    # disk, and a control plane that is down costs spool, not availability.
+    #
+    # That durability is the dominant cost of a decision — measured at roughly ten times the
+    # evaluation itself, which is what `bench/decide.js` reports — and it is the price of an audit
+    # trail that survives the process. What the decision path does *not* wait for is the record
+    # reaching the control plane; that is the spool's job, off the critical path.
+    log:
+      enabled: "true"
+      pdp_id: all-in-one-local          # half of every stream identity: two replicas must never share one
+      server:
+        url: "http://127.0.0.1:7556"
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"              # decision records only; the terminal record is reserved apart
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"             # keep answering; the stream ends with a signed discontinuity
+      sample: { permits: "1.0" }  # denies and errors are never sampled, whatever this says
+      # The secret input commitments are taken under. A different key from the pseudonymisation
+      # one: they protect different things, and rotating one to crypto-shred pseudonyms must not
+      # invalidate every commitment with it.
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []    # an allow-list, never "all": name a field to record it
+        resource_properties: []
+        context: []
+
+  # ── The temporal interface, and the history it decides against ───────────────────────────────
+  # An occurrence is recorded into a durable history and decided against it. There is
+  # deliberately no `on_full` here, unlike the decision log: a decision record dropped is
+  # evidence lost, while an event record dropped changes what *future* authorizations mean,
+  # because the journal is also the history the policies read.
+  events:
+    enabled: "true"
+    # A producer id owns a hash chain. Two planes sharing one would each append to a stream the
+    # other also claims, and neither history could then be verified.
+    producer_id: all-in-one-local
+    directory: data/events
+
+    stream:
+      max_bytes: "1G"              # EVENT RECORDS ONLY; the reserve is kept outside this bound
+      segment_bytes: "32M"
+      max_record_bytes: "1M"
+      # A latency budget, never a durability one: a receipt is still withheld until the record
+      # is on disk. What it buys is that submissions arriving together cost one flush.
+      group_commit_max_delay: "5ms"
+
+    retention:
+      # A FLOOR, not the answer: the requirement is this plus what the loaded policies' longest
+      # `max_window` asks for, and a shorter configuration is refused at startup rather than
+      # quietly emptying the windows a policy looks in.
+      minimum: "48h"
+      allowed_lateness: "5m"
+      clock_skew: "30s"
+
+    # The store above, in this same process. Named rather than left to the decision log's
+    # destination, because this file exists to be read.
+    destination:
+      url: "http://127.0.0.1:7556"
+
+    # `local` is not a lesser mode: a decision ranges over what this plane recorded, which is
+    # exactly reproducible. A shared mode ranges over what had *arrived*, which is a different
+    # answer to the same request.
+    pull:
+      mode: local
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

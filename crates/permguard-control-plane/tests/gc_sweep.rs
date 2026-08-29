@@ -136,6 +136,8 @@ fn manifest_bytes() -> Vec<u8> {
             runtime: "cedar".to_owned(),
             media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
             schema: false,
+            artifacts: Vec::new(),
+            history: None,
             input: None,
         },
     );
@@ -143,7 +145,7 @@ fn manifest_bytes() -> Vec<u8> {
     profiles.insert(
         "default".to_owned(),
         Profile {
-            r#type: "permguard.pdp.v1".to_owned(),
+            r#type: permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned(),
             partitions: vec!["cedar".to_owned()],
         },
     );

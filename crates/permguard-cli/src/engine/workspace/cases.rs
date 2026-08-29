@@ -13,7 +13,7 @@
 //!
 //! # Why the expectations are not in the request
 //!
-//! A request file stays a `permguard.pdp.v1` payload and nothing else, so the same
+//! A request file stays a `permguard.api.pdp.native.v1` payload and nothing else, so the same
 //! bytes can be sent with `permguard check -f`, piped to `curl`, or replayed
 //! against a live plane. The expectations live beside it, which also lets one
 //! request be asserted under two profiles, and lets a case expect a *refusal*,
@@ -60,6 +60,20 @@ pub struct Expectation {
 #[serde(deny_unknown_fields)]
 pub struct Case {
     pub name: String,
+    /// The occurrences that happened before the one this case decides, in order.
+    ///
+    /// # Why a temporal case needs a list and a stateless one does not
+    ///
+    /// A stateless decision is a function of one request, so a case is one document and an
+    /// expectation. A temporal decision is a function of a request *and a history*, and the history
+    /// is the thing under test: "a read is permitted within ten minutes of a login" is not a claim
+    /// about a read, it is a claim about an order. Expressed as one request, that case cannot be
+    /// written at all — which is why the shipped Dogwood example had no test plan.
+    ///
+    /// Each path names an event document, relative to the case file, applied in the order written.
+    /// They build the history; `request` is the occurrence whose verdict `expect` judges.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<String>,
     /// The request document, relative to the case file.
     pub request: String,
     /// The profile to ask under, when the request does not name one.
@@ -76,6 +90,8 @@ pub struct Located {
     pub source: String,
     /// The request document, workspace-relative.
     pub request: String,
+    /// The prior occurrences, workspace-relative, in the order the case wrote them.
+    pub events: Vec<String>,
 }
 
 /// What running one case concluded.
@@ -149,10 +165,12 @@ pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Vec<Located>> {
             }
 
             let request = beside(&file, &case.request);
+            let events = case.events.iter().map(|held| beside(&file, held)).collect();
             cases.push(Located {
                 case,
                 source: file.clone(),
                 request,
+                events,
             });
         }
     }
@@ -242,13 +260,12 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
             &Objects(snapshot),
             &entry.digest.to_string(),
             &entry.name,
-            declared.schema,
+            declared,
         )
         .map_err(|why| err(why.to_string()))?;
-        let (policies, schema) = (held.policies, held.schema);
 
         let evaluator: std::sync::Arc<dyn Evaluator> = evaluating
-            .compile(&policies, schema.as_deref())
+            .compile(&held.policies, &held.artifacts)
             .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?
             .into();
         partitions.insert(entry.name.clone(), evaluator);
@@ -325,6 +342,16 @@ pub fn request_of(store: &dyn Store, located: &Located) -> Result<(Value, String
                 .and_then(Value::as_str)
                 .map(ToOwned::to_owned)
         })
+        // A temporal submission names the ledger and the profile together, under `store`, because
+        // one occurrence addresses one ledger. Read here as well as at the top level so a case does
+        // not have to restate a profile its own request document already carries.
+        .or_else(|| {
+            payload
+                .get("store")
+                .and_then(|store| store.get("profile"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
         .unwrap_or_else(|| "default".to_owned());
 
     Ok((payload, profile))
@@ -369,6 +396,14 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
             &compiled.aliases,
         ));
     };
+
+    // A temporal profile decides against a history, so the case runs a different shape: the prior
+    // occurrences are applied in order, and the verdict judged is the one the last one produced.
+    // The stateless path below cannot express that at all — it routes one request to partitions
+    // that answer from the request alone.
+    if permguard_objects::manifest::is_temporal_profile(&declared.r#type) {
+        return run_temporal(compiled, store, located, &profile, declared, &payload);
+    }
 
     let asked = match asked(&payload) {
         Ok(asked) => asked,
@@ -734,6 +769,223 @@ pub fn asked(payload: &Value) -> std::result::Result<languages::Asked, String> {
 /// As many evaluations as this plane's own default accepts. A workspace that would
 /// be refused for boxcarring too much has to be refused here too.
 const MAX_EVALUATIONS: usize = 256;
+
+/// One temporal case: the history the events build, and the verdict the request produces.
+///
+/// # Why the events are applied and not merely listed
+///
+/// A temporal policy is a claim about order — "a read within ten minutes of a login" — so the only
+/// way to test it is to make the order happen. Each event is checked against the partition's loaded
+/// schemas exactly as a plane checks it, then observed into the partition's history; the request is
+/// the last one, and its verdict is what `expect` judges.
+///
+/// Offline and in-process: no journal, no plane, no durability. That is the point of `permguard
+/// test` — the policies are compiled here, so a case holds before anything is applied. What it does
+/// *not* prove is the durable half, which is the plane's own tests' job.
+fn run_temporal(
+    compiled: &Compiled,
+    store: &dyn Store,
+    located: &Located,
+    profile: &str,
+    declared: &permguard_objects::manifest::Profile,
+    payload: &Value,
+) -> Result<Outcome> {
+    let refused = |detail: String| {
+        Ok(judge(
+            located,
+            profile,
+            Answered {
+                permitted: false,
+                policies: Vec::new(),
+                error: Some(detail),
+                evaluations: Vec::new(),
+            },
+            &compiled.aliases,
+        ))
+    };
+
+    // The temporal half of every partition this profile names. A partition whose runtime does not
+    // remember cannot be in a temporal profile — the manifest gate refuses that — so a `None` here
+    // is this build disagreeing with itself rather than an authoring mistake.
+    let mut engines = Vec::with_capacity(declared.partitions.len());
+    for name in &declared.partitions {
+        let Some(evaluator) = compiled.partitions.get(name) else {
+            return Ok(failed(
+                located,
+                profile,
+                format!("the profile names the partition `{name}`, which holds nothing"),
+            ));
+        };
+        let Some(engine) = evaluator.temporal() else {
+            return Ok(failed(
+                located,
+                profile,
+                format!(
+                    "the profile `{profile}` is temporal and the partition `{name}` does not \
+                     remember: this build disagrees with its own manifest gate"
+                ),
+            ));
+        };
+        engines.push((name.clone(), engine));
+    }
+
+    // The prior history, in the order the case wrote it, then the occurrence under test.
+    let mut documents = Vec::with_capacity(located.events.len() + 1);
+    for path in &located.events {
+        let bytes = store
+            .read(path)
+            .map_err(err)?
+            .ok_or_else(|| err(format!("{}: no event at {path}", located.source)))?;
+        documents.push((
+            path.clone(),
+            serde_json::from_slice::<Value>(&bytes)
+                .map_err(|error| err(format!("{path}: not JSON: {error}")))?,
+        ));
+    }
+    documents.push((located.request.clone(), payload.clone()));
+
+    // Read and check everything before anything is observed, so the histories this case touches
+    // are known before it starts. Checking is pure — it validates against the loaded schemas and
+    // derives a key — so doing it first costs nothing and buys the reset below.
+    let mut prepared = Vec::with_capacity(documents.len());
+    for (path, document) in &documents {
+        let Some(body) = document.get("event").and_then(|held| held.get("data")) else {
+            return refused(format!(
+                "event_missing: `{path}` carries no `event.data`, which is where an occurrence \
+                 lives"
+            ));
+        };
+        let body: permguard_languages::OccurrenceBody = match serde_json::from_value(body.clone()) {
+            Ok(body) => body,
+            Err(error) => return refused(format!("event_malformed: `{path}`: {error}")),
+        };
+        let occurrence = match body.read() {
+            Ok(occurrence) => occurrence,
+            Err(malformed) => {
+                return refused(format!("{}: {}", malformed.code, malformed.message));
+            }
+        };
+
+        // Checked by every addressed partition before any of them observes it — the order a plane
+        // uses, so a case cannot pass on an occurrence one partition would have refused.
+        let mut checked = Vec::with_capacity(engines.len());
+        for (name, engine) in &engines {
+            match engine.check(&occurrence) {
+                Ok(held) => checked.push(held),
+                Err(refusal) => {
+                    return refused(format!(
+                        "{}: the partition `{name}`: {}",
+                        refusal.code, refusal.message
+                    ));
+                }
+            }
+        }
+        let history = match history_key(checked.first()) {
+            Ok(history) => history,
+            Err(detail) => return refused(detail),
+        };
+        prepared.push((occurrence, checked, history));
+    }
+
+    // Every history this case touches, emptied first.
+    //
+    // The compiled partitions are shared across the whole run — compiling them once is the point —
+    // so their histories carry whatever the previous case observed into them. A case would then
+    // pass or fail depending on which cases ran before it, and the very case this feature exists
+    // for ("the same read with no login before it is denied") would read the *previous* case's
+    // login and answer permit. So each case starts from the history it declares and nothing else.
+    let mut touched: Vec<&str> = prepared
+        .iter()
+        .map(|(_, _, history)| history.as_str())
+        .collect();
+    touched.sort_unstable();
+    touched.dedup();
+    for history in &touched {
+        for (name, engine) in &engines {
+            if let Err(refusal) = engine.rebuild(history, &[]) {
+                return Ok(failed(
+                    located,
+                    profile,
+                    format!(
+                        "the partition `{name}` could not be reset between cases: {}: {}",
+                        refusal.code, refusal.message
+                    ),
+                ));
+            }
+        }
+    }
+
+    let mut verdicts = Vec::new();
+    for (position, (occurrence, checked, history)) in prepared.iter().enumerate() {
+        let last = position + 1 == prepared.len();
+        for ((_, engine), held) in engines.iter().zip(checked) {
+            match engine.apply(history, occurrence, held) {
+                permguard_languages::temporal::Applied::Observed => {}
+                permguard_languages::temporal::Applied::Decided(verdict) => {
+                    // Only the last one's verdict is judged: the earlier occurrences are the
+                    // history, and asserting on a verdict the case did not ask about would make
+                    // the order under test unwritable.
+                    if last {
+                        verdicts.push(verdict);
+                    }
+                }
+            }
+        }
+    }
+
+    if verdicts.is_empty() {
+        // A history-only kind produces no verdict, and inventing one is the single most dangerous
+        // thing this could do — a case would then assert a permit nothing decided.
+        return refused(
+            "event_records_only: the occurrence under test is a history-only kind, so there is no \
+             verdict to expect. Name a deciding kind as the case's `request`, or expect the \
+             refusal itself"
+                .to_owned(),
+        );
+    }
+
+    let outcome = resolve(verdicts);
+    let decided = Decided {
+        request_id: None,
+        permitted: outcome.permitted,
+        policies: outcome.determining().to_vec(),
+        error: outcome.errors.first().cloned(),
+    };
+
+    Ok(judge(
+        located,
+        profile,
+        Answered {
+            permitted: decided.permitted,
+            policies: decided.policies.clone(),
+            error: decided.error.clone(),
+            evaluations: vec![decided],
+        },
+        &compiled.aliases,
+    ))
+}
+
+/// The history an occurrence belongs to, as the plane names it.
+///
+/// The digest of the derived pins, or the empty string for a partition with global history — the
+/// same convention the plane and the index use, so a case exercises the history a plane would.
+fn history_key(
+    checked: Option<&permguard_languages::temporal::Checked>,
+) -> std::result::Result<String, String> {
+    let Some(checked) = checked else {
+        return Ok(String::new());
+    };
+    if checked.pins.is_empty() {
+        return Ok(String::new());
+    }
+    let value = serde_json::json!({
+        "pins": checked.pin_names(),
+        "values": checked.pin_values(),
+    });
+
+    permguard_events::record::history_digest_of(&value)
+        .map_err(|error| format!("history_key_unavailable: {error}"))
+}
 
 #[cfg(test)]
 mod tests {

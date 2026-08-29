@@ -62,6 +62,7 @@
 //! The successor is named *inside* the terminal record, so a restart adopts
 //! the one already decided rather than generating a second.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
@@ -154,8 +155,53 @@ pub struct Spool {
     seq: u64,
     last_digest: String,
     open: Option<Segment>,
+    /// How a record names itself, when this spool is asked to be idempotent.
+    identity: Option<IdentityOf>,
+    /// What the journal already holds, by that name. Durable because it is
+    /// rebuilt from the journal at open, never trusted from a file of its own.
+    written: BTreeMap<String, Written>,
+    /// Appended and not yet flushed. Promoted by [`Spool::sync_open`], because
+    /// an entry that claimed a record before its `fsync` would answer a retry
+    /// with a record a crash could still take away.
+    unflushed: BTreeMap<String, Written>,
     /// Held for as long as this spool is: dropping it releases the claim.
     _lock: File,
+}
+
+/// How one record states which logical write it is.
+///
+/// A function rather than a field path because the spool stores whatever its
+/// caller builds: only the caller knows which members are the decision's
+/// identity and which — a latency, a timestamp, a sequence — merely describe
+/// the occasion it was written on.
+pub type IdentityOf = fn(&Value) -> Option<Identity>;
+
+/// One logical write's name, and what it is a write *of*.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Identity {
+    /// The idempotency key. Two records with this key are the same write.
+    pub id: String,
+    /// Everything about the write that is not the occasion of writing it. Two
+    /// records sharing an `id` and differing here are a conflict, not a retry.
+    pub fingerprint: String,
+}
+
+/// Where a logical write already sits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Written {
+    /// Its sequence in this stream.
+    pub seq: u64,
+    /// The fingerprint it was written with.
+    pub fingerprint: String,
+}
+
+/// What [`Spool::already_written`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Already {
+    /// This exact write is durable at `seq`. A retry is answered from it.
+    Same(Written),
+    /// This key is durable and was written from different content.
+    Conflict(Written),
 }
 
 struct Segment {
@@ -171,6 +217,20 @@ impl Spool {
     /// and two records claiming one `(stream, seq)` closes a stream
     /// permanently at the far end. Refusing to start is the cheaper failure.
     pub fn open(directory: impl AsRef<Path>, bounds: Bounds) -> Result<Self, SpoolError> {
+        Self::open_indexed(directory, bounds, None)
+    }
+
+    /// [`Spool::open`], indexing every record by the name `identity` gives it.
+    ///
+    /// The index is built from the segments during the recovery scan that
+    /// already reads them, so it costs no extra I/O and cannot disagree with
+    /// the journal: there is no second file to fall behind, and a restart
+    /// rebuilds it from the only authority there is.
+    pub fn open_indexed(
+        directory: impl AsRef<Path>,
+        bounds: Bounds,
+        identity: Option<IdentityOf>,
+    ) -> Result<Self, SpoolError> {
         let directory = directory.as_ref().to_path_buf();
         fs::create_dir_all(&directory)
             .map_err(|error| SpoolError::io("creating the spool", error))?;
@@ -193,7 +253,8 @@ impl Spool {
             }
         };
 
-        let (seq, last_digest) = recover(&directory, &state)?;
+        let mut written = BTreeMap::new();
+        let (seq, last_digest) = recover(&directory, &state, identity, &mut written)?;
 
         Ok(Self {
             directory,
@@ -202,8 +263,41 @@ impl Spool {
             seq,
             last_digest,
             open: None,
+            identity,
+            written,
+            unflushed: BTreeMap::new(),
             _lock: lock,
         })
+    }
+
+    /// Whether this key is already durable here, and whether it says the same.
+    ///
+    /// Only flushed records answer: an entry still waiting for the group's
+    /// `fsync` is a record a crash can still take away, and answering a retry
+    /// from it would promise something the journal does not yet hold.
+    pub fn already_written(&self, identity: &Identity) -> Option<Already> {
+        let held = self.written.get(&identity.id)?;
+        Some(Self::classify(identity, held))
+    }
+
+    /// Whether this key has been appended and is waiting for the current flush.
+    ///
+    /// Pending records deliberately do not answer [`Self::already_written`]: a
+    /// caller must not be told that a write is durable before its `fsync` has
+    /// completed. They do, however, reserve their identity. A concurrent retry
+    /// must join the first write's durability wait instead of appending another
+    /// record under the same key, and conflicting content must be refused while
+    /// the first write is still in flight rather than only after it settles.
+    pub fn pending_write(&self, identity: &Identity) -> Option<Already> {
+        let held = self.unflushed.get(&identity.id)?;
+        Some(Self::classify(identity, held))
+    }
+
+    fn classify(identity: &Identity, held: &Written) -> Already {
+        match held.fingerprint == identity.fingerprint {
+            true => Already::Same(held.clone()),
+            false => Already::Conflict(held.clone()),
+        }
     }
 
     /// The live incarnation.
@@ -295,6 +389,17 @@ impl Spool {
 
         self.seq = seq;
         self.last_digest = digest.clone();
+        if let Some(identity) = self.identity
+            && let Some(named) = identity(record)
+        {
+            self.unflushed.insert(
+                named.id,
+                Written {
+                    seq,
+                    fingerprint: named.fingerprint,
+                },
+            );
+        }
 
         Ok(Appended { seq, digest })
     }
@@ -491,6 +596,11 @@ impl Spool {
         }
         self.seq = 0;
         self.last_digest = GENESIS.to_owned();
+        // The records those keys named are gone with the segments. Keeping the
+        // index would answer a retry with a sequence in a stream that no longer
+        // exists, which is worse than writing the decision again.
+        self.written.clear();
+        self.unflushed.clear();
 
         Ok(Discontinued {
             closed,
@@ -548,8 +658,33 @@ impl Spool {
                 .sync_data()
                 .map_err(|error| SpoolError::io("flushing a segment", error))?;
         }
+        self.promote_through(self.seq);
 
         Ok(())
+    }
+
+    /// Makes every appended key up to `through` answerable.
+    ///
+    /// Called once a flush covering that sequence has returned — by
+    /// [`Spool::sync_open`] on the direct path, and by the group's flusher on
+    /// the batched one, which syncs a cloned handle outside this lock and comes
+    /// back to say how far it got.
+    ///
+    /// Only now, and never at append: a key promoted before its `fsync` would
+    /// answer a retry from a record a crash could still take away, which is the
+    /// window this index exists to close rather than move.
+    pub fn promote_through(&mut self, through: u64) {
+        let settled: Vec<String> = self
+            .unflushed
+            .iter()
+            .filter(|(_, held)| held.seq <= through)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in settled {
+            if let Some(held) = self.unflushed.remove(&id) {
+                self.written.insert(id, held);
+            }
+        }
     }
 
     /// The open segment's handle, cloned, and the sequence a flush of it will
@@ -842,15 +977,25 @@ fn write_state(directory: &Path, state: &State) -> Result<(), SpoolError> {
     // never half of either.
     fs::rename(&temporary, directory.join(STATE_FILE))
         .map_err(|error| SpoolError::io("replacing the spool state", error))?;
-    if let Ok(handle) = File::open(directory) {
-        let _ = handle.sync_all();
-    }
+    // The rename is only durable once the *directory* is. Discarding this made the atomic step
+    // atomic in memory and optional on disk: a power loss between the two leaves a spool whose
+    // state file is the old one, which is a stream that resumes from a position it already used.
+    let handle = File::open(directory)
+        .map_err(|error| SpoolError::io("opening the spool directory to flush it", error))?;
+    handle
+        .sync_all()
+        .map_err(|error| SpoolError::io("flushing the spool directory", error))?;
 
     Ok(())
 }
 
 /// Finds where the stream stands, truncating a torn trailing line.
-fn recover(directory: &Path, state: &State) -> Result<(u64, String), SpoolError> {
+fn recover(
+    directory: &Path,
+    state: &State,
+    identity: Option<IdentityOf>,
+    written: &mut BTreeMap<String, Written>,
+) -> Result<(u64, String), SpoolError> {
     let segments = segments_of(directory)?;
     if segments.is_empty() {
         return Ok((state.acked, state.acked_digest.clone()));
@@ -873,7 +1018,10 @@ fn recover(directory: &Path, state: &State) -> Result<(u64, String), SpoolError>
                 .map_err(|error| SpoolError::io("truncating a torn record", error))?;
             file.set_len(complete as u64)
                 .map_err(|error| SpoolError::io("truncating a torn record", error))?;
-            let _ = file.sync_all();
+            // A truncation that is not durable is a torn record that comes back: the next open
+            // reads the same tail, truncates again, and every recovery believes it is the first.
+            file.sync_all()
+                .map_err(|error| SpoolError::io("flushing a truncated segment", error))?;
         }
         for line in bytes[..complete].split(|byte| *byte == b'\n') {
             if line.is_empty() {
@@ -883,6 +1031,19 @@ fn recover(directory: &Path, state: &State) -> Result<(u64, String), SpoolError>
                 .map_err(|error| SpoolError::Malformed(error.to_string()))?;
             seq = value.get("seq").and_then(Value::as_u64).unwrap_or(seq);
             digest = digest_of(&value).map_err(SpoolError::Digest)?;
+            // A later record under one key replaces an earlier one: the tail is
+            // what the journal holds, and what a retry must be answered from.
+            if let Some(identity) = identity
+                && let Some(named) = identity(&value)
+            {
+                written.insert(
+                    named.id,
+                    Written {
+                        seq,
+                        fingerprint: named.fingerprint,
+                    },
+                );
+            }
         }
     }
     if seq == 0 {
@@ -896,4 +1057,142 @@ fn segment_seq(name: &str) -> Option<u64> {
     name.strip_prefix(SEGMENT_PREFIX)
         .and_then(|rest| rest.strip_suffix(SEGMENT_SUFFIX))
         .and_then(|digits| digits.parse().ok())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod idempotency_tests {
+    use super::*;
+
+    /// The identity a test record states: `id` names the write, `body` is what
+    /// the write is *of*, and `at` is only the occasion — the member that must
+    /// not turn a retry into a conflict.
+    fn identity(record: &Value) -> Option<Identity> {
+        Some(Identity {
+            id: record.get("id")?.as_str()?.to_owned(),
+            fingerprint: record.get("body")?.as_str()?.to_owned(),
+        })
+    }
+
+    fn scratch(tag: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "permguard-spool-idem-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+
+        directory
+    }
+
+    fn record(spool: &Spool, id: &str, body: &str, at: &str) -> Value {
+        let (seq, prev) = spool.next_position();
+        serde_json::json!({ "seq": seq, "prev": prev, "id": id, "body": body, "at": at })
+    }
+
+    fn named(id: &str, body: &str) -> Identity {
+        Identity {
+            id: id.to_owned(),
+            fingerprint: body.to_owned(),
+        }
+    }
+
+    /// An appended record answers nothing until its flush returns.
+    ///
+    /// The whole point of splitting the index in two: an entry promoted at
+    /// append would answer a retry from a record the disk had not taken, which
+    /// is the crash window this exists to close rather than move.
+    #[test]
+    fn an_unflushed_record_is_not_yet_answerable() {
+        let directory = scratch("unflushed");
+        let mut spool = Spool::open_indexed(&directory, Bounds::default(), Some(identity))
+            .expect("the spool opens");
+
+        let one = record(&spool, "d-1", "permit", "t0");
+        spool.append_unsynced(&one).expect("the record appends");
+        assert_eq!(
+            spool.already_written(&named("d-1", "permit")),
+            None,
+            "an appended record is not answerable before its flush"
+        );
+        assert_eq!(
+            spool.pending_write(&named("d-1", "permit")),
+            Some(Already::Same(Written {
+                seq: 1,
+                fingerprint: "permit".to_owned()
+            })),
+            "the in-flight identity is reserved for an identical retry"
+        );
+        assert!(matches!(
+            spool.pending_write(&named("d-1", "deny")),
+            Some(Already::Conflict(Written { seq: 1, .. })),
+        ));
+
+        spool.sync_open().expect("the group flushes");
+        assert_eq!(spool.pending_write(&named("d-1", "permit")), None);
+        assert_eq!(
+            spool.already_written(&named("d-1", "permit")),
+            Some(Already::Same(Written {
+                seq: 1,
+                fingerprint: "permit".to_owned()
+            }))
+        );
+
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    /// The same key with different content is a conflict, not a retry.
+    #[test]
+    fn one_key_written_from_different_content_is_a_conflict() {
+        let directory = scratch("conflict");
+        let mut spool = Spool::open_indexed(&directory, Bounds::default(), Some(identity))
+            .expect("the spool opens");
+        let one = record(&spool, "d-1", "permit", "t0");
+        spool.append(&one).expect("the record is durable");
+
+        // Same decision, written again on a later occasion: still a retry.
+        assert!(matches!(
+            spool.already_written(&named("d-1", "permit")),
+            Some(Already::Same(_)),
+        ));
+        // A different answer under the same identity: never silently accepted.
+        assert!(matches!(
+            spool.already_written(&named("d-1", "deny")),
+            Some(Already::Conflict(_)),
+        ));
+
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    /// The index is derived from the journal, so a restart rebuilds it.
+    #[test]
+    fn the_index_is_rebuilt_from_the_journal_at_open() {
+        let directory = scratch("restart");
+        {
+            let mut spool = Spool::open_indexed(&directory, Bounds::default(), Some(identity))
+                .expect("the spool opens");
+            for (id, body) in [("d-1", "permit"), ("d-2", "deny")] {
+                let value = record(&spool, id, body, "t0");
+                spool.append(&value).expect("the record is durable");
+            }
+        }
+
+        let reopened = Spool::open_indexed(&directory, Bounds::default(), Some(identity))
+            .expect("the spool reopens");
+        assert!(matches!(
+            reopened.already_written(&named("d-1", "permit")),
+            Some(Already::Same(Written { seq: 1, .. })),
+        ));
+        assert!(matches!(
+            reopened.already_written(&named("d-2", "deny")),
+            Some(Already::Same(Written { seq: 2, .. })),
+        ));
+        assert_eq!(
+            reopened.already_written(&named("d-3", "permit")),
+            None,
+            "a key nobody wrote is not claimed"
+        );
+
+        let _ = fs::remove_dir_all(&directory);
+    }
 }

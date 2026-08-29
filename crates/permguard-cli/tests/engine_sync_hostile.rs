@@ -60,6 +60,8 @@ impl EngineRemote {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            // A test has no deployment to consult: what the build carries is what it sees.
+            enabled: permguard_languages::registry::Enabled::everything(),
         }
     }
 

@@ -153,9 +153,7 @@ fn pair(tag: &str, bounds: Bounds) -> Pair {
         fn read(
             &self,
             _scope: &ReadScope,
-            _offset: Option<&str>,
-            _limit: usize,
-            _proof: bool,
+            _window: &permguard_control_client::decisions::ReadWindow,
         ) -> Result<Page, ReadError> {
             Err(ReadError::Unavailable(
                 "this test reads through the store, not through the client".to_owned(),
@@ -212,13 +210,32 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         trace: None,
         request_id: None,
         latency_us: 143,
+        event: None,
     }
 }
 
+/// Every record of a scope, walked the way a consumer walks one.
+///
+/// Through the real bounded reader rather than a bulk call, because the bounds are the contract:
+/// a helper that asked for ten thousand records at once would be testing a path no consumer takes.
 fn read_all(store: &DecisionStore, scope: &Scope) -> Vec<Value> {
-    read::page(store, scope, None, 10_000)
-        .expect("it reads")
-        .records
+    let key = permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
+        .expect("the key is long enough");
+    let mut records = Vec::new();
+    let mut window = permguard_stream::Window {
+        limit_records: 100,
+        ..permguard_stream::Window::default()
+    };
+    loop {
+        let page = read::read(store, scope, &key, &window).expect("it reads");
+        records.extend(page.records);
+        if !page.more {
+            break;
+        }
+        window.from = Some(page.next);
+    }
+
+    records
 }
 
 #[test]

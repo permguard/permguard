@@ -4,9 +4,11 @@
 
 mod api;
 pub mod authz;
+pub mod blocking;
 pub mod decisions;
 pub mod mirrors;
 mod service;
+pub mod temporal;
 /// The generated `permguard.data.v1` server stubs, compiled from the one `proto/` root.
 ///
 /// Public because they *are* the contract this plane serves: a test that drives the PDP over a

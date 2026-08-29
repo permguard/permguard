@@ -33,6 +33,8 @@ fn fixture_manifest() -> Manifest {
             runtime: "cedar".to_owned(),
             media_types: vec!["application/vnd.cedar.policy".to_owned()],
             schema: false,
+            artifacts: Vec::new(),
+            history: None,
             input: None,
         },
     );

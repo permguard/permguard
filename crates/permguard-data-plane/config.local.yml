@@ -9,6 +9,26 @@ log:
   level: debug
   format: terminal
 
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # Serve ledgers that name the `dogwood` runtime, and the interfaces built on it.
+    #
+    # Written out rather than left to the default, so what a deployment has accepted is readable
+    # from the file rather than inferred from silence.
+    #
+    # The language is compiled in either way — a language is a build, not a deployment action — so
+    # what this gates is whether a ledger naming it will be SERVED. A manifest that names it on a
+    # plane which has not turned this on is refused at load, by name, rather than served and found
+    # to behave differently after an upgrade.
+    #
+    # It is also the second half of the gate on the event interfaces: the temporal PDP interface
+    # and the control plane's event store need this AND their own `events.enabled`, and a plane
+    # that has said one of the two and not the other refuses to start rather than running with an
+    # interface nobody can reach.
+    enabled: "false"
+
 telemetry:
   addr: 127.0.0.1:7658
 
@@ -70,6 +90,72 @@ dataPlane:
         subject_properties: []    # an allow-list, never "all": name a field to record it
         resource_properties: []
         context: []
+
+  # ── The temporal interface, and the history it decides against ───────────────────────────────
+  # `permguard.api.pdp.temporal.v1alpha1`: an occurrence is recorded into a durable history and
+  # decided against it. Off by default — a plane that keeps a durable history should be a plane
+  # somebody chose to run — and gated a second time by `experimental.dogwood.enabled` below,
+  # because the runtime that uses it is `v1alpha1`.
+  #
+  # There is deliberately no `on_full` here, unlike the decision log. A decision record dropped is
+  # evidence lost; an event record dropped changes what *future* authorizations mean, because the
+  # journal is also the history the policies read. So a journal that cannot accept fails the
+  # submission closed, and there is nothing for a deployment to choose.
+  # events:
+  #   enabled: "true"
+  #   producer_id: data-plane-eu-1   # required when the interface is on. A producer id owns a hash
+  #                                  # chain: two planes sharing one would each append to a stream
+  #                                  # the other also claims, and neither history could be verified.
+  #   directory: data/events         # under the working directory
+  #
+  #   stream:
+  #     max_bytes: "10G"             # EVENT RECORDS ONLY; the reserve is kept outside this bound
+  #     segment_bytes: "32M"         # when a segment is closed and a new one started
+  #     max_record_bytes: "1M"       # the largest single record this journal accepts
+  #     group_commit_max_delay: "5ms"  # a latency budget, never a durability one: a receipt is
+  #                                    # still withheld until the record is on disk. What this buys
+  #                                    # is that ten submissions arriving together cost one flush.
+  #
+  #   retention:
+  #     minimum: "48h"               # a FLOOR, not the answer: the requirement is this plus what
+  #                                  # the loaded policies' longest `max_window` asks for, and a
+  #                                  # configuration shorter than that is refused at startup rather
+  #                                  # than quietly emptying the windows a policy looks in
+  #     allowed_lateness: "5m"       # how late an occurrence may arrive and still be recorded
+  #     clock_skew: "30s"            # how far a caller's clock may run ahead of this one
+  #
+  #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
+  #   # ships both to one control plane, and naming it twice is two settings to keep in step.
+  #   destination:
+  #     url: "grpcs://control.acme.com:7557"
+  #     transport: grpc              # absent: the URL's own scheme decides
+  #     tls:
+  #       ca_file: tls/control-plane-ca.pem
+  #
+  #   # Whether this plane also READS history other planes recorded.
+  #   #
+  #   # `local` is the default and it is not a lesser mode: it means a decision ranges over what
+  #   # this plane recorded, which is exactly reproducible. A shared mode ranges over what had
+  #   # *arrived*, which is a different answer to the same request — so it is an explicit choice,
+  #   # and the mode and watermark travel in every response and every decision record.
+  #   #
+  #   #   local            only this plane's events
+  #   #   shared-eventual  also whatever imported history has arrived, at the local watermark
+  #   #   shared-bounded   as above, and decision events fail closed when it is older than
+  #   #                    `max_staleness` — the mode for "decide only on history I can vouch for"
+  #   pull:
+  #     mode: local
+  #     interval: "2s"
+  #     max_staleness: "10s"         # required in practice by shared-bounded
+  #     ledgers:
+  #       - zone: acme
+  #         ledger: agent-governance
+  #         event_types: [permguard.dogwood.event.v1]
+  #     producer_keys:               # required by either shared mode; bound to origin and tenant
+  #       - path: trust/data-plane-b-events.jwks
+  #         producer: data-plane-b
+  #         zone: acme
+  #         ledger: agent-governance
 
 operations:
   keys:

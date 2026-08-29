@@ -20,6 +20,8 @@ build = "build.rs"
 # The one definition of what a decision request is. A client that read a payload
 # its own way would refuse what the server accepts, or send less than the caller
 # wrote — which is the contract differing by transport.
+# The batch a shipper sends: one definition, so producer and receiver render it identically.
+permguard-events.workspace = true
 permguard-languages.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true

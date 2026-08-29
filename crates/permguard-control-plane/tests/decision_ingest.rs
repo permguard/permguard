@@ -121,6 +121,7 @@ fn stream(instance: &str, count: u64) -> Vec<Value> {
                 request_id: None,
                 context: None,
                 latency_us: 143,
+                event: None,
             }))
         };
         let value = Record {
@@ -168,6 +169,31 @@ fn published(keys: &DirectoryKeyManager) -> Vec<permguard_core::Jwk> {
     keys.public_keys().expect("published")
 }
 
+/// One bounded page, read the way a consumer reads one.
+///
+/// The offset key is fixed here so a token this helper issues opens again in the same test — which
+/// is the property the reader promises a consumer across restarts, and the one worth exercising.
+fn page(
+    store: &DecisionStore,
+    scope: &Scope,
+    from: Option<&str>,
+    limit: usize,
+) -> Result<permguard_control_plane::decisions::read::Page, read::ReadError> {
+    let key = permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
+        .expect("the key is long enough");
+
+    read::read(
+        store,
+        scope,
+        &key,
+        &permguard_stream::Window {
+            from: from.map(ToOwned::to_owned),
+            limit_records: limit,
+            ..permguard_stream::Window::default()
+        },
+    )
+}
+
 #[test]
 fn a_batch_is_stored_and_acknowledged_by_its_last_sequence() {
     let (keys, store) = (ring("ok"), store("ok"));
@@ -198,7 +224,7 @@ fn a_replayed_batch_is_deduplicated_and_the_acknowledgement_does_not_move() {
         }),
         "at-least-once delivery must not become at-least-once storage"
     );
-    let page = read::page(
+    let page = page(
         &store,
         &Scope::Stream {
             pdp_id: "plane".to_owned(),
@@ -233,7 +259,7 @@ fn a_shipper_that_runs_ahead_is_told_exactly_where_to_resume() {
         "a gap is never skipped past"
     );
 
-    let page = read::page(
+    let page = page(
         &store,
         &Scope::Stream {
             pdp_id: "plane".to_owned(),
@@ -378,7 +404,7 @@ fn a_batch_nobody_can_attribute_is_refused_before_anything_is_stored() {
         Err(Refused::Unattributable(_))
     ));
 
-    let page = read::page(
+    let page = page(
         &store,
         &Scope::Stream {
             pdp_id: "plane".to_owned(),
@@ -436,7 +462,7 @@ fn each_tenant_reads_a_partition_that_physically_holds_only_its_own_records() {
     .expect("it is accepted");
 
     let view = |zone: &str| {
-        read::page(
+        page(
             &store,
             &Scope::Tenant {
                 zone: zone.to_owned(),
@@ -489,18 +515,18 @@ fn an_offset_from_one_tenant_is_refused_under_another() {
         zone: "other".to_owned(),
         ledger: "main-ledger".to_owned(),
     };
-    let page = read::page(&store, &acme, None, 2).expect("it reads");
+    let first = page(&store, &acme, None, 2).expect("it reads");
 
     assert!(
-        read::page(&store, &other, Some(&page.next), 2).is_err(),
+        page(&store, &other, Some(&first.next), 2).is_err(),
         "an offset is bound to the scope that issued it"
     );
-    let continued = read::page(&store, &acme, Some(&page.next), 100).expect("it continues");
+    let continued = page(&store, &acme, Some(&first.next), 100).expect("it continues");
     assert!(
         continued
             .records
             .iter()
-            .all(|record| !page.records.contains(record)),
+            .all(|record| !first.records.contains(record)),
         "and continuing returns what has not been returned"
     );
 }
@@ -519,7 +545,7 @@ fn appended_without_acknowledging(store: &DecisionStore, records: &[Value]) {
 }
 
 fn stream_page(store: &DecisionStore) -> Vec<Value> {
-    read::page(
+    page(
         store,
         &Scope::Stream {
             pdp_id: "plane".to_owned(),
@@ -631,5 +657,333 @@ fn a_record_that_retention_removed_is_not_reported_as_a_broken_store() {
             acked: 6,
             stored: 0
         })
+    );
+}
+
+/// One window, so the tests below state only what they are about.
+fn window(records: usize) -> permguard_stream::Window {
+    permguard_stream::Window {
+        limit_records: records,
+        ..permguard_stream::Window::default()
+    }
+}
+
+fn cursor_key() -> permguard_stream::CursorKey {
+    permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
+        .expect("the key is long enough")
+}
+
+/// The failure a moving end causes, and the fix `until` is.
+#[test]
+fn an_export_finishes_against_its_own_snapshot_while_the_stream_keeps_growing() {
+    let keys = ring("export-keys");
+    let store = store("export");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    let records = stream("i-1", 10);
+    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
+        .expect("the batch is accepted");
+
+    // The first page captures the snapshot this export is of.
+    let key = cursor_key();
+    let first = read::read(&store, &acme, &key, &window(2)).expect("it reads");
+    let snapshot = permguard_stream::Frontier::decode(&first.high_watermark)
+        .expect("the watermark is one this build issued");
+
+    // Meanwhile the stream keeps growing, which is what makes a moving end unfinishable.
+    let more = stream("i-2", 10);
+    ingest::accept(&store, &batch(&more, GENESIS, &keys), &published(&keys))
+        .expect("the second batch is accepted");
+
+    let mut walked = first.records.len();
+    let mut bounded = permguard_stream::Window {
+        from: Some(first.next),
+        until: Some(snapshot),
+        limit_records: 2,
+        ..permguard_stream::Window::default()
+    };
+    let mut pages = 0;
+    loop {
+        pages += 1;
+        assert!(pages < 100, "an export bounded by a snapshot terminates");
+        let page = read::read(&store, &acme, &key, &bounded).expect("it reads");
+        walked += page.records.len();
+        if !page.more {
+            break;
+        }
+        bounded.from = Some(page.next);
+    }
+
+    let everything = read::read(&store, &acme, &key, &window(1_000)).expect("it reads");
+    assert!(
+        walked < everything.records.len(),
+        "the export covered its snapshot and not the records written after it: {walked} of {}",
+        everything.records.len()
+    );
+}
+
+/// A record count alone does not bound a response.
+#[test]
+fn the_byte_bound_stops_a_page_before_the_record_bound_does() {
+    let keys = ring("bytes-keys");
+    let store = store("bytes");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    let records = stream("i-1", 20);
+    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
+        .expect("the batch is accepted");
+
+    let key = cursor_key();
+    let generous = read::read(&store, &acme, &key, &window(1_000)).expect("it reads");
+    assert!(generous.records.len() > 2, "there is something to bound");
+
+    let one_record_worth = serde_json::to_vec(&generous.records[0])
+        .expect("it serializes")
+        .len() as u64;
+    let tight = read::read(
+        &store,
+        &acme,
+        &key,
+        &permguard_stream::Window {
+            limit_records: 1_000,
+            limit_bytes: one_record_worth + 1,
+            ..permguard_stream::Window::default()
+        },
+    )
+    .expect("it reads");
+
+    assert_eq!(
+        tight.records.len(),
+        1,
+        "the byte bound stopped it where the record bound would not have"
+    );
+    assert!(tight.more, "and it says there is more");
+}
+
+/// A record larger than the whole budget is still returned, or the consumer stalls forever.
+#[test]
+fn a_single_record_larger_than_the_budget_is_still_returned() {
+    let keys = ring("huge-keys");
+    let store = store("huge");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    let records = stream("i-1", 4);
+    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
+        .expect("the batch is accepted");
+
+    let page = read::read(
+        &store,
+        &acme,
+        &cursor_key(),
+        &permguard_stream::Window {
+            limit_records: 10,
+            limit_bytes: 1,
+            ..permguard_stream::Window::default()
+        },
+    )
+    .expect("it reads");
+
+    assert_eq!(
+        page.records.len(),
+        1,
+        "refusing it would leave the consumer stuck at that position for good"
+    );
+}
+
+/// A new consumer can choose the retained beginning rather than guess at it.
+#[test]
+fn every_page_says_where_the_retained_beginning_is() {
+    let keys = ring("oldest-keys");
+    let store = store("oldest");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    ingest::accept(
+        &store,
+        &batch(&stream("i-1", 6), GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("the batch is accepted");
+
+    let key = cursor_key();
+    let page = read::read(&store, &acme, &key, &window(2)).expect("it reads");
+    assert!(!page.oldest_available.is_empty());
+
+    // And it is an offset this store accepts: presenting it reads from the beginning again.
+    let from_oldest = read::read(
+        &store,
+        &acme,
+        &key,
+        &permguard_stream::Window {
+            from: Some(page.oldest_available),
+            limit_records: 2,
+            ..permguard_stream::Window::default()
+        },
+    )
+    .expect("it reads");
+    assert_eq!(from_oldest.records, page.records);
+}
+
+/// A tenant view is a subsequence, and the block says so rather than implying a chain.
+#[test]
+fn a_block_says_whether_its_records_are_a_contiguous_chain() {
+    let keys = ring("coverage-keys");
+    let store = store("coverage");
+    let records = stream("i-1", 6);
+    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
+        .expect("the batch is accepted");
+
+    let key = cursor_key();
+    let tenant = read::read(
+        &store,
+        &Scope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "main-ledger".to_owned(),
+        },
+        &key,
+        &window(100),
+    )
+    .expect("it reads");
+    let producer = read::read(
+        &store,
+        &Scope::Stream {
+            pdp_id: "plane-a".to_owned(),
+            instance: "i-1".to_owned(),
+        },
+        &key,
+        &window(100),
+    )
+    .expect("it reads");
+
+    assert!(
+        !tenant.coverage.contiguous,
+        "the records in between belong to other tenants and are not disclosed"
+    );
+    assert!(
+        producer.coverage.contiguous,
+        "a producer stream is a contiguous run, and its chain verifies across it"
+    );
+    assert!(producer.coverage.examined >= producer.records.len());
+}
+
+/// An offset a consumer edited is refused rather than obeyed.
+#[test]
+fn an_offset_a_consumer_edited_is_refused_by_the_signature() {
+    use base64::Engine as _;
+
+    let keys = ring("forge-keys");
+    let store = store("forge");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    ingest::accept(
+        &store,
+        &batch(&stream("i-1", 6), GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("the batch is accepted");
+
+    let key = cursor_key();
+    let page = read::read(&store, &acme, &key, &window(2)).expect("it reads");
+
+    // The edit: flip a byte of the signed body, which is what an editable cursor would allow.
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&page.next)
+        .expect("the token decodes");
+    let mut sealed: Value = serde_json::from_slice(&raw).expect("it parses");
+    sealed["c"] = json!("eyJ2IjoxfQ");
+    let forged = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(serde_json::to_vec(&sealed).expect("it serializes"));
+
+    let refused = read::read(
+        &store,
+        &acme,
+        &key,
+        &permguard_stream::Window {
+            from: Some(forged),
+            ..window(2)
+        },
+    )
+    .expect_err("an edited offset is not a position this server issued");
+
+    assert!(matches!(refused, read::ReadError::Offset(_)), "{refused:?}");
+}
+
+/// An export declares its bound once, and cannot quietly change or drop it afterwards.
+#[test]
+fn an_export_cannot_change_or_drop_the_bound_it_declared() {
+    let keys = ring("bound-keys");
+    let store = store("bound");
+    let acme = Scope::Tenant {
+        zone: "acme".to_owned(),
+        ledger: "main-ledger".to_owned(),
+    };
+    ingest::accept(
+        &store,
+        &batch(&stream("i-1", 8), GENESIS, &keys),
+        &published(&keys),
+    )
+    .expect("the batch is accepted");
+
+    let key = cursor_key();
+    let first = read::read(&store, &acme, &key, &window(2)).expect("it reads");
+    let snapshot = permguard_stream::Frontier::decode(&first.high_watermark).expect("a watermark");
+
+    // The second page declares the bound. That is legal: the first page could not have.
+    let second = read::read(
+        &store,
+        &acme,
+        &key,
+        &permguard_stream::Window {
+            from: Some(first.next),
+            until: Some(snapshot.clone()),
+            ..window(2)
+        },
+    )
+    .expect("an export declares its bound on its second page");
+
+    // Dropping it afterwards would turn a finite export into an endless one.
+    assert!(
+        matches!(
+            read::read(
+                &store,
+                &acme,
+                &key,
+                &permguard_stream::Window {
+                    from: Some(second.next.clone()),
+                    until: None,
+                    ..window(2)
+                },
+            ),
+            Err(read::ReadError::Offset(_))
+        ),
+        "dropping the bound is a different read, not a wider one"
+    );
+
+    // And so would moving it.
+    let moved = permguard_stream::Frontier::of("tenant:acme:main-ledger", 9_999);
+    assert!(
+        matches!(
+            read::read(
+                &store,
+                &acme,
+                &key,
+                &permguard_stream::Window {
+                    from: Some(second.next),
+                    until: Some(moved),
+                    ..window(2)
+                },
+            ),
+            Err(read::ReadError::Offset(_))
+        ),
+        "an export is of one snapshot"
     );
 }

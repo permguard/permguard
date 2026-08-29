@@ -38,7 +38,7 @@
 //! tell them apart.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use permguard_core::{ApiError, AuditRecorder, ErrorClass, Metrics, Subject};
@@ -81,6 +81,342 @@ impl Warmed {
 }
 
 /// Everything the decision path needs, resolved once at startup.
+impl Loading {
+    /// The gate for one key, created on first use.
+    fn single_flight(&self, key: &str) -> Arc<Mutex<()>> {
+        let mut held = match self.single_flight.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        // Bounded by what the cache can hold plus what is in flight: an entry is only ever created
+        // for a key somebody is loading, and the map is swept when it outgrows the cache it
+        // shadows. A gate map that only grew would be a slow leak keyed by ledger and commit.
+        if held.len() > SINGLE_FLIGHT_CEILING {
+            held.retain(|_, gate| Arc::strong_count(gate) > 1);
+        }
+
+        Arc::clone(held.entry(key.to_owned()).or_default())
+    }
+
+    /// The blocking half of [`Decider::loaded`].
+    fn load(
+        &self,
+        root: &std::path::Path,
+        zone: &str,
+        ledger: &str,
+        profile: &str,
+    ) -> Result<Loaded, ApiError> {
+        let labels = [("zone", zone), ("ledger", ledger)];
+
+        let mirror = store::find(root, zone, ledger).ok_or_else(|| {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[("reason", "ledger_not_served")],
+            );
+            debug!(
+                event.name = "authz.ledger_not_served",
+                component = COMPONENT,
+                zone = zone,
+                ledger = ledger,
+                "a request named a ledger this plane does not mirror"
+            );
+
+            ApiError::new(
+                ErrorClass::NotFound,
+                "ledger_not_served",
+                format!("this plane does not serve `{}/{}`", zone, ledger),
+            )
+        })?;
+
+        // Freshness, before anything is read: a deployment that set a bound
+        // gets a refusal, not an answer from a state that may have revoked
+        // somebody since. A mirror with no marker — a volume fed by other
+        // means — is not bounded here: its freshness is whoever feeds it.
+        if let Some(bound) = self.expire_after
+            && let Some(age) = store::synced_age(&mirror.path)
+            && age >= bound
+        {
+            self.metrics
+                .count(&super::measure::REFUSALS, &[("reason", "ledger_expired")]);
+            warn!(
+                event.name = "authz.ledger_expired",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                age.seconds = age.as_secs(),
+                bound.seconds = bound.as_secs(),
+                "this mirror is older than the deployment's expiry bound: refusing rather than \
+                 deciding on it"
+            );
+
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "ledger_expired",
+                format!(
+                    "`{}` was last confirmed {}s ago, which is past this deployment's expiry \
+                     bound of {}s: refusing to decide on a state this old",
+                    mirror.label(),
+                    age.as_secs(),
+                    bound.as_secs()
+                ),
+            ));
+        }
+
+        let head = self.head(&mirror, &labels)?;
+
+        // A commit this engine already refused is refused again without
+        // reading a single policy — and it clears itself the moment the
+        // ledger moves.
+        if let Some(blocked) = block::blocks(&mirror.path, &head.commit) {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[("reason", "ledger_incompatible")],
+            );
+
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "ledger_incompatible",
+                format!(
+                    "this plane cannot serve `{}` at its current commit: {}",
+                    mirror.label(),
+                    blocked.reason
+                ),
+            ));
+        }
+        block::clear_if_present(&mirror.path);
+
+        let partitions = self.partitions(&mirror, &head, zone, ledger, profile)?;
+
+        Ok(Loaded {
+            mirror,
+            head,
+            partitions,
+        })
+    }
+
+    /// The head of the mirror: the ref read now, the rest looked up by the commit it names.
+    ///
+    /// # Why the split
+    ///
+    /// Reading the ref is one small file, and it is read on every request on purpose — it is what
+    /// makes a synchronization that advanced a ledger a second ago visible *now*, rather than when
+    /// a cache happens to notice. Everything after it — the commit object, the manifest, decoding
+    /// it and running the load gate over it — depends only on *which* commit that ref names, and
+    /// so is cached by it and computed once per commit rather than once per request.
+    fn head(&self, mirror: &store::Mirror, labels: &[(&str, &str)]) -> Result<Arc<Head>, ApiError> {
+        let checkpoint = match snapshot::checkpoint_of(&mirror.path) {
+            Ok(checkpoint) => checkpoint,
+            Err(refusal) => return Err(self.refuse(mirror, &refusal, labels)),
+        };
+        let key = Cache::head_key(
+            &mirror.identity.zone_id,
+            &mirror.identity.ledger_id,
+            &checkpoint.head,
+        );
+        if let Some(head) = self.cache.head(&key) {
+            return Ok(head);
+        }
+
+        // Cold. One caller decodes; the rest wait here and then find it above.
+        let gate = self.single_flight(&key);
+        let _held = match gate.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if let Some(head) = self.cache.head(&key) {
+            return Ok(head);
+        }
+
+        let head = match snapshot::head_at(&mirror.path, &checkpoint, &self.enabled) {
+            Ok(head) => Arc::new(head),
+            Err(refusal) => return Err(self.refuse(mirror, &refusal, labels)),
+        };
+        self.cache.keep_head(key, Arc::clone(&head));
+
+        Ok(head)
+    }
+
+    /// The compiled partitions of the profile: from memory, or compiled now
+    /// and kept.
+    fn partitions(
+        &self,
+        mirror: &store::Mirror,
+        head: &Arc<Head>,
+        zone: &str,
+        ledger: &str,
+        profile: &str,
+    ) -> Result<Vec<Arc<Partition>>, ApiError> {
+        let labels = [("zone", zone), ("ledger", ledger)];
+        let names = head
+            .partitions_of(profile)
+            .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
+
+        let mut compiled = Vec::new();
+        for name in names {
+            let key = Cache::partition_key(
+                &mirror.identity.zone_id,
+                &mirror.identity.ledger_id,
+                &head.commit,
+                &name,
+            );
+            if let Some(held) = self.cache.partition(&key) {
+                self.metrics
+                    .count(&super::measure::CACHE_LOOKUPS, &[("result", "hit")]);
+                compiled.push(held);
+                continue;
+            }
+            self.metrics
+                .count(&super::measure::CACHE_LOOKUPS, &[("result", "miss")]);
+
+            // One compiler per partition per commit. Compiling is idempotent and expensive, so
+            // without this every request that arrives while the first is compiling does the same
+            // work and throws it away — which is exactly what happens at a restart, at a commit
+            // change and the moment an entry is evicted, when they all arrive at once.
+            let gate = self.single_flight(&key);
+            let _held = match gate.lock() {
+                Ok(held) => held,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            // Whoever held the gate has finished; the answer may already be here.
+            if let Some(held) = self.cache.partition(&key) {
+                compiled.push(held);
+                continue;
+            }
+
+            let started = Instant::now();
+            let partition = snapshot::compile(&mirror.path, head, &name)
+                .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
+            self.metrics.observe(
+                &super::measure::COMPILE_SECONDS,
+                &labels,
+                started.elapsed().as_secs_f64(),
+            );
+            self.metrics.count(
+                &super::measure::COMPILATIONS,
+                &[
+                    ("zone", zone),
+                    ("ledger", ledger),
+                    ("partition", name.as_str()),
+                ],
+            );
+            info!(
+                event.name = "authz.partition_compiled",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                partition = name.as_str(),
+                language = partition.language.as_str(),
+                policies = partition.policies,
+                bytes = partition.footprint,
+                "a partition was compiled and kept in memory"
+            );
+            self.cache.keep_partition(key, Arc::clone(&partition));
+            compiled.push(partition);
+        }
+
+        Ok(compiled)
+    }
+
+    /// Turns a load refusal into the answer a PEP can act on, and remembers
+    /// the ones that will not fix themselves.
+    fn refuse(
+        &self,
+        mirror: &store::Mirror,
+        refusal: &Refusal,
+        labels: &[(&str, &str)],
+    ) -> ApiError {
+        let (code, class, reason) = match refusal {
+            Refusal::Empty => ("ledger_empty", ErrorClass::Unavailable, "ledger_empty"),
+            Refusal::Incompatible(_) => (
+                "ledger_incompatible",
+                ErrorClass::Unavailable,
+                "ledger_incompatible",
+            ),
+            Refusal::Damaged(_) => ("ledger_damaged", ErrorClass::Unavailable, "ledger_damaged"),
+            Refusal::Unknown(_) => ("profile_unknown", ErrorClass::Validation, "profile_unknown"),
+        };
+        self.metrics
+            .count(&super::measure::REFUSALS, &[("reason", reason)]);
+
+        if let Refusal::Incompatible(detail) = refusal {
+            // Written down, so the next round does not rediscover it — and so
+            // an operator can see it on the volume.
+            block::write(&mirror.path, &current_commit(&mirror.path), detail);
+            self.metrics.set(&super::measure::BLOCKED, labels, 1.0);
+            warn!(
+                event.name = "authz.ledger_blocked",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                reason = detail.as_str(),
+                "this engine cannot serve this ledger: refusing until it changes"
+            );
+        } else {
+            debug!(
+                event.name = "authz.ledger_unavailable",
+                component = COMPONENT,
+                ledger = mirror.label().as_str(),
+                code = code,
+                reason = %refusal,
+                "a request could not be evaluated"
+            );
+        }
+
+        ApiError::new(class, code, format!("`{}`: {refusal}", mirror.label()))
+    }
+}
+
+/// One temporal decision, as the log records it.
+///
+/// A struct rather than a dozen arguments, because half of them are strings and a caller that
+/// swapped two would produce a log entry that is wrong in a way nothing would catch.
+pub struct TemporalDecision<'a> {
+    pub decision_id: &'a str,
+    pub mirror: &'a store::Mirror,
+    pub head: &'a Head,
+    pub profile: &'a str,
+    /// The occurrence's principal, as `(type, id)`.
+    pub subject: (&'a str, &'a str),
+    /// The occurrence's resource, as `(type, id)`.
+    pub resource: (&'a str, &'a str),
+    /// The qualified action, as the occurrence named it.
+    pub action: &'a str,
+    /// The occurrence's request context, for the commitment.
+    pub context: Option<serde_json::Value>,
+    pub permit: bool,
+    pub policies: &'a [String],
+    pub reason: &'a str,
+    pub request_id: Option<&'a str>,
+    pub latency_us: u64,
+    /// Where the occurrence this decision was made about sits.
+    pub event: permguard_decisions::record::EventRef,
+}
+
+/// The half of a decider that loading needs.
+///
+/// Moved onto a blocking thread for the whole of a load, which is why it holds handles rather than
+/// borrowing: a `&Decider` cannot cross `spawn_blocking`, and cloning the whole decider would
+/// clone the journal and the audit worker with it.
+struct Loading {
+    cache: Arc<Cache>,
+    metrics: Metrics,
+    expire_after: Option<std::time::Duration>,
+    enabled: permguard_languages::registry::Enabled,
+    single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
+}
+
+/// How many single-flight gates are kept before the finished ones are swept.
+///
+/// Not a bound on concurrency — a gate is created per key being loaded, and a plane serving many
+/// ledgers legitimately has many. It is the point at which gates nobody is holding are dropped, so
+/// the map cannot grow for ever across commits.
+const SINGLE_FLIGHT_CEILING: usize = 1_024;
+
+/// One ledger, loaded and ready to answer against.
+pub struct Loaded {
+    pub mirror: store::Mirror,
+    pub head: Arc<Head>,
+    /// The compiled partitions of the named profile, in the profile's order.
+    pub partitions: Vec<Arc<Partition>>,
+}
+
 pub struct Decider {
     /// `<volume>/data/mirrors` — where the synchronization loop puts ledgers.
     root: PathBuf,
@@ -100,6 +436,27 @@ pub struct Decider {
     /// How long one decision may spend deciding. `None`: no bound, which is what a decider built
     /// for a test that is about something else wants.
     budget: Option<std::time::Duration>,
+    /// What this deployment has opted into, among the contracts whose shapes are not yet stable.
+    enabled: permguard_languages::registry::Enabled,
+    /// One gate per `(zone, ledger, commit[, partition])` being read or compiled.
+    ///
+    /// # Why a plane needs this
+    ///
+    /// Reading a manifest and compiling a policy set are expensive and *idempotent*: two requests
+    /// that arrive on a cold ledger produce identical work and one of the two results is thrown
+    /// away. That is merely wasteful with two requests. With a fleet's worth arriving at a restart,
+    /// on a commit change, or the moment an entry is evicted, it is a stampede — every one of them
+    /// parsing the same policies at once, on the same machine, while the cache they would all have
+    /// hit sits empty until the first finishes.
+    ///
+    /// So the first caller for a key does the work and the rest wait for it, then find it cached.
+    /// Keys are independent, so one slow ledger never queues another's.
+    single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
+    /// The bound on concurrent blocking work — see [`Decider::with_blocking`].
+    blocking: crate::blocking::Blocking,
+    /// Profiles whose evaluation keeps overrunning its deadline — see
+    /// [`crate::authz::quarantine`].
+    quarantine: Arc<super::quarantine::Quarantine>,
 }
 
 enum AuditTarget {
@@ -116,6 +473,8 @@ impl Decider {
         recorder: Option<AuditRecorder>,
         max_evaluations: usize,
     ) -> Self {
+        let metrics_for_pool = metrics.clone();
+
         Self {
             root,
             cache,
@@ -127,7 +486,54 @@ impl Decider {
             pseudonymizer: None,
             expire_after: None,
             budget: None,
+            // Everything this build carries, unless a deployment says otherwise. A decider built
+            // by a test is about something else, and should see what was compiled in.
+            enabled: permguard_languages::registry::Enabled::everything(),
+            single_flight: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            // A bound on how much blocking work exists at once, defaulted rather than optional:
+            // an unbounded `spawn_blocking` is what lets a plane accumulate instead of refusing,
+            // and a deployment that has not thought about the number still gets one. The
+            // composition root replaces it with the configured size.
+            blocking: crate::blocking::Blocking::new(
+                permguard_core::config::default_max_blocking(),
+                metrics_for_pool,
+            ),
+            quarantine: Arc::new(super::quarantine::Quarantine::new()),
         }
+    }
+
+    /// The bound on concurrent blocking work this decider uses.
+    ///
+    /// Evaluation is the work that matters here. A provider is synchronous and upstream offers no
+    /// way to interrupt one — the operation limit it enforces is a count, not a clock — so a
+    /// provider that blocks holds its thread until it returns. What can be bounded is *how many* of
+    /// them there are: one hung evaluation costs a permit, and when the permits are gone the plane
+    /// refuses immediately instead of letting the runtime's queue grow behind it.
+    pub fn with_blocking(mut self, blocking: crate::blocking::Blocking) -> Self {
+        self.blocking = blocking;
+
+        self
+    }
+
+    /// The half of this decider that loading needs, cheap to move onto a blocking thread.
+    fn clone_for_loading(&self) -> Loading {
+        Loading {
+            cache: Arc::clone(&self.cache),
+            metrics: self.metrics.clone(),
+            expire_after: self.expire_after,
+            enabled: self.enabled.clone(),
+            single_flight: Arc::clone(&self.single_flight),
+        }
+    }
+
+    /// Restricts this decider to the contracts a deployment has opted into.
+    ///
+    /// A ledger naming one it has not is refused at load, by name — not served and then found to
+    /// behave differently after an upgrade.
+    pub fn with_enabled(mut self, enabled: permguard_languages::registry::Enabled) -> Self {
+        self.enabled = enabled;
+
+        self
     }
 
     /// Bounds how long one decision may spend evaluating.
@@ -228,7 +634,7 @@ impl Decider {
             return Warmed::Blocked(blocked.reason);
         }
 
-        let head = match snapshot::head(&mirror.path) {
+        let head = match snapshot::head_with(&mirror.path, &self.enabled) {
             Ok(head) => Arc::new(head),
             Err(Refusal::Empty) => return Warmed::Empty,
             Err(Refusal::Incompatible(detail)) => {
@@ -362,118 +768,115 @@ impl Decider {
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
         })?);
 
-        let labels = [
-            ("zone", resolved.zone.as_str()),
-            ("ledger", resolved.ledger.as_str()),
-        ];
-
-        let mirror =
-            store::find(&self.root, &resolved.zone, &resolved.ledger).ok_or_else(|| {
-                self.metrics.count(
-                    &super::measure::REFUSALS,
-                    &[("reason", "ledger_not_served")],
-                );
-                debug!(
-                    event.name = "authz.ledger_not_served",
-                    component = COMPONENT,
-                    zone = resolved.zone.as_str(),
-                    ledger = resolved.ledger.as_str(),
-                    "a request named a ledger this plane does not mirror"
-                );
-
-                ApiError::new(
-                    ErrorClass::NotFound,
-                    "ledger_not_served",
-                    format!(
-                        "this plane does not serve `{}/{}`",
-                        resolved.zone, resolved.ledger
-                    ),
-                )
-            })?;
-
-        // Freshness, before anything is read: a deployment that set a bound
-        // gets a refusal, not an answer from a state that may have revoked
-        // somebody since. A mirror with no marker — a volume fed by other
-        // means — is not bounded here: its freshness is whoever feeds it.
-        if let Some(bound) = self.expire_after
-            && let Some(age) = store::synced_age(&mirror.path)
-            && age >= bound
-        {
-            self.metrics
-                .count(&super::measure::REFUSALS, &[("reason", "ledger_expired")]);
-            warn!(
-                event.name = "authz.ledger_expired",
-                component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                age.seconds = age.as_secs(),
-                bound.seconds = bound.as_secs(),
-                "this mirror is older than the deployment's expiry bound: refusing rather than \
-                 deciding on it"
-            );
-
-            return Err(ApiError::new(
-                ErrorClass::Unavailable,
-                "ledger_expired",
-                format!(
-                    "`{}` was last confirmed {}s ago, which is past this deployment's expiry \
-                     bound of {}s: refusing to decide on a state this old",
-                    mirror.label(),
-                    age.as_secs(),
-                    bound.as_secs()
-                ),
-            ));
-        }
-
-        let head = match snapshot::head(&mirror.path) {
-            Ok(head) => Arc::new(head),
-            Err(refusal) => return Err(self.refuse(&mirror, &refusal, &labels)),
-        };
-
-        // A commit this engine already refused is refused again without
-        // reading a single policy — and it clears itself the moment the
-        // ledger moves.
-        if let Some(blocked) = block::blocks(&mirror.path, &head.commit) {
-            self.metrics.count(
-                &super::measure::REFUSALS,
-                &[("reason", "ledger_incompatible")],
-            );
-
-            return Err(ApiError::new(
-                ErrorClass::Unavailable,
-                "ledger_incompatible",
-                format!(
-                    "this plane cannot serve `{}` at its current commit: {}",
-                    mirror.label(),
-                    blocked.reason
-                ),
-            ));
-        }
-        block::clear_if_present(&mirror.path);
-
-        let partitions = self.partitions(&mirror, &head, &resolved)?;
+        let Loaded {
+            mirror,
+            head,
+            partitions,
+        } = self
+            .loaded(&resolved.zone, &resolved.ledger, &resolved.profile)
+            .await?;
 
         // Off the async worker, and once for the whole batch. Deciding is CPU work — parsing
         // nothing, but running an engine over a policy set — and a Tokio worker inside an engine
         // is a worker not accepting connections. One hop, not one per evaluation: the batch is
         // sequential by contract (a semantic that stops at the first deny has to stop), so there
         // is nothing to interleave and every extra hop would be latency for its own sake.
+        // Refused before evaluating, when evaluating this has been overrunning.
+        //
+        // A provider is synchronous and cannot be interrupted, so an evaluation that has stopped
+        // returning costs a permit from the bounded pool until it does. Letting every request for
+        // the same profile take another permit is how a plane spends its whole capacity on work
+        // nobody is waiting for; the breaker spends one request per cooldown instead.
+        let guarded = format!("{}/{}/{}", resolved.zone, resolved.ledger, resolved.profile);
+        if let super::quarantine::Admits::No { overruns, retry_in } =
+            self.quarantine.admits(&guarded)
+        {
+            self.metrics
+                .count(&super::measure::REFUSALS, &[("reason", "quarantined")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "evaluation_quarantined",
+                format!(
+                    "evaluating `{guarded}` overran its deadline {overruns} times in a row and is \
+                     out of service for another {}s. A provider inside an evaluation cannot be \
+                     interrupted, so this plane stops spending capacity on it and lets one request \
+                     through when the cooldown ends",
+                    retry_in.as_secs()
+                ),
+            ));
+        }
+
+        let deadline = self.budget.map(|budget| started + budget);
         let plan = Plan {
             head: Arc::clone(&head),
             partitions,
             resolved: Arc::clone(&resolved),
             metrics: self.metrics.clone(),
-            // Measured from here, not from when the request arrived: what this bounds is the
-            // evaluating, which is the part that holds a thread.
-            deadline: self.budget.map(|budget| Instant::now() + budget),
+            // Measured from when this decision began, not from here.
+            //
+            // The budget exists so the *work* ends before the answer is abandoned — a request
+            // whose transport timeout has fired has already released the permit that was limiting
+            // how many of these could be in flight, and anything still running is work nobody is
+            // waiting for. Loading and compiling hold a blocking thread exactly as evaluating
+            // does, so a budget that started after them could be spent in full on top of a slow
+            // load and outlive the response it was supposed to fit inside.
+            //
+            // A decision whose load already used the whole budget therefore arrives here with none
+            // left, and every partition refuses immediately: fail-closed, and honest about why.
+            deadline,
         };
-        let decisions = tokio::task::spawn_blocking(move || plan.run())
+        // The breaker learns from inside the work, not from the future waiting on it.
+        //
+        // A request cancelled while its evaluation runs — an HTTP timeout, a client that hung up —
+        // drops everything after the `.await`, so an overrun recorded there is recorded only when
+        // the caller survived to record it. That is exactly backwards: the evaluations worth
+        // learning from are the slow ones, and the slow ones are the ones whose callers gave up.
+        let watching = (
+            Arc::clone(&self.quarantine),
+            guarded.clone(),
+            deadline,
+            tokio::runtime::Handle::current(),
+        );
+        let decisions = self
+            .blocking
+            .run(&[], move || {
+                let (quarantine, guarded, deadline, runtime) = watching;
+                // Started only after the blocking permit was acquired: a
+                // request refused at capacity did not evaluate and therefore
+                // did not overrun this profile. The timer itself belongs to the
+                // runtime, so dropping the caller cannot cancel the breaker
+                // observation while synchronous provider work keeps running.
+                let watch = deadline.map(|deadline| quarantine.watch(guarded, deadline, &runtime));
+                let outcome = plan.run();
+                if let Some(watch) = watch {
+                    watch.finish();
+                }
+
+                outcome
+            })
             .await
-            .map_err(|error| {
-                ApiError::new(
+            .map_err(|refused| match refused {
+                crate::blocking::Refused::AtCapacity(held) => {
+                    self.metrics
+                        .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        "evaluation_at_capacity",
+                        format!(
+                            "{held}. An evaluation is synchronous and a provider inside one cannot \
+                             be interrupted, so this plane bounds how many may run at once and \
+                             refuses beyond it rather than queueing behind work that may not \
+                             return"
+                        ),
+                    )
+                }
+                crate::blocking::Refused::Failed(why) => ApiError::new(
                     ErrorClass::Internal,
                     "decision_failed",
-                    format!("the evaluation did not complete: {error}"),
-                )
+                    format!("the evaluation did not complete: {why}"),
+                ),
             })??;
 
         // The whole request's verdict: for a plain request it is the one decision; for a
@@ -532,117 +935,58 @@ impl Decider {
         })
     }
 
-    /// The compiled partitions of the profile: from memory, or compiled now
-    /// and kept.
-    fn partitions(
+    /// The ledger a request names, loaded: its mirror, its verified head, and the compiled
+    /// partitions of its profile.
+    ///
+    /// # Why both interfaces come through here
+    ///
+    /// Everything before a decision is the same question whichever interface asked it: is this
+    /// ledger served here, is its mirror fresh enough to answer from, does its head verify, has
+    /// this commit already been refused, and what does this profile compile to. Written twice —
+    /// once for the stateless path and once for the temporal one — the second copy would be the
+    /// one that forgets the expiry bound, or the block list, and a plane would answer from a state
+    /// the other half of itself refuses.
+    pub async fn loaded(
         &self,
-        mirror: &store::Mirror,
-        head: &Arc<Head>,
-        resolved: &Resolved,
-    ) -> Result<Vec<Arc<Partition>>, ApiError> {
-        let labels = [
-            ("zone", resolved.zone.as_str()),
-            ("ledger", resolved.ledger.as_str()),
-        ];
-        let names = head
-            .partitions_of(&resolved.profile)
-            .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
+        zone: &str,
+        ledger: &str,
+        profile: &str,
+    ) -> Result<Loaded, ApiError> {
+        // Off the runtime's threads, all of it.
+        //
+        // Everything below reads files and, on a miss, parses and compiles a policy set. Doing
+        // that on a Tokio worker blocks a thread that is supposed to be accepting connections —
+        // and a *cold* plane does it for every ledger at once, so a restart under load could stall
+        // every worker on disk. Only the evaluation used to be moved off; the loading, which is
+        // the expensive half, ran here.
+        let (root, zone, ledger, profile) = (
+            self.root.clone(),
+            zone.to_owned(),
+            ledger.to_owned(),
+            profile.to_owned(),
+        );
+        let held = self.clone_for_loading();
 
-        let mut compiled = Vec::new();
-        for name in names {
-            let key = Cache::partition_key(
-                &mirror.identity.zone_id,
-                &mirror.identity.ledger_id,
-                &head.commit,
-                &name,
-            );
-            if let Some(held) = self.cache.partition(&key) {
-                self.metrics
-                    .count(&super::measure::CACHE_LOOKUPS, &[("result", "hit")]);
-                compiled.push(held);
-                continue;
-            }
-            self.metrics
-                .count(&super::measure::CACHE_LOOKUPS, &[("result", "miss")]);
+        // Through the bound, like the evaluation it precedes. A cold load reads and compiles a
+        // ledger from disk — the same kind of waiting, on the same request path — and leaving it
+        // unbounded meant the ceiling could be reached by work the pool was not counting.
+        self.blocking
+            .run(&[], move || held.load(&root, &zone, &ledger, &profile))
+            .await
+            .unwrap_or_else(|refused| {
+                let (code, why) = match refused {
+                    crate::blocking::Refused::AtCapacity(held) => {
+                        ("load_at_capacity", held.to_string())
+                    }
+                    crate::blocking::Refused::Failed(why) => ("load_failed", why),
+                };
 
-            let started = Instant::now();
-            let partition = snapshot::compile(&mirror.path, head, &name)
-                .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
-            self.metrics.observe(
-                &super::measure::COMPILE_SECONDS,
-                &labels,
-                started.elapsed().as_secs_f64(),
-            );
-            self.metrics.count(
-                &super::measure::COMPILATIONS,
-                &[
-                    ("zone", resolved.zone.as_str()),
-                    ("ledger", resolved.ledger.as_str()),
-                    ("partition", name.as_str()),
-                ],
-            );
-            info!(
-                event.name = "authz.partition_compiled",
-                component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                partition = name.as_str(),
-                language = partition.language.as_str(),
-                policies = partition.policies,
-                bytes = partition.footprint,
-                "a partition was compiled and kept in memory"
-            );
-            self.cache.keep_partition(key, Arc::clone(&partition));
-            compiled.push(partition);
-        }
-
-        Ok(compiled)
-    }
-
-    /// Turns a load refusal into the answer a PEP can act on, and remembers
-    /// the ones that will not fix themselves.
-    fn refuse(
-        &self,
-        mirror: &store::Mirror,
-        refusal: &Refusal,
-        labels: &[(&str, &str)],
-    ) -> ApiError {
-        let (code, class, reason) = match refusal {
-            Refusal::Empty => ("ledger_empty", ErrorClass::Unavailable, "ledger_empty"),
-            Refusal::Incompatible(_) => (
-                "ledger_incompatible",
-                ErrorClass::Unavailable,
-                "ledger_incompatible",
-            ),
-            Refusal::Damaged(_) => ("ledger_damaged", ErrorClass::Unavailable, "ledger_damaged"),
-            Refusal::Unknown(_) => ("profile_unknown", ErrorClass::Validation, "profile_unknown"),
-        };
-        self.metrics
-            .count(&super::measure::REFUSALS, &[("reason", reason)]);
-
-        if let Refusal::Incompatible(detail) = refusal {
-            // Written down, so the next round does not rediscover it — and so
-            // an operator can see it on the volume.
-            block::write(&mirror.path, &current_commit(&mirror.path), detail);
-            self.metrics.set(&super::measure::BLOCKED, labels, 1.0);
-            warn!(
-                event.name = "authz.ledger_blocked",
-                component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                reason = detail.as_str(),
-                "this engine cannot serve this ledger: refusing until it changes"
-            );
-        } else {
-            debug!(
-                event.name = "authz.ledger_unavailable",
-                component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                code = code,
-                reason = %refusal,
-                "a request could not be evaluated"
-            );
-        }
-
-        ApiError::new(class, code, format!("`{}`: {refusal}", mirror.label()))
+                Err(ApiError::new(
+                    ErrorClass::Unavailable,
+                    code,
+                    format!("the ledger could not be loaded: {why}"),
+                ))
+            })
     }
 
     fn publish_cache_gauges(&self) {
@@ -765,6 +1109,8 @@ struct OwnedDecided {
     trace: Option<(String, String)>,
     request_id: Option<String>,
     latency_us: u64,
+    /// The occurrence this decision was made about, for a temporal one.
+    event: Option<permguard_decisions::record::EventRef>,
 }
 
 impl OwnedDecided {
@@ -792,6 +1138,7 @@ impl OwnedDecided {
             trace: self.trace.clone(),
             request_id: self.request_id.clone(),
             latency_us: self.latency_us,
+            event: self.event.clone(),
         }
     }
 }
@@ -854,6 +1201,10 @@ impl Decider {
                     .unwrap_or_default()
                     .to_owned(),
                 at: at.clone(),
+                // Decision-log tenant routes are the public zone and ledger names. Changing these
+                // existing fields to identities would make every REST/gRPC/CLI read by name miss
+                // records written after the change. A future immutable scope needs an explicitly
+                // versioned record shape and name-to-id resolution at the read boundary.
                 zone: mirror.identity.zone_name.clone(),
                 ledger: mirror.identity.ledger_name.clone(),
                 commit: head.commit.clone(),
@@ -894,12 +1245,70 @@ impl Decider {
                     .clone()
                     .or_else(|| resolved.request_id.clone()),
                 latency_us,
+                // A stateless decision was made about a request, not about an occurrence. Left
+                // absent rather than filled with something that stands in for one.
+                event: None,
             };
 
             self.write(Arc::clone(journal), decided).await?;
         }
 
         Ok(())
+    }
+
+    /// Records one **temporal** decision, linked to the occurrence it was made about.
+    ///
+    /// The same journal, the same chain, the same signing and the same shipping as a stateless
+    /// decision — because it is the same kind of fact, and a second trail for temporal decisions
+    /// would be a second thing to verify, ship, retain and reconcile. What distinguishes it is one
+    /// field: the pointer back to the event, which is how an investigator moves between the two
+    /// logs without matching timestamps and hoping.
+    ///
+    /// Returns the refusal a plane configured not to answer unrecorded decisions produces, so the
+    /// temporal path can fail the submission *after* the event is durable and *before* the verdict
+    /// leaves — which is the only order in which both promises hold.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_temporal(&self, at: &TemporalDecision<'_>) -> Result<(), ApiError> {
+        if self.journal.is_none() {
+            return Ok(());
+        }
+        let token = |value: &str| match &self.pseudonymizer {
+            Some(pseudonymizer) => pseudonymizer.pseudonymize(value),
+            None => value.to_owned(),
+        };
+        let decided = OwnedDecided {
+            id: at.decision_id.to_owned(),
+            at: now_rfc3339(),
+            zone: at.mirror.identity.zone_name.clone(),
+            ledger: at.mirror.identity.ledger_name.clone(),
+            commit: at.head.commit.clone(),
+            counter: at.head.counter,
+            profile: at.profile.to_owned(),
+            subject: (at.subject.0.to_owned(), token(at.subject.1)),
+            subject_properties: None,
+            resource: (at.resource.0.to_owned(), at.resource.1.to_owned()),
+            resource_properties: None,
+            included_context: None,
+            action: at.action.to_owned(),
+            // The occurrence's principal *is* its subject: a temporal submission names one entity
+            // that both acts and is decided about, and recording it twice would suggest a
+            // delegation the payload cannot express.
+            principal: None,
+            context: at.context.clone(),
+            partition_inputs: None,
+            permit: at.permit,
+            policies: at.policies.to_vec(),
+            reason: at.reason.to_owned(),
+            trace: None,
+            request_id: at.request_id.map(ToOwned::to_owned),
+            latency_us: at.latency_us,
+            event: Some(at.event.clone()),
+        };
+        let Some(journal) = &self.journal else {
+            return Ok(());
+        };
+
+        self.write(Arc::clone(journal), decided).await
     }
 
     /// Writes one record, and decides what a failure to write means.
@@ -909,8 +1318,24 @@ impl Decider {
         decided: OwnedDecided,
     ) -> Result<(), ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();
-        let written =
-            tokio::task::spawn_blocking(move || journal.record(&decided.borrowed())).await;
+        // Through the same bound as everything else that waits on a disk. A decision record is a
+        // durable write with a flush behind it, and an unbounded `spawn_blocking` here would be the
+        // queue the pool exists to refuse — reached from the ordinary decision path, which is the
+        // busiest one there is.
+        let written = self
+            .blocking
+            .run(&[], move || journal.record(&decided.borrowed()))
+            .await;
+        let written = match written {
+            Ok(written) => Ok(written),
+            Err(crate::blocking::Refused::AtCapacity(held)) => {
+                self.metrics
+                    .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                return self.journal_error(refuses_unrecorded, held.to_string());
+            }
+            Err(crate::blocking::Refused::Failed(why)) => Err(why),
+        };
 
         match written {
             Ok(Ok(crate::decisions::Written::Refused(reason))) => {
@@ -926,9 +1351,9 @@ impl Decider {
             }
             Ok(Ok(_)) => Ok(()),
             Ok(Err(error)) => self.journal_error(refuses_unrecorded, error.to_string()),
-            Err(error) => self.journal_error(
+            Err(why) => self.journal_error(
                 refuses_unrecorded,
-                format!("the journal writer task failed: {error}"),
+                format!("the journal writer failed: {why}"),
             ),
         }
     }

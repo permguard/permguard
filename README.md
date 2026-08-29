@@ -56,6 +56,63 @@ against, months later, and re-ask the question.
 partition beats a permit from another, so "who is entitled" and "is it safe right now" can be
 written by different people, in different languages, and still compose.
 
+### Supported policy languages
+
+| Language | Runtime | Decides from | Status |
+| --- | --- | --- | --- |
+| [Cedar](https://www.cedarpolicy.com) | `cedar` (`cedar-policy` 4.x) | the request | stable |
+| [Rego](https://www.openpolicyagent.org/docs/policy-language) | `rego` (`regorus`) | the request | stable |
+| [Dogwood](https://github.com/dogwood-policy/dogwood) | `dogwood` (`amzn-dogwood-language`) | the request **and** a durable history | experimental |
+
+A language is a **build**, not a deployment action: all three are compiled in. What a deployment
+chooses is whether a ledger naming a runtime will be *served*, and the experimental one is gated —
+see below.
+
+### Experimental: Dogwood, and deciding from what has happened
+
+Cedar and Rego answer *may this subject do this to this?* from the request in front of them.
+[Dogwood](https://github.com/dogwood-policy/dogwood) is Cedar plus **history**: a policy may ask what has
+happened recently — `formerly`, `since`, aggregations over a window — as well as what is being
+asked now.
+
+```cedar
+@id("read_only_after_login")
+permit (principal, action == Drupe::Action::"Read", resource)
+when temporal {
+  formerly within 1h Drupe::Action::"Login"::response{ input.user: context.input.user }
+};
+```
+
+Answering that takes a durable history, so Dogwood is served through a second interface,
+`permguard.api.pdp.temporal.v1alpha1`: an occurrence is recorded into a hash-chained journal, made
+durable, observed, and only then decided against. Upstream supplies the language, its lowering to
+Cedar, validation and the per-request authorizer, and is explicit that its included interpreter is a
+**reference** implementation rather than a production one. Permguard supplies what a deployment
+needs around it — the policy lifecycle, multi-tenancy, a durable and bounded event history,
+provenance, replication, limits and operational safety.
+
+It is **experimental**, and gated by two switches that must both be set:
+
+```yaml
+experimental:
+  dogwood:
+    enabled: "true"        # this deployment accepts a contract that is not yet stable
+
+dataPlane:
+  events:
+    enabled: "true"        # this plane keeps a durable event history
+    producer_id: data-plane-eu-1
+```
+
+Saying one and not the other refuses to start, by name. `v1alpha1` is honest: the wire and
+replication shapes may still change, and the switch is what makes accepting that a decision rather
+than a default that moved.
+
+Working configurations ship as `config.local-experimental.yml` beside each server crate, and
+[`examples/dogwood-session-access`](examples/dogwood-session-access) is a whole ledger — schemas,
+policies, and a test that asserts the verdicts its README claims. The contract is documented under
+[Temporal Interface](https://permguard.com/docs/0.1.x/data-plane/temporal-interface).
+
 **Bring your own data plane.** The objects are self-describing and the engines are a library.
 Run Permguard's data plane, or pull the ledger and evaluate **in your own process** — no PDP hop,
 no network on the decision path, the same manifest, the same engines, the same answer.
@@ -73,9 +130,9 @@ the reason, and **keyed commitments** over what the caller supplied — proof of
 keeping them. The log is hash-chained, shipped to the control plane, and verifiable afterwards by
 somebody who does not trust the plane that wrote it.
 
-**An interface Permguard owns.** `permguard.pdp.v1` is Permguard's native policy decision
-interface, designed for profile-based decisions evaluated across one or more heterogeneous policy
-partitions. It is not an implementation of, nor a compatibility claim for, anybody else's
+**An interface Permguard owns.** `permguard.api.pdp.native.v1` is Permguard's native policy
+decision interface, designed for profile-based decisions evaluated across one or more heterogeneous
+policy partitions. It is not an implementation of, nor a compatibility claim for, anybody else's
 authorization API. The shape will look familiar — a subject, an action, a resource, a context in; a
 decision and a reason out — because that is the obvious shape for the question. What owning it
 buys is that the parts nobody else specifies are specified *here*, in
@@ -157,7 +214,7 @@ curl -s http://127.0.0.1:7656/.well-known/server-configuration | jq
   "plane": "data-plane",
   "jwks_uri": "http://127.0.0.1:7656/data-plane/keys",
   "interfaces": {
-    "permguard.pdp.v1": {
+    "permguard.api.pdp.native.v1": {
       "configuration": "http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration"
     }
   }
@@ -173,7 +230,7 @@ curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
 
 ```json
 {
-  "interface": "permguard.pdp.v1",
+  "interface": "permguard.api.pdp.native.v1",
   "pdp": "http://127.0.0.1:7656",
   "endpoints": {
     "evaluation": "http://127.0.0.1:7656/access/v1/evaluation",
@@ -208,9 +265,9 @@ half-true: a caller that configures itself from this document and is then refuse
 server has been lied to.
 
 A **generic** client walks that chain: plane, then interface, then endpoints. Permguard's own CLI
-does not — it is a versioned client for `permguard.pdp.v1` and links against the same constants the
-server mounts its routes from, so the two cannot drift and there is no round trip to be told a path
-it already knows. Both arrive at the same endpoints.
+does not — it is a versioned client for `permguard.api.pdp.native.v1` and links against the same
+constants the server mounts its routes from, so the two cannot drift and there is no round trip to
+be told a path it already knows. Both arrive at the same endpoints.
 
 So discovery is three layers, and each answers a different question:
 
@@ -218,7 +275,7 @@ So discovery is three layers, and each answers a different question:
 | --- | --- |
 | `/.well-known/server-configuration` on the process | which planes does this process host, and where |
 | `/.well-known/server-configuration` on a plane | who is this plane, what keys, which interfaces |
-| `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.pdp.v1` offer here |
+| `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.api.pdp.native.v1` offer here |
 
 Below that sit two more layers, in the ledger rather than on the wire: a **profile** names which
 partitions answer a request, and each **partition** declares the input contract a request may hand
@@ -249,8 +306,8 @@ partitions:
     schema: false
 
 profiles:
-  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }   # both answer
-  gateway: { type: permguard.pdp.v1, partitions: [rego] }          # only the machine rules
+  default: { type: permguard.api.pdp.native.v1, partitions: [cedar, rego] }  # both answer
+  gateway: { type: permguard.api.pdp.native.v1, partitions: [rego] }         # only the machine rules
 ```
 
 Beside it, the policies. Cedar:
@@ -421,15 +478,23 @@ joined by an identifier, not by a timestamp and a guess.
 | --- | --- | --- |
 | [`examples/basics`](examples/basics) | users, groups, documents | the platform end to end — apply, mirror, decide, read the decisions back, verify them, and two workspaces pushing at each other |
 | [`examples/release-pipeline`](examples/release-pipeline) | software delivery | a realistic set of controls — team ownership, machine identities, separation of duties, incident-only rollback — and the evidence they leave |
+| [`examples/dogwood-session-access`](examples/dogwood-session-access) | session access | the **temporal** interface: a policy that decides on what has already happened, and the durable history it reads |
 
-The reasoning behind the second, written for somebody who has never used Permguard, is in
-[`docs/use-cases/release-pipeline.md`](docs/use-cases/release-pipeline.md).
+The reasoning behind the last two, written for somebody who has never used Permguard, is in
+[`docs/use-cases/release-pipeline.md`](docs/use-cases/release-pipeline.md) and
+[`docs/use-cases/session-access.md`](docs/use-cases/session-access.md).
 
 Copy one into a scratch directory and take it apart:
 
 ```sh
 mkdir -p playground/basics && cd playground/basics
-task cp-basics          # or: task cp-rspipe
+task cp-basics          # or: task cp-rspipe, task cp-dogwood
+```
+
+The Dogwood one needs a plane with the temporal interface on:
+
+```sh
+task run:experimental        # both planes in one process, event path enabled
 ```
 
 ## Run Commands
@@ -641,6 +706,13 @@ task bench:shed
 task bench:grpc
 task bench:tls
 task bench:hold
+```
+
+Those measure the transport with nothing behind it. Two measure the product:
+
+```sh
+task bench:decide      # a stateless decision. Needs a data plane mirroring a ledger
+task bench:temporal    # an occurrence: recorded, decided, and under overlap. Needs task run:experimental
 ```
 
 Send k6 metrics to the observability lab:

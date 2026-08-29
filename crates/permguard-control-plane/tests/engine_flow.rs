@@ -46,6 +46,8 @@ fn cedar_manifest() -> Manifest {
                 runtime: "cedar".into(),
                 media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                 schema: false,
+                artifacts: Vec::new(),
+                history: None,
                 input: None,
             },
         )]),
@@ -102,6 +104,8 @@ impl Fixture {
                 ledger_id: "ledger-1".into(),
             },
             limits: limits(),
+            // A test has no deployment to consult: what the build carries is what it sees.
+            enabled: permguard_languages::registry::Enabled::everything(),
         }
     }
 

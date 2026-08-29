@@ -1,7 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The `permguard.pdp.v1` payloads: what a PEP sends, and what it gets back.
+//! The `permguard.api.pdp.native.v1` payloads: what a PEP sends, and what it gets back.
 //!
 //! # Why the payloads live beside the engines
 //!
@@ -17,7 +17,8 @@
 //!
 //! # An interface Permguard owns
 //!
-//! `permguard.pdp.v1` is Permguard's **native** policy decision interface. It is designed for
+//! `permguard.api.pdp.native.v1` is Permguard's **stateless** policy decision interface, and the
+//! one this module describes. It is designed for
 //! profile-based decisions evaluated across one or more heterogeneous policy partitions, and it is
 //! **not** an implementation of, nor a compatibility claim for, any other authorization API.
 //!
@@ -66,12 +67,21 @@ pub const DEFAULT_PROFILE: &str = "default";
 
 /// The name of this interface, as a ledger's `profiles.<name>.type` declares it and as the
 /// discovery document identifies it.
-pub const INTERFACE: &str = "permguard.pdp.v1";
+///
+/// `native` says which of Permguard's two decision interfaces this is: the stateless one, which
+/// answers from the request alone. The other is
+/// [`crate::temporal::INTERFACE`], which answers from a durable history as well.
+///
+/// The former spelling, `permguard.pdp.v1`, is still *accepted* in a ledger's manifest so a
+/// workspace written before the rename keeps loading — see
+/// [`permguard_objects::manifest::PROFILE_PDP_V1`]. It is never generated and never advertised:
+/// there is one contract here, and this is its name.
+pub const INTERFACE: &str = permguard_objects::manifest::PROFILE_PDP_NATIVE_V1;
 
 /// Where a data plane publishes what this interface offers.
 ///
 /// Named for the interface and its version, not for a standard: what is served here is
-/// `permguard.pdp.v1` and nothing else, and a path that said otherwise would be promising a
+/// this interface and nothing else, and a path that said otherwise would be promising a
 /// document somebody else specifies.
 pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-pdp-v1-configuration";
 
@@ -108,7 +118,19 @@ pub const CAPABILITIES: [&str; 6] = [
 ];
 
 /// One entity as the wire carries it.
+///
+/// # Why this envelope refuses what it does not know
+///
+/// A misspelt member used to be accepted and dropped. `"propertiez"` beside `"name"` parsed, the
+/// attributes vanished, and the decision was made without them — so a guardrail written to read
+/// `risk` decided as though nobody had sent one. The verdict looked ordinary and was made on less
+/// than the caller supplied, which is the worst shape a PDP failure can take.
+///
+/// So the *structural* envelope is closed and the *dynamic* containers stay open: `context`,
+/// `properties` and a partition's `data` are policy data whose shape belongs to the policy
+/// language, and nothing here should have an opinion about them.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityBody {
     #[serde(rename = "type", default)]
     pub kind: Option<String>,
@@ -119,7 +141,11 @@ pub struct EntityBody {
 }
 
 /// The action as the wire carries it.
+///
+/// Closed to members it does not declare, like every structural envelope here — see
+/// [`EntityBody`] for what that prevents.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ActionBody {
     #[serde(default)]
     pub name: Option<String>,
@@ -495,14 +521,23 @@ impl Semantic {
 }
 
 /// The `options` object.
+///
+/// Closed: a misspelt option is a caller asking for behaviour it will not get, and hearing so is
+/// the only useful answer.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct OptionsBody {
     #[serde(default)]
     pub evaluations_semantic: Option<Semantic>,
 }
 
 /// One entry of `evaluations[]`: whatever it declares overrides the defaults.
+///
+/// Closed, and it matters more here than at the top level: a boxcarred entry that silently lost a
+/// member would be one answer of many decided on less than was sent, and the batch's other answers
+/// would look identical.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct EvaluationBody {
     #[serde(default)]
     pub subject: Option<EntityBody>,
@@ -526,7 +561,12 @@ pub struct EvaluationBody {
 }
 
 /// A decision request.
+///
+/// Closed to members it does not declare. The removed `entities` extension is still *declared*
+/// below precisely so it is refused by name rather than by this rule, which would say only that
+/// something unknown was sent.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct CheckRequest {
     /// The zone — by name or by identity. Required.
     #[serde(default)]
@@ -1131,17 +1171,65 @@ mod tests {
         );
     }
 
+    /// A field this interface does not know is refused, at every level of the request.
+    ///
+    /// # Why strictness is the right default *here*
+    ///
+    /// Ignoring what it does not recognise is the ordinary courtesy of a reader, and it is what
+    /// this interface's *responses* do — a client reading a newer plane's answer should not break
+    /// on a field added since it was written.
+    ///
+    /// A request is the other direction, and an authorization request most of all. Every field
+    /// here narrows a decision: `context` carries what the policies test, `options` carries how a
+    /// batch resolves, `partition_inputs` carries what a partition sees. A caller that writes
+    /// `contxt` and is answered anyway has been given a decision made *without* the thing it
+    /// believed it was sending — and the answer looks exactly like a correct one. That is not
+    /// forward compatibility; it is a silent authorization bug with a typo for a cause.
+    ///
+    /// Forward compatibility is provided instead by the thing built for it: the interface is
+    /// versioned, its identifier is in the discovery document, and a plane that adds a field adds
+    /// it to a version a client asks for by name.
     #[test]
-    fn unknown_fields_are_ignored_because_forward_compatibility_is_the_readers_duty() {
-        let resolved = parse(
+    fn a_field_this_interface_does_not_know_is_refused_rather_than_ignored() {
+        let refused = serde_json::from_str::<CheckRequest>(
             r#"{"zone": "acme", "ledger": "l", "whats_this": 1,
+                "subject": {"type": "user", "id": "a"},
+                "resource": {"type": "d", "id": "b"}, "action": {"name": "read"}}"#,
+        )
+        .expect_err("a field this interface does not know is not a field to ignore");
+        assert!(refused.to_string().contains("whats_this"), "{refused}");
+
+        // And at every level, not only the top one: a misspelling inside an entity is the same
+        // mistake with the same consequence.
+        let refused = serde_json::from_str::<CheckRequest>(
+            r#"{"zone": "acme", "ledger": "l",
                 "subject": {"type": "user", "id": "a", "future": true},
                 "resource": {"type": "d", "id": "b"}, "action": {"name": "read"}}"#,
         )
-        .resolve(256)
-        .expect("what we do not know, we ignore");
+        .expect_err("nor inside an entity");
+        assert!(refused.to_string().contains("future"), "{refused}");
 
+        // The same payload without the stray fields is the request the caller meant.
+        let resolved = parse(
+            r#"{"zone": "acme", "ledger": "l",
+                "subject": {"type": "user", "id": "a"},
+                "resource": {"type": "d", "id": "b"}, "action": {"name": "read"}}"#,
+        )
+        .resolve(256)
+        .expect("it is well formed");
         assert_eq!(resolved.queries[0].0.subject.id, "a");
+    }
+
+    /// A response, on the other hand, is read leniently: that direction really is the reader's
+    /// duty, and a client that broke on a field added after it shipped would be a client that
+    /// cannot be upgraded independently of the plane it talks to.
+    #[test]
+    fn a_response_carrying_a_field_this_client_does_not_know_still_reads() {
+        let answer: CheckResponse =
+            serde_json::from_str(r#"{"decision": true, "something_added_later": {"whatever": 1}}"#)
+                .expect("a client reads what it understands and leaves the rest");
+
+        assert!(answer.decision);
     }
 
     #[test]

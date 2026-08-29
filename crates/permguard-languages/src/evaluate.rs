@@ -64,9 +64,9 @@ pub struct Query {
     ///
     /// The transport has a request timeout, and it ends the *response* — it does not end the work.
     /// A policy evaluation runs on a blocking thread; when the HTTP layer gives up, the future
-    /// holding that thread is dropped and the thread keeps going, having already released the
-    /// concurrency permit that was limiting how much of this could be happening at once. Under
-    /// load that is how a plane accumulates work nobody is waiting for.
+    /// holding that thread is dropped and the thread keeps going. The data plane keeps the
+    /// concurrency permit until that work actually returns, but without a deadline the abandoned
+    /// work could still occupy the whole bounded pool and starve requests whose answers are wanted.
     ///
     /// So the work is told when to stop, rather than being told to stop. Every engine checks this
     /// before it starts and — where its interpreter allows it, which is Rego's — while it runs.
@@ -254,7 +254,19 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
                             .to_owned(),
                     )
                 } else {
-                    evaluator.evaluate(&query)
+                    let verdict = evaluator.evaluate(&query);
+                    // A synchronous provider cannot be interrupted once it has
+                    // entered upstream's engine. That does not make its late
+                    // answer valid: in particular, a permit produced after the
+                    // caller's decision budget is a result Permguard must never
+                    // release. Check the same absolute deadline on the way out
+                    // and replace every late answer with a fail-closed refusal.
+                    match query.expired() {
+                        true => Verdict::refused(
+                            "the partition answered after the decision deadline".to_owned(),
+                        ),
+                        false => verdict,
+                    }
                 };
 
                 Answered {
@@ -311,20 +323,34 @@ pub trait Evaluator: Send + Sync {
     /// The policies it was compiled from, by identity, for a report that has
     /// to say what is loaded.
     fn policies(&self) -> Vec<String>;
+
+    /// The remembering half of this compiled partition, when its runtime has one.
+    ///
+    /// Asked for, never assumed — exactly like [`Language::authoring`](crate::role::Language) and
+    /// [`Language::evaluating`](crate::role::Language). A stateless runtime answers `None`, and a
+    /// caller that wanted to submit an event learns so at load rather than by having one accepted
+    /// as something else.
+    fn temporal(&self) -> Option<&dyn crate::temporal::Temporal> {
+        None
+    }
 }
 
 /// The compiling half: sources in, an [`Evaluator`] out.
 pub trait Evaluating: Send + Sync {
-    /// Compiles a partition's policies, against its schema when it has one.
+    /// Compiles a partition's policies against the artifacts it carries.
     ///
-    /// A schema is not decoration: when the partition declares one, every
-    /// policy is **validated against it** here, and a policy that does not
-    /// type-check refuses the load. A ledger that would evaluate differently
-    /// than it reads is not one to serve.
+    /// A schema is not decoration: when the partition carries one, every policy is **validated
+    /// against it** here, and a policy that does not type-check refuses the load. A ledger that
+    /// would evaluate differently than it reads is not one to serve.
+    ///
+    /// `artifacts` is everything the partition holds that is not a policy, by registered type. A
+    /// runtime asks for the types it owns by name; a runtime with one schema asks for one, and a
+    /// runtime with an action schema, an event schema, a macro library and provider programs asks
+    /// for those — without the signature, or the walk that filled it, knowing either of them.
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        schema: Option<&[u8]>,
+        artifacts: &crate::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String>;
 }
 
@@ -488,6 +514,39 @@ mod tests {
         )];
         assert!(resolve(evaluate_all(work).into_iter().map(|held| held.verdict)).permitted);
         assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    /// A synchronous provider may return after its caller's budget; its permit
+    /// is then too late to be an authorization answer.
+    #[test]
+    fn a_partition_that_finishes_after_the_deadline_fails_closed() {
+        struct SlowPermit;
+        impl Evaluator for SlowPermit {
+            fn evaluate(&self, _query: &Query) -> Verdict {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                Verdict::permit(vec!["late-permit".to_owned()])
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                vec!["late-permit".to_owned()]
+            }
+        }
+
+        let query = Query {
+            deadline: Some(std::time::Instant::now() + std::time::Duration::from_millis(5)),
+            ..Query::default()
+        };
+        let outcome = resolve(
+            evaluate_all(vec![(std::sync::Arc::new(SlowPermit), query)])
+                .into_iter()
+                .map(|held| held.verdict),
+        );
+
+        assert!(!outcome.permitted, "a late permit is never released");
+        assert_eq!(outcome.errors.len(), 1);
+        assert!(outcome.errors[0].contains("after the decision deadline"));
     }
 
     /// A partition that comes apart mid-evaluation is a deny, not a short answer.

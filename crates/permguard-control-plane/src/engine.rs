@@ -138,6 +138,13 @@ pub struct Engine<'a> {
     pub store: &'a FileObjectStore,
     pub identity: LedgerIdentity,
     pub limits: EngineLimits,
+    /// What this deployment has opted into among the provisional contracts.
+    ///
+    /// Ingest is one of the three places that asks the manifest gate — the CLI at validate, this
+    /// engine at push, every data plane at load — and it is the one that decides what gets
+    /// *stored*. A plane that has not enabled a provisional runtime must refuse the push rather
+    /// than accept a ledger it will then refuse to serve.
+    pub enabled: permguard_languages::registry::Enabled,
 }
 
 /// What one partition's walk gathers for the set-level semantic check: every
@@ -147,6 +154,12 @@ pub struct Engine<'a> {
 struct PartitionSources {
     policies: Vec<(String, Vec<u8>)>,
     schemas: Vec<(String, Vec<u8>)>,
+    /// The typed artifacts, by registered type name, each with the entry path it was found at.
+    ///
+    /// The generalisation of `schemas`: a runtime with an action schema, an event schema and a
+    /// macro library cannot say which of the three it means through a single `Option`, and a
+    /// bundle check handed one of them would be checking something no plane will serve.
+    artifacts: BTreeMap<&'static str, Vec<(String, Vec<u8>)>>,
 }
 
 impl Engine<'_> {
@@ -489,10 +502,13 @@ impl Engine<'_> {
         let manifest = permguard_objects::manifest::Manifest::decode(&manifest_blob.data)
             .map_err(|e| invalid("manifest_rejected", e.to_string()))?;
 
-        // The load gate, server side: this build's engine and plugins must
-        // satisfy every runtime the manifest declares — fail-closed, or an
-        // engine outside the range would validate policies it may misread.
-        permguard_objects::manifest::check_load_gate(&manifest, &provided_runtimes())
+        // The whole manifest gate, server side, and the same call the CLI makes at validate and
+        // every data plane makes at load: the runtime gate, the input contracts, the artifact
+        // contracts, the experimental opt-in and the profile/runtime pairing. Asking only for the
+        // runtime gate here is how this surface came to accept manifests the CLI rejects and
+        // reject ones it accepts — three call sites asking the question in their own words is
+        // exactly the drift `check_manifest_with` exists to prevent.
+        permguard_languages::registry::check_manifest_with(&manifest, &self.enabled)
             .map_err(|e| invalid("runtime_gate", e.to_string()))?;
 
         // Kind discipline: a policy ledger allows only media types owned by
@@ -528,7 +544,16 @@ impl Engine<'_> {
             for media_type in &partition.media_types {
                 let is_policy = plugin.policy_media_type() == media_type;
                 let is_schema = plugin.schema_media_type() == Some(media_type.as_str());
-                if !is_policy && !is_schema {
+                // A runtime that describes its contents as typed artifacts owns those media types
+                // as surely as it owns its policy type. Judging them by the legacy pair alone
+                // refused every Dogwood partition here — `schema_media_type` is `None` for a
+                // runtime with several artifacts, by its own contract — while the CLI that built
+                // the commit and the plane that would load it both accepted it.
+                let is_artifact = plugin
+                    .artifacts()
+                    .iter()
+                    .any(|artifact| artifact.media_type() == media_type);
+                if !is_policy && !is_schema && !is_artifact {
                     return Err(invalid(
                         "media_type_not_allowed",
                         format!(
@@ -609,7 +634,45 @@ impl Engine<'_> {
                             ),
                         )
                     })?;
-                    let allowed = declared.media_types.clone();
+                    // The runtime and its plugin, resolved before the walk rather than after it:
+                    // the walk classifies every non-policy blob against the types this runtime
+                    // owns, so it cannot be handed them afterwards.
+                    let runtime = manifest.runtimes.get(&declared.runtime).ok_or_else(|| {
+                        invalid(
+                            "manifest_rejected",
+                            format!("partition `{}` names an undeclared runtime", entry.name),
+                        )
+                    })?;
+                    let plugin =
+                        permguard_languages::language(&runtime.language.name).ok_or_else(|| {
+                            invalid(
+                                "runtime_gate",
+                                format!(
+                                    "no built-in plugin for the language `{}`",
+                                    runtime.language.name
+                                ),
+                            )
+                        })?;
+                    // What may appear inside, which is what the manifest says plus what it
+                    // implies: declaring an artifact contract declares the media type that
+                    // artifact is stored under. Without the implication a partition would have to
+                    // name each type twice, and a manifest that named it once — every Dogwood
+                    // manifest, since `media_types` defaults to the policy type alone — would have
+                    // its own declared artifacts refused as foreign content.
+                    let mut allowed = declared.media_types.clone();
+                    for contract in &declared.artifacts {
+                        if let Some(artifact) = plugin
+                            .artifacts()
+                            .iter()
+                            .copied()
+                            .find(|held| held.name() == contract.r#type)
+                        {
+                            let media_type = artifact.media_type().to_owned();
+                            if !allowed.contains(&media_type) {
+                                allowed.push(media_type);
+                            }
+                        }
+                    }
                     let previous = previous_roots
                         .iter()
                         .filter_map(|tree| {
@@ -623,6 +686,7 @@ impl Engine<'_> {
                     self.check_partition(
                         &entry.name,
                         &entry.digest,
+                        plugin,
                         &allowed,
                         &previous,
                         &previous_alias_maps,
@@ -656,37 +720,73 @@ impl Engine<'_> {
                             ),
                         ));
                     }
+                    // Cardinality and requirement, from the registry rather than from a rule
+                    // written here — the same two questions the CLI's build walk asks, so a
+                    // bundle that could not be authored cannot be pushed either.
+                    for contract in &declared.artifacts {
+                        let Some(artifact) = plugin
+                            .artifacts()
+                            .iter()
+                            .copied()
+                            .find(|held| held.name() == contract.r#type)
+                        else {
+                            continue;
+                        };
+                        let held = sources
+                            .artifacts
+                            .get(artifact.name())
+                            .map(Vec::len)
+                            .unwrap_or_default();
+                        if (contract.required || artifact.required_by_default()) && held == 0 {
+                            return Err(invalid(
+                                "artifact_missing",
+                                format!(
+                                    "the partition `{}` declares `{}` and the commit carries none",
+                                    entry.name,
+                                    artifact.name()
+                                ),
+                            ));
+                        }
+                        if held > 1
+                            && !matches!(
+                                artifact.cardinality(),
+                                permguard_languages::artifact::Cardinality::Many
+                            )
+                        {
+                            return Err(invalid(
+                                "artifact_ambiguous",
+                                format!(
+                                    "the partition `{}` holds {held} of `{}`: at most one",
+                                    entry.name,
+                                    artifact.name()
+                                ),
+                            ));
+                        }
+                    }
                     // The set-level semantic check the data plane's load gate
                     // runs — the same code, run where the error still belongs
                     // to whoever pushed. Without this, a schema-incompatible
                     // policy is stored, mirrored, and turns into a 503 at
                     // every plane serving the ledger.
-                    let runtime = manifest.runtimes.get(&declared.runtime).ok_or_else(|| {
-                        invalid(
-                            "manifest_rejected",
-                            format!("partition `{}` names an undeclared runtime", entry.name),
-                        )
-                    })?;
-                    let plugin =
-                        permguard_languages::language(&runtime.language.name).ok_or_else(|| {
-                            invalid(
-                                "runtime_gate",
-                                format!(
-                                    "no built-in plugin for the language `{}`",
-                                    runtime.language.name
-                                ),
-                            )
-                        })?;
+                    //
+                    // The whole bundle, not just "the schema": a Dogwood partition lowers its
+                    // policies against an action schema *and* an event schema *and* its macros,
+                    // and `validate_set` could only ever be handed one of them.
                     let named: Vec<(&str, &[u8])> = sources
                         .policies
                         .iter()
                         .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
                         .collect();
+                    let bundle: BTreeMap<String, Vec<u8>> = sources
+                        .artifacts
+                        .iter()
+                        .filter_map(|(type_name, held)| {
+                            held.first()
+                                .map(|(_, bytes)| ((*type_name).to_owned(), bytes.clone()))
+                        })
+                        .collect();
                     plugin
-                        .validate_set(
-                            &named,
-                            sources.schemas.first().map(|(_, bytes)| bytes.as_slice()),
-                        )
+                        .validate_bundle(&entry.name, &named, &bundle, declared)
                         .map_err(|error| invalid("schema_unsatisfied", error))?;
                 }
                 Kind::Commit => unreachable!("entries never reference commits: enforced at decode"),
@@ -727,6 +827,7 @@ impl Engine<'_> {
         &self,
         path: &str,
         tree_digest: &Digest,
+        language: &'static dyn permguard_languages::role::Language,
         allowed_media_types: &[String],
         previous_trees: &[Digest],
         previous_alias_maps: &[BTreeMap<String, String>],
@@ -760,6 +861,7 @@ impl Engine<'_> {
                     self.check_partition(
                         &entry_path,
                         &entry.digest,
+                        language,
                         allowed_media_types,
                         &previous_subtrees,
                         previous_alias_maps,
@@ -777,14 +879,6 @@ impl Engine<'_> {
                             format!("`{}` is not allowed in this partition", blob.media_type),
                         ));
                     }
-                    if permguard_languages::languages()
-                        .iter()
-                        .any(|plugin| plugin.schema_media_type() == Some(blob.media_type.as_str()))
-                    {
-                        sources
-                            .schemas
-                            .push((entry_path.clone(), blob.data.clone()));
-                    }
                     if blob.media_type.starts_with(POLICY_FAMILY_PREFIX) {
                         self.check_policy_identity(
                             &entry_path,
@@ -799,7 +893,50 @@ impl Engine<'_> {
                         sources
                             .policies
                             .push((entry_path.clone(), blob.data.clone()));
+                        continue;
                     }
+                    // Everything else is resolved against the types *this* partition's runtime
+                    // owns — the same lookup the data plane's load walk makes. Asking whether any
+                    // compiled-in language claims the media type would file a Cedar schema under a
+                    // Rego partition and call it validated.
+                    if let Some(artifact) = language
+                        .artifacts()
+                        .iter()
+                        .copied()
+                        .find(|held| held.media_type() == blob.media_type)
+                    {
+                        sources
+                            .artifacts
+                            .entry(artifact.name())
+                            .or_default()
+                            .push((entry_path.clone(), blob.data.clone()));
+                        // A one-schema runtime registers that schema as an artifact too — Cedar
+                        // and Rego both do — so the legacy `schema: true` checks below keep
+                        // reading the same list they always read, rather than silently seeing an
+                        // empty one now that the blob is also filed by type.
+                        if language.schema_media_type() == Some(blob.media_type.as_str()) {
+                            sources
+                                .schemas
+                                .push((entry_path.clone(), blob.data.clone()));
+                        }
+                        continue;
+                    }
+                    if language.schema_media_type() == Some(blob.media_type.as_str()) {
+                        sources
+                            .schemas
+                            .push((entry_path.clone(), blob.data.clone()));
+                        continue;
+                    }
+
+                    return Err(invalid(
+                        "media_type_not_allowed",
+                        format!(
+                            "`{}` holds `{}`, which the language `{}` does not own",
+                            entry_path,
+                            blob.media_type,
+                            language.name()
+                        ),
+                    ));
                 }
                 Kind::Commit => unreachable!("entries never reference commits: enforced at decode"),
             }

@@ -1,0 +1,90 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# config.local.yml with the event store actually on.
+#
+# The receiving end of permguard-data-plane's config.local-experimental.yml: where that plane ships the
+# history it recorded, and the only supported remote source for reading it back — a data plane's
+# journal is a shipping buffer, so a read there would answer differently depending on which plane
+# it reached.
+#
+# Everything here is a working value, not a placeholder. If it starts, the interface answers.
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/control-plane
+
+log:
+  level: debug
+  format: terminal
+
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # On, which is half of what the event store needs. The other half is
+    # `controlPlane.events.enabled` below; a plane that says one and not the other refuses to start
+    # rather than running with an interface nobody can reach.
+    enabled: "true"
+
+telemetry:
+  addr: 127.0.0.1:7558
+
+controlPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7556
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7556
+
+  # ── The event store ──────────────────────────────────────────────────────────────────────────
+  events:
+    enabled: "true"
+    directory: data/events/store
+    # How long a tenant's events are kept before sealed segments are dropped. Whole segments only:
+    # a row removed from the middle would leave a chain with a hole in it, while a segment that has
+    # left is a gap a reader is told about. Envelopes and the archived verification keys that prove
+    # retained records are never dropped with them.
+    retention: "90d"
+    # Whose signatures this plane accepts, bound to the producer and tenant scope they may claim.
+    # Event trust never falls back to the decision-log keys: those keys carry no producer/tenant
+    # authorization. The data plane publishes this file from its own key directory.
+    producer_keys:
+      - path: trust/data-plane-events.jwks
+        producer: data-plane-local
+        zone: "*"
+        ledger: "*"
+
+  # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
+  # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.
+  storage:
+    gc:
+      enabled: "true"
+      interval: "5m"
+      grace: "15m"
+
+  # Where the decisions its data planes answer are kept. Records arrive signed and chained, are
+  # stored verbatim so they stay verifiable exactly as they were signed, and are indexed into a
+  # physical partition per zone and ledger — a tenant reads a directory that contains only its own.
+  decisions:
+    enabled: "true"
+    directory: "data/decisions/store"
+    retention: "7d"
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

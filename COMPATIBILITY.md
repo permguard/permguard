@@ -24,10 +24,27 @@ be about:
 | CLI exit statuses | `0`, `1`, `2`, `64`, `70` | `crates/permguard-cli/tests` |
 | Machine-readable output fields | `status`, `reason`, `latency_ms` | `crates/permguard-cli/tests` |
 | HTTP routes and their JSON | `GET /version` | plane module tests |
-| gRPC services and messages | `permguard.control.v1.ControlPlane`, `permguard.data.v1.PolicyDecisionPoint` | `.proto` files |
-| The decision contract | `POST /access/v1/evaluation` and its `{decision, context}` — the `permguard.pdp.v1` profile | `crates/permguard-data-plane/tests` |
+| gRPC services and messages | `permguard.control.v1.ControlPlane`, `permguard.data.v1.PolicyDecisionPoint`, `permguard.data.v1.TemporalPolicyDecisionPoint`, `permguard.control.v1.EventLog` | `.proto` files |
+| The decision contract | `POST /access/v1/evaluation` and its `{decision, context}` — the `permguard.api.pdp.native.v1` profile | `crates/permguard-data-plane/tests` |
+| The temporal contract | `POST /temporal/v1alpha1/events` and its `{outcome, watermark, history}` — the `permguard.api.pdp.temporal.v1alpha1` profile | `crates/permguard-data-plane/tests/temporal_events.rs` |
+| The event log | `POST /events/v1alpha1/batches`, `GET /events/v1alpha1/records` | `crates/permguard-control-plane/tests/event_store.rs` |
+| Interface discovery documents | `/.well-known/permguard-pdp-temporal-v1alpha1-configuration`, `/.well-known/permguard-events-native-v1alpha1-configuration` | `crates/permguard-control-plane/tests/event_discovery.rs`, the planes' module tests |
+| Read offsets | opaque, signed, and bound to scope and filters | `crates/permguard-stream`, both stores' tests |
 | Metric names and labels | `permguard_surface_requests_total{surface,method,status}` | telemetry tests |
 | Container image names and tags | `permguard/all-in-one:0.1` | release configuration |
+
+## `v1alpha1` is not covered by any of it
+
+Two of the surfaces above carry `v1alpha1` in their names — the temporal decision contract and the
+event log — and that is not decoration. Their wire and replication shapes may change in a minor
+release, including in ways that require a ledger or a stored history to be rebuilt.
+
+Which is why they are served only where a deployment has said `experimental.dogwood.enabled` as well
+as its own `events.enabled`. Accepting an unstable contract is a decision, and a plane that has said
+one and not the other refuses to start rather than making it by default.
+
+Everything else in the table is covered normally, including the settings and the exit codes these
+interfaces introduced.
 
 ## What a version does not promise
 

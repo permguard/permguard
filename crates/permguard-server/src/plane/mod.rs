@@ -94,6 +94,21 @@ pub trait PlaneModule: Send + Sync + 'static {
     fn limits(&self, config: &permguard_core::Config) -> permguard_core::Limits {
         config.limits().clone()
     }
+
+    /// What this plane requires of a configuration before the process starts.
+    ///
+    /// The hook exists because a plane's own requirements are the plane's, and the server has no
+    /// way to know them: whether an event producer has been named, whether a retention floor
+    /// covers the runtimes a build carries. Checked at startup rather than at the first request,
+    /// because both are configuration mistakes, and a configuration mistake should stop a process
+    /// rather than start one that refuses every request for a reason nobody is watching for.
+    ///
+    /// The default requires nothing.
+    fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
+        let _ = config;
+
+        Ok(())
+    }
 }
 
 /// Where a plane listener reads its address from.
@@ -225,7 +240,9 @@ impl PlaneTls {
 
 /// A plane mounted as a lifecycle service.
 pub struct PlaneService {
-    module: Box<dyn PlaneModule>,
+    /// Shared rather than owned, so the composition can also register the plane's startup check
+    /// without holding the module twice. One module, asked two questions at two moments.
+    module: std::sync::Arc<dyn PlaneModule>,
     addresses: PlaneAddresses,
     running: Mutex<Vec<Surface>>,
 }
@@ -234,10 +251,15 @@ impl PlaneService {
     /// Hosts `module` at `addresses`.
     pub fn new(module: Box<dyn PlaneModule>, addresses: PlaneAddresses) -> Self {
         Self {
-            module,
+            module: std::sync::Arc::from(module),
             addresses,
             running: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The module this plane hosts, for the composition's own checks.
+    pub fn module(&self) -> std::sync::Arc<dyn PlaneModule> {
+        std::sync::Arc::clone(&self.module)
     }
 }
 
@@ -494,13 +516,23 @@ impl PlaneServer {
             // shape is checked while somebody is watching.
             if section.name == "controlPlane" {
                 app = app.with_structured_section(section.name, |config, value| {
-                    Ok(config.with_decision_producer_keys(settings::producer_keys(value)?))
+                    let config =
+                        config.with_decision_producer_keys(settings::producer_keys(value)?);
+
+                    Ok(config.with_event_producer_keys(settings::event_producer_keys(value)?))
                 });
             }
 
             if section.name == "dataPlane" {
                 app = app.with_structured_section(section.name, |config, value| {
                     let config = config.with_mirror_sources(settings::mirror_sources(value)?)?;
+                    // The subscriptions this plane imports history from: a list of three-part
+                    // entries, so it travels here rather than through the setting layers.
+                    let config = config.with_pull_ledgers(settings::pull_ledgers(value)?);
+                    let config =
+                        config.with_pull_producer_keys(settings::pull_producer_keys(value)?);
+                    let config =
+                        config.with_events_destination(settings::events_destination(value)?)?;
                     let (destination, include) = settings::log_destination(value)?;
 
                     config.with_log_destination(destination, include)
@@ -535,6 +567,9 @@ impl PlaneServer {
         });
 
         for plane in self.planes {
+            // What this plane requires of the configuration, before anything binds.
+            let module = plane.module();
+            app = app.with_startup_check(move |config| module.startup_check(config));
             // The plane's own background work first: it starts before the
             // listeners it feeds, and stops after them.
             for service in plane.module.services() {

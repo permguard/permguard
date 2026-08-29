@@ -51,8 +51,9 @@ impl Evaluating for Cedar {
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        schema: Option<&[u8]>,
+        artifacts: &crate::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String> {
+        let schema = artifacts.bytes(crate::cedar::SCHEMA_ARTIFACT);
         let schema_bytes = schema.map_or(0, <[u8]>::len);
         let schema = schema.map(super::parse_schema).transpose()?;
 
@@ -295,7 +296,7 @@ mod tests {
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -323,7 +324,7 @@ mod tests {
                         r#"forbid (principal == User::"bob", action, resource);"#,
                     ),
                 ],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -341,7 +342,7 @@ mod tests {
                     r#"permit (principal, action == Action::"read", resource)
                        when { resource.status == "open" && context.tenant == "acme" };"#,
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -375,7 +376,7 @@ mod tests {
                     "01a0-group",
                     r#"permit (principal in Group::"finance", action == Action::"read", resource);"#,
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -406,7 +407,8 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-folder",
                     r#"permit (principal, action == Action::"read", resource == Folder::"x");"#,
                 )],
-                Some(schema.as_bytes()),
+                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                    .expect("the schema artifact is registered"),
             )
             .map(|_| ())
             .expect_err("the schema is a contract");
@@ -427,7 +429,8 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-read",
                     r#"permit (principal, action == Action::"read", resource);"#,
                 )],
-                Some(schema.as_bytes()),
+                &crate::artifact::Artifacts::just(crate::cedar::SCHEMA_ARTIFACT, schema.as_bytes())
+                    .expect("the schema artifact is registered"),
             )
             .expect("the policies satisfy the schema");
 
@@ -452,7 +455,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-read",
                     r#"permit (principal, action, resource);"#,
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 
@@ -474,7 +477,7 @@ action read appliesTo { principal: [User], resource: [Document] };
                     "01a0-ns",
                     r#"permit (principal, action == acme::Action::"read", resource);"#,
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the policies compile");
 

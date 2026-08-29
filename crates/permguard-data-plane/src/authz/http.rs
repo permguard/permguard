@@ -137,7 +137,7 @@ async fn answer(
     with_request_id(response, request_id.as_deref())
 }
 
-/// The `permguard.pdp.v1` configuration: what this interface offers here.
+/// The `permguard.api.pdp.native.v1` configuration: what this interface offers here.
 ///
 /// Answered as a value: the response type serializes it, so there is no path where a failure to
 /// render becomes a `200` carrying an empty object.

@@ -1,0 +1,134 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# config.local.yml with the temporal interface actually on.
+#
+# The same laptop deployment — one control plane on 7556, this plane on 7656 — plus the two things
+# `permguard.api.pdp.temporal.v1alpha1` needs said out loud: a durable event history, and the
+# acceptance that the contract carrying it is `v1alpha1`. Start the control plane with its own
+# config.local-experimental.yml, which is the receiving end of what this one ships.
+#
+# Everything here is a working value, not a placeholder. If it starts, the interface answers.
+
+development_mode: true
+autogenerate: true
+working_dir: .volume/data-plane
+
+log:
+  level: debug
+  format: terminal
+
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # On, which is half of what the temporal interface needs. The other half is
+    # `dataPlane.events.enabled` below; a plane that says one and not the other refuses to start
+    # rather than running with an interface nobody can reach.
+    enabled: "true"
+
+telemetry:
+  addr: 127.0.0.1:7658
+
+dataPlane:
+  public:
+    http:
+      enabled: true
+      addr: 127.0.0.1:7656
+    grpc:
+      enabled: true
+      addr: 127.0.0.1:7656
+
+  mirrors:
+    enabled: "true"
+    interval: "15s"
+    timeout: "1m"
+    parallelism: "4"
+    servers:
+      # The control plane started with permguard-control-plane's config.local-experimental.yml.
+      - url: "http://127.0.0.1:7556"
+
+  decisions:
+    cache:
+      partitions: "16"
+      bytes: "64M"
+    max_evaluations: "64"
+
+    log:
+      enabled: "true"
+      pdp_id: data-plane-local
+      server:
+        url: "http://127.0.0.1:7556"
+      spool:
+        directory: "data/decisions/spool"
+        bytes: "64M"
+        age: "24h"
+      batch: { bytes: "256k", interval: "1s" }
+      on_full: "open"
+      sample: { permits: "1.0" }
+      commitment:
+        key_ref: decision-commitment
+        key_version: "v1"
+      include:
+        subject_properties: []
+        resource_properties: []
+        context: []
+
+  # ── The temporal interface, and the history it decides against ───────────────────────────────
+  # An occurrence is recorded into a durable history and decided against it. There is deliberately
+  # no `on_full` here, unlike the decision log: a decision record dropped is evidence lost, while an
+  # event record dropped changes what *future* authorizations mean, because the journal is also the
+  # history the policies read. A journal that cannot accept fails the submission closed.
+  events:
+    enabled: "true"
+    # A producer id owns a hash chain. Two planes sharing one would each append to a stream the
+    # other also claims, and neither history could then be verified — so a second plane on this
+    # laptop gets a second name here, never a copy of this file.
+    producer_id: data-plane-local
+    directory: data/events
+
+    stream:
+      max_bytes: "1G"              # EVENT RECORDS ONLY; the reserve is kept outside this bound
+      segment_bytes: "32M"
+      max_record_bytes: "1M"
+      # A latency budget, never a durability one: a receipt is still withheld until the record is
+      # on disk. What it buys is that submissions arriving together cost one flush instead of one
+      # each, and it is only ever spent when submissions are actually overlapping.
+      group_commit_max_delay: "5ms"
+
+    retention:
+      # A FLOOR, not the answer: the requirement is this plus what the loaded policies' longest
+      # `max_window` asks for, and a configuration shorter than that is refused at startup rather
+      # than quietly emptying the windows a policy looks in.
+      minimum: "48h"
+      allowed_lateness: "5m"
+      clock_skew: "30s"
+
+    # Absent, the decision log's destination is used — one deployment ships both to one control
+    # plane, and naming it twice is two settings to keep in step. Named here anyway, because this
+    # file exists to be read.
+    destination:
+      url: "http://127.0.0.1:7556"
+
+    # `local` is the default and it is not a lesser mode: a decision ranges over what this plane
+    # recorded, which is exactly reproducible. A shared mode ranges over what had *arrived*, which
+    # is a different answer to the same request — so it is an explicit choice, and the mode and
+    # watermark travel in every response and every decision record.
+    pull:
+      mode: local
+
+operations:
+  keys:
+    enabled: true
+    publish_ahead: 5m
+    rotate_every: 1h
+    retain: 1d
+  secrets:
+    provider: directory
+  audit:
+    sink: file
+    retention: 7d
+    pseudonym:
+      enabled: true
+      key_ref: audit-pseudonym
+      key_version: "v1"

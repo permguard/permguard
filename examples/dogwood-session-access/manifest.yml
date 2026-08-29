@@ -1,0 +1,37 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+metadata:
+  kind: policy
+  name: dogwood-session-access
+  description: A Dogwood ledger whose policy decides on what has already happened.
+  author: Nitro Agility S.r.l.
+  license: Apache-2.0
+runtimes:
+  dogwood:
+    language: { name: dogwood, constraint: ">=1.0.0" }
+    engine:   { name: permguard, constraint: ">=0.1.0 <0.2.0" }
+partitions:
+  # A Dogwood partition is a *bundle* of typed artifacts rather than "policies and
+  # at most one schema". It needs a Cedar action schema — what actions exist, which
+  # entity types may act, what the request context holds — and it may also carry an
+  # event schema, a macro library, provider declarations and the programs those
+  # name. Two of those are `.dw`, the same extension as a policy, so the registry
+  # reserves a file name for each rather than leaving the walk to guess.
+  #
+  # `schema: true` cannot express this: it says "there is a schema" and there are
+  # two of them here, answering different questions.
+  governance:
+    runtime: dogwood
+    artifacts:
+      - { type: permguard.dogwood.action-schema.v1, required: true }
+      - { type: permguard.dogwood.event-schema.v1, required: false }
+    # One typed occurrence per request, and the profile fans it out to every
+    # partition it addresses. Not a per-partition input: the caller sends one
+    # event, and each partition validates it against its own loaded artifacts.
+    input: { type: permguard.dogwood.event.v1, required: true }
+profiles:
+  # A temporal profile, and it may name only temporal partitions. A stateless
+  # profile naming this one is refused at the load gate: deciding a Dogwood policy
+  # statelessly means deciding it against an empty history, which is a verdict its
+  # policies do not hold.
+  temporal: { type: permguard.api.pdp.temporal.v1alpha1, partitions: [governance] }

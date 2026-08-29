@@ -10,8 +10,10 @@ use permguard_server::plane::PlaneModule;
 
 use crate::api::PlaneApi;
 use crate::authz;
+use crate::temporal;
 use crate::v1::data_plane_server::DataPlaneServer;
 use crate::v1::policy_decision_point_server::PolicyDecisionPointServer;
+use crate::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPointServer;
 
 const COMPONENT: &str = "data-plane";
 const PLANE: &str = "data";
@@ -89,7 +91,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 ///
 /// That is for callers who need it: something generic, written against no particular version of
 /// the interface, or an operator with an address and a question. Permguard's own client does not
-/// walk this chain — it is a versioned client for `permguard.pdp.v1` and links against that
+/// walk this chain — it is a versioned client for `permguard.api.pdp.native.v1` and links against that
 /// interface's constants directly, which is the same place these links are built from.
 ///
 /// Composed as a value and serialized by the response type, never assembled as text: this used to
@@ -113,8 +115,34 @@ fn data_plane_configuration(
             configuration: format!("{base}{}", permguard_languages::request::CONFIGURATION_PATH),
         },
     );
+    // The second interface is listed only when it is served. A plane's discovery document is a
+    // promise about what answers here, and listing an interface a caller then cannot reach is
+    // exactly the failure the three-layer chain exists to prevent.
+    if temporal::served(context.config()) {
+        configuration.interfaces.insert(
+            permguard_languages::temporal::INTERFACE.to_owned(),
+            permguard_server::plane::InterfaceLink {
+                configuration: format!("{base}{}", temporal::configuration::CONFIGURATION_PATH),
+            },
+        );
+    }
 
     configuration
+}
+
+/// The temporal interface's routes, when this deployment serves it.
+fn temporal_routes(context: &ServerContext<'_>) -> Router {
+    let Some(submitter) = temporal::submitter(context) else {
+        return Router::new();
+    };
+    let base_url = authz::base_url(context);
+
+    temporal::http::routes(temporal::http::Surface {
+        submitter,
+        disclosure: context.config().error_detail(),
+        pdp: base_url.clone(),
+        base_url,
+    })
 }
 
 pub struct DataPlaneModule;
@@ -151,6 +179,16 @@ impl PlaneModule for DataPlaneModule {
                 disclosure: context.config().error_detail(),
                 base_url: authz::base_url(context),
             }))
+            // The temporal interface, when this deployment serves one. Merged rather than always
+            // mounted: a plane that keeps no history must not answer a submission route at all,
+            // because a `404` says "not here" and a route that accepted and refused would say
+            // "here, and broken".
+            .merge(temporal_routes(context))
+    }
+
+    /// What this plane requires before it binds anything.
+    fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
+        temporal::startup_check(config)
     }
 
     /// Two loops, both off by default and both about the volume rather than
@@ -162,6 +200,10 @@ impl PlaneModule for DataPlaneModule {
             Box::new(crate::mirrors::MirrorService::new()),
             Box::new(crate::decisions::DecisionService::new()),
             Box::new(crate::authz::audit::DecisionAuditService::new()),
+            // The third loop, off unless this plane serves the temporal interface: it drains the
+            // event journals and evicts what neither the control plane nor a loaded policy still
+            // needs.
+            Box::new(crate::temporal::service::EventService::new()),
         ]
     }
 
@@ -182,6 +224,17 @@ impl PlaneModule for DataPlaneModule {
             disclosure: context.config().error_detail(),
             base_url: authz::base_url(context),
         }));
+        // And the temporal interface, on the same terms and only when it is served.
+        if let Some(submitter) = temporal::submitter(context) {
+            grpc.add_service(TemporalPolicyDecisionPointServer::new(
+                temporal::grpc::TemporalPdpApi {
+                    submitter,
+                    disclosure: context.config().error_detail(),
+                    base_url: authz::base_url(context),
+                    pdp: authz::base_url(context),
+                },
+            ));
+        }
 
         grpc.routes().into_axum_router()
     }

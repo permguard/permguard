@@ -1420,3 +1420,100 @@ fn test_a_mirror_cannot_expire_before_it_is_stale() {
         "expire_after below stale_after is a lie about the deployment"
     );
 }
+
+/// Durations are read in the units the settings are actually written in.
+///
+/// The `ms` case is the one that mattered: [`DEFAULT_EVENTS_GROUP_COMMIT_DELAY`] is five
+/// milliseconds, and until the parser learned the suffix, that default could not be written down in
+/// the file that configures it — the shipped `config.local-experimental.yml` said `5ms` and the plane
+/// refused to start reading its own configuration.
+#[test]
+fn a_duration_is_read_in_every_unit_a_setting_is_written_in() {
+    let cases: &[(&str, Duration)] = &[
+        ("5ms", Duration::from_millis(5)),
+        ("500MS", Duration::from_millis(500)),
+        ("30s", Duration::from_secs(30)),
+        ("2m", Duration::from_secs(120)),
+        ("1h", Duration::from_secs(3_600)),
+        ("90d", Duration::from_secs(90 * 86_400)),
+        // No suffix still means seconds: the settings that predate the units keep their meaning.
+        ("45", Duration::from_secs(45)),
+    ];
+
+    for (written, expected) in cases {
+        let config = config(&[(SETTING_EVENTS_GROUP_COMMIT_DELAY, written)], &[], &[]);
+        assert_eq!(
+            config.events_group_commit_delay(),
+            *expected,
+            "`{written}` should read as {expected:?}"
+        );
+    }
+}
+
+/// The default of the sub-second setting is expressible in its own configuration format.
+#[test]
+fn the_group_commit_default_can_be_written_down() {
+    let defaulted = config(&[], &[], &[]);
+    assert_eq!(
+        defaulted.events_group_commit_delay(),
+        DEFAULT_EVENTS_GROUP_COMMIT_DELAY
+    );
+
+    let written = config(&[(SETTING_EVENTS_GROUP_COMMIT_DELAY, "5ms")], &[], &[]);
+    assert_eq!(
+        written.events_group_commit_delay(),
+        DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
+        "writing the default explicitly must mean the same as leaving it out"
+    );
+}
+
+/// `ms` is tested before `s`, so a millisecond value is never read as a broken second value.
+#[test]
+fn a_millisecond_value_is_not_mistaken_for_a_malformed_second_value() {
+    let refused = Config::from_layers(
+        build_settings(),
+        NO_DECLARED,
+        Layers::new().with_file(pairs(&[(SETTING_EVENTS_GROUP_COMMIT_DELAY, "5xs")])),
+    )
+    .expect_err("`5xs` is not a duration");
+    let message = format!("{refused:#}");
+    assert!(
+        message.contains("5ms"),
+        "the refusal names the units it accepts: {message}"
+    );
+}
+
+/// Event producers are their own identity-bound trust policy, never an unbound fallback.
+///
+/// `controlPlane.events.producer_keys` was a field the configuration file accepted and nothing
+/// read: an operator who narrowed the event producers got a plane that went on accepting every
+/// decision producer, and nothing said so.
+#[test]
+fn the_event_producers_are_named_in_their_own_right() {
+    let events = permguard_core::decisions::EventProducerSource {
+        path: "events.jwks".to_owned(),
+        producer: "plane-a".to_owned(),
+        zone: "acme".to_owned(),
+        ledger: "main".to_owned(),
+    };
+    let both = config(&[], &[], &[])
+        .with_decision_producer_keys(["decisions.jwks".to_owned()])
+        .with_event_producer_keys([events.clone()]);
+    assert_eq!(both.event_producer_keys(), [events]);
+    assert_eq!(both.decision_producer_keys(), ["decisions.jwks"]);
+    assert!(both.event_producer_keys_declared());
+
+    // An event signature proves bytes, not authorization to claim a producer or tenant. The
+    // decision key list has no such bindings and therefore cannot stand in.
+    let inherited =
+        config(&[], &[], &[]).with_decision_producer_keys(["decisions.jwks".to_owned()]);
+    assert!(inherited.event_producer_keys().is_empty());
+    assert!(
+        !inherited.event_producer_keys_declared(),
+        "and the deployment can tell the fallback from a choice"
+    );
+
+    // Neither: nothing is accepted, which is what fail-closed means here.
+    let neither = config(&[], &[], &[]);
+    assert!(neither.event_producer_keys().is_empty());
+}

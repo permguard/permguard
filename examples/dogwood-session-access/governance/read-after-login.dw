@@ -1,0 +1,26 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// Permit a Read only if the same user logged in within the last hour and has not
+// since logged out.
+//
+// The idiom is Dogwood's accepted "A but not B": a guarded negation restricts
+// nothing, so it is legal only when a *preceding* conjunct in the same `&&`
+// chain already range-restricts its free variables. Here the restrictor comes
+// first, and the negation after it. Reversing the two is the rejected form, and
+// Dogwood refuses to lower it.
+//
+// The event schema beside this file pins `callerPrincipal`, so every temporal
+// predicate is automatically correlated to the principal of the request being
+// decided: another user's Login is invisible to this rule, and there is nothing
+// in the policy that has to say so.
+@id("read_after_login")
+permit (
+    principal,
+    action == Drupe::Action::"Read",
+    resource
+)
+when temporal {
+    formerly within 1h Drupe::Action::"Login"::response{ input.user: context.input.user }
+    && !Drupe::Action::"Logout"::response{ input.user: context.input.user }
+};
