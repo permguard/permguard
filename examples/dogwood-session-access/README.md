@@ -125,31 +125,23 @@ after login without weakening the live plane's five-minute lateness protection.
 ## Step 5 — Run the live trace
 
 The JSON fixtures intentionally contain fixed timestamps so the offline suite is
-reproducible. A live plane correctly refuses old occurrences. This helper keeps
+reproducible. A live plane correctly refuses old occurrences. `submit.sh` keeps
 the fixtures unchanged and gives each submitted copy a current timestamp and a
-unique event ID:
+run-scoped event ID. Pick one session ID and keep it for the whole trace:
 
 ```bash
-DEMO_ID="demo-$(date +%s)"
-
-submit() {
-  file="$1"
-  suffix="$2"
-
-  jq --arg event_id "${DEMO_ID}-${suffix}" \
-    '.event.data.event_id = $event_id
-     | .event.data.occurred_at = (now | todate)' "$file" |
-    curl -sS -X POST http://127.0.0.1:7656/temporal/v1alpha1/events \
-      -H 'content-type: application/json' --data-binary @- |
-    jq
-}
+export PERMGUARD_DEMO_ID="demo-$(date +%s)"
 ```
+
+The script accepts a path relative to either the current directory or the
+example itself. `--endpoint` can target another data plane; by default it uses
+`http://127.0.0.1:7656`.
 
 Submit Alice's login request and its response:
 
 ```bash
-submit examples/dogwood-session-access/events/1-login-request.json login-request
-submit examples/dogwood-session-access/events/2-login-response.json login-response
+./examples/dogwood-session-access/submit.sh events/1-login-request.json
+./examples/dogwood-session-access/submit.sh events/2-login-response.json
 ```
 
 The request is a decision kind and is denied because no policy permits a login.
@@ -159,7 +151,7 @@ without inventing a decision.
 Now ask about the read:
 
 ```bash
-submit examples/dogwood-session-access/events/3-read-permitted.json read-permitted
+./examples/dogwood-session-access/submit.sh events/3-read-permitted.json
 ```
 
 The important fields are:
@@ -175,7 +167,7 @@ The important fields are:
 Alice's login does not authorize Bob:
 
 ```bash
-submit examples/dogwood-session-access/events/5-read-other-user.json read-other-user
+./examples/dogwood-session-access/submit.sh events/5-read-other-user.json
 ```
 
 ```json
@@ -220,7 +212,7 @@ from the control plane, not from the data plane's working journal:
 ```bash
 task cli -- events list --zone "$ZONE_ID" --ledger "$LEDGER_ID"
 
-task cli -- events get "${DEMO_ID}-read-permitted" \
+task cli -- events get "${PERMGUARD_DEMO_ID}-read-inside-window" \
   --zone "$ZONE_ID" --ledger "$LEDGER_ID" -o json
 ```
 
@@ -246,15 +238,19 @@ than one batch; zero failed signatures is the invariant.
 
 ## Step 7 — Watch invalid events fail closed
 
-Reuse the helper. The last call deliberately reuses the ID of the read already
-stored, but changes its content:
+Reuse the same session. The last fixture carries the same original event ID as
+the permitted read, so the script deliberately generates the same live ID over
+different content:
 
 ```bash
-submit examples/dogwood-session-access/refusals/unknown-action.json unknown-action
-submit examples/dogwood-session-access/refusals/undeclared-field.json undeclared-field
-submit examples/dogwood-session-access/refusals/pin-disagrees.json pin-disagrees
-submit examples/dogwood-session-access/refusals/conflicting-retry.json read-permitted
+./examples/dogwood-session-access/submit.sh refusals/unknown-action.json
+./examples/dogwood-session-access/submit.sh refusals/undeclared-field.json
+./examples/dogwood-session-access/submit.sh refusals/pin-disagrees.json
+./examples/dogwood-session-access/submit.sh refusals/conflicting-retry.json
 ```
+
+Each refusal prints its JSON body and HTTP status, then exits non-zero as a real
+client should. Those non-zero exits are expected in this step.
 
 | Submission | HTTP | Code | Why |
 | --- | ---: | --- | --- |

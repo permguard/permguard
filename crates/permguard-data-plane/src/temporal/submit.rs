@@ -309,7 +309,6 @@ impl Submitter {
             event,
         };
 
-        let appending = Instant::now();
         // The append and the turn for what it assigned, in one uncancellable unit.
         //
         // # Why they cannot be separated
@@ -333,13 +332,17 @@ impl Submitter {
         // The cost is that a permit is held while waiting for another submission to the same ledger
         // to apply. That is the pool doing its job: bounded, and refusing at the ceiling rather
         // than blocking a runtime worker as this used to.
-        let appending = Instant::now();
-        let (appended, prepared) = {
+        let (appended, appending, prepared) = {
             let streams = Arc::clone(&self.streams);
             let (held_zone, held_ledger) = (zone.clone(), ledger.clone());
             self.blocking
                 .run(&labels, move || {
+                    // Timed inside, and only around the append: the wait for a turn that follows
+                    // is another submission applying, and folding it in would make this metric
+                    // report the ledger's queue as the cost of a durable write.
+                    let started = Instant::now();
                     let appended = streams.append(&held_zone, &held_ledger, proposed);
+                    let appending = started.elapsed();
                     let prepared = match &appended {
                         Ok((Written::Appended { seq, .. }, _)) => streams
                             .sequencer(&held_zone, &held_ledger)
@@ -348,7 +351,7 @@ impl Submitter {
                         _ => None,
                     };
 
-                    (appended, prepared)
+                    (appended, appending, prepared)
                 })
                 .await
                 .map_err(|refused| match refused {
@@ -379,11 +382,8 @@ impl Submitter {
             // released rather than stranded.
             self.refuse_append(failed, &labels)
         })?;
-        self.metrics.observe(
-            &measure::APPEND_SECONDS,
-            &labels,
-            appending.elapsed().as_secs_f64(),
-        );
+        self.metrics
+            .observe(&measure::APPEND_SECONDS, &labels, appending.as_secs_f64());
         self.publish_watermarks(&zone, &ledger);
 
         let mut recovering = false;

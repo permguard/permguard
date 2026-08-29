@@ -961,13 +961,24 @@ impl Decider {
         );
         let held = self.clone_for_loading();
 
-        tokio::task::spawn_blocking(move || held.load(&root, &zone, &ledger, &profile))
+        // Through the bound, like the evaluation it precedes. A cold load reads and compiles a
+        // ledger from disk — the same kind of waiting, on the same request path — and leaving it
+        // unbounded meant the ceiling could be reached by work the pool was not counting.
+        self.blocking
+            .run(&[], move || held.load(&root, &zone, &ledger, &profile))
             .await
-            .unwrap_or_else(|error| {
+            .unwrap_or_else(|refused| {
+                let (code, why) = match refused {
+                    crate::blocking::Refused::AtCapacity(held) => {
+                        ("load_at_capacity", held.to_string())
+                    }
+                    crate::blocking::Refused::Failed(why) => ("load_failed", why),
+                };
+
                 Err(ApiError::new(
-                    ErrorClass::Internal,
-                    "load_failed",
-                    format!("the ledger could not be loaded: {error}"),
+                    ErrorClass::Unavailable,
+                    code,
+                    format!("the ledger could not be loaded: {why}"),
                 ))
             })
     }
