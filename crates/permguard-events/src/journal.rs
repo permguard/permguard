@@ -42,9 +42,11 @@
 //! The segments are the authority for what was written; `STATE` is the authority for what was
 //! acknowledged, signed and retained. Splitting it that way is what makes recovery unambiguous.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -69,6 +71,8 @@ const CHECKPOINT_SUFFIX: &str = ".jws";
 /// Where each occurrence's position and answer are kept, addressed by the id a client retries with.
 const OCCURRENCES_DIRECTORY: &str = "occurrences";
 const OCCURRENCE_SUFFIX: &str = ".json";
+/// Highest durable journal sequence reconciled into the occurrence index.
+const OCCURRENCES_STATE_FILE: &str = "OCCURRENCES_STATE";
 
 /// What the journal knows about itself across a restart.
 ///
@@ -118,6 +122,12 @@ pub struct KnownOccurrence {
     pub seq: u64,
     /// The canonical digest of what was recorded under that id.
     pub occurrence_digest: String,
+    /// The stable decision identity reserved for this occurrence, when it decides.
+    ///
+    /// Persisted before the decision log write so a crash between the audit record and the
+    /// response commit cannot turn one occurrence into two decision identities on retry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_id: Option<String>,
     /// The answer this plane gave, as it gave it.
     pub response: Value,
 }
@@ -208,6 +218,12 @@ pub struct Journal {
     /// Rebuildable from the segments, which stay authoritative: a damaged or missing index costs a
     /// pass over the segments at open, never a wrong answer.
     index: crate::index::Index,
+    /// Occurrence entries renamed since the last group durability boundary.
+    ///
+    /// The file bytes and the directory entries are two different things to `fsync`. Keeping the
+    /// touched files here lets one group commit settle exactly this batch instead of scanning every
+    /// occurrence retained by the ledger or paying one flush per append.
+    pending_occurrences: Mutex<BTreeMap<u64, PathBuf>>,
 }
 
 impl Journal {
@@ -256,11 +272,18 @@ impl Journal {
             _lock: lock,
             open_segment: None,
             index,
+            pending_occurrences: Mutex::new(BTreeMap::new()),
         };
         // The segments are the authority for what was written. Whatever `STATE` last managed to
         // record, the truth about the tail is on disk — including a record written just before a
         // crash that `STATE` never learned about.
         journal.recover()?;
+        // The event line and its idempotency entry live in different files and no filesystem can
+        // atomically commit both. A crash can therefore leave a durable line ahead of the entry.
+        // The line is authoritative: repair only that tail before anything can append or answer a
+        // retry. A persisted coverage watermark keeps ordinary restarts O(new tail), not O(all
+        // retained history).
+        journal.recover_occurrences()?;
         // And the index is derived from those same segments, so it can be behind them for exactly
         // the same reason: a crash between flushing a record and flushing its entry leaves the
         // record durable and unindexed. Unindexed means invisible to a scan, which for a temporal
@@ -417,9 +440,9 @@ impl Journal {
         // Atomically named, so a reader finds a whole checkpoint or none — never the prefix of one.
         fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
         // And the directory entry itself, or a crash could lose the name while keeping the bytes.
-        if let Ok(directory) = File::open(&self.directory) {
-            let _ = directory.sync_all();
-        }
+        File::open(&self.directory)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| JournalError::Io(error.to_string()))?;
 
         self.mark_signed(last_seq)
     }
@@ -492,30 +515,163 @@ impl Journal {
         // caller runs it alongside the journal's own flush, before anybody in the batch is
         // answered.
         fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
+        match self.pending_occurrences.lock() {
+            Ok(mut pending) => {
+                pending.insert(known.seq, path);
+            }
+            Err(poisoned) => {
+                poisoned.into_inner().insert(known.seq, path);
+            }
+        }
 
         Ok(())
     }
 
     /// Flushes the occurrence entries written since the last call.
     ///
-    /// One `fsync` per shard touched rather than per record: what has to be durable is the
-    /// directory entry the rename created, and a directory is flushed as a whole.
+    /// Every file touched by this group is flushed, then every shard that names one. The set is
+    /// bounded by the group size and cleared only after all those boundaries succeed.
     pub fn sync_occurrences(&self) -> Result<(), JournalError> {
         let root = self.directory.join(OCCURRENCES_DIRECTORY);
-        let shards = match fs::read_dir(&root) {
-            Ok(shards) => shards,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(JournalError::Io(error.to_string())),
+        let pending = match self.pending_occurrences.lock() {
+            Ok(pending) => pending.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         };
-        for shard in shards {
-            let shard = shard.map_err(|error| JournalError::Io(error.to_string()))?;
-            let held =
-                File::open(shard.path()).map_err(|error| JournalError::Io(error.to_string()))?;
-            held.sync_all()
+        let mut directories = BTreeSet::new();
+        for path in pending.values() {
+            File::open(path)
+                .and_then(|file| file.sync_all())
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+            if let Some(directory) = path.parent() {
+                directories.insert(directory.to_path_buf());
+            }
+        }
+        for directory in directories {
+            File::open(directory)
+                .and_then(|held| held.sync_all())
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+        }
+        if root.exists() {
+            File::open(&root)
+                .and_then(|held| held.sync_all())
                 .map_err(|error| JournalError::Io(error.to_string()))?;
         }
 
+        // Coverage is a contiguous prefix, never merely the largest sequence flushed. If one
+        // entry in a group could not be written while a later one could, advancing across the
+        // hole would prevent restart recovery from rebuilding the missing entry.
+        let mut covered = self.occurrences_covered()?;
+        for seq in pending.keys().copied() {
+            if seq <= covered {
+                continue;
+            }
+            if seq != covered.saturating_add(1) {
+                break;
+            }
+            covered = seq;
+        }
+
+        let state = self.directory.join(OCCURRENCES_STATE_FILE);
+        let temporary = self.directory.join(format!("{OCCURRENCES_STATE_FILE}.tmp"));
+        {
+            let mut file =
+                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
+            file.write_all(covered.to_string().as_bytes())
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+            file.sync_all()
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+        }
+        fs::rename(&temporary, &state).map_err(|error| JournalError::Io(error.to_string()))?;
+        File::open(&self.directory)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| JournalError::Io(error.to_string()))?;
+        match self.pending_occurrences.lock() {
+            Ok(mut held) => held.retain(|seq, path| pending.get(seq) != Some(path)),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .retain(|seq, path| pending.get(seq) != Some(path)),
+        }
+
         Ok(())
+    }
+
+    /// Rebuilds occurrence entries for the durable tail not covered by their own watermark.
+    fn recover_occurrences(&self) -> Result<(), JournalError> {
+        let covered = self.occurrences_covered()?;
+
+        for (_, path) in self.segments()? {
+            let file = File::open(&path).map_err(|error| JournalError::Io(error.to_string()))?;
+            for (number, line) in BufReader::new(file).lines().enumerate() {
+                let line = line.map_err(|error| JournalError::Io(error.to_string()))?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let record: Value = serde_json::from_str(&line).map_err(|error| {
+                    JournalError::Corrupt(format!("{}:{}: {error}", path.display(), number + 1))
+                })?;
+                let seq = record
+                    .get("seq")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| JournalError::Corrupt("a record with no `seq`".to_owned()))?;
+                if seq <= covered || seq > self.state.durable_through {
+                    continue;
+                }
+                let event_id = record
+                    .get("event_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        JournalError::Corrupt("an event record with no `event_id`".to_owned())
+                    })?;
+                let occurrence_digest = record
+                    .get("occurrence_digest")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        JournalError::Corrupt(
+                            "an event record with no `occurrence_digest`".to_owned(),
+                        )
+                    })?;
+
+                match self.occurrence(event_id)? {
+                    Some(known)
+                        if known.seq == seq && known.occurrence_digest == occurrence_digest =>
+                    {
+                        // It is valid, but still belongs to the uncovered suffix. Mark it in this
+                        // recovery group too, so coverage may advance across it after an earlier
+                        // missing entry has been rebuilt.
+                        self.record_occurrence(&known)?;
+                    }
+                    Some(known) => {
+                        return Err(JournalError::Corrupt(format!(
+                            "the occurrence `{event_id}` points to sequence {} with digest `{}`, \
+                             but the durable record is sequence {seq} with digest \
+                             `{occurrence_digest}`",
+                            known.seq, known.occurrence_digest
+                        )));
+                    }
+                    None => self.record_occurrence(&KnownOccurrence {
+                        event_id: event_id.to_owned(),
+                        seq,
+                        occurrence_digest: occurrence_digest.to_owned(),
+                        decision_id: None,
+                        response: Value::Null,
+                    })?,
+                }
+            }
+        }
+        self.sync_occurrences()
+    }
+
+    /// Highest contiguous durable sequence represented by the occurrence index.
+    fn occurrences_covered(&self) -> Result<u64, JournalError> {
+        let covered = match fs::read_to_string(self.directory.join(OCCURRENCES_STATE_FILE)) {
+            Ok(text) => text.trim().parse::<u64>().map_err(|error| {
+                JournalError::Corrupt(format!("{OCCURRENCES_STATE_FILE}: {error}"))
+            })?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => return Err(JournalError::Io(error.to_string())),
+        };
+
+        Ok(covered.min(self.state.durable_through))
     }
 
     /// What this ledger knows about an occurrence id, when it still holds the record.
@@ -577,13 +733,13 @@ impl Journal {
             };
             for entry in entries {
                 let entry = entry.map_err(|error| JournalError::Io(error.to_string()))?;
-                let Ok(bytes) = fs::read(entry.path()) else {
-                    continue;
-                };
+                let bytes =
+                    fs::read(entry.path()).map_err(|error| JournalError::Io(error.to_string()))?;
                 let Ok(held) = serde_json::from_slice::<KnownOccurrence>(&bytes) else {
                     // Unreadable, and its record is gone or going: removed rather than kept as a
                     // permanent unreadable entry.
-                    let _ = fs::remove_file(entry.path());
+                    fs::remove_file(entry.path())
+                        .map_err(|error| JournalError::Io(error.to_string()))?;
                     continue;
                 };
                 if held.seq < oldest {
@@ -641,7 +797,7 @@ impl Journal {
         let segments = self.segments()?;
         let mut dropped = 0;
 
-        for (index, (first, path)) in segments.iter().enumerate() {
+        for (index, (_first, path)) in segments.iter().enumerate() {
             // The last segment is the open one; the next segment's first sequence is this one's
             // exclusive end.
             let Some((next_first, _)) = segments.get(index + 1) else {
@@ -653,7 +809,6 @@ impl Journal {
             fs::remove_file(path).map_err(|error| JournalError::Io(error.to_string()))?;
             self.state.oldest_retained = *next_first;
             dropped += 1;
-            let _ = first;
         }
         if dropped > 0 {
             self.persist_state()?;
@@ -970,6 +1125,9 @@ impl Journal {
         // Atomically replaced: a reader either sees the old state or the new one, never a
         // half-written file.
         fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
+        File::open(&self.directory)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())
     }
@@ -1966,6 +2124,7 @@ mod tests {
                 event_id: "evt-1".to_owned(),
                 seq: 1,
                 occurrence_digest: "sha256:aaa".to_owned(),
+                decision_id: None,
                 response: json!({"outcome": "accepted"}),
             })
             .expect("the entry is written");
@@ -1991,6 +2150,46 @@ mod tests {
         assert_eq!(held.response["outcome"], "accepted");
     }
 
+    /// A later occurrence entry cannot make an earlier missing one invisible to recovery.
+    #[test]
+    fn occurrence_coverage_never_advances_across_a_hole() {
+        let directory = scratch("occurrence-coverage-hole");
+        let journal = filled(&directory, 2, Bounds::default());
+
+        // The shape left by a group in which the first entry write failed and the second one
+        // succeeded: both journal records are durable, but only the later addressed entry exists.
+        journal
+            .record_occurrence(&KnownOccurrence {
+                event_id: "e2".to_owned(),
+                seq: 2,
+                occurrence_digest: GENESIS.to_owned(),
+                decision_id: None,
+                response: Value::Null,
+            })
+            .expect("the later entry is written");
+        journal.sync_occurrences().expect("the entry is flushed");
+        assert_eq!(
+            fs::read_to_string(directory.join(OCCURRENCES_STATE_FILE))
+                .expect("coverage is recorded"),
+            "0",
+            "coverage stops before the missing first entry"
+        );
+
+        drop(journal);
+        let journal = Journal::open(&directory, stream(), Bounds::default()).expect("it reopens");
+        assert!(
+            journal.occurrence("e1").expect("it reads").is_some(),
+            "the missing entry is rebuilt from the authoritative record"
+        );
+        assert!(journal.occurrence("e2").expect("it reads").is_some());
+        assert_eq!(
+            fs::read_to_string(directory.join(OCCURRENCES_STATE_FILE))
+                .expect("coverage is recorded"),
+            "2",
+            "recovery advances after the whole contiguous suffix is durable"
+        );
+    }
+
     /// An id is any string a client chose, and it never becomes a path.
     #[test]
     fn an_occurrence_id_is_addressed_by_digest_and_never_used_as_a_file_name() {
@@ -2003,6 +2202,7 @@ mod tests {
                 event_id: hostile.to_owned(),
                 seq: 1,
                 occurrence_digest: "sha256:bbb".to_owned(),
+                decision_id: None,
                 response: Value::Null,
             })
             .expect("a hostile id is stored like any other");
@@ -2034,6 +2234,7 @@ mod tests {
                     event_id: format!("evt-{seq}"),
                     seq,
                     occurrence_digest: format!("sha256:{seq}"),
+                    decision_id: None,
                     response: Value::Null,
                 })
                 .expect("the entry is written");

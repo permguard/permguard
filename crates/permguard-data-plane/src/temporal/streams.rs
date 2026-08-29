@@ -316,8 +316,9 @@ impl Streams {
         let directory = self.root.join(zone).join(ledger);
         let journal = Journal::open(&directory, stream, self.bounds)?;
         let recent = recent_of(&journal)?;
-        // Everything the journal holds has been replayed into this ledger's histories by the time
-        // anything can submit to it, so the applied mark starts at the journal's tail.
+        // The journal owns the durable order, so new submissions start after its recovered tail.
+        // Engine histories are rebuilt lazily by `Submitter::ensure_history` before an occurrence
+        // is applied; opening a journal must not claim that policy state has already been replayed.
         let (next, _) = journal.next_position();
         let _ = self.sequencers.of(zone, ledger, next.saturating_sub(1));
 
@@ -514,6 +515,19 @@ impl Streams {
             };
             match held.journal.append_unsynced(&value) {
                 Ok(appended) => {
+                    // The journal tail has advanced even if the addressed occurrence entry below
+                    // cannot be written. Keep the id in the in-process dedup window first, so a
+                    // retry before restart cannot append the same logical occurrence again. On a
+                    // restart `Journal::open` reconciles this durable tail into the addressed
+                    // index before accepting traffic.
+                    held.recent.push_back((
+                        record.event_id.clone(),
+                        record.occurrence_digest.clone(),
+                        appended.seq,
+                    ));
+                    while held.recent.len() > RECENT_EVENT_IDS {
+                        held.recent.pop_front();
+                    }
                     // What makes the retry recognisable, on the volume rather than only in this
                     // process's window. Written before the flush below, so a record that becomes
                     // durable is never durable without the entry that identifies it.
@@ -522,20 +536,13 @@ impl Streams {
                             event_id: record.event_id.clone(),
                             seq: appended.seq,
                             occurrence_digest: record.occurrence_digest.clone(),
+                            decision_id: None,
                             // The answer is not known yet; it is filled in once given.
                             response: serde_json::Value::Null,
                         },
                     ) {
                         results.push((ticket, Err(Failed::Journal(error))));
                         continue;
-                    }
-                    held.recent.push_back((
-                        record.event_id.clone(),
-                        record.occurrence_digest.clone(),
-                        appended.seq,
-                    ));
-                    while held.recent.len() > RECENT_EVENT_IDS {
-                        held.recent.pop_front();
                     }
                     wrote = true;
                     let written = Written::Appended {
@@ -555,20 +562,6 @@ impl Streams {
             self.metrics
                 .observe(&super::measure::BATCH_RECORDS, &labels, covered as f64);
         }
-        // The occurrence entries this batch wrote, made durable with it: a record that is durable
-        // without its entry is a record a later retry would not recognise.
-        if wrote && let Err(error) = held.journal.sync_occurrences() {
-            let reason = error.to_string();
-            for (_, result) in results.iter_mut() {
-                if matches!(result, Ok((Written::Appended { .. }, _))) {
-                    *result = Err(Failed::Journal(JournalError::Io(format!(
-                        "this record's retry entry could not be flushed: {reason}"
-                    ))));
-                }
-            }
-
-            return results;
-        }
         if wrote && let Err(error) = held.journal.sync() {
             let reason = error.to_string();
             for (_, result) in results.iter_mut() {
@@ -577,6 +570,21 @@ impl Streams {
                     // that is not durable is refused rather than acknowledged.
                     *result = Err(Failed::Journal(JournalError::Io(format!(
                         "the batch containing this record could not be flushed: {reason}"
+                    ))));
+                }
+            }
+
+            return results;
+        }
+        // Commit the addressed idempotency entries after the journal. There is no atomic rename
+        // spanning both paths; journal-first makes the append-only record authoritative, and
+        // `Journal::open` repairs any occurrence-index tail left behind by a crash here.
+        if wrote && let Err(error) = held.journal.sync_occurrences() {
+            let reason = error.to_string();
+            for (_, result) in results.iter_mut() {
+                if matches!(result, Ok((Written::Appended { .. }, _))) {
+                    *result = Err(Failed::Journal(JournalError::Io(format!(
+                        "this record's retry entry could not be flushed: {reason}"
                     ))));
                 }
             }
@@ -653,6 +661,33 @@ impl Streams {
         held.journal.read_from(after, limit)
     }
 
+    /// The record at one exact sequence, for completing an interrupted idempotent submission.
+    pub fn record_at(
+        &self,
+        zone: &str,
+        ledger: &str,
+        sequence: u64,
+    ) -> Result<serde_json::Value, JournalError> {
+        let records = self.read_from(zone, ledger, sequence.saturating_sub(1), 1)?;
+        let record = records.into_iter().next().ok_or_else(|| {
+            JournalError::Corrupt(format!(
+                "the occurrence index names sequence {sequence}, but the journal does not hold it"
+            ))
+        })?;
+        if record.get("seq").and_then(serde_json::Value::as_u64) != Some(sequence) {
+            return Err(JournalError::Corrupt(format!(
+                "the occurrence index names sequence {sequence}, but the next retained record is \
+                 at {}",
+                record
+                    .get("seq")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or_else(|| "no sequence".to_owned(), |held| held.to_string())
+            )));
+        }
+
+        Ok(record)
+    }
+
     /// The records one temporal question needs, by their coordinates in this ledger's journal.
     ///
     /// A range scan over the index rather than a read of the ledger: one history partition, one
@@ -723,7 +758,11 @@ impl Streams {
         };
         known.response = response.clone();
 
-        held.journal.record_occurrence(&known)
+        held.journal.record_occurrence(&known)?;
+        // A response may leave only after the idempotency answer is durable. Otherwise a crash
+        // can occur after the caller saw success but before the outcome index reaches disk, and a
+        // retry is then recognised as the same event without being able to reproduce its answer.
+        held.journal.sync_occurrences()
     }
 
     /// The answer given for one occurrence, when this ledger still holds it.
@@ -743,6 +782,34 @@ impl Streams {
             .occurrence(event_id)?
             .map(|known| known.response)
             .filter(|response| !response.is_null()))
+    }
+
+    /// Reserves and durably keeps the one decision identity of an occurrence.
+    pub fn decision_id(
+        &self,
+        zone: &str,
+        ledger: &str,
+        event_id: &str,
+    ) -> Result<String, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let held = held
+            .lock()
+            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
+        let Some(mut known) = held.journal.occurrence(event_id)? else {
+            return Err(JournalError::Corrupt(format!(
+                "`{event_id}` has no occurrence entry from which to reserve a decision id"
+            )));
+        };
+        if let Some(decision_id) = &known.decision_id {
+            return Ok(decision_id.clone());
+        }
+
+        let decision_id = permguard_decisions::instance::mint();
+        known.decision_id = Some(decision_id.clone());
+        held.journal.record_occurrence(&known)?;
+        held.journal.sync_occurrences()?;
+
+        Ok(decision_id)
     }
 
     /// The signed checkpoints one ledger's journal holds.

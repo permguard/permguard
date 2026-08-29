@@ -38,6 +38,23 @@ impl EventLog for EventFacade {
         request: Request<IngestBatchRequest>,
     ) -> Result<Response<IngestBatchResponse>, Status> {
         let asked = request.into_inner();
+        let records = asked
+            .records
+            .iter()
+            .enumerate()
+            .map(|(index, bytes)| {
+                serde_json::from_slice(bytes).map_err(|error| {
+                    status_of(
+                        &ApiError::new(
+                            ErrorClass::Validation,
+                            "payload_malformed",
+                            format!("record {index} is not JSON: {error}"),
+                        ),
+                        self.disclosure,
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let batch = Batch {
             signature: serde_json::from_slice(&asked.envelope).map_err(|error| {
                 status_of(
@@ -49,11 +66,7 @@ impl EventLog for EventFacade {
                     self.disclosure,
                 )
             })?,
-            records: asked
-                .records
-                .iter()
-                .map(|bytes| serde_json::from_slice(bytes).unwrap_or(serde_json::Value::Null))
-                .collect(),
+            records,
         };
 
         let facade = self.clone();

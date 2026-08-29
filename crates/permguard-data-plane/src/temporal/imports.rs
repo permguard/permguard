@@ -30,8 +30,8 @@
 //! one origin position is a fork, and one occurrence at two origin positions is normal.
 
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
-use std::io::Write as _;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -53,6 +53,13 @@ pub struct Cursor {
     /// for spans several producers and has no single number to compare.
     #[serde(default)]
     pub offset: String,
+    /// The canonical registered-type selection this offset belongs to.
+    ///
+    /// Control-plane offsets are authenticated against their filters. Persisting an offset without
+    /// its selection would leave a plane retrying a now-invalid cursor forever after an operator
+    /// changed `pull.ledgers[].event_types`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub event_types: Vec<String>,
     /// When the last successful read completed, as a canonical instant.
     ///
     /// What `shared-bounded` measures staleness against. Written on every advance, including one
@@ -68,6 +75,16 @@ pub struct Cursor {
     /// How many were skipped as the same logical occurrence recorded by another plane.
     #[serde(default)]
     pub logical_duplicates: u64,
+    /// The oldest event-time this local imported copy promises to retain.
+    ///
+    /// This is a retention cursor, not the remote read cursor above. Keeping the two separate is
+    /// what lets the control-plane subscription continue monotonically while this plane compacts
+    /// records no loaded temporal policy can still observe.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub oldest_retained_at: String,
+    /// How many imported evidence copies local retention has removed.
+    #[serde(default)]
+    pub evicted: u64,
     /// The holes in this imported history, oldest first.
     ///
     /// Persisted, and persisted *here*, because a gap is a property of the history and not of the
@@ -243,6 +260,32 @@ impl Imports {
         }
     }
 
+    /// Binds this subscription's durable cursor to its canonical event-type selection.
+    ///
+    /// A changed selection starts at the oldest retained control-plane offset and lets the exact
+    /// origin/occurrence deduplication skip what is already held. Its previous cursor is not sent
+    /// under different filters (which the server would correctly refuse), and `read_at` is cleared
+    /// so `shared-bounded` cannot call the new selection fresh before its first successful read.
+    pub fn bind(&self, zone: &str, ledger: &str, event_types: &[String]) -> Result<()> {
+        let gate = self.gate(zone, ledger);
+        let _held = match gate.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let mut selected = event_types.to_vec();
+        selected.sort();
+        selected.dedup();
+        let mut state = self.state(zone, ledger)?;
+        if state.event_types == selected {
+            return Ok(());
+        }
+        state.event_types = selected;
+        state.offset.clear();
+        state.read_at.clear();
+
+        self.write_state(zone, ledger, &state)
+    }
+
     /// The offset to present next, or `None` for a subscription that has never read.
     pub fn cursor(&self, zone: &str, ledger: &str) -> Result<Option<String>> {
         let state = self.state(zone, ledger)?;
@@ -339,16 +382,33 @@ impl Imports {
 
         let origin = origin_of(record).ok_or_else(|| anyhow!("a record with no origin"))?;
         let occurrence = occurrence_of(record).ok_or_else(|| anyhow!("a record with no id"))?;
+        let record_digest = permguard_events::record::digest_of(record)
+            .map_err(|error| anyhow!("an imported record is not canonical: {error}"))?;
         let held = self.held(zone, ledger)?;
         let mut state = self.state(zone, ledger)?;
 
-        if held.origins.contains(&origin) {
-            state.duplicates = state.duplicates.saturating_add(1);
-            self.write_state(zone, ledger, &state)?;
+        if let Some(known) = held.origins.get(&origin) {
+            if known == &record_digest {
+                state.duplicates = state.duplicates.saturating_add(1);
+                self.write_state(zone, ledger, &state)?;
 
-            return Ok(false);
+                return Ok(false);
+            }
+
+            anyhow::bail!(
+                "origin position {origin:?} is already imported with different content: the \
+                 producer stream forked"
+            );
         }
-        if held.occurrences.contains(&occurrence) {
+        if let Some(known) = held.occurrences.get(&occurrence.0) {
+            if known != &occurrence.1 {
+                anyhow::bail!(
+                    "event id `{}` is already imported with occurrence digest `{known}`, not \
+                     `{}`: one id cannot name two occurrences in `{zone}/{ledger}`",
+                    occurrence.0,
+                    occurrence.1
+                );
+            }
             // Kept as evidence, not observed twice: two planes recorded one client request, and a
             // temporal policy counting occurrences must count it once.
             state.logical_duplicates = state.logical_duplicates.saturating_add(1);
@@ -374,6 +434,11 @@ impl Imports {
     /// order across producers and inventing one would make two planes disagree about what a policy
     /// saw.
     pub fn observable(&self, zone: &str, ledger: &str) -> Result<Vec<Value>> {
+        let gate = self.gate(zone, ledger);
+        let _held = match gate.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let path = self.path(zone, ledger)?.join(RECORDS_FILE);
         let Some(text) = read_records(&path)? else {
             return Ok(Vec::new());
@@ -430,6 +495,10 @@ impl Imports {
         // And the index after the record, never before: an entry durable ahead of what it points
         // at would survive a crash the record did not, and a scan would then read a hole.
         self.index_one(zone, ledger, record, offset, length)?;
+        // `sync_all` on the files does not make a newly created directory entry durable. The
+        // subscription directory is the commit boundary for both the record file and its index;
+        // it must reach disk before the cursor may be advanced past this record.
+        sync_directory(&directory)?;
 
         Ok(imported)
     }
@@ -505,9 +574,22 @@ impl Imports {
         ledger: &str,
         query: &permguard_events::index::Query,
     ) -> Result<Vec<Value>> {
+        // Compaction rewrites byte offsets. Hold the subscription gate from index lookup through
+        // the addressed reads so a decision can see either the old file/index pair or the new
+        // pair, never one of each.
+        let gate = self.gate(zone, ledger);
+        let _held = match gate.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         let path = self.path(zone, ledger)?.join(RECORDS_FILE);
-        let Some(text) = read_records(&path)? else {
-            return Ok(Vec::new());
+        let mut records = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("opening the imported history {}", path.display()));
+            }
         };
         let located: Vec<(u64, u64)> = {
             let mut indexes = match self.indexes.lock() {
@@ -523,19 +605,23 @@ impl Imports {
                 .collect()
         };
 
-        let bytes = text.as_bytes();
         let mut held = Vec::with_capacity(located.len());
         for (offset, length) in located {
-            let start = usize::try_from(offset).unwrap_or(usize::MAX);
-            let end = start.saturating_add(usize::try_from(length).unwrap_or(0));
-            let Some(line) = bytes.get(start..end.min(bytes.len())) else {
-                anyhow::bail!(
-                    "the import index of {} names a position the store does not hold: rebuild it",
+            let length = usize::try_from(length)
+                .map_err(|_| anyhow!("an imported record is too large to address in memory"))?;
+            records
+                .seek(std::io::SeekFrom::Start(offset))
+                .with_context(|| format!("seeking to byte {offset} of {}", path.display()))?;
+            let mut line = vec![0u8; length];
+            records.read_exact(&mut line).with_context(|| {
+                format!(
+                    "the import index of {} names byte {offset} plus {length} bytes, which the \
+                     store does not hold: rebuild it",
                     path.display()
-                );
-            };
+                )
+            })?;
             let imported: Imported = serde_json::from_slice(
-                line.strip_suffix(b"\n").unwrap_or(line),
+                line.strip_suffix(b"\n").unwrap_or(&line),
             )
             .with_context(|| {
                 format!(
@@ -550,6 +636,108 @@ impl Imports {
         held.sort_by_key(order_of);
 
         Ok(held)
+    }
+
+    /// Compacts imported copies older than an event-time horizon.
+    ///
+    /// The control plane remains the evidence authority. This local copy exists only so future
+    /// temporal evaluations can observe shared history, therefore an event older than every
+    /// admitted policy window plus lateness/skew may be removed here without moving or resetting
+    /// the remote subscription cursor.
+    pub fn evict_before(&self, zone: &str, ledger: &str, horizon: i64) -> Result<usize> {
+        let gate = self.gate(zone, ledger);
+        let _held = match gate.lock() {
+            Ok(held) => held,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let directory = self.path(zone, ledger)?;
+        let path = directory.join(RECORDS_FILE);
+        let Some(text) = read_records(&path)? else {
+            return Ok(0);
+        };
+
+        let mut retained = String::with_capacity(text.len());
+        let mut removed = 0usize;
+        for (number, line) in text.split_inclusive('\n').enumerate() {
+            if !line.ends_with('\n') {
+                anyhow::bail!(
+                    "the imported history {} has a torn trailing record at line {}: refusing to \
+                     compact bytes whose commit status cannot be proved",
+                    path.display(),
+                    number + 1
+                );
+            }
+            let body = line.strip_suffix('\n').unwrap_or(line);
+            if body.trim().is_empty() {
+                continue;
+            }
+            let imported: Imported = serde_json::from_str(body).with_context(|| {
+                format!(
+                    "reading the imported record at line {} of {}",
+                    number + 1,
+                    path.display()
+                )
+            })?;
+            let occurred = imported
+                .record
+                .get("occurred_at")
+                .and_then(Value::as_str)
+                .and_then(permguard_events::index::epoch_seconds)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "the imported record at line {} of {} has no canonical occurrence time",
+                        number + 1,
+                        path.display()
+                    )
+                })?;
+            if occurred < horizon {
+                removed = removed.saturating_add(1);
+            } else {
+                retained.push_str(line);
+            }
+        }
+
+        if removed == 0 {
+            return Ok(0);
+        }
+
+        let key = (zone.to_owned(), ledger.to_owned());
+        let mut indexes = match self.indexes.lock() {
+            Ok(indexes) => indexes,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let (mut rebuilt, _) = permguard_events::index::Index::detached(&directory)
+            .map_err(|error| anyhow!("opening the import index for compaction: {error}"))?;
+        // Remove the old offsets first. A crash before the record replacement then leaves a
+        // missing derived index over the old authoritative file, which startup can rebuild. The
+        // opposite order could leave durable old offsets over the compacted file.
+        rebuilt
+            .reset()
+            .map_err(|error| anyhow!("resetting the import index for compaction: {error}"))?;
+        sync_directory(&directory)?;
+        write_atomic(&path, retained.as_bytes()).context("compacting imported history")?;
+        rebuild_index(&mut rebuilt, &path)?;
+        sync_directory(&directory)?;
+        indexes.insert(key.clone(), rebuilt);
+        drop(indexes);
+
+        match self.known.lock() {
+            Ok(mut known) => {
+                known.remove(&key);
+            }
+            Err(poisoned) => {
+                poisoned.into_inner().remove(&key);
+            }
+        }
+        let mut state = self.state(zone, ledger)?;
+        state.oldest_retained_at = permguard_events::index::render_epoch_seconds(horizon)
+            .ok_or_else(|| {
+                anyhow!("the import retention horizon is outside the supported range")
+            })?;
+        state.evicted = state.evicted.saturating_add(removed as u64);
+        self.write_state(zone, ledger, &state)?;
+
+        Ok(removed)
     }
 
     /// What this subscription already holds.
@@ -612,12 +800,37 @@ impl Imports {
         let directory = self.path(zone, ledger)?;
         fs::create_dir_all(&directory).context("creating an import directory")?;
         let bytes = serde_json::to_vec_pretty(state).context("rendering an import cursor")?;
-        let temporary = directory.join("STATE.writing");
-        fs::write(&temporary, bytes).context("writing an import cursor")?;
-        fs::rename(&temporary, directory.join(STATE_FILE)).context("writing an import cursor")?;
-
-        Ok(())
+        write_atomic(&directory.join(STATE_FILE), &bytes).context("writing an import cursor")
     }
+}
+
+/// Atomically replaces a cursor and persists the directory entry that names it.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let directory = path
+        .parent()
+        .ok_or_else(|| anyhow!("{} has no parent directory", path.display()))?;
+    fs::create_dir_all(directory).with_context(|| format!("creating {}", directory.display()))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
+    let temporary = directory.join(format!(".{name}.writing"));
+    let mut file =
+        File::create(&temporary).with_context(|| format!("opening {}", temporary.display()))?;
+    file.write_all(bytes)
+        .with_context(|| format!("writing {}", temporary.display()))?;
+    file.sync_all()
+        .with_context(|| format!("flushing {}", temporary.display()))?;
+    drop(file);
+    fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
+    sync_directory(directory)
+}
+
+fn sync_directory(directory: &Path) -> Result<()> {
+    File::open(directory)
+        .with_context(|| format!("opening directory {}", directory.display()))?
+        .sync_all()
+        .with_context(|| format!("flushing directory {}", directory.display()))
 }
 
 /// One imported record, and whether it is the one to observe.
@@ -631,22 +844,24 @@ struct Imported {
 /// What a subscription already holds, by both kinds of identity.
 #[derive(Debug, Default, Clone)]
 struct Held {
-    origins: std::collections::BTreeSet<(String, String, String, u64)>,
-    occurrences: std::collections::BTreeSet<(String, String)>,
+    origins: std::collections::BTreeMap<(String, String, String, u64), String>,
+    occurrences: std::collections::BTreeMap<String, String>,
 }
 
 impl Held {
     /// Files one imported record into the sets a later duplicate is recognised by.
     fn remember(&mut self, imported: &Imported) {
-        if let Some(origin) = origin_of(&imported.record) {
-            self.origins.insert(origin);
+        if let Some(origin) = origin_of(&imported.record)
+            && let Ok(digest) = permguard_events::record::digest_of(&imported.record)
+        {
+            self.origins.insert(origin, digest);
         }
         // Only an observed record contributes a logical occurrence: one kept purely as another
         // plane's evidence was already counted through the record that *was* observed.
         if imported.observe
             && let Some(occurrence) = occurrence_of(&imported.record)
         {
-            self.occurrences.insert(occurrence);
+            self.occurrences.insert(occurrence.0, occurrence.1);
         }
     }
 }
@@ -800,19 +1015,36 @@ mod tests {
         assert_eq!(state.logical_duplicates, 1);
     }
 
-    /// The same id with different content is not a duplicate — it is two different things.
+    /// The same id with different content is a conflict, never a second occurrence.
     #[test]
-    fn one_id_with_different_content_is_two_occurrences_and_both_are_kept() {
+    fn one_id_with_different_content_is_refused() {
         let imports = Imports::new(scratch("conflict"));
         let first = record("plane-a", 1, "e1", "sha256:aa", "2026-08-28T10:00:00Z");
         let second = record("plane-b", 7, "e1", "sha256:bb", "2026-08-28T10:00:01Z");
 
         assert!(imports.absorb("acme", "main", &first).expect("absorbs"));
+        let refused = imports
+            .absorb("acme", "main", &second)
+            .expect_err("one id cannot be rebound to different content");
         assert!(
-            imports.absorb("acme", "main", &second).expect("absorbs"),
-            "an id alone is a claim; the digest is what was claimed"
+            refused.to_string().contains("one id cannot name two"),
+            "{refused}"
         );
-        assert_eq!(imports.observable("acme", "main").expect("reads").len(), 2);
+        assert_eq!(imports.observable("acme", "main").expect("reads").len(), 1);
+    }
+
+    #[test]
+    fn one_origin_position_with_different_bytes_is_a_fork() {
+        let imports = Imports::new(scratch("origin-fork"));
+        let first = record("plane-a", 1, "e1", "sha256:aa", "2026-08-28T10:00:00Z");
+        let second = record("plane-a", 1, "e2", "sha256:bb", "2026-08-28T10:00:01Z");
+
+        assert!(imports.absorb("acme", "main", &first).expect("absorbs"));
+        let refused = imports
+            .absorb("acme", "main", &second)
+            .expect_err("one producer position cannot contain two records");
+        assert!(refused.to_string().contains("forked"), "{refused}");
+        assert_eq!(imports.observable("acme", "main").expect("reads").len(), 1);
     }
 
     /// Event time first, then a documented tie break — never an invented global sequence.
@@ -879,6 +1111,37 @@ mod tests {
                 .read_at
                 .is_empty(),
             "a plane that is caught up is fresh, and the time it last read says so"
+        );
+    }
+
+    #[test]
+    fn a_cursor_is_never_reused_under_another_event_type_selection() {
+        let imports = Imports::new(scratch("cursor-selection"));
+        let dogwood = vec!["permguard.dogwood.event.v1".to_owned()];
+        imports
+            .bind("acme", "main", &dogwood)
+            .expect("binds the first selection");
+        imports
+            .advance("acme", "main", "bound-offset")
+            .expect("advances");
+
+        imports
+            .bind("acme", "main", &dogwood)
+            .expect("the same selection remains bound");
+        assert_eq!(
+            imports.cursor("acme", "main").expect("reads"),
+            Some("bound-offset".to_owned())
+        );
+
+        imports
+            .bind("acme", "main", &["permguard.future.event.v1".to_owned()])
+            .expect("rebinds a changed selection");
+        let rebound = imports.state("acme", "main").expect("reads rebound state");
+        assert!(rebound.offset.is_empty());
+        assert!(rebound.read_at.is_empty());
+        assert_eq!(
+            rebound.event_types,
+            ["permguard.future.event.v1".to_owned()]
         );
     }
 
@@ -1153,6 +1416,81 @@ mod tests {
                 .len(),
             11,
             "the records are the authority and the index is derived from them"
+        );
+    }
+
+    #[test]
+    fn imported_retention_compacts_records_and_rebuilds_offsets_without_moving_the_cursor() {
+        let root = scratch("import-retention");
+        let imports = Imports::new(&root);
+        imports
+            .advance("acme", "main", "remote-offset-9")
+            .expect("the remote cursor advances");
+        for (sequence, at) in [1_800_000_000, 1_800_000_060, 1_800_000_120]
+            .into_iter()
+            .enumerate()
+        {
+            let at = permguard_events::index::render_epoch_seconds(at).expect("an instant");
+            imports
+                .absorb(
+                    "acme",
+                    "main",
+                    &record(
+                        "plane-a",
+                        sequence as u64 + 1,
+                        &format!("retained-{sequence}"),
+                        "sha256:aa",
+                        &at,
+                    ),
+                )
+                .expect("it absorbs");
+        }
+
+        assert_eq!(
+            imports
+                .evict_before("acme", "main", 1_800_000_090)
+                .expect("old imports compact"),
+            2
+        );
+        assert_eq!(
+            imports.observable("acme", "main").expect("it reads").len(),
+            1
+        );
+        let state = imports.state("acme", "main").expect("the cursors read");
+        assert_eq!(state.offset, "remote-offset-9");
+        assert_eq!(state.evicted, 2);
+        assert_eq!(state.oldest_retained_at, "2027-01-15T08:01:30Z");
+
+        let query = permguard_events::index::Query {
+            event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            history: String::new(),
+            action: None,
+            kind: None,
+            from: 1_800_000_000,
+            until: 1_800_000_180,
+        };
+        assert_eq!(
+            imports
+                .window("acme", "main", &query)
+                .expect("it reads")
+                .len(),
+            1,
+            "the rebuilt byte offsets address the compacted file"
+        );
+        drop(imports);
+
+        let reopened = Imports::new(&root);
+        assert_eq!(
+            reopened
+                .window("acme", "main", &query)
+                .expect("it reads")
+                .len(),
+            1
+        );
+        assert_eq!(
+            reopened.cursor("acme", "main").expect("it reads"),
+            Some("remote-offset-9".to_owned()),
+            "local retention never rewinds the remote subscription"
         );
     }
 }

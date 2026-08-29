@@ -1,6 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
+use anyhow::Context as _;
 use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tonic::service::RoutesBuilder;
@@ -63,6 +64,8 @@ type Composed<T> = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf
 #[derive(Default)]
 pub struct ControlPlaneModule {
     events: Composed<crate::events::http::EventFacade>,
+    event_store:
+        std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
     decisions: Composed<crate::decisions::http::DecisionFacade>,
 }
 
@@ -102,7 +105,7 @@ impl ControlPlaneModule {
         let directory = config.event_store_directory();
 
         composed(&self.events, directory.clone(), || {
-            build_event_facade(context, &directory)
+            build_event_facade(context, &directory, &self.event_store)
         })
     }
 
@@ -147,7 +150,10 @@ impl PlaneModule for ControlPlaneModule {
             // The event store's own sweep. Registered beside the decision store's rather than
             // relying on it: they are two stores with two windows, and the event one held a
             // `sweep` nothing ever called.
-            Box::new(crate::events::retention::EventRetentionService::new()),
+            Box::new(
+                crate::events::retention::EventRetentionService::new()
+                    .with_store(std::sync::Arc::clone(&self.event_store)),
+            ),
         ]
     }
 
@@ -465,6 +471,41 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              or `controlPlane.events.enabled: false` if this plane should not receive events"
         );
     }
+    if events_served(config) && config.event_producer_keys().is_empty() {
+        anyhow::bail!(
+            "the event store is enabled and `controlPlane.events.producer_keys` is empty. Event \
+             keys must be bound explicitly to a producer and its allowed zone/ledger scope; the \
+             unbound decision-producer list is not an event-ingestion trust policy"
+        );
+    }
+    for source in config.event_producer_keys() {
+        if source.path.trim().is_empty()
+            || source.producer.trim().is_empty()
+            || source.zone.trim().is_empty()
+            || source.ledger.trim().is_empty()
+            || source.producer == "*"
+        {
+            anyhow::bail!(
+                "every event producer key names a non-empty `path`, exact `producer`, and \
+                `zone`/`ledger` (which may be `*`)"
+            );
+        }
+        let keys = read_key_set(config, &source.path).map_err(|error| {
+            anyhow::anyhow!(
+                "reading event producer `{}` from `{}`: {error:#}",
+                source.producer,
+                source.path
+            )
+        })?;
+        if keys.is_empty() {
+            anyhow::bail!(
+                "event producer `{}` publishes no keys in `{}`: an empty trust source would \
+                 make every batch from that producer unattributable",
+                source.producer,
+                source.path
+            );
+        }
+    }
 
     Ok(())
 }
@@ -478,6 +519,7 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
 fn build_event_facade(
     context: &ServerContext<'_>,
     directory: &std::path::Path,
+    shared: &std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
 ) -> Option<crate::events::http::EventFacade> {
     let config = context.config();
     let store = match crate::events::EventStore::open(directory) {
@@ -506,28 +548,32 @@ fn build_event_facade(
         }
     };
 
-    // The event producers this plane accepts, which the deployment may name in their own right —
-    // `controlPlane.events.producer_keys` — and which fall back to the decision store's list when
-    // it does not. The fallback is stated rather than assumed: the ordinary deployment receives
-    // both from the same planes, and the field used to be one the file accepted and nothing read.
+    // The explicitly bound event producers this plane accepts. Decision-log keys are not enough:
+    // an event key is authority for one producer and an allowed zone/ledger scope, and accepting
+    // an unbound key would let its holder claim another producer or tenant in the signed payload.
     let producers = load_event_producer_keys(config);
     if producers.is_empty() {
         tracing::warn!(
             event.name = "events.no_producers",
             component = COMPONENT,
-            "the event store is on and this plane knows no producer's keys: name them under \
-             `controlPlane.decisions.producer_keys`. Batches will be refused as unattributable \
+            "the event store is on and this plane knows no producer's keys: name bound sources \
+             under `controlPlane.events.producer_keys`. Batches will be refused as unattributable \
              rather than accepted unchecked"
         );
     }
 
-    Some(crate::events::http::EventFacade {
+    let facade = crate::events::http::EventFacade {
         store,
         producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
         producer_files: config
-            .decision_producer_keys()
+            .event_producer_keys()
             .iter()
-            .map(|path| config.working_dir().join(path))
+            .map(|source| crate::events::http::ProducerFile {
+                path: config.working_dir().join(&source.path),
+                producer: source.producer.clone(),
+                zone: source.zone.clone(),
+                ledger: source.ledger.clone(),
+            })
             .collect(),
         cursor_key,
         disclosure: config.error_detail(),
@@ -537,7 +583,12 @@ fn build_event_facade(
             permguard_server::plane::PlaneId::Control,
         )
         .unwrap_or_default(),
-    })
+    };
+    if let Ok(mut held) = shared.lock() {
+        *held = Some(std::sync::Arc::clone(&facade.store));
+    }
+
+    Some(facade)
 }
 
 fn build_decision_facade(
@@ -614,8 +665,36 @@ fn load_producer_keys(config: &permguard_core::Config) -> Vec<permguard_core::Jw
 }
 
 /// The event producers' published sets, from wherever this deployment named them.
-fn load_event_producer_keys(config: &permguard_core::Config) -> Vec<permguard_core::Jwk> {
-    load_keys_from(config, config.event_producer_keys())
+fn load_event_producer_keys(
+    config: &permguard_core::Config,
+) -> Vec<crate::events::ingest::ProducerTrust> {
+    let mut trusted = Vec::new();
+    for source in config.event_producer_keys() {
+        for key in load_keys_from(config, std::slice::from_ref(&source.path)) {
+            trusted.push(crate::events::ingest::ProducerTrust {
+                key,
+                producer: source.producer.clone(),
+                zone: source.zone.clone(),
+                ledger: source.ledger.clone(),
+            });
+        }
+    }
+
+    trusted
+}
+
+fn read_key_set(
+    config: &permguard_core::Config,
+    path: &str,
+) -> anyhow::Result<Vec<permguard_core::Jwk>> {
+    let resolved = config.working_dir().join(path);
+    let text = std::fs::read_to_string(&resolved)
+        .with_context(|| format!("reading {}", resolved.display()))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", resolved.display()))?;
+    let set = parsed.get("keys").cloned().unwrap_or(parsed);
+
+    serde_json::from_value(set).with_context(|| format!("{} is not a JWKS", resolved.display()))
 }
 
 fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<permguard_core::Jwk> {

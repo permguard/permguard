@@ -27,7 +27,7 @@ use crate::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoin
 use crate::v1::{
     DecisionHistory, EventWatermark, GetTemporalConfigurationRequest,
     GetTemporalConfigurationResponse, Reason, StoreScope, SubmitEventRequest, SubmitEventResponse,
-    SubmitOutcome, TemporalEndpoints,
+    SubmitOutcome, TemporalEndpoints, TemporalPartitionEvaluation,
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal — the same keys every other
@@ -147,6 +147,19 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
         decision: response.decision,
         decision_id: response.decision_id.unwrap_or_default(),
         policies: response.policies,
+        evaluations: response
+            .evaluations
+            .into_iter()
+            .map(|evaluation| TemporalPartitionEvaluation {
+                partition: evaluation.partition,
+                decision: evaluation.decision,
+                policies: evaluation.policies,
+                reason: evaluation.reason.map(|reason| Reason {
+                    code: reason.code,
+                    message: reason.message,
+                }),
+            })
+            .collect(),
         reason: response.reason.map(|reason| Reason {
             code: reason.code,
             message: reason.message,
@@ -154,7 +167,8 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
         history: Some(DecisionHistory {
             mode: response.history.mode,
             watermark: response.history.watermark.unwrap_or_default(),
-            staleness_seconds: response.history.staleness_seconds.unwrap_or_default(),
+            staleness_seconds: response.history.staleness_seconds,
+            gaps: response.history.gaps,
         }),
     }
 }

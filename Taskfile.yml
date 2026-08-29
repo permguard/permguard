@@ -365,3 +365,8 @@ tasks:
     desc: Report the control plane version.
     cmds:
       - cargo run -p permguard-control-plane --bin permguard-control-plane -- version
+
+  llm-init:
+    desc: Initialize LLM agent workspace
+    cmds:
+      - ./scripts/llm-init.sh

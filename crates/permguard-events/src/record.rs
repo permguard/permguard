@@ -24,6 +24,8 @@
 //! field a newer producer added, and the digest would stop matching. So the wire type is the
 //! value, this struct is how a producer *builds* one, and the two meet at [`Record::to_value`].
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -212,6 +214,152 @@ impl Record {
     }
 }
 
+/// Why a signed value is not a record this build can safely store or replay.
+///
+/// The digest deliberately covers unknown fields, while this validation deliberately ignores
+/// them. That permits a newer producer to extend a record without letting it omit or contradict
+/// the invariant fields an older reader relies on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordError {
+    detail: String,
+}
+
+impl RecordError {
+    fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: detail.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for RecordError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for RecordError {}
+
+/// Reads and validates the invariant part of a record without changing the value that was signed.
+///
+/// Language-specific validation of [`Record::event`] remains the registered event contract's job;
+/// this checks the storage protocol around it: version and domains, non-empty identities, canonical
+/// clocks, occurrence binding, and the history key's own digest.
+pub fn validate(value: &Value) -> Result<Record, RecordError> {
+    let record: Record = serde_json::from_value(value.clone())
+        .map_err(|error| RecordError::new(format!("the value is not an event record: {error}")))?;
+    if record.v != VERSION {
+        return Err(RecordError::new(format!(
+            "event record version {} is not supported; this build accepts {VERSION}",
+            record.v
+        )));
+    }
+    if record.record_type != RECORD_TYPE {
+        return Err(RecordError::new(format!(
+            "`{}` is not the event record type `{RECORD_TYPE}`",
+            record.record_type
+        )));
+    }
+    if !record.stream.producer.is_accepted() {
+        return Err(RecordError::new(format!(
+            "`{}` is not an accepted event producer class",
+            record.stream.producer.class
+        )));
+    }
+    for (name, held) in [
+        ("stream.producer.id", record.stream.producer.id.as_str()),
+        (
+            "stream.producer.instance",
+            record.stream.producer.instance.as_str(),
+        ),
+        ("stream.zone", record.stream.zone.as_str()),
+        ("stream.ledger", record.stream.ledger.as_str()),
+        ("event_type", record.event_type.as_str()),
+        ("event_id", record.event_id.as_str()),
+        ("kind", record.kind.as_str()),
+        ("profile", record.profile.as_str()),
+        ("commit", record.commit.as_str()),
+    ] {
+        if held.trim().is_empty() {
+            return Err(RecordError::new(format!("`{name}` must not be empty")));
+        }
+    }
+    if record.seq == 0 {
+        return Err(RecordError::new("an event record sequence starts at one"));
+    }
+    for (name, digest) in [
+        ("prev", record.prev.as_str()),
+        ("occurrence_digest", record.occurrence_digest.as_str()),
+    ] {
+        if !is_sha256(digest) {
+            return Err(RecordError::new(format!(
+                "`{name}` is not a canonical SHA-256 digest"
+            )));
+        }
+    }
+    if crate::index::epoch_seconds(&record.occurred_at).is_none() {
+        return Err(RecordError::new(
+            "`occurred_at` is not a canonical whole-second UTC instant",
+        ));
+    }
+    if crate::index::epoch_seconds(&record.observed_at).is_none() {
+        return Err(RecordError::new(
+            "`observed_at` is not a canonical whole-second UTC instant",
+        ));
+    }
+    if record.policy_partitions.is_empty() {
+        return Err(RecordError::new(
+            "`policy_partitions` must name at least one addressed partition",
+        ));
+    }
+    let mut partitions = BTreeSet::new();
+    for partition in &record.policy_partitions {
+        if partition.trim().is_empty() || !partitions.insert(partition) {
+            return Err(RecordError::new(
+                "`policy_partitions` contains an empty or repeated partition",
+            ));
+        }
+    }
+    if let Some(key) = &record.history_key {
+        if key.pins.is_empty() || key.pins.len() != key.values.len() {
+            return Err(RecordError::new(
+                "a history key has no pins or a different number of pins and values",
+            ));
+        }
+        if key.pins.iter().any(|pin| pin.trim().is_empty()) {
+            return Err(RecordError::new("a history key contains an empty pin"));
+        }
+        let stated = history_digest_of(&serde_json::json!({
+            "pins": key.pins,
+            "values": key.values,
+        }))
+        .map_err(|error| RecordError::new(error.to_string()))?;
+        if stated != key.digest {
+            return Err(RecordError::new(
+                "the history key digest does not cover the pins and values it carries",
+            ));
+        }
+    }
+    let occurrence =
+        occurrence_digest_of(&record.event).map_err(|error| RecordError::new(error.to_string()))?;
+    if occurrence != record.occurrence_digest {
+        return Err(RecordError::new(
+            "the occurrence digest does not cover the event payload it accompanies",
+        ));
+    }
+
+    Ok(record)
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
 /// Why a record could not be digested.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DigestError {
@@ -301,6 +449,11 @@ mod tests {
     use serde_json::json;
 
     fn record(seq: u64, prev: &str) -> Record {
+        let event = json!({
+            "event_id": "01J8Z9",
+            "kind": "request",
+            "action": "Drupe::Action::Read",
+        });
         Record {
             v: VERSION,
             record_type: RECORD_TYPE.to_owned(),
@@ -313,7 +466,7 @@ mod tests {
             prev: prev.to_owned(),
             event_type: "permguard.dogwood.event.v1".to_owned(),
             event_id: "01J8Z9".to_owned(),
-            occurrence_digest: GENESIS.to_owned(),
+            occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
             kind: "request".to_owned(),
             profile: "temporal".to_owned(),
             policy_partitions: vec!["session-access".to_owned()],
@@ -321,7 +474,7 @@ mod tests {
             history_key: None,
             occurred_at: "2026-08-28T10:15:30Z".to_owned(),
             observed_at: "2026-08-28T10:15:31Z".to_owned(),
-            event: json!({"kind": "request", "action": "Drupe::Action::Read"}),
+            event,
         }
     }
 
@@ -332,6 +485,33 @@ mod tests {
         let back: Record = serde_json::from_value(value).expect("it deserializes");
 
         assert_eq!(back, built);
+    }
+
+    #[test]
+    fn invariant_validation_binds_the_occurrence_and_history_key() {
+        let mut value = record(1, GENESIS).to_value().expect("it serializes");
+        validate(&value).expect("the record is valid");
+
+        value["event"]["kind"] = json!("response");
+        assert!(
+            validate(&value)
+                .expect_err("the payload no longer matches its digest")
+                .to_string()
+                .contains("occurrence digest")
+        );
+
+        let mut value = record(1, GENESIS).to_value().expect("it serializes");
+        value["history_key"] = json!({
+            "pins": ["callerPrincipal"],
+            "values": ["alice"],
+            "digest": GENESIS,
+        });
+        assert!(
+            validate(&value)
+                .expect_err("the key digest covers another value")
+                .to_string()
+                .contains("history key digest")
+        );
     }
 
     /// The one property the whole log rests on: an event digest is not a decision digest.

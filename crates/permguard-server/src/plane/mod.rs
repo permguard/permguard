@@ -529,6 +529,10 @@ impl PlaneServer {
                     // The subscriptions this plane imports history from: a list of three-part
                     // entries, so it travels here rather than through the setting layers.
                     let config = config.with_pull_ledgers(settings::pull_ledgers(value)?);
+                    let config =
+                        config.with_pull_producer_keys(settings::pull_producer_keys(value)?);
+                    let config =
+                        config.with_events_destination(settings::events_destination(value)?)?;
                     let (destination, include) = settings::log_destination(value)?;
 
                     config.with_log_destination(destination, include)

@@ -132,17 +132,61 @@ impl Refused {
 /// two definitions would be two chances to render the same batch two ways.
 pub use permguard_events::Batch;
 
+/// One verification key bound to the producer and tenant scope it is allowed to attest.
+#[derive(Debug, Clone)]
+pub struct ProducerTrust {
+    pub key: Jwk,
+    pub producer: String,
+    pub zone: String,
+    pub ledger: String,
+}
+
+impl ProducerTrust {
+    fn authorizes(&self, stream: &permguard_events::Stream) -> bool {
+        self.producer == stream.producer.id
+            && (self.zone == "*" || self.zone == stream.zone)
+            && (self.ledger == "*" || self.ledger == stream.ledger)
+    }
+}
+
 /// Accepts one signed batch into `store`.
 pub fn accept(
     store: &EventStore,
     batch: &Batch,
-    keys: &[Jwk],
+    producers: &[ProducerTrust],
     accepted_types: &[&str],
 ) -> Result<Accepted, Refused> {
-    let envelope = batch
+    let protected = batch
         .signature
-        .verify(keys)
+        .protected()
         .map_err(|error| Refused::Unattributable(error.to_string()))?;
+    let mut verified = None;
+    let mut wrong_scope = false;
+    for producer in producers
+        .iter()
+        .filter(|held| held.key.kid == protected.kid)
+    {
+        let Ok(envelope) = batch.signature.verify(std::slice::from_ref(&producer.key)) else {
+            continue;
+        };
+        if producer.authorizes(&envelope.stream) {
+            verified = Some((envelope, &producer.key));
+            break;
+        }
+        wrong_scope = true;
+    }
+    let Some((envelope, signing_key)) = verified else {
+        return Err(Refused::Unattributable(if wrong_scope {
+            "the signature is valid, but its key is not authorized for the producer, zone and \
+             ledger declared by this batch"
+                .to_owned()
+        } else {
+            format!(
+                "no current key bound to an authorized event producer verifies key id `{}`",
+                protected.kid
+            )
+        }));
+    };
 
     // The producer class, before anything else about the batch: an ingress that verified a
     // signature and then discovered it did not accept that producer would have done the expensive
@@ -157,16 +201,21 @@ pub fn accept(
 
     // The key that signed is archived beside what it attests, the first time it is seen: a batch
     // signed today must still verify after that key has been rotated a dozen times.
-    if let Ok(protected) = batch.signature.protected()
-        && let Some(key) = keys.iter().find(|candidate| candidate.kid == protected.kid)
-        && let Err(error) = store.archive_key(key)
-    {
+    if let Err(error) = store.archive_key(signing_key) {
         return Err(Refused::Unavailable(error.to_string()));
     }
 
     // One writer per stream, from the first read of its state to the acknowledgement.
     let gate = store.gate(&envelope.stream);
     let _writing = match gate.lock() {
+        Ok(held) => held,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    // Several producer streams contribute to one tenant view. Hold its gate for the whole batch,
+    // not once per record: otherwise two producers interleave a physical page and a reader can
+    // observe rows that neither batch has acknowledged yet.
+    let view_gate = store.view_gate(&envelope.stream.zone, &envelope.stream.ledger);
+    let _view = match view_gate.lock() {
         Ok(held) => held,
         Err(poisoned) => poisoned.into_inner(),
     };
@@ -214,20 +263,25 @@ pub fn accept(
     // stored rather than skipped: a producer resending *different* bytes at a sequence already
     // held is the fork case, and it is the one thing that must never be quietly absorbed.
     let held = held_digests(store, &envelope).map_err(Refused::Unavailable)?;
-    let mut stored = 0;
+    let mut fresh = Vec::new();
     for value in &batch.records {
         let seq = value.get("seq").and_then(Value::as_u64).unwrap_or_default();
         if seq <= state.acked {
             same_or_fork(store, &held, &envelope, value, seq)?;
             continue;
         }
-        store
-            .append(&envelope.stream, value)
-            .map_err(|error| Refused::Unavailable(error.to_string()))?;
-        stored += 1;
+        fresh.push(value);
     }
+    store
+        .append_batch(&envelope.stream, &fresh)
+        .map_err(|error| Refused::Unavailable(error.to_string()))?;
+    let stored = fresh.len() as u64;
 
-    let signature = serde_json::to_value(&batch.signature).unwrap_or(Value::Null);
+    let signature = serde_json::to_value(&batch.signature).map_err(|error| {
+        Refused::Unavailable(format!(
+            "the verified batch envelope could not be preserved: {error}"
+        ))
+    })?;
     store
         .keep_envelope(&envelope.stream, envelope.first_seq, &signature)
         .map_err(|error| Refused::Unavailable(error.to_string()))?;
@@ -302,15 +356,58 @@ fn check(batch: &Batch, envelope: &Envelope, accepted_types: &[&str]) -> Result<
     // never taken from the envelope's summary, which is a hint for skipping batches rather than an
     // authority about what is in one.
     for value in &batch.records {
-        let Some(event_type) = value.get("event_type").and_then(Value::as_str) else {
-            return Err(Refused::Unverifiable(
-                "a record with no `event_type`: a type is never inferred from a payload".to_owned(),
-            ));
-        };
-        if !accepted_types.contains(&event_type) {
+        let record =
+            record::validate(value).map_err(|error| Refused::Unverifiable(error.to_string()))?;
+        if !accepted_types.contains(&record.event_type.as_str()) {
             return Err(Refused::Unregistered(format!(
-                "`{event_type}` is not an event type this store accepts; it accepts {}",
+                "`{}` is not an event type this store accepts; it accepts {}",
+                record.event_type,
                 accepted_types.join(", ")
+            )));
+        }
+        validate_occurrence(&record)?;
+    }
+
+    Ok(())
+}
+
+/// Checks the registered event payload and binds the redundant record fields to it.
+///
+/// Those fields are redundant on purpose: they make filtering cheap and an audit readable. They
+/// are safe only while they say the same thing as the typed occurrence the digest covers.
+fn validate_occurrence(record: &record::Record) -> Result<(), Refused> {
+    if record.event_type != permguard_languages::event::EVENT_TYPE {
+        return Err(Refused::Unregistered(format!(
+            "this build has no payload validator for `{}`",
+            record.event_type
+        )));
+    }
+    let body: permguard_languages::event::OccurrenceBody =
+        serde_json::from_value(record.event.clone()).map_err(|error| {
+            Refused::Unverifiable(format!(
+                "the `{}` payload is malformed: {error}",
+                record.event_type
+            ))
+        })?;
+    let occurrence = body
+        .read()
+        .map_err(|error| Refused::Unverifiable(error.to_string()))?;
+    for (name, stated, actual) in [
+        (
+            "event_id",
+            record.event_id.as_str(),
+            occurrence.event_id.as_str(),
+        ),
+        ("kind", record.kind.as_str(), occurrence.kind.as_str()),
+        (
+            "occurred_at",
+            record.occurred_at.as_str(),
+            occurrence.occurred_at.as_str(),
+        ),
+    ] {
+        if stated != actual {
+            return Err(Refused::Unverifiable(format!(
+                "the record states `{name}` as `{stated}` and its typed occurrence states `{actual}`"
             )));
         }
     }

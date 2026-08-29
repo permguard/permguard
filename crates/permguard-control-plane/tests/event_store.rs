@@ -20,6 +20,7 @@
 
 #![allow(clippy::expect_used)]
 
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -86,6 +87,17 @@ fn records(instance: &str, count: u64, event_type: &str) -> Vec<Value> {
     for seq in 1..=count {
         let occurred = permguard_events::index::render_epoch_seconds(1_700_000_000 + seq as i64)
             .expect("an instant");
+        let kind = if seq % 2 == 0 { "response" } else { "request" };
+        let event = json!({
+            "event_id": format!("{instance}-{seq}"),
+            "kind": kind,
+            "action": "Drupe::Action::Login",
+            "principal": "Drupe::OAuthUser::\"alice\"",
+            "resource": "Drupe::Gateway::\"gw1\"",
+            "logged": {"input": {"user": "alice", "server": "s1"}},
+            "request_context": {"input": {"user": "alice", "server": "s1"}},
+            "occurred_at": occurred,
+        });
         let held = Record {
             v: 1,
             record_type: permguard_events::RECORD_TYPE.to_owned(),
@@ -94,15 +106,16 @@ fn records(instance: &str, count: u64, event_type: &str) -> Vec<Value> {
             prev: prev.clone(),
             event_type: event_type.to_owned(),
             event_id: format!("{instance}-{seq}"),
-            occurrence_digest: format!("sha256:{seq:064x}"),
-            kind: if seq % 2 == 0 { "response" } else { "request" }.to_owned(),
+            occurrence_digest: permguard_events::occurrence_digest_of(&event)
+                .expect("the occurrence digests"),
+            kind: kind.to_owned(),
             profile: "temporal".to_owned(),
             policy_partitions: vec!["governance".to_owned()],
             commit: "sha256:commit".to_owned(),
             history_key: None,
             occurred_at: occurred,
             observed_at: "2026-08-28T10:15:30Z".to_owned(),
-            event: json!({"event_id": format!("{instance}-{seq}")}),
+            event,
         };
         let value = held.to_value().expect("the record renders");
         prev = record::digest_of(&value).expect("it digests");
@@ -110,6 +123,18 @@ fn records(instance: &str, count: u64, event_type: &str) -> Vec<Value> {
     }
 
     built
+}
+
+fn records_for(producer: &str, instance: &str, count: u64, event_type: &str) -> Vec<Value> {
+    let mut held = records(instance, count, event_type);
+    let mut previous = GENESIS.to_owned();
+    for record in &mut held {
+        record["stream"]["producer"]["id"] = json!(producer);
+        record["prev"] = json!(previous);
+        previous = record::digest_of(record).expect("it digests");
+    }
+
+    held
 }
 
 /// One signed batch over `records`, continuing from `previous_head`.
@@ -145,12 +170,29 @@ fn published(keys: &DirectoryKeyManager) -> Vec<permguard_core::Jwk> {
     keys.public_keys().expect("the ring publishes")
 }
 
+fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ingest::ProducerTrust> {
+    published(keys)
+        .into_iter()
+        .map(|key| ingest::ProducerTrust {
+            key,
+            producer: producer.to_owned(),
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+        })
+        .collect()
+}
+
 fn accept(
     store: &EventStore,
     batch: &Batch,
     keys: &DirectoryKeyManager,
 ) -> Result<Accepted, Refused> {
-    ingest::accept(store, batch, &published(keys), &[DOGWOOD])
+    let producer = batch
+        .records
+        .first()
+        .and_then(|record| record["stream"]["producer"]["id"].as_str())
+        .unwrap_or("plane-a");
+    ingest::accept(store, batch, &trusted(keys, producer), &[DOGWOOD])
 }
 
 fn cursor_key() -> permguard_stream::CursorKey {
@@ -233,6 +275,11 @@ fn two_different_records_at_one_sequence_close_the_stream_for_good() {
     // A second history for the same stream: same sequences, different content.
     let mut forked = first.clone();
     forked[2]["event_id"] = json!("something-else");
+    forked[2]["event"]["event_id"] = json!("something-else");
+    forked[2]["occurrence_digest"] = json!(
+        permguard_events::occurrence_digest_of(&forked[2]["event"])
+            .expect("the changed occurrence digests")
+    );
     // Re-chain it so the *only* thing wrong is that it disagrees with what is stored.
     let mut prev = record::digest_of(&forked[1]).expect("it digests");
     for record in forked.iter_mut().skip(2) {
@@ -279,11 +326,52 @@ fn an_event_type_this_store_does_not_accept_is_refused_before_anything_is_stored
     let refused = ingest::accept(
         &store,
         &batch(&held, GENESIS, &keys),
-        &published(&keys),
+        &trusted(&keys, "plane-a"),
         &[DOGWOOD],
     )
     .expect_err("a type is never inferred from a payload");
     assert!(matches!(refused, Refused::Unregistered(_)), "{refused}");
+}
+
+#[test]
+fn a_valid_signature_cannot_impersonate_another_producer_or_tenant() {
+    let (keys, store) = (ring("bound-trust"), store("bound-trust"));
+    let held = records("i-1", 1, DOGWOOD);
+    let signed = batch(&held, GENESIS, &keys);
+    let key = published(&keys).into_iter().next().expect("a public key");
+
+    for trust in [
+        ingest::ProducerTrust {
+            key: key.clone(),
+            producer: "plane-b".to_owned(),
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+        },
+        ingest::ProducerTrust {
+            key: key.clone(),
+            producer: "plane-a".to_owned(),
+            zone: "another-zone".to_owned(),
+            ledger: LEDGER.to_owned(),
+        },
+        ingest::ProducerTrust {
+            key: key.clone(),
+            producer: "plane-a".to_owned(),
+            zone: ZONE.to_owned(),
+            ledger: "another-ledger".to_owned(),
+        },
+    ] {
+        let refused = ingest::accept(&store, &signed, &[trust], &[DOGWOOD])
+            .expect_err("a key is not authority to claim another identity or tenant");
+        assert!(matches!(refused, Refused::Unattributable(_)), "{refused}");
+    }
+
+    assert!(
+        store
+            .segments(&Scope::for_stream(&stream("i-1")))
+            .expect("the scope reads")
+            .is_empty(),
+        "an unauthorized but cryptographically valid batch reached storage"
+    );
 }
 
 /// Bytes in, bytes out: a record whose digest changed would be indistinguishable from tampering.
@@ -431,6 +519,56 @@ fn a_page_that_matches_nothing_still_advances_and_says_there_is_more() {
     );
 }
 
+/// A producer's local sequence is not a tenant-view position.
+#[test]
+fn a_new_producer_cannot_append_behind_a_tenant_cursor() {
+    let (keys, store) = (ring("merged-position"), store("merged-position"));
+    let first = records_for("plane-a", "i-a", 10_001, DOGWOOD);
+    accept(&store, &batch(&first, GENESIS, &keys), &keys).expect("plane A is stored");
+
+    let key = cursor_key();
+    let mut from = None;
+    loop {
+        let page = read::read(
+            &store,
+            &tenant(),
+            &Filters::default(),
+            &key,
+            &permguard_stream::Window {
+                from,
+                limit_records: 1_000,
+                ..permguard_stream::Window::default()
+            },
+        )
+        .expect("the first producer is read");
+        from = Some(page.next);
+        if !page.more {
+            break;
+        }
+    }
+
+    // Its first local sequence arrives after the cursor has passed plane A's sequence 10,001.
+    // Filing this under producer sequence 1 would put it back in the first physical segment and
+    // make every resumed reader miss it.
+    let second = records_for("plane-b", "i-b", 1, DOGWOOD);
+    accept(&store, &batch(&second, GENESIS, &keys), &keys).expect("plane B is stored");
+    let page = read::read(
+        &store,
+        &tenant(),
+        &Filters::default(),
+        &key,
+        &permguard_stream::Window { from, ..window(10) },
+    )
+    .expect("the tenant tail resumes");
+
+    assert_eq!(
+        page.records.len(),
+        1,
+        "the new producer was filed behind the cursor"
+    );
+    assert_eq!(page.records[0]["stream"]["producer"]["id"], "plane-b");
+}
+
 /// One occurrence, by the identifier its caller stated.
 #[test]
 fn one_occurrence_is_found_by_its_identifier_and_absence_is_an_answer() {
@@ -499,6 +637,269 @@ fn a_reader_that_asks_for_proof_gets_the_envelope_and_a_path_per_record() {
     }
 }
 
+#[test]
+fn a_proof_request_fails_closed_when_its_envelope_is_damaged() {
+    let (keys, store) = (ring("proof-damaged"), store("proof-damaged"));
+    accept(
+        &store,
+        &batch(&records("i-1", 2, DOGWOOD), GENESIS, &keys),
+        &keys,
+    )
+    .expect("stored");
+    let directory = store.stream_path(&stream("i-1")).expect("a stream path");
+    let envelope = std::fs::read_dir(&directory)
+        .expect("the stream reads")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("batch-"))
+        })
+        .expect("the envelope exists");
+    std::fs::write(&envelope, b"{not an envelope").expect("the envelope is damaged");
+
+    let refused = read::read(
+        &store,
+        &tenant(),
+        &Filters::default(),
+        &cursor_key(),
+        &permguard_stream::Window {
+            proof: true,
+            ..window(100)
+        },
+    )
+    .expect_err("a proof is never returned incomplete");
+    assert!(matches!(refused, read::ReadError::Unavailable(_)));
+}
+
+#[test]
+fn a_finite_export_keeps_its_snapshot_when_a_new_producer_arrives() {
+    let (keys, store) = (ring("snapshot"), store("snapshot"));
+    let first = records_for("plane-a", "i-a", 5, DOGWOOD);
+    accept(&store, &batch(&first, GENESIS, &keys), &keys).expect("plane A is stored");
+
+    let key = cursor_key();
+    let first_page = read::read(&store, &tenant(), &Filters::default(), &key, &window(2))
+        .expect("the snapshot starts");
+    let bound = permguard_stream::Frontier::decode(&first_page.high_watermark)
+        .expect("the watermark is a frontier");
+
+    let newcomer = records_for("plane-b", "i-b", 1, DOGWOOD);
+    accept(&store, &batch(&newcomer, GENESIS, &keys), &keys).expect("plane B is stored");
+
+    let mut from = Some(first_page.next);
+    let mut exported = first_page.records;
+    loop {
+        let page = read::read(
+            &store,
+            &tenant(),
+            &Filters::default(),
+            &key,
+            &permguard_stream::Window {
+                from,
+                until: Some(bound.clone()),
+                limit_records: 2,
+                ..permguard_stream::Window::default()
+            },
+        )
+        .expect("the snapshot continues");
+        assert_eq!(
+            permguard_stream::Frontier::decode(&page.high_watermark),
+            Some(bound.clone()),
+            "later pages must not replace the captured end with a moving one"
+        );
+        exported.extend(page.records);
+        from = Some(page.next);
+        if !page.more {
+            break;
+        }
+    }
+
+    assert_eq!(exported.len(), 5);
+    assert!(exported.iter().all(|record| {
+        record["stream"]["producer"]["id"] == serde_json::Value::String("plane-a".to_owned())
+    }));
+}
+
+#[test]
+fn a_lost_tenant_view_state_is_rebuilt_from_acknowledged_streams() {
+    let (keys, store) = (ring("view-recovery"), store("view-recovery"));
+    accept(
+        &store,
+        &batch(&records("i-1", 4, DOGWOOD), GENESIS, &keys),
+        &keys,
+    )
+    .expect("stored");
+    let root = store.root().to_path_buf();
+    let view_state = store
+        .view_path(ZONE, LEDGER)
+        .expect("the view path")
+        .join("VIEW_STATE");
+    std::fs::remove_file(&view_state).expect("the derived state is lost");
+    drop(store);
+
+    let reopened = EventStore::open(root).expect("the store reopens");
+    let page = read::read(
+        &reopened,
+        &tenant(),
+        &Filters::default(),
+        &cursor_key(),
+        &window(100),
+    )
+    .expect("the derived state is rebuilt");
+    assert_eq!(
+        page.records.len(),
+        4,
+        "acknowledged history must not disappear until another ingest happens"
+    );
+}
+
+#[test]
+fn a_stale_tenant_view_commit_is_reconciled_with_the_producer_ack_after_restart() {
+    let (keys, store) = (ring("view-stale"), store("view-stale"));
+    accept(
+        &store,
+        &batch(&records("i-1", 4, DOGWOOD), GENESIS, &keys),
+        &keys,
+    )
+    .expect("stored");
+    let root = store.root().to_path_buf();
+    let view_state = store
+        .view_path(ZONE, LEDGER)
+        .expect("the view path")
+        .join("VIEW_STATE");
+    let mut stale: Value = serde_json::from_slice(
+        &std::fs::read(&view_state).expect("the committed view state reads"),
+    )
+    .expect("the committed view state parses");
+    stale["committed"] = json!(0);
+    std::fs::write(
+        &view_state,
+        serde_json::to_vec_pretty(&stale).expect("the stale state renders"),
+    )
+    .expect("the crash leaves the old tenant commit behind");
+    drop(store);
+
+    let reopened = EventStore::open(root).expect("the store reconciles its derived view");
+    let page = read::read(
+        &reopened,
+        &tenant(),
+        &Filters::default(),
+        &cursor_key(),
+        &window(100),
+    )
+    .expect("the acknowledged tenant history reads");
+    assert_eq!(page.records.len(), 4);
+}
+
+#[test]
+fn an_unacknowledged_tenant_suffix_is_discarded_after_restart() {
+    let store = store("view-unacked");
+    let root = store.root().to_path_buf();
+    let records = records("i-1", 4, DOGWOOD);
+    let references: Vec<&Value> = records.iter().collect();
+    store
+        .append_batch(&stream("i-1"), &references)
+        .expect("the crash-window writes land but are not acknowledged");
+    drop(store);
+
+    let reopened = EventStore::open(root).expect("the store removes scratch tenant rows");
+    let page = read::read(
+        &reopened,
+        &tenant(),
+        &Filters::default(),
+        &cursor_key(),
+        &window(100),
+    )
+    .expect("the tenant view remains readable");
+    assert!(
+        page.records.is_empty(),
+        "a producer that was never acknowledged still owns and must resend those records"
+    );
+}
+
+#[test]
+fn torn_segment_tails_are_truncated_before_restart_recovery() {
+    let store = store("torn-segment");
+    let root = store.root().to_path_buf();
+    let held = records("i-1", 4, DOGWOOD);
+    let references: Vec<&Value> = held.iter().collect();
+    store
+        .append_batch(&stream("i-1"), &references)
+        .expect("the crash-window writes land");
+
+    for scope in [Scope::for_stream(&stream("i-1")), tenant()] {
+        let path = store
+            .segments(&scope)
+            .expect("the scope lists")
+            .last()
+            .expect("it has a segment")
+            .1
+            .clone();
+        let mut segment = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("the segment opens");
+        segment
+            .write_all(br#"{"event_id":"interrupted"#)
+            .expect("the interrupted append lands");
+        segment.sync_all().expect("the crash bytes reach disk");
+    }
+    drop(store);
+
+    let reopened = EventStore::open(root).expect("the torn tails are recovered");
+    let page = read::read(
+        &reopened,
+        &tenant(),
+        &Filters::default(),
+        &cursor_key(),
+        &window(100),
+    )
+    .expect("the recovered tenant view reads");
+    assert!(
+        page.records.is_empty(),
+        "the complete but unacknowledged records remain producer-owned, and the partial row is \
+         never treated as one"
+    );
+}
+
+#[test]
+fn a_complete_corrupt_segment_line_is_not_erased_as_a_torn_write() {
+    let store = store("corrupt-segment");
+    let root = store.root().to_path_buf();
+    let held = records("i-1", 1, DOGWOOD);
+    let references: Vec<&Value> = held.iter().collect();
+    store
+        .append_batch(&stream("i-1"), &references)
+        .expect("one complete row lands");
+    let path = store
+        .segments(&tenant())
+        .expect("the view lists")
+        .last()
+        .expect("it has a segment")
+        .1
+        .clone();
+    let mut segment = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .expect("the segment opens");
+    segment
+        .write_all(b"this is not an event record\n")
+        .expect("the damaged line lands");
+    segment.sync_all().expect("the damaged line reaches disk");
+    drop(store);
+
+    let error = match EventStore::open(root) {
+        Ok(_) => panic!("complete corruption must stop the store"),
+        Err(error) => error,
+    };
+    assert!(
+        format!("{error:#}").contains("complete record"),
+        "the operator is told this was durable corruption, not a recoverable torn tail: {error:#}"
+    );
+}
+
 /// The key that signed is archived, so a batch stays verifiable after a rotation.
 #[test]
 fn the_key_that_signed_is_archived_beside_what_it_attests() {
@@ -541,14 +942,13 @@ fn a_producer_name_that_is_not_a_directory_name_is_refused() {
     );
 }
 
-/// A `kid` is a label, not a digest — so the archive refuses to hold two keys under one.
+/// A key id is a producer-local label, not a globally unique key identity.
 ///
 /// Archiving keeps the key a batch was signed under, so that batch still verifies after the
-/// producer has rotated. Filing by `kid` alone and treating "a file is already there" as "the same
-/// key is already archived" keeps whichever arrived first: evidence signed by the second key then
-/// fails to verify, and the archive attests to a key that never signed what it is filed under.
+/// producer has rotated. Two independent producers are allowed to choose the same label; the
+/// content-addressed archive must keep both materials.
 #[test]
-fn the_archive_refuses_two_different_keys_under_one_key_id() {
+fn the_archive_keeps_two_different_keys_under_one_key_id() {
     let store = EventStore::open(scratch("kid-collision")).expect("the store opens");
     let first_ring = ring("kid-collision-a");
     let other = ring("kid-collision-b");
@@ -569,20 +969,15 @@ fn the_archive_refuses_two_different_keys_under_one_key_id() {
         .archive_key(&first)
         .expect("the same key twice is not a conflict");
 
-    let refused = store
+    store
         .archive_key(&second)
-        .expect_err("a different key under the same id is a conflict");
-    let message = format!("{refused:#}");
-    assert!(message.contains(&first.kid), "{message}");
-    assert!(
-        message.contains("label") || message.contains("different material"),
-        "the refusal says why the store cannot choose: {message}"
-    );
+        .expect("another producer may reuse the label");
 
-    // And the archive still holds exactly what it accepted.
+    // Both remain available to verify old evidence; a verifier uses the signature to select.
     let held = store.archived_keys().expect("the archive reads");
-    assert_eq!(held.len(), 1);
-    assert_eq!(held[0], first);
+    assert_eq!(held.len(), 2);
+    assert!(held.contains(&first));
+    assert!(held.contains(&second));
 
     // A damaged archive is an error, not an empty archive: skipping it would report a corruption
     // as somebody else's bad signature.
@@ -605,8 +1000,12 @@ fn the_archive_refuses_two_different_keys_under_one_key_id() {
 #[test]
 fn the_event_store_sweeps_what_is_past_its_retention_window() {
     let (keys, store) = (ring("retention-sweep"), store("retention-sweep"));
-    let all = records("i-1", 12, DOGWOOD);
-    accept(&store, &batch(&all, GENESIS, &keys), &keys).expect("the batch is stored");
+    let all = records("i-1", 10_001, DOGWOOD);
+    accept(&store, &batch(&all[..10_000], GENESIS, &keys), &keys)
+        .expect("the first batch is stored");
+    let head = record::digest_of(&all[9_999]).expect("the first batch has a head");
+    accept(&store, &batch(&all[10_000..], &head, &keys), &keys)
+        .expect("the second batch is stored");
 
     let held =
         permguard_control_plane::events::retention::sweep_once(&store, Duration::from_secs(3600))
@@ -620,6 +1019,18 @@ fn the_event_store_sweeps_what_is_past_its_retention_window() {
     let swept =
         permguard_control_plane::events::retention::sweep_once(&store, Duration::from_secs(0))
             .expect("the sweep runs");
+    assert_eq!(
+        swept.segments, 2,
+        "the tenant prefix and its producer copy leave together"
+    );
+    assert_eq!(
+        store
+            .segments(&Scope::for_stream(&stream("i-1")))
+            .expect("the producer reads")
+            .len(),
+        1,
+        "producer streams do not grow without bound behind retained tenant views"
+    );
 
     // What survives is still readable: a sweep that removed segments rebuilds the index rather
     // than leaving it naming positions inside files that are gone.

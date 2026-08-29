@@ -83,9 +83,11 @@ controlPlane:
   #                                  # segment that has left is a gap a reader is told about.
   #                                  # Envelopes and the archived verification keys that prove
   #                                  # retained records are never dropped with them.
-  #   producer_keys:                 # whose signatures this plane accepts. Absent: the same list
-  #     - trust/data-plane-events.jwks   # the decision store uses, because one deployment ships
-  #                                      # both from the same planes.
+  #   producer_keys:                 # required: key material plus producer/tenant authority
+  #     - path: trust/data-plane-events.jwks
+  #       producer: data-plane-eu-1
+  #       zone: "*"                  # `*` is allowed for zone/ledger, never for producer
+  #       ledger: "*"
 
 dataPlane:
   public:
@@ -208,6 +210,11 @@ dataPlane:
   #       - zone: acme
   #         ledger: agent-governance
   #         event_types: [permguard.dogwood.event.v1]
+  #     producer_keys:               # required by either shared mode; bound to origin and tenant
+  #       - path: trust/data-plane-b-events.jwks
+  #         producer: data-plane-b
+  #         zone: acme
+  #         ledger: agent-governance
 
 limits:
   # Through Docker's port forwarding every connection from the host arrives as the compose

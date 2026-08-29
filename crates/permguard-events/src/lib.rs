@@ -56,5 +56,6 @@ pub use envelope::{BATCH_TYPE, Batch, Envelope, EnvelopeError, Signed};
 pub use permguard_decisions::merkle::recompute as merkle_of;
 pub use record::{
     DIGEST_DOMAIN, GENESIS, HISTORY_DOMAIN, HistoryKey, PRODUCER_CLASS_DATA_PLANE, Producer,
-    RECORD_TYPE, Record, Stream, digest_of, history_digest_of, occurrence_digest_of,
+    RECORD_TYPE, Record, RecordError, Stream, digest_of, history_digest_of, occurrence_digest_of,
+    validate,
 };

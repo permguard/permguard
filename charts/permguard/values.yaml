@@ -88,22 +88,29 @@ controlPlane:
   # file can still be set without forking the chart. This is where a control plane in a cluster says
   # where it keeps the decisions its data planes ship it:
   #
-  #   controlPlane:
-  #     decisions:
-  #       enabled: "true"
-  #       directory: "data/decisions/store"  # put it on a PersistentVolume: it is an audit store, not a cache
-  #       retention: "90d"         # also the bound on how far behind a reader may fall
+  #   extraConfig:
+  #     controlPlane:
+  #       decisions:
+  #         enabled: "true"
+  #         directory: "data/decisions/store"  # put it on a PersistentVolume: it is an audit store, not a cache
+  #         retention: "90d"         # also the bound on how far behind a reader may fall
   #
   # and where it keeps the events they ship it — the only supported remote source for reading
   # events back, because a data plane's journal is a shipping buffer rather than an archive:
   #
-  #   controlPlane:
-  #     events:
-  #       enabled: "true"
-  #       directory: "data/events/store"     # a PersistentVolume, for the same reason
-  #       retention: "90d"
-  #   experimental:
-  #     dogwood: { enabled: "true" }        # required alongside it, and refused if missing
+  #   extraConfig:
+  #     controlPlane:
+  #       events:
+  #         enabled: "true"
+  #         directory: "data/events/store"     # a PersistentVolume, for the same reason
+  #         retention: "90d"
+  #         producer_keys:                      # mandatory, and bound: no decision-key fallback
+  #           - path: /etc/permguard/trust/data-plane-events.jwks
+  #             producer: data-plane-eu-1
+  #             zone: "*"
+  #             ledger: "*"
+  #     experimental:
+  #       dogwood: { enabled: "true" }        # required alongside it, and refused if missing
   extraConfig: {}
   # Extra environment for the container, as a list of EnvVar. `PERMGUARD_DECISIONS_LOG_PDP_ID` is
   # already set from the pod name; anything here is merged after it.
@@ -122,14 +129,20 @@ dataPlane:
   # therefore a StatefulSet with a claim per replica — this chart refuses the combination that
   # would silently change what those policies answer:
   #
-  #   dataPlane:
-  #     events:
-  #       enabled: "true"
-  #       # `producer_id` is NOT set here: it owns a hash chain, and the chart takes it from the
-  #       # pod name for the same reason it takes the decision log's. Pinning it is refused.
-  #       retention: { minimum: "48h" }
-  #   experimental:
-  #     dogwood: { enabled: "true" }
+  #   extraConfig:
+  #     dataPlane:
+  #       events:
+  #         enabled: "true"
+  #         # `producer_id` is NOT set here: it owns a hash chain, and the chart takes it from the
+  #         # pod name for the same reason it takes the decision log's. Pinning it is refused.
+  #         retention: { minimum: "48h" }
+  #         pull:
+  #           mode: shared-eventual
+  #           ledgers: [{ zone: acme, ledger: agent-governance, event_types: [permguard.dogwood.event.v1] }]
+  #           producer_keys:                    # mandatory in a shared mode
+  #             - { path: /etc/permguard/trust/peer-events.jwks, producer: peer-plane, zone: acme, ledger: agent-governance }
+  #     experimental:
+  #       dogwood: { enabled: "true" }
   #
   # Both are required, and the chart refuses one without the other: `events.enabled` is a statement
   # about disks, `experimental.dogwood.enabled` is a statement about accepting a contract whose

@@ -233,6 +233,14 @@ pub fn read(
     key: &CursorKey,
     window: &Window,
 ) -> Result<Page, ReadError> {
+    let gate = store.scope_gate(scope);
+    let _reading = match gate.lock() {
+        Ok(held) => held,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let end = store
+        .frontier(scope)
+        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
     let segments = store
         .segments(scope)
         .map_err(|error| ReadError::Unavailable(error.to_string()))?;
@@ -286,24 +294,44 @@ pub fn read(
     let walked = if by_index {
         // The index names exactly the positions of the requested types, so the other types
         // retained for this ledger are never opened.
-        indexed(store, scope, filters, &segments, position, window)?
+        indexed(
+            store,
+            scope,
+            filters,
+            &segments,
+            position,
+            window,
+            cursor.frontier.clone(),
+        )?
     } else {
-        scanned(&segments, filters, position, window)?
+        scanned(
+            scope,
+            &segments,
+            filters,
+            position,
+            window,
+            cursor.frontier.clone(),
+        )?
     };
 
     cursor.advance(&stream, walked.position);
-    if let Some(observed) = walked.observed {
-        cursor.frontier.cover(&stream, observed);
+    cursor.frontier = walked.frontier;
+    let target = window.until.as_ref().unwrap_or(&end);
+    if !walked.stopped_early && !walked.scan_bounded {
+        let through = target.covered_through(&stream);
+        cursor.frontier.cover(&stream, through);
+        cursor.advance(&stream, position_of(through));
+    }
+    if cursor.frontier.covered_through(&stream) >= target.covered_through(&stream) {
+        for (producer, sequence) in &target.covered {
+            cursor.frontier.cover(producer, *sequence);
+        }
     }
     let observed_frontier = cursor.frontier.clone();
-    let end = Frontier::of(
-        &stream,
-        end_of(store, scope).unwrap_or_else(|| observed_frontier.covered_through(&stream)),
-    );
     let more = permguard_stream::more(window, &observed_frontier, &end) || walked.stopped_early;
 
     let (proof, inclusion) = if window.proof {
-        proofs(store, scope, &walked.records)
+        proofs(store, &walked.records)?
     } else {
         (Vec::new(), Vec::new())
     };
@@ -312,7 +340,10 @@ pub fn read(
         records: walked.records,
         next: cursor.seal(key).map_err(ReadError::Offset)?,
         oldest_available,
-        high_watermark: observed_frontier.encode(),
+        // A finite export keeps echoing the snapshot it is bounded by. Returning the moving
+        // current end on later pages invites a client to replace its bound and create an export
+        // that never finishes on a busy ledger.
+        high_watermark: target.encode(),
         more,
         proof,
         inclusion,
@@ -324,6 +355,53 @@ pub fn read(
             scan_bounded: walked.scan_bounded,
         },
     })
+}
+
+fn progress(position: Position) -> u64 {
+    position
+        .segment
+        .saturating_sub(1)
+        .saturating_add(position.offset)
+}
+
+fn position_of(progress: u64) -> Position {
+    if progress == 0 {
+        return Position {
+            segment: 1,
+            offset: 0,
+        };
+    }
+    let next = progress.saturating_add(1);
+    let segment =
+        next.saturating_sub(1) / super::store::SEGMENT_RECORDS * super::store::SEGMENT_RECORDS + 1;
+
+    Position {
+        segment,
+        offset: next.saturating_sub(segment),
+    }
+}
+
+fn at_bound(scope: &Scope, position: Position, window: &Window) -> bool {
+    window
+        .until
+        .as_ref()
+        .is_some_and(|bound| progress(position) >= bound.covered_through(&scope.key()))
+}
+
+fn observe(scope: &Scope, frontier: &mut Frontier, position: Position, record: &Value) {
+    frontier.cover(&scope.key(), progress(position));
+    if matches!(scope, Scope::Tenant { .. })
+        && let Some(stream) = record
+            .get("stream")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<permguard_events::Stream>(value).ok())
+        && let Some(sequence) = record.get("seq").and_then(Value::as_u64)
+    {
+        frontier.cover(
+            &Scope::for_stream(&stream).key(),
+            sequence.saturating_add(1),
+        );
+    }
 }
 
 /// One occurrence, by the identifier its caller stated.
@@ -380,7 +458,7 @@ const SEARCH_PAGES: usize = 10_000;
 struct Walked {
     records: Vec<Value>,
     position: Position,
-    observed: Option<u64>,
+    frontier: Frontier,
     examined: usize,
     scan_bounded: bool,
     /// Whether the walk stopped with matching positions still ahead of it.
@@ -389,10 +467,12 @@ struct Walked {
 
 /// Walks the segments, matching as it goes.
 fn scanned(
+    scope: &Scope,
     segments: &[(u64, std::path::PathBuf)],
     filters: &Filters,
     mut position: Position,
     window: &Window,
+    mut frontier: Frontier,
 ) -> Result<Walked, ReadError> {
     let limit = window.records();
     let budget = window.bytes();
@@ -401,7 +481,7 @@ fn scanned(
     let mut examined = 0usize;
     let mut stopped = false;
 
-    for (first, path) in segments {
+    'segments: for (first, path) in segments {
         if *first < position.segment {
             continue;
         }
@@ -410,15 +490,22 @@ fn scanned(
             position.offset = 0;
         }
         loop {
+            if at_bound(scope, position, window) {
+                break 'segments;
+            }
             let (found, next_offset) = read_segment(path, position.offset, 64)
                 .map_err(|error| ReadError::Unavailable(error.to_string()))?;
             if found.is_empty() {
                 break;
             }
             for record in found {
+                if at_bound(scope, position, window) {
+                    break 'segments;
+                }
                 examined += 1;
                 position.offset += 1;
                 if !filters.matches(&record) {
+                    observe(scope, &mut frontier, position, &record);
                     continue;
                 }
                 let size = serde_json::to_vec(&record)
@@ -432,6 +519,7 @@ fn scanned(
                     break;
                 }
                 bytes += size;
+                observe(scope, &mut frontier, position, &record);
                 records.push(record);
                 if records.len() >= limit {
                     stopped = true;
@@ -448,15 +536,10 @@ fn scanned(
         }
     }
 
-    let observed = records
-        .last()
-        .and_then(|record| record.get("seq").and_then(Value::as_u64))
-        .map(|seq| seq + 1);
-
     Ok(Walked {
         records,
         position,
-        observed,
+        frontier,
         examined,
         scan_bounded: examined >= permguard_stream::window::MAX_EXAMINED,
         stopped_early: stopped,
@@ -471,6 +554,7 @@ fn indexed(
     segments: &[(u64, std::path::PathBuf)],
     mut position: Position,
     window: &Window,
+    mut frontier: Frontier,
 ) -> Result<Walked, ReadError> {
     let limit = window.records();
     let budget = window.bytes();
@@ -503,6 +587,16 @@ fn indexed(
         if (segment, line) < (position.segment, position.offset) {
             continue;
         }
+        if at_bound(
+            scope,
+            Position {
+                segment,
+                offset: line,
+            },
+            window,
+        ) {
+            break;
+        }
         let Some(path) = paths.get(&segment) else {
             continue;
         };
@@ -517,6 +611,7 @@ fn indexed(
             offset: line + 1,
         };
         if !filters.matches(&record) {
+            observe(scope, &mut frontier, last, &record);
             continue;
         }
         let size = serde_json::to_vec(&record)
@@ -531,6 +626,7 @@ fn indexed(
             break;
         }
         bytes += size;
+        observe(scope, &mut frontier, last, &record);
         records.push(record);
         if records.len() >= limit {
             stopped = true;
@@ -542,15 +638,10 @@ fn indexed(
     }
     position = last;
 
-    let observed = records
-        .last()
-        .and_then(|record| record.get("seq").and_then(Value::as_u64))
-        .map(|seq| seq + 1);
-
     Ok(Walked {
         records,
         position,
-        observed,
+        frontier,
         examined,
         scan_bounded: examined >= permguard_stream::window::MAX_EXAMINED,
         stopped_early: stopped,
@@ -558,108 +649,117 @@ fn indexed(
 }
 
 /// The envelopes covering a page's records, and one inclusion path per record.
-fn proofs(store: &EventStore, scope: &Scope, records: &[Value]) -> (Vec<Value>, Vec<Value>) {
-    // Read from the records themselves rather than from the request, so a tenant asking for a
-    // proof cannot name a stream it has no records of.
-    let mut streams: Vec<permguard_events::Stream> = records
-        .iter()
-        .filter_map(|record| serde_json::from_value(record.get("stream")?.clone()).ok())
-        .collect();
-    streams.dedup_by(|left, right| left == right);
-
-    let mut envelopes = Vec::new();
-    for stream in &streams {
-        if let Ok(held) = store.envelopes(stream) {
-            envelopes.extend(held);
-        }
-    }
-
-    let mut inclusion = Vec::new();
-    for record in records {
-        let Some(path) = inclusion_path(store, scope, record, &envelopes) else {
-            continue;
-        };
-        inclusion.push(path);
-    }
-
-    (envelopes, inclusion)
-}
-
-/// One record's place in the tree its batch was signed with.
-///
-/// Rebuilt from the **producer stream**, not from the page: the leaves of a batch include records
-/// of every tenant it touched, and the point is that the tenant never sees those and still gets a
-/// path that reaches the root its signed envelope attests.
-fn inclusion_path(
-    store: &EventStore,
-    scope: &Scope,
-    record: &Value,
-    envelopes: &[Value],
-) -> Option<Value> {
+fn proofs(store: &EventStore, records: &[Value]) -> Result<(Vec<Value>, Vec<Value>), ReadError> {
     use base64::Engine as _;
 
-    let seq = record.get("seq").and_then(Value::as_u64)?;
-    let stream: permguard_events::Stream =
-        serde_json::from_value(record.get("stream")?.clone()).ok()?;
-
-    let (first, last, root) = envelopes.iter().find_map(|signed| {
-        let payload = signed.get("payload").and_then(Value::as_str)?;
-        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(payload)
-            .ok()?;
-        let envelope: permguard_events::envelope::Envelope = serde_json::from_slice(&bytes).ok()?;
-        if envelope.stream != stream || !(envelope.first_seq..=envelope.last_seq).contains(&seq) {
-            return None;
-        }
-
-        Some((envelope.first_seq, envelope.last_seq, envelope.merkle_root))
-    })?;
-
-    let _ = scope;
-    let producer = Scope::Stream {
-        zone: stream.zone.clone(),
-        ledger: stream.ledger.clone(),
-        class: stream.producer.class.clone(),
-        producer: stream.producer.id.clone(),
-        instance: stream.producer.instance.clone(),
-    };
-    let mut leaves: Vec<(u64, String)> = Vec::new();
-    for (_, path) in store.segments(&producer).ok()? {
-        let (held, _) = read_segment(&path, 0, usize::MAX).ok()?;
-        for value in held {
-            let Some(held_seq) = value.get("seq").and_then(Value::as_u64) else {
-                continue;
-            };
-            if !(first..=last).contains(&held_seq) {
-                continue;
-            }
-            if let Ok(digest) = permguard_events::digest_of(&value) {
-                leaves.push((held_seq, digest));
-            }
-        }
+    struct BatchProof {
+        envelope: permguard_events::envelope::Envelope,
+        digests: Vec<String>,
     }
-    leaves.sort_by_key(|(held_seq, _)| *held_seq);
-    let index = leaves.iter().position(|(held_seq, _)| *held_seq == seq)?;
-    let digests: Vec<String> = leaves.into_iter().map(|(_, digest)| digest).collect();
-    let path = permguard_decisions::merkle::path(&digests, index)?;
 
-    serde_json::to_value(serde_json::json!({
-        "seq": seq,
-        "leaf": digests.get(index)?,
-        "root": root,
-        "path": path,
-    }))
-    .ok()
-}
+    let unavailable = |detail: String| ReadError::Unavailable(detail);
+    let mut batches: Vec<BatchProof> = Vec::new();
+    let mut proof = Vec::new();
+    let mut inclusion = Vec::with_capacity(records.len());
 
-/// The exclusive end of a scope right now: one past its highest sequence.
-fn end_of(store: &EventStore, scope: &Scope) -> Option<u64> {
-    let segments = store.segments(scope).ok()?;
-    let (_, last) = segments.last()?;
-    let (records, _) = read_segment(last, 0, usize::MAX).ok()?;
+    for record in records {
+        // Read identity from the returned record itself. A tenant cannot use a proof request to
+        // name a producer stream it was not already entitled to read.
+        let sequence = record
+            .get("seq")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| unavailable("an event record has no sequence".to_owned()))?;
+        let stream: permguard_events::Stream = serde_json::from_value(
+            record
+                .get("stream")
+                .cloned()
+                .ok_or_else(|| unavailable("an event record has no stream".to_owned()))?,
+        )
+        .map_err(|error| unavailable(format!("an event record has an invalid stream: {error}")))?;
 
-    records
-        .last()
-        .and_then(|record| record.get("seq").and_then(Value::as_u64))
-        .map(|seq| seq + 1)
+        let found = batches.iter().position(|batch| {
+            batch.envelope.stream == stream
+                && (batch.envelope.first_seq..=batch.envelope.last_seq).contains(&sequence)
+        });
+        let batch_index = match found {
+            Some(index) => index,
+            None => {
+                let signed = store
+                    .envelope_covering(&stream, sequence)
+                    .map_err(|error| unavailable(error.to_string()))?
+                    .ok_or_else(|| {
+                        unavailable(format!(
+                            "no signed batch covers sequence {sequence} of {}",
+                            Scope::for_stream(&stream).key()
+                        ))
+                    })?;
+                let payload = signed
+                    .get("payload")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| unavailable("a signed batch has no payload".to_owned()))?;
+                let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode(payload)
+                    .map_err(|error| {
+                        unavailable(format!("a batch payload is not base64: {error}"))
+                    })?;
+                let envelope: permguard_events::envelope::Envelope = serde_json::from_slice(&bytes)
+                    .map_err(|error| {
+                        unavailable(format!("a batch payload is not an event envelope: {error}"))
+                    })?;
+                if envelope.stream != stream
+                    || !(envelope.first_seq..=envelope.last_seq).contains(&sequence)
+                {
+                    return Err(unavailable(format!(
+                        "the selected signed batch does not cover sequence {sequence} of {}",
+                        Scope::for_stream(&stream).key()
+                    )));
+                }
+                let held = store
+                    .records_between(&stream, envelope.first_seq, envelope.last_seq)
+                    .map_err(|error| unavailable(error.to_string()))?;
+                let digests: Vec<String> = held
+                    .iter()
+                    .map(permguard_events::digest_of)
+                    .collect::<Result<_, _>>()
+                    .map_err(|error| unavailable(error.to_string()))?;
+                let root = permguard_decisions::merkle::root(&digests)
+                    .ok_or_else(|| unavailable("a signed batch has no Merkle leaves".to_owned()))?;
+                if root != envelope.merkle_root {
+                    return Err(unavailable(format!(
+                        "the retained producer records do not reproduce the Merkle root of batch \
+                         {}..={}",
+                        envelope.first_seq, envelope.last_seq
+                    )));
+                }
+                proof.push(signed);
+                batches.push(BatchProof { envelope, digests });
+                batches.len() - 1
+            }
+        };
+
+        let batch = &batches[batch_index];
+        let index = usize::try_from(sequence.saturating_sub(batch.envelope.first_seq))
+            .map_err(|_| unavailable("a Merkle leaf position is too large".to_owned()))?;
+        let leaf = batch
+            .digests
+            .get(index)
+            .ok_or_else(|| unavailable("a Merkle leaf is missing".to_owned()))?;
+        let returned =
+            permguard_events::digest_of(record).map_err(|error| unavailable(error.to_string()))?;
+        if returned != *leaf {
+            return Err(unavailable(format!(
+                "the returned record at sequence {sequence} differs from its producer copy"
+            )));
+        }
+        let path = permguard_decisions::merkle::path(&batch.digests, index)
+            .ok_or_else(|| unavailable("a Merkle inclusion path cannot be built".to_owned()))?;
+        inclusion.push(serde_json::json!({
+            "seq": sequence,
+            "leaf": leaf,
+            "root": batch.envelope.merkle_root,
+            "path": path,
+        }));
+    }
+
+    Ok((proof, inclusion))
 }

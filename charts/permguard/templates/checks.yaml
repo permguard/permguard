@@ -185,6 +185,27 @@ recorded anything. Both are configuration mistakes that look like a working depl
 {{- if and (ne $mode "local") (not (dig "ledgers" list ($pull | default dict))) }}
 {{- fail (printf "%s sets events.pull.mode=%q and subscribes to no ledgers: a shared mode decides against history other planes recorded, and this one has been told to read none of it. Name the ledgers under events.pull.ledgers, or use `local`." $component $mode) }}
 {{- end }}
+{{- if and (ne $mode "local") (not (dig "producer_keys" list ($pull | default dict))) }}
+{{- fail (printf "%s sets events.pull.mode=%q and declares no events.pull.producer_keys: imported records must be verified by a key bound to their exact producer and allowed zone/ledger. Add bound producer keys, or use `local`." $component $mode) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+An event store with no bounded producer authority.
+
+Decision-log keys only prove cryptographic possession; they do not authorize an event producer to
+claim a producer identity or a tenant. Event ingest therefore has its own mandatory, structured
+trust policy. Catch an absent list while rendering instead of producing a pod that refuses startup.
+*/ -}}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $extra := $plane.extraConfig | default dict }}
+{{- $events := dig "controlPlane" "events" dict $extra | default dict }}
+{{- $enabled := dig "enabled" "" $events }}
+{{- if and $enabled (ne (toString $enabled) "false") (not (dig "producer_keys" list $events)) }}
+{{- fail (printf "%s enables controlPlane.events but declares no controlPlane.events.producer_keys. Event keys must be bound to an exact producer and an allowed zone/ledger; the decision-log trust list is not an event-ingestion policy." $component) }}
+{{- end }}
 {{- end }}
 {{- end }}
 

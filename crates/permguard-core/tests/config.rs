@@ -1483,25 +1483,31 @@ fn a_millisecond_value_is_not_mistaken_for_a_malformed_second_value() {
     );
 }
 
-/// The event producers are their own list, with a stated fallback rather than a silent reuse.
+/// Event producers are their own identity-bound trust policy, never an unbound fallback.
 ///
 /// `controlPlane.events.producer_keys` was a field the configuration file accepted and nothing
 /// read: an operator who narrowed the event producers got a plane that went on accepting every
 /// decision producer, and nothing said so.
 #[test]
-fn the_event_producers_are_named_in_their_own_right_and_fall_back_when_they_are_not() {
+fn the_event_producers_are_named_in_their_own_right() {
+    let events = permguard_core::decisions::EventProducerSource {
+        path: "events.jwks".to_owned(),
+        producer: "plane-a".to_owned(),
+        zone: "acme".to_owned(),
+        ledger: "main".to_owned(),
+    };
     let both = config(&[], &[], &[])
         .with_decision_producer_keys(["decisions.jwks".to_owned()])
-        .with_event_producer_keys(["events.jwks".to_owned()]);
-    assert_eq!(both.event_producer_keys(), ["events.jwks"]);
+        .with_event_producer_keys([events.clone()]);
+    assert_eq!(both.event_producer_keys(), [events]);
     assert_eq!(both.decision_producer_keys(), ["decisions.jwks"]);
     assert!(both.event_producer_keys_declared());
 
-    // Not stated: the decision store's list stands in, because the ordinary deployment receives
-    // both from the same planes and naming them twice is how two lists drift.
+    // An event signature proves bytes, not authorization to claim a producer or tenant. The
+    // decision key list has no such bindings and therefore cannot stand in.
     let inherited =
         config(&[], &[], &[]).with_decision_producer_keys(["decisions.jwks".to_owned()]);
-    assert_eq!(inherited.event_producer_keys(), ["decisions.jwks"]);
+    assert!(inherited.event_producer_keys().is_empty());
     assert!(
         !inherited.event_producer_keys_declared(),
         "and the deployment can tell the fallback from a choice"

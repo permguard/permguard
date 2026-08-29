@@ -35,7 +35,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use permguard_core::{BoxFuture, ServerContext, Service, future::ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -50,6 +50,8 @@ const COMPONENT: &str = "temporal";
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(5);
 /// The most bytes one batch carries.
 pub const DEFAULT_BATCH_BYTES: u64 = 4 * 1024 * 1024;
+/// How often the local copy of imported history is compacted.
+const IMPORT_EVICTION_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// The running loop, and the way to ask it to stop.
 struct Running {
@@ -115,13 +117,14 @@ impl Service for EventService {
                 ));
             };
 
-            // Where records go. The same resolution the decision log uses, and deliberately the
-            // same: one deployment ships both to one control plane, and asking it to name that
-            // plane twice would be asking it to keep two settings in step.
-            let (url, tls) = crate::decisions::service::destination(context)?;
+            // An event-specific destination wins. Only its absence falls back to the decision
+            // log's endpoint, so a value written under `events.destination` can never be accepted
+            // by configuration and then ignored by the running service.
+            let (url, tls) = destination(context)?;
             let sink = event_sink(&url, &tls)?;
 
             let interval = self.tick.unwrap_or(DEFAULT_INTERVAL);
+            let pull_interval = self.tick.unwrap_or(config.events_pull_interval());
             let shipper = Arc::new(Shipper::new(
                 Arc::clone(submitter.streams()),
                 sink,
@@ -131,6 +134,7 @@ impl Service for EventService {
             ));
             let streams = Arc::clone(submitter.streams());
             let retention = streams.bounds().retention_minimum;
+            let imported_retention = streams.bounds().required_retention(retention);
             info!(
                 event.name = "events.shipping",
                 component = COMPONENT,
@@ -147,63 +151,138 @@ impl Service for EventService {
             let (stop, mut stopped) = watch::channel(false);
             let backoff = Backoff::default();
             let task = tokio::spawn(async move {
-                let mut failures = 0u32;
+                let mut ship_failures = 0u32;
+                let mut pull_failures = 0u32;
+                let mut next_ship = tokio::time::Instant::now() + interval;
+                let mut next_pull = tokio::time::Instant::now() + pull_interval;
+                let mut next_import_eviction = tokio::time::Instant::now();
                 loop {
-                    let wait = match failures {
-                        0 => interval,
-                        held => backoff.wait(held, jitter()),
+                    let deadline = if puller.is_some() {
+                        next_ship.min(next_pull).min(next_import_eviction)
+                    } else {
+                        next_ship
                     };
                     tokio::select! {
-                        _ = tokio::time::sleep(wait) => {
-                            // Blocking: a round reads and flushes files. Off the runtime's threads.
-                            let shipper = Arc::clone(&shipper);
-                            let streams = Arc::clone(&streams);
-                            let puller = puller.clone();
-                            let outcome = tokio::task::spawn_blocking(move || {
-                                let rounds = shipper.round();
-                                // Eviction follows shipping, in the same blocking hop: what may go
-                                // is bounded by what landed, and computing it separately would
-                                // read the watermarks twice.
-                                evict(&streams, retention);
-                                // And then the reading half, if there is one. After shipping
-                                // rather than before, so a plane that is behind on both catches up
-                                // on its own history first — that is the history its own decisions
-                                // depend on.
-                                if let Some(puller) = &puller {
-                                    for (subscription, round) in puller.round() {
-                                        if let PullRound::Quarantined { records, reason } = round {
-                                            warn!(
-                                                event.name = "events.import_quarantined",
-                                                component = COMPONENT,
-                                                zone = subscription.zone.as_str(),
-                                                ledger = subscription.ledger.as_str(),
-                                                records,
-                                                reason = reason.as_str(),
-                                                "imported records were refused and not applied"
-                                            );
+                        _ = tokio::time::sleep_until(deadline) => {
+                            let now = tokio::time::Instant::now();
+                            if now >= next_ship {
+                                // Blocking: a round reads and flushes files. Off the runtime's threads.
+                                let shipper = Arc::clone(&shipper);
+                                let streams = Arc::clone(&streams);
+                                let outcome = tokio::task::spawn_blocking(move || {
+                                    let rounds = shipper.round();
+                                    evict(&streams, retention);
+                                    rounds
+                                }).await;
+                                match outcome {
+                                    Ok(rounds) => {
+                                        if rounds.iter().any(|(_, round)| {
+                                            matches!(round, Round::Stopped { .. })
+                                        }) {
+                                            break;
+                                        }
+                                        ship_failures = match rounds
+                                            .iter()
+                                            .any(|(_, round)| matches!(round, Round::Deferred(_)))
+                                        {
+                                            true => ship_failures.saturating_add(1),
+                                            false => 0,
+                                        };
+                                    }
+                                    Err(_) => ship_failures = ship_failures.saturating_add(1),
+                                }
+                                let wait = match ship_failures {
+                                    0 => interval,
+                                    held => backoff.wait(held, jitter()),
+                                };
+                                next_ship = tokio::time::Instant::now() + wait;
+                            }
+
+                            if puller.is_some() && now >= next_pull {
+                                let puller = puller.clone();
+                                let outcome = tokio::task::spawn_blocking(move || {
+                                    puller.map(|held| held.round()).unwrap_or_default()
+                                }).await;
+                                match outcome {
+                                    Ok(rounds) => {
+                                        let deferred = rounds.iter().any(|(_, round)| {
+                                            matches!(round, PullRound::Deferred(_))
+                                        });
+                                        for (subscription, round) in rounds {
+                                            if let PullRound::Quarantined { records, reason } = round {
+                                                warn!(
+                                                    event.name = "events.import_quarantined",
+                                                    component = COMPONENT,
+                                                    zone = subscription.zone.as_str(),
+                                                    ledger = subscription.ledger.as_str(),
+                                                    records,
+                                                    reason = reason.as_str(),
+                                                    "imported records were refused and not applied"
+                                                );
+                                            }
+                                        }
+                                        pull_failures = if deferred {
+                                            pull_failures.saturating_add(1)
+                                        } else {
+                                            0
+                                        };
+                                    }
+                                    Err(_) => pull_failures = pull_failures.saturating_add(1),
+                                }
+                                let wait = match pull_failures {
+                                    0 => pull_interval,
+                                    held => backoff.wait(held, jitter()),
+                                };
+                                next_pull = tokio::time::Instant::now() + wait;
+                            }
+
+                            if puller.is_some() && now >= next_import_eviction {
+                                let puller = puller.clone();
+                                let outcome = tokio::task::spawn_blocking(move || {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|held| held.as_secs() as i64)
+                                        .unwrap_or_default();
+                                    let horizon = now.saturating_sub(
+                                        imported_retention.as_secs() as i64
+                                    );
+                                    puller
+                                        .map(|held| held.evict_before(horizon))
+                                        .unwrap_or_default()
+                                }).await;
+                                match outcome {
+                                    Ok(results) => {
+                                        for (subscription, result) in results {
+                                            match result {
+                                                Ok(0) => {}
+                                                Ok(removed) => info!(
+                                                    event.name = "events.import_evicted",
+                                                    component = COMPONENT,
+                                                    zone = subscription.zone.as_str(),
+                                                    ledger = subscription.ledger.as_str(),
+                                                    removed,
+                                                    "imported copies no temporal policy can still read were removed"
+                                                ),
+                                                Err(error) => warn!(
+                                                    event.name = "events.import_eviction_failed",
+                                                    component = COMPONENT,
+                                                    zone = subscription.zone.as_str(),
+                                                    ledger = subscription.ledger.as_str(),
+                                                    error = error.as_str(),
+                                                    "imported history could not be compacted; keeping it is the safe direction"
+                                                ),
+                                            }
                                         }
                                     }
+                                    Err(error) => warn!(
+                                        event.name = "events.import_eviction_failed",
+                                        component = COMPONENT,
+                                        error = %error,
+                                        "the imported-history compaction worker failed"
+                                    ),
                                 }
-
-                                rounds
-                            })
-                            .await;
-                            match outcome {
-                                Ok(rounds) => {
-                                    if rounds.iter().any(|(_, round)| {
-                                        matches!(round, Round::Stopped { .. })
-                                    }) {
-                                        break;
-                                    }
-                                    failures = match rounds
-                                        .iter()
-                                        .any(|(_, round)| matches!(round, Round::Deferred(_)))
-                                    {
-                                        true => failures.saturating_add(1),
-                                        false => 0,
-                                    };
-                                }
-                                Err(_) => failures = failures.saturating_add(1),
+                                next_import_eviction = tokio::time::Instant::now()
+                                    + IMPORT_EVICTION_INTERVAL;
                             }
                         }
                         _ = stopped.changed() => break,
@@ -267,8 +346,9 @@ fn puller(
     if keys.is_empty() {
         anyhow::bail!(
             "`dataPlane.events.pull.mode` is `{}` and this plane knows no producer's keys: name \
-             them under `controlPlane.decisions.producer_keys`. Imported history would otherwise \
-             be applied without anybody having checked who produced it",
+             them with producer and tenant bindings under \
+             `dataPlane.events.pull.producer_keys`. Imported history would otherwise be applied \
+             without authority to say who produced it",
             config.events_pull_mode().as_str()
         );
     }
@@ -289,21 +369,82 @@ fn puller(
         })
         .collect();
 
-    Ok(Some(Arc::new(Puller::new(
-        reader,
-        Arc::new(super::imports(config)),
-        subscriptions,
-        keys,
-        config.events_pull_mode(),
-        context.metrics().clone(),
-    ))))
+    let imports = super::imports(config);
+    for subscription in &subscriptions {
+        imports
+            .bind(
+                &subscription.zone,
+                &subscription.ledger,
+                &subscription.event_types,
+            )
+            .with_context(|| {
+                format!(
+                    "binding the import cursor for `{}/{}` to its event types",
+                    subscription.zone, subscription.ledger
+                )
+            })?;
+    }
+
+    let key_files = config
+        .events_pull_producer_keys()
+        .iter()
+        .map(|source| super::pull::ProducerFile {
+            path: config.working_dir().join(&source.path),
+            producer: source.producer.clone(),
+            zone: source.zone.clone(),
+            ledger: source.ledger.clone(),
+        })
+        .collect();
+
+    Ok(Some(Arc::new(
+        Puller::new(
+            reader,
+            imports,
+            subscriptions,
+            keys,
+            config.events_pull_mode(),
+            context.metrics().clone(),
+        )
+        .with_key_files(key_files),
+    )))
+}
+
+/// Where this plane exchanges event records, using the event destination when one is declared and
+/// the decision-log endpoint otherwise for deployments that send both streams to one control
+/// plane.
+fn destination(
+    context: &ServerContext<'_>,
+) -> Result<(String, permguard_control_client::TlsOptions)> {
+    let config = context.config();
+    if let Some(destination) = config.events_destination() {
+        return Ok((
+            destination.url.clone(),
+            tls_of(&destination.tls, config.working_dir()),
+        ));
+    }
+
+    crate::decisions::service::destination(context)
+}
+
+fn tls_of(
+    tls: &permguard_core::mirrors::MirrorTls,
+    working_dir: &std::path::Path,
+) -> permguard_control_client::TlsOptions {
+    permguard_control_client::TlsOptions {
+        ca_file: tls.ca_file.as_ref().map(Into::into),
+        cert_file: tls.cert.as_ref().map(Into::into),
+        key_file: tls.key.as_ref().map(Into::into),
+        server_name: tls.server_name.clone(),
+        skip_verify: false,
+    }
+    .rooted_at(working_dir)
 }
 
 /// The producers' published key sets, from the paths the file names.
-fn producer_keys(config: &permguard_core::Config) -> Vec<permguard_core::Jwk> {
+fn producer_keys(config: &permguard_core::Config) -> Vec<super::pull::ProducerTrust> {
     let mut keys = Vec::new();
-    for path in config.decision_producer_keys() {
-        let resolved = config.working_dir().join(path);
+    for source in config.events_pull_producer_keys() {
+        let resolved = config.working_dir().join(&source.path);
         let Ok(text) = std::fs::read_to_string(&resolved) else {
             continue;
         };
@@ -317,7 +458,13 @@ fn producer_keys(config: &permguard_core::Config) -> Vec<permguard_core::Jwk> {
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
-                .filter_map(|value| serde_json::from_value::<permguard_core::Jwk>(value).ok()),
+                .filter_map(|value| serde_json::from_value::<permguard_core::Jwk>(value).ok())
+                .map(|key| super::pull::ProducerTrust {
+                    key,
+                    producer: source.producer.clone(),
+                    zone: source.zone.clone(),
+                    ledger: source.ledger.clone(),
+                }),
         );
     }
 

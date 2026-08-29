@@ -289,6 +289,16 @@ message SubmitEventResponse {
   // reproducing a decision needs to know what was visible, and "local" is an
   // answer to that question rather than the absence of one.
   DecisionHistory history = 8;
+  // One answer per addressed partition, in profile order. Empty for a
+  // history-only occurrence; the aggregate decision above remains authoritative.
+  repeated TemporalPartitionEvaluation evaluations = 9;
+}
+
+message TemporalPartitionEvaluation {
+  string partition = 1;
+  bool decision = 2;
+  repeated string policies = 3;
+  Reason reason = 4;
 }
 
 // Which history a decision ranged over.
@@ -302,8 +312,11 @@ message DecisionHistory {
   // The opaque import watermark this decision saw, for a shared mode. Echo it,
   // never parse it.
   string watermark = 2;
-  // How long ago the imported history was last refreshed, in seconds.
-  uint64 staleness_seconds = 3;
+  // How long ago the imported history was last refreshed, in seconds. Absent
+  // for a local history; zero is a real value for a just-refreshed shared one.
+  optional uint64 staleness_seconds = 3;
+  // Recorded holes the importer could not recover from retention.
+  uint64 gaps = 4;
 }
 
 message GetTemporalConfigurationRequest {}

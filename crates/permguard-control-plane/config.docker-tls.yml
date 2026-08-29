@@ -86,9 +86,11 @@ controlPlane:
   #                                  # segment that has left is a gap a reader is told about.
   #                                  # Envelopes and the archived verification keys that prove
   #                                  # retained records are never dropped with them.
-  #   producer_keys:                 # whose signatures this plane accepts. Absent: the same list
-  #     - trust/data-plane-events.jwks   # the decision store uses, because one deployment ships
-  #                                      # both from the same planes.
+  #   producer_keys:                 # required: key material plus producer/tenant authority
+  #     - path: trust/data-plane-events.jwks
+  #       producer: data-plane-eu-1
+  #       zone: "*"                  # `*` is allowed for zone/ledger, never for producer
+  #       ledger: "*"
 
 limits:
   # Through Docker's port forwarding every connection from the host arrives as the compose

@@ -62,7 +62,7 @@ written by different people, in different languages, and still compose.
 | --- | --- | --- | --- |
 | [Cedar](https://www.cedarpolicy.com) | `cedar` (`cedar-policy` 4.x) | the request | stable |
 | [Rego](https://www.openpolicyagent.org/docs/policy-language) | `rego` (`regorus`) | the request | stable |
-| [Dogwood](https://github.com/awslabs/dogwood) | `dogwood` (`amzn-dogwood-language`) | the request **and** a durable history | experimental |
+| [Dogwood](https://github.com/dogwood-policy/dogwood) | `dogwood` (`amzn-dogwood-language`) | the request **and** a durable history | experimental |
 
 A language is a **build**, not a deployment action: all three are compiled in. What a deployment
 chooses is whether a ledger naming a runtime will be *served*, and the experimental one is gated —
@@ -71,7 +71,7 @@ see below.
 ### Experimental: Dogwood, and deciding from what has happened
 
 Cedar and Rego answer *may this subject do this to this?* from the request in front of them.
-[Dogwood](https://github.com/awslabs/dogwood) is Cedar plus **history**: a policy may ask what has
+[Dogwood](https://github.com/dogwood-policy/dogwood) is Cedar plus **history**: a policy may ask what has
 happened recently — `formerly`, `since`, aggregations over a window — as well as what is being
 asked now.
 

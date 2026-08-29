@@ -65,8 +65,9 @@ pub mod shipper;
 pub mod streams;
 pub mod submit;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use permguard_core::ServerContext;
 use permguard_events::journal::Bounds;
@@ -80,6 +81,15 @@ use submit::Submitter;
 /// on its directory, so a second `Streams` would be a second writer for every stream this plane
 /// has open — and the second one would fail to open, at the first submission, in production.
 static SUBMITTER: OnceLock<Option<Arc<Submitter>>> = OnceLock::new();
+
+/// Import stores by canonical directory, shared by the pull worker and every submitter that reads
+/// them.
+///
+/// The index and deduplication maps inside [`imports::Imports`] are live process state. Opening the
+/// same directory twice would give the puller one index to update and the decision path another,
+/// stale one to query; newly imported events could then remain invisible until restart. Weak
+/// entries keep tests and short-lived compositions from pinning a store after their last user.
+static IMPORTS: OnceLock<Mutex<BTreeMap<PathBuf, Weak<imports::Imports>>>> = OnceLock::new();
 
 /// The temporal path, built from the plane's configuration on first use.
 ///
@@ -129,7 +139,7 @@ pub fn submitter(context: &ServerContext<'_>) -> Option<Arc<Submitter>> {
             let submitter = match consistency.is_shared() {
                 true => submitter.with_shared_history(
                     consistency,
-                    Arc::new(imports(config)),
+                    imports(config),
                     config.events_pull_max_staleness(),
                 ),
                 false => submitter,
@@ -147,8 +157,20 @@ pub fn submitter(context: &ServerContext<'_>) -> Option<Arc<Submitter>> {
 /// An imported record is evidence another producer created. Putting it in this plane's journal
 /// would place it inside this plane's own sequence and hash chain, which would be a claim that
 /// this plane recorded it — and the next batch this plane signed would attest that claim.
-pub fn imports(config: &permguard_core::Config) -> imports::Imports {
-    imports::Imports::new(config.events_directory().join("pull"))
+pub fn imports(config: &permguard_core::Config) -> Arc<imports::Imports> {
+    let root = config.events_directory().join("pull");
+    let stores = IMPORTS.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut stores = match stores.lock() {
+        Ok(stores) => stores,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(store) = stores.get(&root).and_then(Weak::upgrade) {
+        return store;
+    }
+    let store = Arc::new(imports::Imports::new(root.clone()));
+    stores.insert(root, Arc::downgrade(&store));
+
+    store
 }
 
 /// Whether this deployment serves the temporal interface at all.
@@ -208,6 +230,78 @@ pub fn startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
              none of it: name the ledgers under `dataPlane.events.pull.ledgers`, or use `local`",
             config.events_pull_mode().as_str()
         );
+    }
+    if config.events_pull_mode().is_shared() {
+        let sources = config.events_pull_producer_keys();
+        if sources.is_empty() {
+            anyhow::bail!(
+                "`dataPlane.events.pull.mode` is `{}` and no producer trust is configured. Name \
+                 each accepted producer and its zone/ledger scope under \
+                 `dataPlane.events.pull.producer_keys`; imported history is never verified \
+                 against an unbound key list",
+                config.events_pull_mode().as_str()
+            );
+        }
+        for source in sources {
+            if source.path.trim().is_empty()
+                || source.producer.trim().is_empty()
+                || source.zone.trim().is_empty()
+                || source.ledger.trim().is_empty()
+                || source.producer == "*"
+            {
+                anyhow::bail!(
+                    "every pull producer key names a non-empty `path`, exact `producer`, and \
+                    `zone`/`ledger` (which may be `*`)"
+                );
+            }
+            let resolved = config.working_dir().join(&source.path);
+            let text = std::fs::read_to_string(&resolved).map_err(|error| {
+                anyhow::anyhow!(
+                    "reading pull producer `{}` from {}: {error}",
+                    source.producer,
+                    resolved.display()
+                )
+            })?;
+            let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+                anyhow::anyhow!("parsing pull producer keys {}: {error}", resolved.display())
+            })?;
+            let set = parsed.get("keys").cloned().unwrap_or(parsed);
+            let keys: Vec<permguard_core::Jwk> = serde_json::from_value(set).map_err(|error| {
+                anyhow::anyhow!("{} is not a JWKS: {error}", resolved.display())
+            })?;
+            if keys.is_empty() {
+                anyhow::bail!(
+                    "pull producer `{}` publishes no keys in {}",
+                    source.producer,
+                    resolved.display()
+                );
+            }
+        }
+        let mut subscribed = std::collections::BTreeSet::new();
+        for subscription in config.events_pull_ledgers() {
+            if !subscribed.insert((&subscription.zone, &subscription.ledger)) {
+                anyhow::bail!(
+                    "the shared event subscription `{}/{}` is declared more than once. One tenant \
+                     has one cursor and one canonical event-type selection: combine its types in \
+                     one entry",
+                    subscription.zone,
+                    subscription.ledger
+                );
+            }
+            let covered = sources.iter().any(|source| {
+                (source.zone == "*" || source.zone == subscription.zone)
+                    && (source.ledger == "*" || source.ledger == subscription.ledger)
+            });
+            if !covered {
+                anyhow::bail!(
+                    "the shared event subscription `{}/{}` has no producer key authorized for \
+                     that tenant. Add a bound entry under \
+                     `dataPlane.events.pull.producer_keys`, or remove the subscription",
+                    subscription.zone,
+                    subscription.ledger
+                );
+            }
+        }
     }
     if config.events_producer_id().trim().is_empty() {
         anyhow::bail!(

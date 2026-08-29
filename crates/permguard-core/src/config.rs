@@ -1003,6 +1003,7 @@ pub struct Config {
     /// be edited every time one was added or graduated.
     experimental: BTreeMap<String, bool>,
     events_pull_ledgers: Vec<PullSubscription>,
+    events_pull_producer_keys: Vec<crate::decisions::EventProducerSource>,
     log_spool_age: Duration,
     log_batch_bytes: u64,
     log_batch_interval: Duration,
@@ -1011,6 +1012,7 @@ pub struct Config {
     log_commitment_key_ref: Option<SecretRef>,
     log_commitment_key_version: String,
     log_destination: Option<crate::decisions::LogDestination>,
+    events_destination: Option<crate::decisions::EventDestination>,
     log_include: crate::decisions::IncludeSection,
     decision_store_enabled: bool,
     decision_store_directory: String,
@@ -1024,7 +1026,7 @@ pub struct Config {
     /// Separate from the decision one because they are separate trust decisions: a deployment may
     /// receive decisions from planes it does not receive events from, and saying so should not
     /// require saying it twice everywhere else.
-    event_producer_keys: Vec<String>,
+    event_producer_keys: Vec<crate::decisions::EventProducerSource>,
     notp_compression: bool,
     mirrors_enabled: bool,
     mirrors_interval: Duration,
@@ -1129,6 +1131,7 @@ impl Default for Config {
             events_pull_max_staleness: DEFAULT_EVENTS_PULL_MAX_STALENESS,
             experimental: BTreeMap::new(),
             events_pull_ledgers: Vec::new(),
+            events_pull_producer_keys: Vec::new(),
             log_spool_age: DEFAULT_LOG_SPOOL_AGE,
             log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
@@ -1137,6 +1140,7 @@ impl Default for Config {
             log_commitment_key_ref: None,
             log_commitment_key_version: DEFAULT_KEY_VERSION.to_owned(),
             log_destination: None,
+            events_destination: None,
             log_include: crate::decisions::IncludeSection::default(),
             decision_store_enabled: false,
             decision_store_directory: DEFAULT_DECISION_STORE_DIRECTORY.to_owned(),
@@ -2453,12 +2457,26 @@ produce: use `EdDSA` or `ES256`"
         &self.events_pull_ledgers
     }
 
+    /// Producer keys accepted on history imported by this data plane.
+    pub fn events_pull_producer_keys(&self) -> &[crate::decisions::EventProducerSource] {
+        &self.events_pull_producer_keys
+    }
+
     /// Records which ledgers this plane subscribes to.
     ///
     /// Structured, so it comes from the file rather than the layered pipeline — a list of
     /// three-part subscriptions has no single-variable form that is not a parser.
     pub fn with_pull_ledgers(mut self, ledgers: Vec<PullSubscription>) -> Self {
         self.events_pull_ledgers = ledgers;
+
+        self
+    }
+
+    pub fn with_pull_producer_keys(
+        mut self,
+        keys: impl IntoIterator<Item = crate::decisions::EventProducerSource>,
+    ) -> Self {
+        self.events_pull_producer_keys = keys.into_iter().collect();
 
         self
     }
@@ -2503,6 +2521,11 @@ produce: use `EdDSA` or `ES256`"
         self.log_destination.as_ref()
     }
 
+    /// Where event records are shipped and shared history is read from, when named separately.
+    pub fn events_destination(&self) -> Option<&crate::decisions::EventDestination> {
+        self.events_destination.as_ref()
+    }
+
     /// Which caller-supplied attributes this plane may record.
     pub fn log_include(&self) -> &crate::decisions::IncludeSection {
         &self.log_include
@@ -2531,6 +2554,46 @@ produce: use `EdDSA` or `ES256`"
         }
         self.log_destination = destination;
         self.log_include = include;
+
+        Ok(self)
+    }
+
+    /// Records the event store endpoint and validates its transport at startup.
+    pub fn with_events_destination(
+        mut self,
+        destination: Option<crate::decisions::EventDestination>,
+    ) -> Result<Self> {
+        if let Some(destination) = &destination {
+            crate::mirrors::check_source(&crate::mirrors::MirrorSource {
+                url: destination.url.clone(),
+                tls: destination.tls.clone(),
+                zones: Vec::new(),
+                ledgers: Vec::new(),
+            })
+            .context("reading the event store's server")?;
+
+            let scheme = destination
+                .url
+                .split_once("://")
+                .map(|(scheme, _)| scheme)
+                .unwrap_or_default();
+            let matches = match destination.transport.as_str() {
+                "http" => matches!(scheme, "http" | "https"),
+                "grpc" => matches!(scheme, "grpc" | "grpcs"),
+                other => anyhow::bail!(
+                    "reading the event store's server: `{other}` is not a transport; use `http` \
+                     or `grpc`"
+                ),
+            };
+            if !matches {
+                anyhow::bail!(
+                    "reading the event store's server: transport `{}` disagrees with URL scheme \
+                     `{scheme}`",
+                    destination.transport
+                );
+            }
+        }
+        self.events_destination = destination;
 
         Ok(self)
     }
@@ -2567,21 +2630,9 @@ produce: use `EdDSA` or `ES256`"
 
     /// The published key sets of the producers this plane accepts *event* records from.
     ///
-    /// # The fallback, and why it is one rather than a silent reuse
-    ///
-    /// `controlPlane.events.producer_keys` decides whose event batches this plane will accept.
-    /// When it is absent the decision store's list stands in, because the ordinary deployment
-    /// receives both from the same planes and naming them twice is a way to have two lists drift.
-    ///
-    /// What matters is that this is a *stated* fallback rather than the events block being read
-    /// from the decisions block regardless. Before it, `controlPlane.events.producer_keys` was a
-    /// field the file accepted and nothing read: an operator who narrowed the event producers got
-    /// a plane that went on accepting every decision producer, with no error to say so.
-    pub fn event_producer_keys(&self) -> &[String] {
-        if self.event_producer_keys.is_empty() {
-            return &self.decision_producer_keys;
-        }
-
+    /// Each source binds key material to a producer and an allowed zone/ledger scope. Event
+    /// evidence never falls back to the unbound decision-key list.
+    pub fn event_producer_keys(&self) -> &[crate::decisions::EventProducerSource] {
         &self.event_producer_keys
     }
 
@@ -2591,7 +2642,10 @@ produce: use `EdDSA` or `ES256`"
     }
 
     /// Records where a control plane's *event* producers publish their keys.
-    pub fn with_event_producer_keys(mut self, keys: impl IntoIterator<Item = String>) -> Self {
+    pub fn with_event_producer_keys(
+        mut self,
+        keys: impl IntoIterator<Item = crate::decisions::EventProducerSource>,
+    ) -> Self {
         self.event_producer_keys = keys.into_iter().collect();
 
         self

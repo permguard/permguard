@@ -273,6 +273,17 @@ pub struct LogDestination {
     pub tls: MirrorTls,
 }
 
+/// Where a plane ships and reads event records.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventDestination {
+    /// The exact base URL.
+    pub url: String,
+    /// The transport selected by the deployment: `http` or `grpc`.
+    pub transport: String,
+    /// The trust material for reaching it.
+    pub tls: MirrorTls,
+}
+
 impl DecisionsSection {
     /// The block's scalars, as pairs for the configuration-file layer.
     pub fn settings(&self) -> Vec<(String, String)> {
@@ -352,7 +363,17 @@ pub struct EventStoreSection {
     /// not dial back to fetch it: a control plane that reached out to every plane shipping to it
     /// would make ingestion depend on the reachability of the very planes it is receiving from.
     #[serde(default)]
-    producer_keys: Vec<String>,
+    producer_keys: Vec<EventProducerSource>,
+}
+
+/// One event producer identity and the tenant scope its published keys may attest.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventProducerSource {
+    pub path: String,
+    pub producer: String,
+    pub zone: String,
+    pub ledger: String,
 }
 
 impl EventStoreSection {
@@ -369,7 +390,7 @@ impl EventStoreSection {
     }
 
     /// The producers' published key sets, by path.
-    pub fn producer_keys(&self) -> &[String] {
+    pub fn producer_keys(&self) -> &[EventProducerSource] {
         &self.producer_keys
     }
 }
@@ -484,6 +505,9 @@ pub struct EventsPullSection {
     /// Which ledgers to subscribe to, and to which registered event types.
     #[serde(default)]
     ledgers: Vec<EventsPullLedgerSection>,
+    /// Producer keys and the scopes they are allowed to attest. Required for shared modes.
+    #[serde(default)]
+    producer_keys: Vec<EventProducerSource>,
 }
 
 /// One subscription: a ledger, and the registered types this plane will import from it.
@@ -546,23 +570,27 @@ impl EventsSection {
     ///
     /// Absent is not an error: a deployment that ships decisions and events to one control plane
     /// names it once, under the decision log, and this follows it.
-    pub fn destination(&self) -> Option<LogDestination> {
-        self.destination.as_ref().map(|held| LogDestination {
+    pub fn destination(&self) -> Option<EventDestination> {
+        self.destination.as_ref().map(|held| EventDestination {
             url: held.url.clone(),
+            transport: held.transport.clone().unwrap_or_else(|| {
+                match held.url.split_once("://").map(|(scheme, _)| scheme) {
+                    Some("grpc" | "grpcs") => "grpc",
+                    _ => "http",
+                }
+                .to_owned()
+            }),
             tls: held.tls.clone(),
         })
-    }
-
-    /// The transport the file named, when it named one.
-    pub fn transport(&self) -> Option<&str> {
-        self.destination
-            .as_ref()
-            .and_then(|held| held.transport.as_deref())
     }
 
     /// The ledgers this plane subscribes to.
     pub fn pull_ledgers(&self) -> &[EventsPullLedgerSection] {
         &self.pull.ledgers
+    }
+
+    pub fn pull_producer_keys(&self) -> &[EventProducerSource] {
+        &self.pull.producer_keys
     }
 }
 

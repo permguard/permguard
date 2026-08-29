@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use permguard_languages::temporal;
 
 /// Where a data plane publishes what this interface offers.
-pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-pdp-temporal-v1alpha1-configuration";
+pub use permguard_languages::temporal::CONFIGURATION_PATH;
 
 /// What this plane publishes about `permguard.api.pdp.temporal.v1alpha1`.
 #[derive(Debug, Clone, Serialize, Deserialize)]

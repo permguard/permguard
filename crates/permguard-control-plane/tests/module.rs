@@ -50,9 +50,37 @@ fn the_event_store_needs_both_switches_and_says_so_when_it_has_one() {
     assert!(said.contains("experimental.dogwood.enabled"), "{said}");
     assert!(said.contains("controlPlane.events.enabled"), "{said}");
 
-    let both = settings(&[
+    let both_without_trust = settings(&[
         (SETTING_EVENT_STORE_ENABLED, "true"),
         (SETTING_EXPERIMENTAL_DOGWOOD, "true"),
     ]);
+    let refused = module
+        .startup_check(&both_without_trust)
+        .expect_err("an event receiver with no producer authority does not start");
+    assert!(
+        refused
+            .to_string()
+            .contains("controlPlane.events.producer_keys"),
+        "{refused}"
+    );
+
+    let key_set = std::env::temp_dir().join(format!(
+        "permguard-event-module-producer-{}.jwks",
+        std::process::id()
+    ));
+    std::fs::write(
+        &key_set,
+        r#"{"keys":[{"kid":"test","kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","alg":"EdDSA","use":"sig"}]}"#,
+    )
+    .expect("the test producer publishes a key");
+    let both = both_without_trust.with_event_producer_keys([
+        permguard_core::decisions::EventProducerSource {
+            path: key_set.display().to_string(),
+            producer: "data-plane-test".to_owned(),
+            zone: "*".to_owned(),
+            ledger: "*".to_owned(),
+        },
+    ]);
     assert!(module.startup_check(&both).is_ok());
+    let _ = std::fs::remove_file(key_set);
 }

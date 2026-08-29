@@ -1022,7 +1022,7 @@ fn proto_value(value: &serde_json::Value) -> Result<prost_types::Value, String> 
     Ok(prost_types::Value { kind: Some(kind) })
 }
 
-fn structure(
+pub(crate) fn structure(
     map: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<Option<prost_types::Struct>, String> {
     let Some(map) = map else {

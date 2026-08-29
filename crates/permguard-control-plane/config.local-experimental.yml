@@ -48,11 +48,14 @@ controlPlane:
     # left is a gap a reader is told about. Envelopes and the archived verification keys that prove
     # retained records are never dropped with them.
     retention: "90d"
-    # Whose signatures this plane accepts. Absent, the decision store's list is used, because one
-    # deployment ships both from the same planes — named here anyway, because this file exists to
-    # be read. The data plane publishes this file from its own key directory.
+    # Whose signatures this plane accepts, bound to the producer and tenant scope they may claim.
+    # Event trust never falls back to the decision-log keys: those keys carry no producer/tenant
+    # authorization. The data plane publishes this file from its own key directory.
     producer_keys:
-      - trust/data-plane-events.jwks
+      - path: trust/data-plane-events.jwks
+        producer: data-plane-local
+        zone: "*"
+        ledger: "*"
 
   # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
   # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.

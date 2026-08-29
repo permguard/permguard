@@ -269,6 +269,7 @@ fn plane(tag: &str) -> Plane {
     // at the epoch, and what these tests are about is the temporal semantics rather than the skew
     // rule — which has tests of its own below, with the bounds the shipped configuration uses.
     let bounds = Bounds {
+        retention_minimum: std::time::Duration::MAX,
         allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
         clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
         ..Bounds::default()
@@ -534,6 +535,7 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         256,
     ));
     let bounds = Bounds {
+        retention_minimum: std::time::Duration::MAX,
         allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
         clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
         ..Bounds::default()
@@ -567,7 +569,7 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         submission(
             0,
             "Drupe::Action::Login",
-            "response",
+            "request",
             "alice",
             json!({"user": "alice", "server": "s1"}),
         )
@@ -626,20 +628,23 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         "the history is kept whole locally whatever the shared one is missing"
     );
 
-    // Accepted explicitly, and the plane decides again.
+    // Accepted explicitly. The next event is a read, so it only permits if the login response
+    // that was journalled while the gap was open is replayed now, in this same process. This is
+    // the crash-free form of the post-append hole that used to be repaired only by a restart.
     assert_eq!(imports.resolve_gaps(ZONE, LEDGER).expect("it resolves"), 1);
     let (status, answered) = post(
         &router,
         submission(
-            2,
-            "Drupe::Action::Login",
-            "response",
+            100,
+            "Drupe::Action::Read",
+            "request",
             "alice",
-            json!({"user": "alice", "server": "s3"}),
+            json!({"user": "alice", "document": "doc1"}),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{answered}");
+    assert_eq!(answered["decision"], true, "{answered}");
 }
 
 /// A retry is one occurrence, and one occurrence is observed once.
@@ -1072,6 +1077,7 @@ mod shipped_example {
             256,
         ));
         let bounds = Bounds {
+            retention_minimum: std::time::Duration::MAX,
             allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
             clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
             ..Bounds::default()
@@ -1112,6 +1118,7 @@ mod shipped_example {
         // The example's occurrences are dated in 2026; the bounds are widened so the test is about
         // the temporal semantics rather than about how long ago the README was written.
         let bounds = Bounds {
+            retention_minimum: std::time::Duration::MAX,
             allowed_lateness: std::time::Duration::from_secs(u32::MAX.into()),
             clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
             ..Bounds::default()
@@ -1164,6 +1171,21 @@ mod shipped_example {
                 assert!(
                     answered.get("decision").is_none(),
                     "a history-only kind returns no verdict at all, not `false`: {answered}"
+                );
+                assert!(
+                    answered.get("evaluations").is_none(),
+                    "a history-only occurrence has no partition verdicts: {answered}"
+                );
+            } else {
+                assert_eq!(
+                    answered["evaluations"][0]["partition"], "governance",
+                    "the aggregate remains attributable to the profile's partition: {answered}"
+                );
+                assert_eq!(
+                    answered["evaluations"][0]["decision"].as_bool(),
+                    decision,
+                    "the partition answer and aggregate agree in this one-partition profile: \
+                     {answered}"
                 );
             }
             // Every answer says which history it ranged over, so an auditor can reproduce it.
@@ -1265,6 +1287,93 @@ mod shipped_example {
         assert_eq!(
             again["watermark"]["sequence"], at,
             "and it still names the position the recorded one occupies: {again}"
+        );
+    }
+
+    /// A crash after the journal append but before the response commit is recoverable.
+    #[tokio::test]
+    async fn a_retry_finishes_an_occurrence_whose_answer_was_not_committed() {
+        let plane = example_plane();
+        let router = surface(&plane);
+        let body: Value = serde_json::from_str(&example("events/2-login-response.json"))
+            .expect("the occurrence parses");
+        let event_id = body["event"]["data"]["event_id"]
+            .as_str()
+            .expect("the occurrence has an id");
+
+        let (status, first) = post(&router, body.clone()).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        plane
+            .streams
+            .record_outcome(ZONE, LEDGER, event_id, &Value::Null)
+            .expect("the crash window is reproduced on disk");
+        let volume = plane.events.clone();
+        drop(router);
+        drop(plane);
+
+        let restarted = reopened(&volume);
+        let router = surface(&restarted);
+        let (status, recovered) = post(&router, body).await;
+        assert_eq!(status, StatusCode::OK, "{recovered}");
+        assert_eq!(
+            recovered, first,
+            "recovery commits the original receipt shape"
+        );
+
+        let read: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+            .expect("the decision occurrence parses");
+        let (status, decided) = post(&router, read).await;
+        assert_eq!(status, StatusCode::OK, "{decided}");
+        assert_eq!(
+            decided["decision"], true,
+            "the recovered login is present once in the history used by the next decision"
+        );
+    }
+
+    /// A crash after auditing a decision does not mint a second identity for its retry.
+    #[tokio::test]
+    async fn a_recovered_decision_keeps_the_identity_reserved_before_its_audit() {
+        let plane = example_plane();
+        let router = surface(&plane);
+
+        let login: Value = serde_json::from_str(&example("events/2-login-response.json"))
+            .expect("the history occurrence parses");
+        let (status, accepted) = post(&router, login).await;
+        assert_eq!(status, StatusCode::OK, "{accepted}");
+
+        let body: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+            .expect("the decision occurrence parses");
+        let event_id = body["event"]["data"]["event_id"]
+            .as_str()
+            .expect("the occurrence has an id");
+        let (status, first) = post(&router, body.clone()).await;
+        assert_eq!(status, StatusCode::OK, "{first}");
+        let decision_id = first["decision_id"]
+            .as_str()
+            .expect("a decision has a stable identity")
+            .to_owned();
+
+        // Reproduce the boundary after the decision identity and audit were made durable but
+        // before the idempotency response was committed.
+        plane
+            .streams
+            .record_outcome(ZONE, LEDGER, event_id, &Value::Null)
+            .expect("the crash window is reproduced on disk");
+        let volume = plane.events.clone();
+        drop(router);
+        drop(plane);
+
+        let restarted = reopened(&volume);
+        let router = surface(&restarted);
+        let (status, recovered) = post(&router, body).await;
+        assert_eq!(status, StatusCode::OK, "{recovered}");
+        assert_eq!(
+            recovered["decision_id"], decision_id,
+            "one occurrence keeps one decision identity across audit recovery: {recovered}"
+        );
+        assert_eq!(
+            recovered["watermark"], first["watermark"],
+            "recovery answers for the original journal position: {recovered}"
         );
     }
 

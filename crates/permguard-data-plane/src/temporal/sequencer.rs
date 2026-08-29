@@ -37,8 +37,11 @@
 //! A sequence that is journalled and then never applied — a submission that fails between the two,
 //! which the error paths above this make possible — must not stop the ledger. The turn is released
 //! by [`Turn`]'s drop, whatever happened, so the queue always advances. What that costs is a hole
-//! in the applied history, which is what the restart replay is for: the record is durable, so the
-//! rebuild finds it.
+//! in the applied history, and the submission path repairs it rather than carrying it: every path
+//! that abandons a sequence marks that history for replay, so the next event in it is evaluated
+//! against a run rebuilt from the journal instead of a prefix missing the abandoned sequence. The
+//! record is durable either way, so a restart rebuilds it too — but a decision is never served
+//! from the hole in the meantime.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex};
@@ -47,6 +50,8 @@ use std::sync::{Arc, Condvar, Mutex};
 struct State {
     /// The highest sequence whose turn has been given up, applied or not.
     through: u64,
+    /// One application is in progress, including recovery of an older sequence.
+    active: bool,
 }
 
 /// The turn-taking for one `(zone, ledger)`.
@@ -66,6 +71,7 @@ impl Sequencer {
         Self {
             state: Mutex::new(State {
                 through: applied_through,
+                active: false,
             }),
             moved: Condvar::new(),
         }
@@ -83,12 +89,13 @@ impl Sequencer {
         // A sequence at or below the mark had its turn already — a replay, or a journal that was
         // reopened behind this sequencer. Taking the turn anyway would wait for a predecessor that
         // is never coming.
-        while state.through.saturating_add(1) < seq {
+        while state.active || state.through.saturating_add(1) < seq {
             state = match self.moved.wait(state) {
                 Ok(state) => state,
                 Err(poisoned) => poisoned.into_inner(),
             };
         }
+        state.active = true;
 
         Turn {
             sequencer: Arc::clone(self),
@@ -111,6 +118,7 @@ impl Sequencer {
                 Err(poisoned) => poisoned.into_inner(),
             };
             state.through = state.through.max(seq);
+            state.active = false;
         }
         self.moved.notify_all();
     }
@@ -225,8 +233,36 @@ mod tests {
         assert_eq!(
             thread.join().expect("the thread finishes"),
             2,
-            "a hole in the applied history is replayed at restart, not waited for forever"
+            "a hole in the applied history is repaired by the next submission, not waited for \
+             forever"
         );
+    }
+
+    /// Recovery of an older durable sequence is still an application and excludes a new one.
+    #[test]
+    fn a_recovery_turn_serializes_with_the_live_tail() {
+        let sequencer = Arc::new(Sequencer::starting_at(2));
+        let recovery = sequencer.turn(1);
+        let (sent, received) = std::sync::mpsc::channel();
+        let live = Arc::clone(&sequencer);
+        let thread = std::thread::spawn(move || {
+            let turn = live.turn(3);
+            sent.send(turn.seq()).expect("the result is observed");
+            drop(turn);
+        });
+        assert!(
+            received.try_recv().is_err(),
+            "a live event must not enter while an older occurrence rebuilds the same ledger"
+        );
+
+        drop(recovery);
+        assert_eq!(
+            received
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("the live sequence continues after recovery"),
+            3
+        );
+        thread.join().expect("the live application finishes");
     }
 
     /// One ledger's order is not another's.

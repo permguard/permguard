@@ -524,14 +524,19 @@ pub enum EventsAction {
     Export(EventsQuery),
     /// Verify what is held: the chain, the Merkle inclusion, and the signatures.
     ///
-    /// Without `--keys` this checks that each record's digest matches its inclusion path and that
-    /// the path reaches the root its envelope attests. With one, it also checks that the envelope
-    /// was signed by a key that set publishes — which is what makes the answer independent of the
-    /// server that served it.
+    /// `--keys` is required: a Merkle path supplied by the same archive proves nothing about who
+    /// produced it until the batch envelope verifies against an independently supplied producer
+    /// key.
     #[command(
-        after_help = "Examples:\n  permguard events verify --zone acme --ledger agent-governance\n  permguard events verify --keys plane-keys.json -o json"
+        after_help = "Examples:\n  permguard events verify --zone acme --ledger agent-governance\n  permguard events verify --file events.json --keys plane-keys.json -o json"
     )]
-    Verify(EventsQuery),
+    Verify {
+        /// Verify a JSON or YAML archive produced by `events export`, without contacting a server.
+        #[arg(long, value_name = "FILE")]
+        file: Option<String>,
+        #[command(flatten)]
+        query: EventsQuery,
+    },
 }
 
 /// What to read, and how to narrow it.

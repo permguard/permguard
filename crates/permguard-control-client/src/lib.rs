@@ -57,6 +57,7 @@ pub mod pull;
 pub mod remote;
 pub mod remote_http;
 pub mod store;
+pub mod temporal;
 pub mod tls;
 pub mod v1;
 pub mod verify;

@@ -31,7 +31,9 @@ use permguard_control_plane::events::store::{EventStore, Scope};
 use permguard_control_plane::events::{ingest, read};
 use permguard_core::{Disclosure, KeyManager, Metrics};
 use permguard_data_plane::temporal::imports::Imports;
-use permguard_data_plane::temporal::pull::{Puller, Round as PullRound, Subscription};
+use permguard_data_plane::temporal::pull::{
+    ProducerTrust, Puller, Round as PullRound, Subscription,
+};
 use permguard_data_plane::temporal::shipper::{Round, Shipper};
 use permguard_data_plane::temporal::streams::Streams;
 use permguard_events::journal::Bounds;
@@ -67,6 +69,19 @@ fn ring(tag: &str) -> Arc<DirectoryKeyManager> {
     keys.maintain().expect("the ring produces a key");
 
     Arc::new(keys)
+}
+
+fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ProducerTrust> {
+    keys.public_keys()
+        .expect("the ring publishes")
+        .into_iter()
+        .map(|key| ProducerTrust {
+            key,
+            producer: producer.to_owned(),
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+        })
+        .collect()
 }
 
 /// The control plane, as a sink and a reader a data plane can reach.
@@ -191,12 +206,25 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
     let cursor_key = permguard_control_plane::decisions::cursorkey::load(store.root())
         .expect("an offset key is created");
 
+    let published = keys.public_keys().expect("the ring publishes");
+    let producers = ["plane-a", "plane-b"]
+        .into_iter()
+        .flat_map(|producer| {
+            published.iter().cloned().map(move |key| {
+                permguard_control_plane::events::ingest::ProducerTrust {
+                    key,
+                    producer: producer.to_owned(),
+                    zone: "*".to_owned(),
+                    ledger: "*".to_owned(),
+                }
+            })
+        })
+        .collect();
+
     Arc::new(Wire {
         facade: EventFacade {
             store: Arc::new(store),
-            producers: Arc::new(std::sync::RwLock::new(
-                keys.public_keys().expect("the ring publishes"),
-            )),
+            producers: Arc::new(std::sync::RwLock::new(producers)),
             producer_files: Vec::new(),
             cursor_key,
             disclosure: Disclosure::Full,
@@ -222,6 +250,16 @@ fn record(streams: &Streams, count: u64, from: u64) {
         let seq = from + index;
         let occurred = permguard_events::index::render_epoch_seconds(1_700_000_000 + seq as i64)
             .expect("an instant");
+        let event = json!({
+            "event_id": format!("e-{seq}"),
+            "kind": "response",
+            "action": "Drupe::Action::Login",
+            "principal": "Drupe::OAuthUser::\"alice\"",
+            "resource": "Drupe::Gateway::\"gw1\"",
+            "logged": {"input": {"user": "alice", "server": "s1"}, "output": {}},
+            "request_context": {"input": {"user": "alice", "server": "s1"}},
+            "occurred_at": occurred,
+        });
         let held = Record {
             v: 1,
             record_type: permguard_events::RECORD_TYPE.to_owned(),
@@ -238,7 +276,8 @@ fn record(streams: &Streams, count: u64, from: u64) {
             prev: String::new(),
             event_type: DOGWOOD.to_owned(),
             event_id: format!("e-{seq}"),
-            occurrence_digest: format!("sha256:{seq:064x}"),
+            occurrence_digest: permguard_events::occurrence_digest_of(&event)
+                .expect("the occurrence digests"),
             kind: "response".to_owned(),
             profile: "temporal".to_owned(),
             policy_partitions: vec!["governance".to_owned()],
@@ -246,18 +285,7 @@ fn record(streams: &Streams, count: u64, from: u64) {
             history_key: None,
             occurred_at: occurred.clone(),
             observed_at: occurred,
-            event: json!({
-                "event_id": format!("e-{seq}"),
-                "kind": "response",
-                "action": "Drupe::Action::Login",
-                "principal": "Drupe::OAuthUser::\"alice\"",
-                "resource": "Drupe::Gateway::\"gw1\"",
-                "logged": {"input": {"user": "alice", "server": "s1"}, "output": {}},
-                "request_context": {"input": {"user": "alice", "server": "s1"}},
-                "occurred_at": permguard_events::index::render_epoch_seconds(
-                    1_700_000_000 + seq as i64
-                ).expect("an instant"),
-            }),
+            event,
         };
         streams
             .append(ZONE, LEDGER, held)
@@ -450,7 +478,7 @@ fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
             ledger: LEDGER.to_owned(),
             event_types: vec![DOGWOOD.to_owned()],
         }],
-        keys.public_keys().expect("the ring publishes"),
+        trusted(&keys, "plane-a"),
         permguard_core::config::Consistency::SharedEventual,
         Metrics::none(),
     );
@@ -503,7 +531,7 @@ fn a_subscription_to_a_type_nothing_validates_is_quarantined_rather_than_importe
             ledger: LEDGER.to_owned(),
             event_types: vec!["acme.pip.v1".to_owned()],
         }],
-        keys.public_keys().expect("the ring publishes"),
+        trusted(&keys, "plane-a"),
         permguard_core::config::Consistency::SharedEventual,
         Metrics::none(),
     );
@@ -695,6 +723,7 @@ mod two_planes {
     /// than about how long ago the README was written.
     fn bounds() -> Bounds {
         Bounds {
+            retention_minimum: Duration::MAX,
             allowed_lateness: Duration::from_secs(u32::MAX.into()),
             clock_skew: Duration::from_secs(u32::MAX.into()),
             ..Bounds::default()
@@ -813,7 +842,7 @@ mod two_planes {
                 ledger: LEDGER.to_owned(),
                 event_types: vec![DOGWOOD.to_owned()],
             }],
-            keys.public_keys().expect("the ring publishes"),
+            trusted(&keys, "plane-a"),
             permguard_core::config::Consistency::SharedEventual,
             Metrics::none(),
         )

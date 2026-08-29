@@ -298,6 +298,13 @@ pub const INTERFACE: &str = "permguard.api.pdp.temporal.v1alpha1";
 /// query. Reading events is the control plane's, where the history is whole.
 pub const SUBMISSION_PATH: &str = "/temporal/v1alpha1/events";
 
+/// Where a data plane publishes the configuration of this interface.
+///
+/// Kept beside [`SUBMISSION_PATH`] because both are part of the versioned client/server contract:
+/// a transport client must not depend on a data-plane implementation crate just to discover the
+/// route it is compiled to call.
+pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-pdp-temporal-v1alpha1-configuration";
+
 /// What this interface offers, as a caller configures itself from it.
 ///
 /// A capability is a promise: each of these names something implemented, tested, and answered
@@ -382,6 +389,13 @@ pub struct SubmitResponse {
     /// The policies that decided it, by identity.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<String>,
+    /// What every addressed partition answered, in profile order.
+    ///
+    /// Empty for a history-only event. The aggregate decision above remains authoritative; these
+    /// entries make an objection, silence or runtime failure attributable instead of collapsing
+    /// several independent policy sets into one unexplained boolean.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evaluations: Vec<PartitionEvaluation>,
     /// Why, for an operator and for a caller.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<Reason>,
@@ -391,6 +405,17 @@ pub struct SubmitResponse {
     /// reproducing a decision needs to know *what was visible*, and "local" is an answer to that
     /// question rather than the absence of one.
     pub history: HistoryScope,
+}
+
+/// One temporal partition's answer.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct PartitionEvaluation {
+    pub partition: String,
+    pub decision: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<Reason>,
 }
 
 /// Checks a partition's declared history scope against what its schemas actually say.

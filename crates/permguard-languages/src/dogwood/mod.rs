@@ -31,10 +31,12 @@
 //! networked `http_get` and makes provider evaluation non-deterministic — is off. A provider here
 //! cannot reach the network, read a clock, or load another module.
 //!
-//! What neither side enforces is a **wall-clock timeout**: the operation bound limits work rather
-//! than time, so the request deadline the decision path already carries is what bounds how long a
-//! provider may take. Stated rather than papered over, because "sandboxed" reads as "and it cannot
-//! take too long", and that half is the deadline's doing.
+//! What neither side enforces is a **wall-clock timeout**. The operation bound limits work rather
+//! than elapsed time, and the temporal interface does not currently propagate a cooperative
+//! deadline into Dogwood's provider API. Transport timeouts may stop waiting for a response, but
+//! they cannot cancel provider code already executing. Stated rather than papered over, because
+//! "sandboxed" reads as "and it cannot take too long", while this build can currently promise only
+//! a finite operation budget, not a wall-clock deadline.
 //!
 //! # A partition is a bundle, not a file
 //!

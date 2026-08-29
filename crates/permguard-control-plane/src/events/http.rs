@@ -45,7 +45,7 @@ use axum::{Json, Router};
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
 use permguard_stream::{CursorKey, Window};
 
-use super::ingest::{self, Accepted, Batch, Refused};
+use super::ingest::{self, Accepted, Batch, ProducerTrust, Refused};
 use super::measure;
 use super::read::{self, Filters};
 use super::store::{EventStore, Scope};
@@ -68,9 +68,9 @@ pub struct EventFacade {
     /// The published key sets of the producers this plane accepts.
     ///
     /// Never fetched: ingestion must not depend on reaching the planes that are shipping to it.
-    pub producers: Arc<std::sync::RwLock<Vec<Jwk>>>,
+    pub producers: Arc<std::sync::RwLock<Vec<ProducerTrust>>>,
     /// Where those sets are read from, for the re-read when a batch cannot be attributed.
-    pub producer_files: Vec<std::path::PathBuf>,
+    pub producer_files: Vec<ProducerFile>,
     /// The secret read offsets are signed with.
     pub cursor_key: CursorKey,
     /// How much a refusal says about the inside.
@@ -82,6 +82,14 @@ pub struct EventFacade {
     /// The document's endpoints are absolute, because the producer that reads it is configured with
     /// one URL and has to arrive at four. A relative path would leave it joining strings.
     pub base_url: String,
+}
+
+#[derive(Clone)]
+pub struct ProducerFile {
+    pub path: std::path::PathBuf,
+    pub producer: String,
+    pub zone: String,
+    pub ledger: String,
 }
 
 impl EventFacade {
@@ -100,7 +108,7 @@ impl EventFacade {
     ///
     /// So ingest asks this, and a reader checking what is already stored asks
     /// [`EventFacade::verification_keys`].
-    pub fn accepted_keys(&self) -> Vec<Jwk> {
+    pub fn accepted_producers(&self) -> Vec<ProducerTrust> {
         self.producers
             .read()
             .map(|held| held.clone())
@@ -113,10 +121,16 @@ impl EventFacade {
     /// admits a record, it only re-checks records admitted earlier under keys that were current
     /// then.
     pub fn verification_keys(&self) -> Vec<Jwk> {
-        let mut keys = self.accepted_keys();
+        let mut keys: Vec<Jwk> = self
+            .accepted_producers()
+            .into_iter()
+            .map(|held| held.key)
+            .collect();
         if let Ok(archived) = self.store.archived_keys() {
             for key in archived {
-                if !keys.iter().any(|held| held.kid == key.kid) {
+                // A key id is scoped to its producer. Two producers may legitimately publish
+                // different material under the same label, and a verifier must try both.
+                if !keys.iter().any(|held| held == &key) {
                     keys.push(key);
                 }
             }
@@ -128,28 +142,36 @@ impl EventFacade {
     /// Re-reads the producers' published sets, for a batch nothing could attribute.
     ///
     /// A producer that rotates its ring should be a file to update rather than a plane to restart.
-    fn reload_producers(&self) {
+    fn reload_producers(&self) -> Result<(), String> {
         let mut keys = Vec::new();
-        for path in &self.producer_files {
-            let Ok(text) = std::fs::read_to_string(path) else {
-                continue;
-            };
-            let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let held = parsed
-                .get("keys")
-                .and_then(serde_json::Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            keys.extend(
-                held.into_iter()
-                    .filter_map(|value| serde_json::from_value::<Jwk>(value).ok()),
-            );
+        for source in &self.producer_files {
+            let text = std::fs::read_to_string(&source.path)
+                .map_err(|error| format!("reading {}: {error}", source.path.display()))?;
+            let parsed = serde_json::from_str::<serde_json::Value>(&text)
+                .map_err(|error| format!("parsing {}: {error}", source.path.display()))?;
+            let set = parsed.get("keys").cloned().unwrap_or(parsed);
+            let found: Vec<Jwk> = serde_json::from_value(set)
+                .map_err(|error| format!("{} is not a JWKS: {error}", source.path.display()))?;
+            if found.is_empty() {
+                return Err(format!("{} publishes no keys", source.path.display()));
+            }
+            keys.extend(found.into_iter().map(|key| ProducerTrust {
+                key,
+                producer: source.producer.clone(),
+                zone: source.zone.clone(),
+                ledger: source.ledger.clone(),
+            }));
+        }
+        if keys.is_empty() {
+            return Err("no event producer trust sources are configured".to_owned());
         }
         if let Ok(mut held) = self.producers.write() {
             *held = keys;
+        } else {
+            return Err("the event producer trust lock is poisoned".to_owned());
         }
+
+        Ok(())
     }
 
     /// The event types this store accepts.
@@ -165,12 +187,18 @@ impl EventFacade {
     pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
         let started = std::time::Instant::now();
         let types = self.accepted_types();
-        let mut answered = ingest::accept(&self.store, batch, &self.accepted_keys(), &types);
+        let mut answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
         if matches!(answered, Err(Refused::Unattributable(_))) {
             // One re-read, then one retry: a producer that rotated is the ordinary reason a
             // signature stops being attributable, and it should not need an operator.
-            self.reload_producers();
-            answered = ingest::accept(&self.store, batch, &self.accepted_keys(), &types);
+            if let Err(error) = self.reload_producers() {
+                tracing::warn!(
+                    event.name = "events.producer_keys_reload_failed",
+                    error = error.as_str(),
+                    "the event producer trust set could not be reloaded; keeping the last complete set"
+                );
+            }
+            answered = ingest::accept(&self.store, batch, &self.accepted_producers(), &types);
         }
         self.metrics.observe(
             &measure::INGEST_SECONDS,

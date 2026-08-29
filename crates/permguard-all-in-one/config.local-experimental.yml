@@ -71,7 +71,10 @@ controlPlane:
     # it, while a segment that has left is a gap a reader is told about.
     retention: "90d"
     producer_keys:
-      - trust/data-plane-events.jwks
+      - path: trust/data-plane-events.jwks
+        producer: all-in-one-local
+        zone: "*"
+        ledger: "*"
 dataPlane:
   public:
     http:

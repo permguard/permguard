@@ -85,13 +85,38 @@ pub struct Subscription {
     pub event_types: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProducerTrust {
+    pub key: Jwk,
+    pub producer: String,
+    pub zone: String,
+    pub ledger: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProducerFile {
+    pub path: std::path::PathBuf,
+    pub producer: String,
+    pub zone: String,
+    pub ledger: String,
+}
+
+impl ProducerTrust {
+    fn authorizes(&self, stream: &permguard_events::Stream) -> bool {
+        self.producer == stream.producer.id
+            && (self.zone == "*" || self.zone == stream.zone)
+            && (self.ledger == "*" || self.ledger == stream.ledger)
+    }
+}
+
 /// Reads verified history from the control plane into this plane's import store.
 pub struct Puller {
     reader: Box<dyn EventReader + Send + Sync>,
     imports: Arc<Imports>,
     subscriptions: Vec<Subscription>,
     /// The producers whose signatures this plane accepts.
-    keys: Vec<Jwk>,
+    keys: std::sync::RwLock<Vec<ProducerTrust>>,
+    key_files: Vec<ProducerFile>,
     /// The event types this build can validate, and therefore import.
     accepted_types: Vec<String>,
     /// The consistency this plane decides under, recorded on any hole this loop discovers.
@@ -110,7 +135,7 @@ impl Puller {
         reader: Box<dyn EventReader + Send + Sync>,
         imports: Arc<Imports>,
         subscriptions: Vec<Subscription>,
-        keys: Vec<Jwk>,
+        keys: Vec<ProducerTrust>,
         consistency: permguard_core::config::Consistency,
         metrics: Metrics,
     ) -> Self {
@@ -118,7 +143,8 @@ impl Puller {
             reader,
             imports,
             subscriptions,
-            keys,
+            keys: std::sync::RwLock::new(keys),
+            key_files: Vec::new(),
             consistency,
             // One entry: the only registered consumer and validator this build carries. A
             // subscription naming anything else is refused rather than imported unvalidated.
@@ -127,11 +153,39 @@ impl Puller {
         }
     }
 
+    /// Sources that may be re-read after a producer rotates its published ring.
+    pub fn with_key_files(mut self, files: Vec<ProducerFile>) -> Self {
+        self.key_files = files;
+
+        self
+    }
+
     /// Runs one round over every subscription.
     pub fn round(&self) -> Vec<(Subscription, Round)> {
         self.subscriptions
             .iter()
             .map(|subscription| (subscription.clone(), self.pull(subscription)))
+            .collect()
+    }
+
+    /// Applies local imported-history retention to every configured subscription.
+    ///
+    /// This does not move the remote cursor and does not delete anything from the control plane;
+    /// it only bounds the copy this plane keeps for future temporal evaluations.
+    pub fn evict_before(
+        &self,
+        horizon: i64,
+    ) -> Vec<(Subscription, std::result::Result<usize, String>)> {
+        self.subscriptions
+            .iter()
+            .map(|subscription| {
+                let result = self
+                    .imports
+                    .evict_before(&subscription.zone, &subscription.ledger, horizon)
+                    .map_err(|error| error.to_string());
+
+                (subscription.clone(), result)
+            })
             .collect()
     }
 
@@ -155,6 +209,14 @@ impl Puller {
                      for it: importing it would put records in the history that nothing checked"
                 ),
             };
+        }
+
+        if let Err(error) = self.imports.bind(
+            &subscription.zone,
+            &subscription.ledger,
+            &subscription.event_types,
+        ) {
+            return Round::Deferred(error.to_string());
         }
 
         let cursor = match self
@@ -242,7 +304,15 @@ impl Puller {
         // cursor where it was, so the next round asks again rather than skipping over it.
         let mut verified = Vec::with_capacity(page.records.len());
         for (index, held) in page.records.iter().enumerate() {
-            if let Err(reason) = self.verify(held, page.inclusion.get(index), &page.proof) {
+            let checked = self.verify(subscription, held, page.inclusion.get(index), &page.proof);
+            let checked = match checked {
+                Ok(()) => Ok(()),
+                Err(first) if self.reload_keys().is_ok() => self
+                    .verify(subscription, held, page.inclusion.get(index), &page.proof)
+                    .map_err(|_| first),
+                Err(reason) => Err(reason),
+            };
+            if let Err(reason) = checked {
                 warn!(
                     event.name = "events.import_refused",
                     component = COMPONENT,
@@ -308,19 +378,19 @@ impl Puller {
     /// Everything an imported record must be, before it is written.
     fn verify(
         &self,
+        subscription: &Subscription,
         record: &Value,
         inclusion: Option<&Value>,
         envelopes: &[Value],
     ) -> Result<(), String> {
-        let event_type = record
-            .get("event_type")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "a record with no `event_type`".to_owned())?;
+        let parsed = record::validate(record).map_err(|error| error.to_string())?;
+        let event_type = parsed.event_type.as_str();
         if !self.accepted_types.iter().any(|held| held == event_type) {
             return Err(format!(
                 "`{event_type}` is not a type this build registers a validator for"
             ));
         }
+        validate_occurrence(&parsed)?;
 
         // The digest of the record as it arrived, against the leaf its path claims.
         let digest = record::digest_of(record).map_err(|error| error.to_string())?;
@@ -349,25 +419,35 @@ impl Puller {
             return Err("the inclusion path does not reach the root it names".to_owned());
         }
 
-        // And that root must be one a producer this plane trusts actually signed.
+        // The tenant binding: a record whose stream names another ledger is a record that reached
+        // the wrong view, and importing it would put one tenant's history inside another's.
+        let stream = parsed.stream;
+        if stream.zone != subscription.zone || stream.ledger != subscription.ledger {
+            return Err(
+                "the record does not belong to the subscription that returned it".to_owned(),
+            );
+        }
+
+        // And that root must be one an explicitly bound producer key actually signed.
+        let keys = self
+            .keys
+            .read()
+            .map_err(|_| "the producer trust lock is poisoned".to_owned())?;
         let signed = envelopes.iter().find_map(|envelope| {
             let held: Signed = serde_json::from_value(envelope.clone()).ok()?;
-            let verified = held.verify(&self.keys).ok()?;
-            (verified.merkle_root == root).then_some(verified)
+            let protected = held.protected().ok()?;
+            keys.iter()
+                .filter(|trust| trust.key.kid == protected.kid && trust.authorizes(&stream))
+                .find_map(|trust| {
+                    let verified = held.verify(std::slice::from_ref(&trust.key)).ok()?;
+                    (verified.merkle_root == root).then_some(verified)
+                })
         });
         let Some(envelope) = signed else {
             return Err(format!(
-                "no envelope signed by a producer this plane trusts attests the root {root}"
+                "no producer key authorized for this producer and tenant attests root {root}"
             ));
         };
-
-        // The tenant binding: a record whose stream names another ledger is a record that reached
-        // the wrong view, and importing it would put one tenant's history inside another's.
-        let stream: permguard_events::Stream = record
-            .get("stream")
-            .cloned()
-            .and_then(|held| serde_json::from_value(held).ok())
-            .ok_or_else(|| "a record with no stream".to_owned())?;
         if stream != envelope.stream {
             return Err(
                 "the record's stream is not the one the envelope that attests it names".to_owned(),
@@ -376,6 +456,74 @@ impl Puller {
 
         Ok(())
     }
+
+    fn reload_keys(&self) -> Result<(), String> {
+        if self.key_files.is_empty() {
+            return Err("no producer key sources can be reloaded".to_owned());
+        }
+        let mut keys = Vec::new();
+        for source in &self.key_files {
+            let text = std::fs::read_to_string(&source.path)
+                .map_err(|error| format!("reading {}: {error}", source.path.display()))?;
+            let parsed: Value = serde_json::from_str(&text)
+                .map_err(|error| format!("parsing {}: {error}", source.path.display()))?;
+            let set = parsed.get("keys").cloned().unwrap_or(parsed);
+            let found: Vec<Jwk> = serde_json::from_value(set)
+                .map_err(|error| format!("{} is not a JWKS: {error}", source.path.display()))?;
+            if found.is_empty() {
+                return Err(format!("{} publishes no keys", source.path.display()));
+            }
+            keys.extend(found.into_iter().map(|key| ProducerTrust {
+                key,
+                producer: source.producer.clone(),
+                zone: source.zone.clone(),
+                ledger: source.ledger.clone(),
+            }));
+        }
+        let mut held = self
+            .keys
+            .write()
+            .map_err(|_| "the producer trust lock is poisoned".to_owned())?;
+        *held = keys;
+
+        Ok(())
+    }
+}
+
+/// Validates the registered payload and binds the record's filter fields to it.
+fn validate_occurrence(record: &record::Record) -> Result<(), String> {
+    if record.event_type != permguard_languages::event::EVENT_TYPE {
+        return Err(format!(
+            "this build has no payload validator for `{}`",
+            record.event_type
+        ));
+    }
+    let body: permguard_languages::event::OccurrenceBody =
+        serde_json::from_value(record.event.clone()).map_err(|error| {
+            format!("the `{}` payload is malformed: {error}", record.event_type)
+        })?;
+    let occurrence = body.read().map_err(|error| error.to_string())?;
+    for (name, stated, actual) in [
+        (
+            "event_id",
+            record.event_id.as_str(),
+            occurrence.event_id.as_str(),
+        ),
+        ("kind", record.kind.as_str(), occurrence.kind.as_str()),
+        (
+            "occurred_at",
+            record.occurred_at.as_str(),
+            occurrence.occurred_at.as_str(),
+        ),
+    ] {
+        if stated != actual {
+            return Err(format!(
+                "the record states `{name}` as `{stated}` and its typed occurrence states `{actual}`"
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// The origin positions a page carried, for a caller that wants to report them.

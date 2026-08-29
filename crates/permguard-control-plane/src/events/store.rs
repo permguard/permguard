@@ -27,14 +27,15 @@
 //! the line within it. Sequential to append, sequential to scan, and a corrupt or missing index
 //! costs a rebuild rather than an answer.
 
-use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use permguard_core::Jwk;
 use permguard_events::record::GENESIS;
+use permguard_stream::Frontier;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -44,6 +45,27 @@ pub const STATE_FILE: &str = "STATE";
 pub const KEYS_DIRECTORY: &str = "verification-keys";
 /// How much one segment holds before the next is started.
 pub const SEGMENT_RECORDS: u64 = 10_000;
+/// The monotonic append position and producer frontier of a merged tenant view.
+const VIEW_STATE_FILE: &str = "VIEW_STATE";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ViewState {
+    next: u64,
+    /// Physical positions made durable and acknowledged, as a zero-based count.
+    #[serde(default)]
+    committed: u64,
+    frontier: Frontier,
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        Self {
+            next: 1,
+            committed: 0,
+            frontier: Frontier::empty(),
+        }
+    }
+}
 
 /// What the store knows about one producer stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +112,37 @@ pub enum Scope {
 }
 
 impl Scope {
+    pub fn for_stream(stream: &permguard_events::Stream) -> Self {
+        Self::Stream {
+            zone: stream.zone.clone(),
+            ledger: stream.ledger.clone(),
+            class: stream.producer.class.clone(),
+            producer: stream.producer.id.clone(),
+            instance: stream.producer.instance.clone(),
+        }
+    }
+
+    fn as_stream(&self) -> Option<permguard_events::Stream> {
+        match self {
+            Self::Stream {
+                zone,
+                ledger,
+                class,
+                producer,
+                instance,
+            } => Some(permguard_events::Stream {
+                producer: permguard_events::Producer {
+                    class: class.clone(),
+                    id: producer.clone(),
+                    instance: instance.clone(),
+                },
+                zone: zone.clone(),
+                ledger: ledger.clone(),
+            }),
+            Self::Tenant { .. } => None,
+        }
+    }
+
     /// A stable name for this scope, which an offset is bound to.
     pub fn key(&self) -> String {
         match self {
@@ -154,6 +207,10 @@ pub struct EventStore {
     /// stay independent, so one slow producer does not queue another's batches.
     gates:
         std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>>,
+    /// One append/rollback gate per merged tenant view. Producer stream gates cannot protect a
+    /// file that several producers share.
+    view_gates:
+        std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>>,
 }
 
 impl EventStore {
@@ -164,11 +221,14 @@ impl EventStore {
             fs::create_dir_all(root.join(held)).context("creating the event store")?;
         }
         let lock = lock_exclusively(&root.join(LOCK_FILE))?;
+        recover_torn_segments(&root)?;
+        recover_views(&root)?;
 
         Ok(Self {
             root,
             _lock: lock,
             gates: std::sync::Mutex::new(std::collections::HashMap::new()),
+            view_gates: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -186,6 +246,41 @@ impl EventStore {
         };
 
         std::sync::Arc::clone(gates.entry(key).or_default())
+    }
+
+    pub(crate) fn view_gate(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> std::sync::Arc<std::sync::Mutex<()>> {
+        let key = format!("{zone}:{ledger}");
+        let mut gates = match self.view_gates.lock() {
+            Ok(gates) => gates,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
+        std::sync::Arc::clone(gates.entry(key).or_default())
+    }
+
+    pub(crate) fn scope_gate(&self, scope: &Scope) -> std::sync::Arc<std::sync::Mutex<()>> {
+        match scope {
+            Scope::Stream {
+                zone,
+                ledger,
+                class,
+                producer,
+                instance,
+            } => self.gate(&permguard_events::Stream {
+                producer: permguard_events::Producer {
+                    class: class.clone(),
+                    id: producer.clone(),
+                    instance: instance.clone(),
+                },
+                zone: zone.clone(),
+                ledger: ledger.clone(),
+            }),
+            Scope::Tenant { zone, ledger } => self.view_gate(zone, ledger),
+        }
     }
 
     /// Where one producer stream's files live.
@@ -249,7 +344,33 @@ impl EventStore {
     ///
     /// Nothing here is acknowledged: durability is a separate, explicit step, because the producer
     /// is about to delete its only other copy on the strength of it.
-    pub fn append(&self, stream: &permguard_events::Stream, record: &Value) -> Result<()> {
+    pub fn append_batch(
+        &self,
+        stream: &permguard_events::Stream,
+        records: &[&Value],
+    ) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        let view = self.view_path(&stream.zone, &stream.ledger)?;
+        fs::create_dir_all(&view).context("creating a tenant view")?;
+        let mut state = read_view_state(&view, &self.root)?;
+        for record in records {
+            self.append_one(stream, record, &view, &mut state)?;
+        }
+        // One derived-state commit per signed batch, not per record. The segment and index writes
+        // are still flushed together by `acknowledge`; this only removes thousands of redundant
+        // rename operations from a large batch.
+        write_view_state(&view, &state)
+    }
+
+    fn append_one(
+        &self,
+        stream: &permguard_events::Stream,
+        record: &Value,
+        view: &Path,
+        state: &mut ViewState,
+    ) -> Result<()> {
         let seq = record
             .get("seq")
             .and_then(Value::as_u64)
@@ -265,13 +386,15 @@ impl EventStore {
 
         let stream_directory = self.stream_path(stream)?;
         fs::create_dir_all(&stream_directory).context("creating a stream directory")?;
-        let (segment, line_number) = append_line(&segment_for(&stream_directory, seq)?, &line)?;
+        let stream_segment = segment_for(&stream_directory, seq)?;
+        let (segment, line_number) = append_line(&stream_segment, line_in_segment(seq), &line)?;
         index(&stream_directory, event_type, segment, line_number)?;
 
-        let view = self.view_path(&stream.zone, &stream.ledger)?;
-        fs::create_dir_all(&view).context("creating a tenant view")?;
-        let (segment, line_number) = append_line(&segment_for(&view, seq)?, &line)?;
-        index(&view, event_type, segment, line_number)?;
+        let view_segment = segment_for(view, state.next)?;
+        let (segment, line_number) =
+            append_line(&view_segment, line_in_segment(state.next), &line)?;
+        index(view, event_type, segment, line_number)?;
+        state.next = state.next.saturating_add(1);
 
         Ok(())
     }
@@ -288,7 +411,7 @@ impl EventStore {
             .join(format!("batch-{first_seq:020}.jws"));
         fs::create_dir_all(path.parent().unwrap_or(&self.root)).context("creating a stream")?;
         let bytes = serde_json::to_vec(signature).context("rendering an envelope")?;
-        fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))?;
+        write_atomic(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
 
         Ok(())
     }
@@ -297,8 +420,12 @@ impl EventStore {
     pub fn envelopes(&self, stream: &permguard_events::Stream) -> Result<Vec<Value>> {
         let directory = self.stream_path(stream)?;
         let mut found: Vec<(String, Value)> = Vec::new();
-        let Ok(entries) = fs::read_dir(&directory) else {
-            return Ok(Vec::new());
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", directory.display()));
+            }
         };
         for entry in entries {
             let entry = entry.context("listing a stream")?;
@@ -307,13 +434,102 @@ impl EventStore {
                 continue;
             }
             let bytes = fs::read(entry.path()).context("reading a batch envelope")?;
-            if let Ok(value) = serde_json::from_slice(&bytes) {
-                found.push((name, value));
-            }
+            let value = serde_json::from_slice(&bytes).with_context(|| {
+                format!("reading the batch envelope {}", entry.path().display())
+            })?;
+            found.push((name, value));
         }
         found.sort_by(|left, right| left.0.cmp(&right.0));
 
         Ok(found.into_iter().map(|(_, value)| value).collect())
+    }
+
+    /// The signed envelope whose sequence range contains the requested sequence.
+    ///
+    /// File names carry the first sequence, so only the greatest one not after the record is read.
+    /// Proof generation used to parse every historical envelope for every page; this keeps the
+    /// lookup proportional to directory entries and reads one payload.
+    pub fn envelope_covering(
+        &self,
+        stream: &permguard_events::Stream,
+        sequence: u64,
+    ) -> Result<Option<Value>> {
+        let directory = self.stream_path(stream)?;
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", directory.display()));
+            }
+        };
+        let mut candidate: Option<(u64, PathBuf)> = None;
+        for entry in entries {
+            let entry = entry.with_context(|| format!("listing {}", directory.display()))?;
+            let name = entry.file_name();
+            let Some(first) = name
+                .to_str()
+                .and_then(|name| name.strip_prefix("batch-"))
+                .and_then(|name| name.strip_suffix(".jws"))
+                .and_then(|name| name.parse::<u64>().ok())
+            else {
+                continue;
+            };
+            if first <= sequence && candidate.as_ref().is_none_or(|(held, _)| first > *held) {
+                candidate = Some((first, entry.path()));
+            }
+        }
+        let Some((_, path)) = candidate else {
+            return Ok(None);
+        };
+        let bytes = fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+        let signed = serde_json::from_slice(&bytes)
+            .with_context(|| format!("reading the batch envelope {}", path.display()))?;
+
+        Ok(Some(signed))
+    }
+
+    /// Reads one contiguous producer range, and refuses holes or mismatched sequences.
+    pub fn records_between(
+        &self,
+        stream: &permguard_events::Stream,
+        first: u64,
+        last: u64,
+    ) -> Result<Vec<Value>> {
+        let scope = Scope::for_stream(stream);
+        let expected = last.saturating_sub(first).saturating_add(1);
+        let mut records = Vec::with_capacity(usize::try_from(expected).unwrap_or(0));
+        for (segment, path) in self.segments(&scope)? {
+            let segment_last = segment.saturating_add(SEGMENT_RECORDS.saturating_sub(1));
+            if segment_last < first || segment > last {
+                continue;
+            }
+            let start = first.max(segment);
+            let end = last.min(segment_last);
+            let count = end.saturating_sub(start).saturating_add(1);
+            let (held, _) = read_segment(
+                &path,
+                start.saturating_sub(segment),
+                usize::try_from(count).unwrap_or(usize::MAX),
+            )?;
+            records.extend(held);
+        }
+        if records.len() as u64 != expected {
+            anyhow::bail!(
+                "the producer range {first}..={last} contains {} records instead of {expected}",
+                records.len()
+            );
+        }
+        for (offset, record) in records.iter().enumerate() {
+            let expected_sequence = first.saturating_add(offset as u64);
+            if record.get("seq").and_then(Value::as_u64) != Some(expected_sequence) {
+                anyhow::bail!(
+                    "the producer range {first}..={last} has no record at sequence \
+                     {expected_sequence}"
+                );
+            }
+        }
+
+        Ok(records)
     }
 
     /// Archives the public key a batch was signed under, the first time it is seen.
@@ -322,17 +538,15 @@ impl EventStore {
     /// the producer's published set only carries what is current. Public material only: nothing
     /// this store holds could sign anything.
     pub fn archive_key(&self, key: &Jwk) -> Result<()> {
+        let rendered = serde_json::to_vec(key).context("rendering a verification key")?;
+        let fingerprint = permguard_events::record::digest_hex(&rendered);
         let path = self
             .root
             .join(KEYS_DIRECTORY)
-            .join(format!("{}.json", safe(&key.kid)?));
-        // A `kid` is a label its producer chose, not a digest of the key it names — so two
-        // different keys can carry one. Taking "the file is already there" as "the same key is
-        // already archived" would keep the first and silently verify later batches against it,
-        // which is a wrong answer in both directions: evidence signed by the second key would fail
-        // to verify, and the archive would attest to a key that never signed what it is filed
-        // under. Refused, so the conflict is somebody's to resolve rather than the store's to
-        // guess.
+            .join(format!("{}-{fingerprint}.json", safe(&key.kid)?));
+        // A key id is a producer-local label, not a digest and not a globally unique name. The
+        // content fingerprint makes two producers reusing one label two archive entries, while
+        // the exact same key remains idempotent.
         if path.exists() {
             let bytes = fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
             let held: Jwk = serde_json::from_slice(&bytes)
@@ -342,14 +556,12 @@ impl EventStore {
             }
 
             anyhow::bail!(
-                "the key id `{}` is already archived with different material: a `kid` is a label \
-                 and not a digest, so two keys can claim one, and this store cannot say which of \
-                 them signed what it holds",
-                key.kid
+                "the verification-key archive path {} does not contain the material its content fingerprint names",
+                path.display()
             );
         }
         let bytes = serde_json::to_vec_pretty(key).context("rendering a verification key")?;
-        fs::write(&path, bytes).with_context(|| format!("writing {}", path.display()))?;
+        write_atomic(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
 
         Ok(())
     }
@@ -390,25 +602,32 @@ impl EventStore {
     /// next is authoritative for that range.
     pub fn rollback_unacked(&self, stream: &permguard_events::Stream, acked: u64) -> Result<u64> {
         let mut dropped = 0;
-        for directory in [
-            self.stream_path(stream)?,
-            self.view_path(&stream.zone, &stream.ledger)?,
-        ] {
-            if !directory.exists() {
-                continue;
-            }
-            for (first, path) in segments_in(&directory)? {
+        let producer = self.stream_path(stream)?;
+        if producer.exists() {
+            for (first, path) in segments_in(&producer)? {
                 if first > acked {
                     dropped += lines_in(&path)?;
                     fs::remove_file(&path).context("removing an unacknowledged segment")?;
-                    continue;
+                } else {
+                    dropped += truncate_above(&path, acked)?;
                 }
-                dropped += truncate_above(&path, acked)?;
             }
-            // The index names positions inside those segments, so it is rebuilt rather than
-            // trusted: an entry pointing past a truncated segment would return a record that no
-            // longer exists.
-            rebuild_index(&directory)?;
+            rebuild_index(&producer)?;
+        }
+
+        let view = self.view_path(&stream.zone, &stream.ledger)?;
+        if view.exists() {
+            let previous = read_view_state(&view, &self.root)?;
+            for (_, path) in segments_in(&view)? {
+                dropped += truncate_stream_above(&path, stream, acked)?;
+            }
+            rebuild_index(&view)?;
+            let mut rebuilt = rebuild_view_state(&view, &self.root)?;
+            rebuilt.committed = previous.committed;
+            // The frontier advances only at acknowledgement. Rebuilding it from physical rows
+            // would make a crash-written, unacknowledged row visible as durable history.
+            rebuilt.frontier = previous.frontier;
+            write_view_state(&view, &rebuilt)?;
         }
 
         Ok(dropped)
@@ -430,6 +649,18 @@ impl EventStore {
         state.head = head.to_owned();
         self.write_state(&directory, &state)?;
 
+        let view = self.view_path(&stream.zone, &stream.ledger)?;
+        // The current ingest deliberately left an uncommitted suffix in this view. Reading the
+        // raw state here avoids treating that ordinary in-flight suffix as crash debris and
+        // scanning the whole view on every batch. Every other caller uses the recovering read.
+        let mut view_state = read_view_state_raw(&view, &self.root)?;
+        view_state
+            .frontier
+            .cover(&Scope::for_stream(stream).key(), acked.saturating_add(1));
+        view_state.committed = view_state.next.saturating_sub(1);
+        write_view_state(&view, &view_state)?;
+        flush_tree(&view)?;
+
         Ok(state)
     }
 
@@ -446,16 +677,35 @@ impl EventStore {
     fn write_state(&self, directory: &Path, state: &StreamState) -> Result<()> {
         fs::create_dir_all(directory).context("creating a stream directory")?;
         let bytes = serde_json::to_vec_pretty(state).context("rendering a stream's state")?;
-        let temporary = directory.join("STATE.writing");
-        fs::write(&temporary, bytes).context("writing a stream's state")?;
-        fs::rename(&temporary, directory.join(STATE_FILE)).context("writing a stream's state")?;
-
-        Ok(())
+        write_atomic(&directory.join(STATE_FILE), &bytes).context("committing a stream's state")
     }
 
     /// The segments of one scope, oldest first.
     pub fn segments(&self, scope: &Scope) -> Result<Vec<(u64, PathBuf)>> {
         segments_in(&self.scope_path(scope)?)
+    }
+
+    /// The producer frontier at the durable end of a scope.
+    pub fn frontier(&self, scope: &Scope) -> Result<Frontier> {
+        match scope {
+            Scope::Stream { .. } => {
+                let stream = scope
+                    .as_stream()
+                    .ok_or_else(|| anyhow!("not a stream scope"))?;
+                let state = self.stream_state(&stream)?;
+
+                Ok(Frontier::of(&scope.key(), state.acked))
+            }
+            Scope::Tenant { zone, ledger } => {
+                let directory = self.view_path(zone, ledger)?;
+
+                let state = read_view_state(&directory, &self.root)?;
+                let mut frontier = state.frontier;
+                frontier.cover(&scope.key(), state.committed);
+
+                Ok(frontier)
+            }
+        }
     }
 
     /// The positions of one event type inside a scope, in order.
@@ -470,16 +720,26 @@ impl EventStore {
     pub fn types_in(&self, scope: &Scope) -> Result<Vec<String>> {
         let directory = self.scope_path(scope)?.join("index");
         let mut found = Vec::new();
-        let Ok(entries) = fs::read_dir(&directory) else {
-            return Ok(found);
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if let Some(slug) = name.strip_suffix(".idx")
-                && let Some(held) = unslug(slug)
-            {
-                found.push(held);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(found),
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", directory.display()));
             }
+        };
+        for entry in entries {
+            let entry = entry.with_context(|| format!("listing {}", directory.display()))?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(slug) = name.strip_suffix(".idx") else {
+                continue;
+            };
+            let held = unslug(slug).ok_or_else(|| {
+                anyhow!(
+                    "the event-type index file `{}` has no reversible registered type name",
+                    entry.path().display()
+                )
+            })?;
+            found.push(held);
         }
         found.sort();
 
@@ -509,6 +769,88 @@ impl EventStore {
 
         found
     }
+}
+
+/// Truncates the one suffix a process crash may leave: bytes after the last newline.
+///
+/// A complete line that is not JSON is corruption and stops the store. Only a final line without
+/// its newline can be identified unambiguously as an interrupted append; treating any parse error
+/// as torn would let durable evidence disappear under the name of recovery.
+fn recover_torn_segments(root: &Path) -> Result<()> {
+    let mut pending = vec![root.join("streams"), root.join("views")];
+    let mut changed = BTreeSet::new();
+    while let Some(directory) = pending.pop() {
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", directory.display()));
+            }
+        };
+        for entry in entries {
+            let entry = entry.with_context(|| format!("listing {}", directory.display()))?;
+            let kind = entry
+                .file_type()
+                .with_context(|| format!("reading the type of {}", entry.path().display()))?;
+            if kind.is_dir() {
+                pending.push(entry.path());
+                continue;
+            }
+            if !kind.is_file()
+                || entry.path().extension().and_then(|held| held.to_str()) != Some("events")
+            {
+                continue;
+            }
+            if recover_torn_segment(&entry.path())? {
+                changed.insert(directory.clone());
+            }
+        }
+    }
+
+    for directory in changed {
+        rebuild_index(&directory)?;
+    }
+
+    Ok(())
+}
+
+/// Recovers one append-only segment and reports whether it was truncated.
+fn recover_torn_segment(path: &Path) -> Result<bool> {
+    let bytes = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let complete = bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |position| position.saturating_add(1));
+    for (number, line) in bytes[..complete]
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .enumerate()
+    {
+        serde_json::from_slice::<Value>(line).with_context(|| {
+            format!(
+                "reading complete record {} of {}",
+                number.saturating_add(1),
+                path.display()
+            )
+        })?;
+    }
+    if complete == bytes.len() {
+        return Ok(false);
+    }
+
+    let file = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .with_context(|| format!("opening {} for crash recovery", path.display()))?;
+    file.set_len(complete as u64)
+        .with_context(|| format!("truncating a torn record from {}", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("flushing recovered segment {}", path.display()))?;
+    if let Some(directory) = path.parent() {
+        sync_directory(directory)?;
+    }
+
+    Ok(true)
 }
 
 /// One stream, as a single key.
@@ -552,6 +894,10 @@ fn segment_for(directory: &Path, seq: u64) -> Result<PathBuf> {
     Ok(directory.join(format!("seg-{first:020}.events")))
 }
 
+fn line_in_segment(position: u64) -> u64 {
+    position.saturating_sub(1) % SEGMENT_RECORDS
+}
+
 /// Reads a file, or says it is not there.
 ///
 /// `None` means the file does not exist, which is a legitimate "nothing here yet". Every other
@@ -564,6 +910,196 @@ fn read_or_absent(path: &Path) -> Result<Option<String>> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
     }
+}
+
+fn read_view_state(directory: &Path, root: &Path) -> Result<ViewState> {
+    let state = read_view_state_raw(directory, root)?;
+    if state.committed < state.next.saturating_sub(1) {
+        // This is only a recovery path. In the ordinary append/ack sequence there is no visible
+        // suffix once the tenant gate is released. A suffix here means a process stopped between
+        // the producer ACK and the tenant-view commit (now acknowledged), or before both (scratch).
+        return recover_view(directory, root);
+    }
+
+    Ok(state)
+}
+
+fn read_view_state_raw(directory: &Path, root: &Path) -> Result<ViewState> {
+    let path = directory.join(VIEW_STATE_FILE);
+    match fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .with_context(|| format!("reading the tenant view state {}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            rebuild_view_state(directory, root)
+        }
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+fn write_view_state(directory: &Path, state: &ViewState) -> Result<()> {
+    fs::create_dir_all(directory).context("creating a tenant view")?;
+    let bytes = serde_json::to_vec_pretty(state).context("rendering a tenant view state")?;
+    write_atomic(&directory.join(VIEW_STATE_FILE), &bytes).context("committing a tenant view state")
+}
+
+/// Repairs every derived tenant view before this process accepts work.
+fn recover_views(root: &Path) -> Result<()> {
+    let views = root.join("views");
+    for zone in fs::read_dir(&views).with_context(|| format!("listing {}", views.display()))? {
+        let zone = zone.context("listing event zones")?;
+        if !zone.file_type().context("reading an event zone")?.is_dir() {
+            continue;
+        }
+        for ledger in fs::read_dir(zone.path()).context("listing event ledgers")? {
+            let ledger = ledger.context("listing event ledgers")?;
+            if ledger
+                .file_type()
+                .context("reading an event ledger")?
+                .is_dir()
+            {
+                recover_view(&ledger.path(), root)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Reconciles a tenant view with the authoritative ACK of every producer stream.
+fn recover_view(directory: &Path, root: &Path) -> Result<ViewState> {
+    let mut rebuilt = rebuild_view_state(directory, root)?;
+    if rebuilt.committed < rebuilt.next.saturating_sub(1) {
+        // An unacknowledged tenant-view row is scratch: the producer still owns it and will resend.
+        // It is necessarily a suffix because one tenant gate spans append through acknowledgement.
+        truncate_view_after(directory, rebuilt.committed)?;
+        rebuild_index(directory)?;
+        rebuilt = rebuild_view_state(directory, root)?;
+    }
+    write_view_state(directory, &rebuilt)?;
+
+    Ok(rebuilt)
+}
+
+/// Removes the physical suffix after the last producer-acknowledged tenant position.
+///
+/// Tenant positions are append-only and contiguous within their numbered segments. Retention may
+/// have removed older whole segments, but it never renumbers what remains, so the segment's first
+/// position plus its line number is still the authoritative position.
+fn truncate_view_after(directory: &Path, committed: u64) -> Result<()> {
+    let mut changed = false;
+    for (first, path) in segments_in(directory)? {
+        if first > committed {
+            fs::remove_file(&path).with_context(|| {
+                format!("removing uncommitted tenant segment {}", path.display())
+            })?;
+            changed = true;
+            continue;
+        }
+
+        let Some(text) = read_or_absent(&path)? else {
+            continue;
+        };
+        let keep = usize::try_from(committed.saturating_sub(first).saturating_add(1))
+            .unwrap_or(usize::MAX);
+        let lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+        if keep >= lines.len() {
+            continue;
+        }
+
+        if keep == 0 {
+            fs::remove_file(&path).with_context(|| {
+                format!("removing uncommitted tenant segment {}", path.display())
+            })?;
+        } else {
+            let mut retained = lines[..keep].join("\n");
+            retained.push('\n');
+            write_atomic(&path, retained.as_bytes())
+                .with_context(|| format!("truncating tenant segment {}", path.display()))?;
+        }
+        changed = true;
+    }
+    if changed {
+        sync_directory(directory)?;
+    }
+
+    Ok(())
+}
+
+/// Re-derives the merged view's append position and per-producer frontier from its authoritative
+/// records. Used after rollback and when a derived state file is lost.
+fn rebuild_view_state(directory: &Path, root: &Path) -> Result<ViewState> {
+    let mut state = ViewState::default();
+    let mut acknowledged: BTreeMap<String, u64> = BTreeMap::new();
+    let mut durable_prefix = true;
+    for (first, path) in segments_in(directory)? {
+        let Some(text) = read_or_absent(&path)? else {
+            continue;
+        };
+        for (number, line) in text.lines().filter(|line| !line.is_empty()).enumerate() {
+            let record: Value = serde_json::from_str(line)
+                .with_context(|| format!("reading record {} of {}", number + 1, path.display()))?;
+            let stream: permguard_events::Stream = serde_json::from_value(
+                record
+                    .get("stream")
+                    .cloned()
+                    .ok_or_else(|| anyhow!("a tenant-view record has no stream"))?,
+            )
+            .context("reading a tenant-view record's stream")?;
+            let seq = record
+                .get("seq")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| anyhow!("a tenant-view record has no sequence"))?;
+            let position = first.saturating_add(number as u64);
+            state.next = state.next.max(position.saturating_add(1));
+
+            if durable_prefix {
+                let key = Scope::for_stream(&stream).key();
+                let acked = match acknowledged.get(&key) {
+                    Some(acked) => *acked,
+                    None => {
+                        let mut stream_directory = root.join("streams");
+                        for segment in [
+                            stream.zone.as_str(),
+                            stream.ledger.as_str(),
+                            stream.producer.class.as_str(),
+                            stream.producer.id.as_str(),
+                            stream.producer.instance.as_str(),
+                        ] {
+                            stream_directory.push(safe(segment)?);
+                        }
+                        let state_path = stream_directory.join(STATE_FILE);
+                        let acked = match fs::read(&state_path) {
+                            Ok(bytes) => {
+                                serde_json::from_slice::<StreamState>(&bytes)
+                                    .with_context(|| {
+                                        format!("reading stream state {}", state_path.display())
+                                    })?
+                                    .acked
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+                            Err(error) => {
+                                return Err(error)
+                                    .with_context(|| format!("reading {}", state_path.display()));
+                            }
+                        };
+                        acknowledged.insert(key.clone(), acked);
+                        acked
+                    }
+                };
+                if seq <= acked {
+                    state.committed = position;
+                    state.frontier.cover(&key, seq.saturating_add(1));
+                } else {
+                    // Ingest holds the tenant gate from append through acknowledgement, so an
+                    // unacknowledged row can only be a suffix left by a crash. No later position
+                    // may be published around that hole.
+                    durable_prefix = false;
+                }
+            }
+        }
+    }
+
+    Ok(state)
 }
 
 /// The segments of a directory, oldest first.
@@ -589,9 +1125,12 @@ pub fn segments_in(directory: &Path) -> Result<Vec<(u64, PathBuf)>> {
         else {
             continue;
         };
-        let Ok(first) = rest.parse::<u64>() else {
-            continue;
-        };
+        let first = rest.parse::<u64>().with_context(|| {
+            format!(
+                "the event segment {} has a non-numeric first position",
+                entry.path().display()
+            )
+        })?;
         found.push((first, entry.path()));
     }
     found.sort_by_key(|(first, _)| *first);
@@ -608,8 +1147,7 @@ fn render(record: &Value) -> Result<String> {
 }
 
 /// Appends a line, and says which segment and line it became.
-fn append_line(path: &Path, line: &str) -> Result<(u64, u64)> {
-    let existing = lines_in(path)?;
+fn append_line(path: &Path, line_number: u64, line: &str) -> Result<(u64, u64)> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -624,9 +1162,9 @@ fn append_line(path: &Path, line: &str) -> Result<(u64, u64)> {
         .and_then(|name| name.strip_prefix("seg-"))
         .and_then(|name| name.strip_suffix(".events"))
         .and_then(|name| name.parse::<u64>().ok())
-        .unwrap_or_default();
+        .ok_or_else(|| anyhow!("{} is not a numbered event segment", path.display()))?;
 
-    Ok((first, existing))
+    Ok((first, line_number))
 }
 
 /// How many records a segment holds.
@@ -645,14 +1183,16 @@ fn truncate_above(path: &Path, acked: u64) -> Result<u64> {
     };
     let mut kept = String::new();
     let mut dropped = 0;
-    for line in text.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        let seq = serde_json::from_str::<Value>(line)
-            .ok()
-            .and_then(|record| record.get("seq").and_then(Value::as_u64))
-            .unwrap_or_default();
+    for (number, line) in text.lines().filter(|line| !line.is_empty()).enumerate() {
+        let record: Value = serde_json::from_str(line)
+            .with_context(|| format!("reading record {} of {}", number + 1, path.display()))?;
+        let seq = record.get("seq").and_then(Value::as_u64).ok_or_else(|| {
+            anyhow!(
+                "record {} of {} has no sequence",
+                number + 1,
+                path.display()
+            )
+        })?;
         if seq > acked {
             dropped += 1;
             continue;
@@ -661,7 +1201,49 @@ fn truncate_above(path: &Path, acked: u64) -> Result<u64> {
         kept.push('\n');
     }
     if dropped > 0 {
-        fs::write(path, kept).context("truncating a segment")?;
+        write_atomic(path, kept.as_bytes()).context("truncating a segment")?;
+    }
+
+    Ok(dropped)
+}
+
+/// Drops only one producer's unacknowledged records from a merged view.
+fn truncate_stream_above(
+    path: &Path,
+    stream: &permguard_events::Stream,
+    acked: u64,
+) -> Result<u64> {
+    let Some(text) = read_or_absent(path)? else {
+        return Ok(0);
+    };
+    let mut kept = String::new();
+    let mut dropped = 0;
+    for (number, line) in text.lines().filter(|line| !line.is_empty()).enumerate() {
+        let record: Value = serde_json::from_str(line)
+            .with_context(|| format!("reading record {} of {}", number + 1, path.display()))?;
+        let held_stream = record
+            .get("stream")
+            .cloned()
+            .ok_or_else(|| anyhow!("record {} of {} has no stream", number + 1, path.display()))?;
+        let held_stream: permguard_events::Stream = serde_json::from_value(held_stream)
+            .with_context(|| format!("reading stream {} of {}", number + 1, path.display()))?;
+        let same_stream = held_stream == *stream;
+        let sequence = record.get("seq").and_then(Value::as_u64).ok_or_else(|| {
+            anyhow!(
+                "record {} of {} has no sequence",
+                number + 1,
+                path.display()
+            )
+        })?;
+        if same_stream && sequence > acked {
+            dropped += 1;
+            continue;
+        }
+        kept.push_str(line);
+        kept.push('\n');
+    }
+    if dropped > 0 {
+        write_atomic(path, kept.as_bytes()).context("truncating a tenant view")?;
     }
 
     Ok(dropped)
@@ -677,13 +1259,61 @@ fn index_path(directory: &Path, event_type: &str) -> PathBuf {
 /// A registered type name as a file name.
 ///
 /// Reversible, so the set of indexed types can be listed back without a second file recording
-/// them. Only `.` and `/` need replacing in a registered name, and `.` is the only one that occurs.
+/// them. Dots and slashes keep the spelling used by the original on-disk format; bytes that would
+/// collide with those spellings are percent-encoded. Thus `a.b`, `a-b`, `a/b` and `a_b` are four
+/// different indexes rather than two pairs sharing files.
 fn slug(event_type: &str) -> String {
-    event_type.replace('/', "_").replace('.', "-")
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::with_capacity(event_type.len());
+    for byte in event_type.bytes() {
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => encoded.push(char::from(byte)),
+            b'.' => encoded.push('-'),
+            b'/' => encoded.push('_'),
+            _ => {
+                encoded.push('%');
+                encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+            }
+        }
+    }
+
+    encoded
 }
 
 fn unslug(slug: &str) -> Option<String> {
-    (!slug.is_empty()).then(|| slug.replace('-', "."))
+    if slug.is_empty() {
+        return None;
+    }
+    let bytes = slug.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut at = 0usize;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => decoded.push(bytes[at]),
+            b'-' => decoded.push(b'.'),
+            b'_' => decoded.push(b'/'),
+            b'%' => {
+                let high = hex_value(*bytes.get(at.saturating_add(1))?)?;
+                let low = hex_value(*bytes.get(at.saturating_add(2))?)?;
+                decoded.push((high << 4) | low);
+                at = at.saturating_add(2);
+            }
+            _ => return None,
+        }
+        at = at.saturating_add(1);
+    }
+
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// Records where one record of `event_type` sits.
@@ -738,7 +1368,13 @@ fn read_index(directory: &Path, event_type: &str) -> Result<Vec<(u64, u64)>> {
 /// a cost rather than a wrong answer.
 pub fn rebuild_index(directory: &Path) -> Result<()> {
     let index = directory.join("index");
-    let _ = fs::remove_dir_all(&index);
+    match fs::remove_dir_all(&index) {
+        Ok(()) => sync_directory(directory)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("removing {}", index.display()));
+        }
+    }
     let mut positions: BTreeMap<String, Vec<(u64, u64)>> = BTreeMap::new();
     for (first, path) in segments_in(directory)? {
         // A segment that cannot be read cannot be indexed, and an index built as though it were
@@ -754,9 +1390,16 @@ pub fn rebuild_index(directory: &Path) -> Result<()> {
                     path.display()
                 )
             })?;
-            let Some(event_type) = record.get("event_type").and_then(Value::as_str) else {
-                continue;
-            };
+            let event_type = record
+                .get("event_type")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "the record at line {} of {} has no event type",
+                        line_number + 1,
+                        path.display()
+                    )
+                })?;
             positions
                 .entry(event_type.to_owned())
                 .or_default()
@@ -767,38 +1410,72 @@ pub fn rebuild_index(directory: &Path) -> Result<()> {
         return Ok(());
     }
     fs::create_dir_all(&index).context("creating an index")?;
+    sync_directory(directory)?;
     for (event_type, held) in positions {
         let body: String = held
             .into_iter()
             .map(|(segment, line)| format!("{segment}:{line}\n"))
             .collect();
-        fs::write(index_path(directory, &event_type), body).context("writing an index")?;
+        write_atomic(&index_path(directory, &event_type), body.as_bytes())
+            .context("writing an index")?;
     }
 
     Ok(())
 }
 
+/// Atomically replaces one file and makes both its bytes and its directory entry durable.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow!("{} has no parent directory", path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
+    let temporary = parent.join(format!(".{name}.writing"));
+    let mut file =
+        File::create(&temporary).with_context(|| format!("opening {}", temporary.display()))?;
+    file.write_all(bytes)
+        .with_context(|| format!("writing {}", temporary.display()))?;
+    file.sync_all()
+        .with_context(|| format!("flushing {}", temporary.display()))?;
+    drop(file);
+    fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
+    sync_directory(parent)
+}
+
+pub(crate) fn sync_directory(directory: &Path) -> Result<()> {
+    File::open(directory)
+        .with_context(|| format!("opening directory {}", directory.display()))?
+        .sync_all()
+        .with_context(|| format!("flushing directory {}", directory.display()))
+}
+
 /// `fsync`s every file of a directory, and the directory itself.
 fn flush_tree(directory: &Path) -> Result<()> {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return Ok(());
-    };
-    for entry in entries.flatten() {
+    let entries = fs::read_dir(directory)
+        .with_context(|| format!("listing {} before flushing it", directory.display()))?;
+    for entry in entries {
+        let entry = entry.with_context(|| format!("listing {}", directory.display()))?;
         let path = entry.path();
-        if path.is_dir() {
+        let kind = entry
+            .file_type()
+            .with_context(|| format!("reading the type of {}", path.display()))?;
+        if kind.is_dir() {
             flush_tree(&path)?;
             continue;
         }
-        if let Ok(file) = fs::File::open(&path) {
-            file.sync_all()
+        if kind.is_file() {
+            fs::File::open(&path)
+                .with_context(|| format!("opening {} before flushing it", path.display()))?
+                .sync_all()
                 .with_context(|| format!("flushing {}", path.display()))?;
         }
     }
-    if let Ok(handle) = fs::File::open(directory) {
-        // A directory `fsync` is what makes a *newly created* file survive: the file's own flush
-        // does not persist the entry that names it.
-        let _ = handle.sync_all();
-    }
+    // A directory `fsync` is what makes a *newly created* file survive: the file's own flush does
+    // not persist the entry that names it.
+    sync_directory(directory)?;
 
     Ok(())
 }
@@ -833,8 +1510,10 @@ pub fn read_segment(path: &Path, position: u64, limit: usize) -> Result<(Vec<Val
 
 /// One record of a segment, by line.
 pub fn read_line(path: &Path, line: u64) -> Result<Option<Value>> {
-    let Ok(text) = fs::read_to_string(path) else {
-        return Ok(None);
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
     };
     let Some(held) = text
         .lines()
@@ -847,4 +1526,34 @@ pub fn read_line(path: &Path, line: u64) -> Result<Option<Value>> {
     Ok(Some(
         serde_json::from_str(held).context("reading a record")?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{slug, unslug};
+
+    #[test]
+    fn event_type_file_names_are_reversible_and_collision_free() {
+        let types = [
+            "permguard.dogwood.event.v1",
+            "vendor.event-type.v1",
+            "vendor/event_type/v1",
+            "événement.一.v1",
+        ];
+        let slugs: std::collections::BTreeSet<String> =
+            types.iter().map(|event_type| slug(event_type)).collect();
+        assert_eq!(slugs.len(), types.len());
+        for event_type in types {
+            assert_eq!(unslug(&slug(event_type)).as_deref(), Some(event_type));
+        }
+        assert_ne!(slug("a.b"), slug("a-b"));
+        assert_ne!(slug("a/b"), slug("a_b"));
+    }
+
+    #[test]
+    fn malformed_event_type_file_names_are_not_invented_into_types() {
+        for malformed in ["", "%", "%0", "%GG", "raw:colon"] {
+            assert_eq!(unslug(malformed), None, "{malformed}");
+        }
+    }
 }

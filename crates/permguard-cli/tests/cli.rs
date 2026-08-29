@@ -1182,6 +1182,80 @@ fn events_answers_in_all_three_formats_and_keeps_refusals_off_stdout() {
     }
 }
 
+/// An export carries its evidence, so verifying a file never depends on the server that supplied
+/// it still being reachable. Empty is a legitimate complete snapshot and a useful transport test:
+/// any accidental network call would hit the deliberately unreachable endpoint below.
+#[test]
+fn an_event_export_is_verified_offline_in_every_output_format() {
+    let dir = scratch("events-offline-verify");
+    let archive = dir.join("events.json");
+    std::fs::write(
+        dir.join("producer-keys.json"),
+        r#"{"keys":[{"kid":"unused","kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","alg":"EdDSA","use":"sig"}]}"#,
+    )
+    .expect("the independent key set writes");
+    std::fs::write(
+        &archive,
+        r#"{
+          "format":"permguard.events.export.v1alpha1",
+          "scope_binding":{"kind":"tenant","zone":"acme","ledger":"main"},
+          "summary":{
+            "scope":"acme/main","events":[],"next":"end","high_watermark":"end",
+            "more":false,"coverage":{"contiguous":false,"examined":0,"scan_bounded":false}
+          },
+          "records":[],"envelopes":[],"inclusion":[]
+        }"#,
+    )
+    .expect("the archive writes");
+
+    for format in ["terminal", "json", "yaml"] {
+        let output = run(
+            &dir,
+            &[
+                "events",
+                "verify",
+                "--file",
+                "events.json",
+                "--keys",
+                "producer-keys.json",
+                "--control-endpoint",
+                "http://127.0.0.1:1",
+                "-o",
+                format,
+            ],
+        );
+        assert!(output.status.success(), "{format}: {}", stderr(&output));
+        assert!(output.stderr.is_empty(), "{format}: {}", stderr(&output));
+        if format == "json" {
+            let report: serde_json::Value =
+                serde_json::from_str(&stdout(&output)).expect("the report is JSON");
+            assert_eq!(report["verified"]["included"], 0);
+            assert_eq!(report["verified"]["signatures_checked"], true);
+        }
+    }
+}
+
+#[test]
+fn event_verification_refuses_to_trust_proof_material_without_a_producer_key() {
+    let dir = scratch("events-verify-keys");
+    std::fs::write(
+        dir.join("events.json"),
+        r#"{
+          "format":"permguard.events.export.v1alpha1",
+          "scope_binding":{"kind":"tenant","zone":"acme","ledger":"main"},
+          "summary":{"scope":"acme/main","events":[],"next":"end","high_watermark":"end",
+            "more":false,"coverage":{"contiguous":false,"examined":0,"scan_bounded":false}},
+          "records":[],"envelopes":[],"inclusion":[]
+        }"#,
+    )
+    .expect("the archive writes");
+
+    let output = run(&dir, &["events", "verify", "--file", "events.json"]);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(stderr(&output).contains("event_keys_required"));
+    assert!(output.stdout.is_empty());
+}
+
 /// `-v` narrates the exchange to stderr, and says nothing extra without it.
 ///
 /// Quiet by default and explicit on demand. The narration goes to stderr because stdout is the

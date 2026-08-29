@@ -474,6 +474,21 @@ pub fn log_destination(value: &Value) -> Result<(Option<LogDestination>, Include
     Ok((decisions.destination(), decisions.include().clone()))
 }
 
+/// Where this plane ships event records and reads shared history.
+pub fn events_destination(
+    value: &Value,
+) -> Result<Option<permguard_core::decisions::EventDestination>> {
+    let section: PlaneSectionConfig =
+        serde_norway::from_value(value.clone()).context("parsing a plane section")?;
+    let Some(events) = section.events.as_ref() else {
+        return Ok(None);
+    };
+    let events: EventsSection =
+        serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+
+    Ok(events.destination())
+}
+
 /// The producers a control plane accepts decision records from.
 ///
 /// Structured, so it comes from the file only: a list of key-set paths has no
@@ -492,9 +507,12 @@ pub fn producer_keys(value: &Value) -> Result<Vec<String>> {
 
 /// The producers a control plane accepts *event* records from.
 ///
-/// Read from `controlPlane.events.producer_keys`. Empty means "not stated", and the configuration
-/// falls back to the decision store's list — see [`permguard_core::Config::event_producer_keys`].
-pub fn event_producer_keys(value: &Value) -> Result<Vec<String>> {
+/// Read from `controlPlane.events.producer_keys`. Every entry binds key material to one exact
+/// producer and an allowed tenant scope; the unbound decision-log trust list is deliberately not
+/// reused for event ingestion.
+pub fn event_producer_keys(
+    value: &Value,
+) -> Result<Vec<permguard_core::decisions::EventProducerSource>> {
     let section: PlaneSectionConfig =
         serde_norway::from_value(value.clone()).context("parsing a plane section")?;
     let Some(events) = section.events.as_ref() else {
@@ -800,6 +818,18 @@ pub fn pull_ledgers(
             })
         })
         .collect()
+}
+
+pub fn pull_producer_keys(
+    value: &Value,
+) -> anyhow::Result<Vec<permguard_core::decisions::EventProducerSource>> {
+    let Some(events) = value.get("events") else {
+        return Ok(Vec::new());
+    };
+    let section: EventsSection =
+        serde_norway::from_value(events.clone()).context("parsing `dataPlane.events`")?;
+
+    Ok(section.pull_producer_keys().to_vec())
 }
 
 #[cfg(test)]

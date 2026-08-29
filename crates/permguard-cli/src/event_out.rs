@@ -13,14 +13,14 @@
 
 use std::io::{self, Write};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::output::Report;
 use crate::style;
 
 /// A page of events, and what checking them concluded.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventsReport {
     /// What was read: `acme/agent-governance`, or a producer stream.
     pub scope: String,
@@ -29,10 +29,10 @@ pub struct EventsReport {
     /// The offset to resume from, which belongs to the caller.
     pub next: String,
     /// The oldest offset still held, to resume from deliberately after a gap.
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub oldest_available: String,
     /// The exclusive end this read observed. Echo it to bound an export.
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub high_watermark: String,
     /// Whether the store holds more right now.
     pub more: bool,
@@ -47,12 +47,12 @@ pub struct EventsReport {
     /// What this page proves about what it covers.
     pub coverage: Coverage,
     /// What verification concluded, when it was asked for.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified: Option<Verified>,
 }
 
 /// What a page proves about what it covers.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Coverage {
     /// Whether the records are a contiguous run whose chain links across them.
     pub contiguous: bool,
@@ -63,7 +63,7 @@ pub struct Coverage {
 }
 
 /// One event, as a reader sees it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventLine {
     /// Where it sits in its producer's history.
     pub seq: u64,
@@ -98,7 +98,7 @@ pub struct EventLine {
 /// The values and not only the digest, which is the whole point of storing them in the signed
 /// record: an investigator looking at an event has to be able to see *which* values put it in that
 /// partition, not just that two records agree.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct History {
     pub pins: Vec<String>,
     pub values: Vec<String>,
@@ -112,10 +112,10 @@ pub struct History {
 /// records in between belong to other tenants and must not be disclosed — so the chain cannot be
 /// checked across it, and the inclusion path is what proves each record instead. Reporting a chain
 /// result for a tenant page would be reporting a failure of arithmetic as a failure of integrity.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verified {
     /// Which proof applies here: `chain` or `inclusion`.
-    pub proof: &'static str,
+    pub proof: String,
     /// Whether the records are a contiguous, unaltered chain. Stream scope only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chain: Option<bool>,
@@ -147,6 +147,44 @@ impl Verified {
 #[derive(Debug, Clone, Serialize)]
 pub struct EventReport {
     pub record: Value,
+}
+
+/// A finite, independently verifiable event export.
+///
+/// The summary is for people; the canonical records, signed envelopes and inclusion paths are the
+/// evidence. Keeping them in one versioned document is what makes `events verify --file` an
+/// offline operation rather than another read from the server being checked.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventArchive {
+    pub format: String,
+    pub scope_binding: ArchiveScope,
+    pub summary: EventsReport,
+    pub records: Vec<Value>,
+    pub envelopes: Vec<Value>,
+    pub inclusion: Vec<Value>,
+}
+
+/// The authorization/integrity scope an exported offset and its records belong to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArchiveScope {
+    Tenant {
+        zone: String,
+        ledger: String,
+    },
+    Stream {
+        zone: String,
+        ledger: String,
+        producer_class: String,
+        producer: String,
+        instance: String,
+    },
+}
+
+impl Report for EventArchive {
+    fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        self.summary.render_terminal(out)
+    }
 }
 
 impl Report for EventsReport {

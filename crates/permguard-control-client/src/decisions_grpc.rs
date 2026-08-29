@@ -135,23 +135,13 @@ impl DecisionReader for GrpcSink {
 
         match answer {
             Ok(answer) => Ok(Page {
-                records: answer
-                    .records
-                    .iter()
-                    .map(Vec::as_slice)
-                    .map(parse)
-                    .collect(),
+                records: parse_all("record", &answer.records)?,
                 next: answer.next,
                 more: answer.more,
                 oldest_available: answer.oldest_available,
                 high_watermark: answer.high_watermark,
-                proof: answer.proof.iter().map(Vec::as_slice).map(parse).collect(),
-                inclusion: answer
-                    .inclusion
-                    .iter()
-                    .map(Vec::as_slice)
-                    .map(parse)
-                    .collect(),
+                proof: parse_all("proof", &answer.proof)?,
+                inclusion: parse_all("inclusion path", &answer.inclusion)?,
                 coverage: answer
                     .coverage
                     .map(|held| crate::decisions::Coverage {
@@ -192,6 +182,16 @@ impl DecisionReader for GrpcSink {
     }
 }
 
-fn parse(bytes: &[u8]) -> Value {
-    serde_json::from_slice(bytes).unwrap_or(Value::Null)
+fn parse_all(label: &str, values: &[Vec<u8>]) -> Result<Vec<Value>, ReadError> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, bytes)| {
+            serde_json::from_slice(bytes).map_err(|error| {
+                ReadError::Unavailable(format!(
+                    "the gRPC page's {label} {index} was not JSON: {error}"
+                ))
+            })
+        })
+        .collect()
 }
