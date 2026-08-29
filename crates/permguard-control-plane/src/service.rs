@@ -30,6 +30,9 @@ struct PlaneState {
     /// trust set is empty accepts no batch, and reporting that as process-wide not-ready would take
     /// its decisions and its catalog out of rotation over a capability neither of them uses.
     events: Option<std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>>,
+    /// The decision capability actually composed for this process, when configured.
+    decisions:
+        Option<std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>>,
 }
 
 #[derive(Serialize)]
@@ -64,8 +67,10 @@ struct Degraded {
 
 /// A facade composed once per store directory, for every surface that serves it.
 ///
-/// `None` is cached as deliberately as `Some`: "this deployment does not serve events" is a
-/// decision, and re-deciding it per surface would log the same refusal once per transport.
+/// Successful composition is cached so every transport shares one set of write gates. A failed
+/// attempt is not: HTTP and gRPC are assembled one after the other, and a transient filesystem
+/// failure during the first must not permanently suppress the second. Disabled capabilities never
+/// call this helper in the first place.
 type Composed<T> = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Option<T>>>;
 
 /// The control plane, and the stores it composed.
@@ -93,6 +98,8 @@ pub struct ControlPlaneModule {
     /// ingestion admits under.
     event_trust: std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
     decisions: Composed<crate::decisions::http::DecisionFacade>,
+    decision_state:
+        std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
 }
 
 pub fn module() -> Box<dyn PlaneModule> {
@@ -109,11 +116,18 @@ fn composed<T: Clone>(
         Ok(held) => held,
         Err(poisoned) => poisoned.into_inner(),
     };
-    if let Some(known) = held.get(&directory) {
-        return known.clone();
+    if let Some(Some(known)) = held.get(&directory) {
+        return Some(known.clone());
     }
     let built = build();
-    held.insert(directory, built.clone());
+    match &built {
+        Some(built) => {
+            held.insert(directory, Some(built.clone()));
+        }
+        None => {
+            held.remove(&directory);
+        }
+    }
 
     built
 }
@@ -147,7 +161,7 @@ impl ControlPlaneModule {
         let directory = config.working_dir().join(config.decision_store_directory());
 
         composed(&self.decisions, directory.clone(), || {
-            build_decision_facade(context, &directory)
+            build_decision_facade(context, &directory, &self.decision_state)
         })
     }
 }
@@ -191,11 +205,14 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
-        events_startup_check(config)
+        events_startup_check(config)?;
+        decisions_startup_check(config)
     }
 
     fn http_routes(&self, context: &ServerContext<'_>) -> Router {
-        let state = plane_state(context).serving_events(&self.event_trust, context.config());
+        let state = plane_state(context)
+            .serving_events(&self.event_trust, context.config())
+            .serving_decisions(&self.decision_state, context.config());
 
         let routes = Router::new()
             .route("/", get(info))
@@ -252,7 +269,9 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn grpc_routes(&self, context: &ServerContext<'_>) -> Router {
-        let state = plane_state(context).serving_events(&self.event_trust, context.config());
+        let state = plane_state(context)
+            .serving_events(&self.event_trust, context.config())
+            .serving_decisions(&self.decision_state, context.config());
         let mut grpc = RoutesBuilder::default();
         grpc.add_service(ControlPlaneServer::new(PlaneApi {
             plane: state.plane,
@@ -579,6 +598,40 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A configured decision store is a startup requirement, not an optional
+/// route that may disappear behind a ready health endpoint.
+fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
+    if !config.decision_store_enabled() {
+        return Ok(());
+    }
+    if config.decision_producer_keys().is_empty() && !config.data_signing_keys_enabled() {
+        anyhow::bail!(
+            "the decision store is enabled and this process has neither \
+             `controlPlane.decisions.producer_keys` nor a local data-plane signing ring. It would \
+             serve no decision routes because no batch could be verified"
+        );
+    }
+
+    let directory = config.working_dir().join(config.decision_store_directory());
+    // Open and drop as a preflight. The facade composed after startup owns the
+    // actual per-stream gates; this pass establishes that the configured path
+    // and its durable cursor key are usable before any listener reports ready.
+    crate::decisions::DecisionStore::open(&directory).with_context(|| {
+        format!(
+            "opening the configured decision store at {}",
+            directory.display()
+        )
+    })?;
+    crate::decisions::cursorkey::load(&directory).with_context(|| {
+        format!(
+            "loading the decision store cursor key at {}",
+            directory.display()
+        )
+    })?;
+
+    Ok(())
+}
+
 /// The event store's facade, when this deployment receives events.
 ///
 /// Built the same way the decision store's is, and for the same reasons: the producers' published
@@ -667,6 +720,7 @@ fn build_event_facade(
 fn build_decision_facade(
     context: &ServerContext<'_>,
     directory: &std::path::Path,
+    shared: &std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
 ) -> Option<crate::decisions::http::DecisionFacade> {
     let config = context.config();
     // Whose signatures this plane accepts. Its own ring is deliberately not
@@ -674,14 +728,28 @@ fn build_decision_facade(
     let producers = load_producer_keys(config);
     let local = context.data_signing_keys().map(std::sync::Arc::clone);
     if producers.is_empty() && local.is_none() {
+        if config.decision_producer_keys().is_empty() {
+            // The startup check reports this before listeners are built. Keep
+            // the composition root fail-closed if it was bypassed in a test or
+            // an embedding application.
+            tracing::error!(
+                event.name = "decisions.disabled",
+                component = COMPONENT,
+                "the decision log is on and this plane has no producer trust source"
+            );
+            return None;
+        }
+        // A configured producer may not have published its first JWKS yet.
+        // Mount the routes with an empty trust set: every batch is refused,
+        // `reload_producers` retries the files, and health names the degraded
+        // capability. Omitting the routes here would make that recoverable
+        // state permanent until restart.
         tracing::warn!(
-            event.name = "decisions.disabled",
+            event.name = "decisions.no_producers",
             component = COMPONENT,
-            "the decision log is on and this plane knows no producer's keys: name them under \
-             `controlPlane.decisions.producer_keys`, or run a data plane in this process. Nothing \
-             is served rather than accepting what nobody checked"
+            "the decision store is ready but no configured producer key set has loaded; batches \
+             are refused until one is published"
         );
-        return None;
     }
     let store = match crate::decisions::DecisionStore::open(directory) {
         Ok(store) => std::sync::Arc::new(store),
@@ -713,7 +781,7 @@ fn build_decision_facade(
         }
     };
 
-    Some(crate::decisions::http::DecisionFacade {
+    let facade = crate::decisions::http::DecisionFacade {
         store,
         local,
         cursor_key,
@@ -725,7 +793,12 @@ fn build_decision_facade(
             .collect(),
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
-    })
+    };
+    if let Ok(mut held) = shared.lock() {
+        *held = Some(facade.clone());
+    }
+
+    Some(facade)
 }
 
 /// Reads the producers' published key sets from the paths the file names.
@@ -860,6 +933,7 @@ fn plane_state(context: &ServerContext<'_>) -> PlaneState {
         },
         health: context.health().clone(),
         events: None,
+        decisions: None,
     }
 }
 
@@ -872,6 +946,22 @@ impl PlaneState {
     ) -> Self {
         if events_served(config) {
             self.events = Some(std::sync::Arc::clone(events));
+        }
+
+        self
+    }
+
+    /// Carries the facade that was actually composed, rather than inferring
+    /// decision-log availability from the configuration that requested it.
+    fn serving_decisions(
+        mut self,
+        decisions: &std::sync::Arc<
+            std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>,
+        >,
+        config: &permguard_core::Config,
+    ) -> Self {
+        if config.decision_store_enabled() {
+            self.decisions = Some(std::sync::Arc::clone(decisions));
         }
 
         self
@@ -912,6 +1002,30 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
                          until one is published under `controlPlane.events.producer_keys`",
             }),
             Some(_) => {}
+        }
+    }
+    if let Some(decisions) = &state.decisions {
+        let composed = decisions.lock().ok().and_then(|held| {
+            held.as_ref()
+                .map(|facade| facade.accepted_keys().map(|keys| keys.len()))
+        });
+        match composed {
+            None => degraded.push(Degraded {
+                capability: "decisions",
+                reason: "the decision store did not compose: this plane serves no decision routes \
+                         and its startup preflight must be corrected before it can become ready",
+            }),
+            Some(Err(_)) => degraded.push(Degraded {
+                capability: "decisions",
+                reason: "the decision store composed but its local producer keys cannot currently \
+                         be published: batches are refused until the signing ring recovers",
+            }),
+            Some(Ok(0)) => degraded.push(Degraded {
+                capability: "decisions",
+                reason: "no decision producer key is available: batches are refused as \
+                         unattributable until a configured key set is published",
+            }),
+            Some(Ok(_)) => {}
         }
     }
 
@@ -1042,5 +1156,28 @@ mod tests {
             }
             _ => panic!("the same configuration composed differently on two calls"),
         }
+    }
+
+    #[tokio::test]
+    async fn health_names_a_decision_store_that_did_not_compose() {
+        let health_state = permguard_core::Health::new();
+        health_state.set_ready(true);
+        let state = PlaneState {
+            plane: PLANE,
+            product: "Permguard".to_owned(),
+            version: String::new(),
+            commit: String::new(),
+            health: health_state,
+            events: None,
+            decisions: Some(std::sync::Arc::new(std::sync::Mutex::new(None))),
+        };
+
+        let body = health(State(state)).await.0;
+        assert!(
+            body.degraded
+                .iter()
+                .any(|held| held.capability == "decisions"),
+            "an enabled capability cannot disappear behind a clean health answer"
+        );
     }
 }

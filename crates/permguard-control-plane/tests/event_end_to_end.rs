@@ -761,6 +761,10 @@ mod two_planes {
             Arc::new(Submitter::new(
                 decider,
                 Arc::clone(&streams),
+                permguard_data_plane::blocking::Blocking::new(
+                    permguard_core::config::default_max_blocking(),
+                    Metrics::none(),
+                ),
                 Metrics::none(),
             )),
             streams,
@@ -768,17 +772,17 @@ mod two_planes {
     }
 
     /// One occurrence of the example, submitted.
-    async fn submit(submitter: &Submitter, file: &str) -> Value {
-        let body: Value = serde_json::from_str(&example(&format!("events/{file}")))
-            .unwrap_or_else(|error| panic!("{file}: {error}"));
+    async fn submit(submitter: &Submitter, fixture: &str) -> Value {
+        let body: Value = serde_json::from_str(&example(fixture))
+            .unwrap_or_else(|error| panic!("{fixture}: {error}"));
         let request: permguard_languages::temporal::SubmitRequest =
-            serde_json::from_value(body).unwrap_or_else(|error| panic!("{file}: {error}"));
+            serde_json::from_value(body).unwrap_or_else(|error| panic!("{fixture}: {error}"));
 
         serde_json::to_value(
             submitter
                 .submit(&request)
                 .await
-                .unwrap_or_else(|error| panic!("{file}: {error:?}")),
+                .unwrap_or_else(|error| panic!("{fixture}: {error:?}")),
         )
         .expect("the answer renders")
     }
@@ -790,8 +794,8 @@ mod two_planes {
 
         // Plane A records alice's login and ships it.
         let (frankfurt, journals_a) = plane("plane-a", "plane-a");
-        submit(&frankfurt, "1-login-request.json").await;
-        submit(&frankfurt, "2-login-response.json").await;
+        submit(&frankfurt, "events/1-login-request.json").await;
+        submit(&frankfurt, "events/2-login-response.json").await;
         assert!(matches!(
             Shipper::new(
                 Arc::clone(&journals_a),
@@ -819,7 +823,7 @@ mod two_planes {
         );
 
         // Before the pull, plane B has never seen alice log in.
-        let denied = submit(&dublin, "3-read-permitted.json").await;
+        let denied = submit(&dublin, "requests/1-read-before-login.json").await;
         assert_eq!(
             denied["decision"],
             json!(false),
@@ -862,7 +866,7 @@ mod two_planes {
 
         // The same read again — a different `event_id`, because the first one is now in plane B's
         // own journal and a retry is not what this is about.
-        let mut body: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+        let mut body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
             .expect("the occurrence parses");
         body["event"]["data"]["event_id"] = json!("01J8Z9-read-after-import");
         let request: permguard_languages::temporal::SubmitRequest =
@@ -891,7 +895,7 @@ mod two_planes {
         // read. This is the assertion the merge exists for: the import moved the watermark and
         // rebuilt the engine, and a rebuild fed only the imported run would have thrown bob's
         // login away — leaving a deny that looks exactly like a correct one.
-        let mut body: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+        let mut body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
             .expect("the occurrence parses");
         rename_to_bob(&mut body);
         body["event"]["data"]["event_id"] = json!("01J8Z9-bob-read-after-import");

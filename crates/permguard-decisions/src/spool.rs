@@ -277,9 +277,26 @@ impl Spool {
     /// from it would promise something the journal does not yet hold.
     pub fn already_written(&self, identity: &Identity) -> Option<Already> {
         let held = self.written.get(&identity.id)?;
+        Some(Self::classify(identity, held))
+    }
+
+    /// Whether this key has been appended and is waiting for the current flush.
+    ///
+    /// Pending records deliberately do not answer [`Self::already_written`]: a
+    /// caller must not be told that a write is durable before its `fsync` has
+    /// completed. They do, however, reserve their identity. A concurrent retry
+    /// must join the first write's durability wait instead of appending another
+    /// record under the same key, and conflicting content must be refused while
+    /// the first write is still in flight rather than only after it settles.
+    pub fn pending_write(&self, identity: &Identity) -> Option<Already> {
+        let held = self.unflushed.get(&identity.id)?;
+        Some(Self::classify(identity, held))
+    }
+
+    fn classify(identity: &Identity, held: &Written) -> Already {
         match held.fingerprint == identity.fingerprint {
-            true => Some(Already::Same(held.clone())),
-            false => Some(Already::Conflict(held.clone())),
+            true => Already::Same(held.clone()),
+            false => Already::Conflict(held.clone()),
         }
     }
 
@@ -1098,8 +1115,21 @@ mod idempotency_tests {
             None,
             "an appended record is not answerable before its flush"
         );
+        assert_eq!(
+            spool.pending_write(&named("d-1", "permit")),
+            Some(Already::Same(Written {
+                seq: 1,
+                fingerprint: "permit".to_owned()
+            })),
+            "the in-flight identity is reserved for an identical retry"
+        );
+        assert!(matches!(
+            spool.pending_write(&named("d-1", "deny")),
+            Some(Already::Conflict(Written { seq: 1, .. })),
+        ));
 
         spool.sync_open().expect("the group flushes");
+        assert_eq!(spool.pending_write(&named("d-1", "permit")), None);
         assert_eq!(
             spool.already_written(&named("d-1", "permit")),
             Some(Already::Same(Written {

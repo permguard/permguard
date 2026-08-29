@@ -24,8 +24,8 @@ spec:
       {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
   {{- if $perReplica }}
   # The headless Service that gives each pod its own DNS name. A StatefulSet requires one, and the
-  # name is what a peer — or an operator reading a log — uses to reach the replica that holds a
-  # particular journal rather than whichever pod a load balancer picks.
+  # name is what a peer — or an operator reading a log — uses to reach the replica that owns a
+  # particular persistent journal rather than whichever pod a load balancer picks.
   serviceName: {{ include "permguard.fullname" $ }}-{{ $component }}-headless
   # One at a time, highest ordinal first, and each pod's own volume goes with it. `maxSurge` has no
   # meaning here: a replacement cannot start beside the pod it replaces, because there is one claim
@@ -169,9 +169,10 @@ spec:
         {{- end }}
   {{- if $perReplica }}
   # One claim per replica, named after the pod that owns it and kept when that pod is rescheduled.
-  # This is the whole reason for the StatefulSet: a temporal plane's journal is the history its own
-  # policies decide against, so a replica that came back to somebody else's volume — or to an empty
-  # one — would decide against a history that is not its own.
+  # This is the whole reason for the StatefulSet: a journal has one producer and one writer, so a
+  # replica that came back to somebody else's volume — or to an empty one — would either fork that
+  # producer or lose its audit continuity. Multiple temporal replicas remain refused because one
+  # volume each solves writer identity, not synchronous history visibility.
   #
   # Deliberately not deleted with the release: a journal is an audit trail, and a chart uninstall is
   # not an instruction to destroy one.

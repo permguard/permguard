@@ -42,10 +42,10 @@ spec:
 {{/*
 The Service a StatefulSet is named after: no cluster IP, so it resolves to the pods themselves.
 
-The ordinary Service above load balances, which is right for a request that any replica can answer.
-This one is the opposite and is needed for the same reason the StatefulSet is: each pod owns a
-journal the others do not have, so "reach the replica that holds it" has to be expressible. It also
-publishes the per-pod DNS names Kubernetes requires of a StatefulSet.
+The ordinary Service above load balances requests. This one publishes the stable per-pod DNS names
+Kubernetes requires for the StatefulSet and lets an operator address the replica that owns a
+particular persistent journal. It does not imply that independently owned temporal histories are
+request-time coherent; the chart refuses that multi-replica topology separately.
 
 `publishNotReadyAddresses`, because a pod's name has to resolve while it is still coming up —
 recovering a journal, replaying a history — and a name that appears only once the pod is ready is

@@ -10,6 +10,66 @@ fn module_metadata_identifies_control_plane() {
     assert_eq!(module.description(), "control plane");
 }
 
+/// Enabling the decision store is a startup promise: its durable state and a
+/// producer trust source must exist as configuration before the plane binds.
+#[test]
+fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
+    use permguard_core::config::{
+        SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED, SETTING_WORKING_DIR,
+    };
+
+    let module = permguard_control_plane::module();
+    let root =
+        std::env::temp_dir().join(format!("permguard-decision-module-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("the test volume exists");
+    let configured = |directory: &str| {
+        permguard_core::Config::from_layers(
+            permguard_server::plane::build_settings("0.0.0-test"),
+            vec![permguard_server::plane::SETTING_RUNTIME_PLANES],
+            permguard_core::config::Layers {
+                file: [
+                    (SETTING_DECISION_STORE_ENABLED.to_owned(), "true".to_owned()),
+                    (SETTING_WORKING_DIR.to_owned(), root.display().to_string()),
+                    (
+                        SETTING_DECISION_STORE_DIRECTORY.to_owned(),
+                        directory.to_owned(),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                ..Default::default()
+            },
+        )
+        .expect("the test configuration builds")
+    };
+
+    let no_trust = configured("decisions");
+    let refused = module
+        .startup_check(&no_trust)
+        .expect_err("an enabled receiver with no producer authority does not start");
+    assert!(refused.to_string().contains("producer_keys"), "{refused}");
+
+    // The producer may publish its file after this process: the facade mounts
+    // fail-closed and reloads it, but the configured path is enough to state
+    // where that authority will come from.
+    let waiting = no_trust.with_decision_producer_keys(["producer.jwks".to_owned()]);
+    module
+        .startup_check(&waiting)
+        .expect("a usable store and a declared trust source start");
+    assert!(root.join("decisions/CURSOR_KEY").is_file());
+
+    let blocked = root.join("blocked");
+    std::fs::write(&blocked, b"not a directory").expect("the path is blocked");
+    let broken = configured("blocked").with_decision_producer_keys(["producer.jwks".to_owned()]);
+    let refused = module
+        .startup_check(&broken)
+        .expect_err("an unusable configured store stops startup");
+    assert!(refused.to_string().contains("decision store"), "{refused}");
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// The event store takes two switches, and one is not enough.
 ///
 /// # What this is actually about

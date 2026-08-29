@@ -53,6 +53,31 @@ replica mirrors into its own volume, which is what a mirror is for.
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /*
+A replicated temporal plane whose replicas cannot synchronously see each other's history is not
+highly available: it is several planes answering the same question differently.
+
+Each replica owns its journal. `shared-eventual` and `shared-bounded` make those journals converge,
+but neither closes the request-time race: a pod may have completed a successful pull immediately
+before another pod records a login, so its imported history is fresh and still missing that login.
+Per-replica volumes protect writer identity; they do not provide read-your-writes.
+
+Check the serving topology before checking its storage shape, so every route to multiple temporal
+replicas receives the same actionable refusal instead of being told to change a volume setting that
+the next check would reject too.
+*/ -}}
+{{- if .Values.dataPlane.enabled }}
+{{- $many := or (gt (int .Values.dataPlane.replicaCount) 1) (and .Values.dataPlane.autoscaling .Values.dataPlane.autoscaling.enabled (gt (int .Values.dataPlane.autoscaling.maxReplicas) 1)) }}
+{{- if $many }}
+{{- $extra := .Values.dataPlane.extraConfig | default dict }}
+{{- $nested := dig "dataPlane" "events" "enabled" "" $extra }}
+{{- $flat := dig "events" "enabled" "" $extra }}
+{{- $temporal := or (and $nested (ne (toString $nested) "false")) (and $flat (ne (toString $flat) "false")) }}
+{{- if $temporal }}
+{{- fail "the data plane serves the temporal interface and can run more than one replica: pull modes converge asynchronously and cannot guarantee that a decision on pod B observes an event just recorded on pod A. Run one temporal replica until history ownership/routing or a globally ordered watermark is implemented; neither shared pull nor per-replica storage provides request-time coherence." }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if and .Values.dataPlane.enabled (include "permguard.persists" (dict "root" . "plane" .Values.dataPlane)) }}
 {{- /*
 Two different pieces of advice, because the same combination has two causes.
@@ -63,9 +88,9 @@ the history its own policies decide against, and another check refuses it withou
 that plane to disable persistence sends the operator round a circle between two refusals, which is
 how a message meant to help becomes the reason somebody gives up and edits the templates.
 
-The supported topology for a temporal data plane today is one replica with its own volume. Per
-replica would need a StatefulSet with `volumeClaimTemplates`, which this chart does not have; that
-is stated here rather than approximated by a Deployment that mounts one claim in three pods.
+The strongly consistent topology for a temporal data plane today is one replica with its own
+volume. The chart can create one volume per replica, but storage isolation alone does not make the
+histories synchronously visible between those replicas.
 */ -}}
 {{- $extra := .Values.dataPlane.extraConfig | default dict }}
 {{- $temporal := false }}
@@ -79,7 +104,7 @@ is stated here rather than approximated by a Deployment that mounts one claim in
 {{- end }}
 {{- $mirror := "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica. A data plane may be replicated, but each replica needs its own state: set dataPlane.persistence.enabled=false and let each mirror into its own volume." }}
 {{- if $temporal }}
-{{- $mirror = "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica, and this plane serves the temporal interface — its event journal is the history its own policies decide against, so it cannot go without a volume and cannot share one. Set persistence.perReplica=true for a volume per replica — a StatefulSet with volumeClaimTemplates, which is the supported replicated topology for a temporal plane — or dataPlane.replicaCount=1 to keep one." }}
+{{- $mirror = "this plane serves the temporal interface, whose event journal is the history its own policies decide against. It cannot share one claim across replicas, and separate claims would still expose different request-time histories. Keep dataPlane.replicaCount=1." }}
 {{- end }}
 {{- $perReplica := .Values.persistence.perReplica }}
 {{- if and (gt (int .Values.dataPlane.replicaCount) 1) (not $perReplica) }}
@@ -107,35 +132,6 @@ that adds and removes pods on load cannot be told the difference, so it is not g
 mean, and the workload it produces — a StatefulSet whose pods share nothing — is not what the person
 who set it was asking for.
 */ -}}
-{{- /*
-A replicated temporal plane whose replicas cannot see each other's history is not highly available:
-it is several planes answering the same question differently.
-
-Each replica owns its journal — that is the whole point of a volume per replica — so an occurrence
-recorded by one is invisible to the others unless something carries it between them. The ordinary
-Service load balances, so a login recorded by pod 0 and a read decided by pod 1 are a decision made
-against a history missing its own premise. Nothing refuses it: the read is simply denied, for a
-reason no log will name.
-
-`dataPlane.events.pull.mode` is what closes that: `shared-eventual` and `shared-bounded` import what
-the other replicas shipped, so the histories converge, and `shared-bounded` additionally fails closed
-when what it has is too old to vouch for. `local` does not, and is the default — so it is refused
-here rather than deployed and discovered.
-
-Session affinity is the other answer and is deliberately not accepted as one: it makes correctness
-depend on a load balancer keeping a promise it drops on rescheduling, and the failure is the same
-silent wrong answer.
-*/ -}}
-{{- if and .Values.persistence.perReplica (gt (int .Values.dataPlane.replicaCount) 1) }}
-{{- $extra := .Values.dataPlane.extraConfig | default dict }}
-{{- $mode := dig "dataPlane" "events" "pull" "mode" "" $extra }}
-{{- if not $mode }}
-{{- $mode = dig "events" "pull" "mode" "" $extra }}
-{{- end }}
-{{- if not (has (toString $mode) (list "shared-eventual" "shared-bounded")) }}
-{{- fail (printf "persistence.perReplica=true with dataPlane.replicaCount=%v needs dataPlane.events.pull.mode set to shared-eventual or shared-bounded (it is %q): each replica owns its own journal, so with `local` a login recorded by one replica is invisible to a decision made by another, and the request is denied for a reason nothing reports. Set a shared mode, or run one replica." .Values.dataPlane.replicaCount (toString $mode)) }}
-{{- end }}
-{{- end }}
 {{- if .Values.persistence.perReplica }}
 {{- $keeps := false }}
 {{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane "all-in-one" .Values.allInOne }}

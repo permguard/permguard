@@ -37,12 +37,20 @@ use permguard_core::{Disclosure, Metrics};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::Decider;
 use permguard_data_plane::authz::store::{Identity, Mirror};
+use permguard_data_plane::blocking::Blocking;
 use permguard_data_plane::temporal::streams::Streams;
 use permguard_data_plane::temporal::submit::Submitter;
 use permguard_data_plane::temporal::{configuration, http};
 use permguard_events::journal::Bounds;
 use permguard_languages::dogwood_artifacts;
 use permguard_languages::registry;
+
+fn blocking() -> Blocking {
+    Blocking::new(
+        permguard_core::config::default_max_blocking(),
+        Metrics::none(),
+    )
+}
 use permguard_objects::manifest::{
     ArtifactContract, Manifest, Partition, Profile, Requirement, Runtime,
 };
@@ -289,6 +297,7 @@ fn plane(tag: &str) -> Plane {
         submitter: Arc::new(Submitter::new(
             decider,
             Arc::clone(&streams),
+            blocking(),
             Metrics::none(),
         )),
         events,
@@ -562,11 +571,12 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     let plane = Plane {
         mirrors: mirrors.clone(),
         submitter: Arc::new(
-            Submitter::new(decider, Arc::clone(&streams), Metrics::none()).with_shared_history(
-                permguard_core::config::Consistency::SharedBounded,
-                Arc::clone(&imports),
-                std::time::Duration::from_secs(3600),
-            ),
+            Submitter::new(decider, Arc::clone(&streams), blocking(), Metrics::none())
+                .with_shared_history(
+                    permguard_core::config::Consistency::SharedBounded,
+                    Arc::clone(&imports),
+                    std::time::Duration::from_secs(3600),
+                ),
         ),
         events: root.join("events"),
         streams,
@@ -1105,6 +1115,7 @@ mod shipped_example {
             submitter: Arc::new(Submitter::new(
                 decider,
                 Arc::clone(&streams),
+                blocking(),
                 Metrics::none(),
             )),
             events: events.to_path_buf(),
@@ -1147,6 +1158,7 @@ mod shipped_example {
             submitter: Arc::new(Submitter::new(
                 decider,
                 Arc::clone(&streams),
+                blocking(),
                 Metrics::none(),
             )),
             events,
@@ -1162,24 +1174,28 @@ mod shipped_example {
         let router = surface(&plane);
 
         let expected: [(&str, &str, Option<bool>); 5] = [
-            ("1-login-request.json", "decided", Some(false)),
-            ("2-login-response.json", "accepted", None),
-            ("3-read-permitted.json", "decided", Some(true)),
-            ("4-read-outside-window.json", "decided", Some(false)),
-            ("5-read-other-user.json", "decided", Some(false)),
+            ("events/1-login-request.json", "decided", Some(false)),
+            ("events/2-login-response.json", "accepted", None),
+            ("requests/2-read-inside-window.json", "decided", Some(true)),
+            (
+                "requests/3-read-outside-window.json",
+                "decided",
+                Some(false),
+            ),
+            ("requests/4-read-other-user.json", "decided", Some(false)),
         ];
 
-        for (file, outcome, decision) in expected {
-            let body: Value = serde_json::from_str(&example(&format!("events/{file}")))
-                .unwrap_or_else(|error| panic!("{file}: {error}"));
+        for (fixture, outcome, decision) in expected {
+            let body: Value = serde_json::from_str(&example(fixture))
+                .unwrap_or_else(|error| panic!("{fixture}: {error}"));
             let (status, answered) = post(&router, body).await;
 
-            assert_eq!(status, StatusCode::OK, "{file}: {answered}");
-            assert_eq!(answered["outcome"], outcome, "{file}: {answered}");
+            assert_eq!(status, StatusCode::OK, "{fixture}: {answered}");
+            assert_eq!(answered["outcome"], outcome, "{fixture}: {answered}");
             assert_eq!(
                 answered["decision"].as_bool(),
                 decision,
-                "{file}: {answered}"
+                "{fixture}: {answered}"
             );
             if decision.is_none() {
                 assert!(
@@ -1203,7 +1219,10 @@ mod shipped_example {
                 );
             }
             // Every answer says which history it ranged over, so an auditor can reproduce it.
-            assert_eq!(answered["history"]["mode"], "local", "{file}: {answered}");
+            assert_eq!(
+                answered["history"]["mode"], "local",
+                "{fixture}: {answered}"
+            );
         }
     }
     /// The example's refusals, which are as much of the contract as its permits.
@@ -1222,15 +1241,15 @@ mod shipped_example {
 
         // The history the conflict case collides with. Submitted first, because a conflict is only
         // a conflict against something already recorded.
-        for file in [
-            "1-login-request.json",
-            "2-login-response.json",
-            "3-read-permitted.json",
+        for fixture in [
+            "events/1-login-request.json",
+            "events/2-login-response.json",
+            "requests/2-read-inside-window.json",
         ] {
-            let body: Value = serde_json::from_str(&example(&format!("events/{file}")))
-                .unwrap_or_else(|error| panic!("{file}: {error}"));
+            let body: Value = serde_json::from_str(&example(fixture))
+                .unwrap_or_else(|error| panic!("{fixture}: {error}"));
             let (status, answered) = post(&router, body).await;
-            assert_eq!(status, StatusCode::OK, "{file}: {answered}");
+            assert_eq!(status, StatusCode::OK, "{fixture}: {answered}");
         }
 
         let expected: [(&str, StatusCode, &str); 4] = [
@@ -1343,7 +1362,7 @@ mod shipped_example {
             "recovery commits the original receipt shape"
         );
 
-        let read: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+        let read: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
             .expect("the decision occurrence parses");
         let (status, decided) = post(&router, read).await;
         assert_eq!(status, StatusCode::OK, "{decided}");
@@ -1364,7 +1383,7 @@ mod shipped_example {
         let (status, accepted) = post(&router, login).await;
         assert_eq!(status, StatusCode::OK, "{accepted}");
 
-        let body: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+        let body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
             .expect("the decision occurrence parses");
         let event_id = body["event"]["data"]["event_id"]
             .as_str()
@@ -1445,7 +1464,7 @@ mod shipped_example {
         let restarted = reopened(&volume);
         let router = surface(&restarted);
 
-        let body: Value = serde_json::from_str(&example("events/3-read-permitted.json"))
+        let body: Value = serde_json::from_str(&example("requests/2-read-inside-window.json"))
             .expect("the occurrence parses");
         let (status, answered) = post(&router, body).await;
 

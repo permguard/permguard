@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
 use permguard_core::Metrics;
@@ -580,6 +581,60 @@ fn one_decision_recorded_twice_leaves_one_audit_record() {
         "exactly one audit record, not two sharing an id"
     );
     assert_eq!(decisions[0]["id"], json!("d-once"));
+}
+
+/// Concurrent retries join the first write's group commit instead of racing it.
+#[test]
+fn concurrent_retries_leave_one_decision_record() {
+    const WRITERS: usize = 32;
+    let journal = Arc::new(journal(
+        "idempotent-concurrent",
+        "1.0",
+        WhenFull::Open,
+        bounds(),
+    ));
+    let start = Arc::new(Barrier::new(WRITERS));
+    let writers: Vec<_> = (0..WRITERS)
+        .map(|_| {
+            let journal = Arc::clone(&journal);
+            let start = Arc::clone(&start);
+            std::thread::spawn(move || {
+                start.wait();
+                journal
+                    .record(&decided("d-concurrent", true))
+                    .expect("the retry joins the durable write")
+            })
+        })
+        .collect();
+
+    let answers: Vec<_> = writers
+        .into_iter()
+        .map(|writer| writer.join().expect("the writer returns"))
+        .collect();
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|answer| matches!(answer, Written::Recorded { .. }))
+            .count(),
+        1,
+        "exactly one caller appends"
+    );
+    assert_eq!(
+        answers
+            .iter()
+            .filter(|answer| matches!(answer, Written::AlreadyRecorded { .. }))
+            .count(),
+        WRITERS - 1,
+        "every other caller joins the same logical write"
+    );
+    assert_eq!(
+        everything(&journal)
+            .into_iter()
+            .filter(|record| record["kind"] == json!("decision"))
+            .count(),
+        1,
+        "one decision id produces one audit record even before the group flush"
+    );
 }
 
 /// The same identifier over different content is refused, not written.

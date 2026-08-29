@@ -807,6 +807,7 @@ impl Decider {
             ));
         }
 
+        let deadline = self.budget.map(|budget| started + budget);
         let plan = Plan {
             head: Arc::clone(&head),
             partitions,
@@ -823,7 +824,7 @@ impl Decider {
             //
             // A decision whose load already used the whole budget therefore arrives here with none
             // left, and every partition refuses immediately: fail-closed, and honest about why.
-            deadline: self.budget.map(|budget| started + budget),
+            deadline,
         };
         // The breaker learns from inside the work, not from the future waiting on it.
         //
@@ -831,20 +832,25 @@ impl Decider {
         // drops everything after the `.await`, so an overrun recorded there is recorded only when
         // the caller survived to record it. That is exactly backwards: the evaluations worth
         // learning from are the slow ones, and the slow ones are the ones whose callers gave up.
-        let watching = (Arc::clone(&self.quarantine), guarded.clone(), self.budget);
+        let watching = (
+            Arc::clone(&self.quarantine),
+            guarded.clone(),
+            deadline,
+            tokio::runtime::Handle::current(),
+        );
         let decisions = self
             .blocking
             .run(&[], move || {
-                let (quarantine, guarded, budget) = watching;
-                let evaluating = Instant::now();
+                let (quarantine, guarded, deadline, runtime) = watching;
+                // Started only after the blocking permit was acquired: a
+                // request refused at capacity did not evaluate and therefore
+                // did not overrun this profile. The timer itself belongs to the
+                // runtime, so dropping the caller cannot cancel the breaker
+                // observation while synchronous provider work keeps running.
+                let watch = deadline.map(|deadline| quarantine.watch(guarded, deadline, &runtime));
                 let outcome = plan.run();
-                if let Some(budget) = budget {
-                    match evaluating.elapsed() > budget {
-                        true => {
-                            quarantine.overran(&guarded);
-                        }
-                        false => quarantine.in_time(&guarded),
-                    }
+                if let Some(watch) = watch {
+                    watch.finish();
                 }
 
                 outcome
@@ -1195,6 +1201,10 @@ impl Decider {
                     .unwrap_or_default()
                     .to_owned(),
                 at: at.clone(),
+                // Decision-log tenant routes are the public zone and ledger names. Changing these
+                // existing fields to identities would make every REST/gRPC/CLI read by name miss
+                // records written after the change. A future immutable scope needs an explicitly
+                // versioned record shape and name-to-id resolution at the read boundary.
                 zone: mirror.identity.zone_name.clone(),
                 ledger: mirror.identity.ledger_name.clone(),
                 commit: head.commit.clone(),

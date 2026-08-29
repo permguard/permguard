@@ -71,13 +71,10 @@ impl Submitter {
     pub fn new(
         decider: Arc<Decider>,
         streams: Arc<Streams>,
+        blocking: crate::blocking::Blocking,
         metrics: permguard_core::metrics::Metrics,
     ) -> Self {
         let bounds = streams.bounds();
-        let blocking = crate::blocking::Blocking::new(
-            permguard_core::config::default_max_blocking(),
-            metrics.clone(),
-        );
 
         Self {
             decider,

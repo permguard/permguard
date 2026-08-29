@@ -28,6 +28,8 @@
 //! by the sequencer whichever permit they got.
 
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -108,8 +110,41 @@ impl std::error::Error for AtCapacity {}
 #[derive(Debug, Clone)]
 pub struct Blocking {
     permits: Arc<Semaphore>,
+    running: Arc<AtomicUsize>,
     capacity: usize,
     metrics: Metrics,
+}
+
+/// The one blocking budget shared by every request path in this data plane.
+static SHARED: OnceLock<Blocking> = OnceLock::new();
+
+/// The process-wide pool, composed from the deployment's configured bound.
+pub fn shared(context: &permguard_core::ServerContext<'_>) -> Blocking {
+    SHARED
+        .get_or_init(|| Blocking::new(context.config().max_blocking(), context.metrics().clone()))
+        .clone()
+}
+
+/// A permit whose metrics follow the work rather than the awaiting request.
+///
+/// `spawn_blocking` work continues when its future is dropped. Keeping the
+/// decrement here makes the gauge recover on the blocking thread even when an
+/// HTTP timeout or disconnected client no longer reaches the code after
+/// `.await`.
+struct Permit {
+    permit: Option<OwnedSemaphorePermit>,
+    running: Arc<AtomicUsize>,
+    metrics: Metrics,
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        let left = self.running.fetch_sub(1, Ordering::AcqRel) - 1;
+        self.metrics.set(&IN_FLIGHT, &[], left as f64);
+        // Release only after publishing the decrement. A new admission then
+        // observes the lower count and publishes its own increment.
+        drop(self.permit.take());
+    }
 }
 
 impl Blocking {
@@ -124,6 +159,7 @@ impl Blocking {
 
         Self {
             permits: Arc::new(Semaphore::new(capacity)),
+            running: Arc::new(AtomicUsize::new(0)),
             capacity,
             metrics,
         }
@@ -136,8 +172,7 @@ impl Blocking {
 
     /// How many operations are running right now.
     pub fn in_flight(&self) -> usize {
-        self.capacity
-            .saturating_sub(self.permits.available_permits())
+        self.running.load(Ordering::Acquire)
     }
 
     /// Runs `work` off the runtime's workers, or refuses because the bound is reached.
@@ -153,14 +188,10 @@ impl Blocking {
         let permit = self.permit(labels).map_err(Refused::AtCapacity)?;
         let started = std::time::Instant::now();
         let done = tokio::task::spawn_blocking(move || {
-            let outcome = work();
-            // Released here, on the pool's thread, whether the work returned or unwound.
-            drop(permit);
-
-            outcome
+            let _permit = permit;
+            work()
         })
         .await;
-        self.metrics.set(&IN_FLIGHT, &[], self.in_flight() as f64);
 
         match done {
             Ok(outcome) => {
@@ -176,12 +207,17 @@ impl Blocking {
     }
 
     /// Takes a permit, or reports that there is none.
-    fn permit(&self, labels: &[Label<'_>]) -> Result<OwnedSemaphorePermit, AtCapacity> {
+    fn permit(&self, labels: &[Label<'_>]) -> Result<Permit, AtCapacity> {
         match Arc::clone(&self.permits).try_acquire_owned() {
             Ok(permit) => {
-                self.metrics.set(&IN_FLIGHT, &[], self.in_flight() as f64);
+                let running = self.running.fetch_add(1, Ordering::AcqRel) + 1;
+                self.metrics.set(&IN_FLIGHT, &[], running as f64);
 
-                Ok(permit)
+                Ok(Permit {
+                    permit: Some(permit),
+                    running: Arc::clone(&self.running),
+                    metrics: self.metrics.clone(),
+                })
             }
             Err(_) => {
                 self.metrics.count(&REFUSED, labels);
@@ -289,6 +325,39 @@ mod tests {
             pool.run(&[], || 7).await.is_ok(),
             "and the pool still works"
         );
+    }
+
+    /// Cancelling the waiter does not leak either the permit or its gauge.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_waiters_release_capacity_when_their_work_finishes() {
+        let pool = pool(1);
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let waiter = {
+            let pool = pool.clone();
+            tokio::spawn(async move { pool.run(&[], move || held.recv().ok()).await })
+        };
+        for _ in 0..200 {
+            if pool.in_flight() == 1 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(pool.in_flight(), 1);
+
+        waiter.abort();
+        assert_eq!(
+            pool.in_flight(),
+            1,
+            "dropping the future does not pretend its blocking work stopped"
+        );
+        drop(release);
+        for _ in 0..200 {
+            if pool.in_flight() == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(pool.in_flight(), 0, "the guard publishes completion itself");
     }
 
     /// Zero is read as one: a configuration never means "refuse everything".

@@ -768,6 +768,69 @@ async fn a_plane_that_may_not_decide_unrecorded_refuses_instead_of_answering() {
     );
 }
 
+/// Mirror identities are an internal routing key; the existing decision-log API is scoped by the
+/// public names. Changing the two record fields to IDs without changing the read contract makes a
+/// successfully written decision disappear from every REST, gRPC and CLI tenant query.
+#[tokio::test]
+async fn a_decision_addressed_by_identity_is_recorded_under_the_public_names() {
+    let root = scratch("decision-public-scope").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let spool = scratch("decision-public-scope-spool");
+    let journal = Journal::open(
+        &spool,
+        "plane",
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        },
+        WhenFull::Closed,
+        Bounds {
+            bytes: 64 * 1024 * 1024,
+            age: std::time::Duration::from_secs(3600),
+            segment_bytes: 1024 * 1024,
+        },
+        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+        Metrics::none(),
+    )
+    .expect("the journal opens");
+    let decider = decider_with_journal(&root, journal);
+
+    decider
+        .decide(&ask("acme-id", "main-ledger-id", "alice", "read"), None)
+        .await
+        .expect("the mirror is also addressable by identity");
+    drop(decider);
+
+    let mut decisions = Vec::new();
+    for entry in std::fs::read_dir(&spool).expect("the spool can be listed") {
+        let path = entry.expect("the spool entry is readable").path();
+        if path.extension().and_then(std::ffi::OsStr::to_str) != Some("jsonl") {
+            continue;
+        }
+        for line in std::fs::read_to_string(path)
+            .expect("the segment can be read")
+            .lines()
+        {
+            let record: Value = serde_json::from_str(line).expect("the record is JSON");
+            if record["kind"] == json!("decision") {
+                decisions.push(record);
+            }
+        }
+    }
+
+    assert_eq!(decisions.len(), 1);
+    assert_eq!(decisions[0]["store"]["zone"], json!("acme"));
+    assert_eq!(decisions[0]["store"]["ledger"], json!("main-ledger"));
+}
+
 #[tokio::test]
 async fn a_closed_journal_refuses_runtime_write_errors() {
     let root = scratch("closed-runtime-journal-error").join("mirrors");

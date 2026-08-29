@@ -198,6 +198,22 @@ pub fn id(text: &str) -> String {
     paint("36", text)
 }
 
+/// The grey the quiet parts are set in.
+///
+/// # Why a stated grey rather than `bright black`
+///
+/// Chrome used to be SGR 90, and SGR 90 is not a grey — it is the theme's *black*, brightened by
+/// whatever factor the theme chose. On a dark background that lands a step above the background it
+/// is printed on, which is why a commit digest or a timestamp could be on screen and still be
+/// unreadable; on a light theme the same code goes the other way and nearly disappears into white.
+/// The terminal decides, the text is chrome either way, and neither outcome is one this CLI picked.
+///
+/// So the grey is stated. At 5:1 against a dark background and 3.4:1 against white it is quieter
+/// than the prose beside it without dropping under it, and it is the same grey on every theme. The
+/// balance leans toward dark backgrounds deliberately: that is where `bright black` failed worst,
+/// and it is what most terminals running this are set to.
+const CHROME: [u8; 3] = [0x8a, 0x8a, 0x8a];
+
 /// Chrome: labels, timestamps, the quiet parts.
 pub fn dim(text: &str) -> String {
     dim_with(depth(), text)
@@ -205,7 +221,15 @@ pub fn dim(text: &str) -> String {
 
 /// [`dim`], against a stated colour depth rather than the process's.
 pub(crate) fn dim_with(depth: Depth, text: &str) -> String {
-    paint_with(depth, "90", text)
+    match depth {
+        Depth::None => text.to_owned(),
+        // Sixteen colours have no grey to state: 90 is the least bad of them, and the tier is rare
+        // enough that carrying its compromise is better than making chrome as loud as the prose.
+        Depth::Basic => paint_with(depth, "90", text),
+        Depth::Ansi256 | Depth::True => {
+            format!("{}{text}{RESET}", foreground(depth, CHROME))
+        }
+    }
 }
 
 /// The line that states the outcome.
@@ -226,6 +250,83 @@ pub fn ok(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The relative luminance of an sRGB colour, per WCAG.
+    fn luminance(rgb: [u8; 3]) -> f32 {
+        let channel = |c: u8| {
+            let c = f32::from(c) / 255.0;
+            match c <= 0.04045 {
+                true => c / 12.92,
+                false => ((c + 0.055) / 1.055).powf(2.4),
+            }
+        };
+
+        0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+    }
+
+    fn contrast(one: [u8; 3], other: [u8; 3]) -> f32 {
+        let (a, b) = (luminance(one), luminance(other));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// Chrome stays readable on a dark terminal and on a light one.
+    ///
+    /// # Why a contrast assertion rather than an escape assertion
+    ///
+    /// Pinning the escape sequence would pin the mistake as easily as the fix: SGR 90 was a
+    /// perfectly stable escape, and it was unreadable. What has to hold is the property — that the
+    /// grey stays clear of both ends — so that is what is asserted, and a future colour is free to
+    /// move as long as it stays legible.
+    #[test]
+    fn chrome_keeps_its_distance_from_both_a_dark_and_a_light_background() {
+        const NEAR_BLACK: [u8; 3] = [0x0f, 0x1b, 0x2d];
+        const WHITE: [u8; 3] = [0xff, 0xff, 0xff];
+
+        assert!(
+            contrast(CHROME, NEAR_BLACK) >= 4.5,
+            "chrome on a dark terminal is {:.2}:1, which is what `bright black` already failed",
+            contrast(CHROME, NEAR_BLACK)
+        );
+        assert!(
+            contrast(CHROME, WHITE) >= 3.0,
+            "chrome on a light terminal is {:.2}:1",
+            contrast(CHROME, WHITE)
+        );
+    }
+
+    /// Chrome is quieter than the prose beside it — it must not become plain text.
+    #[test]
+    fn chrome_is_still_quieter_than_the_text_it_sits_beside() {
+        const NEAR_BLACK: [u8; 3] = [0x0f, 0x1b, 0x2d];
+        const FOREGROUND: [u8; 3] = [0xe6, 0xe6, 0xe6];
+
+        assert!(
+            contrast(CHROME, NEAR_BLACK) < contrast(FOREGROUND, NEAR_BLACK),
+            "chrome that reads as loudly as the prose is not chrome"
+        );
+    }
+
+    /// Every tier that can state a grey states one; only the sixteen colours fall back.
+    #[test]
+    fn only_the_sixteen_colour_tier_falls_back_to_bright_black() {
+        assert_eq!(dim_with(Depth::None, "x"), "x", "piped output stays clean");
+        assert!(
+            dim_with(Depth::Basic, "x").contains("\x1b[90m"),
+            "sixteen colours have nothing better"
+        );
+        for depth in [Depth::Ansi256, Depth::True] {
+            let painted = dim_with(depth, "x");
+            assert!(
+                !painted.contains("\x1b[90m"),
+                "{depth:?} can state a grey and must not defer to the theme's black"
+            );
+            assert!(painted.ends_with(RESET), "{depth:?} closes what it opened");
+        }
+        assert!(
+            dim_with(Depth::True, "x").contains("38;2;138;138;138"),
+            "24-bit states the grey exactly"
+        );
+    }
 
     #[test]
     fn test_the_ramp_runs_from_the_pink_stop_to_the_purple_one() {

@@ -98,10 +98,7 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
                 None,
                 config.authz_max_evaluations(),
             )
-            .with_blocking(crate::blocking::Blocking::new(
-                config.max_blocking(),
-                context.metrics().clone(),
-            ))
+            .with_blocking(crate::blocking::shared(context))
             .with_audit(audit::decision_audit(context))
             // The journal is opened once for the plane, not once per decider:
             // there is one spool, and a second writer would share its sequence.

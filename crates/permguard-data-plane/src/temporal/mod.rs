@@ -130,6 +130,7 @@ pub fn submitter(context: &ServerContext<'_>) -> Option<Arc<Submitter>> {
                     )
                     .with_metrics(context.metrics().clone()),
                 ),
+                crate::blocking::shared(context),
                 context.metrics().clone(),
             );
             // A shared mode reads history other planes recorded. Off unless a deployment said so:

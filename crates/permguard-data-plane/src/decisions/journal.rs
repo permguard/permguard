@@ -152,6 +152,14 @@ fn decision_identity(record: &serde_json::Value) -> Option<permguard_decisions::
     Some(permguard_decisions::spool::Identity { id, fingerprint })
 }
 
+fn identity_conflict(id: &str, seq: u64) -> SpoolError {
+    SpoolError::Malformed(format!(
+        "the decision `{id}` is already recorded at sequence {seq} and this record decides \
+         something else under the same identity: refusing to write a second record nothing could \
+         tell apart"
+    ))
+}
+
 /// What writing one record established.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Written {
@@ -280,6 +288,14 @@ impl GroupCommit {
     /// what a stream end holds while it settles one and resets the other.
     fn request(&self, seq: u64) -> u64 {
         let mut state = self.lock();
+        // A record may already be appended because the flush that first
+        // covered it failed. A retry of that logical write must re-arm the
+        // flusher; merely waiting would immediately replay the old error and
+        // `next_target` would see nothing newer than `attempted` to try.
+        if state.failed.is_some() && state.attempted >= seq {
+            state.attempted = seq.saturating_sub(1);
+            state.failed = None;
+        }
         state.requested = state.requested.max(seq);
         self.changed.notify_all();
 
@@ -528,7 +544,7 @@ impl Journal {
     /// there: a retry is answered from the journal, and the caller has to be
     /// able to say so rather than reporting a write it did not make.
     fn write_decision(&self, decided: &Decided<'_>) -> Result<(u64, bool), SpoolError> {
-        let (generation, seq) = {
+        let (generation, seq, already) = {
             let mut spool = self.state.lock().map_err(poisoned)?;
             let record = self.decision_record(&spool, decided)?;
             // Asked under the same lock that assigns the sequence. Reading the
@@ -538,21 +554,35 @@ impl Journal {
                 match spool.already_written(&identity) {
                     Some(Already::Same(held)) => return Ok((held.seq, true)),
                     Some(Already::Conflict(held)) => {
-                        return Err(SpoolError::Malformed(format!(
-                            "the decision `{}` is already recorded at sequence {} and this record                              decides something else under the same identity: refusing to write a                              second record nothing could tell apart",
-                            identity.id, held.seq
-                        )));
+                        return Err(identity_conflict(&identity.id, held.seq));
                     }
                     None => {}
                 }
+
+                // An append waiting for the group fsync is not durable yet, so
+                // it cannot answer the retry immediately. It does reserve the
+                // identity: join the first writer's wait instead of appending a
+                // second indistinguishable audit record. The generation is read
+                // under the spool lock, the same lock that stream rollover uses.
+                match spool.pending_write(&identity) {
+                    Some(Already::Same(held)) => (self.group.request(held.seq), held.seq, true),
+                    Some(Already::Conflict(held)) => {
+                        return Err(identity_conflict(&identity.id, held.seq));
+                    }
+                    None => {
+                        let seq = spool.append_unsynced(&record)?.seq;
+                        (self.group.request(seq), seq, false)
+                    }
+                }
+            } else {
+                let seq = spool.append_unsynced(&record)?.seq;
+                (self.group.request(seq), seq, false)
             }
-            let seq = spool.append_unsynced(&record)?.seq;
-            (self.group.request(seq), seq)
         };
         self.group.wait_for(generation, seq)?;
         self.publish();
 
-        Ok((seq, false))
+        Ok((seq, already))
     }
 
     /// Declares a new epoch, when the build or the sampling rate changes.

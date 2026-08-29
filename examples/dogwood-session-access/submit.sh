@@ -13,7 +13,7 @@ session="${PERMGUARD_DEMO_ID:-}"
 input=""
 
 usage() {
-    printf 'usage: %s [--endpoint URL] [--session ID] <event.json>\n' "$(basename "$0")" >&2
+    printf 'usage: %s [--endpoint URL] [--session ID] <occurrence.json>\n' "$(basename "$0")" >&2
     printf '\nThe input may be relative to the current directory or to %s.\n' "${example_dir}" >&2
 }
 

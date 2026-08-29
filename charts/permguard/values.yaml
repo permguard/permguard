@@ -125,10 +125,12 @@ dataPlane:
   # refuses. Replicated means each replica mirrors into its own volume.
   #
   # A plane serving the TEMPORAL interface is different in kind: its event journal is the history
-  # its own policies decide against, not a cache. It needs storage that survives a restart, and one
-  # volume per replica: set `persistence.perReplica: true` and the component is deployed as a
-  # StatefulSet with `volumeClaimTemplates` and a headless Service. The combination that would
-  # silently change what those policies answer — several replicas over one claim — is refused:
+  # its own policies decide against, not a cache. It needs storage that survives a restart and, for
+  # now, one replica. A pull mode makes several journals converge asynchronously; it cannot prove a
+  # read on pod B includes a login just recorded on pod A. The chart therefore refuses every
+  # multi-replica temporal topology until the serving path has history ownership/routing or a
+  # globally ordered watermark. A single temporal replica can still use `persistence.perReplica`
+  # when a StatefulSet identity is operationally useful:
   #
   #   extraConfig:
   #     dataPlane:
@@ -138,7 +140,7 @@ dataPlane:
   #         # pod name for the same reason it takes the decision log's. Pinning it is refused.
   #         retention: { minimum: "48h" }
   #         pull:
-  #           mode: shared-eventual
+  #           mode: shared-eventual       # replication/audit convergence, not request-time HA
   #           ledgers: [{ zone: acme, ledger: agent-governance, event_types: [permguard.dogwood.event.v1] }]
   #           producer_keys:                    # mandatory in a shared mode
   #             - { path: /etc/permguard/trust/peer-events.jwks, producer: peer-plane, zone: acme, ledger: agent-governance }
@@ -292,21 +294,21 @@ securityContext:
 # on, a pod that loses this directory mints itself a new signing key on restart, which is fine for a
 # test environment and wrong for anything issuing tokens somebody else verifies.
 #
-# A real installation turns it on — and gets **one claim per component**, not one per replica: this
-# chart deploys a Deployment, and every replica of a component mounts the same claim. That is why
-# A replicated component with persistent storage needs a volume *per replica*: one claim mounted in
-# three pods is one journal three processes write, which is the corruption the exclusive lock exists
-# to refuse. `perReplica` is how that is asked for; `templates/checks.yaml` refuses the combinations
-# that need it and do not set it.
+# A real installation turns it on and, by default, gets one claim per component. A replicated
+# component with persistent storage instead needs a volume per replica: one claim mounted in three
+# pods is one journal three processes write, which is the corruption the exclusive lock exists to
+# refuse. `perReplica` requests the StatefulSet shape; `templates/checks.yaml` still refuses a
+# temporal data plane above one replica because isolated storage does not provide synchronous
+# history visibility.
 persistence:
   # The default for every component. A component overrides it with its own
   # `persistence: { enabled: … }` — one switch cannot say "a volume for the control plane, none for
   # the replicated data plane", and that is exactly what a real installation needs.
   enabled: false
   # A volume per replica, from a StatefulSet's `volumeClaimTemplates`, instead of one claim shared
-  # by every pod. Required for a replicated plane that serves the temporal interface: its event
-  # journal is the history its own policies decide against, so it can neither go without a volume
-  # nor share one.
+  # by every pod. This makes replicated non-temporal journals safe to write. It is also a valid
+  # storage shape for one temporal replica, but does not make multiple temporal replicas coherent;
+  # that topology is refused separately.
   #
   # Switching this on an existing release changes the workload kind, and Kubernetes does not
   # convert a Deployment into a StatefulSet: the old workload has to be deleted first. That is why
