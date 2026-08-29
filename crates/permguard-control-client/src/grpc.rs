@@ -851,15 +851,31 @@ impl crate::pdp::Pdp for GrpcPdp {
             detail: why.message,
             usage: true,
         })?;
-        let answer = self
-            .0
-            .call("Evaluate", client.evaluate_many(request))
-            .map_err(GrpcAdmin::failure)?;
+        // The boxcarred RPC when the caller boxcarred, the single one otherwise — the same rule
+        // the HTTP client applies to its two paths, and for the same reasons. The server answers
+        // both with one handler today, so the verdict does not depend on this; what does is
+        // everything *around* it: which RPC a capture shows, which method a metric counts, and
+        // which method a future per-method authorization or rate limit is written against. A
+        // client that always said `EvaluateMany` would make a single check indistinguishable from
+        // a batch of one in every one of those.
+        let boxcarred = payload
+            .get("evaluations")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|evaluations| !evaluations.is_empty());
+        let answer = if boxcarred {
+            self.0
+                .call("EvaluateMany", client.evaluate_many(request))
+                .map_err(GrpcAdmin::failure)?
+        } else {
+            self.0
+                .call("Evaluate", client.evaluate(request))
+                .map_err(GrpcAdmin::failure)?
+        };
 
         Ok(answer_of(answer))
     }
 
-    /// What `permguard.pdp.v1` offers here, shaped exactly as the HTTP document — so a caller
+    /// What `permguard.api.pdp.native.v1` offers here, shaped exactly as the HTTP document — so a caller
     /// reading it cannot tell which transport fetched it.
     fn configuration(&self) -> Result<serde_json::Value, CatalogFailure> {
         let mut client = self.client();

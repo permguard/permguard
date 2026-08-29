@@ -22,7 +22,7 @@
 //! # The input a policy reads
 //!
 //! `input` is the request as the profile received it — the same shape a Cedar
-//! partition is given, so a `permguard.pdp.v1` caller cannot tell which
+//! partition is given, so a `permguard.api.pdp.native.v1` caller cannot tell which
 //! language answered:
 //!
 //! ```text
@@ -108,10 +108,11 @@ impl Evaluating for Rego {
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        schema: Option<&[u8]>,
+        artifacts: &crate::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String> {
         // Compiled once, here, and never again: a schema recompiled per request would be the
         // most expensive thing on the decision path and would say the same thing every time.
+        let schema = artifacts.bytes(crate::rego::SCHEMA_ARTIFACT);
         let validator = schema.map(compile_schema).transpose()?;
 
         let mut engine = Engine::new();
@@ -121,12 +122,20 @@ impl Evaluating for Rego {
         });
         let mut modules = Vec::new();
         let mut footprint = 0;
+        // Which policy claimed each package. A package is Rego's unit of aggregation, and this is
+        // what makes "one package, one citable policy" checkable rather than assumed.
+        let mut claimed: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
         for stored in policies {
             let text = std::str::from_utf8(&stored.source)
                 .map_err(|_| format!("rego: module {} is not valid UTF-8", stored.id))?;
             let package = engine
                 .add_policy(format!("{}.rego", stored.id), text.to_owned())
                 .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
+            if let Some(first) = claimed.get(&package) {
+                return Err(shared_package(&package, first, &stored.id));
+            }
+            claimed.insert(package.clone(), stored.id.clone());
             modules.push(Module {
                 id: stored.id.clone(),
                 allow: defined(&mut engine, &format!("{package}.allow")),
@@ -142,6 +151,32 @@ impl Evaluating for Rego {
             footprint: footprint + schema.map_or(0, <[u8]>::len),
         }))
     }
+}
+
+/// The refusal for two policies that share one package.
+///
+/// # Why this is refused rather than served
+///
+/// `package.allow` is the union of every `allow` rule in that package — that is the language, not
+/// a detail of this engine. There is no per-file `allow` to evaluate, and no way to ask which
+/// file's rule body produced the value.
+///
+/// So a partition holding two files of one package can be *decided* correctly and cannot be
+/// *explained* correctly: evaluating the package rule once per file and attributing the answer to
+/// each names policies that decided nothing. The verdict would be right and the reason would be
+/// false — and the reason is what an incident response, an appeal and an audit read.
+///
+/// Permguard cites decisions by policy identity, and a policy identity is a stored unit. Two files
+/// of one package are one unit, so they are refused with the two names and the way out: put the
+/// package in one file, or give each file its own package.
+pub(crate) fn shared_package(package: &str, first: &str, second: &str) -> String {
+    format!(
+        "rego: the policies {first} and {second} both declare `{package}`. A package's `allow` and \
+         `deny` are the union of every rule in it, so this engine can decide them correctly and \
+         cannot say which of the two decided — and a decision that cites a policy which decided \
+         nothing is a false audit trail. Put the package in one policy, or give each its own \
+         package"
+    )
 }
 
 /// A compiled Rego partition.
@@ -341,6 +376,12 @@ default deny := false
 deny if input.subject.id == "bob"
 "#;
 
+    /// A partition carrying just this Rego schema.
+    fn artifacts(schema: &[u8]) -> crate::artifact::Artifacts {
+        crate::artifact::Artifacts::just(crate::rego::SCHEMA_ARTIFACT, schema)
+            .expect("the Rego schema artifact is registered")
+    }
+
     fn stored(id: &str, source: &str) -> StoredPolicy {
         StoredPolicy {
             id: id.to_owned(),
@@ -403,7 +444,10 @@ allow if {
 }
 "#;
         let compiled = Rego
-            .compile(&[stored("01a0-hostile", HOSTILE)], None)
+            .compile(
+                &[stored("01a0-hostile", HOSTILE)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let mut asked = query("alice", "read", "open");
@@ -440,7 +484,10 @@ allow if {
 }
 "#;
         let compiled = Rego
-            .compile(&[stored("01a0-hostile", HOSTILE)], None)
+            .compile(
+                &[stored("01a0-hostile", HOSTILE)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let started = std::time::Instant::now();
@@ -459,7 +506,10 @@ allow if {
     #[test]
     fn a_module_that_allows_permits_and_is_cited() {
         let compiled = Rego
-            .compile(&[stored("01a0-readers", READERS)], None)
+            .compile(
+                &[stored("01a0-readers", READERS)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let verdict = compiled.evaluate(&query("alice", "read", "open"));
@@ -470,7 +520,10 @@ allow if {
     #[test]
     fn absent_means_no() {
         let compiled = Rego
-            .compile(&[stored("01a0-readers", READERS)], None)
+            .compile(
+                &[stored("01a0-readers", READERS)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         // The action is not the one the module allows.
@@ -495,7 +548,7 @@ allow if {
                     stored("01a0-readers", READERS),
                     stored("01a0-guards", NEVER_BOB),
                 ],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the modules compile");
 
@@ -513,7 +566,7 @@ allow if {
                     "01a0-quiet",
                     "package quiet\n\nimport rego.v1\n\nsomething := 1\n",
                 )],
-                None,
+                &crate::artifact::Artifacts::default(),
             )
             .expect("the module compiles");
 
@@ -537,7 +590,10 @@ allow if {
 }
 "#;
         let compiled = Rego
-            .compile(&[stored("01a0-graph", module)], None)
+            .compile(
+                &[stored("01a0-graph", module)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let mut asked = query("alice", "read", "open");
@@ -552,7 +608,7 @@ allow if {
     #[test]
     fn a_schema_that_is_not_json_schema_refuses_the_load() {
         let refused = Rego
-            .compile(&[stored("01a0-readers", READERS)], Some(b"anything"))
+            .compile(&[stored("01a0-readers", READERS)], &artifacts(b"anything"))
             .map(|_| ())
             .expect_err("that is not a schema");
 
@@ -567,7 +623,7 @@ allow if {
             "properties": {"frozen_services": {"type": "array", "items": {"type": "string"}}}
         }"#;
         let compiled = Rego
-            .compile(&[stored("01a0-readers", READERS)], Some(SCHEMA))
+            .compile(&[stored("01a0-readers", READERS)], &artifacts(SCHEMA))
             .expect("the module and the schema compile");
 
         // What the schema describes, accepted.
@@ -593,7 +649,10 @@ allow if {
     #[test]
     fn a_partition_that_declares_no_schema_checks_nothing_and_reads_the_document() {
         let compiled = Rego
-            .compile(&[stored("01a0-readers", READERS)], None)
+            .compile(
+                &[stored("01a0-readers", READERS)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         assert!(
@@ -614,7 +673,10 @@ default deny := false
 deny if input.resource.id in input.partition.frozen_services
 "#;
         let compiled = Rego
-            .compile(&[stored("01a0-frozen", MODULE)], None)
+            .compile(
+                &[stored("01a0-frozen", MODULE)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let mut asked = query("alice", "read", "open");
@@ -635,7 +697,10 @@ deny if input.resource.id in input.partition.frozen_services
     fn a_rule_that_is_not_a_boolean_is_reported_not_guessed() {
         let module = "package odd\n\nimport rego.v1\n\nallow := \"yes\"\n";
         let compiled = Rego
-            .compile(&[stored("01a0-odd", module)], None)
+            .compile(
+                &[stored("01a0-odd", module)],
+                &crate::artifact::Artifacts::default(),
+            )
             .expect("the module compiles");
 
         let verdict = compiled.evaluate(&query("alice", "read", "open"));
@@ -643,6 +708,64 @@ deny if input.resource.id in input.partition.frozen_services
         assert!(
             verdict.error.expect("a reason").contains("boolean"),
             "the reason says what was wrong"
+        );
+    }
+
+    /// Two files in one package are one rule set, and a decision must not claim otherwise.
+    ///
+    /// `package.allow` is the union of every `allow` rule in the package — that is Rego, not a
+    /// detail of this engine. Evaluating it once per file and attributing the result to each file
+    /// names policies that did not decide anything, which is a false audit trail: the verdict is
+    /// right and the explanation is wrong, and the explanation is what an incident response reads.
+    #[test]
+    fn two_modules_in_one_package_cannot_be_cited_separately() {
+        const NO: &str = "package shared\n\nimport rego.v1\n\ndefault allow := false\n";
+        const YES: &str =
+            "package shared\n\nimport rego.v1\n\nallow if { input.action.name == \"read\" }\n";
+
+        let refused = Rego
+            .compile(
+                &[stored("01a0-no", NO), stored("01a0-yes", YES)],
+                &crate::artifact::Artifacts::default(),
+            )
+            .err()
+            .expect("a package this engine cannot attribute is refused, not served");
+
+        assert!(refused.contains("shared"), "{refused}");
+        assert!(
+            refused.contains("01a0-no") && refused.contains("01a0-yes"),
+            "{refused}"
+        );
+    }
+
+    /// And the same refusal at authoring, where it costs least.
+    #[test]
+    fn the_set_check_refuses_one_package_across_two_files() {
+        const NO: &str = "package shared\n\nimport rego.v1\n\ndefault allow := false\n";
+        const YES: &str = "package shared\n\nimport rego.v1\n\nallow if { true }\n";
+
+        let refused = crate::role::Language::validate_set(
+            &Rego,
+            &[("a.rego", NO.as_bytes()), ("b.rego", YES.as_bytes())],
+            None,
+        )
+        .expect_err("the author hears it before the ledger is pushed");
+
+        assert!(refused.contains("shared"), "{refused}");
+    }
+
+    /// One file per package is the ordinary case and stays ordinary.
+    #[test]
+    fn distinct_packages_are_unaffected() {
+        const ONE: &str = "package one\n\nimport rego.v1\n\nallow if { true }\n";
+        const TWO: &str = "package two\n\nimport rego.v1\n\ndefault allow := false\n";
+
+        assert!(
+            Rego.compile(
+                &[stored("01a0-one", ONE), stored("01a0-two", TWO)],
+                &crate::artifact::Artifacts::default(),
+            )
+            .is_ok()
         );
     }
 }

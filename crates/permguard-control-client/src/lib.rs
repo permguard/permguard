@@ -42,6 +42,8 @@ pub mod connect;
 pub mod decisions;
 pub mod decisions_grpc;
 pub mod endpoint;
+pub mod events;
+pub mod events_grpc;
 pub mod grpc;
 pub mod http;
 pub mod narrate;

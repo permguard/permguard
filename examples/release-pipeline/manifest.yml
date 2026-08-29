@@ -44,7 +44,7 @@ profiles:
   # What a person asks. The org chart says whether they are entitled; the guardrails
   # can refuse anyway — and an explicit deny from either partition beats a permit
   # from the other.
-  admin:    { type: permguard.pdp.v1, partitions: [admin-cedar, admin-rego] }
+  admin:    { type: permguard.api.pdp.native.v1, partitions: [admin-cedar, admin-rego] }
   # What the pipeline asks. The subjects are workloads and the actions are not in the
   # Cedar schema, so this profile names one partition: the rules for machines.
-  pipeline: { type: permguard.pdp.v1, partitions: [pipeline-rego] }
+  pipeline: { type: permguard.api.pdp.native.v1, partitions: [pipeline-rego] }

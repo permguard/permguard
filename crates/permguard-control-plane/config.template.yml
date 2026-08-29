@@ -82,10 +82,50 @@ controlPlane:
   #                              # `offset_expired` and where the remaining records begin, rather
   #                              # than resuming from the wrong place and reporting a clean run.
 
+  # ── The event store ──────────────────────────────────────────────────────────────────────────
+  # The receiving end of a data plane's `events` block, and the only supported remote source for
+  # reading events back: a data plane's journal is a shipping buffer, so a read there would answer
+  # differently depending on which plane it reached.
+  #
+  # Off by default, like the decision store: a plane that receives nothing should not create one,
+  # and a deployment that has not decided its retention should not be given one by accident.
+  # events:
+  #   enabled: "true"
+  #   directory: data/events/store   # under the working directory
+  #   retention: "90d"               # how long a tenant's events are kept before sealed segments
+  #                                  # are dropped. Whole segments only — a row removed from the
+  #                                  # middle would leave a chain with a hole in it, while a
+  #                                  # segment that has left is a gap a reader is told about.
+  #                                  # Envelopes and the archived verification keys that prove
+  #                                  # retained records are never dropped with them.
+  #   producer_keys:                 # whose signatures this plane accepts. Absent: the same list
+  #     - trust/data-plane-events.jwks   # the decision store uses, because one deployment ships
+  #                                      # both from the same planes.
+
 # public:
 #   disclose_build: "true"     # "false": /version stops naming the version and commit
 #   error_detail: "minimal"    # how much an error says about the inside: "full" or "minimal".
 #                              # Unset, development_mode decides — minimal everywhere real.
+
+# Contracts this build carries whose wire and replication shapes have not yet proven stable.
+# A block rather than scattered flags, so what is provisional is visible in one place.
+experimental:
+  dogwood:
+    # Serve ledgers that name the `dogwood` runtime, and the interfaces built on it.
+    #
+    # Written out rather than left to the default, so what a deployment has accepted is readable
+    # from the file rather than inferred from silence.
+    #
+    # The language is compiled in either way — a language is a build, not a deployment action — so
+    # what this gates is whether a ledger naming it will be SERVED. A manifest that names it on a
+    # plane which has not turned this on is refused at load, by name, rather than served and found
+    # to behave differently after an upgrade.
+    #
+    # It is also the second half of the gate on the event interfaces: the temporal PDP interface
+    # and the control plane's event store need this AND their own `events.enabled`, and a plane
+    # that has said one of the two and not the other refuses to start rather than running with an
+    # interface nobody can reach.
+    enabled: "false"
 
 telemetry:
   addr: 0.0.0.0:7558

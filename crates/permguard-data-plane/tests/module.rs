@@ -171,3 +171,114 @@ async fn the_grpc_surface_mounts() {
     // Mounting is the assertion: a service that cannot compose panics here.
     let _routes = permguard_data_plane::module().grpc_routes(&context);
 }
+
+/// The same deployment, plus whatever settings a test wants to say.
+fn deployed_with(extra: &[(&str, &str)]) -> Config {
+    let mut file: Vec<(String, String)> = vec![
+        (
+            permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
+            "127.0.0.1:7556".to_owned(),
+        ),
+        (
+            permguard_server::plane::SETTING_DATA_HTTP_ADDR.to_owned(),
+            "127.0.0.1:7656".to_owned(),
+        ),
+    ];
+    for (name, value) in extra {
+        file.push(((*name).to_owned(), (*value).to_owned()));
+    }
+
+    Config::from_layers(
+        permguard_server::plane::build_settings("0.0.0-test"),
+        vec![
+            permguard_server::plane::SETTING_RUNTIME_PLANES,
+            permguard_server::plane::SETTING_CONTROL_HTTP_ADDR,
+            permguard_server::plane::SETTING_DATA_HTTP_ADDR,
+        ],
+        permguard_core::config::Layers {
+            file,
+            ..Default::default()
+        },
+    )
+    .expect("the test configuration builds")
+}
+
+/// The temporal interface takes two switches, and one is not enough.
+///
+/// # What this is actually about
+///
+/// `events.enabled` is a statement about disks: *this plane keeps a durable event history*.
+/// `experimental.dogwood.enabled` is a statement about contracts: *this deployment accepts shapes
+/// that may still change*. The temporal interface needs both, so that a deployment which opted
+/// into neither cannot reach an unstable contract by turning on the one that sounds like storage.
+///
+/// The half-said combination is the interesting one. Serving it as nothing would leave an operator
+/// with a plane that looks configured, answers 404, and says nothing about which switch is missing
+/// — so it stops the process instead, by name.
+#[test]
+fn the_temporal_interface_needs_both_switches_and_says_so_when_it_has_one() {
+    use permguard_core::config::{SETTING_EVENTS_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
+
+    let module = permguard_data_plane::module();
+
+    // Neither: nothing to check and nothing served.
+    let neither = deployed();
+    assert!(module.startup_check(&neither).is_ok());
+
+    // History on, the contract not accepted: refused, naming both settings.
+    let half = deployed_with(&[(SETTING_EVENTS_ENABLED, "true")]);
+    let refused = module
+        .startup_check(&half)
+        .expect_err("a plane configured half-way does not start");
+    let said = refused.to_string();
+    assert!(said.contains("experimental.dogwood.enabled"), "{said}");
+    assert!(said.contains("dataPlane.events.enabled"), "{said}");
+
+    // The contract accepted and no history: an ordinary Dogwood-capable plane that keeps none.
+    let policies_only = deployed_with(&[(SETTING_EXPERIMENTAL_DOGWOOD, "true")]);
+    assert!(module.startup_check(&policies_only).is_ok());
+}
+
+/// A plane that does not serve the temporal interface does not advertise it either.
+///
+/// A discovery document is a promise about what answers here. Listing an interface a client then
+/// cannot reach is the failure the three-layer discovery chain exists to prevent, so the link and
+/// the route are decided by one predicate rather than by two that could drift.
+#[tokio::test]
+async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
+    use permguard_core::config::SETTING_EVENTS_ENABLED;
+
+    let temporal = permguard_languages::temporal::INTERFACE;
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+
+    let off = deployed();
+    let context = ServerContext::new(identity(), &off, &storage, &audit);
+    let (status, document) = get(
+        permguard_data_plane::module().http_routes(&context),
+        "/.well-known/server-configuration",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let document: serde_json::Value = serde_json::from_str(&document).expect("JSON");
+    assert!(
+        document["interfaces"][temporal].is_null(),
+        "a plane that does not serve it does not name it: {document}"
+    );
+
+    // Half-said is refused at startup; a document is not even reached. Asserted here too, because
+    // the two checks are what keep "advertised" and "served" the same set.
+    let half = deployed_with(&[(SETTING_EVENTS_ENABLED, "true")]);
+    let context = ServerContext::new(identity(), &half, &storage, &audit);
+    let (status, document) = get(
+        permguard_data_plane::module().http_routes(&context),
+        "/.well-known/server-configuration",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let document: serde_json::Value = serde_json::from_str(&document).expect("JSON");
+    assert!(
+        document["interfaces"][temporal].is_null(),
+        "half-configured is not served, so it is not advertised: {document}"
+    );
+}

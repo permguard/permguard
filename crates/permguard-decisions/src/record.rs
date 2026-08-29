@@ -260,6 +260,47 @@ pub struct DecisionBody {
     pub context: Option<serde_json::Map<String, Value>>,
     /// How long it took — a slow plane told from a slow policy set.
     pub latency_us: u64,
+    /// The occurrence this decision was made about, when it was a temporal one.
+    ///
+    /// Absent for a stateless decision, and that absence is the honest answer: a stateless
+    /// decision was made about a request, and there is no event to point at. Present, it is the
+    /// join between the two trails — the decision log says what was decided, the event log says
+    /// what it was decided against, and this is what lets an investigator move between them
+    /// without matching timestamps and hoping.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub event: Option<EventRef>,
+}
+
+/// The occurrence a temporal decision was made about, and where it sits.
+///
+/// Not a copy of the event: the event lives in its own signed stream with its own chain, and
+/// duplicating it here would create a second version of the same fact that could disagree with the
+/// first. This is a pointer, and the fields are exactly what is needed to follow it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventRef {
+    /// The caller's identifier for the occurrence.
+    pub event_id: String,
+    /// The registered contract the occurrence was.
+    pub event_type: String,
+    /// The producer instance whose stream holds it.
+    pub instance: String,
+    /// Its position in that stream — the watermark this decision was made at.
+    pub sequence: u64,
+    /// The history key's digest, when the schema derives one.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub history: Option<String>,
+    /// Which history the decision ranged over: `local`, `shared-eventual`, `shared-bounded`.
+    ///
+    /// Recorded because the same request, decided by two planes with different imported history,
+    /// can legitimately differ — and nothing else in the record explains why.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub consistency: Option<String>,
+    /// The opaque import watermark that decision saw, for a shared mode.
+    ///
+    /// What an auditor replays against: it identifies exactly the set of events that were visible,
+    /// and without it the decision cannot be reproduced.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub watermark: Option<String>,
 }
 
 /// What was asked for.

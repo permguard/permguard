@@ -311,20 +311,34 @@ pub trait Evaluator: Send + Sync {
     /// The policies it was compiled from, by identity, for a report that has
     /// to say what is loaded.
     fn policies(&self) -> Vec<String>;
+
+    /// The remembering half of this compiled partition, when its runtime has one.
+    ///
+    /// Asked for, never assumed — exactly like [`Language::authoring`](crate::role::Language) and
+    /// [`Language::evaluating`](crate::role::Language). A stateless runtime answers `None`, and a
+    /// caller that wanted to submit an event learns so at load rather than by having one accepted
+    /// as something else.
+    fn temporal(&self) -> Option<&dyn crate::temporal::Temporal> {
+        None
+    }
 }
 
 /// The compiling half: sources in, an [`Evaluator`] out.
 pub trait Evaluating: Send + Sync {
-    /// Compiles a partition's policies, against its schema when it has one.
+    /// Compiles a partition's policies against the artifacts it carries.
     ///
-    /// A schema is not decoration: when the partition declares one, every
-    /// policy is **validated against it** here, and a policy that does not
-    /// type-check refuses the load. A ledger that would evaluate differently
-    /// than it reads is not one to serve.
+    /// A schema is not decoration: when the partition carries one, every policy is **validated
+    /// against it** here, and a policy that does not type-check refuses the load. A ledger that
+    /// would evaluate differently than it reads is not one to serve.
+    ///
+    /// `artifacts` is everything the partition holds that is not a policy, by registered type. A
+    /// runtime asks for the types it owns by name; a runtime with one schema asks for one, and a
+    /// runtime with an action schema, an event schema, a macro library and provider programs asks
+    /// for those — without the signature, or the walk that filled it, knowing either of them.
     fn compile(
         &self,
         policies: &[StoredPolicy],
-        schema: Option<&[u8]>,
+        artifacts: &crate::artifact::Artifacts,
     ) -> Result<Box<dyn Evaluator>, String>;
 }
 

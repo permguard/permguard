@@ -104,6 +104,8 @@ impl Fixture {
                 ledger_id: "ledger-1".into(),
             },
             limits: limits(),
+            // A test has no deployment to consult: what the build carries is what it sees.
+            enabled: permguard_languages::registry::Enabled::everything(),
         }
     }
 

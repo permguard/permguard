@@ -28,8 +28,8 @@ profiles:
   # Both partitions answer one request. They therefore share one vocabulary:
   # the entity types the Cedar schema declares (`User`, `Document`, `Group`)
   # are the ledger's, and the Rego module reads the same ones.
-  default: { type: permguard.pdp.v1, partitions: [cedar, rego] }
+  default: { type: permguard.api.pdp.native.v1, partitions: [cedar, rego] }
   # Only the gateway's rules. What a profile is *for*: the same ledger, a
   # narrower contract — here, questions the Cedar schema does not declare
   # (`create`, `update`, `delete`) and therefore could not evaluate.
-  gateway: { type: permguard.pdp.v1, partitions: [rego] }
+  gateway: { type: permguard.api.pdp.native.v1, partitions: [rego] }

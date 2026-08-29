@@ -25,6 +25,103 @@
 
 use crate::role::Language;
 
+/// One artifact of a partition, as the commit holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactBlob {
+    /// The name the tree entry carries — the file an author wrote. Reported in diagnostics, so a
+    /// message about an artifact names the thing on disk rather than a digest.
+    pub name: String,
+    /// The media type it was stored under, which is what decided its type.
+    pub media_type: String,
+    /// The verbatim bytes. Never re-rendered: what was authored, signed and stored is what the
+    /// runtime compiles.
+    pub data: Vec<u8>,
+}
+
+/// The non-policy artifacts one partition carries, by registered type.
+///
+/// The generalisation of the single `Option<Vec<u8>>` schema a partition used to hold. A runtime
+/// asks for what it needs by registered name; asking for a type it does not own yields nothing,
+/// which is what it should, because the walk refuses an artifact of a foreign runtime before it
+/// ever gets here.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Artifacts {
+    held: std::collections::BTreeMap<&'static str, Vec<ArtifactBlob>>,
+}
+
+impl Artifacts {
+    /// Files one blob under its registered type.
+    pub fn insert(&mut self, artifact: &'static dyn ArtifactType, blob: ArtifactBlob) {
+        self.held.entry(artifact.name()).or_default().push(blob);
+    }
+
+    /// The single artifact of that type, when the partition carries one.
+    ///
+    /// For a `one` or `zero-or-one` type this is the artifact; for a `many` type it is the first,
+    /// which is why a `many` type is read through [`Artifacts::all`] instead.
+    pub fn one(&self, type_name: &str) -> Option<&ArtifactBlob> {
+        self.held.get(type_name).and_then(|held| held.first())
+    }
+
+    /// The bytes of the single artifact of that type.
+    pub fn bytes(&self, type_name: &str) -> Option<&[u8]> {
+        self.one(type_name).map(|blob| blob.data.as_slice())
+    }
+
+    /// Every artifact of that type, in the order the walk met them.
+    pub fn all(&self, type_name: &str) -> &[ArtifactBlob] {
+        self.held
+            .get(type_name)
+            .map_or(&[][..], |held| held.as_slice())
+    }
+
+    /// Every type the partition carries at least one of.
+    pub fn types(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.held.keys().copied()
+    }
+
+    /// How many artifacts of that type the partition carries.
+    pub fn count(&self, type_name: &str) -> usize {
+        self.all(type_name).len()
+    }
+
+    /// Whether the partition carries nothing at all.
+    pub fn is_empty(&self) -> bool {
+        self.held.is_empty()
+    }
+
+    /// The artifacts of a partition that carries exactly one blob, of one registered type.
+    ///
+    /// `None` when nothing registers that name — which is the honest answer, and the reason this
+    /// takes a name rather than bytes and a promise about them.
+    pub fn just(type_name: &str, data: &[u8]) -> Option<Self> {
+        let artifact = artifact_type(type_name)?;
+        let mut artifacts = Self::default();
+        artifacts.insert(
+            artifact,
+            ArtifactBlob {
+                name: artifact
+                    .canonical_filename()
+                    .unwrap_or(artifact.semantic_role())
+                    .to_owned(),
+                media_type: artifact.media_type().to_owned(),
+                data: data.to_vec(),
+            },
+        );
+
+        Some(artifacts)
+    }
+
+    /// Roughly how much memory the artifacts hold, for a cache's bounds.
+    pub fn footprint(&self) -> usize {
+        self.held
+            .values()
+            .flatten()
+            .map(|blob| blob.data.len())
+            .sum()
+    }
+}
+
 /// What part an artifact plays in a partition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArtifactRole {
@@ -130,7 +227,10 @@ pub fn artifacts_of(language: &dyn Language) -> &'static [&'static dyn ArtifactT
 
 /// The registered names, for a message that has to list them.
 pub fn registered() -> String {
-    let mut names: Vec<&str> = artifact_types().into_iter().map(ArtifactType::name).collect();
+    let mut names: Vec<&str> = artifact_types()
+        .into_iter()
+        .map(ArtifactType::name)
+        .collect();
     names.sort_unstable();
 
     names.join(", ")
@@ -140,20 +240,18 @@ pub fn registered() -> String {
 pub fn provided_artifact_types() -> Vec<permguard_objects::manifest::ProvidedArtifactType> {
     artifact_types()
         .into_iter()
-        .map(
-            |held| permguard_objects::manifest::ProvidedArtifactType {
-                name: held.name().to_owned(),
-                language: held.runtime().to_owned(),
-                cardinality: match held.cardinality() {
-                    Cardinality::One => permguard_objects::manifest::ArtifactCardinality::One,
-                    Cardinality::ZeroOrOne => {
-                        permguard_objects::manifest::ArtifactCardinality::ZeroOrOne
-                    }
-                    Cardinality::Many => permguard_objects::manifest::ArtifactCardinality::Many,
-                },
-                required_by_default: held.required_by_default(),
+        .map(|held| permguard_objects::manifest::ProvidedArtifactType {
+            name: held.name().to_owned(),
+            language: held.runtime().to_owned(),
+            cardinality: match held.cardinality() {
+                Cardinality::One => permguard_objects::manifest::ArtifactCardinality::One,
+                Cardinality::ZeroOrOne => {
+                    permguard_objects::manifest::ArtifactCardinality::ZeroOrOne
+                }
+                Cardinality::Many => permguard_objects::manifest::ArtifactCardinality::Many,
             },
-        )
+            required_by_default: held.required_by_default(),
+        })
         .collect()
 }
 
@@ -205,8 +303,8 @@ mod tests {
     fn a_registered_name_and_media_type_resolve_to_the_same_artifact() {
         for artifact in artifact_types() {
             let by_name = artifact_type(artifact.name()).expect("registered by name");
-            let by_media = artifact_for_media_type(artifact.media_type())
-                .expect("registered by media type");
+            let by_media =
+                artifact_for_media_type(artifact.media_type()).expect("registered by media type");
 
             assert_eq!(by_name.name(), by_media.name());
         }

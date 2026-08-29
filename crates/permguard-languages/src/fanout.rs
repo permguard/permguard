@@ -94,12 +94,25 @@ pub struct Fanout {
 }
 
 impl Fanout {
-    /// Builds a pool of exactly this many workers. At least one.
+    /// Builds a pool of at most this many workers.
+    ///
+    /// # What happens when a thread will not start
+    ///
+    /// It is counted, and the pool reports what it actually has. A pool that claimed workers it
+    /// never got would accept jobs into a bounded queue nobody reads: the first few sends fill the
+    /// buffer, the next blocks, and the caller waits for a result that cannot arrive. A decision
+    /// path that hangs is worse than one that is slow, and far worse than one that says so.
+    ///
+    /// A pool with **no** workers is not an error either: [`Fanout::run`] then does every job on
+    /// the calling thread. Sequential rather than parallel, which is a real degradation and a
+    /// legitimate answer — the alternative on a machine that cannot spawn a thread is refusing to
+    /// decide at all.
     pub fn with_workers(workers: usize) -> Self {
         let workers = workers.max(1);
         let (sender, receiver) = mpsc::sync_channel::<Job>(workers * QUEUE_PER_WORKER);
         let receiver = Arc::new(Mutex::new(receiver));
 
+        let mut started = 0usize;
         for _ in 0..workers {
             let receiver = Arc::clone(&receiver);
             // Detached on purpose: the pool lives as long as the process, and a worker that is
@@ -124,12 +137,31 @@ impl Fanout {
                         let _ = std::panic::catch_unwind(AssertUnwindSafe(job));
                     }
                 })
-                .ok();
+                .map(|_| started += 1)
+                .unwrap_or_else(|error| {
+                    // Said once, plainly. A pool quietly smaller than it was asked for is a plane
+                    // that got slower for a reason nothing recorded.
+                    tracing::warn!(
+                        event.name = "evaluate.worker_not_started",
+                        component = "languages",
+                        error = %error,
+                        "an evaluation worker could not be started"
+                    );
+                });
+        }
+        if started == 0 {
+            tracing::warn!(
+                event.name = "evaluate.pool_empty",
+                component = "languages",
+                asked = workers,
+                "no evaluation worker could be started: every partition will be evaluated on the \
+                 calling thread, one after another"
+            );
         }
 
         Self {
             work: Mutex::new(sender),
-            workers,
+            workers: started,
         }
     }
 
@@ -157,6 +189,8 @@ impl Fanout {
     ///
     /// The first runs here, on the calling thread; the rest are queued. So one caller reaches at
     /// most `workers + 1` concurrent jobs, and a caller with one job queues nothing.
+    ///
+    /// A pool with no workers runs everything here, in order. Slower, and an answer.
     pub fn run<T: Send + 'static>(
         &self,
         jobs: Vec<Box<dyn FnOnce() -> T + Send + 'static>>,
@@ -164,6 +198,11 @@ impl Fanout {
         let count = jobs.len();
         if count == 0 {
             return Ok(Vec::new());
+        }
+        if self.workers == 0 {
+            // Nothing is listening on the queue, so nothing is sent to it: sending would fill a
+            // bounded buffer and then block for ever on a result that cannot come.
+            return Ok(jobs.into_iter().map(|job| job()).collect());
         }
 
         let mut jobs = jobs.into_iter();
@@ -443,5 +482,42 @@ mod tests {
             vec![Box::new(|| std::thread::current().id())];
 
         assert_eq!(pool.run(jobs).expect("answered"), vec![here]);
+    }
+
+    /// A pool that got no workers answers on the calling thread rather than waiting for ever.
+    ///
+    /// Constructed by hand, because a machine that cannot spawn a thread is not something a test
+    /// can arrange — and the property under test is what `run` does when `workers` is zero, which
+    /// is exactly the state a failed spawn leaves behind.
+    #[test]
+    fn a_pool_with_no_workers_runs_everything_locally_instead_of_hanging() {
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<Job>(1);
+        // The receiver is dropped: nothing will ever take a job off this queue, which is the shape
+        // a pool of zero workers has.
+        drop(receiver);
+        let empty = Fanout {
+            work: Mutex::new(sender),
+            workers: 0,
+        };
+
+        let jobs: Vec<Box<dyn FnOnce() -> usize + Send + 'static>> = (0..5usize)
+            .map(|n| Box::new(move || n * 2) as Box<dyn FnOnce() -> usize + Send>)
+            .collect();
+
+        assert_eq!(
+            empty
+                .run(jobs)
+                .expect("a pool with no workers still answers"),
+            vec![0, 2, 4, 6, 8],
+            "and in the order the jobs were given"
+        );
+    }
+
+    /// The pool reports what it actually has, so a caller's concurrency assumption is not a lie.
+    #[test]
+    fn a_pool_reports_the_workers_it_started() {
+        let pool = Fanout::with_workers(3);
+
+        assert_eq!(pool.workers(), 3);
     }
 }

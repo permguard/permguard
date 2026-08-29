@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "../../proto/permguard/control/v1/control_plane.proto",
         "../../proto/permguard/control/v1/notp.proto",
         "../../proto/permguard/control/v1/decisions.proto",
+        "../../proto/permguard/control/v1/events.proto",
     ];
 
     for proto in protos {

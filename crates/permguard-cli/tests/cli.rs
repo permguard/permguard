@@ -54,7 +54,7 @@ fn write_sources(dir: &Path) {
             "runtimes:\n  cedar:\n    language: { name: cedar, constraint: \">=4.0.0\" }\n",
             "    engine: { name: permguard, constraint: \">=0.1.0\" }\n",
             "partitions:\n  app: { runtime: cedar, schema: false }\n",
-            "profiles:\n  default: { type: permguard.pdp.v1, partitions: [app] }\n",
+            "profiles:\n  default: { type: permguard.api.pdp.native.v1, partitions: [app] }\n",
         ),
     )
     .expect("the manifest writes");
@@ -468,8 +468,11 @@ fn every_spelling_of_help_prints_the_same_help() {
         (vec![], true),
         (vec!["zones"], true),
         (vec!["objects"], true),
+        (vec!["events"], true),
         (vec!["zones", "create"], false),
         (vec!["decisions", "tail"], false),
+        (vec!["events", "list"], false),
+        (vec!["events", "verify"], false),
         (vec!["objects", "cat"], false),
     ] {
         let mut flag = path.clone();
@@ -1065,5 +1068,272 @@ fn test_names_the_policies_of_every_evaluation_in_a_batch() {
         stdout(&output).contains("no evaluation named `third`"),
         "{}",
         stdout(&output)
+    );
+}
+
+/// Reading events with no scope says which ways there are, exactly as reading decisions does.
+///
+/// The two evidence logs are read the same way and refused the same way. A caller who learned one
+/// has learned the other, and a script that switched between them would otherwise have to parse two
+/// vocabularies for the same mistake.
+#[test]
+fn reading_events_without_a_scope_says_which_ways_there_are() {
+    let dir = scratch("events-scope");
+    let output = run(
+        &dir,
+        &["events", "list", "--control-endpoint", "http://127.0.0.1:1"],
+    );
+
+    assert_eq!(output.status.code(), Some(64));
+    let said = stderr(&output);
+    for hint in ["--zone", "workspace"] {
+        assert!(said.contains(hint), "{said}");
+    }
+}
+
+/// An event log that cannot be reached is unavailable, not a usage error.
+///
+/// The distinction a script depends on: nothing the operator typed is wrong, so retrying later is
+/// the right response, and the exit code is what says which of the two it was.
+#[test]
+fn an_event_log_that_cannot_be_reached_is_unavailable_not_a_usage_error() {
+    let dir = scratch("events-down");
+    let output = run(
+        &dir,
+        &[
+            "events",
+            "list",
+            "--zone",
+            "acme",
+            "--ledger",
+            "agent-governance",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "-o",
+            "json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(70));
+    let said = stderr(&output);
+    let failure: serde_json::Value =
+        serde_json::from_str(&said).unwrap_or_else(|error| panic!("{said}: {error}"));
+    assert_eq!(failure["class"], "unavailable", "{said}");
+    assert!(
+        failure["code"]
+            .as_str()
+            .is_some_and(|code| !code.is_empty()),
+        "a structured failure carries a code a script can switch on: {said}"
+    );
+}
+
+/// Every `events` refusal answers in all three formats, and only ever on stderr.
+///
+/// # What this is actually about
+///
+/// The output contract is not "there is a `-o json`". It is that *every* command answers through
+/// one report, so the same failure is the same failure in all three renderings — and that a
+/// structured rendering never leaks onto stdout, where a script capturing the answer would find a
+/// refusal parsed as data.
+#[test]
+fn events_answers_in_all_three_formats_and_keeps_refusals_off_stdout() {
+    let dir = scratch("events-formats");
+
+    for format in ["terminal", "json", "yaml"] {
+        let output = run(
+            &dir,
+            &[
+                "events",
+                "list",
+                "--zone",
+                "acme",
+                "--ledger",
+                "agent-governance",
+                "--control-endpoint",
+                "http://127.0.0.1:1",
+                "-o",
+                format,
+            ],
+        );
+
+        assert_eq!(output.status.code(), Some(70), "{format}");
+        assert!(
+            output.stdout.is_empty(),
+            "{format}: a refusal reached stdout: {}",
+            stdout(&output)
+        );
+        let said = stderr(&output);
+        match format {
+            "json" => {
+                let failure: serde_json::Value =
+                    serde_json::from_str(&said).unwrap_or_else(|error| panic!("{said}: {error}"));
+                assert_eq!(failure["class"], "unavailable", "{said}");
+            }
+            "yaml" => {
+                let failure: serde_json::Value =
+                    serde_norway::from_str(&said).unwrap_or_else(|error| panic!("{said}: {error}"));
+                assert_eq!(failure["class"], "unavailable", "{said}");
+            }
+            _ => assert!(
+                !said.trim().is_empty() && !said.starts_with('{'),
+                "the terminal rendering is prose, not a structure: {said}"
+            ),
+        }
+    }
+}
+
+/// `-v` narrates the exchange to stderr, and says nothing extra without it.
+///
+/// Quiet by default and explicit on demand. The narration goes to stderr because stdout is the
+/// answer, and an operator who asked for detail must not thereby change what a pipe receives.
+#[test]
+fn events_narrates_the_exchange_only_when_asked() {
+    let dir = scratch("events-verbose");
+    let asked = &[
+        "events",
+        "list",
+        "--zone",
+        "acme",
+        "--ledger",
+        "agent-governance",
+        "--control-endpoint",
+        "http://127.0.0.1:1",
+    ];
+
+    let quiet = run(&dir, asked);
+    assert!(
+        !stderr(&quiet).contains("[verbose]"),
+        "unasked: {}",
+        stderr(&quiet)
+    );
+
+    let mut verbose = asked.to_vec();
+    verbose.push("-v");
+    let loud = run(&dir, &verbose);
+    assert!(
+        stderr(&loud).contains("[verbose]"),
+        "asked: {}",
+        stderr(&loud)
+    );
+    assert!(
+        stderr(&loud).contains("http://127.0.0.1:1"),
+        "and it names the endpoint it tried: {}",
+        stderr(&loud)
+    );
+    assert_eq!(
+        loud.status.code(),
+        quiet.status.code(),
+        "asking for narration does not change the outcome"
+    );
+}
+
+/// The most powerful read in the system is not something a flag can be given by accident.
+///
+/// `--all-zones` reads every tenant's events. It is the one read a mistake in a script must not
+/// silently widen into, so it is refused unless it is asked for on its own terms.
+#[test]
+fn reading_every_tenants_events_is_refused_unless_it_is_asked_for_alone() {
+    let dir = scratch("events-all-zones");
+    let output = run(
+        &dir,
+        &[
+            "events",
+            "list",
+            "--all-zones",
+            "--zone",
+            "acme",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(output.stdout.is_empty());
+}
+
+/// The shipped Dogwood example's test plan runs, offline, and every case passes.
+///
+/// # Why this test and not a unit one
+///
+/// A temporal case is a claim about *order*, and until `permguard test` could express one, the
+/// shipped example had no test plan at all: `permguard test` answered "no cases", and the README's
+/// table of outcomes was prose nothing checked. What this pins down is the whole path — the case
+/// format, the events applied in order, the history reset between cases, and the example's own
+/// files — against the outcomes its README states.
+///
+/// The reset is the part most likely to rot. The compiled partitions are shared across a run, so a
+/// case that forgot to clear the histories would read the previous case's events; the plan below
+/// contains the exact pair that catches it — one read permitted by a login before it, and the same
+/// read with no login, which must be denied.
+#[test]
+fn the_shipped_dogwood_example_passes_its_own_test_plan() {
+    let example = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/dogwood-session-access")
+        .canonicalize()
+        .expect("the shipped example is where the repository keeps it");
+
+    let dir = scratch("dogwood-plan");
+    std::fs::create_dir_all(&dir).expect("the workspace directory is created");
+    for relative in [
+        "manifest.yml",
+        "governance/read-after-login.dw",
+        "governance/schema.cedarschema",
+        "governance/events.dwschema",
+        "tests/session-access.yml",
+        "events/1-login-request.json",
+        "events/2-login-response.json",
+        "events/3-read-permitted.json",
+        "events/4-read-outside-window.json",
+        "events/5-read-other-user.json",
+        "refusals/unknown-action.json",
+        "refusals/undeclared-field.json",
+        "refusals/pin-disagrees.json",
+    ] {
+        let target = dir.join(relative);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).expect("the directory is created");
+        }
+        std::fs::copy(example.join(relative), &target)
+            .unwrap_or_else(|error| panic!("{relative}: {error}"));
+    }
+
+    let output = run(&dir, &["test", "-o", "json"]);
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("the report is json");
+    let cases = report["cases"].as_array().expect("it lists the cases");
+    assert!(
+        cases.len() >= 8,
+        "the example's plan covers its README's table: {}",
+        cases.len()
+    );
+    for case in cases {
+        assert_eq!(case["passed"], true, "`{}` failed: {}", case["name"], case);
+        assert_eq!(
+            case["profile"], "temporal",
+            "every case runs under the profile the request names: {case}"
+        );
+    }
+    assert!(
+        output.status.success(),
+        "a plan whose cases all pass exits zero"
+    );
+
+    // And the ordering claim is the one under test: the same read decides differently depending
+    // only on what happened before it.
+    let named = |name: &str| -> serde_json::Value {
+        cases
+            .iter()
+            .find(|case| case["name"] == name)
+            .unwrap_or_else(|| panic!("the plan has a case named `{name}`"))
+            .clone()
+    };
+    assert_eq!(
+        named("a read inside the window is permitted by the login before it")["decision"],
+        true
+    );
+    assert_eq!(
+        named("the same read with no login before it is denied")["decision"],
+        false,
+        "the histories are reset between cases, or this reads the previous case's login"
     );
 }

@@ -1,11 +1,11 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The `permguard.pdp.v1` payloads: what a PEP sends, and what it gets back.
+//! The `permguard.api.pdp.native.v1` payloads: what a PEP sends, and what it gets back.
 //!
 //! # An interface Permguard owns
 //!
-//! `permguard.pdp.v1` is Permguard's **native** policy decision interface — not an implementation
+//! `permguard.api.pdp.native.v1` is Permguard's **stateless** policy decision interface — not an implementation
 //! of, nor a compatibility claim for, any other authorization API. What it offers, and what it
 //! refuses, is defined in [`permguard_languages::request`] and published by this plane at
 //! `/.well-known/permguard-pdp-v1-configuration`.

@@ -23,7 +23,40 @@ pub const MEDIA_TYPE: &str = "application/vnd.permguard.manifest.v1+cbor";
 pub const KIND_POLICY: &str = "policy";
 
 /// The evaluation-contract types this build understands.
+///
+/// # Two interfaces, and one rename
+///
+/// [`PROFILE_PDP_NATIVE_V1`] is the stateless PDP — the one Permguard has always served, under a
+/// name that now says which of the two it is. [`PROFILE_PDP_TEMPORAL_V1ALPHA1`] is the stateful
+/// one: an occurrence is recorded into a durable history and decided against it.
+///
+/// [`PROFILE_PDP_V1`] is the stateless interface's former name, accepted so a ledger written
+/// before the rename still loads. It is never *written*: the CLI generates the new name, the
+/// discovery documents advertise the new name, and this build's own examples carry the new name.
+/// A ledger carrying the old one is read, served identically, and says so — there are not two
+/// contracts, there is one contract and one legacy spelling of its name.
+pub const PROFILE_PDP_NATIVE_V1: &str = "permguard.api.pdp.native.v1";
+/// The stateful temporal interface: events in, history kept, decisions against it.
+pub const PROFILE_PDP_TEMPORAL_V1ALPHA1: &str = "permguard.api.pdp.temporal.v1alpha1";
+/// The stateless interface's former name. Accepted, never generated.
 pub const PROFILE_PDP_V1: &str = "permguard.pdp.v1";
+
+/// Every profile type this build serves, legacy spellings included.
+pub const PROFILE_TYPES: [&str; 3] = [
+    PROFILE_PDP_NATIVE_V1,
+    PROFILE_PDP_TEMPORAL_V1ALPHA1,
+    PROFILE_PDP_V1,
+];
+
+/// Whether a profile type names the stateless interface, under either of its names.
+pub fn is_native_profile(r#type: &str) -> bool {
+    r#type == PROFILE_PDP_NATIVE_V1 || r#type == PROFILE_PDP_V1
+}
+
+/// Whether a profile type names the temporal interface.
+pub fn is_temporal_profile(r#type: &str) -> bool {
+    r#type == PROFILE_PDP_TEMPORAL_V1ALPHA1
+}
 
 /// One runtime requirement: a name and the semver range that satisfies it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +164,7 @@ pub struct InputContract {
 /// One profile: the evaluation contract offered on top of some partitions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
-    /// The contract type — language-agnostic, e.g. `permguard.pdp.v1`.
+    /// The contract type — language-agnostic, e.g. `permguard.api.pdp.native.v1`.
     pub r#type: String,
     /// The partitions the profile is built from.
     pub partitions: Vec<String>,
@@ -241,33 +274,29 @@ impl Manifest {
                             // Both absent when the partition declares neither, so a ledger
                             // written before typed artifacts existed encodes byte for byte as it
                             // always did.
-                            .chain(
-                                (!partition.artifacts.is_empty())
-                                    .then(|| {
-                                        (
-                                            Value::Int(PARTITION_ARTIFACTS),
-                                            Value::Array(
-                                                partition
-                                                    .artifacts
-                                                    .iter()
-                                                    .map(|artifact| {
-                                                        Value::Map(vec![
-                                                            (
-                                                                Value::Int(ARTIFACT_TYPE),
-                                                                text(&artifact.r#type),
-                                                            ),
-                                                            (
-                                                                Value::Int(ARTIFACT_REQUIRED),
-                                                                Value::Bool(artifact.required),
-                                                            ),
-                                                        ])
-                                                    })
-                                                    .collect(),
-                                            ),
-                                        )
-                                    })
-                                    .into_iter(),
-                            )
+                            .chain((!partition.artifacts.is_empty()).then(|| {
+                                (
+                                    Value::Int(PARTITION_ARTIFACTS),
+                                    Value::Array(
+                                        partition
+                                            .artifacts
+                                            .iter()
+                                            .map(|artifact| {
+                                                Value::Map(vec![
+                                                    (
+                                                        Value::Int(ARTIFACT_TYPE),
+                                                        text(&artifact.r#type),
+                                                    ),
+                                                    (
+                                                        Value::Int(ARTIFACT_REQUIRED),
+                                                        Value::Bool(artifact.required),
+                                                    ),
+                                                ])
+                                            })
+                                            .collect(),
+                                    ),
+                                )
+                            }))
                             .chain(partition.history.iter().map(|history| {
                                 (Value::Int(PARTITION_HISTORY), text(history.as_str()))
                             }))
@@ -465,12 +494,14 @@ impl Manifest {
                 .find(|(key, _)| *key == Value::Int(PARTITION_HISTORY))
             {
                 None => None,
-                Some((_, Value::Text(scope))) => Some(HistoryScope::parse(scope).ok_or_else(|| {
-                    bad(format!(
-                        "partition `{name}` declares the history scope `{scope}`, which this \
+                Some((_, Value::Text(scope))) => {
+                    Some(HistoryScope::parse(scope).ok_or_else(|| {
+                        bad(format!(
+                            "partition `{name}` declares the history scope `{scope}`, which this \
                          build does not know (it knows: global)"
-                    ))
-                })?),
+                        ))
+                    })?)
+                }
                 Some(_) => return Err(bad("partition.history must be text")),
             };
             manifest.partitions.insert(
@@ -495,8 +526,12 @@ impl Manifest {
             };
             let profile = only_known(value, "a profile", &[PROFILE_TYPE, PROFILE_PARTITIONS])?;
             let r#type = get_text(profile, PROFILE_TYPE, "profile.type")?;
-            if r#type != PROFILE_PDP_V1 {
-                return Err(bad(format!("unknown profile type `{type}`", type = r#type)));
+            if !PROFILE_TYPES.contains(&r#type.as_str()) {
+                return Err(bad(format!(
+                    "unknown profile type `{type}` (this build serves: {})",
+                    PROFILE_TYPES.join(", "),
+                    type = r#type
+                )));
             }
             let partitions = match need(profile, PROFILE_PARTITIONS, "profile.partitions")? {
                 Value::Array(items) => items
@@ -1410,7 +1445,9 @@ mod artifact_contract_tests {
         .expect_err("the action schema is required");
 
         assert!(
-            refused.detail.contains("permguard.dogwood.action-schema.v1"),
+            refused
+                .detail
+                .contains("permguard.dogwood.action-schema.v1"),
             "{refused}"
         );
 

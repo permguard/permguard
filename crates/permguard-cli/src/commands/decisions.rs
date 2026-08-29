@@ -22,7 +22,7 @@
 
 use std::process::ExitCode;
 
-use permguard_control_client::decisions::{self, DecisionLog, ReadError, ReadScope};
+use permguard_control_client::decisions::{self, DecisionLog, ReadError, ReadScope, ReadWindow};
 use permguard_core::Jwk;
 use permguard_decisions::envelope::Signed;
 use permguard_decisions::{chain, merkle, record};
@@ -51,7 +51,15 @@ pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode
     }
 }
 
-/// One page, or every page.
+/// One page, or a whole finite snapshot.
+///
+/// # Why an export captures a bound
+///
+/// An export that stopped when the stream was empty would never stop on a busy ledger: records
+/// keep arriving and `more` keeps being true. So the first page's watermark becomes this export's
+/// fixed end, echoed on every page after it, and records that arrive later belong to a later
+/// export. That is one field, and it is the difference between a command that finishes and one
+/// that cannot be put in a script.
 fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
@@ -64,19 +72,32 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
         next: String::new(),
         more: false,
     };
-    let mut offset = query.from.clone();
-    for _ in 0..if everything { MAX_PAGES } else { 1 } {
-        let page = reader
-            .read(&scope, offset.as_deref(), query.limit, query.verify)
-            .map_err(read_failure)?;
+    let mut window = ReadWindow {
+        from: query.from.clone(),
+        limit_records: query.limit,
+        proof: query.verify,
+        ..ReadWindow::default()
+    };
+    for page_number in 0..if everything { MAX_PAGES } else { 1 } {
+        let page = reader.read(&scope, &window).map_err(read_failure)?;
+        if everything && page_number == 0 {
+            // The snapshot this export is of. Every page after this one is bounded by it.
+            window.until = Some(page.high_watermark.clone());
+            trace.say(format!(
+                "exporting the snapshot at `{}`; records written after it belong to a later export",
+                page.high_watermark
+            ));
+        }
         read.more = page.more;
-        read.next = page.next.clone();
-        offset = Some(page.next);
+        read.next.clone_from(&page.next);
+        window.from = Some(page.next);
         read.proof.extend(page.proof);
         read.inclusion.extend(page.inclusion);
-        let empty = page.records.is_empty();
         read.records.extend(page.records);
-        if empty || !everything || !read.more {
+        // An empty page is not the end: filtering and scan bounds mean a page may match nothing
+        // while still advancing. The export stops from `more` against its own bound, and nothing
+        // else.
+        if !everything || !read.more {
             break;
         }
     }
@@ -92,14 +113,19 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
     let keys = key_set(globals, query)?;
-    let mut offset = query.from.clone();
+    // No `until`: a tail is deliberately unbounded, which is what makes it a tail. It reads from
+    // `next`, and idles when it has caught up.
+    let mut window = ReadWindow {
+        from: query.from.clone(),
+        limit_records: query.limit,
+        proof: query.verify,
+        ..ReadWindow::default()
+    };
 
     loop {
-        let page = reader
-            .read(&scope, offset.as_deref(), query.limit, query.verify)
-            .map_err(read_failure)?;
+        let page = reader.read(&scope, &window).map_err(read_failure)?;
         let more = page.more;
-        offset = Some(page.next.clone());
+        window.from = Some(page.next.clone());
         if !page.records.is_empty() {
             let report = report(
                 &scope,
@@ -132,14 +158,18 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
 fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
-    let mut offset = query.from.clone();
+    // Bounded to a snapshot like an export: a search for one identifier over a stream that keeps
+    // growing would otherwise never conclude that the identifier is absent.
+    let mut window = ReadWindow {
+        from: query.from.clone(),
+        limit_records: query.limit.max(500),
+        ..ReadWindow::default()
+    };
 
-    for _ in 0..MAX_PAGES {
-        let page = reader
-            .read(&scope, offset.as_deref(), query.limit.max(500), false)
-            .map_err(read_failure)?;
-        if page.records.is_empty() {
-            break;
+    for page_number in 0..MAX_PAGES {
+        let page = reader.read(&scope, &window).map_err(read_failure)?;
+        if page_number == 0 {
+            window.until = Some(page.high_watermark.clone());
         }
         if let Some(record) = page
             .records
@@ -156,7 +186,7 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
         if !page.more {
             break;
         }
-        offset = Some(page.next);
+        window.from = Some(page.next);
     }
 
     Err(Failure::usage(format!(
@@ -615,9 +645,16 @@ fn read_failure(error: ReadError) -> Failure {
     match error {
         // The one refusal a consumer must act on rather than retry: it lost
         // records, and it is being told where the remaining ones begin.
-        ReadError::Expired { oldest } => Failure::usage(format!(
-            "this offset is older than what the store still holds. The oldest available is \
-             `{oldest}` — resume from it, and treat the range in between as lost"
+        ReadError::Expired {
+            oldest,
+            oldest_sequence,
+            requested_sequence,
+        } => Failure::usage(format!(
+            "this offset stands at {requested_sequence} and the oldest still held is \
+             {oldest_sequence}: the {} records in between left on the retention schedule. Resume \
+             from `{oldest}`, and record the gap — this is retention working, not the store being \
+             broken",
+            oldest_sequence.saturating_sub(requested_sequence)
         ))
         .named("not_found", "offset_expired"),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),

@@ -37,6 +37,12 @@ base64.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain, the signed envelope.
 permguard-decisions.workspace = true
+# The bounded stream-window contract both evidence stores are read through.
+# The event record, chain and signed batch contract this store keeps.
+permguard-events.workspace = true
+permguard-stream.workspace = true
+# The randomness a fresh offset-signing key is minted from.
+ring.workspace = true
 permguard-server.workspace = true
 permguard-languages.workspace = true
 permguard-notp.workspace = true
@@ -51,6 +57,8 @@ tonic-prost.workspace = true
 
 
 [dev-dependencies]
+# Decoding an offset token, to prove that editing one is refused.
+base64.workspace = true
 # The producer half, so the shipping contract is exercised end to end rather
 # than against a stub that agrees with itself.
 permguard-control-client.workspace = true
@@ -59,6 +67,8 @@ ring.workspace = true
 permguard-std.workspace = true
 tower.workspace = true
 http.workspace = true
+# Reading a router's answer, for the discovery chain walked the way a client walks it.
+http-body-util.workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

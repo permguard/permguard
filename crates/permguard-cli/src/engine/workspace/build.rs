@@ -69,18 +69,17 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
                 runtime.language.name
             ))
         })?;
-        if partition.schema && plugin.schema_media_type().is_none() {
-            return Err(err(format!(
-                "partition `{partition_name}` declares schema: true, but `{}` has no schema",
-                runtime.language.name
-            )));
-        }
+        // What this partition declares, resolved to registered artifact types. The legacy
+        // `schema: true` and a list of `artifacts:` are two spellings of one answer, and the
+        // registry is what turns them into one — so the walker never has to know that Cedar calls
+        // its schema `.cedarschema` or that Dogwood has four of them.
+        let declared = declared_artifacts(plugin, partition, partition_name)?;
 
         let mut context = PartitionContext {
             store,
             plugin,
             authoring,
-            has_schema: partition.schema,
+            declared: declared.clone(),
             partition: partition_name.clone(),
             ignores: &ignores,
             previous_by_path: &previous_by_path,
@@ -89,27 +88,44 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
             policies: &mut policies,
             ids_seen: &mut ids_seen,
             aliases_seen: &mut aliases_seen,
-            schema_files: Vec::new(),
+            artifact_files: BTreeMap::new(),
             policy_sources: Vec::new(),
-            schema_source: None,
+            artifacts: BTreeMap::new(),
             problems: &mut problems,
         };
         let digest = build_directory(&mut context, partition_name, partition_name, 1)?;
-        // One schema per partition, at most — the same ambiguity rule as two
-        // manifests, refused naming every file involved.
-        if context.schema_files.len() > 1 {
-            return Err(err(format!(
-                "the partition `{partition_name}` holds {} schemas ({}): at most one",
-                context.schema_files.len(),
-                context.schema_files.join(", ")
-            )));
-        }
-        // Declared and absent fails here, where the author can fix it — the
-        // server refuses the same shape, and so would every data plane's load.
-        if partition.schema && context.schema_source.is_none() {
-            return Err(err(format!(
-                "the partition `{partition_name}` declares a schema and the sources hold none"
-            )));
+        // Cardinality and requirement, from the registry rather than from a rule written here: an
+        // author cannot redefine either, and a walker that decided them would be a second opinion
+        // about what a partition holds.
+        for (artifact, required) in &declared {
+            let held = context
+                .artifact_files
+                .get(artifact.name())
+                .map(Vec::len)
+                .unwrap_or_default();
+            if *required && held == 0 {
+                return Err(err(format!(
+                    "the partition `{partition_name}` declares `{}` and the sources hold none",
+                    artifact.name()
+                )));
+            }
+            if held > 1
+                && !matches!(
+                    artifact.cardinality(),
+                    permguard_languages::artifact::Cardinality::Many
+                )
+            {
+                let files = context
+                    .artifact_files
+                    .get(artifact.name())
+                    .map(|held| held.join(", "))
+                    .unwrap_or_default();
+
+                return Err(err(format!(
+                    "the partition `{partition_name}` holds {held} of `{}` ({files}): at most one",
+                    artifact.name()
+                )));
+            }
         }
         // The set-level semantic check the server runs at commit acceptance
         // and the data plane runs at load — the same code, run first where the
@@ -120,8 +136,11 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
             .iter()
             .map(|(file, bytes)| (file.as_str(), bytes.as_slice()))
             .collect();
-        let schema_source = context.schema_source.take();
-        if let Err(error) = plugin.validate_set(&named, schema_source.as_deref()) {
+        // The set-level check gets the whole bundle, not just "the schema": a Dogwood partition
+        // lowers its policies against an action schema *and* an event schema *and* its macros, and
+        // a check handed one of the four would be checking something the plane will not serve.
+        let artifacts = std::mem::take(&mut context.artifacts);
+        if let Err(error) = plugin.validate_bundle(partition_name, &named, &artifacts, partition) {
             problems.push(error);
         }
         root_entries.push(TreeEntry {
@@ -195,7 +214,11 @@ struct PartitionContext<'a> {
     /// A build that carries a language without it cannot author in that
     /// language, and says so where the language is looked up.
     authoring: &'static dyn permguard_languages::Authoring,
-    has_schema: bool,
+    /// What this partition declared, resolved to registered artifact types.
+    declared: Vec<(
+        &'static dyn permguard_languages::artifact::ArtifactType,
+        bool,
+    )>,
     /// The partition being walked, for an error that has to name it.
     partition: String,
     ignores: &'a [String],
@@ -205,11 +228,12 @@ struct PartitionContext<'a> {
     policies: &'a mut Vec<PolicyRecord>,
     ids_seen: &'a mut BTreeMap<String, String>,
     aliases_seen: &'a mut BTreeMap<String, String>,
-    schema_files: Vec<String>,
-    /// Every policy's `(source file, verbatim bytes)` and the schema's, for
-    /// the set-level semantic check after the walk.
+    /// The files of each registered artifact type, for the cardinality check after the walk.
+    artifact_files: BTreeMap<&'static str, Vec<String>>,
+    /// Every policy's `(source file, verbatim bytes)`, for the set-level semantic check.
     policy_sources: Vec<(String, Vec<u8>)>,
-    schema_source: Option<Vec<u8>>,
+    /// The bundle the set-level check is run against.
+    artifacts: BTreeMap<String, Vec<u8>>,
     /// Everything wrong so far, named by its file.
     ///
     /// Collected rather than thrown: a validation that stops at the first
@@ -217,6 +241,67 @@ struct PartitionContext<'a> {
     /// habit nobody misses. A file that fails is skipped and the walk goes
     /// on, so one report names them all; the build still fails at the end.
     problems: &'a mut Vec<String>,
+}
+
+/// What a partition declared, resolved to registered artifact types.
+///
+/// The legacy `schema: true` and a list of `artifacts:` are two spellings of one answer, and this
+/// is the one place they become one. The registry decides role, cardinality and requirement; the
+/// manifest may require an otherwise optional artifact, and may not excuse a required one.
+fn declared_artifacts(
+    plugin: &'static dyn permguard_languages::Language,
+    partition: &permguard_objects::manifest::Partition,
+    partition_name: &str,
+) -> Result<
+    Vec<(
+        &'static dyn permguard_languages::artifact::ArtifactType,
+        bool,
+    )>,
+> {
+    let owned = plugin.artifacts();
+
+    if partition.artifacts.is_empty() {
+        // The legacy contract: this runtime's one registered schema, required exactly when the
+        // manifest's flag says so.
+        let schema = owned
+            .iter()
+            .copied()
+            .find(|held| held.media_type() == plugin.schema_media_type().unwrap_or_default());
+
+        return match (partition.schema, schema) {
+            // `schema: false` declares *nothing*, not "a schema that happens to be optional".
+            // The difference is the whole point of the flag: a schema sitting in a partition that
+            // declares none must be refused, and treating the contract as present-but-optional
+            // would accept it in silence.
+            (false, _) => Ok(Vec::new()),
+            (true, Some(schema)) => Ok(vec![(schema, true)]),
+            (true, None) => Err(err(format!(
+                "partition `{partition_name}` declares schema: true, but `{}` has no schema",
+                plugin.name()
+            ))),
+        };
+    }
+
+    let mut declared = Vec::with_capacity(partition.artifacts.len());
+    for contract in &partition.artifacts {
+        let Some(artifact) = owned
+            .iter()
+            .copied()
+            .find(|held| held.name() == contract.r#type)
+        else {
+            return Err(err(format!(
+                "the partition `{partition_name}` declares `{}`, which `{}` does not own",
+                contract.r#type,
+                plugin.name()
+            )));
+        };
+        declared.push((
+            artifact,
+            contract.required || artifact.required_by_default(),
+        ));
+    }
+
+    Ok(declared)
 }
 
 /// Builds one directory into one tree, recursing into subdirectories —
@@ -260,27 +345,38 @@ fn build_directory(
         let Some(extension) = name.rsplit('.').next() else {
             continue;
         };
-        let is_policy_file = context.authoring.file_extensions().contains(&extension);
-        // Asked of the language, not spelled out here: `cedarschema` was hard-coded, so the day a
-        // second language gained a schema its files would have been walked past in silence — the
-        // partition reporting that it declares a schema and carries none, with the schema sitting
-        // right there.
-        let looks_like_schema = context
-            .authoring
-            .schema_file_extensions()
-            .contains(&extension);
-        // A schema sitting in a partition that declares none is refused, not walked past. Skipping
-        // it is the worst of the three outcomes: the author sees the file, believes their inputs
-        // are validated, and nothing validates anything.
-        if looks_like_schema && !context.has_schema {
-            return Err(err(format!(
-                "`{child_fs}` is a schema and the partition `{}` declares none: set `schema: true` \
-                 for it in the manifest, or remove the file",
-                context.partition
-            )));
-        }
-        let is_schema_file = context.has_schema && looks_like_schema;
-        if !is_policy_file && !is_schema_file {
+        // Which registered artifact this file is, asked of the registry and of nothing else. A
+        // canonical file name wins over a shared extension, which is what lets `macros.dw` and
+        // `policy.dw` live in one directory without this walker knowing that Dogwood exists.
+        let owned = context.plugin.artifacts();
+        let classified = permguard_languages::artifact::classify(owned, &name).copied();
+        let is_policy_file = context.authoring.file_extensions().contains(&extension)
+            && classified.is_none_or(|held| {
+                held.role() == permguard_languages::artifact::ArtifactRole::Policy
+            });
+        // An artifact sitting in a partition that declares none is refused, not walked past.
+        // Skipping it is the worst of the three outcomes: the author sees the file, believes their
+        // inputs are validated, and nothing validates anything.
+        let artifact = match classified {
+            Some(held)
+                if !context
+                    .declared
+                    .iter()
+                    .any(|(declared, _)| declared.name() == held.name()) =>
+            {
+                return Err(err(format!(
+                    "`{child_fs}` is a `{}` and the partition `{}` does not declare one: add it \
+                     under `artifacts:` in the manifest, or remove the file",
+                    held.name(),
+                    context.partition
+                )));
+            }
+            Some(held) if held.role() != permguard_languages::artifact::ArtifactRole::Policy => {
+                Some(held)
+            }
+            _ => None,
+        };
+        if !is_policy_file && artifact.is_none() {
             continue;
         }
         let source = context
@@ -289,21 +385,21 @@ fn build_directory(
             .map_err(err)?
             .ok_or_else(|| err(format!("{child_fs} vanished mid-read")))?;
 
-        if is_schema_file {
-            let schema_media_type = context.plugin.schema_media_type().ok_or_else(|| {
-                err(format!(
-                    "`{}` has no schema media type",
-                    context.plugin.name()
-                ))
-            })?;
-            if let Err(error) = context.plugin.validate_schema(&source) {
+        if let Some(artifact) = artifact {
+            if let Err(error) = artifact.validate(&source) {
                 context.problems.push(format!("{child_fs}: {error}"));
                 continue;
             }
-            context.schema_files.push(child_fs.clone());
-            context.schema_source = Some(source.clone());
+            context
+                .artifact_files
+                .entry(artifact.name())
+                .or_default()
+                .push(child_fs.clone());
+            context
+                .artifacts
+                .insert(artifact.name().to_owned(), source.clone());
             let blob = Blob {
-                media_type: schema_media_type.to_owned(),
+                media_type: artifact.media_type().to_owned(),
                 data: source,
             };
             let bytes = blob.encode().map_err(|error| err(error.to_string()))?;

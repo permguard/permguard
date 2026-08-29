@@ -29,7 +29,24 @@ targets = [
 # A crate with a known advisory stops the build. A deliberate exception goes in `ignore` with the
 # advisory id and a reason, so the exception is reviewable instead of invisible.
 yanked = "deny"
-ignore = []
+ignore = [
+    # `smartstring` has no maintainer. It is not a vulnerability — there is no CVE and no known
+    # exploit — but there is also no safe upgrade: every version is affected, and the advisory's
+    # own advice is to migrate to `compact_str` or `smol_str`.
+    #
+    # Not ours to migrate. It arrives through `rhai`, a non-optional dependency of
+    # `amzn-dogwood-language` and the sandbox Dogwood evaluates information providers in, so the
+    # fix belongs upstream and has been reported there. There is no configuration of Dogwood that
+    # omits it.
+    #
+    # What bounds the exposure meanwhile: the crate is linked always and *executed* only when a
+    # partition declares providers, and provider execution runs under the operation, depth, size
+    # and time limits the Dogwood adapter imposes. A ledger with no `providers.json` never reaches
+    # this code.
+    #
+    # TO REMOVE: when Dogwood moves off `smartstring`, or when the crate is adopted again.
+    { id = "RUSTSEC-2026-0249", reason = "unmaintained `smartstring`, reached only through Dogwood's provider sandbox; reported upstream, no alternative configuration exists" },
+]
 
 [licenses]
 # Permissive licences only. Anything copyleft reaching a binary a customer runs is a legal question,
@@ -50,8 +67,36 @@ allow = [
     "MIT",
     "Unicode-3.0",
     "Zlib",
+    # ── Reached only through the experimental Dogwood runtime ──────────────────────────────────
+    #
+    # MPL-2.0 is copyleft, and this file says a legal question should not be answered by a
+    # transitive bump. So it is answered here, deliberately, once.
+    #
+    # It is *file-level* copyleft: the obligation attaches to the licensed files, not to the
+    # program linking them, and MPL-2.0 §3.3 says so explicitly — unlike the GPL, a binary that
+    # links it does not become MPL. Permguard does not modify the crate, so the duty is the notice
+    # and the pointer to source that `NOTICE.md` now carries.
+    #
+    # Reached through `rhai`, the sandbox Dogwood runs information providers in. It is a
+    # non-optional dependency of that crate — no feature removes it — so accepting it and dropping
+    # provider support are the only two options, and dropping providers would remove
+    # `permguard.dogwood.provider.rhai.v1` from the artifact registry.
+    "MPL-2.0",
+    # A public-domain dedication, reached through a proc-macro (`const-random-macro`) that runs in
+    # the compiler and is never linked into a shipped binary.
+    "CC0-1.0",
 ]
 confidence-threshold = 0.9
+
+# Dogwood's crate manifest carries no `license` field, so `cargo deny` cannot read one and reports
+# the crate as unlicensed. It is not: the repository is Apache-2.0, with the licence text at
+# `LICENSE` and the attribution at `NOTICE`, both reviewed at the pinned revision and reproduced in
+# this repository's `NOTICE.md`. Clarified here rather than ignored, so the claim is recorded with
+# the file it was read from.
+[[licenses.clarify]]
+crate = "amzn-dogwood-language"
+expression = "Apache-2.0"
+license-files = []
 
 [bans]
 # Two versions of the same crate in one binary is usually harmless and occasionally a security
@@ -77,3 +122,13 @@ skip = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Dogwood is not on crates.io — it is published to an internal registry — so the reviewed upstream
+# repository is the only reproducible coordinate for it. Allowed by name and pinned in
+# `permguard-languages/Cargo.toml` to an immutable revision, never a branch: an allowed git source
+# that tracked a moving ref would mean the reviewed code and the built code are different things.
+#
+# TO REMOVE: the day `amzn-dogwood-language` is published to crates.io, replace the `git`/`rev`
+# dependency with a version requirement and delete this line. That retirement is independent of the
+# MPL-2.0 allowance above — `smartstring` arrives through Dogwood's own `rhai` dependency, not
+# through the way Dogwood itself is fetched, so publishing the crate does not retire it.
+allow-git = ["https://github.com/dogwood-policy/dogwood"]

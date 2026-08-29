@@ -1,0 +1,63 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+#
+# What this workspace claims its policy decides. Run offline with
+# `permguard -w examples/dogwood-session-access test`: the policy is compiled
+# here, so these hold before anything is applied to a plane.
+#
+# A temporal case is a claim about *order*, not about a request. `events` are the
+# occurrences that happened first, applied in the order written; `request` is the
+# one whose verdict `expect` judges. The same claims the README's table states.
+
+- name: a login alone is not a permit
+  request: ../events/1-login-request.json
+  # `request` is a decision kind, and no rule in the policy permits a `Login`.
+  # The deny is the quiet one: nothing permitted it, so there is nothing to cite.
+  expect: { decision: deny, policies: [] }
+
+- name: a read inside the window is permitted by the login before it
+  events:
+    - ../events/1-login-request.json
+    - ../events/2-login-response.json
+  request: ../events/3-read-permitted.json
+  # 10:01:40 is 95 seconds after the login response — inside the one-hour window.
+  # This is the case the whole example exists for, and it cannot be written at all
+  # without the events: the same read with no history is the deny below.
+  expect: { decision: permit }
+
+- name: the same read with no login before it is denied
+  request: ../events/3-read-permitted.json
+  # Identical request, empty history. What differs is the order, which is the point.
+  expect: { decision: deny, policies: [] }
+
+- name: a read outside the window is denied
+  events:
+    - ../events/1-login-request.json
+    - ../events/2-login-response.json
+  request: ../events/4-read-outside-window.json
+  # 11:06:40 — the login is an hour and six minutes old, so the window has closed.
+  expect: { decision: deny, policies: [] }
+
+- name: one principal's login does not permit another's read
+  events:
+    - ../events/1-login-request.json
+    - ../events/2-login-response.json
+  request: ../events/5-read-other-user.json
+  # The event schema pins the caller, so bob's read ranges over bob's history —
+  # which is empty. alice's login is not invisible because a rule checks; it is
+  # invisible because it is in another history.
+  expect: { decision: deny, policies: [] }
+
+- name: an action the schema does not declare is refused, not decided
+  request: ../refusals/unknown-action.json
+  expect: { error: event_action_undeclared }
+
+- name: a field the schema does not declare is refused
+  request: ../refusals/undeclared-field.json
+  expect: { error: event_field_undeclared }
+
+- name: a caller that states a pin the server derives is refused rather than believed
+  request: ../refusals/pin-disagrees.json
+  # One of the two values is a lie about the request, and choosing either would
+  # decide which. So neither is chosen.
+  expect: { error: event_pin_contradicted }

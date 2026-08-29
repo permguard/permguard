@@ -179,7 +179,7 @@ impl<'a> Workspace<'a> {
         }
 
         let manifest = format!(
-            "metadata:\n  kind: policy\n  name: {name}\nruntimes:\n{runtimes}partitions:\n{partitions}profiles:\n  default: {{ type: permguard.pdp.v1, partitions: [{profiles}] }}\n",
+            "metadata:\n  kind: policy\n  name: {name}\nruntimes:\n{runtimes}partitions:\n{partitions}profiles:\n  default: {{ type: permguard.api.pdp.native.v1, partitions: [{profiles}] }}\n",
             profiles = profile_partitions.join(", "),
         );
         self.store

@@ -36,6 +36,7 @@ mod banner;
 mod commands;
 mod config;
 mod decision_out;
+mod event_out;
 mod failure;
 mod inspect;
 mod narrator;
@@ -238,6 +239,7 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Verify => workspace_command(&globals, WorkspaceOp::Verify, &trace),
         Command::Check(args) => commands::check::check(&globals, &args),
         Command::Decisions { action } => commands::decisions::decisions(&globals, &action),
+        Command::Events { action } => commands::events::events(&globals, &action),
         Command::Zones { action } => {
             catalog_command(&globals, CatalogAction::Zones(action), &trace)
         }

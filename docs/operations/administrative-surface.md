@@ -16,6 +16,7 @@ A control plane answers all of this on `controlPlane.public`:
 | **mutate** | `POST`/`PATCH`/`DELETE` on zones and ledgers |
 | **push policy** | the NOTP routes — negotiate, upload objects, commit a ref |
 | **read audit** | the decision-log routes |
+| **receive and read events** | `POST /events/v1alpha1/batches` and the event-log read routes, when the store is on |
 
 There is no second listener. `admin.addr`, `admin.tls` and `admin.allow` exist in the configuration
 contract and are validated — mutual TLS demanded, an allow list required outside development — and
@@ -24,8 +25,9 @@ operator believe a boundary is there.
 
 ## What this means for a deployment
 
-Anything that reaches the public endpoint can create a zone, delete a ledger, push a policy version
-and read the decision log. So the endpoint is the boundary, and it has to be treated as one:
+Anything that reaches the public endpoint can create a zone, delete a ledger, push a policy version,
+read the decision log and — where the event store is on — read a tenant's event history. So the
+endpoint is the boundary, and it has to be treated as one:
 
 - **Reach it from nowhere it need not be reached from.** The chart's `networkPolicy.public.from`
   is that control; narrow it to the namespaces that hold your PEPs and your delivery pipeline.

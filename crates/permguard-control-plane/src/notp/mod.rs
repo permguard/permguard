@@ -71,6 +71,8 @@ pub(crate) struct NotpFacade {
     /// one sealing the audit trail.
     pub(crate) keys: Arc<dyn KeyManager>,
     pub(crate) limits: EngineLimits,
+    /// What this deployment has opted into among the provisional contracts, for the ingest gate.
+    pub(crate) enabled: permguard_languages::registry::Enabled,
     /// Whether batches ride deflate-compressed — advertised at negotiation,
     /// echoed per batch; the engine below only ever sees canonical bytes.
     pub(crate) compression: bool,
@@ -90,6 +92,7 @@ impl NotpFacade {
         zones_root: PathBuf,
         keys: Arc<dyn KeyManager>,
         limits: EngineLimits,
+        enabled: permguard_languages::registry::Enabled,
         compression: bool,
         recorder: Option<AuditRecorder>,
         disclosure: Disclosure,
@@ -101,6 +104,7 @@ impl NotpFacade {
             zones_root,
             keys,
             limits,
+            enabled,
             compression,
             recorder,
             disclosure,
@@ -188,6 +192,7 @@ impl NotpFacade {
             store,
             identity,
             limits: self.limits,
+            enabled: self.enabled.clone(),
         }
     }
 

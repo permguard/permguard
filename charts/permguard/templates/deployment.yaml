@@ -60,6 +60,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            # The same rule, and a sharper consequence. An event producer id owns a hash chain
+            # *and* the history the plane's own policies read: two pods sharing one would each
+            # append to a stream the other also claims, and neither history could be verified
+            # afterwards. From the pod, for the same reason and with less room for error.
+            - name: PERMGUARD_EVENTS_PRODUCER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             {{- with $plane.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -184,6 +192,14 @@ spec:
               value: "control,data"
             # See the note on the standalone planes: the producer of a decision record is the pod.
             - name: PERMGUARD_DECISIONS_LOG_PDP_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # The same rule, and a sharper consequence. An event producer id owns a hash chain
+            # *and* the history the plane's own policies read: two pods sharing one would each
+            # append to a stream the other also claims, and neither history could be verified
+            # afterwards. From the pod, for the same reason and with less room for error.
+            - name: PERMGUARD_EVENTS_PRODUCER_ID
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name

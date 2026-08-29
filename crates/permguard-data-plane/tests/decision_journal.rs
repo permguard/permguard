@@ -83,6 +83,7 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         trace: None,
         request_id: Some("lab-1".to_owned()),
         latency_us: 143,
+        event: None,
     }
 }
 

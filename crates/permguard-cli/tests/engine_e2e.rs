@@ -22,6 +22,8 @@ use permguard_objects::statement::SignedHead;
 struct EngineRemote {
     store: FileObjectStore,
     key: Ed25519KeyPair,
+    /// What this simulated deployment has opted into, so a test can be a plane that has *not*.
+    enabled: permguard_languages::registry::Enabled,
 }
 
 impl EngineRemote {
@@ -32,6 +34,15 @@ impl EngineRemote {
         Self {
             store: FileObjectStore::new(dir),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
+            enabled: permguard_languages::registry::Enabled::everything(),
+        }
+    }
+
+    /// The same plane, with the provisional runtimes it has not turned on.
+    fn without_dogwood(tag: &str) -> Self {
+        Self {
+            enabled: permguard_languages::registry::Enabled::stable_only(),
+            ..Self::new(tag)
         }
     }
 
@@ -49,6 +60,7 @@ impl EngineRemote {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            enabled: self.enabled.clone(),
         }
     }
 
@@ -446,5 +458,131 @@ fn nested_folders_and_schemas() {
     assert_eq!(
         snapshot_b.root, snapshot.root,
         "the clone rebuilds the same snapshot"
+    );
+}
+
+/// The shipped Dogwood example, applied to a control plane.
+///
+/// # Why this test and not another unit check
+///
+/// A Dogwood partition is a *bundle*: a policy, a required action schema and an optional event
+/// schema, each stored under its own registered media type. Three places have to agree about what
+/// that bundle is — the CLI that builds it, the control plane that accepts the push, the data
+/// plane that loads it — and they used to agree in only two. The control plane judged a
+/// partition's contents by the legacy pair (`policy_media_type`, `schema_media_type`), and
+/// `schema_media_type` is `None` for a runtime with several artifacts by its own contract, so
+/// every Dogwood artifact read as content belonging to no language.
+///
+/// The failure was not a wrong error message: it was a commit the CLI validates, builds and signs,
+/// refused by the only server that could store it. So the test is the whole path rather than a
+/// call to the gate.
+#[test]
+fn a_dogwood_bundle_the_cli_builds_is_accepted_by_the_control_plane() {
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/dogwood-session-access")
+        .canonicalize()
+        .expect("the shipped example is where the repository keeps it");
+
+    let remote = EngineRemote::new("dogwood");
+    let dir = scratch("dogwood-author");
+    let store = FsStore::new(&dir);
+    let workspace = Workspace::open(&store);
+    workspace.init("session-access", &["dogwood"]).unwrap();
+
+    // The example's own manifest and its own bundle: a test that authored a smaller one would be
+    // proving something about the test rather than about what ships.
+    for file in [
+        "manifest.yml",
+        "governance/read-after-login.dw",
+        "governance/schema.cedarschema",
+        "governance/events.dwschema",
+    ] {
+        let bytes = std::fs::read(example.join(file)).expect("the example carries it");
+        store.write(file, &bytes).unwrap();
+    }
+
+    let mut config = workspace.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    workspace.save_config(&config).unwrap();
+    let checkout = workspace.checkout(&remote, "origin", "delivery", "session-ledger", "main");
+    assert!(checkout.is_err(), "the ref does not exist yet");
+
+    // The CLI validates the bundle locally...
+    let (_, plan) = workspace.plan().expect("the Dogwood workspace validates");
+    assert_eq!(plan.actions.len(), 1, "one policy: {:?}", plan.actions);
+
+    // ...and the control plane accepts exactly what it built.
+    let applied = workspace
+        .apply(&remote, "alice@acme.com", "session access")
+        .expect("the control plane accepts the Dogwood bundle the CLI signed");
+    assert_eq!(applied.counter, 1);
+    assert!(
+        applied.uploaded >= 5,
+        "the policy, both schemas, the trees, the manifest and the commit travelled: {}",
+        applied.uploaded
+    );
+
+    // And it is the same snapshot on both sides: a re-apply has nothing to say.
+    let again = workspace.apply(&remote, "alice@acme.com", "noop").unwrap();
+    assert_eq!(again.counter, 1);
+    assert_eq!(again.uploaded, 0);
+}
+
+/// A plane that has not enabled Dogwood refuses the push, rather than storing it.
+///
+/// Refusing at ingest is the whole point of the gate: a ledger accepted here would be mirrored to
+/// every data plane and refused at each of their load gates instead — fail-closed, but the error
+/// would belong to planes that did nothing wrong, long after the push that caused it succeeded.
+#[test]
+fn a_plane_that_has_not_enabled_dogwood_refuses_the_push() {
+    let example = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/dogwood-session-access")
+        .canonicalize()
+        .expect("the shipped example is where the repository keeps it");
+
+    let remote = EngineRemote::without_dogwood("dogwood-off");
+    let dir = scratch("dogwood-off-author");
+    let store = FsStore::new(&dir);
+    let workspace = Workspace::open(&store);
+    workspace.init("session-access", &["dogwood"]).unwrap();
+
+    for file in [
+        "manifest.yml",
+        "governance/read-after-login.dw",
+        "governance/schema.cedarschema",
+        "governance/events.dwschema",
+    ] {
+        let bytes = std::fs::read(example.join(file)).expect("the example carries it");
+        store.write(file, &bytes).unwrap();
+    }
+
+    let mut config = workspace.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    workspace.save_config(&config).unwrap();
+    let _ = workspace.checkout(&remote, "origin", "delivery", "session-ledger", "main");
+
+    // The CLI still validates it: the build carries the language either way. What differs is
+    // whether *this deployment* will serve it.
+    workspace.plan().expect("the workspace itself is valid");
+
+    let refused = workspace
+        .apply(&remote, "alice@acme.com", "session access")
+        .expect_err("a plane that has not enabled Dogwood must refuse the push");
+    let message = refused.to_string();
+    assert!(
+        message.contains("experimental.dogwood.enabled"),
+        "the refusal names the setting that would allow it: {message}"
     );
 }

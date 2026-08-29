@@ -54,7 +54,33 @@ replica mirrors into its own volume, which is what a mirror is for.
 {{- end }}
 {{- end }}
 {{- if and .Values.dataPlane.enabled (include "permguard.persists" (dict "root" . "plane" .Values.dataPlane)) }}
+{{- /*
+Two different pieces of advice, because the same combination has two causes.
+
+A mirroring data plane may drop persistence: each replica re-mirrors into its own empty volume, and
+a mirror is exactly the thing that can be rebuilt. A *temporal* one may not — its event journal is
+the history its own policies decide against, and another check refuses it without a volume. Telling
+that plane to disable persistence sends the operator round a circle between two refusals, which is
+how a message meant to help becomes the reason somebody gives up and edits the templates.
+
+The supported topology for a temporal data plane today is one replica with its own volume. Per
+replica would need a StatefulSet with `volumeClaimTemplates`, which this chart does not have; that
+is stated here rather than approximated by a Deployment that mounts one claim in three pods.
+*/ -}}
+{{- $extra := .Values.dataPlane.extraConfig | default dict }}
+{{- $temporal := false }}
+{{- $nested := dig "dataPlane" "events" "enabled" "" $extra }}
+{{- if and $nested (ne (toString $nested) "false") }}
+{{- $temporal = true }}
+{{- end }}
+{{- $flat := dig "events" "enabled" "" $extra }}
+{{- if and $flat (ne (toString $flat) "false") }}
+{{- $temporal = true }}
+{{- end }}
 {{- $mirror := "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica. A data plane may be replicated, but each replica needs its own state: set dataPlane.persistence.enabled=false and let each mirror into its own volume." }}
+{{- if $temporal }}
+{{- $mirror = "this chart gives a component ONE PersistentVolumeClaim and mounts it in every replica, and this plane serves the temporal interface — its event journal is the history its own policies decide against, so it cannot go without a volume and cannot share one. Set dataPlane.replicaCount=1, which is the topology this chart supports for a temporal plane. A volume per replica needs a StatefulSet with volumeClaimTemplates, which this chart does not have." }}
+{{- end }}
 {{- if gt (int .Values.dataPlane.replicaCount) 1 }}
 {{- fail (printf "dataPlane.replicaCount=%v with persistence.enabled=true: %s" .Values.dataPlane.replicaCount $mirror) }}
 {{- end }}
@@ -82,9 +108,16 @@ Replicas are replicas however they arrive, so an autoscaler that can reach more 
 {{- if $pinned }}
 {{- fail (printf "%s.extraConfig pins the decision log's pdp_id to %q while this component can run more than one replica: two producers under one name write two records at one sequence number and close the stream. Leave it unset — the chart takes it from the pod name." $component $pinned) }}
 {{- end }}
+{{- $pinnedProducer := dig "dataPlane" "events" "producer_id" (dig "events" "producer_id" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
+{{- if $pinnedProducer }}
+{{- fail (printf "%s.extraConfig pins the event producer_id to %q while this component can run more than one replica: an event producer id owns a hash chain and the history the plane's own policies read, so two pods under one name would each append to a stream the other also claims. Leave it unset — the chart takes it from the pod name." $component $pinnedProducer) }}
+{{- end }}
 {{- range $env := ($plane.extraEnv | default list) }}
 {{- if eq $env.name "PERMGUARD_DECISIONS_LOG_PDP_ID" }}
 {{- fail (printf "%s.extraEnv redefines PERMGUARD_DECISIONS_LOG_PDP_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would produce records under one name." $component) }}
+{{- end }}
+{{- if eq $env.name "PERMGUARD_EVENTS_PRODUCER_ID" }}
+{{- fail (printf "%s.extraEnv redefines PERMGUARD_EVENTS_PRODUCER_ID while this component can run more than one replica. The chart sets it from the pod name and merges extraEnv after it, so this would win — and every replica would append to one event stream under one name." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -110,6 +143,77 @@ they arrive.
 {{- if not (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
 {{- fail (printf "%s enables the decision log with ephemeral state: the signing ring and the spool live on the volume, and a restart mints a new ring whose batches the control plane will refuse. Set %s.persistence.enabled=true — and remember that this chart gives a component one claim, so the log and replicas need a StatefulSet, not a Deployment." $component $component) }}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+The temporal interface on storage that does not survive a restart.
+
+Sharper than the decision log's version of this check, and for a reason worth stating. A decision
+spool on an ephemeral volume loses evidence. An event journal on one loses *the history the plane's
+own policies decide against* — so after a restart the same request gets a different answer, with
+nothing in the request, the ledger or the logs to explain why. The journal is not a buffer that can
+be re-derived; it is an input.
+
+The chart cannot check that a signing ring was supplied, but it can refuse the one combination that
+is wrong however the rest arrives.
+*/ -}}
+{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $events := dig "dataPlane" "events" "enabled" (dig "events" "enabled" "" ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
+{{- if and $events (ne (toString $events) "false") }}
+{{- if not (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
+{{- fail (printf "%s enables the temporal interface with ephemeral state: the event journal is the history its own policies decide against, and a restart would silently change what they answer. Set %s.persistence.enabled=true — and remember that this chart gives a component one claim, so a journal and replicas need a StatefulSet, not a Deployment." $component $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+A shared consistency mode with nothing to read from.
+
+`shared-eventual` and `shared-bounded` decide against history other planes recorded. A plane in one
+of those modes with no subscriptions ranges over an empty imported history — `shared-bounded` fails
+every decision closed, and `shared-eventual` quietly answers as though the other planes had never
+recorded anything. Both are configuration mistakes that look like a working deployment.
+*/ -}}
+{{- range $component, $plane := dict "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $pull := dig "dataPlane" "events" "pull" (dig "events" "pull" dict ($plane.extraConfig | default dict)) ($plane.extraConfig | default dict) }}
+{{- $mode := toString (dig "mode" "local" ($pull | default dict)) }}
+{{- if and (ne $mode "local") (not (dig "ledgers" list ($pull | default dict))) }}
+{{- fail (printf "%s sets events.pull.mode=%q and subscribes to no ledgers: a shared mode decides against history other planes recorded, and this one has been told to read none of it. Name the ledgers under events.pull.ledgers, or use `local`." $component $mode) }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- /*
+An event interface turned on, and the contract behind it not accepted.
+
+`events.enabled` is a statement about disks: this plane keeps, or receives, a durable event history.
+`experimental.dogwood.enabled` is a different statement: this deployment accepts a contract whose
+wire and replication shapes are not yet stable. The interfaces need both, and a plane that has said
+one and not the other refuses to start.
+
+Refused here rather than discovered as a CrashLoopBackOff. A chart that renders a manifest whose
+process cannot start has told an operator nothing they can act on; a `helm template` that fails names
+the setting.
+*/ -}}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- $extra := $plane.extraConfig | default dict }}
+{{- $dogwood := dig "experimental" "dogwood" "enabled" "" $extra }}
+{{- $accepted := and $dogwood (ne (toString $dogwood) "false") }}
+{{- range $section := list "controlPlane" "dataPlane" }}
+{{- $enabled := dig $section "events" "enabled" "" $extra }}
+{{- if and $enabled (ne (toString $enabled) "false") (not $accepted) }}
+{{- fail (printf "%s sets %s.events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component $section) }}
+{{- end }}
+{{- end }}
+{{- $bare := dig "events" "enabled" "" $extra }}
+{{- if and $bare (ne (toString $bare) "false") (not $accepted) }}
+{{- fail (printf "%s sets events.enabled and not experimental.dogwood.enabled. The event interfaces carry a contract whose shape is not yet stable and are served only where a deployment has accepted that, so this plane would refuse to start. Set experimental.dogwood.enabled=\"true\", or turn the events block off." $component) }}
 {{- end }}
 {{- end }}
 {{- end }}

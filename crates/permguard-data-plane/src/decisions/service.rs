@@ -209,7 +209,11 @@ impl Service for DecisionService {
 }
 
 /// Where records go, and how that server is trusted.
-fn destination(
+/// Where a plane ships what it produced.
+///
+/// Shared with the event shipper: one deployment ships both to one control plane, and asking it to
+/// name that plane twice would be asking it to keep two settings in step.
+pub fn destination(
     context: &ServerContext<'_>,
 ) -> Result<(String, permguard_control_client::TlsOptions)> {
     let config = context.config();

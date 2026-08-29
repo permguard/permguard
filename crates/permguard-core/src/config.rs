@@ -372,6 +372,119 @@ pub const SETTING_LOG_SPOOL_DIRECTORY: &str = "PERMGUARD_DECISIONS_LOG_SPOOL_DIR
 /// cannot write its last record cannot legally discard anything and cannot continue at all.
 pub const SETTING_LOG_SPOOL_BYTES: &str = "PERMGUARD_DECISIONS_LOG_SPOOL_BYTES";
 
+// ─── The temporal event journal ──────────────────────────────────────────────
+//
+// Its own settings, not the decision log's, because the two are not the same
+// subject wearing different names. A decision record is evidence: once shipped
+// and acknowledged the producer may forget it. An event record is evidence
+// **and** an input — it is the history a temporal policy reads — so its
+// retention is decided by what the loaded policies still look at, and there is
+// no `on_full: open` for it at all.
+
+/// Whether this plane serves the temporal interface.
+///
+/// Off unless a deployment says otherwise, like every other subsystem that
+/// writes to disk: a plane that keeps a durable history should be a plane
+/// somebody chose to run.
+pub const SETTING_EVENTS_ENABLED: &str = "PERMGUARD_EVENTS_ENABLED";
+
+/// This plane's name as an event producer, stable across restarts.
+///
+/// Required when the interface is on. Falling back to a hostname is convenient
+/// and wrong the first time two replicas share a host — and here it is worse
+/// than for the decision log, because a producer id names a hash chain: two
+/// planes sharing one would each be appending to a stream the other also
+/// claims.
+pub const SETTING_EVENTS_PRODUCER_ID: &str = "PERMGUARD_EVENTS_PRODUCER_ID";
+
+/// Where the journals live, under the volume.
+pub const SETTING_EVENTS_DIRECTORY: &str = "PERMGUARD_EVENTS_DIRECTORY";
+
+/// The bound on one ledger's event records, excluding the reserve.
+pub const SETTING_EVENTS_MAX_BYTES: &str = "PERMGUARD_EVENTS_MAX_BYTES";
+
+/// When a segment is closed and a new one started.
+pub const SETTING_EVENTS_SEGMENT_BYTES: &str = "PERMGUARD_EVENTS_SEGMENT_BYTES";
+
+/// The largest single event record a journal accepts.
+pub const SETTING_EVENTS_MAX_RECORD_BYTES: &str = "PERMGUARD_EVENTS_MAX_RECORD_BYTES";
+
+/// The shortest history this deployment promises to keep.
+///
+/// A floor, not the answer: the requirement is this plus what the loaded
+/// policies' longest `max_window` asks for, and a configuration shorter than
+/// that is refused rather than quietly serving policies whose windows have
+/// been emptied underneath them.
+pub const SETTING_EVENTS_RETENTION_MINIMUM: &str = "PERMGUARD_EVENTS_RETENTION_MINIMUM";
+
+/// How late an occurrence may arrive and still be recorded.
+pub const SETTING_EVENTS_ALLOWED_LATENESS: &str = "PERMGUARD_EVENTS_ALLOWED_LATENESS";
+
+/// How far a caller's clock may run ahead of this one.
+pub const SETTING_EVENTS_CLOCK_SKEW: &str = "PERMGUARD_EVENTS_CLOCK_SKEW";
+
+/// How long a group commit may wait to amortise an `fsync` across a batch.
+///
+/// A latency budget, never a durability one: a receipt is still withheld until the record is on
+/// disk. What this buys is that ten submissions arriving together cost one flush rather than ten.
+pub const SETTING_EVENTS_GROUP_COMMIT_DELAY: &str = "PERMGUARD_EVENTS_GROUP_COMMIT_MAX_DELAY";
+
+/// Whether this deployment will serve Dogwood partitions.
+///
+/// The language is compiled in either way — a language is a build, not a deployment action, so
+/// what interprets policy is exactly what was reviewed, signed and shipped. What this gates is
+/// whether a *ledger* that names it will be served, and it is off by default because Dogwood's
+/// wire and replication contracts are `v1alpha1`: a deployment should adopt them deliberately.
+///
+/// A manifest naming Dogwood on a plane that has not turned this on is refused at load, by name,
+/// rather than served and then discovered to behave differently after an upgrade.
+pub const SETTING_EXPERIMENTAL_DOGWOOD: &str = "PERMGUARD_EXPERIMENTAL_DOGWOOD_ENABLED";
+
+/// The prefix and suffix an `experimental.<name>.enabled` setting is spelled with.
+///
+/// Kept as a pattern rather than a list of constants because the set of provisional runtimes is not
+/// this crate's to know: a language declares itself experimental, and the deployment opts in by
+/// name. A new one must not require a new constant here — that is precisely the coupling that made
+/// the previous single `dogwood` flag impossible to extend.
+/// The name Dogwood registers itself under, for the one convenience accessor that names it.
+///
+/// The gate itself never uses this: it asks each language whether it is experimental and what it is
+/// called. This exists so the temporal event path — which is Dogwood's and nothing else's today —
+/// can ask its question without spelling the string at four call sites.
+pub const EXPERIMENTAL_DOGWOOD: &str = "dogwood";
+
+pub const SETTING_EXPERIMENTAL_PREFIX: &str = "PERMGUARD_EXPERIMENTAL_";
+pub const SETTING_EXPERIMENTAL_SUFFIX: &str = "_ENABLED";
+
+/// The setting key that opts a deployment into the experimental runtime `name`.
+pub fn experimental_setting_key(name: &str) -> String {
+    format!(
+        "{SETTING_EXPERIMENTAL_PREFIX}{}{SETTING_EXPERIMENTAL_SUFFIX}",
+        name.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
+/// The runtime name an `experimental.<name>.enabled` key opts into, when a key is one.
+pub fn experimental_setting_name(key: &str) -> Option<String> {
+    key.strip_prefix(SETTING_EXPERIMENTAL_PREFIX)?
+        .strip_suffix(SETTING_EXPERIMENTAL_SUFFIX)
+        .filter(|name| !name.is_empty())
+        .map(|name| name.to_ascii_lowercase().replace('_', "-"))
+}
+
+/// Which history a decision ranges over: `local`, `shared-eventual` or `shared-bounded`.
+///
+/// `local` unless a deployment says otherwise, and deliberately: a plane that silently began
+/// deciding against another plane's events would change what its policies mean without anybody
+/// choosing that.
+pub const SETTING_EVENTS_PULL_MODE: &str = "PERMGUARD_EVENTS_PULL_MODE";
+
+/// How often the pull worker asks the control plane for more.
+pub const SETTING_EVENTS_PULL_INTERVAL: &str = "PERMGUARD_EVENTS_PULL_INTERVAL";
+
+/// How stale imported history may be before `shared-bounded` fails decisions closed.
+pub const SETTING_EVENTS_PULL_MAX_STALENESS: &str = "PERMGUARD_EVENTS_PULL_MAX_STALENESS";
+
 /// How old the oldest unshipped record may be before the stream must end.
 pub const SETTING_LOG_SPOOL_AGE: &str = "PERMGUARD_DECISIONS_LOG_SPOOL_AGE";
 
@@ -414,6 +527,22 @@ pub const SETTING_DECISION_STORE_ENABLED: &str = "PERMGUARD_DECISIONS_STORE_ENAB
 
 /// Where the segments live, under the working directory.
 pub const SETTING_DECISION_STORE_DIRECTORY: &str = "PERMGUARD_DECISIONS_STORE_DIRECTORY";
+
+/// Whether this control plane receives and serves an event store.
+///
+/// Off by default, like the decision store: a plane that receives nothing should not create one,
+/// and a deployment that has not decided its retention should not be given one by accident.
+pub const SETTING_EVENT_STORE_ENABLED: &str = "PERMGUARD_EVENTS_STORE_ENABLED";
+
+/// Where the event store's segments live, under the working directory.
+pub const SETTING_EVENT_STORE_DIRECTORY: &str = "PERMGUARD_EVENTS_STORE_DIRECTORY";
+
+/// How long a tenant's events are kept before sealed segments are dropped.
+///
+/// A ceiling on the store rather than on any one policy: the *plane that decides* keeps what its
+/// own `max_window` requires, and this is how long the whole history stays available to read,
+/// export and verify.
+pub const SETTING_EVENT_STORE_RETENTION: &str = "PERMGUARD_EVENTS_STORE_RETENTION";
 
 /// How long records are kept before their segments leave.
 ///
@@ -546,6 +675,99 @@ const DEFAULT_AUTHZ_MAX_EVALUATIONS: usize = 256;
 /// spool and a day of it, a batch every second or every quarter megabyte, every permit recorded,
 /// and a full spool that keeps answering rather than refusing.
 const DEFAULT_LOG_SPOOL_DIRECTORY: &str = "data/decisions/spool";
+
+/// Where the temporal event journals live, under the volume.
+pub const DEFAULT_EVENTS_DIRECTORY: &str = "data/events";
+/// Where the control plane's event store lives, under the volume.
+pub const DEFAULT_EVENT_STORE_DIRECTORY: &str = "data/events/store";
+/// How long a control plane keeps a tenant's events before dropping sealed segments.
+///
+/// Thirty days: long enough that an investigation into something noticed a week later still has
+/// the evidence, and short enough that a deployment which never thought about it does not
+/// accumulate history for ever.
+pub const DEFAULT_EVENT_STORE_RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+/// The bound on one ledger's event records, excluding the reserve.
+pub const DEFAULT_EVENTS_MAX_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+/// When a journal segment is closed and a new one started.
+pub const DEFAULT_EVENTS_SEGMENT_BYTES: u64 = 32 * 1024 * 1024;
+/// The largest single event record a journal accepts.
+pub const DEFAULT_EVENTS_MAX_RECORD_BYTES: u64 = 1024 * 1024;
+/// The shortest history a deployment promises to keep, before the policies' own requirement.
+///
+/// Two days, which comfortably covers Dogwood's own 24-hour default `max_window` plus the lateness
+/// and skew a journal has to allow on top of it. A deployment whose policies look further back
+/// raises this, and one that does not is refused rather than silently emptying their windows.
+pub const DEFAULT_EVENTS_RETENTION_MINIMUM: Duration = Duration::from_secs(48 * 60 * 60);
+/// How late an occurrence may arrive and still be recorded.
+pub const DEFAULT_EVENTS_ALLOWED_LATENESS: Duration = Duration::from_secs(5 * 60);
+/// How far a caller's clock may run ahead of this one.
+pub const DEFAULT_EVENTS_CLOCK_SKEW: Duration = Duration::from_secs(30);
+/// How long a group commit may wait to amortise an `fsync`.
+pub const DEFAULT_EVENTS_GROUP_COMMIT_DELAY: Duration = Duration::from_millis(5);
+/// How often the pull worker asks for more, when a deployment turns pull on.
+pub const DEFAULT_EVENTS_PULL_INTERVAL: Duration = Duration::from_secs(2);
+/// How stale imported history may be before `shared-bounded` fails decisions closed.
+pub const DEFAULT_EVENTS_PULL_MAX_STALENESS: Duration = Duration::from_secs(10);
+
+/// One ledger a plane imports history from, and the types it will import.
+///
+/// Structured rather than a scalar, because a subscription is three facts that must travel
+/// together: a scalar form would be a string somebody has to parse, and a parse is a place two
+/// spellings become two subscriptions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullSubscription {
+    pub zone: String,
+    pub ledger: String,
+    /// The registered event types. Part of the canonical filter set the read cursor is bound to,
+    /// so widening it starts a new read rather than quietly widening one already in progress.
+    pub event_types: Vec<String>,
+}
+
+/// Which history a decision ranges over.
+///
+/// The three are not degrees of the same thing: `local` decides against what this plane recorded,
+/// and the other two decide against a history assembled from several planes. That is a different
+/// answer to the same request, so it is a deployment's explicit choice rather than a default that
+/// changes when a second plane appears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Consistency {
+    /// Only what this plane recorded. The default.
+    Local,
+    /// Also whatever imported history has arrived, at the local watermark.
+    ///
+    /// Not strong consistency and never described as it: replication is asynchronous, so a
+    /// decision ranges over what had arrived when it was made, and the response says which
+    /// watermark that was.
+    SharedEventual,
+    /// As above, and decision events fail closed when the imported history is too stale.
+    SharedBounded,
+}
+
+impl Consistency {
+    /// The name a configuration writes, and a decision reports.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::SharedEventual => "shared-eventual",
+            Self::SharedBounded => "shared-bounded",
+        }
+    }
+
+    /// Whether this mode reads history other planes recorded.
+    pub fn is_shared(self) -> bool {
+        !matches!(self, Self::Local)
+    }
+
+    /// The mode a name spells, or `None` for one nobody defined.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.trim() {
+            "local" => Some(Self::Local),
+            "shared-eventual" => Some(Self::SharedEventual),
+            "shared-bounded" => Some(Self::SharedBounded),
+            _ => None,
+        }
+    }
+}
 const DEFAULT_LOG_SPOOL_BYTES: u64 = 512 * 1024 * 1024;
 const DEFAULT_LOG_SPOOL_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const DEFAULT_LOG_BATCH_BYTES: u64 = 256 * 1024;
@@ -761,6 +983,26 @@ pub struct Config {
     log_pdp_id: String,
     log_spool_directory: String,
     log_spool_bytes: u64,
+    events_enabled: bool,
+    events_producer_id: String,
+    events_directory: String,
+    events_max_bytes: u64,
+    events_segment_bytes: u64,
+    events_max_record_bytes: u64,
+    events_retention_minimum: Duration,
+    events_allowed_lateness: Duration,
+    events_clock_skew: Duration,
+    events_group_commit_delay: Duration,
+    events_pull_mode: Consistency,
+    events_pull_interval: Duration,
+    events_pull_max_staleness: Duration,
+    /// What this deployment has opted into, by runtime name.
+    ///
+    /// A map rather than a field per runtime: which runtimes are provisional is decided by the
+    /// languages this build carries, and a configuration type that had to name them would have to
+    /// be edited every time one was added or graduated.
+    experimental: BTreeMap<String, bool>,
+    events_pull_ledgers: Vec<PullSubscription>,
     log_spool_age: Duration,
     log_batch_bytes: u64,
     log_batch_interval: Duration,
@@ -772,8 +1014,17 @@ pub struct Config {
     log_include: crate::decisions::IncludeSection,
     decision_store_enabled: bool,
     decision_store_directory: String,
+    event_store_enabled: bool,
+    event_store_directory: String,
+    event_store_retention: Duration,
     decision_store_retention: Duration,
     decision_producer_keys: Vec<String>,
+    /// The published key sets of the producers this plane accepts *event* records from.
+    ///
+    /// Separate from the decision one because they are separate trust decisions: a deployment may
+    /// receive decisions from planes it does not receive events from, and saying so should not
+    /// require saying it twice everywhere else.
+    event_producer_keys: Vec<String>,
     notp_compression: bool,
     mirrors_enabled: bool,
     mirrors_interval: Duration,
@@ -863,6 +1114,21 @@ impl Default for Config {
             log_pdp_id: String::new(),
             log_spool_directory: DEFAULT_LOG_SPOOL_DIRECTORY.to_owned(),
             log_spool_bytes: DEFAULT_LOG_SPOOL_BYTES,
+            events_enabled: false,
+            events_producer_id: String::new(),
+            events_directory: DEFAULT_EVENTS_DIRECTORY.to_owned(),
+            events_max_bytes: DEFAULT_EVENTS_MAX_BYTES,
+            events_segment_bytes: DEFAULT_EVENTS_SEGMENT_BYTES,
+            events_max_record_bytes: DEFAULT_EVENTS_MAX_RECORD_BYTES,
+            events_retention_minimum: DEFAULT_EVENTS_RETENTION_MINIMUM,
+            events_allowed_lateness: DEFAULT_EVENTS_ALLOWED_LATENESS,
+            events_clock_skew: DEFAULT_EVENTS_CLOCK_SKEW,
+            events_group_commit_delay: DEFAULT_EVENTS_GROUP_COMMIT_DELAY,
+            events_pull_mode: Consistency::Local,
+            events_pull_interval: DEFAULT_EVENTS_PULL_INTERVAL,
+            events_pull_max_staleness: DEFAULT_EVENTS_PULL_MAX_STALENESS,
+            experimental: BTreeMap::new(),
+            events_pull_ledgers: Vec::new(),
             log_spool_age: DEFAULT_LOG_SPOOL_AGE,
             log_batch_bytes: DEFAULT_LOG_BATCH_BYTES,
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
@@ -874,8 +1140,12 @@ impl Default for Config {
             log_include: crate::decisions::IncludeSection::default(),
             decision_store_enabled: false,
             decision_store_directory: DEFAULT_DECISION_STORE_DIRECTORY.to_owned(),
+            event_store_enabled: false,
+            event_store_directory: DEFAULT_EVENT_STORE_DIRECTORY.to_owned(),
+            event_store_retention: DEFAULT_EVENT_STORE_RETENTION,
             decision_store_retention: DEFAULT_DECISION_STORE_RETENTION,
             decision_producer_keys: Vec::new(),
+            event_producer_keys: Vec::new(),
             mirrors_interval: DEFAULT_MIRRORS_INTERVAL,
             mirrors_timeout: DEFAULT_MIRRORS_TIMEOUT,
             mirrors_parallelism: DEFAULT_MIRRORS_PARALLELISM,
@@ -2067,6 +2337,132 @@ produce: use `EdDSA` or `ES256`"
         self.log_spool_bytes
     }
 
+    /// Whether this plane serves the temporal interface at all.
+    pub fn events_enabled(&self) -> bool {
+        self.events_enabled
+    }
+
+    /// Whether this control plane receives and serves an event store.
+    pub fn event_store_enabled(&self) -> bool {
+        self.event_store_enabled
+    }
+
+    /// Where the event store keeps what it receives.
+    pub fn event_store_directory(&self) -> PathBuf {
+        self.working_dir().join(&self.event_store_directory)
+    }
+
+    /// How long a tenant's events are kept before sealed segments are dropped.
+    pub fn event_store_retention(&self) -> Duration {
+        self.event_store_retention
+    }
+
+    /// This plane's name as an event producer — the identity its hash chains are owned by.
+    pub fn events_producer_id(&self) -> &str {
+        &self.events_producer_id
+    }
+
+    /// Where this plane keeps its event journals: `<volume>/data/events` unless told otherwise.
+    pub fn events_directory(&self) -> PathBuf {
+        self.working_dir().join(&self.events_directory)
+    }
+
+    /// The bound on one ledger's event records.
+    pub fn events_max_bytes(&self) -> u64 {
+        self.events_max_bytes
+    }
+
+    /// When a journal segment is closed and a new one started.
+    pub fn events_segment_bytes(&self) -> u64 {
+        self.events_segment_bytes
+    }
+
+    /// The largest single event record a journal accepts.
+    pub fn events_max_record_bytes(&self) -> u64 {
+        self.events_max_record_bytes
+    }
+
+    /// The shortest history this deployment promises, before the policies' own requirement.
+    pub fn events_retention_minimum(&self) -> Duration {
+        self.events_retention_minimum
+    }
+
+    /// How late an occurrence may arrive and still be recorded.
+    pub fn events_allowed_lateness(&self) -> Duration {
+        self.events_allowed_lateness
+    }
+
+    /// How far a caller's clock may run ahead of this one.
+    pub fn events_clock_skew(&self) -> Duration {
+        self.events_clock_skew
+    }
+
+    /// How long a group commit may wait to amortise an `fsync` across a batch.
+    pub fn events_group_commit_delay(&self) -> Duration {
+        self.events_group_commit_delay
+    }
+
+    /// Which history this plane's decisions range over.
+    pub fn events_pull_mode(&self) -> Consistency {
+        self.events_pull_mode
+    }
+
+    /// How often the pull worker asks the control plane for more.
+    pub fn events_pull_interval(&self) -> Duration {
+        self.events_pull_interval
+    }
+
+    /// How stale imported history may be before `shared-bounded` fails decisions closed.
+    pub fn events_pull_max_staleness(&self) -> Duration {
+        self.events_pull_max_staleness
+    }
+
+    /// Whether this deployment has opted into the experimental runtime `name`.
+    ///
+    /// Absent means no. A provisional runtime is served because a deployment said so, never because
+    /// the build happens to carry it.
+    pub fn experimental_enabled(&self, name: &str) -> bool {
+        self.experimental.get(name).copied().unwrap_or(false)
+    }
+
+    /// Every experimental runtime this deployment has turned on, by name.
+    pub fn experimental_enabled_names(&self) -> impl Iterator<Item = &str> {
+        self.experimental
+            .iter()
+            .filter(|(_, on)| **on)
+            .map(|(name, _)| name.as_str())
+    }
+
+    /// Every `experimental.<name>` this configuration mentions, on or off.
+    ///
+    /// What a deployment *named*, which is not what it enabled: naming a runtime this build does
+    /// not carry is a typo worth reporting, and the startup check needs to see it to report it.
+    pub fn experimental_named(&self) -> impl Iterator<Item = (&str, bool)> {
+        self.experimental
+            .iter()
+            .map(|(name, on)| (name.as_str(), *on))
+    }
+
+    /// Whether this deployment will serve Dogwood partitions.
+    pub fn experimental_dogwood(&self) -> bool {
+        self.experimental_enabled(EXPERIMENTAL_DOGWOOD)
+    }
+
+    /// The ledgers this plane imports history from.
+    pub fn events_pull_ledgers(&self) -> &[PullSubscription] {
+        &self.events_pull_ledgers
+    }
+
+    /// Records which ledgers this plane subscribes to.
+    ///
+    /// Structured, so it comes from the file rather than the layered pipeline — a list of
+    /// three-part subscriptions has no single-variable form that is not a parser.
+    pub fn with_pull_ledgers(mut self, ledgers: Vec<PullSubscription>) -> Self {
+        self.events_pull_ledgers = ledgers;
+
+        self
+    }
+
     /// How old the oldest unshipped record may be.
     pub fn log_spool_age(&self) -> Duration {
         self.log_spool_age
@@ -2165,6 +2561,38 @@ produce: use `EdDSA` or `ES256`"
     /// single-variable form.
     pub fn with_decision_producer_keys(mut self, keys: impl IntoIterator<Item = String>) -> Self {
         self.decision_producer_keys = keys.into_iter().collect();
+
+        self
+    }
+
+    /// The published key sets of the producers this plane accepts *event* records from.
+    ///
+    /// # The fallback, and why it is one rather than a silent reuse
+    ///
+    /// `controlPlane.events.producer_keys` decides whose event batches this plane will accept.
+    /// When it is absent the decision store's list stands in, because the ordinary deployment
+    /// receives both from the same planes and naming them twice is a way to have two lists drift.
+    ///
+    /// What matters is that this is a *stated* fallback rather than the events block being read
+    /// from the decisions block regardless. Before it, `controlPlane.events.producer_keys` was a
+    /// field the file accepted and nothing read: an operator who narrowed the event producers got
+    /// a plane that went on accepting every decision producer, with no error to say so.
+    pub fn event_producer_keys(&self) -> &[String] {
+        if self.event_producer_keys.is_empty() {
+            return &self.decision_producer_keys;
+        }
+
+        &self.event_producer_keys
+    }
+
+    /// Whether the event producers were named in their own right.
+    pub fn event_producer_keys_declared(&self) -> bool {
+        !self.event_producer_keys.is_empty()
+    }
+
+    /// Records where a control plane's *event* producers publish their keys.
+    pub fn with_event_producer_keys(mut self, keys: impl IntoIterator<Item = String>) -> Self {
+        self.event_producer_keys = keys.into_iter().collect();
 
         self
     }
@@ -2801,6 +3229,140 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        if let Some(value) = settings.get(SETTING_EVENT_STORE_ENABLED) {
+            self.event_store_enabled = parse_bool(value)
+                .with_context(|| format!("reading {SETTING_EVENT_STORE_ENABLED}"))?;
+        }
+        if let Some(value) = settings.get(SETTING_EVENT_STORE_DIRECTORY) {
+            self.event_store_directory = value.trim().to_owned();
+            if self.event_store_directory.is_empty() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENT_STORE_DIRECTORY}: the event store needs a directory of \
+                     its own"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENT_STORE_RETENTION) {
+            self.event_store_retention = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENT_STORE_RETENTION}"))?;
+            if self.event_store_retention.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENT_STORE_RETENTION}: a store that keeps nothing is not a \
+                     store, and a plane that received events and dropped them immediately would \
+                     acknowledge history it did not keep"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_ENABLED) {
+            self.events_enabled =
+                parse_bool(value).with_context(|| format!("reading {SETTING_EVENTS_ENABLED}"))?;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_PRODUCER_ID) {
+            self.events_producer_id = value.trim().to_owned();
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_DIRECTORY) {
+            self.events_directory = value.trim().to_owned();
+            if self.events_directory.is_empty() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_DIRECTORY}: the event journals need a directory of \
+                     their own"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_MAX_BYTES) {
+            self.events_max_bytes = parse_bytes(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_MAX_BYTES}"))?;
+            if self.events_max_bytes == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_MAX_BYTES}: a journal of no bytes refuses the first \
+                     event, and a refused event is a decision not made"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_SEGMENT_BYTES) {
+            self.events_segment_bytes = parse_bytes(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_SEGMENT_BYTES}"))?;
+            if self.events_segment_bytes == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_SEGMENT_BYTES}: a segment of no bytes holds no records"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_MAX_RECORD_BYTES) {
+            self.events_max_record_bytes = parse_bytes(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_MAX_RECORD_BYTES}"))?;
+            if self.events_max_record_bytes == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_MAX_RECORD_BYTES}: no record fits in no bytes"
+                );
+            }
+            if self.events_max_record_bytes > self.events_segment_bytes {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_MAX_RECORD_BYTES}: a record larger than a segment \
+                     ({}) can never be written, so every submission would be refused",
+                    self.events_segment_bytes
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_RETENTION_MINIMUM) {
+            self.events_retention_minimum = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_RETENTION_MINIMUM}"))?;
+            if self.events_retention_minimum.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_RETENTION_MINIMUM}: a history kept for no time is a \
+                     history every temporal policy reads as empty"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_ALLOWED_LATENESS) {
+            self.events_allowed_lateness = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_ALLOWED_LATENESS}"))?;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_CLOCK_SKEW) {
+            self.events_clock_skew = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_CLOCK_SKEW}"))?;
+        }
+        // Every `experimental.<name>.enabled`, by pattern: the runtimes are named by the languages
+        // this build carries, not by a list kept here, so the reader must not need one either.
+        for (key, value) in &settings {
+            let Some(name) = experimental_setting_name(key) else {
+                continue;
+            };
+            let on = parse_bool(value).with_context(|| format!("reading {key}"))?;
+            self.experimental.insert(name, on);
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_GROUP_COMMIT_DELAY) {
+            self.events_group_commit_delay = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_GROUP_COMMIT_DELAY}"))?;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_PULL_MODE) {
+            self.events_pull_mode = Consistency::parse(value).ok_or_else(|| {
+                anyhow!(
+                    "reading {SETTING_EVENTS_PULL_MODE}: `{value}` is not a consistency mode; \
+                     they are `local`, `shared-eventual` and `shared-bounded`"
+                )
+            })?;
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_PULL_INTERVAL) {
+            self.events_pull_interval = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_PULL_INTERVAL}"))?;
+            if self.events_pull_interval.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_PULL_INTERVAL}: a worker that never waits is a worker \
+                     that spends a control plane's capacity on asking"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_EVENTS_PULL_MAX_STALENESS) {
+            self.events_pull_max_staleness = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_EVENTS_PULL_MAX_STALENESS}"))?;
+            if self.events_pull_max_staleness.is_zero() {
+                anyhow::bail!(
+                    "reading {SETTING_EVENTS_PULL_MAX_STALENESS}: a staleness bound of zero fails \
+                     every decision closed, because replication is never instantaneous"
+                );
+            }
+        }
         if let Some(value) = settings.get(SETTING_LOG_SPOOL_BYTES) {
             self.log_spool_bytes =
                 parse_bytes(value).with_context(|| format!("reading {SETTING_LOG_SPOOL_BYTES}"))?;
@@ -3216,34 +3778,53 @@ fn tls_of(
     Ok(Some(tls))
 }
 
-/// Reads a setting written as a duration: a plain number of seconds, or one suffixed `s`, `m`, `h`
-/// or `d`.
+/// Reads a setting written as a duration: a plain number of seconds, or one suffixed `ms`, `s`,
+/// `m`, `h` or `d`.
+///
+/// # Why `ms` is one of them
+///
+/// Most budgets here are human-scale and a second is the smallest unit worth spelling. Group
+/// commit is not: it trades a few milliseconds of latency for one `fsync` across a batch, and its
+/// own default is [`DEFAULT_EVENTS_GROUP_COMMIT_DELAY`] — five milliseconds. Without `ms` that
+/// default could not be written down in the file that configures it, and the shipped configuration
+/// saying `5ms` was refused at startup by the parser reading it.
 ///
 /// Zero is refused rather than accepted as "no budget": a shutdown budget of nothing would mean the
 /// process kills itself before anything can be released, which nobody configures on purpose.
 fn parse_duration(value: &str) -> Result<Duration> {
-    const SECOND: u64 = 1;
-    const MINUTE: u64 = 60;
+    const MILLISECOND: u64 = 1;
+    const SECOND: u64 = 1_000;
+    const MINUTE: u64 = 60 * SECOND;
     const HOUR: u64 = 60 * MINUTE;
     const DAY: u64 = 24 * HOUR;
 
     let value = value.trim();
-    let (digits, multiplier) = match value.strip_suffix(['s', 'S']) {
-        Some(digits) => (digits, SECOND),
-        None => match value.strip_suffix(['m', 'M']) {
-            Some(digits) => (digits, MINUTE),
-            None => match value.strip_suffix(['h', 'H']) {
-                Some(digits) => (digits, HOUR),
-                None => match value.strip_suffix(['d', 'D']) {
-                    Some(digits) => (digits, DAY),
-                    None => (value, SECOND),
+    // `ms` is tested before `s`, and it has to be: stripping `s` first turns `5ms` into `5m`, which
+    // is not a number, and the refusal then quotes a value the author never wrote.
+    let millis = value
+        .len()
+        .checked_sub(2)
+        .filter(|at| value.is_char_boundary(*at) && value[*at..].eq_ignore_ascii_case("ms"))
+        .map(|at| &value[..at]);
+    let (digits, multiplier) = match millis {
+        Some(digits) => (digits, MILLISECOND),
+        None => match value.strip_suffix(['s', 'S']) {
+            Some(digits) => (digits, SECOND),
+            None => match value.strip_suffix(['m', 'M']) {
+                Some(digits) => (digits, MINUTE),
+                None => match value.strip_suffix(['h', 'H']) {
+                    Some(digits) => (digits, HOUR),
+                    None => match value.strip_suffix(['d', 'D']) {
+                        Some(digits) => (digits, DAY),
+                        None => (value, SECOND),
+                    },
                 },
             },
         },
     };
 
     let amount: u64 = digits.trim().parse().map_err(|_| {
-        anyhow!("`{value}` is not a duration: expected something like 30s, 2m, 1h or 90d")
+        anyhow!("`{value}` is not a duration: expected something like 5ms, 30s, 2m, 1h or 90d")
     })?;
 
     if amount == 0 {
@@ -3254,7 +3835,7 @@ fn parse_duration(value: &str) -> Result<Duration> {
     // in a field counting seconds — and it is worth saying so rather than silently never expiring.
     amount
         .checked_mul(multiplier)
-        .map(Duration::from_secs)
+        .map(Duration::from_millis)
         .ok_or_else(|| anyhow!("`{value}` is longer than any deployment outlives"))
 }
 
@@ -3262,7 +3843,7 @@ fn parse_duration_allow_zero(value: &str) -> Result<Duration> {
     let trimmed = value.trim();
     if matches!(
         trimmed,
-        "0" | "0s" | "0S" | "0m" | "0M" | "0h" | "0H" | "0d" | "0D"
+        "0" | "0s" | "0S" | "0ms" | "0MS" | "0Ms" | "0mS" | "0m" | "0M" | "0h" | "0H" | "0d" | "0D"
     ) {
         return Ok(Duration::ZERO);
     }

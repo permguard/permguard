@@ -24,36 +24,32 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use permguard_decisions::{merkle, record};
+use permguard_stream::cursor::{Cursor, CursorError, CursorKey, Position, filter_digest};
+use permguard_stream::{Block, Coverage, Frontier, Window};
 
-use super::offset::{Offset, OffsetError};
 use super::store::{DecisionStore, Scope, read_segment};
 
-/// One page of records, and where to continue.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Page {
-    /// The records, verbatim.
-    pub records: Vec<Value>,
-    /// The offset to present next. Opaque, and bound to this scope.
-    pub next: String,
-    /// Whether the scope holds more right now.
-    pub more: bool,
-    /// The signed envelopes covering these records, when the reader asked.
-    ///
-    /// A reader checking signatures needs them: the records carry the chain,
-    /// and the envelope is what a key actually signed.
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub proof: Vec<Value>,
-    /// One inclusion path per record, when the reader asked for a proof.
-    ///
-    /// This is what a **tenant-scoped** reader verifies with. Its page is a
-    /// subsequence of a producer's stream — the records in between belong to
-    /// other tenants and must not be disclosed — so the chain cannot be
-    /// checked across it. The path proves *this record was in a batch signed
-    /// by that producer, and has not been altered*, without handing over
-    /// anything of anybody else's.
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub inclusion: Vec<Inclusion>,
+/// The API family a decision-log offset belongs to.
+///
+/// Inside every offset's signature, so a position in the decision log presented against the event
+/// log is a stable refusal rather than a read of the wrong evidence.
+pub const API: &str = "permguard.api.decisions.native.v1";
+
+/// The decision log declares no filters, and says so explicitly.
+///
+/// An empty *declared* filter set rather than no filter binding at all: the binding is what a
+/// later filter would be added to, and a cursor issued today keeps meaning the same read when one
+/// is. The digest of `{}` is a constant, computed once.
+pub fn filters() -> String {
+    filter_digest(&serde_json::json!({}))
 }
+
+/// One page of records, and where to continue.
+///
+/// The shared stream block, with decision records in it. What used to be a type of this module is
+/// now [`permguard_stream::Block`]: the decision log and the event log answer the same shape,
+/// because a consumer reading one should not have to learn a second contract to read the other.
+pub type Page = Block<Value>;
 
 /// One record's place in the tree its batch was signed with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,11 +68,19 @@ pub struct Inclusion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
     /// The offset is not usable here.
-    Offset(OffsetError),
-    /// The offset is older than what is held; here is where to resume.
+    Offset(CursorError),
+    /// The offset is older than what is held; here is where to resume, and how much was lost.
+    ///
+    /// Expected retention behaviour, not corruption. The consumer learns three things at once —
+    /// that it lost records, where the remaining ones begin, and how many positions are gone —
+    /// instead of resuming from the wrong place and reporting success.
     Expired {
         /// The oldest offset the scope still holds.
         oldest: String,
+        /// The first position still held.
+        oldest_sequence: u64,
+        /// Where the consumer stood.
+        requested_sequence: u64,
     },
     /// The store could not answer.
     Unavailable(String),
@@ -86,84 +90,169 @@ impl std::fmt::Display for ReadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Offset(error) => write!(formatter, "{error}"),
-            Self::Expired { oldest } => write!(
+            Self::Expired {
+                oldest,
+                oldest_sequence,
+                requested_sequence,
+            } => write!(
                 formatter,
-                "this offset is older than what is still held; the oldest available is `{oldest}`"
+                "this offset stands at {requested_sequence} and the oldest still held is \
+                 {oldest_sequence}: the records in between left on the retention schedule. Resume \
+                 from `{oldest}`, knowing that {} positions are gone",
+                oldest_sequence.saturating_sub(*requested_sequence)
             ),
             Self::Unavailable(detail) => write!(formatter, "{detail}"),
         }
     }
 }
 
-/// Reads up to `limit` records of `scope`, starting at `token`.
-pub fn page(
+/// Reads one bounded block of `scope`.
+///
+/// # What changed, and why it had to
+///
+/// This used to take a record limit and a base64 JSON offset a consumer could edit. Both were
+/// wrong in ways that only show up in production: a record limit alone does not bound a response,
+/// and an unauthenticated offset is a position a consumer can move itself to — including one
+/// issued for another tenant. Both are now the shared contract's, so the decision log and the
+/// event log cannot answer them differently.
+pub fn read(
     store: &DecisionStore,
     scope: &Scope,
-    token: Option<&str>,
-    limit: usize,
-) -> Result<Page, ReadError> {
-    page_with(store, scope, token, limit, false)
-}
-
-/// Reads a page, optionally with the signed envelopes that attest it.
-pub fn page_with(
-    store: &DecisionStore,
-    scope: &Scope,
-    token: Option<&str>,
-    limit: usize,
-    proof: bool,
+    key: &CursorKey,
+    window: &Window,
 ) -> Result<Page, ReadError> {
     let segments = store
         .segments(scope)
         .map_err(|error| ReadError::Unavailable(error.to_string()))?;
-    let oldest = segments.first().map(|(first, _)| *first).unwrap_or(0);
+    let oldest_segment = segments.first().map(|(first, _)| *first).unwrap_or(0);
+    let stream = scope.key();
+    let filters = filters();
 
-    let mut offset = match token {
-        Some(token) => Offset::decode(token, scope).map_err(ReadError::Offset)?,
-        None => Offset::beginning(scope),
+    let oldest_available = {
+        let mut beginning = Cursor::beginning(API, &stream, &filters, window.until.clone());
+        beginning.advance(
+            &stream,
+            Position {
+                segment: oldest_segment,
+                offset: 0,
+            },
+        );
+
+        beginning.seal(key).map_err(ReadError::Offset)?
     };
-    if offset.segment == 0 {
-        offset.segment = oldest;
+
+    let mut cursor = match &window.from {
+        Some(token) => {
+            Cursor::open(token, key, API, &stream, &filters).map_err(ReadError::Offset)?
+        }
+        None => {
+            let mut beginning = Cursor::beginning(API, &stream, &filters, window.until.clone());
+            beginning.advance(
+                &stream,
+                Position {
+                    segment: oldest_segment,
+                    offset: 0,
+                },
+            );
+
+            beginning
+        }
+    };
+    // The export bound travels *inside* the offset, so a caller cannot drop it on a later page and
+    // turn a finite export into an endless one.
+    //
+    // It is *adopted* rather than required, because an export cannot state its bound on its first
+    // page: the bound is that page's own watermark, which the caller does not have until it has
+    // been answered. So a cursor carrying no bound may take one — that is the second page of an
+    // export declaring what it is — and a cursor already carrying one must be presented with the
+    // same one. Changing it afterwards, or dropping it, is a different read.
+    match (&cursor.until, &window.until) {
+        (Some(held), Some(asked)) if held != asked => {
+            return Err(ReadError::Offset(CursorError::WrongFilters));
+        }
+        (Some(_), None) => return Err(ReadError::Offset(CursorError::WrongFilters)),
+        _ => cursor.until.clone_from(&window.until),
     }
-    // A position naming a segment that has left on the retention schedule.
-    if offset.segment < oldest {
+
+    let mut position = cursor.position(&stream);
+    if position.segment == 0 {
+        position.segment = oldest_segment;
+    }
+    // A position naming a segment that has left on the retention schedule. Answered, never
+    // silently restarted at the beginning: a consumer that lost records must learn so.
+    if position.segment < oldest_segment {
         return Err(ReadError::Expired {
-            oldest: Offset {
-                scope: scope.key(),
-                segment: oldest,
-                position: 0,
-            }
-            .encode(),
+            oldest: oldest_available,
+            oldest_sequence: oldest_segment,
+            requested_sequence: position.segment,
         });
     }
 
-    let mut records = Vec::new();
-    let mut cursor = offset.clone();
+    let limit = window.records();
+    let byte_budget = window.bytes();
+    let mut records: Vec<Value> = Vec::new();
+    let mut bytes = 0u64;
+    let mut examined = 0usize;
+    let mut bound_by_bytes = false;
+
     for (first, path) in &segments {
-        if *first < cursor.segment {
+        if *first < position.segment {
             continue;
         }
-        let position = if *first == cursor.segment {
-            cursor.position
-        } else {
-            cursor.segment = *first;
-            cursor.position = 0;
-            0
-        };
-        let (found, next_position) = read_segment(path, position, limit - records.len())
+        if *first > position.segment {
+            position.segment = *first;
+            position.offset = 0;
+        }
+        let (found, next_offset) = read_segment(path, position.offset, limit - records.len())
             .map_err(|error| ReadError::Unavailable(error.to_string()))?;
-        cursor.position = next_position;
-        records.extend(found);
-        if records.len() >= limit {
+        // The byte bound is applied record by record, so a block never exceeds it — and a single
+        // record larger than the whole budget is still returned, because refusing it would stall
+        // the consumer forever at that position.
+        let mut consumed = 0u64;
+        for record in found {
+            let size = serde_json::to_vec(&record)
+                .map(|held| held.len() as u64)
+                .unwrap_or(0);
+            if !records.is_empty() && bytes + size > byte_budget {
+                bound_by_bytes = true;
+                break;
+            }
+            bytes += size;
+            consumed += 1;
+            examined += 1;
+            records.push(record);
+        }
+        position.offset = if bound_by_bytes {
+            position.offset + consumed
+        } else {
+            next_offset
+        };
+        if records.len() >= limit || bound_by_bytes {
             break;
         }
     }
+    cursor.advance(&stream, position);
 
-    let more = records.len() >= limit;
-    // The envelopes of whichever streams these records came from. Read from
-    // the record itself rather than from the request, so a tenant asking for a
-    // proof cannot name a stream it has no records of.
-    let proof = if proof {
+    // The exclusive end this read observed: the sequence after the last record it returned, or
+    // wherever it already stood when it returned none.
+    let observed = records
+        .last()
+        .and_then(|record| record.get("seq").and_then(Value::as_u64))
+        .map(|seq| seq + 1);
+    if let Some(observed) = observed {
+        cursor.frontier.cover(&stream, observed);
+    }
+    let observed_frontier = cursor.frontier.clone();
+    let end = Frontier::of(
+        &stream,
+        end_of(store, scope).unwrap_or_else(|| observed_frontier.covered_through(&stream)),
+    );
+    let more = permguard_stream::more(window, &observed_frontier, &end);
+
+    // The envelopes of whichever streams these records came from. Read from the record itself
+    // rather than from the request, so a tenant asking for a proof cannot name a stream it has no
+    // records of.
+    let proof = if window.proof {
         let mut streams: Vec<(String, String)> = records
             .iter()
             .filter_map(|record| {
@@ -185,19 +274,47 @@ pub fn page_with(
         Vec::new()
     };
 
-    let inclusion = if proof.is_empty() {
+    let inclusion: Vec<Value> = if proof.is_empty() {
         Vec::new()
     } else {
         inclusion_paths(store, &records, &proof)
+            .into_iter()
+            .filter_map(|held| serde_json::to_value(held).ok())
+            .collect()
     };
 
     Ok(Page {
         records,
-        next: cursor.encode(),
+        next: cursor.seal(key).map_err(ReadError::Offset)?,
+        oldest_available,
+        high_watermark: observed_frontier.encode(),
         more,
         proof,
         inclusion,
+        coverage: Coverage {
+            // A producer stream is a contiguous run and its chain verifies across the block. A
+            // tenant view is a subsequence — the records in between belong to other tenants and
+            // are not disclosed — so the chain does not, and the inclusion paths are what there is.
+            contiguous: matches!(scope, Scope::Stream { .. }),
+            examined,
+            // Nothing filters here yet, so the scan bound is never what stopped a block. The field
+            // is reported rather than omitted because the contract is shared, and a consumer that
+            // reads both stores reads one shape.
+            scan_bounded: false,
+        },
     })
+}
+
+/// The exclusive end of a scope right now: one past its highest sequence.
+fn end_of(store: &DecisionStore, scope: &Scope) -> Option<u64> {
+    let segments = store.segments(scope).ok()?;
+    let (_, last) = segments.last()?;
+    let (records, _) = read_segment(last, 0, usize::MAX).ok()?;
+
+    records
+        .last()
+        .and_then(|record| record.get("seq").and_then(Value::as_u64))
+        .map(|seq| seq + 1)
 }
 
 /// Builds the inclusion path of every record, against the batch that carried it.

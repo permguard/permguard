@@ -96,6 +96,8 @@ pub struct Decided<'a> {
     pub request_id: Option<String>,
     /// How long it took.
     pub latency_us: u64,
+    /// The occurrence this decision was made about, for a temporal one.
+    pub event: Option<permguard_decisions::record::EventRef>,
 }
 
 /// What writing one record established.
@@ -749,6 +751,7 @@ impl Journal {
                 request_id: decided.request_id.clone(),
                 context: Self::normalized_map(decided.included_context.clone()),
                 latency_us: decided.latency_us,
+                event: decided.event.clone(),
             })),
         }
         .to_value()

@@ -1,0 +1,28 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-events"
+description = "What an event record is: its canonical bytes, its digest, its per-producer chain and the signed batch it travels under. Normative — two implementations must compute these identically."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[dependencies]
+permguard-core.workspace = true
+# The two primitives that are genuinely domain-agnostic: JCS canonicalization and the per-batch
+# Merkle tree operate on bytes and digest strings, and are already proven by the decision log.
+# Everything that carries a *domain* — the record digest, the chain, the signed envelope's type —
+# is defined here instead, because reusing the decision log's domains is exactly what must never
+# happen: a decision record and an event record must not be confusable by any verifier.
+permguard-decisions.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+base64.workspace = true
+# Ed25519 verification, the same primitive the decision log verifies with.
+ring.workspace = true

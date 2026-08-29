@@ -24,6 +24,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, KeyManager, Metrics};
 use permguard_decisions::envelope::Batch;
+use permguard_stream::Window;
 use serde::Serialize;
 
 use super::store::{DecisionStore, Scope};
@@ -51,6 +52,13 @@ pub struct DecisionFacade {
     pub producers: std::sync::Arc<std::sync::RwLock<Vec<Jwk>>>,
     /// Where those sets are read from.
     pub producer_files: Vec<std::path::PathBuf>,
+    /// The secret read offsets are signed with.
+    ///
+    /// The server keeps no per-consumer cursor, so the only thing between a consumer and a
+    /// position it was never given is this signature. Held here rather than read per request: it
+    /// is the store's, it is stable across restarts, and reading a key file on the hot path would
+    /// be a disk read per page.
+    pub cursor_key: permguard_stream::CursorKey,
     /// How much a refusal says about the inside.
     pub disclosure: Disclosure,
     /// What to count.
@@ -268,10 +276,33 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
 
 /// How far a reader wants to go, and from where.
 #[derive(Debug, Default)]
-struct Window {
+struct Asked {
     from: Option<String>,
-    limit: Option<usize>,
+    until: Option<String>,
+    limit_records: Option<usize>,
+    limit_bytes: Option<u64>,
     proof: bool,
+}
+
+impl Asked {
+    /// The read this asks for, in the shared contract's terms.
+    ///
+    /// An `until` this build did not issue is dropped rather than refused, and the read becomes a
+    /// tail: the cursor carries the export bound inside its own signature, so a caller that
+    /// garbled the parameter is caught there, by the binding, with a message about the offset
+    /// rather than about a query string.
+    fn window(&self) -> Window {
+        Window {
+            from: self.from.clone(),
+            until: self
+                .until
+                .as_deref()
+                .and_then(permguard_stream::Frontier::decode),
+            limit_records: self.limit_records.unwrap_or_default(),
+            limit_bytes: self.limit_bytes.unwrap_or_default(),
+            proof: self.proof,
+        }
+    }
 }
 
 /// Reads the query string this API defines, and nothing else.
@@ -280,8 +311,8 @@ struct Window {
 /// here: an offset is opaque and must survive percent-encoding untouched, and
 /// a parameter nobody declared should be ignored rather than become a
 /// deserialisation failure a caller cannot act on.
-fn window_of(query: Option<&str>) -> (Window, Vec<(String, String)>) {
-    let mut window = Window::default();
+fn window_of(query: Option<&str>) -> (Asked, Vec<(String, String)>) {
+    let mut window = Asked::default();
     let mut pairs = Vec::new();
     for pair in query.unwrap_or_default().split('&') {
         let Some((name, value)) = pair.split_once('=') else {
@@ -290,7 +321,13 @@ fn window_of(query: Option<&str>) -> (Window, Vec<(String, String)>) {
         let value = percent_decode(value);
         match name {
             "from" => window.from = Some(value.clone()),
-            "limit" => window.limit = value.parse().ok(),
+            "until" => window.until = Some(value.clone()),
+            // `limit` is the name this API shipped with and still answers to. `limit_records` is
+            // the shared contract's name, and it wins where both are given: a caller writing to
+            // the current contract should not be quietly overridden by a compatibility alias.
+            "limit" => window.limit_records = window.limit_records.or_else(|| value.parse().ok()),
+            "limit_records" => window.limit_records = value.parse().ok(),
+            "limit_bytes" => window.limit_bytes = value.parse().ok(),
             "proof" => window.proof = matches!(value.as_str(), "true" | "1" | "yes"),
             _ => {}
         }
@@ -354,29 +391,19 @@ async fn tenant_records(
     serve(facade, scope, window, "tenant").await
 }
 
-/// The bound on one page, whatever a caller asks for.
-///
-/// A reader that asks for a million records is either confused or hostile, and
-/// either way the answer is a page rather than a stalled worker holding the
-/// whole store in memory.
-const MAX_PAGE: usize = 1_000;
-
-async fn serve(
-    facade: DecisionFacade,
-    scope: Scope,
-    window: Window,
-    kind: &'static str,
-) -> Response {
-    let limit = window.limit.unwrap_or(100).clamp(1, MAX_PAGE);
+async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'static str) -> Response {
+    let window = asked.window();
     // Off the runtime's threads: a page is segment files read back, and a bulk
     // export must not stall the reactor the shippers are landing batches on.
     let page = {
-        let (store, scope) = (facade.store.clone(), scope.clone());
-        tokio::task::spawn_blocking(move || {
-            read::page_with(&store, &scope, window.from.as_deref(), limit, window.proof)
-        })
-        .await
-        .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
+        let (store, scope, key) = (
+            facade.store.clone(),
+            scope.clone(),
+            facade.cursor_key.clone(),
+        );
+        tokio::task::spawn_blocking(move || read::read(&store, &scope, &key, &window))
+            .await
+            .unwrap_or_else(|error| Err(read::ReadError::Unavailable(error.to_string())))
     };
     match page {
         Ok(page) => {
@@ -386,18 +413,29 @@ async fn serve(
 
             (StatusCode::OK, Json(page)).into_response()
         }
-        Err(read::ReadError::Expired { oldest }) => {
+        Err(
+            ref expired @ read::ReadError::Expired {
+                ref oldest,
+                oldest_sequence,
+                requested_sequence,
+            },
+        ) => {
             facade
                 .metrics
                 .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
 
+            // Expected retention behaviour rather than corruption, and the answer says so — with
+            // where to resume and how large the gap is, so a consumer records a gap instead of
+            // reporting a clean run it did not have.
             (
                 StatusCode::GONE,
                 Json(serde_json::json!({
                     "class": "not_found",
                     "code": "offset_expired",
-                    "message": "this offset is older than what this scope still holds",
-                    "oldest": oldest,
+                    "message": expired.to_string(),
+                    "oldest_available": oldest,
+                    "oldest_sequence": oldest_sequence,
+                    "requested_sequence": requested_sequence,
                 })),
             )
                 .into_response()

@@ -35,7 +35,7 @@ use tower::ServiceExt as _;
 
 use permguard_control_client::objects;
 use permguard_control_client::store::FsStore;
-use permguard_core::{Disclosure, Metrics};
+use permguard_core::{Disclosure, Metrics, Recorder};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::{Decider, Warmed};
 use permguard_data_plane::authz::store::{Identity, Mirror};
@@ -147,7 +147,7 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
     profiles.insert(
         "default".to_owned(),
         Profile {
-            r#type: "permguard.pdp.v1".to_owned(),
+            r#type: permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned(),
             partitions: declared.keys().cloned().collect(),
         },
     );
@@ -1087,7 +1087,7 @@ mod surface {
         let (status, document) = fetch(&root, declared).await;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(document["interface"], json!("permguard.pdp.v1"));
+        assert_eq!(document["interface"], json!("permguard.api.pdp.native.v1"));
         assert_eq!(
             document["endpoints"]["evaluation"],
             json!("http://127.0.0.1:7656/access/v1/evaluation")
@@ -1136,7 +1136,8 @@ mod surface {
         let mut publishing = Vec::new();
         for candidate in candidates {
             let (status, body) = fetch(&root, candidate).await;
-            if status == StatusCode::OK && body["interface"] == json!("permguard.pdp.v1") {
+            if status == StatusCode::OK && body["interface"] == json!("permguard.api.pdp.native.v1")
+            {
                 publishing.push(candidate);
             }
         }
@@ -1463,7 +1464,7 @@ mod grpc_socket {
             over_grpc, over_http,
             "the same interface, described the same way, whichever transport asked"
         );
-        assert_eq!(over_grpc["interface"], json!("permguard.pdp.v1"));
+        assert_eq!(over_grpc["interface"], json!("permguard.api.pdp.native.v1"));
     }
 
     #[test]
@@ -1535,4 +1536,114 @@ mod grpc_socket {
             "and both transports say so"
         );
     }
+}
+
+/// Sixteen requests arriving on a cold ledger compile it once, not sixteen times.
+///
+/// # What this is actually about
+///
+/// Compiling is idempotent and expensive, so without a gate every request that arrives while the
+/// first is compiling repeats the same work and throws it away. Two requests is merely wasteful; a
+/// fleet's worth at a restart, at a commit change, or the moment an entry is evicted is a stampede
+/// — all of them parsing the same policies at once, on the same machine, while the cache they
+/// would each have hit sits empty until the first one finishes.
+///
+/// The compile counter is what makes it visible: it counts compilations, so N concurrent requests
+/// on one cold partition must leave it at one.
+#[tokio::test]
+async fn concurrent_requests_on_a_cold_ledger_compile_it_once() {
+    let root = scratch("stampede").join("mirrors");
+    let registry = Arc::new(permguard_std::metrics::Registry::new());
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = Arc::new(Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+        None,
+        256,
+    ));
+
+    // Sixteen at once, all cold, all for the same partition of the same commit.
+    let mut asked = Vec::new();
+    for _ in 0..16 {
+        let decider = Arc::clone(&decider);
+        asked.push(tokio::spawn(async move {
+            decider
+                .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+                .await
+        }));
+    }
+    for held in asked {
+        let answered = held.await.expect("the task finishes").expect("it decides");
+        assert!(answered.decision, "every one of them is answered");
+    }
+
+    let compiled: f64 = registry
+        .snapshot()
+        .into_iter()
+        .filter(|sample| sample.metric.name() == "permguard_authz_compilations_total")
+        .map(|sample| match sample.reading {
+            permguard_core::metrics::Reading::Value(value) => value,
+            permguard_core::metrics::Reading::Distribution { sum, .. } => sum,
+        })
+        .sum();
+    assert_eq!(
+        compiled, 1.0,
+        "sixteen concurrent requests on one cold partition compiled it {compiled} times"
+    );
+    let (entries, _) = decider.cache().holdings();
+    assert_eq!(
+        entries, 2,
+        "and sixteen requests left one head and one partition behind, not sixteen of each"
+    );
+}
+
+/// A decision whose budget the load already spent refuses rather than evaluating past it.
+///
+/// The budget bounds the *work*, and loading holds a blocking thread exactly as evaluating does.
+/// Measured from after the load, a budget could be spent in full on top of a slow one and outlive
+/// the response it was meant to fit inside — so it is measured from the start of the decision, and
+/// a decision that reaches evaluation with nothing left refuses there, fail-closed.
+#[tokio::test]
+async fn a_decision_whose_budget_the_load_already_spent_refuses() {
+    let root = scratch("budget").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    // A budget of one nanosecond: whatever reading and compiling the mirror costs, it costs more
+    // than that, so evaluation begins past the deadline.
+    let decider = Decider::new(
+        root.clone(),
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_budget(Some(std::time::Duration::from_nanos(1)));
+
+    let answered = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("a spent budget is an answer, not a transport failure");
+
+    assert!(!answered.decision, "fail-closed");
+    let reason = answered
+        .context
+        .and_then(|context| context.reason_admin)
+        .map(|reason| reason.message)
+        .unwrap_or_default();
+    assert!(
+        reason.contains("time") || reason.contains("budget"),
+        "and it says why, rather than denying mutely: {reason}"
+    );
 }

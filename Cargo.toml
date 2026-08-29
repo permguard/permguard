@@ -10,12 +10,14 @@ members = [
     "crates/permguard-core",
     "crates/permguard-data-plane",
     "crates/permguard-decisions",
+    "crates/permguard-events",
     "crates/permguard-notp",
     "crates/permguard-control-client",
     "crates/permguard-objects",
     "crates/permguard-languages",
     "crates/permguard-server",
     "crates/permguard-std",
+    "crates/permguard-stream",
     "crates/permguard-telemetry",
     "crates/permguard-transport",
 ]
@@ -48,12 +50,14 @@ permguard-control-plane = { path = "crates/permguard-control-plane", version = "
 permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
 permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
+permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
 permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
 permguard-languages = { path = "crates/permguard-languages", version = "0.1.0" }
 permguard-server = { path = "crates/permguard-server", version = "0.1.0" }
 permguard-std = { path = "crates/permguard-std", version = "0.1.0", default-features = false }
+permguard-stream = { path = "crates/permguard-stream", version = "0.1.0" }
 permguard-telemetry = { path = "crates/permguard-telemetry", version = "0.1.0" }
 permguard-transport = { path = "crates/permguard-transport", version = "0.1.0" }
 

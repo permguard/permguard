@@ -256,6 +256,7 @@ mod tests {
                 max_push_bytes: 64 * 1024 * 1024,
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
+            permguard_languages::registry::Enabled::everything(),
             true,
             None,
             Disclosure::Minimal,

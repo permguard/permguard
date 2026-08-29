@@ -53,7 +53,22 @@ while IFS= read -r relative; do
 done < <(cd "${source_dir}" && find . -type f -not -path './.permguard/*' | sed 's|^\./||' | sort)
 
 printf '%s file(s) copied from examples/%s into %s\n\n' "${copied}" "${example}" "${destination}"
+
+# The languages the example's own manifest names, so the `init` printed below is the one that will
+# actually work. Read from the manifest rather than guessed from the example's name: a workspace
+# initialised for the wrong languages refuses the sources it was just handed.
+languages="$(
+    sed -n 's/.*language:[[:space:]]*{[[:space:]]*name:[[:space:]]*\([a-z][a-z0-9_-]*\).*/\1/p' \
+        "${source_dir}/manifest.yml" | sort -u | paste -sd, -
+)"
+languages="${languages:-cedar,rego}"
+
 printf 'Next:\n'
-printf '  task cli -- -w %s init %s --language cedar,rego\n' "${destination}" "${example}"
+printf '  task cli -- -w %s init %s --language %s\n' "${destination}" "${example}" "${languages}"
 printf '  task cli -- -w %s remote add origin http://127.0.0.1:7556\n' "${destination}"
 printf '  task cli -- -w %s validate\n' "${destination}"
+
+if [ "${example}" = "dogwood-session-access" ]; then
+    printf '\nThis one needs a plane with the temporal interface on:\n'
+    printf '  task run:experimental        # both planes in one process, event path enabled\n'
+fi

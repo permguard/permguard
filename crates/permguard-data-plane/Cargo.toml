@@ -35,6 +35,11 @@ permguard-control-client.workspace = true
 permguard-core.workspace = true
 # What a decision record is: the canonical bytes, the chain and the durable spool.
 permguard-decisions.workspace = true
+# The durable event journal and the record contract the temporal interface writes.
+permguard-events.workspace = true
+# The randomness the shipping backoff's jitter comes from: a deterministic jitter is no jitter
+# once every plane in a fleet runs the same build.
+ring.workspace = true
 regex.workspace = true
 tracing.workspace = true
 permguard-server.workspace = true

@@ -52,14 +52,29 @@ message ReadRequest {
   // Or one producer's whole stream — the privileged, deployment-wide read.
   string pdp = 3;
   string instance = 4;
-  // Where to resume: the opaque offset a previous page returned. It is bound
-  // to the scope that issued it, and is refused elsewhere rather than
-  // reinterpreted.
+  // Where to resume: the opaque offset a previous page returned. It is signed
+  // by the server and bound to the scope, the filter set and the export it was
+  // issued for — presenting it under another is a stable refusal rather than a
+  // reinterpretation, and an edited one is refused rather than obeyed.
   string from = 5;
-  // How many records at once.
+  // How many records at once. The shared contract's name is `limit_records`;
+  // this is the name this RPC shipped with and still answers to. Where both
+  // are given the newer one wins, so a caller writing to the current contract
+  // is not quietly overridden by a compatibility alias.
   uint32 limit = 6;
   // Include the signed envelopes attesting these records.
   bool proof = 7;
+  // The fixed end of a finite snapshot: the `high_watermark` of this export's
+  // first page, echoed on every page after it. Present, the read finishes
+  // against that bound rather than against a stream that is still being
+  // written; absent, it is a tail. Opaque — echo it, never parse it.
+  string until = 8;
+  // How many records at most. Clamped by the server.
+  uint32 limit_records = 9;
+  // How many bytes at most. Clamped by the server. Both bounds apply: a
+  // record count alone does not bound a response, because a hundred small
+  // records and a hundred large ones are the same number.
+  uint64 limit_bytes = 10;
 }
 
 message ReadResponse {
@@ -75,4 +90,31 @@ message ReadResponse {
   // tenant-scoped reader verifies with: its page is a subsequence of a
   // producer's stream, so the chain cannot be checked across it.
   repeated bytes inclusion = 5;
+  // The oldest offset this scope still holds, so a new consumer can choose the
+  // retained beginning deliberately rather than by guessing at it.
+  string oldest_available = 6;
+  // The exclusive end this read observed, as the opaque token a client echoes
+  // back as `until` to bound a finite export. Not a number: for a view merged
+  // across producers there is no truthful single sequence.
+  string high_watermark = 7;
+  // What this block proves about what it covers.
+  ReadCoverage coverage = 8;
+}
+
+// What a block proves about what it covers.
+//
+// A filtered or merged view cannot claim chain completeness — the records in
+// between were not returned, and the chain does not verify across a
+// subsequence. Saying so explicitly is the difference between a proof and a
+// claim.
+message ReadCoverage {
+  // Whether the returned records are a contiguous run of one producer's
+  // stream, so the chain links across them.
+  bool contiguous = 1;
+  // How many positions this read examined to produce this block.
+  uint64 examined = 2;
+  // Whether the scan bound stopped this block before its record or byte bound
+  // did. When true the block may be short — or empty — and `next` has still
+  // advanced: a consumer reads on rather than concluding it reached the end.
+  bool scan_bounded = 3;
 }

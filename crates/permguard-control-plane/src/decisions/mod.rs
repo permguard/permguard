@@ -28,6 +28,7 @@
 //! — OTLP, object storage, a broker, a webhook — are *readers*, configured,
 //! never a branch in the write path.
 
+pub mod cursorkey;
 pub mod grpc;
 pub mod http;
 pub mod ingest;

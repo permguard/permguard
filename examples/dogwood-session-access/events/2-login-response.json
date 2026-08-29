@@ -1,0 +1,19 @@
+{
+  "store": { "zone": "acme", "ledger": "agent-governance", "profile": "temporal" },
+  "event": {
+    "type": "permguard.dogwood.event.v1",
+    "data": {
+      "event_id": "01J8Z9-login-response",
+      "kind": "response",
+      "action": "Drupe::Action::Login",
+      "principal": "Drupe::OAuthUser::\"alice\"",
+      "resource": "Drupe::Gateway::\"gw1\"",
+      "logged": {
+        "input": { "user": "alice", "server": "s1" },
+        "output": {}
+      },
+      "request_context": { "input": { "user": "alice", "server": "s1" } },
+      "occurred_at": "2026-08-28T10:00:05Z"
+    }
+  }
+}

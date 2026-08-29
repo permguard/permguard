@@ -17,6 +17,7 @@ syntax = "proto3";
 package permguard.data.v1;
 
 import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
 
 // The decision service a PEP calls.
 service PolicyDecisionPoint {
@@ -197,4 +198,130 @@ message GetConfigurationResponse {
   // Every entry is implemented and tested here. A capability is a promise.
   repeated string capabilities = 4;
   StoreScope store_scope = 5;
+}
+
+// ─── permguard.api.pdp.temporal.v1alpha1 ─────────────────────────────────────
+//
+// The stateful decision interface: an occurrence is recorded into a durable
+// history and decided against it. Field for field the JSON binding, so a
+// deployment chooses a transport without choosing semantics.
+//
+// `v1alpha1` because its wire and replication contracts have not yet proven
+// stable — not because anything here is unimplemented.
+
+// The temporal decision service a PEP calls.
+service TemporalPolicyDecisionPoint {
+  // One occurrence: recorded, observed, and decided when its kind decides.
+  rpc SubmitEvent(SubmitEventRequest) returns (SubmitEventResponse);
+  // What this interface offers here — the same thing the HTTP binding
+  // publishes at `/.well-known/permguard-pdp-temporal-v1alpha1-configuration`.
+  rpc GetTemporalConfiguration(GetTemporalConfigurationRequest)
+      returns (GetTemporalConfigurationResponse);
+}
+
+// Which policy store an occurrence belongs to.
+//
+// In the payload, never the URL — the same rule the stateless interface
+// follows, and for the same reason: a store named in a path is a store a proxy
+// can rewrite.
+message EventStore {
+  string zone = 1;
+  string ledger = 2;
+  // Which of the ledger's profiles. `default` when empty, and it must be a
+  // profile of this interface's type.
+  string profile = 3;
+}
+
+// The typed occurrence: which registered contract it is, and its payload.
+//
+// `type` is an *assertion*, checked against what the addressed partitions
+// accept — never a selector. The payload rides as `Struct` because its shape is
+// the event contract's, and a schema for it belongs to that contract rather
+// than to this file: a second registered contract is a registry entry with its
+// own validator, not a new message here.
+message TypedEvent {
+  string type = 1;
+  google.protobuf.Struct data = 2;
+}
+
+message SubmitEventRequest {
+  EventStore store = 1;
+  TypedEvent event = 2;
+}
+
+// What a submission did.
+enum SubmitOutcome {
+  SUBMIT_OUTCOME_UNSPECIFIED = 0;
+  // A decision kind: `decision` carries the verdict.
+  SUBMIT_OUTCOME_DECIDED = 1;
+  // A history-only kind: durably recorded and observed, and there is no verdict.
+  SUBMIT_OUTCOME_ACCEPTED = 2;
+}
+
+// Where an occurrence sits in this plane's stream.
+//
+// Not a global order: there is no truthful total order across producers. This
+// says which producer instance wrote it and at which position.
+message EventWatermark {
+  string instance = 1;
+  uint64 sequence = 2;
+  // The derived history key's digest — the index key, never a substitute for
+  // the values, which travel in the signed record.
+  string history = 3;
+}
+
+message SubmitEventResponse {
+  SubmitOutcome outcome = 1;
+  string event_id = 2;
+  EventWatermark watermark = 3;
+  // Set exactly when `outcome` is `SUBMIT_OUTCOME_DECIDED`. A history-only kind
+  // leaves it unset rather than sending `false`: a fabricated verdict a caller
+  // cannot tell from a decided one is the most dangerous thing this interface
+  // could return, and proto3's default for a bare `bool` is exactly that.
+  google.protobuf.BoolValue decision = 4;
+  // The decision's own identifier, matching its audit record.
+  string decision_id = 5;
+  // The policies that decided it, by identity.
+  repeated string policies = 6;
+  Reason reason = 7;
+  // Which history this decision ranged over, and how fresh it was. Always
+  // present, including for a plane that reads only its own events: an auditor
+  // reproducing a decision needs to know what was visible, and "local" is an
+  // answer to that question rather than the absence of one.
+  DecisionHistory history = 8;
+}
+
+// Which history a decision ranged over.
+//
+// Deliberately not called consistency without qualification: replication is
+// asynchronous, so a shared mode ranges over what had *arrived*, and the
+// watermark says exactly which events those were.
+message DecisionHistory {
+  // `local`, `shared-eventual` or `shared-bounded`.
+  string mode = 1;
+  // The opaque import watermark this decision saw, for a shared mode. Echo it,
+  // never parse it.
+  string watermark = 2;
+  // How long ago the imported history was last refreshed, in seconds.
+  uint64 staleness_seconds = 3;
+}
+
+message GetTemporalConfigurationRequest {}
+
+// Where an occurrence is submitted.
+message TemporalEndpoints {
+  string submission = 1;
+}
+
+// What this plane publishes about the temporal interface. Field for field the
+// JSON document, so a caller learns the same thing over either transport.
+message GetTemporalConfigurationResponse {
+  // The contract and its version: `permguard.api.pdp.temporal.v1alpha1`.
+  string interface = 1;
+  string pdp = 2;
+  TemporalEndpoints endpoints = 3;
+  // The registered occurrence contracts this plane accepts.
+  repeated string event_types = 4;
+  repeated string capabilities = 5;
+  StoreScope store_scope = 6;
 }

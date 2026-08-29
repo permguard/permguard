@@ -112,7 +112,7 @@ fn document(globals: &Globals, args: &CheckArgs) -> Result<Value, Failure> {
             .map_err(|error| Failure::usage(format!("the request is not valid JSON: {error}")))?;
         if !payload.is_object() {
             return Err(Failure::usage(
-                "a request is a JSON object — the payload `permguard.pdp.v1` documents",
+                "a request is a JSON object — the payload `permguard.api.pdp.native.v1` documents",
             ));
         }
 

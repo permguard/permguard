@@ -7,7 +7,7 @@
 //! policy — the whole verbatim source. The alias rides the standard OPA
 //! `# METADATA` annotation block, under `custom.alias`; no bespoke syntax.
 
-mod evaluate;
+pub(crate) mod evaluate;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
@@ -45,6 +45,12 @@ impl Language for Rego {
         Some(SCHEMA_MEDIA_TYPE)
     }
 
+    fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+        const SCHEMA: &SchemaArtifact = &SchemaArtifact;
+
+        &[SCHEMA]
+    }
+
     fn validate_schema(&self, bytes: &[u8]) -> Result<(), String> {
         evaluate::compile_schema(bytes).map(|_| ())
     }
@@ -59,6 +65,33 @@ impl Language for Rego {
             .map_err(|error| format!("rego: {error}"))
     }
     /// Rego's marker is `# METADATA` with `custom.alias`, above the package.
+    /// Refuses a partition whose policies share a package.
+    ///
+    /// Run at authoring and at commit acceptance, where the error belongs to whoever wrote it —
+    /// the compile refuses the same shape, so a ledger that reached a plane is refused there too,
+    /// but by then the error belongs to whoever met it. See `evaluate::shared_package` for why it
+    /// is a refusal rather than something to work around.
+    fn validate_set(
+        &self,
+        policies: &[(&str, &[u8])],
+        schema: Option<&[u8]>,
+    ) -> Result<(), String> {
+        let _ = schema;
+        let mut claimed: std::collections::BTreeMap<String, &str> =
+            std::collections::BTreeMap::new();
+        for (name, source) in policies {
+            let Some(package) = package_of(source) else {
+                continue;
+            };
+            if let Some(first) = claimed.get(&package) {
+                return Err(crate::rego::evaluate::shared_package(&package, first, name));
+            }
+            claimed.insert(package, name);
+        }
+
+        Ok(())
+    }
+
     fn declared_alias(&self, source: &[u8]) -> Option<String> {
         let text = std::str::from_utf8(source).ok()?;
         alias_of(text)
@@ -125,6 +158,80 @@ impl Authoring for Rego {
             alias: alias_of(text),
         }])
     }
+}
+
+/// The registered type of a Rego partition's schema.
+///
+/// Described through the registry like every other artifact, so the legacy manifest flag
+/// `schema: true` names a type rather than a special case in the walk.
+pub const SCHEMA_ARTIFACT: &str = "permguard.rego.schema.v1";
+
+/// The Rego schema artifact.
+pub struct SchemaArtifact;
+
+impl crate::artifact::ArtifactType for SchemaArtifact {
+    fn name(&self) -> &'static str {
+        SCHEMA_ARTIFACT
+    }
+
+    fn media_type(&self) -> &'static str {
+        SCHEMA_MEDIA_TYPE
+    }
+
+    fn runtime(&self) -> &'static str {
+        NAME
+    }
+
+    fn role(&self) -> crate::artifact::ArtifactRole {
+        crate::artifact::ArtifactRole::Schema
+    }
+
+    fn semantic_role(&self) -> &'static str {
+        "schema"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &[SCHEMA_EXTENSION]
+    }
+
+    fn cardinality(&self) -> crate::artifact::Cardinality {
+        crate::artifact::Cardinality::ZeroOrOne
+    }
+
+    fn validate(&self, bytes: &[u8]) -> Result<(), String> {
+        crate::role::Language::validate_schema(&Rego, bytes)
+    }
+}
+
+/// The package a module declares, read from its own source.
+///
+/// Read here rather than by adding it to an engine, because this runs at authoring where the
+/// question is "may these files live together" and not "does this whole set compile". A line-by-line
+/// read is enough for that and cannot fail on a module whose *body* has a problem the set check is
+/// not about.
+fn package_of(source: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(source).ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("package") else {
+            continue;
+        };
+        // `package` must be followed by whitespace: `packages` is not a declaration.
+        if !rest.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let named = rest.trim();
+        if named.is_empty() {
+            continue;
+        }
+
+        return Some(named.to_owned());
+    }
+
+    None
 }
 
 #[cfg(test)]

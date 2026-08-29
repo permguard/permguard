@@ -16,6 +16,14 @@
 //! | --- | --- | --- | --- |
 //! | `permguard.cedar.entities.v1` | Cedar | an array of Cedar entity JSON | the entity store |
 //! | `permguard.rego.data.v1` | Rego | a JSON object | `input.partition` |
+//! | `permguard.dogwood.event.v1` | Dogwood | one typed occurrence | the temporal interface |
+//!
+//! The third is registered here and reached from somewhere else, which is worth saying plainly: a
+//! partition declares it exactly as it declares the other two, and the manifest gate checks it the
+//! same way — but the occurrence itself arrives as the *top-level event* of a temporal submission
+//! rather than inside `partition_inputs`, because the profile fans one event out to every
+//! partition it addresses. A stateless request that tries to address a partition with one is
+//! refused, by name, rather than having it read as something else.
 //!
 //! A ledger's manifest declares which of these each partition accepts. A request's own `type` is
 //! an **assertion**, checked against the manifest's — never a selector. `acme.anything.v1` is not
@@ -38,6 +46,8 @@ use serde_json::{Map, Value};
 pub const CEDAR_ENTITIES_V1: &str = "permguard.cedar.entities.v1";
 /// The registered name of the Rego document input.
 pub const REGO_DATA_V1: &str = "permguard.rego.data.v1";
+/// The registered name of the Dogwood occurrence input.
+pub const DOGWOOD_EVENT_V1: &str = crate::dogwood::occurrence::EVENT_TYPE;
 
 /// One partition input, as the wire carries it.
 ///
@@ -46,6 +56,7 @@ pub const REGO_DATA_V1: &str = "permguard.rego.data.v1";
 /// hear so, rather than have its entity array quietly refused as a malformed document. The
 /// assertion is checked, never obeyed.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PartitionInputBody {
     #[serde(rename = "type", default)]
     pub kind: Option<String>,
@@ -193,12 +204,55 @@ impl InputType for RegoDataV1 {
     }
 }
 
+/// The Dogwood occurrence.
+///
+/// Registered so a Dogwood partition can declare it and the manifest gate can check it — and
+/// deliberately unable to be *carried* in `partition_inputs`. The occurrence is the top-level
+/// event of a temporal submission: the selected profile fans one event out to every partition it
+/// addresses, and each validates it against its own loaded schemas. Accepting one here would give
+/// a caller a second, per-partition way to state the same thing, and the two could then disagree.
+struct DogwoodEventV1;
+
+impl InputType for DogwoodEventV1 {
+    fn name(&self) -> &'static str {
+        DOGWOOD_EVENT_V1
+    }
+
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn runtime(&self) -> &'static str {
+        crate::dogwood::NAME
+    }
+
+    fn normalize(&self, data: &Value) -> Result<PartitionData, String> {
+        let _ = data;
+
+        Err(format!(
+            "`{DOGWOOD_EVENT_V1}` is a temporal occurrence, and a temporal occurrence is not a \
+             per-partition input. Submit it as the top-level `event` of a \
+             `{}` request at `{}`, where one occurrence reaches every partition the profile \
+             addresses",
+            crate::temporal::INTERFACE,
+            crate::temporal::SUBMISSION_PATH
+        ))
+    }
+
+    fn empty(&self) -> PartitionData {
+        // Nothing is addressed to this partition through the stateless path, ever — not an empty
+        // occurrence, which would be an occurrence.
+        PartitionData::Absent
+    }
+}
+
 /// Every input type this build implements, in a fixed order.
 pub fn input_types() -> &'static [&'static dyn InputType] {
     const CEDAR: &CedarEntitiesV1 = &CedarEntitiesV1;
     const REGO: &RegoDataV1 = &RegoDataV1;
+    const DOGWOOD: &DogwoodEventV1 = &DogwoodEventV1;
 
-    &[CEDAR, REGO]
+    &[CEDAR, REGO, DOGWOOD]
 }
 
 /// The input type of that name, when this build implements one.
@@ -311,6 +365,25 @@ mod tests {
         assert!(input_type("acme.whatever.v1").is_none());
         assert!(input_type(CEDAR_ENTITIES_V1).is_some());
         assert!(input_type(REGO_DATA_V1).is_some());
+        assert!(input_type(DOGWOOD_EVENT_V1).is_some());
+    }
+
+    /// A temporal occurrence is not something a stateless request may carry, and says so.
+    #[test]
+    fn a_temporal_occurrence_is_refused_in_partition_inputs_and_says_where_to_send_it() {
+        let dogwood = input_type(DOGWOOD_EVENT_V1).expect("registered");
+
+        assert_eq!(dogwood.runtime(), crate::dogwood::NAME);
+        let refused = dogwood
+            .normalize(&json!({"event_id": "e"}))
+            .expect_err("an occurrence is not a per-partition input");
+        assert!(
+            refused.contains(crate::temporal::SUBMISSION_PATH),
+            "{refused}"
+        );
+        // And a partition of this type reads nothing through the stateless path, not an empty
+        // occurrence — which would be an occurrence.
+        assert!(matches!(dogwood.empty(), PartitionData::Absent));
     }
 
     #[test]

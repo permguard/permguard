@@ -1,0 +1,180 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The `permguard.api.events.native.v1alpha1` interface over gRPC.
+//
+// The control plane's event store: where a data plane ships what it recorded,
+// and the only supported remote source for reading it back. Field for field
+// the HTTP binding, over one facade and one validation path — a deployment
+// picks a transport, not a set of semantics.
+//
+// Records and envelopes travel as **bytes**, not as parsed structures. That is
+// the whole point: a record is evidence, its digest is over exactly the bytes
+// the producer signed, and a message that re-rendered it would produce a
+// different byte string with a different digest — indistinguishable, to a
+// verifier, from tampering.
+
+syntax = "proto3";
+
+package permguard.control.v1;
+
+// Shipping events, and reading them back.
+service EventLog {
+  // One signed batch of contiguous records from one producer stream.
+  rpc IngestBatch(IngestBatchRequest) returns (IngestBatchResponse);
+  // One bounded, filtered block of a scope.
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
+  // One occurrence, by the identifier its caller stated.
+  rpc GetRecord(GetRecordRequest) returns (GetRecordResponse);
+  // What this plane offers of this interface. The same document the plane
+  // publishes at
+  // `/.well-known/permguard-events-native-v1alpha1-configuration`, so a
+  // producer configured with a gRPC endpoint learns what an HTTP one would.
+  rpc GetEventConfiguration(GetEventConfigurationRequest)
+      returns (GetEventConfigurationResponse);
+}
+
+message GetEventConfigurationRequest {}
+
+// Where batches are delivered and records are read. Absolute URLs: the
+// producer that reads this is configured with one endpoint and has to arrive
+// at four.
+message EventEndpoints {
+  string ingest = 1;
+  string records = 2;
+  string record = 3;
+  string tenant_records = 4;
+}
+
+// How a reader's position is spelled.
+message EventOffsets {
+  // The API family an offset issued here belongs to. An offset from another
+  // family is refused rather than reinterpreted.
+  string api = 1;
+  // `opaque`: the string is this plane's to produce and to read, and carries a
+  // MAC binding it to the scope, filters and bound it was issued for.
+  string format = 2;
+  // Whether a reader may hand back an offset it edited. It may not.
+  bool editable = 3;
+}
+
+// What this plane publishes about the event log. Field for field the JSON
+// document, so a caller learns the same thing over either transport.
+message GetEventConfigurationResponse {
+  // The contract and its version: `permguard.api.events.native.v1alpha1`.
+  string interface = 1;
+  // This store's identifier.
+  string store = 2;
+  EventEndpoints endpoints = 3;
+  // The registered event contracts this plane will store.
+  repeated string event_types = 4;
+  repeated string capabilities = 5;
+  EventOffsets offsets = 6;
+}
+
+message IngestBatchRequest {
+  // The signed envelope, as its canonical JSON bytes.
+  bytes envelope = 1;
+  // The records it covers, verbatim, in sequence order.
+  repeated bytes records = 2;
+}
+
+message IngestBatchResponse {
+  // The highest contiguous durable sequence. The producer deletes by this and
+  // by nothing else: a number with a hole behind it is how a gap becomes
+  // permanent, and for events a gap changes what future decisions mean.
+  uint64 acked = 1;
+  // How many records this batch added. Zero for a replay.
+  uint64 stored = 2;
+  // Set when the shipper ran ahead and nothing was stored: resend from here.
+  // Not an error — an answer the shipper acts on rather than a failure it
+  // retries blindly.
+  uint64 expected_seq = 3;
+}
+
+message ListRecordsRequest {
+  // One tenant's records. Both are required together, and they are also
+  // required to name a producer stream: a stream lives inside a ledger.
+  string zone = 1;
+  string ledger = 2;
+  // Or one producer's whole stream — the administrative read.
+  string producer_class = 3;
+  string producer = 4;
+  string instance = 5;
+
+  // Where to resume: the opaque, signed offset a previous page returned.
+  // Bound to the scope, the filter set and the export it was issued for.
+  string from = 6;
+  // The fixed end of a finite snapshot: the `high_watermark` of this export's
+  // first page, echoed on every page after it. Opaque — echo it, never parse
+  // it, and never compare it numerically.
+  string until = 7;
+  // Both bounds apply, and the server clamps both.
+  uint32 limit_records = 8;
+  uint64 limit_bytes = 9;
+  // Include the signed envelopes and inclusion paths.
+  bool proof = 10;
+
+  // The registered event types, exact. A first-class filter rather than a
+  // predicate over everything: the store keeps a bounded index per type, so
+  // listing one does not scan and decode every other type the ledger retains.
+  repeated string event_types = 11;
+  // The remaining declared filters. Each narrows; none widens what the scope
+  // may return, because the scope is the authorization boundary.
+  string profile = 12;
+  string policy_partition = 13;
+  string kind = 14;
+  string event_id = 15;
+  // Occurrence-time bounds, inclusive, as canonical UTC instants.
+  string since = 16;
+  string until_time = 17;
+  // One Dogwood history key, by its digest.
+  string history = 18;
+}
+
+// What a block proves about what it covers.
+message EventCoverage {
+  // Whether the records are a contiguous run of one producer's stream, so the
+  // chain links across them. False for a filtered or merged view, where the
+  // inclusion paths are what a reader verifies with.
+  bool contiguous = 1;
+  // How many positions this read examined. Against the number returned, this
+  // is what makes a sparse filter visible.
+  uint64 examined = 2;
+  // Whether a scan bound stopped this block before its record or byte bound
+  // did. When true the block may be short — or empty — and `next` has still
+  // advanced: a consumer reads on rather than concluding it reached the end.
+  bool scan_bounded = 3;
+}
+
+message ListRecordsResponse {
+  // The records, verbatim: the bytes the producer signed.
+  repeated bytes records = 1;
+  // The offset for the following block. Returned even for an empty block,
+  // because an empty block still advanced over the positions it examined.
+  string next = 2;
+  // Whether there is more — against this request's `until` when it has one,
+  // and against the returned watermark otherwise.
+  bool more = 3;
+  // The oldest offset this scope still holds, so a new consumer can choose the
+  // retained beginning deliberately rather than by guessing.
+  string oldest_available = 4;
+  // The exclusive end this read observed, opaque.
+  string high_watermark = 5;
+  // The envelopes attesting these records, when asked for.
+  repeated bytes proof = 6;
+  // One inclusion path per record, as JSON, when asked for.
+  repeated bytes inclusion = 7;
+  EventCoverage coverage = 8;
+}
+
+message GetRecordRequest {
+  string zone = 1;
+  string ledger = 2;
+  string event_id = 3;
+}
+
+message GetRecordResponse {
+  // The record, verbatim.
+  bytes record = 1;
+}

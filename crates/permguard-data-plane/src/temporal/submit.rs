@@ -1,0 +1,1286 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The one path both transports call: an occurrence in, a decision or a receipt out.
+//!
+//! # Everything that can be wrong lives here
+//!
+//! The bindings below are three lines each. That is deliberate and it is the same rule the
+//! stateless interface follows: HTTP and gRPC must deserialize into the same domain request and
+//! call the same implementation, because an interface whose two transports each carry a copy of
+//! the validation has two interfaces, and the second one is the one that is wrong.
+
+use std::sync::Arc;
+use std::time::Instant;
+
+use permguard_core::{ApiError, ErrorClass};
+use permguard_events::record::{RECORD_TYPE, Record, occurrence_digest_of};
+use permguard_languages::event::{Occurrence, OccurrenceBody};
+use permguard_languages::temporal::{
+    self, Applied, Checked, HistoryScope, Outcome, SubmitRequest, SubmitResponse, Temporal,
+    Watermark,
+};
+use tracing::{debug, info, warn};
+
+use crate::authz::decide::{Decider, Loaded};
+use crate::authz::snapshot::Partition;
+
+use super::measure;
+use super::streams::{Failed, Streams, Written};
+
+const COMPONENT: &str = "temporal";
+
+/// One partition of the profile, with the remembering half it answers through.
+type Addressed<'a> = (&'a Arc<Partition>, &'a dyn Temporal);
+
+/// One partition, its engine, and what the schemas said about this occurrence.
+type Verified<'a> = (Arc<Partition>, &'a dyn Temporal, Checked);
+
+/// The temporal interface's implementation.
+///
+/// Holds the [`Decider`] rather than duplicating it: the ledger a submission names is resolved,
+/// bounded and compiled by exactly the code that resolves it for a stateless request.
+pub struct Submitter {
+    decider: Arc<Decider>,
+    streams: Arc<Streams>,
+    metrics: permguard_core::metrics::Metrics,
+    /// How far a caller's clock may run ahead of this one before its `occurred_at` is refused.
+    clock_skew: std::time::Duration,
+    /// How late an occurrence may arrive and still be recorded.
+    allowed_lateness: std::time::Duration,
+    /// Which history this plane's decisions range over.
+    consistency: permguard_core::config::Consistency,
+    /// The imported histories, when this plane reads other planes' events.
+    imports: Option<Arc<super::imports::Imports>>,
+    /// How stale imported history may be before `shared-bounded` fails decisions closed.
+    max_staleness: std::time::Duration,
+    /// The imported watermark each `(zone, ledger, history)` has been rebuilt to.
+    ///
+    /// So a rebuild is paid once per watermark rather than once per submission: replaying even a
+    /// bounded history costs something, and the answer does not change until more arrives.
+    ///
+    /// Keyed by history and not merely by ledger, because histories are independent: what one
+    /// caller's engine has absorbed says nothing about another's, and a note kept per ledger would
+    /// let the first history replayed stand in for every history the ledger holds.
+    applied: std::sync::Mutex<std::collections::BTreeMap<(String, String, String), String>>,
+}
+
+impl Submitter {
+    pub fn new(
+        decider: Arc<Decider>,
+        streams: Arc<Streams>,
+        metrics: permguard_core::metrics::Metrics,
+    ) -> Self {
+        let bounds = streams.bounds();
+
+        Self {
+            decider,
+            streams,
+            metrics,
+            clock_skew: bounds.clock_skew,
+            allowed_lateness: bounds.allowed_lateness,
+            // Local unless a deployment says otherwise: a plane that silently began deciding
+            // against another plane's events would answer the same request differently, with
+            // nothing to explain why.
+            consistency: permguard_core::config::Consistency::Local,
+            imports: None,
+            max_staleness: permguard_core::config::DEFAULT_EVENTS_PULL_MAX_STALENESS,
+            applied: std::sync::Mutex::new(std::collections::BTreeMap::new()),
+        }
+    }
+
+    /// Decides against imported history as well, under this mode.
+    pub fn with_shared_history(
+        mut self,
+        consistency: permguard_core::config::Consistency,
+        imports: Arc<super::imports::Imports>,
+        max_staleness: std::time::Duration,
+    ) -> Self {
+        self.consistency = consistency;
+        self.imports = Some(imports);
+        self.max_staleness = max_staleness;
+
+        self
+    }
+
+    /// Which history this plane's decisions range over.
+    pub fn consistency(&self) -> permguard_core::config::Consistency {
+        self.consistency
+    }
+
+    /// The journals this plane writes, for the surfaces that report on them.
+    pub fn streams(&self) -> &Arc<Streams> {
+        &self.streams
+    }
+
+    /// Submits one occurrence.
+    pub async fn submit(&self, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+        let started = Instant::now();
+        let answered = self.answer(request).await;
+        self.metrics.observe(
+            &measure::SUBMISSION_SECONDS,
+            &[],
+            started.elapsed().as_secs_f64(),
+        );
+
+        answered
+    }
+
+    async fn answer(&self, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+        // The plane's own clock on this submission, which the decision record carries: how long
+        // this plane took, separate from how long the transport took.
+        let started_at = Instant::now();
+        let Read {
+            zone,
+            ledger,
+            profile,
+            occurrence,
+            event,
+        } = self.read(request)?;
+        let labels = [("zone", zone.as_str()), ("ledger", ledger.as_str())];
+
+        let loaded = self.decider.loaded(&zone, &ledger, &profile).await?;
+        let addressed = self.addressed(&loaded, &profile)?;
+
+        // Every partition, before anything is written. A profile may address several with
+        // different schemas, and an occurrence only some of them accept is not one this ledger can
+        // hold: recording it would leave the addressed partitions holding different histories of
+        // the same events.
+        let mut checks: Vec<Verified<'_>> = Vec::with_capacity(addressed.len());
+        for (partition, engine) in &addressed {
+            let checked = engine.check(&occurrence).map_err(|refused| {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", refused.code)]);
+                debug!(
+                    event.name = "temporal.event_refused",
+                    component = COMPONENT,
+                    zone = zone.as_str(),
+                    ledger = ledger.as_str(),
+                    partition = partition.name.as_str(),
+                    code = refused.code,
+                    "an occurrence was refused before anything was recorded"
+                );
+
+                ApiError::new(
+                    ErrorClass::Validation,
+                    refused.code,
+                    format!("the partition `{}`: {}", partition.name, refused.message),
+                )
+            })?;
+            checks.push((Arc::clone(partition), *engine, checked));
+        }
+
+        // Every addressed partition must agree about which history this occurrence belongs to.
+        // Two partitions of one profile pinning it differently would be two answers to "which
+        // events does this one see", and the record carries one history key.
+        let history = self.history_key(&checks, &zone, &ledger)?;
+        // The string that names it, computed once and used for all three things that must agree:
+        // the record it is stored under, the index it is scanned by, and the engine that decides.
+        let partition_key = history_of(&history);
+        let decides = checks
+            .first()
+            .is_some_and(|(_, _, checked)| checked.decides);
+        for (partition, _, checked) in &checks {
+            if checked.decides == decides {
+                continue;
+            }
+
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "event_kind_disagrees",
+                format!(
+                    "the partitions of `{profile}` disagree about whether a `{}` event decides: \
+                     `{}` says {}. One occurrence has one answer, and returning a verdict some \
+                     partitions did not produce — or withholding one they did — is not it",
+                    occurrence.kind,
+                    partition.name,
+                    if checked.decides {
+                        "it does"
+                    } else {
+                        "it does not"
+                    }
+                ),
+            ));
+        }
+
+        let observed_at = self.now()?;
+        self.check_clock(&occurrence, &observed_at)?;
+
+        // Before the append, and deliberately: every record this replays is *already* durable, so
+        // the durable-before-observed rule is not touched, and doing it afterwards would replay the
+        // occurrence being submitted and then observe it a second time — one occurrence counted
+        // twice, which for a temporal engine is the one arithmetic that must not go wrong.
+        //
+        // Run for a history-only kind too, not just a deciding one. An engine that observed a new
+        // occurrence into an empty history is no longer *fresh*, so skipping the replay here would
+        // not defer it — it would lose it, permanently, for every decision that followed.
+        self.ensure_history(&checks, &partition_key, &occurrence, &zone, &ledger)?;
+
+        let record = Record {
+            v: 1,
+            record_type: RECORD_TYPE.to_owned(),
+            // Filled by the journal, which owns the stream identity: a producer a caller could
+            // name is a producer a caller could impersonate.
+            stream: permguard_events::record::Stream {
+                producer: self.streams.producer().clone(),
+                zone: zone.clone(),
+                ledger: ledger.clone(),
+            },
+            seq: 0,
+            prev: String::new(),
+            event_type: temporal_event_type(request),
+            event_id: occurrence.event_id.clone(),
+            occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Validation,
+                    "event_not_canonical",
+                    format!("the occurrence cannot be canonicalized: {error}"),
+                )
+            })?,
+            kind: occurrence.kind.clone(),
+            profile: profile.clone(),
+            policy_partitions: addressed
+                .iter()
+                .map(|(partition, _)| partition.name.clone())
+                .collect(),
+            commit: loaded.head.commit.clone(),
+            history_key: history.clone(),
+            occurred_at: occurrence.occurred_at.clone(),
+            observed_at,
+            event,
+        };
+
+        let appending = Instant::now();
+        let (written, record) = self
+            .streams
+            .append(&zone, &ledger, record)
+            .map_err(|failed| self.refuse_append(failed, &labels))?;
+        self.metrics.observe(
+            &measure::APPEND_SECONDS,
+            &labels,
+            appending.elapsed().as_secs_f64(),
+        );
+        self.publish_watermarks(&zone, &ledger);
+
+        let (sequence, instance) = match written {
+            Written::Appended {
+                seq, ref instance, ..
+            } => (seq, instance.clone()),
+            Written::Idempotent { seq } => {
+                // The same occurrence, already durable and already observed. Nothing is written
+                // again and nothing is observed again — observing it twice is the one thing an
+                // idempotent retry must not do, because a temporal engine counts occurrences.
+                //
+                // But a retry is not a conflict: it is what a client does when it did not see the
+                // first reply, and refusing it leaves that client with no way to learn the verdict
+                // its own occurrence produced. So the answer given the first time is given again,
+                // from disk, with nothing re-observed.
+                self.metrics.count(&measure::IDEMPOTENT, &labels);
+                match self.streams.outcome(&zone, &ledger, &occurrence.event_id) {
+                    Ok(Some(held)) => match serde_json::from_value::<SubmitResponse>(held) {
+                        Ok(response) => {
+                            info!(
+                                event.name = "temporal.idempotent",
+                                component = COMPONENT,
+                                zone = zone.as_str(),
+                                ledger = ledger.as_str(),
+                                event_id = occurrence.event_id.as_str(),
+                                sequence = seq,
+                                "a retry of an occurrence this ledger already holds, answered as \
+                                 it was answered the first time"
+                            );
+                            self.metrics.count(
+                                &measure::SUBMISSIONS,
+                                &[("outcome", "replayed"), ("zone", zone.as_str())],
+                            );
+
+                            return Ok(response);
+                        }
+                        Err(error) => warn!(
+                            event.name = "temporal.outcome_unreadable",
+                            component = COMPONENT,
+                            zone = zone.as_str(),
+                            ledger = ledger.as_str(),
+                            sequence = seq,
+                            error = %error,
+                            "the answer kept for this occurrence cannot be read back"
+                        ),
+                    },
+                    Ok(None) => warn!(
+                        event.name = "temporal.outcome_missing",
+                        component = COMPONENT,
+                        zone = zone.as_str(),
+                        ledger = ledger.as_str(),
+                        sequence = seq,
+                        "this occurrence is recorded and no answer was kept for it"
+                    ),
+                    Err(error) => warn!(
+                        event.name = "temporal.outcome_unreadable",
+                        component = COMPONENT,
+                        zone = zone.as_str(),
+                        ledger = ledger.as_str(),
+                        sequence = seq,
+                        error = %error,
+                        "the answer kept for this occurrence cannot be read"
+                    ),
+                }
+
+                // The record is here and its answer is not — the crash window between the two, or
+                // a retention that outlived the answer. Said plainly, and as its own code: this is
+                // not "you conflicted with something", and it is emphatically not a fresh verdict.
+                return Err(ApiError::new(
+                    ErrorClass::Conflict,
+                    "event_recorded_answer_unavailable",
+                    format!(
+                        "`{}` is already recorded in `{zone}/{ledger}` at sequence {seq}, with \
+                         the same content, and the answer given for it is no longer held. It was \
+                         recorded once and observed once; re-observing it would count one \
+                         occurrence twice, and deciding it again would answer against a history \
+                         that has moved",
+                        occurrence.event_id
+                    ),
+                ));
+            }
+        };
+
+        let watermark = Watermark {
+            instance,
+            sequence,
+            history: history.as_ref().map(|key| key.digest.clone()),
+        };
+
+        // This record's turn to be observed, taken before anything else that can fail and held
+        // until the application is over.
+        //
+        // The journal decided the order when it assigned the sequence; without this, the thread
+        // carrying that sequence merely races the thread carrying the next one to whichever
+        // history lock they both want, and the history a temporal policy reads would be ordered by
+        // the scheduler. Taken *before* `history_scope` so that a refusal there releases it on the
+        // way out — a sequence journalled and then abandoned must not stop the ledger.
+        let turn = self
+            .streams
+            .sequencer(&zone, &ledger)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "history_unorderable",
+                    format!(
+                        "`{zone}/{ledger}` cannot order this occurrence against the ones before \
+                         it: {error}"
+                    ),
+                )
+            })?
+            .turn(sequence);
+
+        // The history this decision will range over, and — for a bounded mode — whether it is
+        // fresh enough to range over at all. Checked after the event is durable and before it is
+        // decided: the record is kept either way, because losing it would change what *future*
+        // decisions mean, and only the answer is withheld.
+        let history = self.history_scope(&zone, &ledger)?;
+
+        // Durable, and this record's turn. Only now may an engine see it.
+        let applying = Instant::now();
+        let verdicts = self.apply(&checks, &partition_key, &occurrence, &zone, &ledger);
+        // Applied. The next sequence may go, whatever the verdict was.
+        drop(turn);
+        self.metrics.observe(
+            &measure::APPLY_SECONDS,
+            &labels,
+            applying.elapsed().as_secs_f64(),
+        );
+
+        if !decides {
+            self.metrics
+                .count(&measure::SUBMISSIONS, &[("outcome", "accepted")]);
+
+            let response = SubmitResponse {
+                outcome: Outcome::Accepted,
+                event_id: occurrence.event_id,
+                watermark,
+                decision: None,
+                decision_id: None,
+                policies: Vec::new(),
+                reason: None,
+                history,
+            };
+            self.keep_outcome(&zone, &ledger, &response.event_id, &response);
+
+            return Ok(response);
+        }
+
+        // The profile's single registered batch semantic: an explicit deny wins, silence is not a
+        // deny, and a partition that could not evaluate is an objection. The same `resolve` the
+        // stateless path uses, so one ledger cannot mean two things.
+        let outcome = permguard_languages::evaluate::resolve(verdicts);
+        let decision_id = permguard_decisions::instance::mint();
+        let reason = reason_of(&outcome);
+
+        // Recorded before the answer leaves. A plane told to refuse rather than answer unrecorded
+        // decisions refuses *here*, with the event already durable — which is the only order that
+        // keeps both promises: the history is whole whatever happens next, and no verdict this
+        // plane could not record has left it.
+        self.decider
+            .record_temporal(&crate::authz::decide::TemporalDecision {
+                decision_id: &decision_id,
+                mirror: &loaded.mirror,
+                head: &loaded.head,
+                profile: &profile,
+                subject: (
+                    occurrence.principal.kind.as_str(),
+                    occurrence.principal.id.as_str(),
+                ),
+                resource: (
+                    occurrence.resource.kind.as_str(),
+                    occurrence.resource.id.as_str(),
+                ),
+                action: occurrence.action.as_str(),
+                context: serde_json::to_value(&record.event).ok(),
+                permit: outcome.permitted,
+                policies: outcome.determining(),
+                reason: &reason.code,
+                request_id: None,
+                latency_us: u64::try_from(started_at.elapsed().as_micros()).unwrap_or(u64::MAX),
+                event: permguard_decisions::record::EventRef {
+                    event_id: record.event_id.clone(),
+                    event_type: record.event_type.clone(),
+                    instance: watermark.instance.clone(),
+                    sequence: watermark.sequence,
+                    history: watermark.history.clone(),
+                    consistency: Some(history.mode.clone()),
+                    watermark: history.watermark.clone(),
+                },
+            })
+            .await?;
+
+        self.metrics.count(
+            &measure::SUBMISSIONS,
+            &[("outcome", "decided"), ("zone", zone.as_str())],
+        );
+
+        let response = SubmitResponse {
+            outcome: Outcome::Decided,
+            event_id: occurrence.event_id,
+            watermark,
+            decision: Some(outcome.permitted),
+            decision_id: Some(decision_id),
+            policies: outcome.determining().to_vec(),
+            reason: Some(reason),
+            history,
+        };
+        self.keep_outcome(&zone, &ledger, &response.event_id, &response);
+
+        Ok(response)
+    }
+
+    /// Keeps the answer given for one occurrence, so a retry of it is answered and not refused.
+    ///
+    /// Best effort, and deliberately: the event is durable and the verdict is recorded in the
+    /// decision log either way, so failing the submission because its *convenience copy* could not
+    /// be written would turn a healthy answer into a refusal. What a failure costs is that a retry
+    /// of this one occurrence is told the answer is unavailable — which is the truth — so it is
+    /// logged where an operator will see it rather than swallowed.
+    fn keep_outcome(&self, zone: &str, ledger: &str, event_id: &str, response: &SubmitResponse) {
+        let held = match serde_json::to_value(response) {
+            Ok(held) => held,
+            Err(error) => {
+                warn!(
+                    event.name = "temporal.outcome_unwritable",
+                    component = COMPONENT,
+                    zone,
+                    ledger,
+                    event_id,
+                    error = %error,
+                    "this plane cannot render the answer it just gave"
+                );
+
+                return;
+            }
+        };
+        if let Err(error) = self.streams.record_outcome(zone, ledger, event_id, &held) {
+            warn!(
+                event.name = "temporal.outcome_unwritable",
+                component = COMPONENT,
+                zone,
+                ledger,
+                event_id,
+                error = %error,
+                "the answer given for this occurrence could not be kept: a retry of it will be \
+                 told so rather than answered"
+            );
+        }
+    }
+
+    /// Observes the occurrence into every addressed partition, in the profile's order.
+    ///
+    /// Sequential, and deliberately so: `is_authorized` both observes and decides, so two
+    /// partitions running at once would each decide against a history the other had not yet
+    /// updated. The profile's order is the order, and it is the same on every plane.
+    fn apply(
+        &self,
+        checks: &[Verified<'_>],
+        history: &str,
+        occurrence: &Occurrence,
+        zone: &str,
+        ledger: &str,
+    ) -> Vec<permguard_languages::evaluate::Verdict> {
+        let mut verdicts = Vec::with_capacity(checks.len());
+        for (partition, engine, checked) in checks {
+            match engine.apply(history, occurrence, checked) {
+                Applied::Observed => {}
+                Applied::Decided(verdict) => {
+                    if let Some(error) = verdict.error.as_deref() {
+                        warn!(
+                            event.name = "temporal.partition_failed",
+                            component = COMPONENT,
+                            zone,
+                            ledger,
+                            partition = partition.name.as_str(),
+                            reason = error,
+                            "a partition could not decide a durable occurrence: failing closed"
+                        );
+                    }
+                    verdicts.push(verdict);
+                }
+            }
+        }
+
+        verdicts
+    }
+
+    /// Which history this decision ranges over, and how fresh it is.
+    ///
+    /// Reported for every mode, including `local`: an auditor reproducing a decision needs to know
+    /// what was visible, and "only this plane's own events" is an answer to that question rather
+    /// than the absence of one.
+    fn history_scope(&self, zone: &str, ledger: &str) -> Result<HistoryScope, ApiError> {
+        let Some(imports) = &self.imports else {
+            return Ok(HistoryScope::local());
+        };
+        if !self.consistency.is_shared() {
+            return Ok(HistoryScope::local());
+        }
+        let state = imports.state(zone, ledger).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                "imported_history_unreadable",
+                format!(
+                    "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
+                ),
+            )
+        })?;
+        let staleness = staleness_of(&state.read_at);
+        self.metrics.set(
+            &measure::IMPORT_STALENESS,
+            &[("zone", zone), ("ledger", ledger)],
+            staleness.unwrap_or_default() as f64,
+        );
+
+        // `shared-bounded` is the mode that says "decide only on history I can vouch is recent".
+        // Honouring that means failing closed when it is not — including when this plane has never
+        // managed a successful read, which is the stalest state there is.
+        if matches!(
+            self.consistency,
+            permguard_core::config::Consistency::SharedBounded
+        ) {
+            let bound = self.max_staleness.as_secs();
+            let held = staleness.unwrap_or(u64::MAX);
+            if held > bound {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", "history_stale")]);
+
+                return Err(ApiError::new(
+                    ErrorClass::Unavailable,
+                    "history_stale",
+                    match staleness {
+                        Some(held) => format!(
+                            "this plane last refreshed the shared history of `{zone}/{ledger}` \
+                             {held}s ago, and `shared-bounded` decides only on history no older \
+                             than {bound}s. The event is recorded; the decision is withheld"
+                        ),
+                        None => format!(
+                            "this plane has never successfully read the shared history of \
+                             `{zone}/{ledger}`, and `shared-bounded` decides only on history it \
+                             can vouch for. The event is recorded; the decision is withheld"
+                        ),
+                    },
+                ));
+            }
+        }
+
+        // A hole is not staleness. Staleness is history this plane has not caught up with *yet*
+        // and will; a gap is history it will never hold, because the control plane no longer had
+        // it when this plane came back. Waiting does not fix it, so a freshness bound cannot
+        // notice it: a subscription that resumed past a hole reports itself perfectly fresh while
+        // deciding over fewer occurrences than actually happened.
+        let gaps = state.gaps.iter().filter(|gap| !gap.resolved).count();
+        if gaps > 0 {
+            self.metrics.set(
+                &measure::IMPORT_GAPS_OPEN,
+                &[("zone", zone), ("ledger", ledger)],
+                gaps as f64,
+            );
+        }
+        if gaps > 0
+            && matches!(
+                self.consistency,
+                permguard_core::config::Consistency::SharedBounded
+            )
+        {
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "history_incomplete")]);
+            let oldest = state
+                .gaps
+                .iter()
+                .filter(|gap| !gap.resolved)
+                .map(|gap| (gap.from_sequence, gap.to_sequence))
+                .next()
+                .unwrap_or_default();
+
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "history_incomplete",
+                format!(
+                    "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s) — the \
+                     oldest lost sequences {} through {} — and `shared-bounded` decides only on a \
+                     history it holds whole. The event is recorded; the decision is withheld until \
+                     the gap is accepted explicitly",
+                    oldest.0, oldest.1
+                ),
+            ));
+        }
+
+        Ok(HistoryScope {
+            mode: self.consistency.as_str().to_owned(),
+            watermark: (!state.offset.is_empty()).then_some(state.offset),
+            staleness_seconds: staleness,
+            // Reported for every mode, `shared-eventual` included: it decides through a hole, and
+            // an auditor reproducing the decision has to be able to see that it did.
+            gaps: gaps as u64,
+        })
+    }
+
+    /// Makes sure every addressed partition has observed the history it is about to decide against.
+    ///
+    /// # The two ways an engine ends up behind its own ledger
+    ///
+    /// A temporal engine's history lives in memory; the journal on disk is the authority. They agree
+    /// only because this feeds one from the other, and there are exactly two ordinary reasons they
+    /// stop agreeing:
+    ///
+    /// * **The engine is fresh.** A restart, or a cache eviction that recompiled the partition,
+    ///   leaves an engine that has observed nothing sitting in front of a ledger with a history.
+    ///   Nothing about the next decision looks wrong: it is a `deny` indistinguishable from a
+    ///   correct one, because the login it should have seen is on disk and not in the engine.
+    /// * **More history arrived.** Replication delivers older events later, and an engine fed out
+    ///   of order either corrupts its windows or silently ignores what arrived.
+    ///
+    /// Both are answered the same way, because both are the same question — *what should this
+    /// engine have seen* — and answering them differently is how a plane ends up with two ideas of
+    /// what a policy saw. The run is rebuilt whole rather than appended to: replication does not
+    /// respect event order, and Dogwood's engine is fed in order or not at all.
+    ///
+    /// The cost is bounded by retention, which is bounded by the longest window any loaded policy
+    /// looks back over, and it is paid once per fresh engine and once per import that moves the
+    /// watermark — never once per submission.
+    fn ensure_history(
+        &self,
+        checks: &[Verified<'_>],
+        history: &str,
+        occurrence: &Occurrence,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(), ApiError> {
+        let imported = match (&self.imports, self.consistency.is_shared()) {
+            (Some(imports), true) => Some(imports.state(zone, ledger).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "imported_history_unreadable",
+                    error.to_string(),
+                )
+            })?),
+            _ => None,
+        };
+        let watermark = imported
+            .as_ref()
+            .filter(|state| state.imported > 0)
+            .map(|state| state.offset.clone())
+            .unwrap_or_default();
+
+        let mut applied = self.applied.lock().map_err(|_| {
+            ApiError::new(
+                ErrorClass::Internal,
+                "history_lock_poisoned",
+                "this plane's record of what it has replayed is unusable",
+            )
+        })?;
+        // Per history, not per ledger: replaying one caller's events says nothing about another's,
+        // and a note kept per ledger would let the first history replayed stand in for all of them.
+        let key = (zone.to_owned(), ledger.to_owned(), history.to_owned());
+        // A fresh engine is one that has been told nothing. Asked of the engines rather than
+        // remembered here, because what a rebuild replaces is the engine: a note kept beside it
+        // would outlive the thing it described, and the partition recompiled after an eviction
+        // would read as one that had already been fed.
+        let fresh: Vec<&Verified<'_>> = checks
+            .iter()
+            .filter(|(_, engine, _)| engine.observed(history) == 0)
+            .collect();
+        let moved = applied.get(&key) != Some(&watermark);
+        if fresh.is_empty() && !moved {
+            return Ok(());
+        }
+
+        let occurrences = self.observable(zone, ledger, history, occurrence, checks)?;
+        if occurrences.is_empty() {
+            // Nothing to replay. Recorded anyway, so a ledger with no history does not re-read its
+            // journal on every submission.
+            applied.insert(key, watermark);
+
+            return Ok(());
+        }
+
+        // Everything, when the watermark moved; only what is behind, when it did not. A partition
+        // that is already up to date must not be rebuilt by a sibling's freshness — a rebuild
+        // discards a history to replace it, and doing that needlessly is a window somebody's
+        // concurrent decision falls into.
+        let rebuilding: Vec<&Verified<'_>> = match moved {
+            true => checks.iter().collect(),
+            false => fresh,
+        };
+        for (partition, engine, _) in rebuilding {
+            engine.rebuild(history, &occurrences).map_err(|refused| {
+                warn!(
+                    event.name = "temporal.rebuild_failed",
+                    component = COMPONENT,
+                    zone,
+                    ledger,
+                    partition = partition.name.as_str(),
+                    code = refused.code,
+                    "a partition could not absorb the history it decides against: failing closed \
+                     rather than deciding against a history nobody can reproduce"
+                );
+
+                ApiError::new(ErrorClass::Unavailable, refused.code, refused.message)
+            })?;
+        }
+        applied.insert(key, watermark);
+
+        Ok(())
+    }
+
+    /// The ordered run a partition of this ledger should have observed.
+    ///
+    /// This plane's own journal and, under a shared mode, what it has imported — merged into **one**
+    /// run in the documented deterministic order. One function, because "what did this policy see"
+    /// has one answer: a shared-mode rebuild that replayed only the imported half would silently
+    /// discard everything this plane recorded itself.
+    fn observable(
+        &self,
+        zone: &str,
+        ledger: &str,
+        history: &str,
+        occurrence: &Occurrence,
+        checks: &[Verified<'_>],
+    ) -> Result<Vec<Occurrence>, ApiError> {
+        let unreadable = |what: &str, detail: String| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                "history_unreadable",
+                format!("{what}: {detail}"),
+            )
+        };
+
+        // The window this partition's policies can actually look back over, taken from the loaded
+        // schemas rather than from retention. `max_window` is a validation and retention ceiling —
+        // reading everything inside it because a leaf *could* ask for it is exactly the read this
+        // index exists to avoid, and the widest declared window is the widest any leaf can name.
+        let window = checks
+            .iter()
+            .map(|(_, engine, _)| engine.contract().max_window_seconds)
+            .max()
+            .unwrap_or(0);
+        let until =
+            permguard_events::index::epoch_seconds(&occurrence.occurred_at).ok_or_else(|| {
+                unreadable(
+                    "this occurrence",
+                    "its instant is not a canonical one".to_owned(),
+                )
+            })?;
+        let query = permguard_events::index::Query {
+            event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            history: history.to_owned(),
+            // Not narrowed by action or kind: what is being rebuilt is the history a *set* of
+            // leaves will range over, and narrowing to one leaf's selectors would build an engine
+            // that answers that leaf and lies to the others.
+            action: None,
+            kind: None,
+            from: until.saturating_sub(window),
+            until,
+        };
+
+        // A range scan over this history and this window, never a read of the ledger.
+        let mut records = self
+            .streams
+            .scan(zone, ledger, &query)
+            .map_err(|error| unreadable("this plane's own journal", error.to_string()))?;
+        if let Some(imports) = &self.imports
+            && self.consistency.is_shared()
+        {
+            // The imported half, read the same way: a range scan over its own index, bounded by
+            // the same history partition and the same window. It used to be "load every imported
+            // record and filter", so a plane in a shared mode paid its whole retained import
+            // history on every decision while its own journal cost one window.
+            records.extend(
+                imports
+                    .window(zone, ledger, &query)
+                    .map_err(|error| unreadable("the imported history", error.to_string()))?,
+            );
+        }
+        records.sort_by_key(super::imports::order_of);
+
+        let mut occurrences = Vec::with_capacity(records.len());
+        for record in &records {
+            let Some(event) = record.get("event") else {
+                continue;
+            };
+            let body: OccurrenceBody = serde_json::from_value(event.clone())
+                .map_err(|error| unreadable("a stored record", error.to_string()))?;
+            occurrences.push(
+                body.read().map_err(|malformed| {
+                    unreadable("a stored occurrence", malformed.to_string())
+                })?,
+            );
+        }
+
+        Ok(occurrences)
+    }
+
+    /// The occurrence's history key, which every addressed partition must agree on.
+    fn history_key(
+        &self,
+        checks: &[Verified<'_>],
+        zone: &str,
+        ledger: &str,
+    ) -> Result<Option<permguard_events::record::HistoryKey>, ApiError> {
+        let mut agreed: Option<permguard_events::record::HistoryKey> = None;
+        for (partition, _, checked) in checks {
+            if checked.pins.is_empty() {
+                // A partition with global history contributes no key. It is not a disagreement
+                // with one that does: the record carries the key of whichever partitions derive
+                // one, and a globally-scoped partition reads everything regardless.
+                continue;
+            }
+            let key = permguard_events::record::HistoryKey {
+                pins: checked.pin_names(),
+                values: checked.pin_values(),
+                digest: history_digest(&checked.pin_names(), &checked.pin_values())?,
+            };
+            match &agreed {
+                None => agreed = Some(key),
+                Some(held) if *held == key => {}
+                Some(held) => {
+                    return Err(ApiError::new(
+                        ErrorClass::Validation,
+                        "event_history_disagrees",
+                        format!(
+                            "the partitions of `{zone}/{ledger}` derive different history keys \
+                             for this occurrence: `{}` derives {:?} and an earlier one derived \
+                             {:?}. One record carries one history key, and storing either would \
+                             put the occurrence in a partition the other engine will not look in",
+                            partition.name, key.pins, held.pins
+                        ),
+                    ));
+                }
+            }
+        }
+
+        Ok(agreed)
+    }
+
+    /// Reads the submission: the store it names, and the occurrence it carries.
+    fn read(&self, request: &SubmitRequest) -> Result<Read, ApiError> {
+        let malformed = |code: &'static str, message: String| {
+            self.metrics.count(&measure::REFUSALS, &[("reason", code)]);
+
+            ApiError::new(ErrorClass::Validation, code, message)
+        };
+
+        let store = request.store.as_ref().ok_or_else(|| {
+            malformed(
+                "store_required",
+                "a submission names its store: `store.zone` and `store.ledger`".to_owned(),
+            )
+        })?;
+        let named = |value: &Option<String>, field: &str| {
+            value
+                .as_deref()
+                .map(str::trim)
+                .filter(|held| !held.is_empty())
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| {
+                    malformed(
+                        "store_required",
+                        format!("`store.{field}` is required: there is no default store"),
+                    )
+                })
+        };
+        let zone = named(&store.zone, "zone")?;
+        let ledger = named(&store.ledger, "ledger")?;
+        let profile = store
+            .profile
+            .as_deref()
+            .map(str::trim)
+            .filter(|held| !held.is_empty())
+            .unwrap_or(permguard_languages::request::DEFAULT_PROFILE)
+            .to_owned();
+
+        let body = request.event.as_ref().ok_or_else(|| {
+            malformed(
+                "event_required",
+                "a submission carries an event: `event.type` and `event.data`".to_owned(),
+            )
+        })?;
+        let declared = body.kind.as_deref().unwrap_or_default();
+        // The type is checked, never obeyed. This build implements one occurrence contract; a
+        // second one is a registry entry with its own validator, not a branch here.
+        if declared != permguard_languages::event::EVENT_TYPE {
+            return Err(malformed(
+                "event_type_unsupported",
+                format!(
+                    "`{declared}` is not an event type this plane accepts; it accepts `{}`",
+                    permguard_languages::event::EVENT_TYPE
+                ),
+            ));
+        }
+        let data = body
+            .data
+            .clone()
+            .ok_or_else(|| malformed("event_required", "`event.data` is required".to_owned()))?;
+        let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
+            malformed(
+                "event_malformed",
+                format!(
+                    "`event.data` is not a `{}`: {error}",
+                    permguard_languages::event::EVENT_TYPE
+                ),
+            )
+        })?;
+        let occurrence = parsed
+            .read()
+            .map_err(|why| malformed(why.code, why.message))?;
+
+        Ok(Read {
+            zone,
+            ledger,
+            profile,
+            occurrence,
+            event: data,
+        })
+    }
+
+    /// The addressed partitions, each with its remembering half.
+    fn addressed<'a>(
+        &self,
+        loaded: &'a Loaded,
+        profile: &str,
+    ) -> Result<Vec<Addressed<'a>>, ApiError> {
+        // Present, because `Decider::loaded` refused a profile this ledger does not declare before
+        // anything reached here, against the same `head` snapshot. Absent would mean this build
+        // read one manifest two different ways, which is not a caller's mistake and not a state to
+        // answer from.
+        let declared = loaded.head.manifest.profiles.get(profile).ok_or_else(|| {
+            ApiError::new(
+                ErrorClass::Internal,
+                "profile_vanished",
+                format!(
+                    "the profile `{profile}` was resolved and is now absent from the same commit"
+                ),
+            )
+        })?;
+        if !permguard_objects::manifest::is_temporal_profile(&declared.r#type) {
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "profile_not_temporal",
+                format!(
+                    "the profile `{profile}` is `{}`, which decides from the request alone. Submit \
+                     to `{}` instead, or name a `{}` profile",
+                    declared.r#type,
+                    permguard_languages::request::EVALUATION_PATH,
+                    temporal::INTERFACE
+                ),
+            ));
+        }
+
+        let mut addressed = Vec::with_capacity(loaded.partitions.len());
+        for partition in &loaded.partitions {
+            let engine = partition.evaluator().temporal().ok_or_else(|| {
+                // The manifest gate refuses this combination at load, so reaching it means a
+                // ledger was loaded by a build whose gate disagreed with this one. Fail closed.
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "partition_not_temporal",
+                    format!(
+                        "the partition `{}` runs `{}`, which keeps no history",
+                        partition.name, partition.language
+                    ),
+                )
+            })?;
+            addressed.push((partition, engine));
+        }
+        if addressed.is_empty() {
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "profile_empty",
+                format!("the profile `{profile}` names no partitions"),
+            ));
+        }
+
+        Ok(addressed)
+    }
+
+    /// This plane's own clock, as the canonical instant a record carries.
+    fn now(&self) -> Result<String, ApiError> {
+        let seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX))
+            .unwrap_or_default();
+
+        permguard_events::index::render_epoch_seconds(seconds).ok_or_else(|| {
+            ApiError::new(
+                ErrorClass::Internal,
+                "clock_unusable",
+                "this plane's clock is outside the range an event record can state".to_owned(),
+            )
+        })
+    }
+
+    /// Whether the caller's `occurred_at` is one this plane will record.
+    ///
+    /// Untrusted, and bounded from both sides. Too far ahead and a caller could place an event
+    /// beyond every window a policy looks in, so nothing ever matches it; too far behind and it
+    /// would land inside a window whose events have already decided something, changing the
+    /// meaning of a decision already given.
+    fn check_clock(&self, occurrence: &Occurrence, observed_at: &str) -> Result<(), ApiError> {
+        let Some(now) = permguard_events::index::epoch_seconds(observed_at) else {
+            return Err(ApiError::new(
+                ErrorClass::Internal,
+                "clock_unusable",
+                "this plane's clock is not a canonical instant".to_owned(),
+            ));
+        };
+        let ahead = occurrence.occurred_at_epoch.saturating_sub(now);
+        let behind = now.saturating_sub(occurrence.occurred_at_epoch);
+        let skew = i64::try_from(self.clock_skew.as_secs()).unwrap_or(i64::MAX);
+        let lateness = i64::try_from(self.allowed_lateness.as_secs()).unwrap_or(i64::MAX);
+
+        if ahead > skew {
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "event_ahead_of_clock")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "event_ahead_of_clock",
+                format!(
+                    "`{}` is {ahead}s ahead of this plane's clock, and it accepts at most {skew}s \
+                     of skew. An event placed in the future sits outside every window a policy \
+                     looks in until the clock reaches it",
+                    occurrence.occurred_at
+                ),
+            ));
+        }
+        if behind > lateness {
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "event_too_late")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "event_too_late",
+                format!(
+                    "`{}` is {behind}s old, and this plane accepts events up to {lateness}s late. \
+                     Recording it now would put it inside windows that have already decided \
+                     something, which would change what those decisions meant",
+                    occurrence.occurred_at
+                ),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Turns an append failure into the answer a caller can act on.
+    fn refuse_append(&self, failed: Failed, labels: &[(&str, &str)]) -> ApiError {
+        match failed {
+            Failed::Conflict { seq, stored_digest } => {
+                self.metrics.count(&measure::CONFLICTS, labels);
+                warn!(
+                    event.name = "temporal.event_id_conflict",
+                    component = COMPONENT,
+                    sequence = seq,
+                    stored = stored_digest.as_str(),
+                    "one event id was submitted twice with different content"
+                );
+
+                ApiError::new(
+                    ErrorClass::Conflict,
+                    "event_id_conflict",
+                    format!(
+                        "this event id is already recorded at sequence {seq} carrying a different \
+                         occurrence. An id says two submissions are the same occurrence; two \
+                         different ones under it is either a client that reuses ids or a replay, \
+                         and neither is resolved by picking one"
+                    ),
+                )
+            }
+            // No `on_full: open`. A journal that cannot accept an event fails the request closed:
+            // dropping it would silently change what every later decision in this ledger means.
+            Failed::Journal(permguard_events::journal::JournalError::Full) => {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", "journal_full")]);
+
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "journal_full",
+                    "this plane's event journal for that ledger is full. Temporal history is \
+                     never dropped to make room: an event silently lost would change what future \
+                     authorizations mean, so submissions fail until the control plane has \
+                     acknowledged what is held"
+                        .to_owned(),
+                )
+            }
+            Failed::Journal(error) => {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", "journal_unavailable")]);
+                warn!(
+                    event.name = "temporal.journal_unavailable",
+                    component = COMPONENT,
+                    reason = %error,
+                    "an occurrence could not be made durable: failing closed"
+                );
+
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "journal_unavailable",
+                    format!(
+                        "this occurrence could not be made durable, so it was not decided: {error}"
+                    ),
+                )
+            }
+            Failed::Digest(error) => ApiError::new(
+                ErrorClass::Internal,
+                "record_not_canonical",
+                format!("the event record could not be canonicalized: {error}"),
+            ),
+        }
+    }
+
+    /// Publishes where this ledger's journal stands, after each append.
+    fn publish_watermarks(&self, zone: &str, ledger: &str) {
+        let Ok(state) = self.streams.state(zone, ledger) else {
+            return;
+        };
+        for (name, value) in [
+            ("durable", state.durable_through),
+            ("signed", state.signed_through),
+            ("acknowledged", state.acked_through),
+            ("oldest_retained", state.oldest_retained),
+        ] {
+            self.metrics.set(
+                &measure::WATERMARK,
+                &[("zone", zone), ("ledger", ledger), ("watermark", name)],
+                value as f64,
+            );
+        }
+        if let Ok(bytes) = self.streams.bytes(zone, ledger) {
+            self.metrics.set(
+                &measure::JOURNAL_BYTES,
+                &[("zone", zone), ("ledger", ledger)],
+                bytes as f64,
+            );
+        }
+    }
+}
+
+/// How long ago an instant was, in seconds, or `None` for one that never happened.
+fn staleness_of(read_at: &str) -> Option<u64> {
+    let then = permguard_events::index::epoch_seconds(read_at)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or_default();
+
+    u64::try_from(now.saturating_sub(then)).ok()
+}
+
+/// A submission, read.
+struct Read {
+    zone: String,
+    ledger: String,
+    profile: String,
+    occurrence: Occurrence,
+    /// The occurrence exactly as the caller sent it, which is what the record carries and what the
+    /// occurrence digest is taken over.
+    event: serde_json::Value,
+}
+
+/// The registered event type this submission asserted, after it was checked.
+fn temporal_event_type(request: &SubmitRequest) -> String {
+    request
+        .event
+        .as_ref()
+        .and_then(|event| event.kind.clone())
+        .unwrap_or_else(|| permguard_languages::event::EVENT_TYPE.to_owned())
+}
+
+/// The key a history is addressed by: the digest, or the empty string for global history.
+///
+/// One spelling, used for the durable record, for the journal's index and for the engine that
+/// decides — because they are the same thing, and three functions deciding it separately is three
+/// chances for a decision to be taken against a history the record was not stored in.
+fn history_of(key: &Option<permguard_events::record::HistoryKey>) -> String {
+    key.as_ref()
+        .map(|key| key.digest.clone())
+        .unwrap_or_default()
+}
+
+/// The history key's digest: the index key, taken over the pins and their canonical values.
+///
+/// Domain-separated and length-delimited, like every other digest here. The pin *names* are hashed
+/// beside the values because two schemas with different pins may derive the same values, and those
+/// are different histories.
+fn history_digest(pins: &[String], values: &[String]) -> Result<String, ApiError> {
+    let value = serde_json::json!({"pins": pins, "values": values});
+
+    permguard_events::record::history_digest_of(&value).map_err(|error| {
+        ApiError::new(
+            ErrorClass::Internal,
+            "history_key_not_canonical",
+            format!("the history key could not be canonicalized: {error}"),
+        )
+    })
+}
+
+/// The two audiences of one temporal decision's reason.
+fn reason_of(outcome: &permguard_languages::evaluate::Outcome) -> temporal::Reason {
+    if !outcome.errors.is_empty() {
+        return temporal::Reason {
+            code: "partition_failed".to_owned(),
+            message: outcome.errors.join("; "),
+        };
+    }
+    if outcome.permitted {
+        return temporal::Reason {
+            code: "permitted".to_owned(),
+            message: "a policy permitted it against this partition's history".to_owned(),
+        };
+    }
+    if outcome.denials.is_empty() {
+        return temporal::Reason {
+            code: "not_permitted".to_owned(),
+            message: "no policy permitted it against this partition's history".to_owned(),
+        };
+    }
+
+    temporal::Reason {
+        code: "denied".to_owned(),
+        message: "a policy refused it against this partition's history".to_owned(),
+    }
+}

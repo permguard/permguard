@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli cp-basics cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data test version-control
+.PHONY: clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -63,6 +63,9 @@ cp-rspipe: ## Copy the release-pipeline example into the current directory.
 cp-basics: ## Copy the basics example into the current directory.
 	$(REPO_DIR)/scripts/copy-example.sh basics "$(CURDIR)"
 
+cp-dogwood: ## Copy the dogwood-session-access example into the current directory.
+	$(REPO_DIR)/scripts/copy-example.sh dogwood-session-access "$(CURDIR)"
+
 lint: ## Run clippy over every crate and target.
 	cargo clippy $(scope) --all-targets --all-features $(ARGS) -- -D warnings
 
@@ -77,6 +80,15 @@ run-data: ## Run the data plane locally.
 
 run-all: ## Run the all-in-one runtime locally.
 	PERMGUARD_RUNTIME_PLANES=$${PERMGUARD_RUNTIME_PLANES:-control,data} cargo run $(profile) -p permguard-all-in-one --bin permguard-all-in-one -- crates/permguard-all-in-one/$(CONFIG) $(ARGS)
+
+run-experimental-control: ## Run the control plane with the event store on.
+	$(MAKE) plane-run PLANE=control CONFIG=config.local-experimental.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
+
+run-experimental-data: ## Run the data plane with the temporal interface on.
+	$(MAKE) plane-run PLANE=data CONFIG=config.local-experimental.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
+
+run-experimental: ## Run both planes in one process with every experimental runtime turned on.
+	$(MAKE) run-all CONFIG=config.local-experimental.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
 run-as-tls-control: ## Run the control plane locally, with TLS.
 	$(MAKE) plane-run PLANE=control CONFIG=config.local-tls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
@@ -141,6 +153,9 @@ bench-server-shed: ## Run the control plane for the shed benchmark: a low reques
 
 bench-decide: ## What a decision costs — the PDP path, cold and warm, single and boxcarred.
 	k6 run --tag testid=decide-$$(date +%Y%m%d-%H%M%S) $(K6_ARGS) bench/decide.js
+
+bench-temporal: ## What an occurrence costs — recorded, decided, and under overlap.
+	k6 run --tag testid=temporal-$$(date +%Y%m%d-%H%M%S) $(K6_ARGS) bench/temporal.js
 
 bench-peak: ## Closed-loop throughput ceiling against /version. Needs bench-server running.
 	k6 run --tag testid=peak-$$(date +%Y%m%d-%H%M%S) $(K6_ARGS) bench/peak.js

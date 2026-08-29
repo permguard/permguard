@@ -243,7 +243,10 @@ fn to_model(file: &ManifestFile) -> Result<Manifest, String> {
                         required: artifact.required,
                     })
                     .collect(),
-                history: partition.history.as_ref().map(|history| history.scope.into()),
+                history: partition
+                    .history
+                    .as_ref()
+                    .map(|history| history.scope.into()),
                 input: partition.input.as_ref().map(|input| InputContract {
                     r#type: input.r#type.clone(),
                     required: input.required,
@@ -355,7 +358,7 @@ partitions:
     schema: false
     input: { type: permguard.cedar.entities.v1, required: true }
 profiles:
-  default: { type: permguard.pdp.v1, partitions: [p] }
+  default: { type: permguard.api.pdp.native.v1, partitions: [p] }
 "#;
 
     #[test]
@@ -393,8 +396,8 @@ profiles:
             ("the metadata", "kind: policy", "kinds: policy"),
             (
                 "a profile",
-                "type: permguard.pdp.v1",
-                "types: permguard.pdp.v1",
+                "type: permguard.api.pdp.native.v1",
+                "types: permguard.api.pdp.native.v1",
             ),
             ("the file itself", "profiles:", "profile:"),
         ] {
