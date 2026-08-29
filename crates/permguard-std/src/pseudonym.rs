@@ -21,7 +21,7 @@
 //! is also why nothing here rotates on its own — cadence belongs to the deployment's retention policy,
 //! and the version in the prefix is what lets a later question find the right key.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use zeroize::Zeroizing;
 

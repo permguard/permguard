@@ -389,6 +389,19 @@ impl std::error::Error for DigestError {}
 ///
 /// Verbatim by design: whatever fields the value carries are hashed, including
 /// ones this build does not understand.
+/// The digest bytes as lowercase hex.
+///
+/// `sha2` 0.11 returns `hybrid_array::Array` rather than `GenericArray`, and it does not implement
+/// `LowerHex` — so the rendering is explicit rather than a format specifier that silently stopped
+/// existing.
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    bytes
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 pub fn digest_of(value: &Value) -> Result<String, DigestError> {
     let canonical = jcs::canonicalize(value).map_err(DigestError::Canonical)?;
 
@@ -396,7 +409,7 @@ pub fn digest_of(value: &Value) -> Result<String, DigestError> {
     hasher.update(DIGEST_DOMAIN.as_bytes());
     hasher.update(&canonical);
 
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex_digest(hasher.finalize())))
 }
 
 #[cfg(test)]
@@ -455,7 +468,7 @@ mod tests {
 
         let bare = {
             use sha2::Digest as _;
-            format!("sha256:{:x}", sha2::Sha256::digest(br#"{"a":1}"#))
+            format!("sha256:{}", hex_digest(sha2::Sha256::digest(br#"{"a":1}"#)))
         };
 
         assert_ne!(ours, bare, "the prefix is part of the input");

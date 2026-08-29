@@ -29,7 +29,7 @@
 //! key changes them — the same crypto-shredding property the pseudonyms have,
 //! and the reason the key version travels in the stream's marker.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::Value;
 use sha2::Sha256;
 
@@ -72,7 +72,7 @@ impl Commitment {
     pub fn commit(&self, value: &Value) -> Result<String, CanonicalError> {
         let canonical = jcs::canonicalize(value)?;
         // HMAC accepts a key of any length, so this cannot fail for a real key.
-        let Ok(mut mac) = <Hmac<Sha256> as Mac>::new_from_slice(&self.key) else {
+        let Ok(mut mac) = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key) else {
             return Ok(format!("hmac-sha256:{}:unavailable", self.version));
         };
         mac.update(COMMITMENT_DOMAIN.as_bytes());
@@ -127,7 +127,10 @@ mod tests {
 
         let bare = {
             use sha2::Digest as _;
-            format!("{:x}", Sha256::digest(br#""HR""#))
+            Sha256::digest(br#""HR""#)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
         };
 
         assert!(

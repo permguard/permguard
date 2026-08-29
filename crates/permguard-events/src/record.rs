@@ -431,6 +431,19 @@ pub fn digest_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// The digest bytes as lowercase hex.
+///
+/// `sha2` 0.11 returns `hybrid_array::Array` rather than `GenericArray`, and it does not implement
+/// `LowerHex` — so the rendering is explicit rather than a format specifier that silently stopped
+/// existing.
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    bytes
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn domain_digest(domain: &str, value: &Value) -> Result<String, DigestError> {
     let canonical = jcs::canonicalize(value).map_err(DigestError::Canonical)?;
 
@@ -438,7 +451,7 @@ fn domain_digest(domain: &str, value: &Value) -> Result<String, DigestError> {
     hasher.update(domain.as_bytes());
     hasher.update(&canonical);
 
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex_digest(hasher.finalize())))
 }
 
 #[cfg(test)]
