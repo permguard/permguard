@@ -1005,7 +1005,10 @@ mod tests {
 
     #[test]
     fn test_every_help_in_the_tree_carries_the_banner() {
-        let banner = crate::banner::banner();
+        // The uncoloured form: clap holds `before_help` as a styled string and
+        // drops the escapes when it renders it back, so the coloured banner and
+        // what clap returns are never equal in a terminal.
+        let banner = crate::banner::plain();
         let mut checked = 0;
 
         walk(&command(), &mut |command| {

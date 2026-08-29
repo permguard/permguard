@@ -9,17 +9,53 @@
 //! remaining bits are random, which is what makes it an identifier rather than
 //! a clock: two planes minting in the same millisecond do not collide.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ring::rand::{SecureRandom as _, SystemRandom};
+
+/// Distinguishes two identifiers minted in one process when the generator could not.
+static MINTED: AtomicU64 = AtomicU64::new(0);
 
 /// Mints a fresh incarnation identifier.
 ///
 /// Falls back to all-random bytes if the clock is before the epoch: an
 /// identifier that sorts oddly is a nuisance, one that repeats is a bug.
+///
+/// # When the generator cannot produce bytes
+///
+/// `fill` can fail, and discarding that error was a real defect: the buffer stays zero, the
+/// timestamp overwrites the leading six bytes, and every identifier minted in the same millisecond
+/// becomes the same identifier. These name journal incarnations, decision records and streams —
+/// two of one is a stream the far end closes as forked, and an audit record nobody can tell from
+/// another.
+///
+/// The failure is not propagated, and that is a choice rather than an omission. Two of the five
+/// callers are infallible constructors, and making them fallible to carry an error that means "this
+/// machine has no working entropy source" pushes a condition nobody can act on through code that
+/// has nothing to do with it. What the failure must not do is produce *duplicates*, so it does not:
+/// a process-wide counter is mixed into the bytes the generator was supposed to fill, and it is
+/// monotonic whether or not the generator worked.
+///
+/// The result is weaker than a random identifier — predictable, in the worst case — and that is
+/// sound here because these are names, not secrets: nothing authenticates by guessing one. What is
+/// preserved is the property everything else depends on, which is that they are all different.
 pub fn mint() -> String {
     let mut bytes = [0u8; 16];
-    let _ = SystemRandom::new().fill(&mut bytes);
+    if SystemRandom::new().fill(&mut bytes).is_err() {
+        // Whatever else is true, these ten bytes will not repeat inside this process.
+        let counted = MINTED.fetch_add(1, Ordering::Relaxed);
+        let pid = u64::from(std::process::id());
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|since| since.subsec_nanos())
+            .unwrap_or_default();
+        for (index, shift) in (6..14).zip([56, 48, 40, 32, 24, 16, 8, 0]) {
+            bytes[index] = ((counted ^ pid.rotate_left(17) ^ u64::from(nanos)) >> shift) as u8;
+        }
+        bytes[14] = (counted >> 8) as u8;
+        bytes[15] = counted as u8;
+    }
 
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)

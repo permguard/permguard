@@ -24,6 +24,12 @@ struct PlaneState {
     version: String,
     commit: String,
     health: Health,
+    /// The event ingestion capability, when this deployment serves it.
+    ///
+    /// Carried so `/health` can say *which* part of the plane is not ready. A plane whose event
+    /// trust set is empty accepts no batch, and reporting that as process-wide not-ready would take
+    /// its decisions and its catalog out of rotation over a capability neither of them uses.
+    events: Option<std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>>,
 }
 
 #[derive(Serialize)]
@@ -38,6 +44,22 @@ struct InfoBody {
 struct HealthBody {
     live: bool,
     ready: bool,
+    /// What each capability this deployment serves can currently do, when it is not simply ready.
+    ///
+    /// Added rather than folded into `ready`: a reader that only knows the two booleans keeps
+    /// reading them and gets the same answer it always did, and a reader that wants to know *why*
+    /// a plane is accepting nothing no longer has to infer it from refusals.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    degraded: Vec<Degraded>,
+}
+
+/// One capability that is served and cannot currently do its work.
+#[derive(Serialize)]
+struct Degraded {
+    /// The capability's name, as the configuration calls it.
+    capability: &'static str,
+    /// Why, in the terms an operator would fix it in.
+    reason: &'static str,
 }
 
 /// A facade composed once per store directory, for every surface that serves it.
@@ -66,6 +88,10 @@ pub struct ControlPlaneModule {
     events: Composed<crate::events::http::EventFacade>,
     event_store:
         std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
+    /// The composed facade, shared with the service that re-reads the producers' published keys.
+    /// The trust set lives behind an `Arc` inside it, so what that service reloads is what
+    /// ingestion admits under.
+    event_trust: std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
     decisions: Composed<crate::decisions::http::DecisionFacade>,
 }
 
@@ -105,7 +131,7 @@ impl ControlPlaneModule {
         let directory = config.event_store_directory();
 
         composed(&self.events, directory.clone(), || {
-            build_event_facade(context, &directory, &self.event_store)
+            build_event_facade(context, &directory, &self.event_store, &self.event_trust)
         })
     }
 
@@ -154,6 +180,13 @@ impl PlaneModule for ControlPlaneModule {
                 crate::events::retention::EventRetentionService::new()
                     .with_store(std::sync::Arc::clone(&self.event_store)),
             ),
+            // A producer publishes its keys into a file and rotates them. Re-reading only when a
+            // batch cannot be attributed makes "this plane trusts nobody" a state discovered by
+            // somebody else's failure, and on a first start there is no batch to discover it with.
+            Box::new(
+                crate::events::trust::EventTrustService::new()
+                    .with_facade(std::sync::Arc::clone(&self.event_trust)),
+            ),
         ]
     }
 
@@ -162,7 +195,7 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn http_routes(&self, context: &ServerContext<'_>) -> Router {
-        let state = plane_state(context);
+        let state = plane_state(context).serving_events(&self.event_trust, context.config());
 
         let routes = Router::new()
             .route("/", get(info))
@@ -212,11 +245,14 @@ impl PlaneModule for ControlPlaneModule {
             None => routes,
         };
 
-        routes.merge(discovery_routes(context))
+        routes.merge(discovery_routes(
+            context,
+            self.event_facade(context).is_some(),
+        ))
     }
 
     fn grpc_routes(&self, context: &ServerContext<'_>) -> Router {
-        let state = plane_state(context);
+        let state = plane_state(context).serving_events(&self.event_trust, context.config());
         let mut grpc = RoutesBuilder::default();
         grpc.add_service(ControlPlaneServer::new(PlaneApi {
             plane: state.plane,
@@ -224,7 +260,10 @@ impl PlaneModule for ControlPlaneModule {
             version: state.version,
             commit: state.commit,
             health: state.health,
-            configuration: control_configuration_document(context),
+            configuration: control_configuration_document(
+                context,
+                self.event_facade(context).is_some(),
+            ),
         }));
 
         if let Some(catalog) = context.catalog() {
@@ -309,7 +348,7 @@ fn grpc_message_ceiling(config: &permguard_core::Config) -> usize {
 /// `/control-plane/keys` (the plane's signing ring, published as JWKS). The
 /// cross-plane registry is the process's business and lives on the telemetry
 /// surface, so nothing ever collapses two planes onto one public port.
-fn discovery_routes(context: &ServerContext<'_>) -> Router {
+fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Router {
     #[derive(Clone)]
     struct Discovery {
         document: String,
@@ -335,7 +374,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
     }
 
     let state = Discovery {
-        document: control_configuration_document(context),
+        document: control_configuration_document(context, events_composed),
         keys: context.control_signing_keys().cloned(),
     };
 
@@ -350,7 +389,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 /// caller fills in (`{zone}`, `{ledger}`, `{ref}`). It describes this plane
 /// and nothing else; the base URL is resolved from the same configuration
 /// the listener binds with.
-fn control_configuration_document(context: &ServerContext<'_>) -> String {
+fn control_configuration_document(context: &ServerContext<'_>, events_composed: bool) -> String {
     let base = permguard_server::plane::plane_http_base(
         context.config(),
         permguard_server::plane::PlaneId::Control,
@@ -384,7 +423,7 @@ fn control_configuration_document(context: &ServerContext<'_>) -> String {
         ),
         base = base,
         ledger = ledger,
-        interfaces = interfaces(context, &base),
+        interfaces = interfaces(events_composed, &base),
         http = transport_enabled(
             context,
             permguard_server::plane::SETTING_CONTROL_HTTP_ENABLED
@@ -411,8 +450,15 @@ fn control_configuration_document(context: &ServerContext<'_>) -> String {
 /// Rendered as a trailing fragment rather than a field, because this document is written in source
 /// order on purpose: who I am, my keys, my protocols, the plain APIs, and only then the interfaces
 /// that hang off them.
-fn interfaces(context: &ServerContext<'_>, base: &str) -> String {
-    if !events_served(context.config()) {
+fn interfaces(events_composed: bool, base: &str) -> String {
+    // Whether the interface *was composed*, not whether it was configured.
+    //
+    // A store that would not open, or read offsets that could not be signed, leave the routes
+    // uninstalled — deliberately, because serving them badly is worse than not serving them. The
+    // document used to be written from the configuration instead, so exactly that deployment
+    // advertised an endpoint which answered 404: a client would read the interface as present,
+    // call it, and get a refusal that names nothing.
+    if !events_composed {
         return String::new();
     }
 
@@ -490,6 +536,29 @@ fn events_startup_check(config: &permguard_core::Config) -> anyhow::Result<()> {
                 `zone`/`ledger` (which may be `*`)"
             );
         }
+        // A trust source that is not there *yet* is not the same fault as one that is there and
+        // wrong.
+        //
+        // A producer publishes its own public keys, and its ring rotates: the file is written by
+        // the plane that signs, on a cadence, into a volume both planes see. So on a first start —
+        // an all-in-one on a clean volume, a control plane scheduled before its data plane — the
+        // path is legitimately empty, and refusing to boot makes a deployment that would have
+        // converged in seconds unstartable instead. The reload behind `producer_files` picks the
+        // file up when it appears, which is the same path a rotation takes.
+        //
+        // Nothing is loosened by waiting: ingest is fail-closed per batch, and a producer whose
+        // keys this plane does not hold has its batches refused as unattributable. What is refused
+        // here is the *silent* version of that — a path nobody will ever write, misread as a plane
+        // that simply has not started yet — which is why only absence is tolerated. A file that
+        // exists and cannot be parsed, or that carries no key, is still fatal: it is a trust source
+        // an operator believes is in force.
+        // Silent here on purpose: startup checks run while the configuration is still being built,
+        // before `logging::install`, so a record emitted from this function reaches no subscriber.
+        // The operator is told once the surfaces compose, by `events.no_producers`, which names the
+        // setting and says the batches are refused until it is satisfied.
+        if !config.working_dir().join(&source.path).exists() {
+            continue;
+        }
         let keys = read_key_set(config, &source.path).map_err(|error| {
             anyhow::anyhow!(
                 "reading event producer `{}` from `{}`: {error:#}",
@@ -520,6 +589,7 @@ fn build_event_facade(
     context: &ServerContext<'_>,
     directory: &std::path::Path,
     shared: &std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
+    facades: &std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
 ) -> Option<crate::events::http::EventFacade> {
     let config = context.config();
     let store = match crate::events::EventStore::open(directory) {
@@ -586,6 +656,9 @@ fn build_event_facade(
     };
     if let Ok(mut held) = shared.lock() {
         *held = Some(std::sync::Arc::clone(&facade.store));
+    }
+    if let Ok(mut held) = facades.lock() {
+        *held = Some(facade.clone());
     }
 
     Some(facade)
@@ -786,6 +859,22 @@ fn plane_state(context: &ServerContext<'_>) -> PlaneState {
             String::new()
         },
         health: context.health().clone(),
+        events: None,
+    }
+}
+
+impl PlaneState {
+    /// Reports the event capability's state alongside the process's, when this plane serves it.
+    fn serving_events(
+        mut self,
+        events: &std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
+        config: &permguard_core::Config,
+    ) -> Self {
+        if events_served(config) {
+            self.events = Some(std::sync::Arc::clone(events));
+        }
+
+        self
     }
 }
 
@@ -799,9 +888,37 @@ async fn info(State(state): State<PlaneState>) -> Json<InfoBody> {
 }
 
 async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
+    let mut degraded = Vec::new();
+    // Served and holding nobody's keys: every batch is refused as unattributable, which from the
+    // outside looks like the producers are at fault. Said here instead.
+    if let Some(events) = &state.events {
+        // Two different failures, and they were being reported as one. A facade that was never
+        // composed — a store that would not open, read offsets that could not be signed — is not a
+        // plane waiting for somebody to publish keys, and saying so would send an operator to fix
+        // the wrong thing while the store's own refusal sits in the log above.
+        let composed = events.lock().ok().and_then(|held| {
+            held.as_ref()
+                .map(|facade| facade.accepted_producers().len())
+        });
+        match composed {
+            None => degraded.push(Degraded {
+                capability: "events",
+                reason: "the event store did not compose: this plane serves no event routes at \
+                         all, and the reason it could not open them was recorded at startup",
+            }),
+            Some(0) => degraded.push(Degraded {
+                capability: "events",
+                reason: "no producer key set has loaded: batches are refused as unattributable \
+                         until one is published under `controlPlane.events.producer_keys`",
+            }),
+            Some(_) => {}
+        }
+    }
+
     Json(HealthBody {
         live: state.health.is_live(),
         ready: state.health.is_ready(),
+        degraded,
     })
 }
 

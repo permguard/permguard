@@ -452,6 +452,11 @@ pub struct Decider {
     /// So the first caller for a key does the work and the rest wait for it, then find it cached.
     /// Keys are independent, so one slow ledger never queues another's.
     single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
+    /// The bound on concurrent blocking work — see [`Decider::with_blocking`].
+    blocking: crate::blocking::Blocking,
+    /// Profiles whose evaluation keeps overrunning its deadline — see
+    /// [`crate::authz::quarantine`].
+    quarantine: Arc<super::quarantine::Quarantine>,
 }
 
 enum AuditTarget {
@@ -468,6 +473,8 @@ impl Decider {
         recorder: Option<AuditRecorder>,
         max_evaluations: usize,
     ) -> Self {
+        let metrics_for_pool = metrics.clone();
+
         Self {
             root,
             cache,
@@ -483,7 +490,29 @@ impl Decider {
             // by a test is about something else, and should see what was compiled in.
             enabled: permguard_languages::registry::Enabled::everything(),
             single_flight: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            // A bound on how much blocking work exists at once, defaulted rather than optional:
+            // an unbounded `spawn_blocking` is what lets a plane accumulate instead of refusing,
+            // and a deployment that has not thought about the number still gets one. The
+            // composition root replaces it with the configured size.
+            blocking: crate::blocking::Blocking::new(
+                permguard_core::config::default_max_blocking(),
+                metrics_for_pool,
+            ),
+            quarantine: Arc::new(super::quarantine::Quarantine::new()),
         }
+    }
+
+    /// The bound on concurrent blocking work this decider uses.
+    ///
+    /// Evaluation is the work that matters here. A provider is synchronous and upstream offers no
+    /// way to interrupt one — the operation limit it enforces is a count, not a clock — so a
+    /// provider that blocks holds its thread until it returns. What can be bounded is *how many* of
+    /// them there are: one hung evaluation costs a permit, and when the permits are gone the plane
+    /// refuses immediately instead of letting the runtime's queue grow behind it.
+    pub fn with_blocking(mut self, blocking: crate::blocking::Blocking) -> Self {
+        self.blocking = blocking;
+
+        self
     }
 
     /// The half of this decider that loading needs, cheap to move onto a blocking thread.
@@ -752,6 +781,32 @@ impl Decider {
         // is a worker not accepting connections. One hop, not one per evaluation: the batch is
         // sequential by contract (a semantic that stops at the first deny has to stop), so there
         // is nothing to interleave and every extra hop would be latency for its own sake.
+        // Refused before evaluating, when evaluating this has been overrunning.
+        //
+        // A provider is synchronous and cannot be interrupted, so an evaluation that has stopped
+        // returning costs a permit from the bounded pool until it does. Letting every request for
+        // the same profile take another permit is how a plane spends its whole capacity on work
+        // nobody is waiting for; the breaker spends one request per cooldown instead.
+        let guarded = format!("{}/{}/{}", resolved.zone, resolved.ledger, resolved.profile);
+        if let super::quarantine::Admits::No { overruns, retry_in } =
+            self.quarantine.admits(&guarded)
+        {
+            self.metrics
+                .count(&super::measure::REFUSALS, &[("reason", "quarantined")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "evaluation_quarantined",
+                format!(
+                    "evaluating `{guarded}` overran its deadline {overruns} times in a row and is \
+                     out of service for another {}s. A provider inside an evaluation cannot be \
+                     interrupted, so this plane stops spending capacity on it and lets one request \
+                     through when the cooldown ends",
+                    retry_in.as_secs()
+                ),
+            ));
+        }
+
         let plan = Plan {
             head: Arc::clone(&head),
             partitions,
@@ -770,14 +825,52 @@ impl Decider {
             // left, and every partition refuses immediately: fail-closed, and honest about why.
             deadline: self.budget.map(|budget| started + budget),
         };
-        let decisions = tokio::task::spawn_blocking(move || plan.run())
+        // The breaker learns from inside the work, not from the future waiting on it.
+        //
+        // A request cancelled while its evaluation runs — an HTTP timeout, a client that hung up —
+        // drops everything after the `.await`, so an overrun recorded there is recorded only when
+        // the caller survived to record it. That is exactly backwards: the evaluations worth
+        // learning from are the slow ones, and the slow ones are the ones whose callers gave up.
+        let watching = (Arc::clone(&self.quarantine), guarded.clone(), self.budget);
+        let decisions = self
+            .blocking
+            .run(&[], move || {
+                let (quarantine, guarded, budget) = watching;
+                let evaluating = Instant::now();
+                let outcome = plan.run();
+                if let Some(budget) = budget {
+                    match evaluating.elapsed() > budget {
+                        true => {
+                            quarantine.overran(&guarded);
+                        }
+                        false => quarantine.in_time(&guarded),
+                    }
+                }
+
+                outcome
+            })
             .await
-            .map_err(|error| {
-                ApiError::new(
+            .map_err(|refused| match refused {
+                crate::blocking::Refused::AtCapacity(held) => {
+                    self.metrics
+                        .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        "evaluation_at_capacity",
+                        format!(
+                            "{held}. An evaluation is synchronous and a provider inside one cannot \
+                             be interrupted, so this plane bounds how many may run at once and \
+                             refuses beyond it rather than queueing behind work that may not \
+                             return"
+                        ),
+                    )
+                }
+                crate::blocking::Refused::Failed(why) => ApiError::new(
                     ErrorClass::Internal,
                     "decision_failed",
-                    format!("the evaluation did not complete: {error}"),
-                )
+                    format!("the evaluation did not complete: {why}"),
+                ),
             })??;
 
         // The whole request's verdict: for a plain request it is the one decision; for a
@@ -1204,8 +1297,24 @@ impl Decider {
         decided: OwnedDecided,
     ) -> Result<(), ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();
-        let written =
-            tokio::task::spawn_blocking(move || journal.record(&decided.borrowed())).await;
+        // Through the same bound as everything else that waits on a disk. A decision record is a
+        // durable write with a flush behind it, and an unbounded `spawn_blocking` here would be the
+        // queue the pool exists to refuse — reached from the ordinary decision path, which is the
+        // busiest one there is.
+        let written = self
+            .blocking
+            .run(&[], move || journal.record(&decided.borrowed()))
+            .await;
+        let written = match written {
+            Ok(written) => Ok(written),
+            Err(crate::blocking::Refused::AtCapacity(held)) => {
+                self.metrics
+                    .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                return self.journal_error(refuses_unrecorded, held.to_string());
+            }
+            Err(crate::blocking::Refused::Failed(why)) => Err(why),
+        };
 
         match written {
             Ok(Ok(crate::decisions::Written::Refused(reason))) => {
@@ -1221,9 +1330,9 @@ impl Decider {
             }
             Ok(Ok(_)) => Ok(()),
             Ok(Err(error)) => self.journal_error(refuses_unrecorded, error.to_string()),
-            Err(error) => self.journal_error(
+            Err(why) => self.journal_error(
                 refuses_unrecorded,
-                format!("the journal writer task failed: {error}"),
+                format!("the journal writer failed: {why}"),
             ),
         }
     }

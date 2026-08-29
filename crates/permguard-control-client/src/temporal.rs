@@ -90,11 +90,13 @@ impl TemporalPdp for HttpTemporal {
             detail: error.to_string(),
             usage: true,
         })?;
-        self.call(
+        let answer = self.call(
             "POST",
             permguard_languages::temporal::SUBMISSION_PATH,
             Some(&payload.to_string()),
-        )
+        )?;
+
+        validated(answer)
     }
 
     fn configuration(&self) -> Result<Value, Failure> {
@@ -144,7 +146,7 @@ impl TemporalPdp for GrpcTemporal {
             .run("SubmitEvent", client.submit_event(wire))
             .map_err(grpc_refusal)?;
 
-        from_proto(answer)
+        validated(from_proto(answer)?)
     }
 
     fn configuration(&self) -> Result<Value, Failure> {
@@ -209,6 +211,73 @@ fn to_proto(request: SubmitRequest) -> Result<proto::SubmitEventRequest, Failure
     };
 
     Ok(proto::SubmitEventRequest { store, event })
+}
+
+/// The answer contract both transports hold a plane to.
+///
+/// # Why this is shared rather than per transport
+///
+/// gRPC gets a shape for free: the generated types will not decode an answer that is missing its
+/// outcome or its watermark, so the gRPC client refused malformed answers by accident of its
+/// encoding. HTTP had no such accident — any JSON body under a 2xx was returned to the caller —
+/// so the same plane behaving badly was caught on one transport and passed through on the other.
+/// A client that is stricter on one wire is a client whose tests prove nothing about the other.
+///
+/// The cross-field rules are the part neither encoding could express. `decided` without a decision
+/// is an answer that claims to have decided and does not say what; `accepted` *with* one is an
+/// answer inventing a verdict for a submission that only recorded. Both are refused here rather
+/// than handed on, because a caller that acts on them acts on an authorization answer nobody gave.
+pub(crate) fn validated(answer: Value) -> Result<Value, Failure> {
+    let refused = |detail: String| Failure {
+        class: "internal".to_owned(),
+        reason: "answer_malformed".to_owned(),
+        detail,
+        usage: false,
+    };
+    // Types and required members, from the one definition of the contract.
+    let held: SubmitResponse = serde_json::from_value(answer.clone()).map_err(|error| {
+        refused(format!(
+            "the temporal answer does not hold its shape: {error}"
+        ))
+    })?;
+
+    if held.watermark.instance.is_empty() {
+        return Err(refused(
+            "the temporal answer carries a watermark with no instance".to_owned(),
+        ));
+    }
+    if held.history.mode.is_empty() {
+        return Err(refused(
+            "the temporal answer carries a history scope with no mode".to_owned(),
+        ));
+    }
+    match held.outcome {
+        Outcome::Decided => {
+            if held.decision.is_none() {
+                return Err(refused(
+                    "the temporal answer says it decided and states no decision".to_owned(),
+                ));
+            }
+            if held.decision_id.as_ref().is_none_or(|id| id.is_empty()) {
+                return Err(refused(
+                    "the temporal answer says it decided and names no decision id: an audit \
+                     record nobody can be pointed at is not a decision"
+                        .to_owned(),
+                ));
+            }
+        }
+        Outcome::Accepted => {
+            if held.decision.is_some() || held.decision_id.is_some() {
+                return Err(refused(
+                    "the temporal answer only recorded the occurrence and still carries a \
+                     decision: an accepted submission has no verdict to state"
+                        .to_owned(),
+                ));
+            }
+        }
+    }
+
+    Ok(answer)
 }
 
 fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
@@ -369,5 +438,117 @@ mod tests {
         let answer = from_proto(accepted(None)).expect("the answer converts");
 
         assert!(answer["history"].get("staleness_seconds").is_none());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod contract_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn answer(outcome: &str, extra: Value) -> Value {
+        let mut held = json!({
+            "outcome": outcome,
+            "event_id": "e-1",
+            "watermark": {"instance": "i-1", "sequence": 1},
+            "history": {"mode": "local", "staleness_seconds": 0, "gaps": 0},
+            "policies": [],
+            "evaluations": []
+        });
+        if let (Some(held), Some(extra)) = (held.as_object_mut(), extra.as_object()) {
+            for (key, value) in extra {
+                held.insert(key.clone(), value.clone());
+            }
+        }
+
+        held
+    }
+
+    /// One table, and both transports answer to it.
+    ///
+    /// The rules are stated once because they are one contract: a plane does not become allowed to
+    /// answer differently by being reached over a different wire. gRPC used to enforce the
+    /// required members by accident of its encoding and HTTP enforced nothing, so the same bad
+    /// answer was a refusal on one transport and a value on the other.
+    #[test]
+    fn the_same_answers_are_refused_whichever_transport_carried_them() {
+        let decided = json!({"decision": true, "decision_id": "d-1"});
+        let cases: Vec<(&str, Value, Option<&str>)> = vec![
+            (
+                "a decided answer that states its decision",
+                answer("decided", decided.clone()),
+                None,
+            ),
+            (
+                "an accepted answer with no verdict",
+                answer("accepted", json!({})),
+                None,
+            ),
+            (
+                "decided with no decision",
+                answer("decided", json!({"decision_id": "d-1"})),
+                Some("states no decision"),
+            ),
+            (
+                "decided with no decision id",
+                answer("decided", json!({"decision": true})),
+                Some("names no decision id"),
+            ),
+            (
+                "decided with an empty decision id",
+                answer("decided", json!({"decision": true, "decision_id": ""})),
+                Some("names no decision id"),
+            ),
+            (
+                "accepted while carrying a decision",
+                answer("accepted", json!({"decision": true})),
+                Some("has no verdict to state"),
+            ),
+            (
+                "a watermark with no instance",
+                answer(
+                    "accepted",
+                    json!({"watermark": {"instance": "", "sequence": 1}}),
+                ),
+                Some("no instance"),
+            ),
+            (
+                "a history scope with no mode",
+                answer(
+                    "accepted",
+                    json!({"history": {"mode": "", "staleness_seconds": 0, "gaps": 0}}),
+                ),
+                Some("no mode"),
+            ),
+            (
+                "an outcome nothing defines",
+                answer("pondered", json!({})),
+                Some("does not hold its shape"),
+            ),
+            (
+                "a sequence that is not a number",
+                answer(
+                    "accepted",
+                    json!({"watermark": {"instance": "i-1", "sequence": "one"}}),
+                ),
+                Some("does not hold its shape"),
+            ),
+        ];
+
+        for (what, body, expected) in cases {
+            match (validated(body), expected) {
+                (Ok(_), None) => {}
+                (Err(failure), Some(fragment)) => assert!(
+                    failure.detail.contains(fragment),
+                    "{what}: refused for the wrong reason: {}",
+                    failure.detail
+                ),
+                (Ok(_), Some(fragment)) => {
+                    panic!("{what}: was accepted and must be refused ({fragment})")
+                }
+                (Err(failure), None) => panic!("{what}: was refused: {}", failure.detail),
+            }
+        }
     }
 }

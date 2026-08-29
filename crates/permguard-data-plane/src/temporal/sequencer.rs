@@ -80,6 +80,26 @@ impl Sequencer {
     /// Waits for every earlier sequence to have had its turn, then takes this one.
     ///
     /// The returned [`Turn`] must be held for the whole application and dropped after it.
+    ///
+    /// # Why this blocks rather than yielding
+    ///
+    /// It looks like the wrong shape: this is called from an async path, and a condition variable
+    /// there is a blocked worker. Making it `async` was tried, and it is worse — because of what
+    /// sits between the journal assigning a sequence and this being called.
+    ///
+    /// A sequence is assigned by the append and its turn is taken here, and everything after this
+    /// depends on *someone* taking it: [`Sequencer`] advances only when a [`Turn`] is dropped, so a
+    /// sequence whose turn is never asked for stalls every sequence after it until the process
+    /// restarts. `a_sequence_that_never_takes_its_turn_stalls_the_ledger` shows exactly that.
+    ///
+    /// Blocking is what makes that unreachable. With no `.await` between the append and this call,
+    /// a cancelled request — an HTTP timeout, a client that hung up — cannot be dropped in the
+    /// window where the sequence exists and its turn does not. Yield anywhere in there and it can.
+    ///
+    /// So the cost is a blocked worker while another submission to the *same ledger* applies, and
+    /// the alternative is a ledger that stops. Removing the cost means making the whole
+    /// append-through-apply span uncancellable — owned by a task rather than by the request — which
+    /// is a larger change than swapping a primitive, and is not this.
     pub fn turn(self: &Arc<Self>, seq: u64) -> Turn {
         let mut state = match self.state.lock() {
             Ok(state) => state,
@@ -282,6 +302,35 @@ mod tests {
         assert!(
             Arc::ptr_eq(&sequencers.of("zone", "ledger-a", 0), &one),
             "one sequencer per ledger, not one per call"
+        );
+    }
+    /// A sequence that never takes its turn stalls every sequence after it.
+    ///
+    /// # Why this is worth a test of its own
+    ///
+    /// It is the reason [`Sequencer::turn`] blocks instead of yielding. The sequencer advances only
+    /// when a [`Turn`] is dropped, so a sequence the journal assigned and nobody ever asked a turn
+    /// for is not a gap that heals — it is every later sequence waiting until the process restarts.
+    ///
+    /// That state is unreachable only because there is no suspension point between the append that
+    /// assigns a sequence and the call that takes its turn: a cancelled request cannot be dropped
+    /// in a window that does not exist. Put an `.await` in there — an async turn, an append moved
+    /// to a pool — and a client hanging up is enough to stop a ledger.
+    #[test]
+    fn a_sequence_that_never_takes_its_turn_stalls_the_ledger() {
+        let sequencer = Arc::new(Sequencer::starting_at(0));
+        // Sequence 1 was assigned by the journal and its turn is never asked for.
+        let waited = Arc::clone(&sequencer);
+        let (sent, received) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let turn = waited.turn(2);
+            let _ = sent.send(turn.seq());
+        });
+        assert!(
+            received
+                .recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "sequence 2 waits for a turn nobody will ever take"
         );
     }
 }

@@ -55,7 +55,7 @@ controlPlane:
       #         decisions: { enabled: "true", directory: "data/decisions/store", retention: "90d" }
       #         producer_keys: …          # the JWKS of each data plane that ships here
       #   dataPlane:
-      #     persistence: { enabled: true }  # per replica: a StatefulSet, not this chart yet
+      #     persistence: { enabled: true }  # with persistence.perReplica: true for >1 replica
       #     extraConfig:
       #       dataPlane:
       #         keys: { enabled: "true", directory: "operations/keys" }

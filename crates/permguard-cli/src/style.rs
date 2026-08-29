@@ -14,17 +14,6 @@
 use std::io::IsTerminal as _;
 use std::sync::OnceLock;
 
-fn enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::io::stdout().is_terminal()
-            && std::env::var_os("NO_COLOR").is_none()
-            && std::env::var("TERM")
-                .map(|term| term != "dumb")
-                .unwrap_or(true)
-    })
-}
-
 /// The two stops of the Permguard gradient: the pink the mark starts at and
 /// the purple it ends on — the very pair the website paints its logo with.
 const BRAND_FROM: [u8; 3] = [0xF0, 0x5C, 0x80];
@@ -34,7 +23,7 @@ const RESET: &str = "\x1b[0m";
 
 /// How many colors this terminal can actually be asked for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Depth {
+pub(crate) enum Depth {
     /// None at all — piped, `NO_COLOR`, or a dumb terminal.
     None,
     /// The sixteen ANSI colors, and nothing more.
@@ -45,26 +34,49 @@ enum Depth {
     True,
 }
 
-fn depth() -> Depth {
+/// The colour decision, from stated conditions rather than from the process.
+///
+/// # Why this is separate from [`depth`]
+///
+/// Whether to colour is a question about *where the output lands*, and the only
+/// honest way to answer it at runtime is to ask the process: is stdout a
+/// terminal, what does the environment say. That answer is ambient, and a test
+/// that reads it is a test about the machine it happens to run on — green when
+/// the suite is piped into a file, red in the terminal a developer actually
+/// runs `task test` in, for reasons that have nothing to do with the code.
+///
+/// So the policy is a function of its inputs and nothing else, and the ambient
+/// reading happens once, in [`depth`]. Rendering asks the policy; tests state
+/// the conditions.
+pub(crate) fn depth_from(
+    is_terminal: bool,
+    no_color: bool,
+    term: Option<&str>,
+    colorterm: Option<&str>,
+) -> Depth {
+    if !is_terminal || no_color || term == Some("dumb") {
+        return Depth::None;
+    }
+    if matches!(colorterm, Some("truecolor" | "24bit")) {
+        return Depth::True;
+    }
+    if term.is_some_and(|term| term.contains("256color")) {
+        return Depth::Ansi256;
+    }
+
+    Depth::Basic
+}
+
+/// The colour decision for this process, read once.
+pub(crate) fn depth() -> Depth {
     static DEPTH: OnceLock<Depth> = OnceLock::new();
     *DEPTH.get_or_init(|| {
-        if !enabled() {
-            return Depth::None;
-        }
-
-        let colorterm = std::env::var("COLORTERM").unwrap_or_default();
-        if colorterm == "truecolor" || colorterm == "24bit" {
-            return Depth::True;
-        }
-
-        if std::env::var("TERM")
-            .map(|term| term.contains("256color"))
-            .unwrap_or(false)
-        {
-            return Depth::Ansi256;
-        }
-
-        Depth::Basic
+        depth_from(
+            std::io::stdout().is_terminal(),
+            std::env::var_os("NO_COLOR").is_some(),
+            std::env::var("TERM").ok().as_deref(),
+            std::env::var("COLORTERM").ok().as_deref(),
+        )
     })
 }
 
@@ -83,8 +95,8 @@ fn ramp(t: f32) -> [u8; 3] {
 }
 
 /// The escape that sets `rgb` as the foreground, at the best fidelity available.
-fn foreground(rgb: [u8; 3]) -> String {
-    match depth() {
+fn foreground(depth: Depth, rgb: [u8; 3]) -> String {
+    match depth {
         Depth::True => format!("\x1b[38;2;{};{};{}m", rgb[0], rgb[1], rgb[2]),
         // The 6×6×6 cube: each channel snapped to the nearest of its six levels.
         Depth::Ansi256 => {
@@ -97,12 +109,16 @@ fn foreground(rgb: [u8; 3]) -> String {
     }
 }
 
-fn paint(code: &str, text: &str) -> String {
-    if enabled() {
-        format!("\x1b[{code}m{text}\x1b[0m")
-    } else {
-        text.to_owned()
+fn paint_with(depth: Depth, code: &str, text: &str) -> String {
+    if depth == Depth::None {
+        return text.to_owned();
     }
+
+    format!("\x1b[{code}m{text}\x1b[0m")
+}
+
+fn paint(code: &str, text: &str) -> String {
+    paint_with(depth(), code, text)
 }
 
 /// Something being created.
@@ -127,8 +143,8 @@ pub fn delete(text: &str) -> String {
 /// around them would only be bytes — and an escape is emitted only where the
 /// color actually changes, which is what keeps six lines of art under a few
 /// hundred bytes instead of one sequence per character.
-pub fn brand_gradient(block: &str) -> String {
-    if depth() == Depth::None {
+pub(crate) fn brand_gradient(depth: Depth, block: &str) -> String {
+    if depth == Depth::None {
         return block.to_owned();
     }
 
@@ -157,7 +173,7 @@ pub fn brand_gradient(block: &str) -> String {
 
             let across = column as f32 / last_column as f32;
             let down = row as f32 / last_row as f32;
-            let code = foreground(ramp((across + down) / 2.0));
+            let code = foreground(depth, ramp((across + down) / 2.0));
 
             if current.as_deref() != Some(code.as_str()) {
                 out.push_str(&code);
@@ -184,12 +200,22 @@ pub fn id(text: &str) -> String {
 
 /// Chrome: labels, timestamps, the quiet parts.
 pub fn dim(text: &str) -> String {
-    paint("90", text)
+    dim_with(depth(), text)
+}
+
+/// [`dim`], against a stated colour depth rather than the process's.
+pub(crate) fn dim_with(depth: Depth, text: &str) -> String {
+    paint_with(depth, "90", text)
 }
 
 /// The line that states the outcome.
 pub fn bold(text: &str) -> String {
-    paint("1", text)
+    bold_with(depth(), text)
+}
+
+/// [`bold`], against a stated colour depth rather than the process's.
+pub(crate) fn bold_with(depth: Depth, text: &str) -> String {
+    paint_with(depth, "1", text)
 }
 
 /// A verified fact — the good kind.
@@ -224,9 +250,47 @@ mod tests {
 
     #[test]
     fn test_the_gradient_leaves_the_art_untouched_when_there_is_no_color() {
-        // Under a test harness stdout is not a terminal, so the depth is None.
         let art = " __ \n|__|";
 
-        assert_eq!(brand_gradient(art), art);
+        assert_eq!(brand_gradient(Depth::None, art), art);
+    }
+
+    /// The colour decision, stated rather than inherited.
+    ///
+    /// Every branch is a condition the contract names — not a terminal,
+    /// `NO_COLOR`, `TERM=dumb` — and each is checked here against inputs, so the
+    /// suite answers the same way whether it runs piped or in a terminal.
+    #[test]
+    fn test_the_colour_depth_follows_the_stated_conditions() {
+        assert_eq!(
+            depth_from(false, false, Some("xterm-256color"), Some("truecolor")),
+            Depth::None,
+            "output that is not a terminal is never coloured"
+        );
+        assert_eq!(
+            depth_from(true, true, Some("xterm-256color"), Some("truecolor")),
+            Depth::None,
+            "NO_COLOR wins over everything the terminal announces"
+        );
+        assert_eq!(
+            depth_from(true, false, Some("dumb"), Some("truecolor")),
+            Depth::None,
+            "a dumb terminal is taken at its word"
+        );
+        assert_eq!(
+            depth_from(true, false, Some("xterm"), Some("truecolor")),
+            Depth::True,
+            "24-bit where the terminal announces it"
+        );
+        assert_eq!(
+            depth_from(true, false, Some("xterm-256color"), None),
+            Depth::Ansi256,
+            "the cube where truecolor is not announced"
+        );
+        assert_eq!(
+            depth_from(true, false, None, None),
+            Depth::Basic,
+            "a terminal that announces nothing still gets the sixteen"
+        );
     }
 }

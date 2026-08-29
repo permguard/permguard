@@ -38,6 +38,44 @@ spec:
       protocol: TCP
     {{- end }}
 ---
+{{- if include "permguard.perReplica" (dict "root" $ "plane" $plane) }}
+{{/*
+The Service a StatefulSet is named after: no cluster IP, so it resolves to the pods themselves.
+
+The ordinary Service above load balances, which is right for a request that any replica can answer.
+This one is the opposite and is needed for the same reason the StatefulSet is: each pod owns a
+journal the others do not have, so "reach the replica that holds it" has to be expressible. It also
+publishes the per-pod DNS names Kubernetes requires of a StatefulSet.
+
+`publishNotReadyAddresses`, because a pod's name has to resolve while it is still coming up —
+recovering a journal, replaying a history — and a name that appears only once the pod is ready is
+not an address, it is a race.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "permguard.fullname" $ }}-{{ $component }}-headless
+  labels:
+    {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $plane.ports.http }}
+      targetPort: http
+      protocol: TCP
+    {{- if ne (int $plane.ports.grpc) (int $plane.ports.http) }}
+    - name: grpc
+      port: {{ $plane.ports.grpc }}
+      targetPort: grpc
+      protocol: TCP
+    {{- end }}
+---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:

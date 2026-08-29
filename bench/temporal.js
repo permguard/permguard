@@ -46,6 +46,13 @@
 //   task run:experimental
 //   permguard -w examples/dogwood-session-access apply -m bench
 //   k6 run bench/temporal.js
+//
+// **On a volume that has already been benchmarked, start from a fresh one.** The occurrence ids
+// here are `bench-<vu>-<iter>-<kind>`, which repeat exactly across runs while the timepoint does
+// not — so a second run over the same journal submits ids it already holds, carrying different
+// bytes, and the plane refuses them as `event_id_conflict`. That is the interface behaving
+// correctly: an identifier names one occurrence. It is this file that is not idempotent, and a run
+// against a used volume measures refusals rather than submissions.
 
 import { hitTemporal } from './lib.js';
 
@@ -57,7 +64,7 @@ export const options = {
       executor: 'constant-vus',
       vus: 1,
       duration: '10s',
-      tags: { phase: 'cold' },
+      tags: { phase: 'cold', stage: 'warm_up' },
       exec: 'history_only',
     },
     // Recorded and observed, with no verdict to produce.
@@ -66,7 +73,7 @@ export const options = {
       vus: 1,
       duration: '30s',
       startTime: '12s',
-      tags: { phase: 'warm' },
+      tags: { phase: 'warm', stage: 'single' },
       exec: 'history_only',
     },
     // The same write, plus deciding against the history it just joined.
@@ -75,7 +82,7 @@ export const options = {
       vus: 1,
       duration: '30s',
       startTime: '44s',
-      tags: { phase: 'warm' },
+      tags: { phase: 'warm', stage: 'single' },
       exec: 'deciding',
     },
     // Overlapping submissions, which is where group commit either works or does not.
@@ -84,7 +91,7 @@ export const options = {
       vus: 16,
       duration: '60s',
       startTime: '76s',
-      tags: { phase: 'warm' },
+      tags: { phase: 'warm', stage: 'concurrent' },
       exec: 'deciding',
     },
   },
@@ -96,8 +103,18 @@ export const options = {
     // and a threshold tuned to the millisecond would be a flake rather than a check. What these
     // catch is a regression of *kind* — a submission that starts costing ten times what it did,
     // which is the shape every performance bug in a durable path has taken.
-    'http_req_duration{phase:warm,kind:response}': ['p(95)<300'],
-    'http_req_duration{phase:warm,kind:request}': ['p(95)<500'],
+    'http_req_duration{phase:warm,stage:single,kind:response}': ['p(95)<300'],
+    'http_req_duration{phase:warm,stage:single,kind:request}': ['p(95)<500'],
+    // The concurrent stage is judged separately, and it has to be: submissions to one ledger are
+    // applied one at a time — the sequencer imposes the journal's order rather than the
+    // scheduler's — so sixteen of them overlapping is a queue by design, not a regression. Holding
+    // it to a per-request latency target would fail the design instead of testing it, which is
+    // what a single `stage`-blind threshold did.
+    //
+    // What is worth asserting is that group commit is buying something. Sixteen submissions fully
+    // serialised would cost sixteen times the single-VU p(95); this is that product, so the check
+    // fails exactly when overlapping stops being cheaper than not overlapping.
+    'http_req_duration{phase:warm,stage:concurrent,kind:request}': ['p(95)<1800'],
     // A submission that was refused is not a measurement of a submission.
     checks: ['rate>0.99'],
     http_req_failed: ['rate<0.01'],

@@ -128,6 +128,17 @@ pub struct KnownOccurrence {
     /// response commit cannot turn one occurrence into two decision identities on retry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision_id: Option<String>,
+    /// Which profile routed the occurrence when it was recorded.
+    ///
+    /// Kept so a completed retry can be answered without loading the profile it was decided
+    /// under — which is the point: a retry must survive that profile being updated, or removed.
+    /// `None` is an entry written before this was recorded, and reads as "cannot be checked": such
+    /// a retry takes the full path rather than being answered from an unverifiable claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// The event type it was recorded as, kept for the same reason and read the same way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     /// The answer this plane gave, as it gave it.
     pub response: Value,
 }
@@ -653,6 +664,13 @@ impl Journal {
                         seq,
                         occurrence_digest: occurrence_digest.to_owned(),
                         decision_id: None,
+                        // A rebuilt entry has no answer, so it has nothing to be answered from:
+                        // the profile and type are recorded with the outcome, not with the record.
+                        profile: None,
+                        kind: record
+                            .get("event_type")
+                            .and_then(Value::as_str)
+                            .map(ToOwned::to_owned),
                         response: Value::Null,
                     })?,
                 }
@@ -2125,6 +2143,8 @@ mod tests {
                 seq: 1,
                 occurrence_digest: "sha256:aaa".to_owned(),
                 decision_id: None,
+                profile: None,
+                kind: None,
                 response: json!({"outcome": "accepted"}),
             })
             .expect("the entry is written");
@@ -2164,6 +2184,8 @@ mod tests {
                 seq: 2,
                 occurrence_digest: GENESIS.to_owned(),
                 decision_id: None,
+                profile: None,
+                kind: None,
                 response: Value::Null,
             })
             .expect("the later entry is written");
@@ -2203,6 +2225,8 @@ mod tests {
                 seq: 1,
                 occurrence_digest: "sha256:bbb".to_owned(),
                 decision_id: None,
+                profile: None,
+                kind: None,
                 response: Value::Null,
             })
             .expect("a hostile id is stored like any other");
@@ -2235,6 +2259,8 @@ mod tests {
                     seq,
                     occurrence_digest: format!("sha256:{seq}"),
                     decision_id: None,
+                    profile: None,
+                    kind: None,
                     response: Value::Null,
                 })
                 .expect("the entry is written");

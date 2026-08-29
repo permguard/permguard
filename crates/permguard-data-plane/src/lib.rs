@@ -4,6 +4,7 @@
 
 mod api;
 pub mod authz;
+pub mod blocking;
 pub mod decisions;
 pub mod mirrors;
 mod service;

@@ -84,3 +84,82 @@ fn the_event_store_needs_both_switches_and_says_so_when_it_has_one() {
     assert!(module.startup_check(&both).is_ok());
     let _ = std::fs::remove_file(key_set);
 }
+
+/// A trust source that is not published yet is a plane still coming up, not a misconfiguration.
+///
+/// # What this is actually about
+///
+/// The producer writes its own public keys, on the cadence its ring rotates, into a volume both
+/// planes see. On a clean volume nobody has written them yet, so an all-in-one — or a control plane
+/// scheduled before its data plane — would refuse to boot over a file that was about to exist. That
+/// turns a deployment which converges in seconds into one that never starts.
+///
+/// Waiting loosens nothing, because ingest is fail-closed per batch: a producer whose keys this
+/// plane does not hold has its batches refused as unattributable either way. So absence waits, and
+/// everything an operator could mistake for a trust source that is *in force* — a file that exists
+/// but cannot be parsed, or one that carries no key — still stops the process.
+#[test]
+fn an_unpublished_producer_key_set_waits_while_a_broken_one_refuses() {
+    use permguard_core::config::{SETTING_EVENT_STORE_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD};
+
+    let module = permguard_control_plane::module();
+    let base = permguard_core::Config::from_layers(
+        permguard_server::plane::build_settings("0.0.0-test"),
+        vec![permguard_server::plane::SETTING_RUNTIME_PLANES],
+        permguard_core::config::Layers {
+            file: [
+                (SETTING_EVENT_STORE_ENABLED.to_owned(), "true".to_owned()),
+                (SETTING_EXPERIMENTAL_DOGWOOD.to_owned(), "true".to_owned()),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        },
+    )
+    .expect("the test configuration builds");
+
+    let bound = |path: &std::path::Path| {
+        base.clone()
+            .with_event_producer_keys([permguard_core::decisions::EventProducerSource {
+                path: path.display().to_string(),
+                producer: "data-plane-test".to_owned(),
+                zone: "*".to_owned(),
+                ledger: "*".to_owned(),
+            }])
+    };
+
+    let directory =
+        std::env::temp_dir().join(format!("permguard-producer-pending-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).expect("the test volume exists");
+
+    // Not written yet: the plane starts and says so.
+    let unpublished = directory.join("data-plane-events.jwks");
+    assert!(
+        module.startup_check(&bound(&unpublished)).is_ok(),
+        "a producer that has not published yet must not stop the receiver from starting"
+    );
+
+    // Written, and empty of keys: an operator believes this is in force, and it is not.
+    let empty = directory.join("empty.jwks");
+    std::fs::write(&empty, r#"{"keys":[]}"#).expect("the empty set is written");
+    let refused = module
+        .startup_check(&bound(&empty))
+        .expect_err("a published but keyless trust source does not start");
+    assert!(
+        refused.to_string().contains("publishes no keys"),
+        "{refused}"
+    );
+
+    // Written, and not a key set at all.
+    let broken = directory.join("broken.jwks");
+    std::fs::write(&broken, "not json").expect("the broken set is written");
+    let refused = module
+        .startup_check(&bound(&broken))
+        .expect_err("a published but unreadable trust source does not start");
+    assert!(
+        refused.to_string().contains("data-plane-test"),
+        "the refusal names the producer: {refused}"
+    );
+
+    let _ = std::fs::remove_dir_all(&directory);
+}

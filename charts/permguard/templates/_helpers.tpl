@@ -118,6 +118,39 @@ because one switch cannot express what a real installation needs: a control plan
 and wants a volume, while a replicated data plane is a mirror and must NOT share one with its own
 replicas. Takes `(dict "root" $ "plane" $plane)`, answers "true" or "".
 */}}
+{{/*
+Whether a component keeps its state in a volume of its own, per replica.
+
+# Why this is a switch and not a deduction
+
+A volume per replica means a StatefulSet, and a Deployment cannot become a StatefulSet in place:
+Kubernetes rejects the change, so an operator upgrading a release would have to delete the workload
+and recreate it. Deducing the kind from "temporal and replicated" would make that happen to
+somebody who only edited a replica count, which is not a decision a chart should take on their
+behalf. So it is opted into, and `checks.yaml` refuses the combinations that need it without it.
+*/}}
+{{- define "permguard.perReplica" -}}
+{{- if include "permguard.persists" (dict "root" .root "plane" .plane) -}}
+{{- if .root.Values.persistence.perReplica }}true{{ end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The workload kind a component is deployed as.
+
+A StatefulSet exactly when each replica needs its own volume: it is what gives a pod a stable name
+and a claim that follows it across a reschedule. Everything else is a Deployment, because a
+StatefulSet's ordered, one-at-a-time rollout is a cost with nothing to buy for a plane whose
+replicas are interchangeable.
+*/}}
+{{- define "permguard.workloadKind" -}}
+{{- if include "permguard.perReplica" (dict "root" .root "plane" .plane) -}}
+StatefulSet
+{{- else -}}
+Deployment
+{{- end -}}
+{{- end -}}
+
 {{- define "permguard.persists" -}}
 {{- $plane := .plane -}}
 {{- $default := .root.Values.persistence.enabled -}}

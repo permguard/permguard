@@ -31,11 +31,23 @@ const TEXT_INDENT: &str = "    ";
 pub fn banner() -> &'static str {
     static BANNER: OnceLock<String> = OnceLock::new();
 
-    BANNER.get_or_init(render).as_str()
+    BANNER.get_or_init(|| render(style::depth())).as_str()
 }
 
-fn render() -> String {
-    let art = style::brand_gradient(brand::PERMGUARD_ART);
+/// The banner with no colour at all.
+///
+/// What every consumer that is not a terminal sees, and the only form worth
+/// asserting on: clap keeps `before_help` as a styled string and drops the
+/// escapes when it renders it back, so comparing against the coloured banner
+/// compares two different things whenever a developer runs the suite in a
+/// terminal.
+#[cfg(test)]
+pub(crate) fn plain() -> String {
+    render(style::Depth::None)
+}
+
+fn render(depth: style::Depth) -> String {
+    let art = style::brand_gradient(depth, brand::PERMGUARD_ART);
     let mut lines: Vec<String> = art
         .lines()
         .map(|line| format!("{ART_INDENT}{line}"))
@@ -44,7 +56,7 @@ fn render() -> String {
     lines.push(String::new());
     lines.push(format!(
         "{TEXT_INDENT}{}",
-        style::bold(brand::PERMGUARD_TAGLINE)
+        style::bold_with(depth, brand::PERMGUARD_TAGLINE)
     ));
     lines.push(format!("{TEXT_INDENT}{}", brand::PERMGUARD_CLI_TITLE));
 
@@ -54,23 +66,26 @@ fn render() -> String {
     let build = version();
     lines.push(format!(
         "{TEXT_INDENT}{}",
-        style::dim(&format!(
-            "Version {} (build {})",
-            build.version, build.commit
-        ))
+        style::dim_with(
+            depth,
+            &format!("Version {} (build {})", build.version, build.commit)
+        )
     ));
 
     lines.push(format!(
         "{TEXT_INDENT}{}",
-        style::dim(&format!(
-            "Copyright © {} {}",
-            brand::PERMGUARD_COPYRIGHT_YEAR,
-            brand::PERMGUARD_COPYRIGHT_HOLDER
-        ))
+        style::dim_with(
+            depth,
+            &format!(
+                "Copyright © {} {}",
+                brand::PERMGUARD_COPYRIGHT_YEAR,
+                brand::PERMGUARD_COPYRIGHT_HOLDER
+            )
+        )
     ));
     lines.push(format!(
         "{TEXT_INDENT}{}",
-        style::dim(&format!("Docs: {}", brand::PERMGUARD_CLI_DOCS_URL))
+        style::dim_with(depth, &format!("Docs: {}", brand::PERMGUARD_CLI_DOCS_URL))
     ));
 
     lines.join("\n")
@@ -82,11 +97,12 @@ mod tests {
 
     #[test]
     fn test_the_banner_indents_the_art_and_the_wording_to_the_same_column() {
-        let rendered = banner();
+        let rendered = plain();
         let lines: Vec<&str> = rendered.lines().collect();
 
-        // Under a test harness stdout is not a terminal, so the styling is off
-        // and the columns can be measured directly.
+        // Measured on the uncoloured banner: an escape sequence occupies bytes
+        // and no columns, so the same art measured coloured answers a different
+        // question than the one this test asks.
         let art_edge = lines[1].find('|');
         let text_edge = lines[lines.len() - 1].find("Docs:");
 
@@ -117,6 +133,6 @@ mod tests {
 
     #[test]
     fn test_the_banner_is_plain_text_when_the_output_is_not_a_terminal() {
-        assert!(!banner().contains('\x1b'));
+        assert!(!plain().contains('\x1b'));
     }
 }

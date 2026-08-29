@@ -343,6 +343,16 @@ pub const SETTING_AUTHZ_CACHE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_BYTES";
 /// either way the answer is a refusal rather than a stalled worker.
 pub const SETTING_AUTHZ_MAX_EVALUATIONS: &str = "PERMGUARD_AUTHZ_MAX_EVALUATIONS";
 
+/// How many pieces of blocking work this plane may have in flight at once.
+///
+/// Evaluating a policy and writing a decision record both wait — on a CPU that is not yielding, on
+/// a disk that has not finished — and neither may run on a runtime worker. They run on a pool, and
+/// this is its size: reached, the plane refuses immediately rather than queueing behind work it
+/// cannot bound. It is the number that decides whether a stalled disk or a provider that stopped
+/// returning shows up as refusals while the plane can still produce them, or as a plane that
+/// accumulates until memory decides, so it is worth being able to set.
+pub const SETTING_MAX_BLOCKING: &str = "PERMGUARD_MAX_BLOCKING";
+
 /// Runtime setting keys for the decision log: what a plane records about what it decided, and
 /// where it sends it.
 ///
@@ -669,6 +679,17 @@ const DEFAULT_AUTHZ_CACHE_PARTITIONS: usize = 64;
 const DEFAULT_AUTHZ_CACHE_BYTES: u64 = 256 * 1024 * 1024;
 const DEFAULT_AUTHZ_MAX_EVALUATIONS: usize = 256;
 
+/// The default bound on concurrent blocking work.
+///
+/// High enough that a plane answering ordinary traffic never meets it, low enough that work which
+/// has stopped returning cannot take the process with it.
+const DEFAULT_MAX_BLOCKING: usize = 64;
+
+/// The default bound, for a component built before a configuration is read.
+pub fn default_max_blocking() -> usize {
+    DEFAULT_MAX_BLOCKING
+}
+
 /// Decision-log defaults. Off, because a decision log is a security control and a
 /// data-protection surface at once, and neither is switched on for a deployment that did not ask.
 /// The rest are the shape a deployment that *does* ask almost always wants: half a gigabyte of
@@ -979,6 +1000,7 @@ pub struct Config {
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
     authz_max_evaluations: usize,
+    max_blocking: usize,
     log_enabled: bool,
     log_pdp_id: String,
     log_spool_directory: String,
@@ -1112,6 +1134,7 @@ impl Default for Config {
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
+            max_blocking: DEFAULT_MAX_BLOCKING,
             log_enabled: false,
             log_pdp_id: String::new(),
             log_spool_directory: DEFAULT_LOG_SPOOL_DIRECTORY.to_owned(),
@@ -2666,6 +2689,11 @@ produce: use `EdDSA` or `ES256`"
         self.authz_max_evaluations
     }
 
+    /// How many pieces of blocking work may run at once — see [`SETTING_MAX_BLOCKING`].
+    pub fn max_blocking(&self) -> usize {
+        self.max_blocking
+    }
+
     /// How often the synchronization loop runs.
     pub fn mirrors_interval(&self) -> Duration {
         self.mirrors_interval
@@ -3561,6 +3589,17 @@ produce: use `EdDSA` or `ES256`"
             if self.authz_cache_bytes == 0 {
                 anyhow::bail!(
                     "reading {SETTING_AUTHZ_CACHE_BYTES}: a cache of no bytes holds nothing"
+                );
+            }
+        }
+        if let Some(value) = settings.get(SETTING_MAX_BLOCKING) {
+            self.max_blocking = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_MAX_BLOCKING}"))?;
+            if self.max_blocking == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_MAX_BLOCKING}: a bound of zero would refuse every request \
+                     that has to touch a disk or evaluate a policy, which is every request"
                 );
             }
         }

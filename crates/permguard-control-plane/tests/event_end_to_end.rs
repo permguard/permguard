@@ -43,6 +43,10 @@ use serde_json::{Value, json};
 
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
+/// What a ledger is keyed by once resolved: records, streams and trust scopes all name these, and
+/// the production pull path canonicalises an operator's subscription into them before subscribing.
+const ZONE_ID: &str = "acme-id";
+const LEDGER_ID: &str = "agent-governance-id";
 const DOGWOOD: &str = "permguard.dogwood.event.v1";
 
 fn scratch(tag: &str) -> PathBuf {
@@ -78,8 +82,8 @@ fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ProducerTrust> {
         .map(|key| ProducerTrust {
             key,
             producer: producer.to_owned(),
-            zone: ZONE.to_owned(),
-            ledger: LEDGER.to_owned(),
+            zone: ZONE_ID.to_owned(),
+            ledger: LEDGER_ID.to_owned(),
         })
         .collect()
 }
@@ -269,8 +273,8 @@ fn record(streams: &Streams, count: u64, from: u64) {
                     id: String::new(),
                     instance: String::new(),
                 },
-                zone: ZONE.to_owned(),
-                ledger: LEDGER.to_owned(),
+                zone: ZONE_ID.to_owned(),
+                ledger: LEDGER_ID.to_owned(),
             },
             seq: 0,
             prev: String::new(),
@@ -288,7 +292,7 @@ fn record(streams: &Streams, count: u64, from: u64) {
             event,
         };
         streams
-            .append(ZONE, LEDGER, held)
+            .append(ZONE_ID, LEDGER_ID, held)
             .expect("the record is durable");
     }
 }
@@ -324,13 +328,13 @@ fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
 
     // What the producer holds, and what the store holds, are the same bytes.
     let here = streams
-        .read_from(ZONE, LEDGER, 0, 1_000)
+        .read_from(ZONE_ID, LEDGER_ID, 0, 1_000)
         .expect("the journal reads");
     let there = read::read(
         &wire.facade.store,
         &Scope::Tenant {
-            zone: ZONE.to_owned(),
-            ledger: LEDGER.to_owned(),
+            zone: ZONE_ID.to_owned(),
+            ledger: LEDGER_ID.to_owned(),
         },
         &Filters::default(),
         &wire.facade.cursor_key,
@@ -351,7 +355,7 @@ fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
     }
 
     // And the journal has advanced only to what was acknowledged.
-    let state = streams.state(ZONE, LEDGER).expect("the state reads");
+    let state = streams.state(ZONE_ID, LEDGER_ID).expect("the state reads");
     assert_eq!(state.acked_through, 12);
     assert_eq!(state.signed_through, 12);
 }
@@ -374,11 +378,11 @@ fn a_control_plane_that_is_down_defers_and_the_history_stays() {
     );
 
     assert!(matches!(shipper.round()[0].1, Round::Deferred(_)));
-    let state = streams.state(ZONE, LEDGER).expect("the state reads");
+    let state = streams.state(ZONE_ID, LEDGER_ID).expect("the state reads");
     assert_eq!(state.acked_through, 0, "nothing was acknowledged");
     assert_eq!(
         streams
-            .read_from(ZONE, LEDGER, 0, 100)
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
             .expect("reads")
             .len(),
         5,
@@ -422,7 +426,7 @@ fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     assert!(matches!(shipper.round()[0].1, Round::Deferred(_)));
 
     let held = streams
-        .checkpoints(ZONE, LEDGER)
+        .checkpoints(ZONE_ID, LEDGER_ID)
         .expect("the checkpoints list");
     assert_eq!(
         held.len(),
@@ -441,7 +445,7 @@ fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     assert_eq!(envelope.first_seq, 1);
     assert_eq!(envelope.last_seq, 4);
 
-    let state = streams.state(ZONE, LEDGER).expect("the state reads");
+    let state = streams.state(ZONE_ID, LEDGER_ID).expect("the state reads");
     assert_eq!(
         state.signed_through, 4,
         "signed by this plane, locally, before anybody acknowledged anything"
@@ -474,8 +478,8 @@ fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
         Box::new(Handed(Arc::clone(&wire))),
         Arc::clone(&imports),
         vec![Subscription {
-            zone: ZONE.to_owned(),
-            ledger: LEDGER.to_owned(),
+            zone: ZONE_ID.to_owned(),
+            ledger: LEDGER_ID.to_owned(),
             event_types: vec![DOGWOOD.to_owned()],
         }],
         trusted(&keys, "plane-a"),
@@ -498,7 +502,7 @@ fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
 
     // Imported records keep their origin identity: this plane did not record them, and the record
     // says so.
-    let observed = imports.observable(ZONE, LEDGER).expect("it reads");
+    let observed = imports.observable(ZONE_ID, LEDGER_ID).expect("it reads");
     assert_eq!(observed.len(), 6);
     for record in &observed {
         assert_eq!(
@@ -514,7 +518,10 @@ fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
 
     // A second round imports nothing new, and does not double-count.
     assert!(matches!(puller.round()[0].1, PullRound::Idle));
-    assert_eq!(imports.observable(ZONE, LEDGER).expect("reads").len(), 6);
+    assert_eq!(
+        imports.observable(ZONE_ID, LEDGER_ID).expect("reads").len(),
+        6
+    );
 }
 
 /// A subscription naming a type nothing validates never advances its cursor over it.
@@ -527,8 +534,8 @@ fn a_subscription_to_a_type_nothing_validates_is_quarantined_rather_than_importe
         Box::new(Handed(Arc::clone(&wire))),
         Arc::clone(&imports),
         vec![Subscription {
-            zone: ZONE.to_owned(),
-            ledger: LEDGER.to_owned(),
+            zone: ZONE_ID.to_owned(),
+            ledger: LEDGER_ID.to_owned(),
             event_types: vec!["acme.pip.v1".to_owned()],
         }],
         trusted(&keys, "plane-a"),
@@ -543,7 +550,7 @@ fn a_subscription_to_a_type_nothing_validates_is_quarantined_rather_than_importe
         other => panic!("a type nothing validates must not be imported: {other:?}"),
     }
     assert_eq!(
-        imports.cursor(ZONE, LEDGER).expect("reads"),
+        imports.cursor(ZONE_ID, LEDGER_ID).expect("reads"),
         None,
         "the cursor must not advance over records nothing checked"
     );
@@ -838,8 +845,8 @@ mod two_planes {
             Box::new(Handed(Arc::clone(&wire))),
             Arc::clone(&imports),
             vec![Subscription {
-                zone: ZONE.to_owned(),
-                ledger: LEDGER.to_owned(),
+                zone: ZONE_ID.to_owned(),
+                ledger: LEDGER_ID.to_owned(),
                 event_types: vec![DOGWOOD.to_owned()],
             }],
             trusted(&keys, "plane-a"),
@@ -902,7 +909,7 @@ mod two_planes {
         // Plane B's journal holds what plane B recorded, and its chain is still its own: the
         // import did not re-attribute anything to it.
         let held = _journals_b
-            .read_from(ZONE, LEDGER, 0, 100)
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
             .expect("the journal reads back");
         assert_eq!(
             held.len(),

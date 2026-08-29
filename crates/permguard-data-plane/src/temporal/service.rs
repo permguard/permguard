@@ -353,19 +353,52 @@ fn puller(
         );
     }
 
+    // Canonicalised against the mirrors this plane holds, for the same reason the submission path
+    // is: a ledger answers to its identifiers and to its display names, and an operator may have
+    // configured either. Imported history is keyed by identifier, so a subscription left as the
+    // operator spelled it would ask for a stream nobody publishes and import nothing — silently,
+    // because "no records" and "no such stream" look alike from a cursor.
+    //
+    // A pair this plane does not mirror is left as configured and named in the log: it may be a
+    // ledger whose first synchronization has not landed yet, and refusing to start over that would
+    // make an ordering problem into an outage.
+    let mirrors = config.mirrors_directory();
+    let canonical = |zone: &str, ledger: &str| -> (String, String) {
+        match crate::authz::store::find(&mirrors, zone, ledger) {
+            Some(mirror) => (
+                mirror.identity.zone_id.clone(),
+                mirror.identity.ledger_id.clone(),
+            ),
+            None => {
+                warn!(
+                    event.name = "events.subscription_unresolved",
+                    component = COMPONENT,
+                    zone,
+                    ledger,
+                    "a pull subscription names a ledger this plane does not mirror yet: it is used                      as written, and will import nothing until the mirror arrives"
+                );
+
+                (zone.to_owned(), ledger.to_owned())
+            }
+        }
+    };
     let subscriptions: Vec<Subscription> = config
         .events_pull_ledgers()
         .iter()
-        .map(|held| Subscription {
-            zone: held.zone.clone(),
-            ledger: held.ledger.clone(),
-            event_types: match held.event_types.is_empty() {
-                // Absent means the one type this build validates, stated rather than left open:
-                // the type set is part of the filter the read cursor is bound to, and a cursor
-                // bound to "everything" would keep meaning something different as types are added.
-                true => vec![permguard_languages::event::EVENT_TYPE.to_owned()],
-                false => held.event_types.clone(),
-            },
+        .map(|held| {
+            let (zone, ledger) = canonical(&held.zone, &held.ledger);
+
+            Subscription {
+                zone,
+                ledger,
+                event_types: match held.event_types.is_empty() {
+                    // Absent means the one type this build validates, stated rather than left open:
+                    // the type set is part of the filter the read cursor is bound to, and a cursor
+                    // bound to "everything" would keep meaning something different as types are added.
+                    true => vec![permguard_languages::event::EVENT_TYPE.to_owned()],
+                    false => held.event_types.clone(),
+                },
+            }
         })
         .collect();
 

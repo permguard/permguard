@@ -3,7 +3,7 @@ Copyright (c) 2022 Nitro Agility S.r.l.
 SPDX-License-Identifier: Apache-2.0
 */}}
 {{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
-{{- if and $plane.enabled (include "permguard.persists" (dict "root" $ "plane" $plane)) }}
+{{- if and $plane.enabled (include "permguard.persists" (dict "root" $ "plane" $plane)) (not (include "permguard.perReplica" (dict "root" $ "plane" $plane))) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

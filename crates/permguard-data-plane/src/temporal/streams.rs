@@ -221,6 +221,19 @@ pub struct Streams {
     group_commit_max_delay: Duration,
 }
 
+/// How an occurrence was routed when it was answered.
+///
+/// Recorded beside the answer so a retry can be checked against it: the same identifier arriving
+/// under a different profile or a different event type is a routing conflict, not a retry, and
+/// answering it from the first would be answering a question nobody asked.
+#[derive(Debug, Clone, Copy)]
+pub struct Routed<'a> {
+    /// The profile that routed it.
+    pub profile: &'a str,
+    /// The event type it was recorded as.
+    pub kind: &'a str,
+}
+
 impl Streams {
     /// The journals under `<volume>/data/events`, written as this producer.
     pub fn new(root: PathBuf, producer_id: String, bounds: Bounds) -> Self {
@@ -537,6 +550,10 @@ impl Streams {
                             seq: appended.seq,
                             occurrence_digest: record.occurrence_digest.clone(),
                             decision_id: None,
+                            // Not answered yet, so nothing to recognise a completed retry by:
+                            // both are filled in with the outcome.
+                            profile: None,
+                            kind: None,
                             // The answer is not known yet; it is filled in once given.
                             response: serde_json::Value::Null,
                         },
@@ -744,6 +761,7 @@ impl Streams {
         zone: &str,
         ledger: &str,
         event_id: &str,
+        routed: Routed<'_>,
         response: &serde_json::Value,
     ) -> Result<(), JournalError> {
         let held = self.held(zone, ledger)?;
@@ -757,12 +775,100 @@ impl Streams {
             )));
         };
         known.response = response.clone();
+        // Written with the answer rather than with the record: these are what let a *completed*
+        // retry be recognised without loading the profile it was decided under, and an incomplete
+        // entry has no answer to recognise.
+        known.profile = Some(routed.profile.to_owned());
+        known.kind = Some(routed.kind.to_owned());
 
         held.journal.record_occurrence(&known)?;
         // A response may leave only after the idempotency answer is durable. Otherwise a crash
         // can occur after the caller saw success but before the outcome index reaches disk, and a
         // retry is then recognised as the same event without being able to reproduce its answer.
         held.journal.sync_occurrences()
+    }
+
+    /// Settles which directory a ledger's journal lives in when its identifiers changed shape.
+    ///
+    /// # Why this exists
+    ///
+    /// A journal is kept under the pair the caller named, and a caller may name a ledger by its
+    /// identifier or by its display name — both resolve to one mirror. Keying storage by whichever
+    /// arrived first therefore let one ledger own *two* journals: two sequences, two histories, two
+    /// idempotency indexes, each invisible to the other. Storage is keyed canonically now, and this
+    /// is what stands between an existing name-keyed journal and being silently abandoned for an
+    /// empty one under the identifier.
+    ///
+    /// Idempotent by construction: once the canonical directory exists there is nothing to do, so
+    /// every later call is a stat.
+    pub fn adopt(
+        &self,
+        canonical: (&str, &str),
+        display: (&str, &str),
+    ) -> Result<(), JournalError> {
+        if canonical == display {
+            return Ok(());
+        }
+        let target = self.root.join(canonical.0).join(canonical.1);
+        let legacy = self.root.join(display.0).join(display.1);
+        // The conflict is tested first, and that ordering is the whole check: asking "is the
+        // canonical one already there?" first answers yes in exactly the case that also has a
+        // legacy one, and returns before noticing. Two journals for one ledger would then coexist
+        // in silence, which is the outcome this exists to refuse.
+        if target.exists() && legacy.exists() {
+            return Err(JournalError::Io(format!(
+                "`{}` holds a journal under both its identifiers and its names ({} and {}). Two \
+                 journals for one ledger are two histories, two sequences and two idempotency \
+                 indexes: refusing rather than choosing one, because the wrong choice drops events \
+                 without saying so. Merge or remove one by hand",
+                canonical.1,
+                target.display(),
+                legacy.display()
+            )));
+        }
+        if target.exists() || !legacy.exists() {
+            // Already canonical, or nothing recorded under the old shape.
+            return Ok(());
+        }
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                JournalError::Io(format!("preparing {}: {error}", parent.display()))
+            })?;
+        }
+        std::fs::rename(&legacy, &target).map_err(|error| {
+            JournalError::Io(format!(
+                "adopting {} as {}: {error}",
+                legacy.display(),
+                target.display()
+            ))
+        })?;
+        tracing::info!(
+            event.name = "temporal.journal_adopted",
+            component = "temporal",
+            from = %legacy.display(),
+            to = %target.display(),
+            "a ledger's journal was keyed by its display names and is now keyed by its identifiers"
+        );
+
+        Ok(())
+    }
+
+    /// The durable entry for one occurrence, when this ledger holds one.
+    ///
+    /// The whole entry rather than only its answer: a completed retry is checked against what was
+    /// recorded — the bytes, the routing — and those live beside the answer, not in it.
+    pub fn known(
+        &self,
+        zone: &str,
+        ledger: &str,
+        event_id: &str,
+    ) -> Result<Option<permguard_events::journal::KnownOccurrence>, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let held = held
+            .lock()
+            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
+
+        held.journal.occurrence(event_id)
     }
 
     /// The answer given for one occurrence, when this ledger still holds it.

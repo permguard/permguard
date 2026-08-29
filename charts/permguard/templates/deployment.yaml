@@ -4,8 +4,9 @@ SPDX-License-Identifier: Apache-2.0
 */}}
 {{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
 {{- if $plane.enabled }}
+{{- $perReplica := include "permguard.perReplica" (dict "root" $ "plane" $plane) }}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ include "permguard.workloadKind" (dict "root" $ "plane" $plane) }}
 metadata:
   name: {{ include "permguard.fullname" $ }}-{{ $component }}
   labels:
@@ -21,11 +22,24 @@ spec:
   selector:
     matchLabels:
       {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 6 }}
+  {{- if $perReplica }}
+  # The headless Service that gives each pod its own DNS name. A StatefulSet requires one, and the
+  # name is what a peer — or an operator reading a log — uses to reach the replica that holds a
+  # particular journal rather than whichever pod a load balancer picks.
+  serviceName: {{ include "permguard.fullname" $ }}-{{ $component }}-headless
+  # One at a time, highest ordinal first, and each pod's own volume goes with it. `maxSurge` has no
+  # meaning here: a replacement cannot start beside the pod it replaces, because there is one claim
+  # and one writer of it.
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: Parallel
+  {{- else }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+  {{- end }}
   template:
     metadata:
       labels:
@@ -106,12 +120,14 @@ spec:
             name: {{ include "permguard.fullname" $ }}-{{ $component }}
         - name: tmp
           emptyDir: {}
+        {{- if not $perReplica }}
         - name: state
         {{- if include "permguard.persists" (dict "root" $ "plane" $plane) }}
           persistentVolumeClaim:
             claimName: {{ include "permguard.fullname" $ }}-{{ $component }}
         {{- else }}
           emptyDir: {}
+        {{- end }}
         {{- end }}
         {{- /*
         Whatever else this deployment needs mounted — and in practice that means TLS material.
@@ -151,6 +167,29 @@ spec:
                   matchLabels:
                     {{- include "permguard.selectorLabels" (dict "root" $ "component" $component) | nindent 20 }}
         {{- end }}
+  {{- if $perReplica }}
+  # One claim per replica, named after the pod that owns it and kept when that pod is rescheduled.
+  # This is the whole reason for the StatefulSet: a temporal plane's journal is the history its own
+  # policies decide against, so a replica that came back to somebody else's volume — or to an empty
+  # one — would decide against a history that is not its own.
+  #
+  # Deliberately not deleted with the release: a journal is an audit trail, and a chart uninstall is
+  # not an instruction to destroy one.
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+        labels:
+          {{- include "permguard.componentLabels" (dict "root" $ "component" $component) | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $.Values.persistence.accessModes | nindent 10 }}
+        {{- with $.Values.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $.Values.persistence.size }}
+  {{- end }}
 ---
 {{- end }}
 {{- end }}

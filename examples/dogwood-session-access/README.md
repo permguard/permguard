@@ -1,241 +1,318 @@
 <!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Session access, decided on what already happened
+# The Dogwood session-access lab
 
-The other examples answer *may this subject do this to this?* from the request
-alone. This one answers a question the request cannot contain:
+This is a live temporal-authorization demo:
 
-> may this user read, **given that** they logged in within the last hour and
-> have not logged out since?
+> may Alice read now, given that she logged in earlier and has not logged out?
 
-Nothing in a `Read` request says whether a `Login` happened. The history does,
-and Dogwood is the runtime that reads it.
+A stateless request cannot answer that question. Dogwood evaluates the new
+occurrence against the durable history Permguard has already observed.
 
-Adapted from Dogwood's own `read_login_not_logout` example — same policy, same
-action schema, same event schema — so what you are looking at is Permguard
-around it rather than a policy written to flatter it.
-
-## What is here
-
-```text
-examples/dogwood-session-access/
-├── manifest.yml                        one runtime, one partition, one temporal profile
-├── governance/read-after-login.dw      the policy: a `when temporal { … }` clause
-├── governance/schema.cedarschema       the ACTION schema — actions, entities, request context
-├── governance/events.dwschema          the EVENT schema — kinds, logged fields, and the pin
-├── events/*.json                       five occurrences, in the order they happen
-├── refusals/*.json                     four submissions that are refused, and why
-└── tests/session-access.yml            the claims below, as cases `permguard test` runs
+```mermaid
+flowchart LR
+    Caller[Application] -->|occurrence| DP[Data plane]
+    DP -->|append before answering| Journal[(Durable event journal)]
+    Journal --> Dogwood[Dogwood policy]
+    Dogwood -->|permit / deny / accepted| Caller
+    Journal -. signed batches .-> CP[(Control-plane event store)]
+    CLI[permguard events] --> CP
 ```
 
-Two schemas, because they answer different questions about the same occurrence:
+The policy is adapted from Dogwood's `read_login_not_logout` example. Permguard
+adds the packaging, durable journal, signed replication, CLI and control-plane
+read path around it.
+
+## What is in the example
 
 ```text
-event occurrence
-  ├── action schema: principal, resource, action and request context
-  └── event schema:  kind, logged fields, pins and the maximum temporal window
+governance/read-after-login.dw   temporal policy
+governance/schema.cedarschema    principals, resources, actions and request context
+governance/events.dwschema       event kinds, logged fields, pins and time window
+events/                          the successful trace
+refusals/                        malformed or conflicting submissions
+tests/session-access.yml         eight deterministic offline cases
+manifest.yml                     Dogwood runtime, partition and temporal profile
 ```
 
-That is why a Dogwood partition declares `artifacts:` rather than `schema: true`.
-"There is a schema" cannot say *which*, and this partition has two.
+The live lab uses two terminals and starts from the repository root. It needs
+`task`, `curl` and `jq`. Every CLI block uses `task cli --`, so an installed
+`permguard` binary is not required. That wrapper deliberately does not propagate
+CLI refusal exit codes; automation should invoke the installed binary directly.
 
-## The pin, and why the policy never mentions the principal
+## Step 1 — Start the experimental planes
 
-`events.dwschema` declares:
+In terminal 1:
 
-```dogwood
-decision event <A>::request {
-    ...inputs(A),
-    pin callerPrincipal: principalType(A) = principal,
-    ...
+```bash
+task run:experimental
+```
+
+This starts one all-in-one process with:
+
+| Surface | Address | Purpose |
+| --- | --- | --- |
+| Control plane | `http://127.0.0.1:7556` | policies and replicated event evidence |
+| Data plane | `http://127.0.0.1:7656` | event ingestion and temporal decisions |
+| Telemetry | `http://127.0.0.1:7558` | health and metrics |
+
+Dogwood is deliberately disabled by the ordinary `task run:all`; the temporal
+contract is still `v1alpha1` and must be enabled explicitly.
+
+## Step 2 — Establish event trust
+
+In terminal 2, publish the data plane's generated public keys where the local
+control-plane configuration expects them:
+
+```bash
+mkdir -p .volume/all-in-one/trust
+curl -fsS http://127.0.0.1:7656/data-plane/keys \
+  -o .volume/all-in-one/trust/data-plane-events.jwks
+```
+
+No private key moves. The control plane reloads this JWKS without a restart and
+accepts it only for the producer and tenant scope declared in
+`config.local-experimental.yml`.
+
+## Step 3 — Create and publish the ledger
+
+```bash
+task cli -- zones create acme
+task cli -- ledgers create --zone acme agent-governance
+
+task cli -- -w examples/dogwood-session-access \
+  init agent-governance --language dogwood
+task cli -- -w examples/dogwood-session-access \
+  remote add origin http://127.0.0.1:7556
+task cli -- -w examples/dogwood-session-access validate
+task cli -- -w examples/dogwood-session-access \
+  checkout origin/acme/agent-governance
+task cli -- -w examples/dogwood-session-access plan
+task cli -- -w examples/dogwood-session-access \
+  apply -m "Dogwood session access policy"
+```
+
+`plan` should contain one policy:
+
+```text
++ governance/read_after_login.dw
+
+Plan: 1 to create, 0 to update, 0 to delete (0 unchanged).
+```
+
+Give the mirror one local synchronization round:
+
+```bash
+sleep 20
+```
+
+## Step 4 — Prove the policy before sending events
+
+```bash
+task cli -- -w examples/dogwood-session-access test
+```
+
+Expected result:
+
+```text
+8 case(s), 8 passed, 0 failed.
+```
+
+These are deterministic offline cases. They include a read more than one hour
+after login without weakening the live plane's five-minute lateness protection.
+
+## Step 5 — Run the live trace
+
+The JSON fixtures intentionally contain fixed timestamps so the offline suite is
+reproducible. A live plane correctly refuses old occurrences. This helper keeps
+the fixtures unchanged and gives each submitted copy a current timestamp and a
+unique event ID:
+
+```bash
+DEMO_ID="demo-$(date +%s)"
+
+submit() {
+  file="$1"
+  suffix="$2"
+
+  jq --arg event_id "${DEMO_ID}-${suffix}" \
+    '.event.data.event_id = $event_id
+     | .event.data.occurred_at = (now | todate)' "$file" |
+    curl -sS -X POST http://127.0.0.1:7656/temporal/v1alpha1/events \
+      -H 'content-type: application/json' --data-binary @- |
+    jq
 }
 ```
 
-`pin` correlates every temporal predicate on this event to the principal of the
-request being decided. Alice's `Login` is invisible to Bob's `Read` — not because
-the policy checks, but because the two are in different histories.
-
-The value is never taken from the caller. Permguard derives it from the request's
-authoritative root, and if a caller *also* sends `logged.callerPrincipal` with a
-different value the submission is refused rather than one of the two being chosen:
-a pin decides which history an event belongs to, and choosing would let a caller
-pick its own.
-
-## Run it
-
-The temporal interface is off by default, and gated a second time because
-Dogwood's contracts are `v1alpha1`. In the data plane's configuration:
-
-```yaml
-experimental:
-  dogwood:
-    enabled: "true"
-
-dataPlane:
-  events:
-    enabled: "true"
-    producer_id: data-plane-local-1
-```
-
-Then apply the workspace and submit the five occurrences in order:
+Submit Alice's login request and its response:
 
 ```bash
-permguard -w examples/dogwood-session-access apply
-
-for event in examples/dogwood-session-access/events/*.json; do
-  curl -sS -X POST http://127.0.0.1:7656/temporal/v1alpha1/events \
-    -H 'content-type: application/json' --data @"$event" | jq -c
-done
+submit examples/dogwood-session-access/events/1-login-request.json login-request
+submit examples/dogwood-session-access/events/2-login-response.json login-response
 ```
 
-## What you should see
+The request is a decision kind and is denied because no policy permits a login.
+The response is history-only and therefore returns `"outcome": "accepted"`
+without inventing a decision.
 
-| # | Occurrence | Outcome | Why |
-| --- | --- | --- | --- |
-| 1 | `Login::request` at 10:00:00 | `decided`, **deny** | `request` is a decision kind, and no rule permits a `Login` |
-| 2 | `Login::response` at 10:00:05 | `accepted` | a history-only kind: recorded, observed, **no verdict invented** |
-| 3 | `Read::request` at 10:01:40 | `decided`, **permit** | alice logged in 95 s ago — inside the 1 h window |
-| 4 | `Read::request` at 11:06:40 | `decided`, **deny** | the login is now 1 h 6 m old — outside the window |
-| 5 | `Read::request` by bob | `decided`, **deny** | bob has no login, and alice's is in another history |
-
-Occurrence 2 is the one worth pausing on. A history-only kind returns
-
-```json
-{ "outcome": "accepted", "event_id": "…", "watermark": { … } }
-```
-
-with **no `decision` field at all** — not `false`. A fabricated verdict a caller
-cannot tell from a decided one is the most dangerous thing this interface could
-return, so it does not return one.
-
-## Checking the claims
-
-The table above is not prose: it is a test plan, and `permguard test` runs it offline — the policy
-is compiled here, so it holds before anything is applied to a plane.
+Now ask about the read:
 
 ```bash
-permguard -w examples/dogwood-session-access test
+submit examples/dogwood-session-access/events/3-read-permitted.json read-permitted
 ```
 
-A temporal case is a claim about **order**, so it is written as one: `events` are the occurrences
-that happened first, applied in the order given, and `request` is the one whose verdict is judged.
-
-```yaml
-- name: a read inside the window is permitted by the login before it
-  events:
-    - ../events/1-login-request.json
-    - ../events/2-login-response.json
-  request: ../events/3-read-permitted.json
-  expect: { decision: permit }
-```
-
-The plan deliberately contains that case and its opposite — the *same* read with no login before
-it, which must be denied. Those two differ in nothing but the order, which is the property the whole
-example is about, and a pair no stateless case could express.
-
-What this does not check is the durable half: journalling, shipping, replication and restart are the
-planes' own business and have their own tests. What it checks is that the policy decides what this
-README says it decides.
-
-## What is refused, and why
-
-Half of a contract is what it will not accept, and it is the half an integration meets first. Each
-file under `refusals/` is a submission somebody sends by accident:
-
-```bash
-for event in examples/dogwood-session-access/refusals/*.json; do
-  curl -sS -X POST http://127.0.0.1:7656/temporal/v1alpha1/events \
-    -H 'content-type: application/json' --data @"$event" | jq -c
-done
-```
-
-| File | Status | `code` | Why |
-| --- | --- | --- | --- |
-| `unknown-action.json` | `400` | `event_action_undeclared` | the schema derives no `Drupe::Action::Delete`, so no temporal predicate could ever match it |
-| `undeclared-field.json` | `400` | `event_field_undeclared` | `logged.input.clearance` is nobody's field: storing it would put a value in the record that the engine cannot see |
-| `pin-disagrees.json` | `400` | `event_pin_contradicted` | the caller sent `callerPrincipal: bob` on a request whose principal is alice |
-| `conflicting-retry.json` | `409` | `event_id_conflict` | one `event_id`, two different occurrences |
-
-None of them is accepted with the offending part dropped. An event stored minus a field it claimed
-to carry is an event that means something other than what was sent, and nothing downstream can tell.
-
-`pin-disagrees.json` is the one worth reading twice. A pin decides **which history** an event
-belongs to, so letting a caller supply it would let a caller choose whose history its event lands
-in. Permguard derives the value from the request's authoritative root and refuses a caller's
-disagreeing copy rather than picking one of the two.
-
-Submitting the same occurrence twice is not in that table, because it is not an error in the same
-sense: it answers `409 event_already_recorded`, naming the sequence that holds the one that *was*
-recorded. It is neither stored again nor **observed** again — observing it twice is the one thing a
-retry must never do, because a temporal engine counts occurrences.
-
-## Restarting is not forgetting
-
-Stop the plane after occurrence 2 and start it again. Occurrence 3 is still permitted.
-
-That is not free, and it is the part of a temporal interface most likely to be got wrong: the
-history is on disk, but the engine that decides against it holds its history in memory and starts
-empty. A plane that answered before replaying would return a `deny` indistinguishable from a correct
-one — the login it should have seen is on disk, and simply not in the engine.
-
-So before an occurrence is observed, this plane makes sure the engine has seen what its ledger holds:
-its own journal, and — under a shared mode — the imported history, merged into one ordered run and
-replayed. It is paid once per fresh engine, not once per submission, and the same replay is what
-absorbs history that arrives late from another plane.
-
-## What every answer carries
+The important fields are:
 
 ```json
 {
   "outcome": "decided",
   "decision": true,
-  "watermark": { "instance": "…", "sequence": 3, "history": "sha256:…" },
   "history": { "mode": "local" }
 }
 ```
 
-`watermark` is where the occurrence sits in this plane's stream — proof it is
-durable, and the coordinate a later read cites. `history.mode` says which history
-the decision ranged over; with `pull.mode` set to a shared mode it also carries the
-import watermark and how stale it was, so an auditor can reproduce exactly what
-was visible.
-
-## Reading it back
-
-The events are shipped to the control plane, which is the only supported remote
-source for reading them: a data plane's journal holds what its policies still read
-and what has not yet been acknowledged, so a read there would answer differently
-depending on which plane it reached.
+Alice's login does not authorize Bob:
 
 ```bash
-permguard events list --zone acme --ledger agent-governance
-permguard events get 01J8Z9-read-inside-window
-permguard events verify --zone acme --ledger agent-governance --keys plane-keys.json
+submit examples/dogwood-session-access/events/5-read-other-user.json read-other-user
 ```
 
-`verify` checks each record's digest against its inclusion path and the path
-against the root its envelope attests; with `--keys` it also checks the envelope's
-signature. The report says which of the two happened, because "verified" that
-quietly skipped the signatures is worse than no verification at all.
+```json
+{
+  "outcome": "decided",
+  "decision": false,
+  "reason": { "code": "not_permitted" }
+}
+```
 
-## The order is the point
+| Occurrence | Outcome | Meaning |
+| --- | --- | --- |
+| Alice `Login::request` | decided, deny | recording an event does not imply permitting its action |
+| Alice `Login::response` | accepted | stored in history; no verdict applies to this event kind |
+| Alice `Read::request` | decided, permit | her login is inside the one-hour window |
+| Bob `Read::request` | decided, deny | Alice and Bob have different pinned histories |
 
-Submit occurrence 3 before occurrence 2 and it is denied: the login had not
-happened yet. That is not a quirk to work around — it is the whole difference
-between this interface and the stateless one, and it is why the event is made
-durable *before* it is observed and before the answer is returned.
+### Optional restart checkpoint
 
-## Where this comes from
+After the login response, stop terminal 1 with `Ctrl-C`, run
+`task run:experimental` again, wait for it to become ready and then submit the
+read. It is still permitted: the journal is replayed before Dogwood answers, so a
+restart is not an empty history.
 
-Adapted from Dogwood's own `dogwood-docs/examples/read_login_not_logout` bundle. Permguard changed
-the wire format, the packaging and the deployment around it and preserved Dogwood's semantics — the
-verdicts in the table above are the ones upstream records for the same trace, which is what
-`crates/permguard-languages` asserts against upstream's corpus.
+## Step 6 — Read and verify the replicated evidence
 
-Dogwood is Apache-2.0: <https://github.com/dogwood-policy/dogwood>. The full attribution, including
-the reviewed revision this build pins, is in [`NOTICE.md`](../../NOTICE.md). Neither Amazon nor the
-Dogwood maintainers endorse this integration.
+The signed records use immutable zone and ledger IDs. Resolve them once from the
+catalog:
 
-Dogwood support in Permguard is **experimental**: its wire and replication contracts are
-`v1alpha1`, and a deployment serves them only by saying so — `experimental.dogwood.enabled: true`.
+```bash
+ZONE_ID="$(task cli -- zones list -o json |
+  jq -r '.zones[] | select(.name == "acme") | .id')"
+LEDGER_ID="$(task cli -- ledgers list --zone acme -o json |
+  jq -r '.ledgers[] | select(.name == "agent-governance") | .id')"
+
+sleep 6
+```
+
+The six seconds allow the local event shipper to complete one round. Now read
+from the control plane, not from the data plane's working journal:
+
+```bash
+task cli -- events list --zone "$ZONE_ID" --ledger "$LEDGER_ID"
+
+task cli -- events get "${DEMO_ID}-read-permitted" \
+  --zone "$ZONE_ID" --ledger "$LEDGER_ID" -o json
+```
+
+Verify the Merkle inclusion paths and the signed batch against the independently
+saved JWKS:
+
+```bash
+task cli -- events verify \
+  --zone "$ZONE_ID" --ledger "$LEDGER_ID" \
+  --keys .volume/all-in-one/trust/data-plane-events.jwks
+```
+
+Expected summary for the four-event trace:
+
+```text
+coverage    4 examined, 4 returned
+inclusion   4 record(s) proven in a signed batch
+signatures  1 verified, 0 failed
+```
+
+The exact batch count can be higher if the shipper divided the trace across more
+than one batch; zero failed signatures is the invariant.
+
+## Step 7 — Watch invalid events fail closed
+
+Reuse the helper. The last call deliberately reuses the ID of the read already
+stored, but changes its content:
+
+```bash
+submit examples/dogwood-session-access/refusals/unknown-action.json unknown-action
+submit examples/dogwood-session-access/refusals/undeclared-field.json undeclared-field
+submit examples/dogwood-session-access/refusals/pin-disagrees.json pin-disagrees
+submit examples/dogwood-session-access/refusals/conflicting-retry.json read-permitted
+```
+
+| Submission | HTTP | Code | Why |
+| --- | ---: | --- | --- |
+| unknown action | 400 | `event_action_undeclared` | no loaded schema declares it |
+| undeclared field | 400 | `event_field_undeclared` | the engine could not observe the extra field |
+| caller-supplied conflicting pin | 400 | `event_pin_contradicted` | callers cannot choose another principal's history |
+| same ID, different occurrence | 409 | `event_id_conflict` | one ID cannot name two events |
+
+Nothing is accepted after silently dropping the offending part.
+
+## Why the partition has two schemas
+
+```text
+one occurrence
+├── action schema: principal, resource, action and request context
+└── event schema:  event kind, logged fields, pins and maximum window
+```
+
+That is why the manifest declares typed `artifacts` instead of `schema: true`:
+
+```yaml
+artifacts:
+  - { type: permguard.dogwood.action-schema.v1, required: true }
+  - { type: permguard.dogwood.event-schema.v1, required: false }
+input: { type: permguard.dogwood.event.v1, required: true }
+```
+
+The event schema pins `callerPrincipal` to the request principal. Permguard
+derives the pin from that authoritative field; a caller cannot route an event
+into somebody else's history by writing the pin themselves.
+
+## Reset the local lab
+
+Stop the process first. To remove only the policy catalog entry:
+
+```bash
+task cli -- ledgers delete --zone acme agent-governance
+```
+
+To discard every local all-in-one demo artifact — catalog, journals, audit logs
+and generated development keys — remove its explicitly scoped volume:
+
+```bash
+rm -rf .volume/all-in-one
+rm -rf examples/dogwood-session-access/.permguard
+```
+
+Do not use that second reset against a volume containing data you intend to keep.
+
+## Origin and stability
+
+Adapted from Dogwood's Apache-2.0
+[`dogwood-docs/examples/read_login_not_logout`](https://github.com/dogwood-policy/dogwood/tree/main/dogwood-docs/examples/read_login_not_logout)
+example. The reviewed revision and full attribution are in
+[`NOTICE.md`](../../NOTICE.md). Neither Amazon nor the Dogwood maintainers
+endorse this integration.
+
+Dogwood support is **experimental**. Its API and replication contracts are
+`v1alpha1`, and a deployment serves them only when
+`experimental.dogwood.enabled: true` and the corresponding event surfaces are
+enabled.

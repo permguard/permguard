@@ -56,6 +56,9 @@ const EVENT_SCHEMA: &str = include_str!("fixtures/pinned.dwschema");
 
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
+/// What storage is keyed by: a request may name either, and one ledger keeps one journal.
+const ZONE_ID: &str = "acme-id";
+const LEDGER_ID: &str = "agent-governance-id";
 const PROFILE: &str = "temporal";
 
 fn scratch(tag: &str) -> PathBuf {
@@ -249,6 +252,8 @@ struct Plane {
     events: PathBuf,
     /// The journals, so a test can ask what order the ledger applied.
     streams: Arc<Streams>,
+    /// The policy state the decider reads, so a test can take it away.
+    mirrors: PathBuf,
 }
 
 fn plane(tag: &str) -> Plane {
@@ -258,7 +263,7 @@ fn plane(tag: &str) -> Plane {
     provision(&mirrors, &manifest());
 
     let decider = Arc::new(Decider::new(
-        mirrors,
+        mirrors.clone(),
         Arc::new(Cache::new(64, 32 * 1024 * 1024)),
         Metrics::none(),
         None,
@@ -288,6 +293,7 @@ fn plane(tag: &str) -> Plane {
         )),
         events,
         streams,
+        mirrors,
     }
 }
 
@@ -437,8 +443,8 @@ async fn the_event_is_durable_before_the_answer_leaves_and_the_watermark_says_wh
     // And it is on disk, in the ledger's own directory, before any of that was said.
     let segment = plane
         .events
-        .join(ZONE)
-        .join(LEDGER)
+        .join(ZONE_ID)
+        .join(LEDGER_ID)
         .join("seg-00000000000000000001.events");
     let held = std::fs::read_to_string(&segment).expect("the segment exists");
     assert!(held.contains("Drupe::Action::Login"), "{held}");
@@ -502,7 +508,7 @@ async fn concurrent_submissions_are_applied_in_the_order_the_journal_assigned() 
 
     let applied = plane
         .streams
-        .sequencer(ZONE, LEDGER)
+        .sequencer(ZONE_ID, LEDGER_ID)
         .expect("the ledger is open")
         .applied_through();
     assert_eq!(
@@ -528,7 +534,7 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     provision(&mirrors, &manifest());
 
     let decider = Arc::new(Decider::new(
-        mirrors,
+        mirrors.clone(),
         Arc::new(Cache::new(64, 32 * 1024 * 1024)),
         Metrics::none(),
         None,
@@ -550,10 +556,11 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     ));
     // Caught up a moment ago: nothing here is refused for being stale.
     imports
-        .advance(ZONE, LEDGER, "offset-1")
+        .advance(ZONE_ID, LEDGER_ID, "offset-1")
         .expect("the cursor advances");
 
     let plane = Plane {
+        mirrors: mirrors.clone(),
         submitter: Arc::new(
             Submitter::new(decider, Arc::clone(&streams), Metrics::none()).with_shared_history(
                 permguard_core::config::Consistency::SharedBounded,
@@ -582,12 +589,12 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     // The control plane aged out where this plane stood, and the hole is recorded.
     imports
         .record_gap(
-            ZONE,
-            LEDGER,
+            ZONE_ID,
+            LEDGER_ID,
             "offset-oldest",
             permguard_data_plane::temporal::imports::Gap {
-                zone: ZONE.to_owned(),
-                ledger: LEDGER.to_owned(),
+                zone: ZONE_ID.to_owned(),
+                ledger: LEDGER_ID.to_owned(),
                 from_sequence: 40,
                 to_sequence: 91,
                 at: "2026-08-29T00:00:00Z".to_owned(),
@@ -621,7 +628,7 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     assert_eq!(
         plane
             .streams
-            .read_from(ZONE, LEDGER, 0, 100)
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
             .expect("the journal reads")
             .len(),
         2,
@@ -631,7 +638,12 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
     // Accepted explicitly. The next event is a read, so it only permits if the login response
     // that was journalled while the gap was open is replayed now, in this same process. This is
     // the crash-free form of the post-append hole that used to be repaired only by a restart.
-    assert_eq!(imports.resolve_gaps(ZONE, LEDGER).expect("it resolves"), 1);
+    assert_eq!(
+        imports
+            .resolve_gaps(ZONE_ID, LEDGER_ID)
+            .expect("it resolves"),
+        1
+    );
     let (status, answered) = post(
         &router,
         submission(
@@ -683,7 +695,7 @@ async fn a_retry_of_one_occurrence_is_answered_as_one_and_never_observed_twice()
     assert_eq!(
         plane
             .streams
-            .read_from(ZONE, LEDGER, 0, 100)
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
             .expect("the journal reads")
             .len(),
         1,
@@ -1070,7 +1082,7 @@ mod shipped_example {
             .expect("the volume is above the journals")
             .join("mirrors");
         let decider = Arc::new(Decider::new(
-            mirrors,
+            mirrors.clone(),
             Arc::new(Cache::new(64, 32 * 1024 * 1024)),
             Metrics::none(),
             None,
@@ -1097,6 +1109,7 @@ mod shipped_example {
             )),
             events: events.to_path_buf(),
             streams,
+            mirrors: mirrors.clone(),
         }
     }
 
@@ -1108,7 +1121,7 @@ mod shipped_example {
         provision_example(&mirrors);
 
         let decider = Arc::new(Decider::new(
-            mirrors,
+            mirrors.clone(),
             Arc::new(Cache::new(64, 32 * 1024 * 1024)),
             Metrics::none(),
             None,
@@ -1138,6 +1151,7 @@ mod shipped_example {
             )),
             events,
             streams,
+            mirrors: mirrors.clone(),
         }
     }
 
@@ -1305,7 +1319,16 @@ mod shipped_example {
         assert_eq!(status, StatusCode::OK, "{first}");
         plane
             .streams
-            .record_outcome(ZONE, LEDGER, event_id, &Value::Null)
+            .record_outcome(
+                ZONE_ID,
+                LEDGER_ID,
+                event_id,
+                permguard_data_plane::temporal::streams::Routed {
+                    profile: "default",
+                    kind: "occurrence",
+                },
+                &Value::Null,
+            )
             .expect("the crash window is reproduced on disk");
         let volume = plane.events.clone();
         drop(router);
@@ -1357,7 +1380,16 @@ mod shipped_example {
         // before the idempotency response was committed.
         plane
             .streams
-            .record_outcome(ZONE, LEDGER, event_id, &Value::Null)
+            .record_outcome(
+                ZONE_ID,
+                LEDGER_ID,
+                event_id,
+                permguard_data_plane::temporal::streams::Routed {
+                    profile: "default",
+                    kind: "occurrence",
+                },
+                &Value::Null,
+            )
             .expect("the crash window is reproduced on disk");
         let volume = plane.events.clone();
         drop(router);
@@ -1441,4 +1473,138 @@ mod shipped_example {
         // retrying: it is read back from the volume rather than decided again.
         assert_eq!(again["outcome"], "accepted", "{again}");
     }
+}
+
+/// A settled answer survives the profile it was decided under being taken away.
+///
+/// # What this is actually about
+///
+/// A completed submission is a fact this plane already stated to a caller, and a retry is that
+/// caller asking what it was told. Re-deriving the answer needs the profile, schema and commit it
+/// was decided under, and none of those is guaranteed to still be here: a profile is updated, a
+/// schema tightened, a partition removed.
+///
+/// If the retry loads them first, a settled answer starts failing for reasons that postdate it —
+/// the caller is told the event is unknown, or invalid, when it is durable and was answered. So
+/// the durable answer is read before any of that, and this asserts the order by removing the
+/// profile entirely between the two calls: nothing that follows could compile it.
+#[tokio::test]
+async fn a_settled_answer_is_returned_after_its_profile_is_gone() {
+    let plane = plane("settled-after-removal");
+    let router = surface(&plane);
+    let event = submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    );
+
+    let (first, answered) = post(&router, event.clone()).await;
+    assert_eq!(first, StatusCode::OK, "the first submission is answered");
+
+    // The profile is gone. A re-derivation cannot happen from here.
+    // The profile is taken away, not the mirror: the plane still serves this ledger — its
+    // identity file is what resolves the canonical key — but nothing here can compile a profile
+    // any more, so an answer that needed one could not be produced a second time.
+    // A mirror lives at `<mirrors>/<zone>/<ledger>`, and its identity file beside its policy
+    // state. Everything but that file goes.
+    for zone in std::fs::read_dir(&plane.mirrors).expect("the mirrors root reads") {
+        for ledger in std::fs::read_dir(zone.expect("a zone").path()).expect("the zone reads") {
+            for held in std::fs::read_dir(ledger.expect("a ledger").path()).expect("it reads") {
+                let held = held.expect("an entry").path();
+                if held.file_name().and_then(|name| name.to_str())
+                    == Some(permguard_data_plane::authz::store::IDENTITY_FILE)
+                {
+                    continue;
+                }
+                match held.is_dir() {
+                    true => std::fs::remove_dir_all(&held).expect("the policy state goes"),
+                    false => std::fs::remove_file(&held).expect("the policy state goes"),
+                }
+            }
+        }
+    }
+
+    let (second, replayed) = post(&router, event).await;
+    assert_eq!(
+        second,
+        StatusCode::OK,
+        "a retry of a settled answer is not refused because its profile went away: {replayed}"
+    );
+    assert_eq!(
+        replayed["event_id"], answered["event_id"],
+        "and it is the same answer, read from the journal rather than decided again"
+    );
+    assert_eq!(replayed["outcome"], answered["outcome"]);
+    assert_eq!(replayed["decision"], answered["decision"]);
+    assert_eq!(
+        replayed["decision_id"], answered["decision_id"],
+        "a settled decision keeps its identity: a second one would be a second audit record"
+    );
+}
+
+/// Naming a ledger by its identifier and by its name addresses one history.
+///
+/// # What this is actually about
+///
+/// A PEP configured with identifiers and a PEP configured with names are both configured
+/// correctly — `Mirror::answers_to` accepts either. Keying storage by whichever string arrived
+/// therefore let one ledger own *two* journals: two sequence spaces, two histories, two
+/// idempotency indexes, each blind to the other. A retry that reached the other one would not be
+/// recognised as a retry, and would be observed a second time by a temporal engine that counts
+/// order.
+///
+/// So the assertion is not that both calls answer, but that the second is recognised as the
+/// *same* occurrence: one record, one sequence, one answer.
+#[tokio::test]
+async fn a_ledger_named_two_ways_keeps_one_history() {
+    let plane = plane("two-names");
+    let router = surface(&plane);
+
+    let by_name = submission(
+        0,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s1"}),
+    );
+    // The same submission, addressed the other way a caller may address it.
+    let mut by_id = by_name.clone();
+    by_id["store"]["zone"] = json!(ZONE_ID);
+    by_id["store"]["ledger"] = json!(LEDGER_ID);
+
+    let (first, answered) = post(&router, by_name).await;
+    assert_eq!(first, StatusCode::OK, "{answered}");
+
+    let (second, replayed) = post(&router, by_id).await;
+    assert_eq!(
+        second,
+        StatusCode::OK,
+        "the same occurrence addressed by identifier is served by the same ledger: {replayed}"
+    );
+    assert_eq!(
+        replayed["watermark"]["sequence"], answered["watermark"]["sequence"],
+        "and it occupies the one position it already occupied, rather than a second one"
+    );
+    assert_eq!(replayed["event_id"], answered["event_id"]);
+    assert_eq!(
+        replayed["history"], answered["history"],
+        "one ledger, one history"
+    );
+
+    // The decisive one: a second journal would hold this occurrence a second time.
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("the journal reads")
+            .len(),
+        1,
+        "one occurrence, one record, whichever way the ledger was named"
+    );
+    assert!(
+        !plane.events.join(ZONE).join(LEDGER).exists(),
+        "and nothing was written under the display names"
+    );
 }

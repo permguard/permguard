@@ -125,9 +125,10 @@ dataPlane:
   # refuses. Replicated means each replica mirrors into its own volume.
   #
   # A plane serving the TEMPORAL interface is different in kind: its event journal is the history
-  # its own policies decide against, not a cache. It needs storage that survives a restart, and
-  # therefore a StatefulSet with a claim per replica — this chart refuses the combination that
-  # would silently change what those policies answer:
+  # its own policies decide against, not a cache. It needs storage that survives a restart, and one
+  # volume per replica: set `persistence.perReplica: true` and the component is deployed as a
+  # StatefulSet with `volumeClaimTemplates` and a headless Service. The combination that would
+  # silently change what those policies answer — several replicas over one claim — is refused:
   #
   #   extraConfig:
   #     dataPlane:
@@ -293,13 +294,24 @@ securityContext:
 #
 # A real installation turns it on — and gets **one claim per component**, not one per replica: this
 # chart deploys a Deployment, and every replica of a component mounts the same claim. That is why
-# `templates/checks.yaml` refuses persistent storage under a replicated component. A volume per
-# replica needs a StatefulSet, which this chart does not have yet.
+# A replicated component with persistent storage needs a volume *per replica*: one claim mounted in
+# three pods is one journal three processes write, which is the corruption the exclusive lock exists
+# to refuse. `perReplica` is how that is asked for; `templates/checks.yaml` refuses the combinations
+# that need it and do not set it.
 persistence:
   # The default for every component. A component overrides it with its own
   # `persistence: { enabled: … }` — one switch cannot say "a volume for the control plane, none for
   # the replicated data plane", and that is exactly what a real installation needs.
   enabled: false
+  # A volume per replica, from a StatefulSet's `volumeClaimTemplates`, instead of one claim shared
+  # by every pod. Required for a replicated plane that serves the temporal interface: its event
+  # journal is the history its own policies decide against, so it can neither go without a volume
+  # nor share one.
+  #
+  # Switching this on an existing release changes the workload kind, and Kubernetes does not
+  # convert a Deployment into a StatefulSet: the old workload has to be deleted first. That is why
+  # it is opted into rather than deduced from the replica count.
+  perReplica: false
   storageClass: ""
   accessModes: ["ReadWriteOnce"]
   size: 1Gi

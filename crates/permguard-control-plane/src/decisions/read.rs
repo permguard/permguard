@@ -245,7 +245,7 @@ pub fn read(
     let observed_frontier = cursor.frontier.clone();
     let end = Frontier::of(
         &stream,
-        end_of(store, scope).unwrap_or_else(|| observed_frontier.covered_through(&stream)),
+        end_of(store, scope)?.unwrap_or_else(|| observed_frontier.covered_through(&stream)),
     );
     let more = permguard_stream::more(window, &observed_frontier, &end);
 
@@ -265,11 +265,19 @@ pub fn read(
             .collect();
         streams.sort();
         streams.dedup();
-        streams
-            .into_iter()
-            .filter_map(|(pdp_id, instance)| store.envelopes(&pdp_id, &instance).ok())
-            .flatten()
-            .collect()
+        // A proof that is quietly short is worse than no proof: the caller asked for evidence, got
+        // a successful answer, and has fewer envelopes than records without being told which are
+        // missing or why. A store it could not read is a refusal.
+        let mut held = Vec::new();
+        for (pdp_id, instance) in streams {
+            held.extend(store.envelopes(&pdp_id, &instance).map_err(|error| {
+                ReadError::Unavailable(format!(
+                    "the evidence for `{pdp_id}/{instance}` could not be read, and a proof missing \
+                     part of itself must not be returned as one: {error}"
+                ))
+            })?);
+        }
+        held
     } else {
         Vec::new()
     };
@@ -277,10 +285,16 @@ pub fn read(
     let inclusion: Vec<Value> = if proof.is_empty() {
         Vec::new()
     } else {
-        inclusion_paths(store, &records, &proof)
-            .into_iter()
-            .filter_map(|held| serde_json::to_value(held).ok())
-            .collect()
+        // Same rule for the paths themselves: one that will not render is one the caller cannot
+        // check, and dropping it silently leaves a page whose proof covers fewer records than it
+        // appears to.
+        let mut rendered = Vec::with_capacity(records.len());
+        for held in inclusion_paths(store, &records, &proof) {
+            rendered.push(serde_json::to_value(held).map_err(|error| {
+                ReadError::Unavailable(format!("an inclusion path could not be rendered: {error}"))
+            })?);
+        }
+        rendered
     };
 
     Ok(Page {
@@ -306,15 +320,30 @@ pub fn read(
 }
 
 /// The exclusive end of a scope right now: one past its highest sequence.
-fn end_of(store: &DecisionStore, scope: &Scope) -> Option<u64> {
-    let segments = store.segments(scope).ok()?;
-    let (_, last) = segments.last()?;
-    let (records, _) = read_segment(last, 0, usize::MAX).ok()?;
+///
+/// `Ok(None)` is a scope with no segments — a legitimate answer, and the only one that may be read
+/// as "there is nothing beyond here". A store that could not be read is an error, because the
+/// caller turns this into `more`: a failure reported as absence tells a consumer it is caught up
+/// when the truth is that nobody looked, and a consumer that believes it is caught up stops.
+fn end_of(store: &DecisionStore, scope: &Scope) -> Result<Option<u64>, ReadError> {
+    let segments = store.segments(scope).map_err(|error| {
+        ReadError::Unavailable(format!(
+            "the segments of this scope could not be listed: {error}"
+        ))
+    })?;
+    let Some((_, last)) = segments.last() else {
+        return Ok(None);
+    };
+    let (records, _) = read_segment(last, 0, usize::MAX).map_err(|error| {
+        ReadError::Unavailable(format!(
+            "the last segment of this scope could not be read: {error}"
+        ))
+    })?;
 
-    records
+    Ok(records
         .last()
         .and_then(|record| record.get("seq").and_then(Value::as_u64))
-        .map(|seq| seq + 1)
+        .map(|seq| seq + 1))
 }
 
 /// Builds the inclusion path of every record, against the batch that carried it.

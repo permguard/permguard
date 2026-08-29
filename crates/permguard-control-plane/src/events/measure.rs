@@ -57,3 +57,11 @@ pub const RETURNED: Metric = Metric::counter(
     "permguard_events_records_returned_total",
     "Event records returned to readers, by scope.",
 );
+
+/// The one number worth alerting on for trust: a plane serving ingestion with zero trusted
+/// producers accepts nothing, and from the outside that failure looks like a producer at fault
+/// rather than a receiver that never loaded its trust.
+pub const TRUSTED_PRODUCERS: Metric = Metric::gauge(
+    "permguard_event_trusted_producers",
+    "How many bound producer keys this plane currently accepts event batches under.",
+);

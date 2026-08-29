@@ -43,6 +43,8 @@ type Verified<'a> = (Arc<Partition>, &'a dyn Temporal, Checked);
 pub struct Submitter {
     decider: Arc<Decider>,
     streams: Arc<Streams>,
+    /// The bound on concurrent blocking work — see [`crate::blocking`].
+    blocking: crate::blocking::Blocking,
     metrics: permguard_core::metrics::Metrics,
     /// How far a caller's clock may run ahead of this one before its `occurred_at` is refused.
     clock_skew: std::time::Duration,
@@ -72,10 +74,15 @@ impl Submitter {
         metrics: permguard_core::metrics::Metrics,
     ) -> Self {
         let bounds = streams.bounds();
+        let blocking = crate::blocking::Blocking::new(
+            permguard_core::config::default_max_blocking(),
+            metrics.clone(),
+        );
 
         Self {
             decider,
             streams,
+            blocking,
             metrics,
             clock_skew: bounds.clock_skew,
             allowed_lateness: bounds.allowed_lateness,
@@ -137,7 +144,63 @@ impl Submitter {
             occurrence,
             event,
         } = self.read(request)?;
+        // Taken before the occurrence is consumed by the response it becomes part of: it is
+        // recorded beside the answer, so a retry under a different type is a routing conflict
+        // rather than something answered from the first occurrence's outcome.
+        let occurrence_kind = occurrence.kind.clone();
+
+        // One resolution, and everything below is keyed by what it returned.
+        //
+        // A caller may name a ledger by its identifier or by its display name, and both resolve to
+        // one mirror — so keying storage by whichever string arrived would let one ledger own two
+        // journals: two sequences, two histories, two idempotency indexes, neither aware of the
+        // other. The names are what a caller reads; the identifiers are what this plane stores
+        // under, and from here `zone` and `ledger` are the identifiers.
+        //
+        // Resolved from the mirror's identity file rather than by loading the profile, because a
+        // settled retry has to be answerable when the profile it was decided under is gone.
+        let mirror = permguard_data_plane_mirror_of(self.decider.root(), &zone, &ledger)?;
+        let (zone_name, ledger_name) = (zone.clone(), ledger.clone());
+        let zone = mirror.identity.zone_id.clone();
+        let ledger = mirror.identity.ledger_id.clone();
+        self.streams
+            .adopt((&zone, &ledger), (&zone_name, &ledger_name))
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "event_journal_ambiguous",
+                    error.to_string(),
+                )
+            })?;
         let labels = [("zone", zone.as_str()), ("ledger", ledger.as_str())];
+
+        // Answered from the journal before the profile is loaded, and deliberately in that order.
+        //
+        // A completed submission is a fact this plane already stated to a caller. Re-deriving it
+        // needs the profile, schema and commit it was decided under, and none of those is
+        // guaranteed to still be here: a profile is updated, a schema tightened, a partition
+        // removed. Loading them first makes a retry of a settled answer fail for reasons that
+        // postdate the answer — the caller is told the event is unknown, or invalid, when in fact
+        // it is durable and was answered.
+        //
+        // So the durable answer wins, and everything checked before returning it is checked
+        // against what was recorded rather than against what is loaded now: same ledger, same
+        // identifier, same occurrence bytes, same routing.
+        if let Some(settled) = self.settled(
+            &zone,
+            &ledger,
+            &event,
+            &occurrence.event_id,
+            &profile,
+            &occurrence_kind,
+        )? {
+            self.metrics.count(
+                &measure::SUBMISSIONS,
+                &[("outcome", "replayed"), ("zone", zone.as_str())],
+            );
+
+            return Ok(settled);
+        }
 
         let loaded = self.decider.loaded(&zone, &ledger, &profile).await?;
         let addressed = self.addressed(&loaded, &profile)?;
@@ -247,10 +310,75 @@ impl Submitter {
         };
 
         let appending = Instant::now();
-        let (written, mut record) = self
-            .streams
-            .append(&zone, &ledger, proposed)
-            .map_err(|failed| self.refuse_append(failed, &labels))?;
+        // The append and the turn for what it assigned, in one uncancellable unit.
+        //
+        // # Why they cannot be separated
+        //
+        // The journal assigns a sequence, and `Sequencer` advances only when that sequence's
+        // `Turn` is dropped — so a sequence nobody ever takes a turn for stalls every sequence
+        // after it until the process restarts. `a_sequence_that_never_takes_its_turn_stalls_the_
+        // ledger` is that invariant on its own.
+        //
+        // Anything that can suspend between the two makes that state reachable: a request
+        // cancelled there — an HTTP timeout, a client that hung up — is dropped after the sequence
+        // exists and before its turn is taken. Both halves therefore happen inside one
+        // `spawn_blocking`, which cannot be cancelled: either the sequence is assigned and its turn
+        // is held, or neither happened.
+        //
+        // Only for `Appended`. An idempotent retry assigns nothing, so there is no new sequence to
+        // strand, and the recovery path deliberately takes the turn of an *older* sequence further
+        // down — a cancellation there leaves the ledger exactly as stuck as it already was, and the
+        // next retry heals it.
+        //
+        // The cost is that a permit is held while waiting for another submission to the same ledger
+        // to apply. That is the pool doing its job: bounded, and refusing at the ceiling rather
+        // than blocking a runtime worker as this used to.
+        let appending = Instant::now();
+        let (appended, prepared) = {
+            let streams = Arc::clone(&self.streams);
+            let (held_zone, held_ledger) = (zone.clone(), ledger.clone());
+            self.blocking
+                .run(&labels, move || {
+                    let appended = streams.append(&held_zone, &held_ledger, proposed);
+                    let prepared = match &appended {
+                        Ok((Written::Appended { seq, .. }, _)) => streams
+                            .sequencer(&held_zone, &held_ledger)
+                            .ok()
+                            .map(|sequencer| sequencer.turn(*seq)),
+                        _ => None,
+                    };
+
+                    (appended, prepared)
+                })
+                .await
+                .map_err(|refused| match refused {
+                    crate::blocking::Refused::AtCapacity(held) => {
+                        self.metrics
+                            .count(&measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                        ApiError::new(
+                            ErrorClass::Unavailable,
+                            "event_append_at_capacity",
+                            format!(
+                                "{held}. An append waits for the flush that covers it and then for \
+                                 its turn to be applied, so this plane bounds how many may be \
+                                 outstanding and refuses beyond it rather than queueing behind a \
+                                 disk"
+                            ),
+                        )
+                    }
+                    crate::blocking::Refused::Failed(why) => ApiError::new(
+                        ErrorClass::Unavailable,
+                        "event_not_durable",
+                        format!("the occurrence could not be made durable: {why}"),
+                    ),
+                })?
+        };
+        let (written, mut record) = appended.map_err(|failed| {
+            // The turn, if one was taken, is dropped with `prepared` here — the sequence is
+            // released rather than stranded.
+            self.refuse_append(failed, &labels)
+        })?;
         self.metrics.observe(
             &measure::APPEND_SECONDS,
             &labels,
@@ -419,20 +547,28 @@ impl Submitter {
         // history lock they both want, and the history a temporal policy reads would be ordered by
         // the scheduler. Taken *before* `history_scope` so that a refusal there releases it on the
         // way out — a sequence journalled and then abandoned must not stop the ledger.
-        let turn = self
-            .streams
-            .sequencer(&zone, &ledger)
-            .map_err(|error| {
-                ApiError::new(
-                    ErrorClass::Unavailable,
-                    "history_unorderable",
-                    format!(
-                        "`{zone}/{ledger}` cannot order this occurrence against the ones before \
-                         it: {error}"
-                    ),
-                )
-            })?
-            .turn(sequence);
+        // The sequencer is taken out of the map first and the wait is awaited on it, rather than
+        // awaiting on a temporary: the turn is held across everything below, and a value borrowed
+        // from an expression that ends at the semicolon cannot be.
+        // Already held when the append assigned this sequence — taken there so nothing could be
+        // cancelled between the two. Asking again would wait for a turn this task is holding.
+        let turn = match prepared {
+            Some(turn) => turn,
+            None => {
+                let sequencer = self.streams.sequencer(&zone, &ledger).map_err(|error| {
+                    ApiError::new(
+                        ErrorClass::Unavailable,
+                        "history_unorderable",
+                        format!(
+                            "`{zone}/{ledger}` cannot order this occurrence against the ones \
+                             before it: {error}"
+                        ),
+                    )
+                })?;
+
+                sequencer.turn(sequence)
+            }
+        };
 
         // Two concurrent retries may both have observed the missing response before the first one
         // finished recovery. The ledger turn serializes their application; check again inside it
@@ -559,7 +695,16 @@ impl Submitter {
                 reason: None,
                 history,
             };
-            self.keep_outcome(&zone, &ledger, &response.event_id, &response)?;
+            self.keep_outcome(
+                &zone,
+                &ledger,
+                &response.event_id,
+                crate::temporal::streams::Routed {
+                    profile: &profile,
+                    kind: &occurrence_kind,
+                },
+                &response,
+            )?;
 
             return Ok(response);
         }
@@ -654,7 +799,16 @@ impl Submitter {
             reason: Some(reason),
             history,
         };
-        self.keep_outcome(&zone, &ledger, &response.event_id, &response)?;
+        self.keep_outcome(
+            &zone,
+            &ledger,
+            &response.event_id,
+            crate::temporal::streams::Routed {
+                profile: &profile,
+                kind: &occurrence_kind,
+            },
+            &response,
+        )?;
 
         Ok(response)
     }
@@ -670,6 +824,7 @@ impl Submitter {
         zone: &str,
         ledger: &str,
         event_id: &str,
+        routed: crate::temporal::streams::Routed<'_>,
         response: &SubmitResponse,
     ) -> Result<(), ApiError> {
         let held = serde_json::to_value(response).map_err(|error| {
@@ -680,7 +835,7 @@ impl Submitter {
             )
         })?;
         self.streams
-            .record_outcome(zone, ledger, event_id, &held)
+            .record_outcome(zone, ledger, event_id, routed, &held)
             .map_err(|error| {
                 warn!(
                     event.name = "temporal.outcome_unwritable",
@@ -806,6 +961,105 @@ impl Submitter {
                     format!("`{zone}/{ledger}` cannot activate its temporal contract: {error}"),
                 )
             })
+    }
+
+    /// The answer this ledger already gave for this occurrence, when it gave one.
+    ///
+    /// `None` means there is nothing settled to return — no entry, or an entry whose answer was
+    /// never completed — and the caller takes the full path, which is where an incomplete record
+    /// is recovered under its *original* commit rather than under whatever is loaded now.
+    ///
+    /// Everything here is a comparison against what was recorded. A mismatch is never resolved in
+    /// favour of the request: an identifier reused over different bytes, or routed differently, is
+    /// a conflict, because answering it from the first occurrence's outcome would answer a
+    /// question nobody asked.
+    fn settled(
+        &self,
+        zone: &str,
+        ledger: &str,
+        event: &serde_json::Value,
+        event_id: &str,
+        profile: &str,
+        kind: &str,
+    ) -> Result<Option<SubmitResponse>, ApiError> {
+        let known = self
+            .streams
+            .known(zone, ledger, event_id)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "event_outcome_unreadable",
+                    format!("the durable answer index for `{event_id}` cannot be read: {error}"),
+                )
+            })?;
+        let Some(known) = known else {
+            return Ok(None);
+        };
+        if known.response.is_null() {
+            // Durable, and never answered. The recovery path owns this: it requires the original
+            // commit and contract, which is a stricter test than anything here.
+            return Ok(None);
+        }
+
+        let digest = occurrence_digest_of(event).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Validation,
+                "event_not_canonical",
+                format!("the occurrence `{event_id}` cannot be digested: {error}"),
+            )
+        })?;
+        if digest != known.occurrence_digest {
+            // Counted, like every other refusal. A refusal no metric records is one an operator
+            // meets as an unexplained failure rate: this is the path a client reusing an
+            // identifier lands on, and it has to be visible as itself.
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "event_id_conflict")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Conflict,
+                "event_id_conflict",
+                format!(
+                    "`{event_id}` is already recorded in `{zone}/{ledger}` over different \
+                     content. An identifier names one occurrence: reusing it for another is \
+                     refused rather than answered from the first"
+                ),
+            ));
+        }
+
+        // Recorded with the answer, so an entry that predates them cannot be checked and is not
+        // answered from: such a retry takes the full path rather than trusting an unverifiable
+        // claim about how it was routed.
+        let (Some(was_profile), Some(was_kind)) = (&known.profile, &known.kind) else {
+            return Ok(None);
+        };
+        if was_profile != profile || was_kind != kind {
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "event_routing_conflict")]);
+
+            return Err(ApiError::new(
+                ErrorClass::Conflict,
+                "event_routing_conflict",
+                format!(
+                    "`{event_id}` was answered under profile `{was_profile}` as `{was_kind}`, \
+                     and this retry states profile `{profile}` as `{kind}`. The same identifier \
+                     routed two ways is a conflict, not a retry"
+                ),
+            ));
+        }
+
+        let response: SubmitResponse =
+            serde_json::from_value(known.response.clone()).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "event_outcome_unreadable",
+                    format!(
+                        "the durable answer for `{event_id}` cannot be decoded and must not be \
+                         replaced by a new decision: {error}"
+                    ),
+                )
+            })?;
+
+        Ok(Some(response))
     }
 
     /// Marks one in-memory history as needing an authoritative replay before its next use.
@@ -1655,4 +1909,23 @@ fn reason_of(outcome: &permguard_languages::evaluate::Outcome) -> temporal::Reas
         code: "denied".to_owned(),
         message: "a policy refused it against this partition's history".to_owned(),
     }
+}
+
+/// The mirror a request names, by identifier or by display name.
+///
+/// Reads only the identity each mirror keeps beside itself, so an answer already settled can be
+/// found without compiling the profile it was settled under — which is the point: that profile may
+/// have been updated or removed since.
+fn permguard_data_plane_mirror_of(
+    root: &std::path::Path,
+    zone: &str,
+    ledger: &str,
+) -> Result<crate::authz::store::Mirror, ApiError> {
+    crate::authz::store::find(root, zone, ledger).ok_or_else(|| {
+        ApiError::new(
+            ErrorClass::NotFound,
+            "ledger_not_served",
+            format!("this plane does not serve `{zone}/{ledger}`"),
+        )
+    })
 }

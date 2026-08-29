@@ -142,7 +142,7 @@ impl EventFacade {
     /// Re-reads the producers' published sets, for a batch nothing could attribute.
     ///
     /// A producer that rotates its ring should be a file to update rather than a plane to restart.
-    fn reload_producers(&self) -> Result<(), String> {
+    pub(crate) fn reload_producers(&self) -> Result<(), String> {
         let mut keys = Vec::new();
         for source in &self.producer_files {
             let text = std::fs::read_to_string(&source.path)
