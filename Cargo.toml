@@ -74,7 +74,7 @@ futures-core = "0.3"
 # `digest` 0.10, and the two cannot meet: `Hmac<Sha256>` needs its hash to implement the *same*
 # generation's traits. Bumping one without the other does not fail at resolution — it fails deep in
 # a trait bound, which is why it reached CI. Moving up means moving `sha2` in the same commit.
-hmac = "0.12"
+hmac = "0.13"
 http = "1"
 http-body-util = "0.1"
 hyper-util = { version = "0.1", default-features = false, features = ["tokio", "client-legacy", "http1"] }
@@ -92,7 +92,7 @@ rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_norway = "0.9"
-sha2 = "0.10"
+sha2 = "0.11"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging"] }
 tonic = "0.14"

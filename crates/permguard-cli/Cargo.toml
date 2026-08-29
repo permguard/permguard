@@ -37,7 +37,7 @@ permguard-languages.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
-toml = "0.8"
+toml = "1.1"
 
 [dev-dependencies]
 base64.workspace = true
