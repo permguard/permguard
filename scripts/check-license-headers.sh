@@ -29,6 +29,12 @@ while IFS= read -r file; do
         .gitignore | */node_modules/* | target/*) continue ;;
     esac
 
+    # Tracked but not on disk: a rename or deletion that has not been committed yet. The header
+    # check is about the files that exist; the file's fate is git's business.
+    if [ ! -f "${file}" ]; then
+        continue
+    fi
+
     # Only the first 20 lines: a header further down is not a header.
     head="$(head -20 "${file}")"
 

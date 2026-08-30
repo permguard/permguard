@@ -149,6 +149,14 @@ pub struct EventReport {
     pub record: Value,
 }
 
+/// Which key signed which stretch of each producer stream of one ledger.
+#[derive(Debug, Clone, Serialize)]
+pub struct SignersReport {
+    pub scope: String,
+    /// The signers document as the server rendered it: `{"streams": [...]}`.
+    pub document: Value,
+}
+
 /// A finite, independently verifiable event export.
 ///
 /// The summary is for people; the canonical records, signed envelopes and inclusion paths are the
@@ -308,6 +316,76 @@ impl Report for EventsReport {
         if self.more {
             writeln!(out, "  {} {}", style::dim("next"), style::id(&self.next))?;
         }
+        writeln!(out)?;
+
+        Ok(())
+    }
+}
+
+impl Report for SignersReport {
+    fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        writeln!(out)?;
+        writeln!(
+            out,
+            "  {} {}",
+            style::dim("scope   "),
+            style::id(&self.scope)
+        )?;
+
+        let streams = self
+            .document
+            .get("streams")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if streams.is_empty() {
+            writeln!(out)?;
+            writeln!(out, "  {}", style::dim("nothing has been signed yet"))?;
+            writeln!(out)?;
+
+            return Ok(());
+        }
+
+        for stream in &streams {
+            let field = |name: &str| {
+                stream
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            writeln!(out)?;
+            writeln!(
+                out,
+                "  {} {}  {} {}  {} {}",
+                style::dim("producer"),
+                style::id(&field("producer")),
+                style::dim("instance"),
+                style::id(&field("instance")),
+                style::dim("acked"),
+                stream.get("acked").and_then(Value::as_u64).unwrap_or(0)
+            )?;
+            for span in stream
+                .get("spans")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                writeln!(
+                    out,
+                    "    {} {:>12}  {}",
+                    style::dim("from"),
+                    span.get("from").and_then(Value::as_u64).unwrap_or(0),
+                    style::id(span.get("kid").and_then(Value::as_str).unwrap_or_default())
+                )?;
+            }
+        }
+        writeln!(out)?;
+        writeln!(
+            out,
+            "  {}",
+            style::dim("the public keys ride in the JSON output: -o json")
+        )?;
         writeln!(out)?;
 
         Ok(())

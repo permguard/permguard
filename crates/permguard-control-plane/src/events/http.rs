@@ -59,6 +59,8 @@ pub const RECORDS_PATH: &str = "/events/v1alpha1/records";
 pub const RECORD_PATH: &str = "/events/v1alpha1/records/{event_id}";
 /// One tenant's read.
 pub const TENANT_RECORDS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records";
+/// Which key signed which stretch of each producer stream of one ledger.
+pub const SIGNERS_PATH: &str = "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers";
 
 /// Everything a request means, shared by both transports.
 #[derive(Clone)]
@@ -189,6 +191,82 @@ impl EventFacade {
     }
 
     /// Accepts one batch.
+    /// Which key signed which stretch of each producer stream of one ledger — the answer both
+    /// transports serve, so REST and gRPC cannot drift apart about who signed what.
+    ///
+    /// `until_seq` of zero means "from `from_seq` onward"; both zero means the whole history.
+    pub fn signers_of(
+        &self,
+        zone: &str,
+        ledger: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<Vec<StreamSignersView>, ApiError> {
+        let scope = super::read::canonical(
+            self.catalog.as_ref(),
+            Scope::Tenant {
+                zone: zone.to_owned(),
+                ledger: ledger.to_owned(),
+            },
+        )
+        .map_err(|error| match error {
+            super::read::ReadError::Unknown(detail) => {
+                ApiError::new(ErrorClass::NotFound, "scope_unknown", detail)
+            }
+            other => ApiError::new(
+                ErrorClass::Unavailable,
+                "store_unavailable",
+                other.to_string(),
+            ),
+        })?;
+        let Scope::Tenant { zone, ledger } = scope else {
+            return Err(ApiError::new(
+                ErrorClass::Internal,
+                "scope_mismatch",
+                "a tenant scope resolved to something else",
+            ));
+        };
+        let until = if until_seq == 0 { u64::MAX } else { until_seq };
+
+        let streams = self
+            .store
+            .producer_streams(&zone, &ledger)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "store_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        let mut answered = Vec::with_capacity(streams.len());
+        for stream in streams {
+            let state = self.store.stream_state(&stream).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "store_unavailable",
+                    error.to_string(),
+                )
+            })?;
+            let signers = self.store.signers(&stream).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "store_unavailable",
+                    error.to_string(),
+                )
+            })?;
+
+            answered.push(StreamSignersView {
+                producer_class: stream.producer.class,
+                producer: stream.producer.id,
+                instance: stream.producer.instance,
+                acked: state.acked,
+                spans: signers.covering(from_seq, until).to_vec(),
+            });
+        }
+
+        Ok(answered)
+    }
+
     pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
         let started = std::time::Instant::now();
         let types = self.accepted_types();
@@ -281,8 +359,57 @@ pub fn routes(facade: EventFacade) -> Router {
         .route(RECORDS_PATH, get(records))
         .route(RECORD_PATH, get(record))
         .route(TENANT_RECORDS_PATH, get(tenant_records))
+        .route(SIGNERS_PATH, get(signers))
         .route(super::configuration::CONFIGURATION_PATH, get(document))
         .with_state(facade)
+}
+
+/// One producer stream's signer history, with the receiver's durable frontier — what a verifier
+/// needs to check a range of that stream without reaching the producer.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StreamSignersView {
+    pub producer_class: String,
+    pub producer: String,
+    pub instance: String,
+    /// Everything through this sequence is durable here.
+    pub acked: u64,
+    pub spans: Vec<permguard_stream::SignerSpan>,
+}
+
+async fn signers(
+    State(facade): State<EventFacade>,
+    Path((zone, ledger)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let asked = asked_of(query.as_deref());
+    let bound = |name: &str| -> Result<u64, String> {
+        match asked.value(name) {
+            None => Ok(0),
+            Some(held) => held.parse().map_err(|_| name.to_owned()),
+        }
+    };
+    let (from_seq, until_seq) = match (bound("from_seq"), bound("until_seq")) {
+        (Ok(from_seq), Ok(until_seq)) => (from_seq, until_seq),
+        (Err(name), _) | (_, Err(name)) => {
+            return refuse(
+                &facade,
+                ApiError::new(
+                    ErrorClass::Validation,
+                    "bound_malformed",
+                    format!("`{name}` is a sequence number"),
+                ),
+            );
+        }
+    };
+
+    match facade.signers_of(&zone, &ledger, from_seq, until_seq) {
+        Ok(streams) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "streams": streams })),
+        )
+            .into_response(),
+        Err(error) => refuse(&facade, error),
+    }
 }
 
 /// What this plane offers of the event-log interface.

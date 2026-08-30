@@ -278,6 +278,12 @@ impl std::fmt::Display for ReadError {
 pub trait DecisionReader {
     /// Reads one bounded block of `scope`.
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError>;
+
+    /// Which key signed which stretch of one producer stream, public keys included.
+    ///
+    /// The shape is the signers document both transports serve: the receiver's `acked` frontier
+    /// and the `spans`, each carrying `from`, `kid` and the public JWK itself.
+    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError>;
 }
 
 /// The HTTP shipper.
@@ -373,6 +379,43 @@ impl DecisionSink for HttpSink {
 }
 
 impl DecisionReader for HttpSink {
+    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError> {
+        let path = format!(
+            "/decisions/v1/signers?pdp={}&instance={}",
+            crate::encode::value(pdp_id),
+            crate::encode::value(instance)
+        );
+        let response = self
+            .client
+            .request(&self.endpoint, "GET", &path, None)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?;
+
+        if (200..300).contains(&response.status) {
+            return serde_json::from_str(&response.body).map_err(|error| {
+                ReadError::Unavailable(format!("the manifest was unreadable: {error}"))
+            });
+        }
+
+        let parsed: Value = serde_json::from_str(&response.body).unwrap_or(Value::Null);
+        let field = |name: &str| {
+            parsed
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        Err(ReadError::Refused {
+            code: match field("code").as_str() {
+                "" => format!("http_{}", response.status),
+                code => code.to_owned(),
+            },
+            detail: match field("message").as_str() {
+                "" => response.body.chars().take(200).collect(),
+                message => message.to_owned(),
+            },
+        })
+    }
+
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
         // Escaped like the event reader's, and for the same reason: these are names and identifiers
         // a caller chose, and one carrying a URL delimiter would otherwise change which request

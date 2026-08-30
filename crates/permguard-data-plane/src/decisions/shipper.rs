@@ -144,6 +144,14 @@ impl Shipper {
             }
         };
 
+        // Which key signed this stretch, recorded beside the spool with the public key itself —
+        // the kid the signature carries, never whatever key is active now. Deferred on failure:
+        // the records are durable, the batch can be rebuilt and re-signed, and a stretch of
+        // signed stream whose key nobody can name is a stream a verifier cannot check offline.
+        if let Err(error) = self.note_signer(&batch) {
+            return Round::Deferred(error);
+        }
+
         match self.sink.ship(&body) {
             Ok(Shipped::Acknowledged { acked, .. }) => {
                 // The head recorded has to be the digest *at* `acked`, not the
@@ -253,6 +261,31 @@ impl Shipper {
         }
 
         kept
+    }
+
+    /// Records which key signed a batch, beside the spool, from the batch's own signature.
+    fn note_signer(&self, batch: &Batch) -> Result<(), String> {
+        let kid = batch
+            .signature
+            .protected()
+            .map_err(|error| error.to_string())?
+            .kid;
+        let envelope = batch
+            .signature
+            .envelope()
+            .map_err(|error| error.to_string())?;
+        let published = self.keys.public_keys().map_err(|error| error.to_string())?;
+        let jwk = published
+            .into_iter()
+            .find(|key| key.kid == kid)
+            .ok_or_else(|| {
+                format!("the ring no longer publishes `{kid}`, which just signed a batch")
+            })?;
+        let jwk = serde_json::to_value(&jwk).map_err(|error| error.to_string())?;
+
+        self.journal
+            .note_signer(envelope.first_seq, &kid, &jwk)
+            .map_err(|error| error.to_string())
     }
 
     fn batch(&self, records: &[Value]) -> Result<Batch, String> {

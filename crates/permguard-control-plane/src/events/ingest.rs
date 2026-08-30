@@ -285,6 +285,11 @@ pub fn accept(
     store
         .keep_envelope(&envelope.stream, envelope.first_seq, &signature)
         .map_err(|error| Refused::Unavailable(error.to_string()))?;
+    // The key this batch actually verified against, recorded beside the stream: the consumer's
+    // own answer to "which public keys cover these offsets", good after the producer is gone.
+    store
+        .note_signer(&envelope.stream, envelope.first_seq, signing_key)
+        .map_err(|error| Refused::Unavailable(error.to_string()))?;
 
     // Only now, and only after everything is flushed, does the producer get a number it may delete
     // by — and it is about to delete history its own policies read.

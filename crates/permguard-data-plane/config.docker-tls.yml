@@ -34,7 +34,7 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-telemetry:
+host:
   addr: 0.0.0.0:5443
   tls:
     cert: tls/server.pem

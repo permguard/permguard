@@ -164,6 +164,9 @@ pub struct Spool {
     /// an entry that claimed a record before its `fsync` would answer a retry
     /// with a record a crash could still take away.
     unflushed: BTreeMap<String, Written>,
+    /// Which key signed which stretch of this stream — kept beside the segments, keys included,
+    /// so a verifier that cannot reach this plane can still name the keys a range needs.
+    signers: permguard_stream::Signers,
     /// Held for as long as this spool is: dropping it releases the claim.
     _lock: File,
 }
@@ -255,6 +258,9 @@ impl Spool {
 
         let mut written = BTreeMap::new();
         let (seq, last_digest) = recover(&directory, &state, identity, &mut written)?;
+        let signers =
+            permguard_stream::Signers::load(&directory.join(permguard_stream::SIGNERS_FILE))
+                .map_err(|error| SpoolError::io("reading the signer manifest", error))?;
 
         Ok(Self {
             directory,
@@ -266,8 +272,39 @@ impl Spool {
             identity,
             written,
             unflushed: BTreeMap::new(),
+            signers,
             _lock: lock,
         })
+    }
+
+    /// Records that `kid` signed the batch starting at `from_seq`, and persists the fact when it
+    /// is new.
+    ///
+    /// Recorded with the kid the batch's own signature names — never with whatever key is active
+    /// now, because a rotation between signing and recording would blame the wrong key for the
+    /// stretch.
+    pub fn note_signer(
+        &mut self,
+        from_seq: u64,
+        kid: &str,
+        jwk: &serde_json::Value,
+    ) -> Result<(), SpoolError> {
+        let changed = self
+            .signers
+            .observe(from_seq, kid, jwk)
+            .map_err(|error| SpoolError::Malformed(error.to_string()))?;
+        if changed {
+            self.signers
+                .save(&self.directory.join(permguard_stream::SIGNERS_FILE))
+                .map_err(|error| SpoolError::io("writing the signer manifest", error))?;
+        }
+
+        Ok(())
+    }
+
+    /// Which key signed which stretch of this stream, as recorded so far.
+    pub fn signers(&self) -> &permguard_stream::Signers {
+        &self.signers
     }
 
     /// Whether this key is already durable here, and whether it says the same.

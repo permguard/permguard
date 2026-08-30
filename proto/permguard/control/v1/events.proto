@@ -32,6 +32,43 @@ service EventLog {
   // producer configured with a gRPC endpoint learns what an HTTP one would.
   rpc GetEventConfiguration(GetEventConfigurationRequest)
       returns (GetEventConfigurationResponse);
+  // Which key signed which stretch of each producer stream of one ledger,
+  // public keys included — what a verifier needs to check a range of records
+  // without reaching the producer, which may be gone.
+  rpc GetSigners(GetSignersRequest) returns (GetSignersResponse);
+}
+
+message GetSignersRequest {
+  string zone = 1;
+  string ledger = 2;
+  // Inclusive offset range; leave both zero for the whole history.
+  // `until_seq` of zero with a nonzero `from_seq` means "from there onward".
+  uint64 from_seq = 3;
+  uint64 until_seq = 4;
+}
+
+// One stretch of one stream and the key that signed it. The stretch runs from
+// `from_seq` to the next span's `from_seq`; the last span runs to the head.
+message SignerSpan {
+  uint64 from_seq = 1;
+  // The name the batch signatures carry.
+  string kid = 2;
+  // The public key itself, as the producer published it: a JWK, as JSON.
+  bytes jwk = 3;
+}
+
+// One producer stream's signer history, with the receiver's durable frontier.
+message StreamSigners {
+  string producer_class = 1;
+  string producer = 2;
+  string instance = 3;
+  // Everything through this sequence is durable here.
+  uint64 acked = 4;
+  repeated SignerSpan spans = 5;
+}
+
+message GetSignersResponse {
+  repeated StreamSigners streams = 1;
 }
 
 message GetEventConfigurationRequest {}

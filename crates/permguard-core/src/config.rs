@@ -77,6 +77,27 @@ pub const SETTING_PUBLIC_GRPC_ENABLED: &str = "PERMGUARD_PUBLIC_GRPC_ENABLED";
 /// Runtime setting key for the telemetry listen address.
 pub const SETTING_TELEMETRY_ADDR: &str = "PERMGUARD_TELEMETRY_ADDR";
 
+/// Runtime setting key for the URL the Server Host operations surface advertises.
+///
+/// A listener binds an address; a document publishes one. Behind a Kubernetes Service, an Ingress
+/// or a load balancer they are not the same string, so a deployment may say what to publish. The
+/// process-level well-known document and the Host `jwks_uri` are built from this when it is set.
+pub const SETTING_TELEMETRY_ADVERTISED_URL: &str = "PERMGUARD_TELEMETRY_ADVERTISED_URL";
+
+/// The Server Host role port every deployment answers on unless told otherwise.
+///
+/// The Host surface is the one interface every Permguard process exposes identically —
+/// discovery, health, readiness, version, and metrics — so a configuration file that says
+/// nothing about it gets this address rather than no surface. A deployment that genuinely
+/// wants no Host surface must say so: `host.addr: off`.
+pub const DEFAULT_TELEMETRY_ADDR: &str = "0.0.0.0:5443";
+
+/// The value that turns the Server Host operations surface off explicitly.
+///
+/// Case-insensitive. One spelling, on purpose: a family of synonyms is a family of typos that
+/// silently bind the default instead of disabling it.
+pub const TELEMETRY_ADDR_OFF: &str = "off";
+
 /// Runtime setting key for OTLP trace export: off unless said otherwise.
 ///
 /// When on, spans leave over OTLP/gRPC from a dedicated background thread with a bounded queue:
@@ -975,6 +996,7 @@ pub struct Config {
     public_grpc_enabled: bool,
     public_grpc_addr: Option<String>,
     telemetry_addr: Option<String>,
+    telemetry_advertised_url: Option<String>,
     admin_addr: Option<String>,
     admin_allow: Vec<AllowedPeer>,
     disclose_build: bool,
@@ -1107,6 +1129,7 @@ impl Default for Config {
             public_grpc_enabled: true,
             public_grpc_addr: None,
             telemetry_addr: None,
+            telemetry_advertised_url: None,
             admin_addr: None,
             admin_allow: Vec::new(),
             disclose_build: true,
@@ -1493,13 +1516,19 @@ produce: use `EdDSA` or `ES256`"
 
         let declared_addresses = self.declared_addresses()?;
 
+        // A process serving only the Server Host operations surface is a legal deployment — it
+        // answers its whole operational contract and authorizes nothing. What is refused is a
+        // process with no listener at all: nothing could ever reach it, so starting it can only
+        // be a mistake.
         if self.public_http_addr().is_none()
             && self.public_grpc_addr().is_none()
             && self.declared_extra_addresses()?.is_empty()
+            && self.telemetry_addr().is_none()
         {
             bail!(
-                "the configuration defines no public listen address: set `public.http.addr` or \
-                 `public.grpc.addr`, configure a plane public address, or pass --public-http-addr"
+                "the configuration defines no listen address at all: set `public.http.addr` or \
+                 `public.grpc.addr`, configure a plane public address, pass --public-http-addr, \
+                 or keep the Server Host surface (`host.addr`, default {DEFAULT_TELEMETRY_ADDR})"
             );
         }
 
@@ -2165,8 +2194,25 @@ produce: use `EdDSA` or `ES256`"
     }
 
     /// Returns the effective telemetry listen address, when one is configured.
+    ///
+    /// The explicit `off` reads back as no address at all: the opt-out is a statement about the
+    /// surface, and nothing downstream should have to know the spelling of it.
     pub fn telemetry_addr(&self) -> Option<&str> {
-        self.telemetry_addr.as_deref()
+        self.telemetry_addr
+            .as_deref()
+            .filter(|addr| !addr.eq_ignore_ascii_case(TELEMETRY_ADDR_OFF))
+    }
+
+    /// Returns the URL the Server Host operations surface advertises, when one is configured.
+    ///
+    /// A trailing slash is trimmed: every caller appends a path, and `…//metrics` is not the
+    /// address anybody meant.
+    pub fn telemetry_advertised_url(&self) -> Option<&str> {
+        self.telemetry_advertised_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(|url| url.trim_end_matches('/'))
     }
 
     /// Returns the effective admin listen address, when one is configured.
@@ -3042,6 +3088,10 @@ produce: use `EdDSA` or `ES256`"
 
         if let Some(value) = settings.get(SETTING_TELEMETRY_ADDR) {
             self.telemetry_addr = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_TELEMETRY_ADVERTISED_URL) {
+            self.telemetry_advertised_url = Some(value.clone());
         }
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADDR) {

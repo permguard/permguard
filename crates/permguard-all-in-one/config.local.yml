@@ -29,7 +29,7 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-telemetry:
+host:
   addr: 127.0.0.1:5443
 
 runtime:

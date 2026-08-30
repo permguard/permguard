@@ -36,7 +36,7 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-telemetry:
+host:
   addr: 127.0.0.1:5443
   # Server authentication only. A scraper is not a Permguard client, and a metrics endpoint that
   # demands a certificate is a metrics endpoint nothing scrapes.

@@ -28,7 +28,10 @@ use super::http::DecisionFacade;
 use super::store::Scope;
 use super::{Accepted, Refused, ingest, measure, read};
 use crate::v1::decision_log_server::DecisionLog;
-use crate::v1::{ReadRequest, ReadResponse, ShipRequest, ShipResponse};
+use crate::v1::{
+    DecisionSignerSpan, GetDecisionSignersRequest, GetDecisionSignersResponse, ReadRequest,
+    ReadResponse, ShipRequest, ShipResponse,
+};
 
 /// The metadata keys a refusal's class and code travel in.
 const CLASS: &str = "permguard-error-class";
@@ -120,6 +123,56 @@ impl DecisionLog for DecisionFacade {
                 Err(status_of(&refused))
             }
         }
+    }
+
+    /// The same signers document the HTTP binding serves, field for field.
+    async fn get_signers(
+        &self,
+        request: Request<GetDecisionSignersRequest>,
+    ) -> Result<Response<GetDecisionSignersResponse>, Status> {
+        let asked = request.into_inner();
+        if asked.pdp.is_empty() || asked.instance.is_empty() {
+            return Err(refusal(
+                Status::invalid_argument(
+                    "a signer manifest belongs to one producer stream: set `pdp` and `instance`",
+                ),
+                "validation",
+                "stream_required",
+            ));
+        }
+
+        let view = self
+            .signers_of(&asked.pdp, &asked.instance, asked.from_seq, asked.until_seq)
+            .map_err(|error| {
+                refusal(
+                    Status::unavailable(error.to_string()),
+                    "unavailable",
+                    "store_unavailable",
+                )
+            })?;
+
+        let spans = view
+            .spans
+            .into_iter()
+            .map(|span| {
+                Ok(DecisionSignerSpan {
+                    from_seq: span.from,
+                    kid: span.kid,
+                    jwk: serde_json::to_vec(&span.jwk).map_err(|error| {
+                        refusal(
+                            Status::internal(error.to_string()),
+                            "internal",
+                            "signer_malformed",
+                        )
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        Ok(Response::new(GetDecisionSignersResponse {
+            acked: view.acked,
+            spans,
+        }))
     }
 
     async fn read(&self, request: Request<ReadRequest>) -> Result<Response<ReadResponse>, Status> {

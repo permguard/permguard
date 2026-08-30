@@ -23,12 +23,17 @@ sboms:
     artifacts: source
 
 signs:
+  # Cosign v3 signs into a Sigstore bundle — one file carrying signature and
+  # certificate together — and ignores the split --output-* flags it deprecated.
+  # The bundle is what `cosign verify-blob --bundle checksums.txt.sigstore.json`
+  # consumes, with `--certificate-identity-regexp` naming this repository's
+  # release workflow and `--certificate-oidc-issuer` the GitHub Actions issuer.
   - cmd: cosign
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
+      - "--new-bundle-format=true"
+      - "--bundle=${signature}"
       - "${artifact}"
       - "--yes"
     artifacts: checksum

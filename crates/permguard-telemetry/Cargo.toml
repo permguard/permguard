@@ -18,6 +18,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+serde.workspace = true
 permguard-core.workspace = true
 permguard-transport.workspace = true
 tracing.workspace = true

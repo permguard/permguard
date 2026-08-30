@@ -30,13 +30,17 @@
 //!
 //! # The layout
 //!
+//! One directory per stream, wherever the caller keeps its streams — the data plane opens one
+//! journal per ledger under its events root, `data/events/<zone>/<ledger>/`:
+//!
 //! ```text
-//! data/events/streams/<zone>/<ledger>/<producer-class>/<producer-id>/<instance>/
+//! <stream directory>/
 //!   LOCK                       held exclusively — one writer per stream
 //!   STATE                      identity, next sequence, chain head, watermarks
 //!   RESERVE                    preallocated, outside the byte bound
 //!   seg-<first-sequence>.events
 //!   checkpoint-<first-sequence>.jws
+//!   signers.json               which key signed which stretch, public keys included
 //! ```
 //!
 //! The segments are the authority for what was written; `STATE` is the authority for what was
@@ -235,6 +239,9 @@ pub struct Journal {
     /// touched files here lets one group commit settle exactly this batch instead of scanning every
     /// occurrence retained by the ledger or paying one flush per append.
     pending_occurrences: Mutex<BTreeMap<u64, PathBuf>>,
+    /// Which key signed which stretch of this stream — kept beside the segments, keys included,
+    /// so a verifier that cannot reach this plane can still name the keys a range needs.
+    signers: permguard_stream::Signers,
 }
 
 impl Journal {
@@ -276,6 +283,9 @@ impl Journal {
         };
 
         let index = crate::index::Index::open(&directory)?;
+        let signers =
+            permguard_stream::Signers::load(&directory.join(permguard_stream::SIGNERS_FILE))
+                .map_err(|error| JournalError::Io(error.to_string()))?;
         let mut journal = Self {
             directory,
             bounds,
@@ -284,6 +294,7 @@ impl Journal {
             open_segment: None,
             index,
             pending_occurrences: Mutex::new(BTreeMap::new()),
+            signers,
         };
         // The segments are the authority for what was written. Whatever `STATE` last managed to
         // record, the truth about the tail is on disk — including a record written just before a
@@ -456,6 +467,36 @@ impl Journal {
             .map_err(|error| JournalError::Io(error.to_string()))?;
 
         self.mark_signed(last_seq)
+    }
+
+    /// Records that `kid` signed the checkpoint starting at `from_seq`, and persists the fact
+    /// when it is new.
+    ///
+    /// Called beside [`checkpoint`](Self::checkpoint), with the kid the checkpoint's own JWS
+    /// names — never with whatever key is active *now*, because a rotation between signing and
+    /// recording would then blame the wrong key for the stretch.
+    pub fn note_signer(
+        &mut self,
+        from_seq: u64,
+        kid: &str,
+        jwk: &Value,
+    ) -> Result<(), JournalError> {
+        let changed = self
+            .signers
+            .observe(from_seq, kid, jwk)
+            .map_err(|error| JournalError::Io(error.to_string()))?;
+        if changed {
+            self.signers
+                .save(&self.directory.join(permguard_stream::SIGNERS_FILE))
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+        }
+
+        Ok(())
+    }
+
+    /// Which key signed which stretch of this stream, as recorded so far.
+    pub fn signers(&self) -> &permguard_stream::Signers {
+        &self.signers
     }
 
     /// The signed checkpoints this journal holds, oldest first, as `(first_sequence, path)`.

@@ -22,14 +22,14 @@ use serde_norway::Value;
 
 use crate::config::experimental_setting_key;
 use crate::config::{
-    SETTING_ADMIN_ADDR, SETTING_ADMIN_ALLOW, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA,
-    SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION,
-    SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
-    SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
-    SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE, SETTING_ISSUER,
-    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
-    SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
-    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ALLOW, SETTING_ADMIN_TLS_CERT,
+    SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY,
+    SETTING_ADMIN_TLS_MIN_VERSION, SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED,
+    SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS,
+    SETTING_AUDIT_RETENTION, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
+    SETTING_ISSUER, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
+    SETTING_KEYS_MAINTENANCE_INTERVAL, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
+    SETTING_KEYS_ROTATE_EVERY, SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
@@ -43,9 +43,9 @@ use crate::config::{
     SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA, SETTING_PUBLIC_TLS_CRL,
     SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_SECRETS_DIRECTORY,
     SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER, SETTING_SHUTDOWN_TIMEOUT,
-    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY,
-    SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL,
-    SETTING_WORKING_DIR,
+    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TLS_RELOAD,
+    SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -54,8 +54,9 @@ use crate::realm::{
 };
 
 /// The section names this crate parses into typed settings.
-const KNOWN_SECTIONS: [&str; 10] = [
+const KNOWN_SECTIONS: [&str; 11] = [
     "public",
+    "host",
     "telemetry",
     "admin",
     "tls",
@@ -81,8 +82,11 @@ pub struct ConfigFile {
     development_mode: Option<String>,
     #[serde(default)]
     public: PublicSection,
-    #[serde(default)]
-    telemetry: TelemetrySection,
+    /// The Server Host operations surface. `host` is the name; `telemetry` is accepted as the
+    /// older spelling of the same section, because a file that predates the rename is a file
+    /// somebody still has.
+    #[serde(default, alias = "telemetry")]
+    host: TelemetrySection,
     #[serde(default)]
     admin: AdminSection,
     #[serde(default)]
@@ -609,6 +613,9 @@ struct TelemetryTlsSection {
 struct TelemetrySection {
     #[serde(default)]
     addr: Option<String>,
+    /// Where the Host surface is reachable from outside, when that is not where it binds.
+    #[serde(default)]
+    advertised_url: Option<String>,
     #[serde(default)]
     tls: TelemetryTlsSection,
     /// OTLP trace export: off unless the file says otherwise.
@@ -977,11 +984,11 @@ impl ConfigFile {
                 self.notp.ledger_quota_bytes.as_ref(),
             ),
             (SETTING_NOTP_COMPRESSION, self.notp.compression.as_ref()),
-            (SETTING_OTEL_ENABLED, self.telemetry.otel.enabled.as_ref()),
-            (SETTING_OTEL_ENDPOINT, self.telemetry.otel.endpoint.as_ref()),
+            (SETTING_OTEL_ENABLED, self.host.otel.enabled.as_ref()),
+            (SETTING_OTEL_ENDPOINT, self.host.otel.endpoint.as_ref()),
             (
                 SETTING_OTEL_SAMPLE_RATE,
-                self.telemetry.otel.sample_rate.as_ref(),
+                self.host.otel.sample_rate.as_ref(),
             ),
             (SETTING_AUDIT_SINK, self.operations.audit.sink.as_ref()),
             (
@@ -1015,7 +1022,11 @@ impl ConfigFile {
                 self.operations.keys.maintenance_interval.as_ref(),
             ),
             (SETTING_PUBLIC_PATH_PREFIX, self.public.path_prefix.as_ref()),
-            (SETTING_TELEMETRY_ADDR, self.telemetry.addr.as_ref()),
+            (SETTING_TELEMETRY_ADDR, self.host.addr.as_ref()),
+            (
+                SETTING_TELEMETRY_ADVERTISED_URL,
+                self.host.advertised_url.as_ref(),
+            ),
             (SETTING_ADMIN_ADDR, self.admin.addr.as_ref()),
             (SETTING_LOG_LEVEL, self.log.level.as_ref()),
             (SETTING_PUBLIC_TLS_CERT, self.public.tls.cert.as_ref()),
@@ -1038,11 +1049,11 @@ impl ConfigFile {
                 SETTING_ADMIN_TLS_MIN_VERSION,
                 self.admin.tls.min_version.as_ref(),
             ),
-            (SETTING_TELEMETRY_TLS_CERT, self.telemetry.tls.cert.as_ref()),
-            (SETTING_TELEMETRY_TLS_KEY, self.telemetry.tls.key.as_ref()),
+            (SETTING_TELEMETRY_TLS_CERT, self.host.tls.cert.as_ref()),
+            (SETTING_TELEMETRY_TLS_KEY, self.host.tls.key.as_ref()),
             (
                 SETTING_TELEMETRY_TLS_MIN_VERSION,
-                self.telemetry.tls.min_version.as_ref(),
+                self.host.tls.min_version.as_ref(),
             ),
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
             (SETTING_SHUTDOWN_TIMEOUT, self.shutdown.timeout.as_ref()),
@@ -1108,6 +1119,19 @@ impl ConfigFile {
                 .as_ref()
                 .map(|enabled| (experimental_setting_key(name), enabled.clone()))
         }));
+
+        // The Server Host operations surface is the one interface every deployment exposes
+        // identically, so a file that says nothing about it gets the role port rather than no
+        // surface. Only a file that was actually loaded carries the default — a config assembled
+        // in code keeps saying exactly what it says — and a later layer (the environment, the
+        // command line) still overrides it like any other file value. Opting out is explicit:
+        // `host.addr: off`.
+        if self.host.addr.is_none() {
+            settings.push((
+                SETTING_TELEMETRY_ADDR.to_owned(),
+                DEFAULT_TELEMETRY_ADDR.to_owned(),
+            ));
+        }
 
         settings
     }
@@ -1251,7 +1275,7 @@ mod tests {
             file.public.http.as_ref().and_then(EndpointSection::addr),
             Some("0.0.0.0:5556".to_owned())
         );
-        assert_eq!(file.telemetry.addr.as_deref(), Some("0.0.0.0:5558"));
+        assert_eq!(file.host.addr.as_deref(), Some("0.0.0.0:5558"));
         assert_eq!(file.admin.addr.as_deref(), Some("127.0.0.1:5557"));
     }
 
@@ -1275,13 +1299,71 @@ mod tests {
     }
 
     #[test]
-    fn test_absent_sections_yield_no_settings() {
+    fn test_absent_sections_yield_no_settings_except_the_host_default() {
+        // The Server Host surface is the one setting a silent file still carries: every other
+        // absent key stays absent, so it can never overwrite an earlier layer.
         assert!(
             settings_of("public:\n  http: 0.0.0.0:5556\n")
                 .iter()
-                .all(|(key, _)| key == SETTING_PUBLIC_HTTP_ADDR || key == SETTING_PUBLIC_GRPC_ADDR)
+                .all(|(key, _)| key == SETTING_PUBLIC_HTTP_ADDR
+                    || key == SETTING_PUBLIC_GRPC_ADDR
+                    || key == SETTING_TELEMETRY_ADDR)
         );
-        assert!(settings_of("{}").is_empty());
+        assert_eq!(
+            settings_of("{}"),
+            vec![(
+                SETTING_TELEMETRY_ADDR.to_owned(),
+                DEFAULT_TELEMETRY_ADDR.to_owned()
+            )]
+        );
+    }
+
+    #[test]
+    fn test_a_silent_file_gets_the_host_role_port() {
+        let settings = settings_of("public:\n  http: 0.0.0.0:5556\n");
+        assert!(
+            settings.contains(&(
+                SETTING_TELEMETRY_ADDR.to_owned(),
+                DEFAULT_TELEMETRY_ADDR.to_owned()
+            )),
+            "a file that says nothing about the Host surface serves it on the role port"
+        );
+    }
+
+    #[test]
+    fn test_the_host_surface_opt_out_is_explicit_and_carried() {
+        // `off` travels as written; `Config::telemetry_addr` is what reads it back as no address.
+        let settings = settings_of("host:\n  addr: off\n");
+        assert!(
+            settings.contains(&(SETTING_TELEMETRY_ADDR.to_owned(), "off".to_owned())),
+            "{settings:?}"
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .filter(|(key, _)| key == SETTING_TELEMETRY_ADDR)
+                .count(),
+            1,
+            "an explicit value suppresses the default"
+        );
+    }
+
+    #[test]
+    fn test_the_host_section_is_the_telemetry_section() {
+        // Same section, two spellings: `host` is the name, `telemetry` the accepted older one.
+        let renamed = settings_of("host:\n  addr: 0.0.0.0:6000\n");
+        let dated = settings_of("telemetry:\n  addr: 0.0.0.0:6000\n");
+        assert_eq!(renamed, dated);
+    }
+
+    #[test]
+    fn test_the_host_advertised_url_is_carried() {
+        let settings =
+            settings_of("host:\n  addr: 0.0.0.0:5443\n  advertised_url: https://ops.example.com\n");
+        assert!(settings.contains(&(
+            SETTING_TELEMETRY_ADVERTISED_URL.to_owned(),
+            "https://ops.example.com".to_owned()
+        )));
     }
 
     #[test]
@@ -1296,6 +1378,10 @@ mod tests {
                 (
                     SETTING_PUBLIC_GRPC_ADDR.to_owned(),
                     "0.0.0.0:5557".to_owned()
+                ),
+                (
+                    SETTING_TELEMETRY_ADDR.to_owned(),
+                    DEFAULT_TELEMETRY_ADDR.to_owned()
                 ),
             ]
         );
@@ -1384,6 +1470,10 @@ mod tests {
                 (
                     SETTING_PUBLIC_GRPC_ADDR.to_owned(),
                     "0.0.0.0:5556".to_owned()
+                ),
+                (
+                    SETTING_TELEMETRY_ADDR.to_owned(),
+                    DEFAULT_TELEMETRY_ADDR.to_owned()
                 ),
             ]
         );

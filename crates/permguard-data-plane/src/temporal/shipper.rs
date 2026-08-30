@@ -181,19 +181,27 @@ impl Shipper {
         // local evidence behind it. Written here, in the order the watermarks are defined:
         // durable, then signed, then acknowledged.
         let covering = self.envelope_range(&batch);
-        if let Some((first_seq, last_seq)) = covering
-            && let Err(error) = self.streams.checkpoint(
+        if let Some((first_seq, last_seq)) = covering {
+            if let Err(error) = self.streams.checkpoint(
                 zone,
                 ledger,
                 first_seq,
                 last_seq,
                 &batch.signature.compact(),
-            )
-        {
-            // Deferred rather than stopped: the records are durable and the batch can be rebuilt
-            // and re-signed on the next round. What must not happen is shipping it while claiming
-            // a checkpoint this volume does not hold.
-            return Round::Deferred(error.to_string());
+            ) {
+                // Deferred rather than stopped: the records are durable and the batch can be
+                // rebuilt and re-signed on the next round. What must not happen is shipping it
+                // while claiming a checkpoint this volume does not hold.
+                return Round::Deferred(error.to_string());
+            }
+
+            // Which key signed this stretch, recorded beside the journal with the public key
+            // itself — the kid the signature carries, never whatever key is active now. Deferred
+            // on failure for the checkpoint's own reason: a stretch of signed stream whose key
+            // nobody can name is a stream a verifier cannot check offline.
+            if let Err(error) = self.note_signer(zone, ledger, first_seq, &batch) {
+                return Round::Deferred(error);
+            }
         }
 
         match self.sink.ship(&batch) {
@@ -310,6 +318,33 @@ impl Shipper {
     }
 
     /// One signed batch over a contiguous run.
+    /// Records which key signed the batch starting at `first_seq`, beside the journal.
+    fn note_signer(
+        &self,
+        zone: &str,
+        ledger: &str,
+        first_seq: u64,
+        batch: &permguard_events::Batch,
+    ) -> Result<(), String> {
+        let kid = batch
+            .signature
+            .protected()
+            .map_err(|error| error.to_string())?
+            .kid;
+        let published = self.keys.public_keys().map_err(|error| error.to_string())?;
+        let jwk = published
+            .into_iter()
+            .find(|key| key.kid == kid)
+            .ok_or_else(|| {
+                format!("the ring no longer publishes `{kid}`, which just signed a batch")
+            })?;
+        let jwk = serde_json::to_value(&jwk).map_err(|error| error.to_string())?;
+
+        self.streams
+            .note_signer(zone, ledger, first_seq, &kid, &jwk)
+            .map_err(|error| error.to_string())
+    }
+
     /// The sequence range a batch's own records cover.
     ///
     /// Taken from the records rather than from the envelope's fields so that what is checkpointed

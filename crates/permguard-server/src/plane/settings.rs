@@ -634,6 +634,10 @@ enum PlaneList {
 impl PlaneList {
     fn into_setting_value(self) -> String {
         match self {
+            // An empty list is a statement — host no plane — and it must survive the layer
+            // pipeline, which drops empty values as "not supplied". It travels as a word no
+            // plane id will ever match instead.
+            Self::List(planes) if planes.is_empty() => "none".to_owned(),
             Self::List(planes) => planes.join(","),
             Self::Text(value) => value,
         }

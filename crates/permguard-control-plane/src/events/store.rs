@@ -416,6 +416,116 @@ impl EventStore {
         Ok(())
     }
 
+    /// Every producer stream this store holds for one ledger.
+    ///
+    /// Walked from the directories, which are the streams' names verbatim: this store creates a
+    /// stream directory only from segments [`safe`] accepted unchanged.
+    pub fn producer_streams(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<Vec<permguard_events::Stream>> {
+        let mut streams = Vec::new();
+        let ledger_root = self
+            .root
+            .join("streams")
+            .join(safe(zone)?)
+            .join(safe(ledger)?);
+        let classes = match fs::read_dir(&ledger_root) {
+            Ok(classes) => classes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(streams),
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", ledger_root.display()));
+            }
+        };
+        for class in classes {
+            let class = class.context("listing producer classes")?;
+            if !class.path().is_dir() {
+                continue;
+            }
+            for id in fs::read_dir(class.path()).context("listing producers")? {
+                let id = id.context("listing producers")?;
+                if !id.path().is_dir() {
+                    continue;
+                }
+                for instance in fs::read_dir(id.path()).context("listing incarnations")? {
+                    let instance = instance.context("listing incarnations")?;
+                    if !instance.path().is_dir() {
+                        continue;
+                    }
+                    let (class, id, instance) =
+                        (class.file_name(), id.file_name(), instance.file_name());
+                    let (Some(class), Some(id), Some(instance)) =
+                        (class.to_str(), id.to_str(), instance.to_str())
+                    else {
+                        continue;
+                    };
+                    streams.push(permguard_events::Stream::new(
+                        permguard_events::Producer {
+                            class: class.to_owned(),
+                            id: id.to_owned(),
+                            instance: instance.to_owned(),
+                        },
+                        zone,
+                        ledger,
+                    ));
+                }
+            }
+        }
+        streams.sort_by(|one, other| {
+            (
+                &one.producer.class,
+                &one.producer.id,
+                &one.producer.instance,
+            )
+                .cmp(&(
+                    &other.producer.class,
+                    &other.producer.id,
+                    &other.producer.instance,
+                ))
+        });
+
+        Ok(streams)
+    }
+
+    /// Records which key verified the batch starting at `first_seq`, beside the stream.
+    ///
+    /// The consumer's copy of the producer's signer manifest, built from what ingest actually
+    /// verified against — so a verifier reading from this store can name the keys a range needs
+    /// without reaching the producer, which may be gone.
+    ///
+    /// Called under the stream's ingest gate, like every other read-check-append here.
+    pub fn note_signer(
+        &self,
+        stream: &permguard_events::Stream,
+        first_seq: u64,
+        key: &permguard_core::keys::Jwk,
+    ) -> Result<()> {
+        let path = self
+            .stream_path(stream)?
+            .join(permguard_stream::SIGNERS_FILE);
+        let mut signers =
+            permguard_stream::Signers::load(&path).context("reading the signer manifest")?;
+        let jwk = serde_json::to_value(key).context("rendering a signer key")?;
+        let changed = signers
+            .observe(first_seq, &key.kid, &jwk)
+            .map_err(|error| anyhow::anyhow!("recording a signer: {error}"))?;
+        if changed {
+            signers.save(&path).context("writing the signer manifest")?;
+        }
+
+        Ok(())
+    }
+
+    /// Which key signed which stretch of one stream, as this store verified it.
+    pub fn signers(&self, stream: &permguard_events::Stream) -> Result<permguard_stream::Signers> {
+        let path = self
+            .stream_path(stream)?
+            .join(permguard_stream::SIGNERS_FILE);
+
+        permguard_stream::Signers::load(&path).context("reading the signer manifest")
+    }
+
     /// Every envelope of one stream, oldest first.
     pub fn envelopes(&self, stream: &permguard_events::Stream) -> Result<Vec<Value>> {
         let directory = self.stream_path(stream)?;

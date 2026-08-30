@@ -38,7 +38,8 @@ use serde_json::Value;
 
 use crate::args::{EventsAction, EventsQuery, Globals};
 use crate::event_out::{
-    ArchiveScope, Coverage, EventArchive, EventLine, EventReport, EventsReport, History, Verified,
+    ArchiveScope, Coverage, EventArchive, EventLine, EventReport, EventsReport, History,
+    SignersReport, Verified,
 };
 use crate::failure::{EXIT_READY, Failure};
 use crate::session::{open_store, render};
@@ -62,6 +63,7 @@ pub fn events(globals: &Globals, action: &EventsAction) -> Result<ExitCode, Fail
         EventsAction::List(query) => list(globals, query, false),
         EventsAction::Tail { query, follow } => tail(globals, query, *follow),
         EventsAction::Get { event_id, query } => get(globals, query, event_id),
+        EventsAction::Signers(query) => signers(globals, query),
         EventsAction::Export(query) => list(globals, query, true),
         EventsAction::Verify { file, query } => match file {
             Some(file) => verify_file(globals, query, file),
@@ -202,6 +204,29 @@ fn get(globals: &Globals, query: &EventsQuery, event_id: &str) -> Result<ExitCod
         ))
         .named("not_found", "event_not_found")),
     }
+}
+
+/// Which key signed which stretch of each producer stream, public keys included.
+fn signers(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
+    let trace = Trace::new(globals.verbose);
+    let (reader, scope) = connect(globals, query, &trace)?;
+    let (zone, ledger) = match &scope {
+        ReadScope::Tenant { zone, ledger } | ReadScope::Stream { zone, ledger, .. } => {
+            (zone.clone(), ledger.clone())
+        }
+    };
+
+    let document = reader.signers(&zone, &ledger).map_err(read_failure)?;
+    render(
+        &SignersReport {
+            scope: format!("{zone}/{ledger}"),
+            document,
+        },
+        globals.output,
+        &trace,
+    )?;
+
+    Ok(ExitCode::from(EXIT_READY))
 }
 
 /// Walks a finite snapshot and checks everything it can.

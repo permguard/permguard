@@ -301,6 +301,43 @@ impl DecisionStore {
         write_durable(&path, &bytes)
     }
 
+    /// Records which key verified the batch starting at `first_seq`, beside the stream.
+    ///
+    /// [`archive_key`](Self::archive_key) keeps every key ever seen; this keeps *which stretch*
+    /// each one covers — the offset-ranged answer a verifier needs to check a slice of stream
+    /// without downloading every key the producer ever held.
+    pub fn note_signer(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        first_seq: u64,
+        key: &Jwk,
+    ) -> Result<()> {
+        let stream = self.stream_path(pdp_id, instance)?;
+        fs::create_dir_all(&stream).context("creating a stream directory")?;
+        let path = stream.join(permguard_stream::SIGNERS_FILE);
+        let mut signers =
+            permguard_stream::Signers::load(&path).context("reading the signer manifest")?;
+        let jwk = serde_json::to_value(key).context("rendering a signer key")?;
+        let changed = signers
+            .observe(first_seq, &key.kid, &jwk)
+            .map_err(|error| anyhow::anyhow!("recording a signer: {error}"))?;
+        if changed {
+            signers.save(&path).context("writing the signer manifest")?;
+        }
+
+        Ok(())
+    }
+
+    /// Which key signed which stretch of one stream, as this store verified it.
+    pub fn signers(&self, pdp_id: &str, instance: &str) -> Result<permguard_stream::Signers> {
+        let path = self
+            .stream_path(pdp_id, instance)?
+            .join(permguard_stream::SIGNERS_FILE);
+
+        permguard_stream::Signers::load(&path).context("reading the signer manifest")
+    }
+
     /// Archives a verification key beside what it attests.
     ///
     /// A batch signed today must still verify years from now, after the key has

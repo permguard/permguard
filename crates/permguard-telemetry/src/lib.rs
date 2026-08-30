@@ -24,6 +24,7 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod exposition;
+pub mod host;
 pub mod probes;
 pub mod service;
 

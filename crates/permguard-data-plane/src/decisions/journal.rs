@@ -600,6 +600,31 @@ impl Journal {
         Ok(())
     }
 
+    /// Records which key signed the batch starting at `from_seq`, beside the spool.
+    pub fn note_signer(
+        &self,
+        from_seq: u64,
+        kid: &str,
+        jwk: &serde_json::Value,
+    ) -> Result<(), SpoolError> {
+        let mut spool = self
+            .state
+            .lock()
+            .map_err(|_| SpoolError::Malformed("the spool is poisoned".to_owned()))?;
+
+        spool.note_signer(from_seq, kid, jwk)
+    }
+
+    /// Which key signed which stretch of this stream, as recorded so far.
+    pub fn signers(&self) -> Result<permguard_stream::Signers, SpoolError> {
+        let spool = self
+            .state
+            .lock()
+            .map_err(|_| SpoolError::Malformed("the spool is poisoned".to_owned()))?;
+
+        Ok(spool.signers().clone())
+    }
+
     /// The head the next batch continues — `digest(acked)`, from disk.
     ///
     /// Read from the spool rather than remembered, and that is the whole point:

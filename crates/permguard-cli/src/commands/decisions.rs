@@ -29,7 +29,9 @@ use permguard_decisions::{chain, merkle, record};
 use serde_json::Value;
 
 use crate::args::{Decision, DecisionsAction, DecisionsQuery, Globals};
-use crate::decision_out::{DecisionLine, DecisionReport, DecisionsReport, EventLine, Verified};
+use crate::decision_out::{
+    DecisionLine, DecisionReport, DecisionSignersReport, DecisionsReport, EventLine, Verified,
+};
 use crate::failure::{EXIT_READY, Failure};
 use crate::session::{open_store, render};
 use crate::target::{self, Asked};
@@ -47,6 +49,7 @@ pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode
         DecisionsAction::List(query) => list(globals, query, false),
         DecisionsAction::Tail { query, follow } => tail(globals, query, *follow),
         DecisionsAction::Get { id, query } => get(globals, query, id),
+        DecisionsAction::Signers(query) => signers(globals, query),
         DecisionsAction::Export(query) => list(globals, query, true),
     }
 }
@@ -196,6 +199,29 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
 }
 
 /// The reader, and what it is reading.
+/// Which key signed which stretch of one producer stream, public keys included.
+fn signers(globals: &Globals, query: &DecisionsQuery) -> Result<ExitCode, Failure> {
+    let trace = Trace::new(globals.verbose);
+    let (reader, scope) = connect(globals, query, &trace)?;
+    let ReadScope::Stream { pdp_id, instance } = scope else {
+        return Err(Failure::usage(
+            "a signer manifest belongs to one producer stream: name it with --pdp and --instance",
+        ));
+    };
+
+    let document = reader.signers(&pdp_id, &instance).map_err(read_failure)?;
+    render(
+        &DecisionSignersReport {
+            scope: format!("{pdp_id}/{instance}"),
+            document,
+        },
+        globals.output,
+        &trace,
+    )?;
+
+    Ok(ExitCode::from(EXIT_READY))
+}
+
 fn connect(
     globals: &Globals,
     query: &DecisionsQuery,

@@ -283,15 +283,35 @@ fn test_a_build_without_a_secret_store_composes_a_context_without_one() {
 }
 
 #[tokio::test]
-async fn test_serve_rejects_a_config_that_declares_no_web_address() {
-    let path = config_file("no-public", "admin:\n  addr: 127.0.0.1:5557\n");
+async fn test_serve_rejects_a_config_that_declares_no_listener_at_all() {
+    // The Server Host surface defaults on, so a file has to opt out of it explicitly before the
+    // process is left with no listener — and that is the configuration worth refusing.
+    let path = config_file(
+        "no-listener",
+        "host:\n  addr: off\nadmin:\n  addr: 127.0.0.1:5557\n",
+    );
 
     let error = app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
         .await
-        .expect_err("a config with no public address is invalid");
+        .expect_err("a config with no listener at all is invalid");
 
-    assert!(format!("{error:#}").contains("public listen address"));
+    assert!(format!("{error:#}").contains("no listen address"));
+}
+
+#[tokio::test]
+async fn test_a_config_that_declares_no_web_address_still_serves_the_host_surface() {
+    // Zero planes, nothing public: the Server Host operations surface alone is a legal
+    // deployment, on the default role port.
+    let path = config_file("host-only", "admin:\n  addr: 127.0.0.1:5557\n");
+    let app = app();
+
+    let config = app
+        .config_for(&serve_action(&path))
+        .expect("a host-only config assembles");
+
+    assert_eq!(config.telemetry_addr(), Some("0.0.0.0:5443"));
+    assert!(config.validate().is_ok());
 }
 
 #[tokio::test]

@@ -751,6 +751,37 @@ impl Streams {
         held.journal.checkpoint(first_seq, last_seq, jws)
     }
 
+    /// Records which key signed the checkpoint starting at `first_seq`, beside the journal.
+    pub fn note_signer(
+        &self,
+        zone: &str,
+        ledger: &str,
+        first_seq: u64,
+        kid: &str,
+        jwk: &serde_json::Value,
+    ) -> Result<(), JournalError> {
+        let held = self.held(zone, ledger)?;
+        let mut held = held
+            .lock()
+            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
+
+        held.journal.note_signer(first_seq, kid, jwk)
+    }
+
+    /// Which key signed which stretch of one stream, as recorded so far.
+    pub fn signers(
+        &self,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<permguard_stream::Signers, JournalError> {
+        let held = self.held(zone, ledger)?;
+        let held = held
+            .lock()
+            .map_err(|_| JournalError::Io("the journal is poisoned".to_owned()))?;
+
+        Ok(held.journal.signers().clone())
+    }
+
     /// Keeps the answer given for one occurrence, so a retry is answered rather than refused.
     ///
     /// The entry already exists — the write path made it durable before this record was

@@ -130,12 +130,14 @@ pub enum Command {
 pub enum KeysCommand {
     /// Print a ring's public keys as a JWKS document.
     ///
-    /// The way to obtain the public half of an operations ring — the keys that seal a trail — which
-    /// is deliberately never served over HTTP. It reads the ring on disk, so it works with the server
-    /// stopped, which is exactly when a restore needs it: export from the volume before backing it up,
-    /// keep the file off the host, and check restored seals against it. Verifying against keys taken
-    /// from the machine under suspicion afterwards would check a signature against a key the same
-    /// attacker could have replaced.
+    /// The *offline* way to obtain the public half of an operations ring — the keys that seal a
+    /// trail. The running server also publishes them at `/server-host/keys` on the Host port, and
+    /// the two answer different needs: the endpoint serves the routine case — a dashboard, a
+    /// rotation check — while this command reads the ring on disk, so it works with the server
+    /// stopped, which is exactly when a restore needs it. Export from the volume before backing it
+    /// up, keep the file off the host, and check restored seals against it: a forensic
+    /// verification takes its keys from a snapshot made *before* the incident, never from the
+    /// machine under suspicion, whose endpoint the same attacker could be answering.
     Export {
         /// Directory the ring lives in, e.g. `<volume>/operations/keys`.
         #[arg(long, value_name = "DIRECTORY")]

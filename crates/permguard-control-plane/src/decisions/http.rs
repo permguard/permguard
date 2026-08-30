@@ -65,7 +65,48 @@ pub struct DecisionFacade {
     pub metrics: Metrics,
 }
 
+/// One producer stream's signer history, with the receiver's durable frontier.
+#[derive(Debug, Clone, Serialize)]
+pub struct StreamSignersView {
+    /// Everything through this sequence is durable here.
+    pub acked: u64,
+    pub spans: Vec<permguard_stream::SignerSpan>,
+}
+
 impl DecisionFacade {
+    /// Which key signed which stretch of one producer stream — the answer both transports serve,
+    /// so REST and gRPC cannot drift apart about who signed what.
+    ///
+    /// `until_seq` of zero means "from `from_seq` onward"; both zero means the whole history.
+    pub fn signers_of(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<StreamSignersView, ApiError> {
+        let until = if until_seq == 0 { u64::MAX } else { until_seq };
+        let state = self.store.stream_state(pdp_id, instance).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                "store_unavailable",
+                error.to_string(),
+            )
+        })?;
+        let signers = self.store.signers(pdp_id, instance).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                "store_unavailable",
+                error.to_string(),
+            )
+        })?;
+
+        Ok(StreamSignersView {
+            acked: state.acked,
+            spans: signers.covering(from_seq, until).to_vec(),
+        })
+    }
+
     /// Every key a producer's batch may legitimately be signed by.
     ///
     /// The union of what the file declares and what a producer sharing this
@@ -147,6 +188,7 @@ pub(crate) fn routes(facade: DecisionFacade) -> Router {
             "/zones/{zone}/ledgers/{ledger}/decisions/v1/records",
             get(tenant_records),
         )
+        .route("/decisions/v1/signers", get(signers))
         .with_state(facade)
 }
 
@@ -378,6 +420,51 @@ async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
     let scope = Scope::Stream { pdp_id, instance };
 
     serve(facade, scope, window, "stream").await
+}
+
+/// Which key signed which stretch of one producer stream, public keys included.
+async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery) -> Response {
+    let (_, pairs) = window_of(query.as_deref());
+    let named = |wanted: &str| {
+        pairs
+            .iter()
+            .find(|(name, _)| name == wanted)
+            .map(|(_, value)| value.clone())
+    };
+    let (Some(pdp_id), Some(instance)) = (named("pdp"), named("instance")) else {
+        return refuse(
+            &facade,
+            ApiError::new(
+                ErrorClass::Validation,
+                "stream_required",
+                "a signer manifest belongs to one producer stream: `?pdp=<id>&instance=<id>`",
+            ),
+        );
+    };
+    let bound = |name: &str| -> Result<u64, String> {
+        match named(name) {
+            None => Ok(0),
+            Some(held) => held.parse().map_err(|_| name.to_owned()),
+        }
+    };
+    let (from_seq, until_seq) = match (bound("from_seq"), bound("until_seq")) {
+        (Ok(from_seq), Ok(until_seq)) => (from_seq, until_seq),
+        (Err(name), _) | (_, Err(name)) => {
+            return refuse(
+                &facade,
+                ApiError::new(
+                    ErrorClass::Validation,
+                    "bound_malformed",
+                    format!("`{name}` is a sequence number"),
+                ),
+            );
+        }
+    };
+
+    match facade.signers_of(&pdp_id, &instance, from_seq, until_seq) {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(error) => refuse(&facade, error),
+    }
 }
 
 async fn tenant_records(

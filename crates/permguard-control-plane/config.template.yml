@@ -129,9 +129,15 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-# Server Host operations surface: process discovery, health, readiness, version, and metrics.
-telemetry:
+# Server Host operations surface: process discovery, health, readiness, version, metrics — and
+# the operations ring published as a JWKS at /server-host/keys. This surface is what every
+# Permguard deployment exposes identically, so it defaults to 0.0.0.0:5443 even when this
+# section is absent; `addr: off` is the explicit opt-out for a process that must expose nothing.
+host:
   addr: 0.0.0.0:5443
+  # What the process-level well-known and the Host jwks_uri publish, when where this surface is
+  # reached is not where it binds — a Service, an Ingress, a load balancer.
+  # advertised_url: "https://ops.example.com"
 
 # What one surface — and one client — may spend. Every value has a bounded default; this block exists
 # to move them, not to enable them.

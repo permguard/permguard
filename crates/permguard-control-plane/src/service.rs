@@ -204,6 +204,41 @@ impl PlaneModule for ControlPlaneModule {
         ]
     }
 
+    fn streams(&self, config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
+        let mut streams = Vec::new();
+
+        // The decision store: what the data planes ship, kept and served. The directory predates
+        // the versioned layout and stays where recorded evidence already is.
+        if config.decision_store_enabled()
+            && let Ok(identity) =
+                permguard_stream::StreamIdentity::new("control-plane", "decisions")
+        {
+            streams.push(permguard_stream::StreamDescriptor {
+                identity,
+                role: permguard_stream::Role::Consumer,
+                record_type: "permguard.decision.v1".to_owned(),
+                directory: config.working_dir().join(config.decision_store_directory()),
+                legacy: true,
+            });
+        }
+
+        // The event store, likewise. Its default directory nests under the root the data plane
+        // journals in — the exact fragility the registry names at startup on an all-in-one.
+        if events_served(config)
+            && let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "events")
+        {
+            streams.push(permguard_stream::StreamDescriptor {
+                identity,
+                role: permguard_stream::Role::Consumer,
+                record_type: permguard_events::RECORD_TYPE.to_owned(),
+                directory: config.event_store_directory(),
+                legacy: true,
+            });
+        }
+
+        streams
+    }
+
     fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
         events_startup_check(config)?;
         decisions_startup_check(config)
@@ -383,13 +418,49 @@ fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Route
             .into_response()
     }
 
-    async fn keys(State(state): State<Discovery>) -> Json<permguard_core::keys::JwkSet> {
-        let published = state
-            .keys
-            .as_ref()
-            .and_then(|keys| keys.public_keys().ok())
-            .unwrap_or_default();
-        Json(permguard_core::keys::JwkSet::new(published))
+    /// Three states, three answers. A composed ring that reads is the JWKS with the cache header
+    /// every verifier's refresh is tuned to; a plane with no ring is the empty set, because that
+    /// is the truth about what it publishes; and a ring that cannot be read is a `503` — never
+    /// `{"keys":[]}`, which reads as a legitimate state of a young ring and would send a verifier
+    /// away satisfied while an operator should be looking at the volume.
+    async fn keys(State(state): State<Discovery>) -> axum::response::Response {
+        use axum::http::{StatusCode, header};
+        use axum::response::IntoResponse as _;
+
+        // No composed ring answers the empty set: the plane's document advertises this route
+        // unconditionally, and "nothing is published" is the truthful state of a plane that
+        // signs nothing. Only a ring that exists and cannot be read is an error.
+        let Some(keys) = state.keys.as_ref() else {
+            return Json(permguard_core::keys::JwkSet::new(Vec::new())).into_response();
+        };
+
+        match keys.public_keys() {
+            Ok(published) => (
+                [(
+                    header::CACHE_CONTROL,
+                    format!(
+                        "max-age={}",
+                        permguard_core::keys::KEY_SET_MAX_AGE.as_secs()
+                    ),
+                )],
+                Json(permguard_core::keys::JwkSet::new(published)),
+            )
+                .into_response(),
+            Err(error) => {
+                tracing::warn!(
+                    event.name = "plane.keys.unreadable",
+                    component = COMPONENT,
+                    error = %error,
+                    "the plane signing ring could not be read"
+                );
+
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the signing ring could not be read\n",
+                )
+                    .into_response()
+            }
+        }
     }
 
     let state = Discovery {

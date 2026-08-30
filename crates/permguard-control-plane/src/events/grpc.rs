@@ -23,8 +23,9 @@ use super::store::Scope;
 use crate::v1::event_log_server::EventLog;
 use crate::v1::{
     EventCoverage, EventEndpoints, EventOffsets, GetEventConfigurationRequest,
-    GetEventConfigurationResponse, GetRecordRequest, GetRecordResponse, IngestBatchRequest,
-    IngestBatchResponse, ListRecordsRequest, ListRecordsResponse,
+    GetEventConfigurationResponse, GetRecordRequest, GetRecordResponse, GetSignersRequest,
+    GetSignersResponse, IngestBatchRequest, IngestBatchResponse, ListRecordsRequest,
+    ListRecordsResponse, SignerSpan, StreamSigners,
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal.
@@ -196,6 +197,53 @@ impl EventLog for EventFacade {
     /// Built from the one [`super::configuration::document`] both transports call, so a producer
     /// cannot learn a different interface depending on how it asked — which, for a document whose
     /// whole job is telling a producer where to ship, would be the discovery chain lying.
+    async fn get_signers(
+        &self,
+        request: Request<GetSignersRequest>,
+    ) -> Result<Response<GetSignersResponse>, Status> {
+        let asked = request.into_inner();
+
+        let streams = self
+            .signers_of(&asked.zone, &asked.ledger, asked.from_seq, asked.until_seq)
+            .map_err(|error| status_of(&error, self.disclosure))?;
+
+        let streams = streams
+            .into_iter()
+            .map(|held| {
+                let spans = held
+                    .spans
+                    .into_iter()
+                    .map(|span| {
+                        Ok(SignerSpan {
+                            from_seq: span.from,
+                            kid: span.kid,
+                            jwk: serde_json::to_vec(&span.jwk).map_err(|error| {
+                                status_of(
+                                    &ApiError::new(
+                                        ErrorClass::Internal,
+                                        "signer_malformed",
+                                        error.to_string(),
+                                    ),
+                                    self.disclosure,
+                                )
+                            })?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Status>>()?;
+
+                Ok(StreamSigners {
+                    producer_class: held.producer_class,
+                    producer: held.producer,
+                    instance: held.instance,
+                    acked: held.acked,
+                    spans,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        Ok(Response::new(GetSignersResponse { streams }))
+    }
+
     async fn get_event_configuration(
         &self,
         _request: Request<GetEventConfigurationRequest>,

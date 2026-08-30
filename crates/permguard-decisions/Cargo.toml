@@ -25,6 +25,10 @@ hmac.workspace = true
 base64.workspace = true
 ring.workspace = true
 permguard-core.workspace = true
+# The domain-free primitives every evidence stream shares: JCS canonicalization and the per-batch
+# Merkle tree. They live in the stream foundation so a new stream type depends on the foundation,
+# never on the decision log.
+permguard-stream.workspace = true
 
 [dev-dependencies]
 # A real key ring, so signing and verification are exercised end to end rather

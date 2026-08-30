@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use permguard_decisions::jcs::{self, CanonicalError};
+use permguard_stream::jcs::{self, CanonicalError};
 
 /// The domain this crate's record digests live in.
 ///

@@ -1,9 +1,10 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The one way an append-only evidence stream is read.
+//! The foundation every evidence stream shares: how it is read, how it is named, where it
+//! lives, and who signed which stretch of it.
 //!
-//! # Why this is one crate and not two readers
+//! # Why this is one crate and not two of everything
 //!
 //! Permguard keeps two streams of evidence — the decision log and the event log — and they are
 //! different in every way that matters cryptographically: different digest domains, different
@@ -14,7 +15,13 @@
 //! That model was written once, for decisions, and then the event log needed it too. Written
 //! twice, the second one would be the one whose cursor is not authenticated, or whose `more` is
 //! computed against a moving end so an export never finishes. So it is written here, once, and
-//! both stores are read through it.
+//! both stores are read through it. The same argument then repeated for everything else two
+//! streams share and a third would rewrite: the canonical bytes a digest is taken over ([`jcs`]),
+//! the per-batch inclusion tree ([`merkle`]), the declaration of what streams a process serves
+//! ([`descriptor`]), where a stream keeps its data ([`layout`]), and which key signed which
+//! stretch of it ([`signers`]). What stays *out* is everything that carries a domain — record
+//! digests, envelope types, retention rules — because two streams that shared a domain would be
+//! confusable by a verifier, and that is the one sharing this crate exists to prevent.
 //!
 //! It is Kafka-like in exactly that limited sense. There are no brokers, no consumer groups, no
 //! globally ordered partitions and no protocol compatibility, and none of those words appear in
@@ -46,9 +53,18 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod cursor;
+pub mod descriptor;
 pub mod frontier;
+pub mod jcs;
+pub mod layout;
+pub mod merkle;
+pub mod signers;
 pub mod window;
 
 pub use cursor::{Cursor, CursorError, CursorKey, Position};
+pub use descriptor::{
+    Registered, RegistryError, Role, StreamDescriptor, StreamIdentity, StreamRegistry,
+};
 pub use frontier::Frontier;
+pub use signers::{SIGNERS_FILE, SignerError, SignerSpan, Signers};
 pub use window::{Block, Coverage, Expired, Window, more};

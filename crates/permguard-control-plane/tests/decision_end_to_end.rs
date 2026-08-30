@@ -159,6 +159,12 @@ fn pair(tag: &str, bounds: Bounds) -> Pair {
                 "this test reads through the store, not through the client".to_owned(),
             ))
         }
+
+        fn signers(&self, _pdp_id: &str, _instance: &str) -> Result<Value, ReadError> {
+            Err(ReadError::Unavailable(
+                "this test reads through the store, not through the client".to_owned(),
+            ))
+        }
     }
 
     let shipper = Shipper::new(
@@ -424,4 +430,43 @@ fn each_tenant_s_view_is_populated_from_the_one_producer_stream() {
             "and the epoch that governs them, which carries no tenant data at all"
         );
     }
+}
+
+#[test]
+fn the_signer_manifest_travels_with_the_decision_stream_on_both_sides() {
+    let pair = pair("signers", bounds());
+    for index in 0..10 {
+        pair.journal
+            .record(&decided(&format!("id-{index}"), "acme", true))
+            .expect("it records");
+    }
+
+    assert!(matches!(pair.shipper.round(), Round::Shipped { .. }));
+
+    let stream = pair.journal.stream().expect("a stream");
+
+    // The producer's spool names the key that signed its stretch — from sequence 1, because the
+    // stream's opening marker is part of what the first batch covers.
+    let held = pair.journal.signers().expect("the manifest reads");
+    let spans = held.spans();
+    assert_eq!(spans.len(), 1, "one key is one fact");
+    assert_eq!(spans[0].from, 1);
+    assert_eq!(
+        spans[0].jwk.get("kid").and_then(Value::as_str),
+        Some(spans[0].kid.as_str()),
+        "the public key itself travels, not only its name"
+    );
+
+    // And the store, from what it actually verified against.
+    let store_held = pair
+        .store
+        .signers(&stream.id, &stream.instance)
+        .expect("the store's manifest reads");
+    assert_eq!(store_held.spans().len(), 1);
+    assert_eq!(store_held.spans()[0].kid, spans[0].kid);
+    assert_eq!(
+        store_held.covering(3, 7).len(),
+        1,
+        "a bounded range still names the span covering it"
+    );
 }

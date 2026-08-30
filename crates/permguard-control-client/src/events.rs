@@ -277,6 +277,13 @@ pub trait EventReader {
 
     /// Reads one occurrence, by the identifier its caller stated.
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError>;
+
+    /// Which key signed which stretch of each producer stream of one ledger, public keys
+    /// included — what `verify --keys` wants, fetched once and kept.
+    ///
+    /// The shape is the signers document both transports serve: `{"streams": [...]}`, each stream
+    /// carrying its producer, its durable frontier and its spans.
+    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError>;
 }
 
 /// Both halves of the event log, over one connection.
@@ -357,6 +364,26 @@ impl EventReader for HttpEventSink {
         if (200..300).contains(&response.status) {
             return serde_json::from_str(&response.body).map_err(|error| {
                 ReadError::Unavailable(format!("the page was unreadable: {error}"))
+            });
+        }
+
+        Err(read_refusal(&response.body, response.status))
+    }
+
+    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
+        let path = format!(
+            "/v1/zones/{}/ledgers/{}/events/v1alpha1/signers",
+            encode::value(zone),
+            encode::value(ledger)
+        );
+        let response = self
+            .client
+            .request(&self.endpoint, "GET", &path, None)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?;
+
+        if (200..300).contains(&response.status) {
+            return serde_json::from_str(&response.body).map_err(|error| {
+                ReadError::Unavailable(format!("the manifest was unreadable: {error}"))
             });
         }
 

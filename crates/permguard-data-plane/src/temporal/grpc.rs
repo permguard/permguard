@@ -26,8 +26,9 @@ use super::submit::Submitter;
 use crate::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint;
 use crate::v1::{
     DecisionHistory, EventWatermark, GetTemporalConfigurationRequest,
-    GetTemporalConfigurationResponse, Reason, StoreScope, SubmitEventRequest, SubmitEventResponse,
-    SubmitOutcome, TemporalEndpoints, TemporalPartitionEvaluation,
+    GetTemporalConfigurationResponse, GetTemporalSignersRequest, GetTemporalSignersResponse,
+    Reason, StoreScope, SubmitEventRequest, SubmitEventResponse, SubmitOutcome, TemporalEndpoints,
+    TemporalPartitionEvaluation, TemporalSignerSpan,
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal — the same keys every other
@@ -60,6 +61,98 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             Ok(answered) => Ok(Response::new(to_proto(answered))),
             Err(failed) => Err(status_of(&failed, self.disclosure)),
         }
+    }
+
+    /// The same signers document the HTTP binding serves, field for field.
+    async fn get_signers(
+        &self,
+        request: Request<GetTemporalSignersRequest>,
+    ) -> Result<Response<GetTemporalSignersResponse>, Status> {
+        let asked = request.into_inner();
+        let streams = self.submitter.streams();
+
+        // Only a journal that already exists answers: opening one on a read would let a request
+        // with an invented name create directories.
+        if !streams
+            .ledgers()
+            .iter()
+            .any(|(zone, ledger)| zone == &asked.zone && ledger == &asked.ledger)
+        {
+            return Err(status_of(
+                &ApiError::new(
+                    ErrorClass::NotFound,
+                    "store_unknown",
+                    format!(
+                        "this plane keeps no journal for `{}/{}`",
+                        asked.zone, asked.ledger
+                    ),
+                ),
+                self.disclosure,
+            ));
+        }
+
+        let state = streams.state(&asked.zone, &asked.ledger).map_err(|error| {
+            status_of(
+                &ApiError::new(
+                    ErrorClass::Unavailable,
+                    "store_unavailable",
+                    error.to_string(),
+                ),
+                self.disclosure,
+            )
+        })?;
+        let held = streams
+            .signers(&asked.zone, &asked.ledger)
+            .map_err(|error| {
+                status_of(
+                    &ApiError::new(
+                        ErrorClass::Unavailable,
+                        "store_unavailable",
+                        error.to_string(),
+                    ),
+                    self.disclosure,
+                )
+            })?;
+        let instance = streams
+            .instance(&asked.zone, &asked.ledger)
+            .unwrap_or_default();
+        let until = if asked.until_seq == 0 {
+            u64::MAX
+        } else {
+            asked.until_seq
+        };
+
+        let spans = held
+            .covering(asked.from_seq, until)
+            .iter()
+            .map(|span| {
+                Ok(TemporalSignerSpan {
+                    from_seq: span.from,
+                    kid: span.kid.clone(),
+                    jwk: serde_json::to_vec(&span.jwk).map_err(|error| {
+                        status_of(
+                            &ApiError::new(
+                                ErrorClass::Internal,
+                                "signer_malformed",
+                                error.to_string(),
+                            ),
+                            self.disclosure,
+                        )
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        let producer = streams.producer();
+        Ok(Response::new(GetTemporalSignersResponse {
+            producer_class: producer.class.clone(),
+            producer: producer.id.clone(),
+            instance,
+            durable_through: state.durable_through,
+            signed_through: state.signed_through,
+            acked_through: state.acked_through,
+            spans,
+        }))
     }
 
     /// The same configuration the HTTP binding publishes, field for field.

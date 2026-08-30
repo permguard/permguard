@@ -36,7 +36,7 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-telemetry:
+host:
   addr: 0.0.0.0:5443
   # Server authentication only: a scraper is not a Permguard client.
   tls:

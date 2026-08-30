@@ -100,12 +100,23 @@ pub fn accept(store: &DecisionStore, batch: &Batch, keys: &[Jwk]) -> Result<Acce
 
     // The key that signed is archived beside what it attests, the first time
     // it is seen: a batch signed today must still verify after that key has
-    // been rotated a dozen times.
+    // been rotated a dozen times. And *which stretch* it signed is recorded in
+    // the stream's signer manifest, so a verifier can name the keys a range
+    // needs without downloading every key the producer ever held.
     if let Ok(protected) = batch.signature.protected()
         && let Some(key) = keys.iter().find(|candidate| candidate.kid == protected.kid)
-        && let Err(error) = store.archive_key(key)
     {
-        return Err(Refused::Unavailable(error.to_string()));
+        if let Err(error) = store.archive_key(key) {
+            return Err(Refused::Unavailable(error.to_string()));
+        }
+        if let Err(error) = store.note_signer(
+            &envelope.stream.id,
+            &envelope.stream.instance,
+            envelope.first_seq,
+            key,
+        ) {
+            return Err(Refused::Unavailable(error.to_string()));
+        }
     }
 
     // One writer per stream, from the first read of its state to the

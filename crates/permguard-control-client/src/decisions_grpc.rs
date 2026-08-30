@@ -102,6 +102,54 @@ impl DecisionSink for GrpcSink {
 }
 
 impl DecisionReader for GrpcSink {
+    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError> {
+        let request = crate::v1::GetDecisionSignersRequest {
+            pdp: pdp_id.to_owned(),
+            instance: instance.to_owned(),
+            from_seq: 0,
+            until_seq: 0,
+        };
+
+        let answer = self.endpoint.run(
+            "DecisionLog/GetSigners",
+            self.client().get_signers(Request::new(request)),
+        );
+
+        // Rendered into the same document the HTTP transport serves, so a caller switching
+        // transports reads one shape.
+        match answer {
+            Ok(answer) => {
+                let spans = answer
+                    .spans
+                    .into_iter()
+                    .map(|span| {
+                        let jwk: serde_json::Value =
+                            serde_json::from_slice(&span.jwk).map_err(|error| {
+                                ReadError::Unavailable(format!(
+                                    "a signer key was unreadable: {error}"
+                                ))
+                            })?;
+
+                        Ok(serde_json::json!({
+                            "from": span.from_seq,
+                            "kid": span.kid,
+                            "jwk": jwk,
+                        }))
+                    })
+                    .collect::<Result<Vec<_>, ReadError>>()?;
+
+                Ok(serde_json::json!({ "acked": answer.acked, "spans": spans }))
+            }
+            Err(status) if status.code() == tonic::Code::Unavailable => {
+                Err(ReadError::Unavailable(status.message().to_owned()))
+            }
+            Err(status) => Err(ReadError::Refused {
+                code: Self::code_of(&status),
+                detail: status.message().to_owned(),
+            }),
+        }
+    }
+
     fn read(
         &self,
         scope: &crate::decisions::ReadScope,

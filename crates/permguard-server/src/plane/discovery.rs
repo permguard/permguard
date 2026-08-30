@@ -124,6 +124,40 @@ pub fn discovered_planes(config: &Config) -> Vec<DiscoveredPlane> {
     planes
 }
 
+/// The planes this process serves over gRPC alone: enabled, a gRPC address, no HTTP one.
+///
+/// The endpoint's scheme follows its own TLS settings, like every published address here.
+fn grpc_only_planes(config: &Config) -> Vec<(&'static str, String)> {
+    const KNOWN: [&str; 2] = ["control", "data"];
+
+    let mut planes = Vec::new();
+    for id in KNOWN {
+        if !plane_enabled(config, id) {
+            continue;
+        }
+        let Some(addresses) = addresses_for_plane(id) else {
+            continue;
+        };
+        if matches!(addresses.http.resolve(config), Ok(Some(_))) {
+            continue;
+        }
+        let Ok(Some(addr)) = addresses.grpc.resolve(config) else {
+            continue;
+        };
+        let scheme = match addresses.grpc_tls.resolve(config) {
+            Ok(Some(_)) => "https",
+            _ => "http",
+        };
+        let Some(plane) = PlaneId::parse(id) else {
+            continue;
+        };
+
+        planes.push((plane.public_name(), format!("{scheme}://{addr}")));
+    }
+
+    planes
+}
+
 /// What this plane was told to advertise, when it was told anything.
 ///
 /// A trailing slash is trimmed: every caller of this appends a path, and `…//v1/zones` is not the
@@ -174,6 +208,25 @@ pub fn unroutable_planes(config: &Config) -> Vec<&'static str> {
         })
         .map(|plane| plane.id)
         .collect()
+}
+
+/// The HTTP base URL (`scheme://addr`) the Server Host operations surface answers on.
+///
+/// What the deployment advertises wins; the bound address is the fallback, with the scheme its
+/// own TLS settings imply — exactly the rule the planes follow, because a link that cannot be
+/// followed is the same mistake on any surface.
+pub fn host_http_base(config: &Config) -> Option<String> {
+    if let Some(advertised) = config.telemetry_advertised_url() {
+        return Some(advertised.to_owned());
+    }
+
+    let addr = config.telemetry_addr()?;
+    let scheme = match config.telemetry_tls() {
+        Some(_) => "https",
+        None => "http",
+    };
+
+    Some(format!("{scheme}://{addr}"))
 }
 
 /// The HTTP base URL (`scheme://addr`) one plane answers on, when it is
@@ -242,21 +295,42 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
 /// never copies: the plane's well-known is the single source of truth, and
 /// the registry only says where the truths are.
 pub fn server_configuration_document(config: &Config) -> String {
+    let mut planes: std::collections::BTreeMap<String, PlaneLink> = discovered_planes(config)
+        .into_iter()
+        .map(|plane| {
+            (
+                plane.id.to_owned(),
+                PlaneLink {
+                    server_configuration: Some(format!(
+                        "{}/.well-known/server-configuration",
+                        plane.http_base
+                    )),
+                    grpc_endpoint: None,
+                },
+            )
+        })
+        .collect();
+
+    // A plane serving only gRPC carries no well-known of its own, and omitting it entirely
+    // would make the registry claim the process hosts less than it does. It is listed by its
+    // endpoint instead, which is everything there is to say about it.
+    for (id, endpoint) in grpc_only_planes(config) {
+        planes.entry(id.to_owned()).or_insert(PlaneLink {
+            server_configuration: None,
+            grpc_endpoint: Some(endpoint),
+        });
+    }
+
     let registry = ServerConfiguration {
-        planes: discovered_planes(config)
-            .into_iter()
-            .map(|plane| {
-                (
-                    plane.id.to_owned(),
-                    PlaneLink {
-                        server_configuration: format!(
-                            "{}/.well-known/server-configuration",
-                            plane.http_base
-                        ),
-                    },
-                )
-            })
-            .collect(),
+        planes,
+        // The Host's own keys, when the deployment publishes any: the one field of this document
+        // that is the process's rather than a plane's, because the operations ring seals what the
+        // whole process did.
+        jwks_uri: config
+            .keys_enabled()
+            .then(|| host_http_base(config))
+            .flatten()
+            .map(|base| format!("{base}/server-host/keys")),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -274,15 +348,26 @@ pub fn server_configuration_document(config: &Config) -> String {
 }
 
 /// Where one plane publishes its own document.
+///
+/// A plane serving HTTP points at its own well-known; a plane serving only gRPC has no document
+/// to point at, so the registry names its gRPC endpoint instead — served but unlisted would be a
+/// plane the discovery contract lies about.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PlaneLink {
-    pub server_configuration: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_configuration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grpc_endpoint: Option<String>,
 }
 
-/// The process-level registry: every plane this process hosts, by name.
+/// The process-level registry: every plane this process hosts, by name, and where the process's
+/// own operational keys are published.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ServerConfiguration {
     pub planes: std::collections::BTreeMap<String, PlaneLink>,
+    /// The operations ring as a JWKS, when this deployment publishes keys at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jwks_uri: Option<String>,
 }
 
 pub(crate) fn plane_enabled(config: &Config, id: &str) -> bool {
@@ -384,8 +469,77 @@ mod document_tests {
             "{registry}"
         );
         assert!(registry.contains("\"data-plane\""), "{registry}");
-        // Pointers, never copies: no jwks, no endpoints, only the well-known.
-        assert!(!registry.contains("jwks"), "{registry}");
+        // Pointers, never copies: a plane's own keys and endpoints live in the plane's document.
+        assert!(!registry.contains("control-plane/keys"), "{registry}");
+        assert!(!registry.contains("data-plane/keys"), "{registry}");
+    }
+
+    #[test]
+    fn the_registry_names_the_host_keys_when_the_deployment_publishes_any() {
+        let config = config_with(&[
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (
+                permguard_core::config::SETTING_TELEMETRY_ADDR,
+                "127.0.0.1:5443",
+            ),
+            (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
+        ]);
+
+        let registry = server_configuration_document(&config);
+        assert!(
+            registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
+            "{registry}"
+        );
+    }
+
+    #[test]
+    fn the_host_advertised_url_wins_over_the_bound_address() {
+        let config = config_with(&[
+            (
+                permguard_core::config::SETTING_TELEMETRY_ADDR,
+                "0.0.0.0:5443",
+            ),
+            (
+                permguard_core::config::SETTING_TELEMETRY_ADVERTISED_URL,
+                "https://ops.example.com/",
+            ),
+        ]);
+
+        assert_eq!(
+            host_http_base(&config).as_deref(),
+            Some("https://ops.example.com"),
+            "advertised, trimmed of its trailing slash"
+        );
+    }
+
+    #[test]
+    fn a_grpc_only_plane_is_listed_by_its_endpoint() {
+        // Served but unlisted would be a plane the discovery contract lies about.
+        let config = config_with(&[(SETTING_DATA_GRPC_ADDR, "127.0.0.1:7443")]);
+
+        let registry = server_configuration_document(&config);
+        assert!(
+            registry.contains("\"data-plane\":{\"grpc_endpoint\":\"http://127.0.0.1:7443\"}"),
+            "{registry}"
+        );
+    }
+
+    #[test]
+    fn a_plane_with_http_is_listed_by_its_document_not_its_grpc_endpoint() {
+        // The plane's own well-known already names its transports; the registry points, never
+        // copies.
+        let config = config_with(&[
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
+            (SETTING_DATA_GRPC_ADDR, "127.0.0.1:7444"),
+        ]);
+
+        let registry = server_configuration_document(&config);
+        assert!(
+            registry.contains(
+                "\"data-plane\":{\"server_configuration\":\"http://127.0.0.1:7443/.well-known/server-configuration\"}"
+            ),
+            "{registry}"
+        );
     }
 
     #[test]

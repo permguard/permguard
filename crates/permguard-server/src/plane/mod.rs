@@ -22,7 +22,7 @@ use anyhow::{Context, Result, anyhow};
 use axum::Router;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
-use tracing::info;
+use tracing::{info, warn};
 
 use permguard_core::{
     BoxFuture, BuildSettings, Config, Metrics, ProductIdentity, ServerContext, Service,
@@ -93,6 +93,17 @@ pub trait PlaneModule: Send + Sync + 'static {
     /// that large, whatever the generic default says.
     fn limits(&self, config: &permguard_core::Config) -> permguard_core::Limits {
         config.limits().clone()
+    }
+
+    /// The evidence streams this plane serves under a configuration.
+    ///
+    /// Declared rather than discovered, so the composition can refuse two streams claiming one
+    /// directory at startup instead of letting the second writer find out. A plane that serves
+    /// none declares none, which is the default.
+    fn streams(&self, config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
+        let _ = config;
+
+        Vec::new()
     }
 
     /// What this plane requires of a configuration before the process starts.
@@ -316,10 +327,25 @@ impl Service for PlaneService {
                         http_tls,
                     )]
                 }
-                (Some(addr), Some(grpc), http_tls, grpc_tls) => vec![
-                    (addr, "http", self.module.http_routes(context), http_tls),
-                    (grpc, "grpc", self.module.grpc_routes(context), grpc_tls),
-                ],
+                (Some(addr), Some(grpc), http_tls, grpc_tls) => {
+                    // One plane, one role port is the documented shape; two addresses is a
+                    // deliberate override and stays one, but it should never be an accident a
+                    // deployment discovers from a firewall rule.
+                    warn!(
+                        event.name = "plane.split_ports",
+                        component = self.module.component(),
+                        plane = self.module.id(),
+                        http = %addr,
+                        grpc = %grpc,
+                        "this plane splits HTTP and gRPC across two addresses; the canonical \
+                         shape is one role port serving both"
+                    );
+
+                    vec![
+                        (addr, "http", self.module.http_routes(context), http_tls),
+                        (grpc, "grpc", self.module.grpc_routes(context), grpc_tls),
+                    ]
+                }
                 (Some(addr), None, http_tls, _) => {
                     vec![(addr, "http", self.module.http_routes(context), http_tls)]
                 }
@@ -567,19 +593,97 @@ impl PlaneServer {
             );
         });
 
+        // Every stream every selected plane declares, registered once: the first directory
+        // collision is a refusal here, at startup, rather than a runtime surprise on a volume.
+        // A nesting between two directories that predate the versioned layout is tolerated and
+        // logged — an existing volume keeps starting — and anything involving a new stream is
+        // refused outright.
+        let modules: Vec<std::sync::Arc<dyn PlaneModule>> =
+            self.planes.iter().map(PlaneService::module).collect();
+        app = app.with_startup_check(move |config| {
+            let mut registry = permguard_stream::StreamRegistry::new();
+            for module in &modules {
+                if !plane_enabled(config, module.id()) {
+                    continue;
+                }
+                for descriptor in module.streams(config) {
+                    let identity = descriptor.identity.to_string();
+                    match registry.register(descriptor) {
+                        Ok(permguard_stream::Registered::Clean) => {}
+                        Ok(permguard_stream::Registered::Tolerated { with }) => warn!(
+                            event.name = "streams.legacy_nesting",
+                            component = module.component(),
+                            stream = %identity,
+                            beside = %with,
+                            "two pre-layout streams nest their directories; the versioned \
+                             layout under data/streams separates what a future migration moves"
+                        ),
+                        Err(refused) => anyhow::bail!(
+                            "registering the streams of the {}: {refused}",
+                            module.description()
+                        ),
+                    }
+                }
+            }
+
+            Ok(())
+        });
+
         for plane in self.planes {
-            // What this plane requires of the configuration, before anything binds.
+            // What this plane requires of the configuration, before anything binds — but only
+            // when the runtime actually selects the plane. A process told to host `control`
+            // alone must not be stopped by the data plane's requirements, and must not run the
+            // data plane's background work either: `runtime.planes` selects the plane whole,
+            // checks and services included, not merely its listeners.
             let module = plane.module();
-            app = app.with_startup_check(move |config| module.startup_check(config));
+            app = app.with_startup_check(move |config| {
+                if !plane_enabled(config, module.id()) {
+                    return Ok(());
+                }
+
+                module.startup_check(config)
+            });
             // The plane's own background work first: it starts before the
             // listeners it feeds, and stops after them.
             for service in plane.module.services() {
-                app = app.with_service(service);
+                app = app.with_service(Box::new(SelectedService {
+                    plane: plane.module.id(),
+                    inner: service,
+                }));
             }
             app = app.with_service(Box::new(plane));
         }
 
         app.run().await
+    }
+}
+
+/// A plane's background service, started only when the runtime selects its plane.
+///
+/// The listeners already honour `runtime.planes`; this makes the plane's services honour the same
+/// selection, so a disabled plane contributes nothing at all — no checks, no listeners, no loops.
+struct SelectedService {
+    plane: &'static str,
+    inner: Box<dyn Service>,
+}
+
+impl Service for SelectedService {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        if !plane_enabled(context.config(), self.plane) {
+            return Box::pin(std::future::ready(Ok(())));
+        }
+
+        self.inner.start(context)
+    }
+
+    fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        // Delegated unconditionally: a service that never started has nothing to release and
+        // must say so gracefully, and one that did start must always be given its stop.
+        self.inner.stop(context)
     }
 }
 

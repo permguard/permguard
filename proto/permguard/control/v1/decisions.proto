@@ -21,6 +21,33 @@ service DecisionLog {
   rpc Ship(ShipRequest) returns (ShipResponse);
   // Read one page, from an offset the consumer keeps.
   rpc Read(ReadRequest) returns (ReadResponse);
+  // Which key signed which stretch of one producer stream, public keys
+  // included — what a verifier needs to check a range of records without
+  // reaching the producer, which may be gone.
+  rpc GetSigners(GetDecisionSignersRequest) returns (GetDecisionSignersResponse);
+}
+
+message GetDecisionSignersRequest {
+  // The producer stream, addressed the way the read is.
+  string pdp = 1;
+  string instance = 2;
+  // Inclusive offset range; leave both zero for the whole history.
+  uint64 from_seq = 3;
+  uint64 until_seq = 4;
+}
+
+// One stretch of the stream and the key that signed it.
+message DecisionSignerSpan {
+  uint64 from_seq = 1;
+  string kid = 2;
+  // The public key itself, as the producer published it: a JWK, as JSON.
+  bytes jwk = 3;
+}
+
+message GetDecisionSignersResponse {
+  // The receiver's durable frontier: everything through this sequence is here.
+  uint64 acked = 1;
+  repeated DecisionSignerSpan spans = 2;
 }
 
 message ShipRequest {

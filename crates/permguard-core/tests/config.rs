@@ -249,11 +249,28 @@ fn test_validate_accepts_a_config_with_a_public_address() {
 }
 
 #[test]
-fn test_validate_rejects_a_config_with_no_public_address() {
+fn test_validate_rejects_a_config_with_no_listen_address_at_all() {
     let config = config(&[(SETTING_ADMIN_ADDR, "127.0.0.1:5557")], &[], &[]);
 
-    let error = config.validate().expect_err("no public address is invalid");
-    assert!(format!("{error}").contains("public listen address"));
+    let error = config.validate().expect_err("no listen address is invalid");
+    assert!(format!("{error}").contains("no listen address"));
+}
+
+#[test]
+fn test_validate_accepts_a_host_only_config() {
+    // Zero planes is a legal deployment: the Server Host surface alone satisfies validation.
+    let config = config(&[(SETTING_TELEMETRY_ADDR, "0.0.0.0:5443")], &[], &[]);
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_the_host_surface_opt_out_reads_back_as_no_address() {
+    let config = config(&[(SETTING_TELEMETRY_ADDR, "off")], &[], &[]);
+
+    assert_eq!(config.telemetry_addr(), None);
+    // And `off` alone is a process nothing can reach, so it does not validate.
+    assert!(config.validate().is_err());
 }
 
 #[test]

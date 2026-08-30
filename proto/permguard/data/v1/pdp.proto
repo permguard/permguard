@@ -217,6 +217,38 @@ service TemporalPolicyDecisionPoint {
   // publishes at `/.well-known/permguard-pdp-temporal-v1alpha1-configuration`.
   rpc GetTemporalConfiguration(GetTemporalConfigurationRequest)
       returns (GetTemporalConfigurationResponse);
+  // This plane's own journal watermarks and signer history for one ledger —
+  // which key signed which stretch, public keys included. The same document
+  // the HTTP binding serves at `/events/v1alpha1/signers`.
+  rpc GetSigners(GetTemporalSignersRequest) returns (GetTemporalSignersResponse);
+}
+
+message GetTemporalSignersRequest {
+  string zone = 1;
+  string ledger = 2;
+  // Inclusive offset range; leave both zero for the whole history.
+  uint64 from_seq = 3;
+  uint64 until_seq = 4;
+}
+
+// One stretch of the journal and the key that signed it.
+message TemporalSignerSpan {
+  uint64 from_seq = 1;
+  string kid = 2;
+  // The public key itself, as this plane publishes it: a JWK, as JSON.
+  bytes jwk = 3;
+}
+
+message GetTemporalSignersResponse {
+  // The producer identity this plane writes its streams under.
+  string producer_class = 1;
+  string producer = 2;
+  string instance = 3;
+  // This plane's own watermarks: durable, then signed, then acknowledged.
+  uint64 durable_through = 4;
+  uint64 signed_through = 5;
+  uint64 acked_through = 6;
+  repeated TemporalSignerSpan spans = 7;
 }
 
 // Which policy store an occurrence belongs to.

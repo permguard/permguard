@@ -187,6 +187,16 @@ impl EventReader for Wire {
         }
     }
 
+    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
+        let streams = self
+            .facade
+            .signers_of(zone, ledger, 0, 0)
+            .map_err(|error| ReadError::Unavailable(error.to_string()))?;
+
+        serde_json::to_value(serde_json::json!({ "streams": streams }))
+            .map_err(|error| ReadError::Unavailable(error.to_string()))
+    }
+
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
         read::get(
             &self.facade.store,
@@ -572,6 +582,10 @@ impl EventReader for Handed {
         self.0.read(scope, window)
     }
 
+    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
+        self.0.signers(zone, ledger)
+    }
+
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
         self.0.get(zone, ledger, event_id)
     }
@@ -944,4 +958,65 @@ mod two_planes {
         let id = data["event_id"].as_str().unwrap_or_default().to_owned();
         data["event_id"] = json!(format!("{id}-bob"));
     }
+}
+
+#[test]
+fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
+    let keys = ring("signers");
+    let wire = control("signers", &keys);
+    let streams = journals("signers", "plane-a");
+    record(&streams, 12, 1);
+
+    let shipper = Shipper::new(
+        Arc::clone(&streams),
+        Box::new(Handed(Arc::clone(&wire))),
+        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        1024 * 1024,
+        Metrics::none(),
+    );
+    let rounds = shipper.round();
+    assert!(
+        matches!(rounds[0].1, Round::Shipped { .. }),
+        "{:?}",
+        rounds[0].1
+    );
+
+    let kid = keys
+        .active_key_id()
+        .expect("a key signs")
+        .as_str()
+        .to_owned();
+
+    // The producer's own journal names the key that signed its stretch, from its first record.
+    let held = streams
+        .signers(ZONE_ID, LEDGER_ID)
+        .expect("the manifest reads");
+    let spans = held.spans();
+    assert_eq!(spans.len(), 1, "one key is one fact");
+    assert_eq!(spans[0].from, 1);
+    assert_eq!(spans[0].kid, kid);
+    assert_eq!(
+        spans[0].jwk.get("kid").and_then(Value::as_str),
+        Some(kid.as_str()),
+        "the public key itself travels, not only its name"
+    );
+
+    // And the store, from what it actually verified against — the consumer's own copy, good
+    // after the producer is gone.
+    let answered = wire
+        .facade
+        .signers_of(ZONE_ID, LEDGER_ID, 0, 0)
+        .expect("the store answers");
+    assert_eq!(answered.len(), 1, "one producer stream");
+    assert_eq!(answered[0].acked, 12);
+    assert_eq!(answered[0].spans.len(), 1);
+    assert_eq!(answered[0].spans[0].kid, kid);
+
+    // A bounded range still names the span covering it.
+    let bounded = wire
+        .facade
+        .signers_of(ZONE_ID, LEDGER_ID, 3, 7)
+        .expect("the store answers a range");
+    assert_eq!(bounded[0].spans.len(), 1);
+    assert_eq!(bounded[0].spans[0].kid, kid);
 }

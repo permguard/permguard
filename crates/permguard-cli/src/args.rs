@@ -478,6 +478,14 @@ pub enum DecisionsAction {
         #[command(flatten)]
         query: DecisionsQuery,
     },
+    /// Show which key signed which stretch of one producer stream, public keys included.
+    ///
+    /// The offset-ranged companion to `verify --keys`: fetched once and kept, it names exactly
+    /// the keys a range of records needs, without reaching the producer that signed them.
+    #[command(
+        after_help = "Examples:\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c -o json > signers.json"
+    )]
+    Signers(DecisionsQuery),
     /// Read in bulk, resumably: every page, from an offset, to standard output.
     #[command(
         after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json"
@@ -514,6 +522,14 @@ pub enum EventsAction {
         #[command(flatten)]
         query: EventsQuery,
     },
+    /// Show which key signed which stretch of each producer stream, public keys included.
+    ///
+    /// The offset-ranged companion to `verify --keys`: fetched once and kept, it names exactly
+    /// the keys a range of records needs, without reaching the producer that signed them.
+    #[command(
+        after_help = "Examples:\n  permguard events signers --zone acme --ledger agent-governance\n  permguard events signers -o json > signers.json"
+    )]
+    Signers(EventsQuery),
     /// Read a finite snapshot in bulk, resumably: every page, to standard output.
     ///
     /// The snapshot is fixed by the first page's watermark, so an export of a ledger that is still

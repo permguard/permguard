@@ -34,7 +34,7 @@
 //! would change what future decisions mean.
 //!
 //! What *is* shared is what carries no domain: JCS canonicalization and the per-batch Merkle tree,
-//! taken from [`permguard_decisions`] rather than written twice.
+//! shared through `permguard-stream` rather than written twice.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
@@ -50,10 +50,11 @@ pub use chain::{ChainError, Verified};
 pub use envelope::{BATCH_TYPE, Batch, Envelope, EnvelopeError, Signed};
 /// Recomputes a Merkle root from a leaf and its inclusion path.
 ///
-/// Re-exported from the decision log's tree, which is the same tree: the Merkle construction
-/// carries no domain, so sharing it is safe in exactly the way sharing a digest domain would not
-/// be. A verifier needs it to check that a path reaches the root its envelope attests.
-pub use permguard_decisions::merkle::recompute as merkle_of;
+/// Re-exported from the stream foundation's tree, which is the same tree the decision log uses:
+/// the Merkle construction carries no domain, so sharing it is safe in exactly the way sharing a
+/// digest domain would not be. A verifier needs it to check that a path reaches the root its
+/// envelope attests.
+pub use permguard_stream::merkle::recompute as merkle_of;
 pub use record::{
     DIGEST_DOMAIN, GENESIS, HISTORY_DOMAIN, HistoryKey, PRODUCER_CLASS_DATA_PLANE, Producer,
     RECORD_TYPE, Record, RecordError, Stream, digest_of, history_digest_of, occurrence_digest_of,

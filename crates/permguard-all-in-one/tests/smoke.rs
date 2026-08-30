@@ -97,6 +97,102 @@ fn the_composed_runtime_starts_serves_and_stops() {
 }
 
 #[test]
+fn a_zero_plane_deployment_serves_the_host_surface_and_nothing_else() {
+    use std::io::Read as _;
+
+    let dir =
+        std::env::temp_dir().join(format!("permguard-zero-plane-smoke-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+
+    // No plane selected and no plane address: the process is the Server Host alone. It must
+    // start, answer its whole operations surface, and advertise an empty plane registry.
+    std::fs::write(
+        dir.join("config.yml"),
+        concat!(
+            "development_mode: true\nautogenerate: true\n",
+            "log:\n  level: info\n  format: json\n",
+            "host:\n  addr: 127.0.0.1:0\n",
+            "runtime:\n  planes: []\n",
+        ),
+    )
+    .expect("the config writes");
+
+    let mut child = binary()
+        .arg(dir.join("config.yml"))
+        .env("PERMGUARD_WORKING_DIR", &dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the runtime starts");
+
+    // Wait for the surface to bind, and learn where it bound from its own record.
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let mut seen = String::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut buffer = [0u8; 4096];
+    while std::time::Instant::now() < deadline
+        && !(seen.contains("server.started") && seen.contains("telemetry.listening"))
+    {
+        match stdout.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => seen.push_str(&String::from_utf8_lossy(&buffer[..read])),
+            Err(_) => break,
+        }
+    }
+
+    let address = seen
+        .lines()
+        .filter(|line| line.contains("telemetry.listening"))
+        .find_map(|line| {
+            let (_, rest) = line.split_once("\"address\":\"")?;
+            let (address, _) = rest.split_once('\"')?;
+            Some(address.to_owned())
+        });
+
+    let body = address.as_ref().and_then(|address| {
+        let output = Command::new("curl")
+            .args(["-sS", "--max-time", "5"])
+            .arg(format!("http://{address}/.well-known/server-configuration"))
+            .output()
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    });
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(seen.contains("server.started"), "{seen}");
+    // Both planes say they were not selected — and none of their work runs: no listener binds,
+    // no GC follows, no audit worker queues. The host's own lifecycle records for the gated
+    // services remain, and rightly: a registered service that no-ops is still taken through its
+    // lifecycle.
+    assert_eq!(
+        seen.matches("plane is not selected by runtime configuration")
+            .count(),
+        2,
+        "{seen}"
+    );
+    for plane_work in [
+        "plane.listening",
+        "gc.following",
+        "authz.audit_worker",
+        "sync.",
+    ] {
+        assert!(
+            !seen.contains(plane_work),
+            "`{plane_work}` belongs to a plane and nothing selected one: {seen}"
+        );
+    }
+    let body =
+        body.unwrap_or_else(|| panic!("the well-known document answers at {address:?}: {seen}"));
+    assert!(body.contains("\"planes\":{}"), "{body}");
+}
+
+#[test]
 fn the_underscore_alias_binary_is_the_same_program() {
     // The Go-compatible name ships too; it must answer exactly like the canonical one.
     let output = Command::new(env!("CARGO_BIN_EXE_permguard_all_in_one"))

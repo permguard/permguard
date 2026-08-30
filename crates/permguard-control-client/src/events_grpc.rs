@@ -164,6 +164,62 @@ impl EventReader for GrpcEventSink {
         }
     }
 
+    fn signers(&self, zone: &str, ledger: &str) -> Result<serde_json::Value, ReadError> {
+        let request = crate::v1::GetSignersRequest {
+            zone: zone.to_owned(),
+            ledger: ledger.to_owned(),
+            from_seq: 0,
+            until_seq: 0,
+        };
+
+        let answer = self.endpoint.run(
+            "EventLog/GetSigners",
+            self.client().get_signers(Request::new(request)),
+        );
+
+        // Rendered into the same document the HTTP transport serves, so a caller switching
+        // transports reads one shape.
+        match answer {
+            Ok(answer) => {
+                let streams = answer
+                    .streams
+                    .into_iter()
+                    .map(|held| {
+                        let spans = held
+                            .spans
+                            .into_iter()
+                            .map(|span| {
+                                let jwk: serde_json::Value = serde_json::from_slice(&span.jwk)
+                                    .map_err(|error| {
+                                        ReadError::Unavailable(format!(
+                                            "a signer key was unreadable: {error}"
+                                        ))
+                                    })?;
+
+                                Ok(serde_json::json!({
+                                    "from": span.from_seq,
+                                    "kid": span.kid,
+                                    "jwk": jwk,
+                                }))
+                            })
+                            .collect::<Result<Vec<_>, ReadError>>()?;
+
+                        Ok(serde_json::json!({
+                            "producer_class": held.producer_class,
+                            "producer": held.producer,
+                            "instance": held.instance,
+                            "acked": held.acked,
+                            "spans": spans,
+                        }))
+                    })
+                    .collect::<Result<Vec<_>, ReadError>>()?;
+
+                Ok(serde_json::json!({ "streams": streams }))
+            }
+            Err(status) => Err(read_error(&status)),
+        }
+    }
+
     fn get(
         &self,
         zone: &str,

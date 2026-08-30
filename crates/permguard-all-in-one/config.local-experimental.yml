@@ -27,7 +27,7 @@ experimental:
     # rather than running with an interface nobody can reach.
     enabled: "true"
 
-telemetry:
+host:
   addr: 127.0.0.1:5443
 
 runtime:

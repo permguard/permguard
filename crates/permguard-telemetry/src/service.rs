@@ -12,6 +12,7 @@ use tracing::info;
 use permguard_core::{BoxFuture, Config, ServerContext, Service, ready};
 use permguard_transport::Surface;
 
+use crate::host;
 use crate::probes;
 
 /// The `component` every record of this surface carries.
@@ -87,6 +88,18 @@ impl Service for TelemetryService {
                 ));
                 if let Some(build) = &self.configuration {
                     routes = routes.merge(probes::configuration_route(build(context.config())));
+                }
+                // The process version, under the same disclosure policy the planes answer with.
+                routes = routes.merge(host::version_route(host::version_body(
+                    "server-host",
+                    context.identity(),
+                    context.config(),
+                )));
+                // The operations ring as a JWKS, when this process composes one. Absent ring,
+                // absent route: a deployment that keeps no keys has nothing to publish, and a
+                // `404` says so better than an empty set would.
+                if let Some(keys) = context.keys() {
+                    routes = routes.merge(host::keys_route(std::sync::Arc::clone(keys)));
                 }
                 routes
             })

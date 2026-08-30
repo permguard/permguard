@@ -29,7 +29,7 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
-telemetry:
+host:
   addr: 0.0.0.0:5443
   # The lab ships a Tempo beside the planes; spans go there. Fail-open: with
   # Tempo down the planes serve unchanged and spans are dropped.
