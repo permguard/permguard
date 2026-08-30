@@ -68,6 +68,8 @@ const LEDGER: &str = "agent-governance";
 const ZONE_ID: &str = "acme-id";
 const LEDGER_ID: &str = "agent-governance-id";
 const PROFILE: &str = "temporal";
+/// The second profile of [`manifest_two_profiles`], over its own identical partition.
+const AUDIT_PROFILE: &str = "audit";
 
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -154,6 +156,30 @@ fn manifest() -> Manifest {
     }
 }
 
+/// The same ledger, with a second partition identical to the first behind its own profile.
+///
+/// Two profiles that range over one history is the shape the per-partition replay note exists for:
+/// each profile's rebuild touches only its own partitions, and a note kept per history would let
+/// one profile's rebuild mark the other's engine clean.
+fn manifest_two_profiles() -> Manifest {
+    let mut manifest = manifest();
+    let audit = manifest
+        .partitions
+        .get("governance")
+        .expect("the base manifest declares governance")
+        .clone();
+    manifest.partitions.insert("audit".to_owned(), audit);
+    manifest.profiles.insert(
+        AUDIT_PROFILE.to_owned(),
+        Profile {
+            r#type: permguard_objects::manifest::PROFILE_PDP_TEMPORAL_V1ALPHA1.to_owned(),
+            partitions: vec!["audit".to_owned()],
+        },
+    );
+
+    manifest
+}
+
 /// Writes a mirror the way a synchronization round leaves one.
 fn provision(root: &Path, manifest: &Manifest) -> Mirror {
     let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
@@ -210,13 +236,19 @@ fn provision(root: &Path, manifest: &Manifest) -> Mirror {
     let bytes = tree.encode().expect("the tree encodes");
     let partition_digest = objects::put(&store, "objects", &bytes).expect("the tree is stored");
 
+    // One entry per declared partition, all pointing at the same tree: the tests that need two
+    // partitions need them to hold the same policy, not different ones.
     let root_tree = Tree {
-        entries: vec![TreeEntry {
-            kind: Kind::Tree,
-            digest: partition_digest,
-            name: "governance".to_owned(),
-            annotations: BTreeMap::new(),
-        }],
+        entries: manifest
+            .partitions
+            .keys()
+            .map(|name| TreeEntry {
+                kind: Kind::Tree,
+                digest: partition_digest.clone(),
+                name: name.clone(),
+                annotations: BTreeMap::new(),
+            })
+            .collect(),
     };
     let root_bytes = root_tree.encode().expect("the root tree encodes");
     let root_digest = objects::put(&store, "objects", &root_bytes).expect("the tree is stored");
@@ -265,15 +297,20 @@ struct Plane {
 }
 
 fn plane(tag: &str) -> Plane {
-    plane_with(tag, blocking())
+    plane_of(tag, &manifest(), blocking())
 }
 
 /// The same plane, against a blocking budget the test chooses.
 fn plane_with(tag: &str, blocking: Blocking) -> Plane {
+    plane_of(tag, &manifest(), blocking)
+}
+
+/// The same plane, against a manifest the test chooses.
+fn plane_of(tag: &str, manifest: &Manifest, blocking: Blocking) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
-    provision(&mirrors, &manifest());
+    provision(&mirrors, manifest);
 
     let decider = Arc::new(Decider::new(
         mirrors.clone(),
@@ -313,11 +350,23 @@ fn plane_with(tag: &str, blocking: Blocking) -> Plane {
 
 /// One occurrence of upstream's trace, in Permguard's own event contract.
 fn submission(at: i64, action: &str, kind: &str, user: &str, input: Value) -> Value {
+    submission_to(PROFILE, at, action, kind, user, input)
+}
+
+/// The same occurrence, addressed to a stated profile.
+fn submission_to(
+    profile: &str,
+    at: i64,
+    action: &str,
+    kind: &str,
+    user: &str,
+    input: Value,
+) -> Value {
     let occurred_at =
         permguard_events::index::render_epoch_seconds(at).expect("the timepoint is an instant");
 
     json!({
-        "store": {"zone": ZONE, "ledger": LEDGER, "profile": PROFILE},
+        "store": {"zone": ZONE, "ledger": LEDGER, "profile": profile},
         "event": {
             "type": permguard_languages::event::EVENT_TYPE,
             "data": {
@@ -1729,7 +1778,7 @@ async fn a_submission_spends_a_permit_of_the_shared_pool_and_the_ceiling_refuses
     );
 }
 
-/// An occurrence older than one this history already holds is refused, not applied behind it.
+/// An occurrence behind the history is refused, kept as evidence, and replayed into its place.
 ///
 /// # What this is really asserting
 ///
@@ -1740,36 +1789,42 @@ async fn a_submission_spends_a_permit_of_the_shared_pool_and_the_ceiling_refuses
 /// out of order, `previous`, `since` and every window operator answer from a sequence that never
 /// happened, and the ledger's own journal disagrees with the engine that decided from it.
 ///
-/// The refusal happens before the append, so a rejected submission leaves no record, no sequence
-/// and no hole: the assertion on the journal length is the half that proves it.
+/// The check runs under the ledger turn — after the append — so the refusal withholds only the
+/// verdict: the record stays, the history is marked for replay, and the next decision is served
+/// from a run rebuilt in order. The final permit is the proof of that last part: it is only
+/// reachable if the refused login was actually fed to the engine, in its right place, by the
+/// rebuild — a plane that merely refused and forgot would keep answering deny.
 #[tokio::test]
 async fn an_occurrence_behind_what_the_history_holds_is_refused() {
     let plane = plane("temporal-out-of-order");
     let router = surface(&plane);
 
-    // `t2` first: the login response the history will have moved past.
+    // A read first, with no login anywhere: denied, and now the history stands at t=4000.
     let (status, body) = post(
         &router,
         submission(
             4000,
-            "Drupe::Action::Login",
-            "response",
+            "Drupe::Action::Read",
+            "request",
             "alice",
-            json!({"user": "alice", "server": "s1"}),
+            json!({"user": "alice", "document": "doc1"}),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["outcome"], "decided", "{body}");
+    assert_eq!(body["decision"], false, "nothing has logged in yet: {body}");
 
-    // `t1`, which happened earlier and arrived later.
+    // The login that would have permitted it, arriving late: it happened at t=3900, before the
+    // read the history already holds.
     let (status, refused) = post(
         &router,
         submission(
-            100,
+            3900,
             "Drupe::Action::Login",
             "response",
             "alice",
-            json!({"user": "alice", "server": "s0"}),
+            json!({"user": "alice", "server": "s1"}),
         ),
     )
     .await;
@@ -1796,9 +1851,9 @@ async fn an_occurrence_behind_what_the_history_holds_is_refused() {
         "the occurrence is evidence and stays; what was refused is the verdict, not the record"
     );
 
-    // And the ledger is not wedged by it: the history was marked for replay, so the next
-    // occurrence is decided against a run rebuilt from the journal — with the late arrival sorted
-    // into its right place rather than appended after what followed it.
+    // The same question the first read asked, a hundred seconds later. The only login this ledger
+    // has ever seen is the refused one at t=3900 — inside the policy's one-hour window of t=4100 —
+    // so a permit here is possible only if the rebuild replayed it into its right place.
     let (status, body) = post(
         &router,
         submission(
@@ -1810,10 +1865,15 @@ async fn an_occurrence_behind_what_the_history_holds_is_refused() {
         ),
     )
     .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
-        status,
-        StatusCode::OK,
-        "the history heals on the next occurrence, not at the next restart: {body}"
+        body["outcome"], "decided",
+        "the history healed on the next occurrence, not at the next restart: {body}"
+    );
+    assert_eq!(
+        body["decision"], true,
+        "the verdict is the proof: only the refused login at t=3900, replayed in order, permits \
+         this read — a plane that refused and forgot would deny it: {body}"
     );
     assert_eq!(
         plane
@@ -1918,5 +1978,182 @@ async fn concurrent_rising_instants_are_never_applied_out_of_order() {
             .len(),
         SUBMISSIONS,
         "every occurrence is durable, decided or not: the verdict is withheld, the evidence is not"
+    );
+}
+
+/// A tie on event time is still an order, decided by the rest of the tuple.
+///
+/// # Why the tie break must be enforced and not just documented
+///
+/// The documented order is `(occurred_at, observed_at, producer, sequence)` — `order_of`, the one
+/// every rebuilt run is sorted by. The guard used to scan from `occurred_at + 1`, which checks the
+/// first component and leaves every tie undecided: two occurrences in the same second, journalled
+/// opposite to the instants they were stamped with, were both applied — and the next rebuild would
+/// sort them the other way round, so the engine's live view and its replayed view disagreed.
+///
+/// The record planted here has this occurrence's event time and an observed time far in its
+/// future, so it sorts after anything submitted today: a submission tied on event time must be
+/// refused, because the run it joins has already moved past it.
+#[tokio::test]
+async fn a_tie_on_event_time_is_still_an_order() {
+    let plane = plane("temporal-tie-break");
+    let router = surface(&plane);
+
+    // An ordinary occurrence, to copy the shape of a durable record from.
+    let (status, body) = post(
+        &router,
+        submission(
+            1000,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // The planted record: same event time, observed far in the future, so it outsorts on the
+    // second component of the tuple exactly — the case a `occurred_at + 1` scan cannot see.
+    let held = plane
+        .streams
+        .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+        .expect("the journal reads");
+    let mut planted: permguard_events::record::Record =
+        serde_json::from_value(held[0].clone()).expect("a durable record deserializes");
+    planted.event_id = "tie-from-the-future".to_owned();
+    planted.event["event_id"] = json!("tie-from-the-future");
+    planted.occurrence_digest = permguard_events::record::occurrence_digest_of(&planted.event)
+        .expect("the patched occurrence canonicalizes");
+    planted.observed_at = "9999-01-01T00:00:00Z".to_owned();
+    planted.seq = 0;
+    planted.prev = String::new();
+    let (written, _) = plane
+        .streams
+        .append(ZONE_ID, LEDGER_ID, planted)
+        .expect("the planted record appends");
+    // A direct append assigns a sequence nobody has taken a turn for, and the sequencer advances
+    // only when a turn is dropped — the next submission would wait for it for ever. Take it and
+    // give it back, the way an abandoned submission's drop does.
+    let permguard_data_plane::temporal::streams::Written::Appended { seq, .. } = written else {
+        panic!("the plant is a new record");
+    };
+    drop(
+        plane
+            .streams
+            .sequencer(ZONE_ID, LEDGER_ID)
+            .expect("the ledger is open")
+            .turn(seq),
+    );
+
+    // Tied on event time, behind on observed time: refused, not applied behind the plant.
+    let mut tied = submission(
+        1000,
+        "Drupe::Action::Login",
+        "response",
+        "alice",
+        json!({"user": "alice", "server": "s2"}),
+    );
+    tied["event"]["data"]["event_id"] = json!("tie-submitted-today");
+    let (status, refused) = post(&router, tied).await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "equal event time is not equal order — the tuple decides: {refused}"
+    );
+    assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+}
+
+/// A stale partition is rebuilt even after a sibling profile's rebuild came first.
+///
+/// # The leak this pins
+///
+/// The replay note used to be kept per history. An invalidation cleared it for everyone, but the
+/// first profile to submit afterwards rebuilt only *its own* partitions and then wrote the note
+/// back for the whole history — so the sibling profile's next request found its engine non-empty
+/// and the note current, skipped the rebuild, and decided against a history still missing the
+/// event. Two profiles over one history answered from two different pasts.
+///
+/// The final permit is the discriminating assertion: it is reachable only if the temporal
+/// profile's partition was still considered stale after the audit profile's rebuild, and therefore
+/// replayed the refused login into its place.
+#[tokio::test]
+async fn a_stale_partition_is_rebuilt_even_after_a_sibling_profile_was() {
+    let plane = plane_of(
+        "temporal-two-profiles",
+        &manifest_two_profiles(),
+        blocking(),
+    );
+    let router = surface(&plane);
+
+    // The temporal profile's history moves to t=4000: a read, denied — no login anywhere.
+    let (status, body) = post(
+        &router,
+        submission(
+            4000,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": "doc1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["decision"], false, "{body}");
+
+    // The login that would have permitted it arrives late, behind the read: refused for order,
+    // kept as evidence, and every partition of this history is marked for replay.
+    let (status, refused) = post(
+        &router,
+        submission(
+            3900,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(refused["code"], "event_out_of_order", "{refused}");
+
+    // The sibling profile submits first. Its partition is rebuilt and marked clean — and with a
+    // per-history note this is the step that used to mark the *temporal* partition clean too,
+    // without having rebuilt it. At t=4050: the history is shared across partitions, so an audit
+    // event ahead of the final read would make that read out of order for a different reason and
+    // this test would stop testing the note.
+    let (status, body) = post(
+        &router,
+        submission_to(
+            AUDIT_PROFILE,
+            4050,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s9"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Now the temporal profile asks. Its only login is the refused one at t=3900 — the audit
+    // profile's login at t=5000 is addressed to the other partition and is never its input — so
+    // this permit exists only if the temporal partition was still stale and rebuilt here.
+    let (status, body) = post(
+        &router,
+        submission(
+            4100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": "doc2"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["decision"], true,
+        "the temporal partition stayed stale until it was itself rebuilt — a note kept per \
+         history would have skipped this rebuild and denied: {body}"
     );
 }

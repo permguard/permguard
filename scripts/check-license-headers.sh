@@ -32,12 +32,15 @@ while IFS= read -r file; do
     # Only the first 20 lines: a header further down is not a header.
     head="$(head -20 "${file}")"
 
-    if ! printf '%s' "${head}" | grep -qF "${EXPECTED_SPDX}"; then
+    # Do not pipe `printf` into `grep -q` while `pipefail` is active. `grep -q` may stop reading as
+    # soon as it finds the text; the writer can then receive SIGPIPE and make a successful match look
+    # like a failed pipeline. Match the already-bounded shell value directly instead.
+    if [[ "${head}" != *"${EXPECTED_SPDX}"* ]]; then
         missing="${missing}  ${file}"$'\n'
         continue
     fi
 
-    if ! printf '%s' "${head}" | grep -qF "${EXPECTED_COPYRIGHT}"; then
+    if [[ "${head}" != *"${EXPECTED_COPYRIGHT}"* ]]; then
         wrong="${wrong}  ${file}"$'\n'
     fi
 done < <(

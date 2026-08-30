@@ -88,7 +88,7 @@ pub struct Submitter {
     imports: Option<Arc<super::imports::Imports>>,
     /// How stale imported history may be before `shared-bounded` fails decisions closed.
     max_staleness: std::time::Duration,
-    /// The imported watermark each `(zone, ledger, history)` has been rebuilt to.
+    /// The imported watermark each `(zone, ledger, history, partition)` has been rebuilt to.
     ///
     /// So a rebuild is paid once per watermark rather than once per submission: replaying even a
     /// bounded history costs something, and the answer does not change until more arrives.
@@ -96,7 +96,14 @@ pub struct Submitter {
     /// Keyed by history and not merely by ledger, because histories are independent: what one
     /// caller's engine has absorbed says nothing about another's, and a note kept per ledger would
     /// let the first history replayed stand in for every history the ledger holds.
-    applied: std::sync::Mutex<std::collections::BTreeMap<(String, String, String), String>>,
+    ///
+    /// And keyed by **partition**, because the engine state the note describes belongs to one
+    /// partition. A rebuild replays only the partitions of the profile that asked, so a note kept
+    /// per history would let profile B's rebuild of partition B mark the history clean while
+    /// partition A — invalidated by the same late arrival — had absorbed nothing. Profile A's next
+    /// request would then find its engine non-empty and the note current, skip the rebuild, and
+    /// decide against a history that is still missing the event.
+    applied: std::sync::Mutex<std::collections::BTreeMap<(String, String, String, String), String>>,
 }
 
 impl Submitter {
@@ -826,8 +833,7 @@ impl Submitter {
         // this is the first point at which "has this history already moved past that instant" has a
         // stable answer — asked before the append it is a race, and two concurrent submissions can
         // both pass it and then be journalled either way round.
-        if let Err(error) = self.admit_order(&zone, &ledger, &partition_key, &occurrence, sequence)
-        {
+        if let Err(error) = self.admit_order(&zone, &ledger, &partition_key, &record, sequence) {
             // The record stays: it is evidence, and losing it would change what future decisions
             // mean. What is marked is the history, so the next occurrence in it is evaluated
             // against a run rebuilt from the journal — and `observable` sorts that run, so the late
@@ -1108,7 +1114,7 @@ impl Submitter {
     }
 
     /// Refuses a loaded temporal contract whose longest window can outlive the journal.
-    /// Refuses to *decide* an occurrence that is older than one this history already holds.
+    /// Refuses to *decide* an occurrence that sorts behind one this history already holds.
     ///
     /// # Why an out-of-order arrival cannot simply be applied
     ///
@@ -1121,6 +1127,17 @@ impl Submitter {
     /// the clock, and nothing then compared that instant with what the engine had already seen — so
     /// an occurrence at `t1` submitted after one at `t2` was observed *after* it. `previous`,
     /// `since` and every window operator then answer from a sequence that never happened.
+    ///
+    /// # The order is the whole tuple, not the event time
+    ///
+    /// "Behind" is decided by [`super::imports::order_of`] — event time, then observed time, then
+    /// producer, then sequence — because that is *the* order: the one every rebuilt run is sorted
+    /// by. Comparing event time alone would leave the ties undecided, and ties happen: two
+    /// submissions in one second journalled opposite to the instants they were stamped with, a
+    /// clock stepped backwards between them, two producers logging the same event time. An
+    /// occurrence equal on event time but behind on the tie break is exactly as out of order as
+    /// one behind by an hour — the rebuilt run will sort it earlier than something the engine was
+    /// already told about.
     ///
     /// # Why here, and not before the append
     ///
@@ -1144,19 +1161,39 @@ impl Submitter {
         zone: &str,
         ledger: &str,
         history: &str,
-        occurrence: &Occurrence,
+        record: &Record,
         before_local_sequence: u64,
     ) -> Result<(), ApiError> {
-        // Everything strictly after this occurrence, in its own history. One record is enough to
-        // know the ledger has moved past it; the scan is bounded by the index, not by retention.
+        let this = record.to_value().map_err(|error| {
+            ApiError::new(
+                ErrorClass::Internal,
+                "event_not_canonical",
+                format!("the durable record cannot be canonicalized: {error}"),
+            )
+        })?;
+        let order = super::imports::order_of(&this);
+        let occurred_at_epoch = permguard_events::index::epoch_seconds(&record.occurred_at)
+            .ok_or_else(|| {
+                ApiError::new(
+                    ErrorClass::Internal,
+                    "event_not_canonical",
+                    "the durable record's instant is not a canonical one".to_owned(),
+                )
+            })?;
+
+        // From this occurrence's own second, inclusive: a record equal on event time is decided by
+        // the tie break, and starting one second later would never see it. One surviving candidate
+        // is enough to know the history has moved past this occurrence; the scan is bounded by the
+        // index, not by retention.
         let query = permguard_events::index::Query {
             event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
             history: history.to_owned(),
             action: None,
             kind: None,
-            from: occurrence.occurred_at_epoch.saturating_add(1),
+            from: occurred_at_epoch,
             until: i64::MAX,
         };
+        let behind = |candidate: &serde_json::Value| super::imports::order_of(candidate) > order;
 
         let mut newer = self.streams.scan(zone, ledger, &query).map_err(|error| {
             ApiError::new(
@@ -1165,13 +1202,15 @@ impl Submitter {
                 format!("this plane's own journal could not be read: {error}"),
             )
         })?;
-        // This record and everything the journal placed after it are not "already observed": the
-        // engine has not been told about them, and this one is the occurrence being decided.
-        newer.retain(|record| {
-            record
+        // "Already observed" is everything below this sequence: this record and whatever the
+        // journal placed after it have not been fed to the engine yet, and are not evidence of
+        // where the history stands.
+        newer.retain(|candidate| {
+            candidate
                 .get("seq")
                 .and_then(serde_json::Value::as_u64)
                 .is_some_and(|sequence| sequence < before_local_sequence)
+                && behind(candidate)
         });
         // The imported half feeds the same engine in a shared mode, so it settles the same question.
         if let Some(imports) = &self.imports
@@ -1185,6 +1224,7 @@ impl Submitter {
                     format!("the imported history could not be read: {error}"),
                 )
             })?;
+            newer.retain(behind);
         }
 
         let Some(ahead) = newer.first() else {
@@ -1201,12 +1241,13 @@ impl Submitter {
             ErrorClass::Conflict,
             "event_out_of_order",
             format!(
-                "`{}` occurred at {} and this history already holds an occurrence at {at}. A \
-                 temporal engine is fed in timestamp order, so deciding this one now would place \
-                 it after an event it happened before, and every window operator would answer from \
-                 an order that never happened. The occurrence is recorded and remains evidence; \
-                 the history is rebuilt in order before the next decision is served from it",
-                occurrence.event_id, occurrence.occurred_at
+                "`{}` occurred at {} and this history already holds an occurrence at {at} that \
+                 sorts after it. A temporal engine is fed in its documented order — event time, \
+                 then observed time, producer and sequence — so deciding this one now would place \
+                 it after an event it sorts before, and every window operator would answer from an \
+                 order that never happened. The occurrence is recorded and remains evidence; the \
+                 history is rebuilt in order before the next decision is served from it",
+                record.event_id, record.occurred_at
             ),
         ))
     }
@@ -1347,7 +1388,12 @@ impl Submitter {
     fn invalidate_history(&self, zone: &str, ledger: &str, history: &str) {
         match self.applied.lock() {
             Ok(mut applied) => {
-                applied.remove(&(zone.to_owned(), ledger.to_owned(), history.to_owned()));
+                // Every partition of this history, not one: the event that made the history dirty
+                // is missing from every engine that ranges over it, whichever profile absorbs it
+                // first. Each partition stays stale until it is itself rebuilt.
+                applied.retain(|(held_zone, held_ledger, held_history, _), _| {
+                    !(held_zone == zone && held_ledger == ledger && held_history == history)
+                });
             }
             Err(_) => warn!(
                 event.name = "temporal.history_invalidation_failed",
@@ -1520,34 +1566,44 @@ impl Submitter {
             .map(|state| state.offset.clone())
             .unwrap_or_default();
 
-        // Per history, not per ledger: replaying one caller's events says nothing about another's,
-        // and a note kept per ledger would let the first history replayed stand in for all of them.
-        let key = (zone.to_owned(), ledger.to_owned(), history.to_owned());
-        // A fresh engine is one that has been told nothing. Asked of the engines rather than
-        // remembered here, because what a rebuild replaces is the engine: a note kept beside it
-        // would outlive the thing it described, and the partition recompiled after an eviction
-        // would read as one that had already been fed.
-        let fresh: Vec<&Verified<'_>> = checks
-            .iter()
-            .filter(|(_, engine, _)| engine.observed(history) == 0)
-            .collect();
-        // Read the replay note under the map lock and release it before disk reads, schema checks
-        // and provider execution. The journal sequencer already gives one submission at a time
-        // for this ledger; holding one process-wide mutex through a rebuild would unnecessarily
-        // make an unrelated tenant wait behind it.
-        let moved = self
-            .applied
-            .lock()
-            .map_err(|_| {
+        // The note is per partition — see the field. A partition needs a rebuild when its engine
+        // has been told nothing (fresh: recompiled, evicted, or first sight of this history), or
+        // when its own note is not at the current watermark (the imported history moved, or an
+        // invalidation cleared it). Asked of the engines rather than remembered here, because what
+        // a rebuild replaces is the engine: a note kept beside it would outlive the thing it
+        // described.
+        //
+        // Read under the map lock and released before disk reads, schema checks and provider
+        // execution. The journal sequencer already gives one submission at a time for this ledger;
+        // holding one process-wide mutex through a rebuild would unnecessarily make an unrelated
+        // tenant wait behind it.
+        let key_of = |partition: &str| {
+            (
+                zone.to_owned(),
+                ledger.to_owned(),
+                history.to_owned(),
+                partition.to_owned(),
+            )
+        };
+        let stale: std::collections::BTreeSet<String> = {
+            let applied = self.applied.lock().map_err(|_| {
                 ApiError::new(
                     ErrorClass::Internal,
                     "history_lock_poisoned",
                     "this plane's record of what it has replayed is unusable",
                 )
-            })?
-            .get(&key)
-            != Some(&watermark);
-        if fresh.is_empty() && !moved {
+            })?;
+
+            checks
+                .iter()
+                .filter(|(partition, engine, _)| {
+                    engine.observed(history) == 0
+                        || applied.get(&key_of(&partition.name)) != Some(&watermark)
+                })
+                .map(|(partition, _, _)| partition.name.clone())
+                .collect()
+        };
+        if stale.is_empty() {
             return Ok(());
         }
 
@@ -1559,14 +1615,13 @@ impl Submitter {
             checks,
             before_local_sequence,
         )?;
-        // Everything, when the watermark moved; only what is behind, when it did not. A partition
-        // that is already up to date must not be rebuilt by a sibling's freshness — a rebuild
-        // discards a history to replace it, and doing that needlessly is a window somebody's
-        // concurrent decision falls into.
-        let rebuilding: Vec<&Verified<'_>> = match moved {
-            true => checks.iter().collect(),
-            false => fresh,
-        };
+        // Only what is stale. A partition that is already up to date must not be rebuilt by a
+        // sibling's staleness — a rebuild discards a history to replace it, and doing that
+        // needlessly is a window somebody's concurrent decision falls into.
+        let rebuilding: Vec<&Verified<'_>> = checks
+            .iter()
+            .filter(|(partition, _, _)| stale.contains(&partition.name))
+            .collect();
         for (partition, engine, _) in rebuilding {
             let mut occurrences = Vec::new();
             for stored in &records {
@@ -1626,16 +1681,18 @@ impl Submitter {
                 ApiError::new(ErrorClass::Unavailable, refused.code, refused.message)
             })?;
         }
-        self.applied
-            .lock()
-            .map_err(|_| {
-                ApiError::new(
-                    ErrorClass::Internal,
-                    "history_lock_poisoned",
-                    "this plane's record of what it has replayed is unusable",
-                )
-            })?
-            .insert(key, watermark);
+        // Marked clean one partition at a time, and only the ones this pass actually rebuilt: the
+        // sibling profile's partitions were not touched and their notes must keep saying so.
+        let mut applied = self.applied.lock().map_err(|_| {
+            ApiError::new(
+                ErrorClass::Internal,
+                "history_lock_poisoned",
+                "this plane's record of what it has replayed is unusable",
+            )
+        })?;
+        for partition in stale {
+            applied.insert(key_of(&partition), watermark.clone());
+        }
 
         Ok(())
     }
