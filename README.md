@@ -160,18 +160,55 @@ Needs Rust `1.97`+, `cargo`, and `task` or `make`. Docker Compose for the observ
 
 </details>
 
-## Ask a plane what it is
+## Ask a server what it hosts
 
-Start with what the planes say about themselves, because it is the shape of everything below.
-Nothing is agreed out of band: a client is handed **one URL** and reads the rest off it — where to
-push policy, where to ask for a decision, which keys sign what, and what the interface offers.
+Start with what the Server Host and its planes say about themselves, because it is the shape of
+everything below. Nothing is agreed out of band: a client is handed **one Server Host URL** and
+reads the rest off it — which planes are present, where to push policy, where to ask for a decision,
+which keys sign what, and what each interface offers.
 
-Both are up after `task run:all`, which is the first command of the next section.
+All three endpoints are up after `task run:all`, which is the first command of the next section.
+
+### The Server Host — which planes this process hosts
+
+```sh
+curl -s http://127.0.0.1:5443/.well-known/server-configuration | jq
+```
+
+```json
+{
+  "planes": {
+    "control-plane": {
+      "server_configuration": "http://127.0.0.1:6443/.well-known/server-configuration"
+    },
+    "data-plane": {
+      "server_configuration": "http://127.0.0.1:7443/.well-known/server-configuration"
+    }
+  }
+}
+```
+
+Port `5443` is the Server Host operations surface: process discovery, health, readiness, version,
+and metrics. The public plane APIs stay on their own ports. Every shipped Server Host configuration
+uses `5443`. The assigned role port does not change between HTTP and HTTPS: the scheme describes
+transport security, while the port identifies the server role. HTTP and gRPC share that role port
+and, when TLS is enabled, the same TLS or mutual-TLS policy.
+
+| Server role | Port |
+| --- | ---: |
+| Server Host operations | `5443` |
+| Control Plane | `6443` |
+| Data Plane | `7443` |
+| Trust Plane | `8443` |
+
+Containers and pods have isolated network namespaces. If standalone binaries must share one
+network namespace, give their Server Host listeners different IP addresses or use separate network
+namespaces; do not change the role's assigned port.
 
 ### The control plane — where policy is published
 
 ```sh
-curl -s http://127.0.0.1:7556/.well-known/server-configuration | jq
+curl -s http://127.0.0.1:6443/.well-known/server-configuration | jq
 ```
 
 ```json
@@ -181,19 +218,19 @@ curl -s http://127.0.0.1:7556/.well-known/server-configuration | jq
     "http": true,
     "grpc": true
   },
-  "jwks_uri": "http://127.0.0.1:7556/control-plane/keys",
+  "jwks_uri": "http://127.0.0.1:6443/control-plane/keys",
   "notp": {
     "media_type": "application/vnd.permguard.notp.v1+cbor",
     "compression": "deflate",
-    "ref_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
-    "push_negotiation_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate",
-    "push_commit_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit",
-    "pull_negotiation_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate",
-    "object_upload_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/objects",
-    "object_fetch_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch"
+    "ref_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/refs/{ref}",
+    "push_negotiation_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate",
+    "push_commit_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit",
+    "pull_negotiation_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate",
+    "object_upload_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/objects",
+    "object_fetch_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch"
   },
-  "zones_endpoint": "http://127.0.0.1:7556/v1/zones",
-  "ledgers_endpoint": "http://127.0.0.1:7556/v1/zones/{zone}/ledgers"
+  "zones_endpoint": "http://127.0.0.1:6443/v1/zones",
+  "ledgers_endpoint": "http://127.0.0.1:6443/v1/zones/{zone}/ledgers"
 }
 ```
 
@@ -206,16 +243,16 @@ cannot verify.
 ### The data plane — where decisions are made
 
 ```sh
-curl -s http://127.0.0.1:7656/.well-known/server-configuration | jq
+curl -s http://127.0.0.1:7443/.well-known/server-configuration | jq
 ```
 
 ```json
 {
   "plane": "data-plane",
-  "jwks_uri": "http://127.0.0.1:7656/data-plane/keys",
+  "jwks_uri": "http://127.0.0.1:7443/data-plane/keys",
   "interfaces": {
     "permguard.api.pdp.native.v1": {
-      "configuration": "http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration"
+      "configuration": "http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration"
     }
   }
 }
@@ -225,16 +262,16 @@ A plane says who it is, what it signs with, and **which interfaces it exposes** 
 its own configuration. Follow the link and the interface describes itself:
 
 ```sh
-curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
+curl -s http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration | jq
 ```
 
 ```json
 {
   "interface": "permguard.api.pdp.native.v1",
-  "pdp": "http://127.0.0.1:7656",
+  "pdp": "http://127.0.0.1:7443",
   "endpoints": {
-    "evaluation": "http://127.0.0.1:7656/access/v1/evaluation",
-    "evaluations": "http://127.0.0.1:7656/access/v1/evaluations"
+    "evaluation": "http://127.0.0.1:7443/access/v1/evaluation",
+    "evaluations": "http://127.0.0.1:7443/access/v1/evaluations"
   },
   "capabilities": [
     "urn:permguard:pdp:v1:store-in-payload",
@@ -273,8 +310,8 @@ So discovery is three layers, and each answers a different question:
 
 | Document | Question |
 | --- | --- |
-| `/.well-known/server-configuration` on the process | which planes does this process host, and where |
-| `/.well-known/server-configuration` on a plane | who is this plane, what keys, which interfaces |
+| `/.well-known/server-configuration` on the Server Host (`:5443`) | which planes does this process host, and where |
+| `/.well-known/server-configuration` on a plane (`:6443` or `:7443`) | who is this plane, what keys, which interfaces |
 | `/.well-known/permguard-pdp-v1-configuration` | what does `permguard.api.pdp.native.v1` offer here |
 
 Below that sit two more layers, in the ledger rather than on the wire: a **profile** names which
@@ -383,13 +420,13 @@ task cli -- -w examples/basics test
 ### 3. Now publish it and ask a real PDP
 
 ```sh
-task run:all                             # control plane :7556, data plane :7656, telemetry :7558
+task run:all                             # Server Host :5443, control plane :6443, data plane :7443
 
 permguard zones create acme
 permguard ledgers create main-ledger --zone acme
 
 permguard -w examples/basics init basics --language cedar,rego   # the example ships the sources; this tracks them
-permguard -w examples/basics remote add origin http://127.0.0.1:7556
+permguard -w examples/basics remote add origin http://127.0.0.1:6443
 permguard -w examples/basics checkout origin/acme/main-ledger
 permguard -w examples/basics plan
 permguard -w examples/basics apply -m "lab policies"
@@ -399,14 +436,14 @@ The data plane mirrors it, verifies the signed head, compiles each partition onc
 
 ```sh
 permguard -w examples/basics check -f requests/permit.json
-permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7443 check -f requests/permit.json
 permguard -w examples/basics test --remote   # the same cases, against the plane
 ```
 
 Straight at the API — the endpoint the discovery document above named:
 
 ```sh
-curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+curl -s -X POST http://127.0.0.1:7443/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
@@ -421,7 +458,7 @@ task cli -- zones create acme
 task cli -- ledgers create main-ledger --zone acme
 
 task cli -- -w examples/basics init basics --language cedar,rego
-task cli -- -w examples/basics remote add origin http://127.0.0.1:7556
+task cli -- -w examples/basics remote add origin http://127.0.0.1:6443
 task cli -- -w examples/basics checkout origin/acme/main-ledger
 task cli -- -w examples/basics apply -m "lab policies"
 task cli -- -w examples/basics check -f requests/permit.json
@@ -507,7 +544,7 @@ task run:all                       # control + data plane in one process
 task run:control                   # control plane only
 task run:data                      # data plane only
 task run-as-tls:all                # all-in-one with TLS
-task run-as-mtls:all               # all-in-one with HTTP TLS and gRPC mTLS
+task run-as-mtls:all               # all-in-one with HTTP+gRPC mTLS on each plane role port
 ```
 
 Use `make`:
@@ -543,9 +580,9 @@ Server commands accept a config file and optional overrides:
 ```sh
 cargo run -p permguard-control-plane --bin permguard-control-plane -- \
   crates/permguard-control-plane/config.local.yml \
-  --public-http-addr 127.0.0.1:7556 \
-  --public-grpc-addr 127.0.0.1:7556 \
-  --telemetry-addr 127.0.0.1:7558 \
+  --public-http-addr 127.0.0.1:6443 \
+  --public-grpc-addr 127.0.0.1:6443 \
+  --telemetry-addr 127.0.0.1:5443 \
   --log-level debug \
   --log-format terminal
 ```
@@ -569,7 +606,7 @@ crates/permguard-data-plane/config.local-mtls.yml
 Create and manage remote state:
 
 ```sh
-permguard zones create acme --endpoint http://127.0.0.1:7556
+permguard zones create acme --endpoint http://127.0.0.1:6443
 permguard zones list
 permguard zones get acme
 permguard ledgers create --zone acme main-ledger
@@ -582,7 +619,7 @@ Author and publish policies:
 ```sh
 mkdir my-policies
 permguard -w my-policies init my-policies --language cedar
-permguard -w my-policies remote add origin http://127.0.0.1:7556
+permguard -w my-policies remote add origin http://127.0.0.1:6443
 permguard -w my-policies checkout origin/acme/main-ledger
 permguard -w my-policies refresh
 permguard -w my-policies validate
@@ -676,8 +713,10 @@ Defaults:
 Grafana     http://127.0.0.1:7590
 Prometheus  http://127.0.0.1:7591
 Loki        http://127.0.0.1:7592
-Control     http://127.0.0.1:7556
-Data        http://127.0.0.1:7656
+Host        http://127.0.0.1:5443   (all-in-one or control)
+Host        http://127.0.0.2:5443   (standalone data)
+Control     http://127.0.0.1:6443
+Data        http://127.0.0.1:7443
 ```
 
 Follow logs and stop the lab:

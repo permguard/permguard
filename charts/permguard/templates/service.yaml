@@ -5,10 +5,10 @@ SPDX-License-Identifier: Apache-2.0
 {{/*
 Two services per plane, and that is the point rather than an accident.
 
-The public service is what callers reach. The telemetry service is what Prometheus and the kubelet
-reach, and it is separate so that a NetworkPolicy, an ingress or a mesh can allow one without
-allowing the other: metrics describe the inside of the process, and health tells an attacker when it
-is struggling.
+The public service is what plane callers reach. The service whose stable chart name is `telemetry`
+exposes the Server Host operations surface to Prometheus and the kubelet. It is separate so that a
+NetworkPolicy, an ingress or a mesh can allow one without allowing the other: process discovery and
+metrics describe the inside of the process, and health tells an attacker when it is struggling.
 */}}
 {{- range $component, $plane := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane }}
 {{- if $plane.enabled }}

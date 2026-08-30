@@ -29,6 +29,7 @@ use serde_json::Value;
 /// distinction is the same distinction, and two enums would be two chances to map one onto the
 /// other differently.
 pub use crate::decisions::ShipError;
+use crate::encode;
 use crate::endpoint::Endpoint;
 use crate::http::Client;
 use crate::tls::TlsOptions;
@@ -285,10 +286,15 @@ impl<T: EventSink + EventReader + Send + Sync> EventLog for T {}
 
 impl EventReader for HttpEventSink {
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
+        // Every caller-supplied value is escaped on the way in. A zone, a ledger and a producer
+        // are names somebody chose, and a name carrying `/` or `&` would otherwise address a
+        // different route or add a parameter nobody sent.
         let mut path = match scope {
-            ReadScope::Tenant { zone, ledger } => {
-                format!("/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records?")
-            }
+            ReadScope::Tenant { zone, ledger } => format!(
+                "/v1/zones/{}/ledgers/{}/events/v1alpha1/records?",
+                encode::value(zone),
+                encode::value(ledger)
+            ),
             ReadScope::Stream {
                 zone,
                 ledger,
@@ -296,8 +302,13 @@ impl EventReader for HttpEventSink {
                 producer,
                 instance,
             } => format!(
-                "/events/v1alpha1/records?zone={zone}&ledger={ledger}&producer_class={class}\
-                 &producer={producer}&instance={instance}"
+                "/events/v1alpha1/records?zone={}&ledger={}&producer_class={}&producer={}\
+                 &instance={}",
+                encode::value(zone),
+                encode::value(ledger),
+                encode::value(class),
+                encode::value(producer),
+                encode::value(instance)
             ),
         };
         if window.limit_records > 0 {
@@ -309,16 +320,18 @@ impl EventReader for HttpEventSink {
         if window.proof {
             path.push_str("&proof=true");
         }
-        // Offsets and watermarks are opaque and base64url, so they are already safe in a query
-        // string: encoding them again would change them.
+        // Offsets and watermarks are opaque, and escaped like everything else rather than trusted
+        // to be safe: base64url happens to be, and the plane percent-decodes what it receives, so
+        // escaping is exact either way. Uniformity is the point — the next value added here
+        // inherits the rule instead of needing somebody to notice it.
         if let Some(from) = &window.from {
-            path.push_str(&format!("&from={from}"));
+            path.push_str(&format!("&from={}", encode::value(from)));
         }
         if let Some(until) = &window.until {
-            path.push_str(&format!("&until={until}"));
+            path.push_str(&format!("&until={}", encode::value(until)));
         }
         for event_type in &window.filters.event_types {
-            path.push_str(&format!("&event_type={event_type}"));
+            path.push_str(&format!("&event_type={}", encode::value(event_type)));
         }
         for (name, value) in [
             ("producer", &window.filters.producer),
@@ -332,7 +345,7 @@ impl EventReader for HttpEventSink {
             ("history", &window.filters.history),
         ] {
             if let Some(held) = value {
-                path.push_str(&format!("&{name}={held}"));
+                path.push_str(&format!("&{name}={}", encode::value(held)));
             }
         }
 
@@ -351,7 +364,16 @@ impl EventReader for HttpEventSink {
     }
 
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
-        let path = format!("/events/v1alpha1/records/{event_id}?zone={zone}&ledger={ledger}");
+        // The identifier is whatever the caller sent — the ingestion contract asks only that it is
+        // not empty — so it is escaped rather than trusted to be a path segment. Unescaped, `a/b`
+        // would address a different route and `a?x=1` would add a parameter, while the same record
+        // stayed perfectly readable over gRPC: one ledger, two answers.
+        let path = format!(
+            "/events/v1alpha1/records/{}?zone={}&ledger={}",
+            encode::value(event_id),
+            encode::value(zone),
+            encode::value(ledger)
+        );
         let response = self
             .client
             .request(&self.endpoint, "GET", &path, None)

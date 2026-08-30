@@ -127,18 +127,18 @@ mod tests {
 
     #[test]
     fn the_endpoints_are_the_ones_the_router_mounts() {
-        let document = parsed("http://127.0.0.1:7656/");
+        let document = parsed("http://127.0.0.1:7443/");
 
         assert_eq!(
             document["endpoints"]["evaluation"],
-            format!("http://127.0.0.1:7656{EVALUATION_PATH}")
+            format!("http://127.0.0.1:7443{EVALUATION_PATH}")
         );
         assert_eq!(
             document["endpoints"]["evaluations"],
-            format!("http://127.0.0.1:7656{EVALUATIONS_PATH}")
+            format!("http://127.0.0.1:7443{EVALUATIONS_PATH}")
         );
         assert_eq!(
-            document["pdp"], "http://127.0.0.1:7656",
+            document["pdp"], "http://127.0.0.1:7443",
             "the trailing slash is not part of an identifier"
         );
     }

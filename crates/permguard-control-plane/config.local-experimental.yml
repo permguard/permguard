@@ -28,16 +28,16 @@ experimental:
     enabled: "true"
 
 telemetry:
-  addr: 127.0.0.1:7558
+  addr: 127.0.0.1:5443
 
 controlPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
 
   # ── The event store ──────────────────────────────────────────────────────────────────────────
   events:

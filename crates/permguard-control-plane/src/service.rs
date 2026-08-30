@@ -686,6 +686,7 @@ fn build_event_facade(
     }
 
     let facade = crate::events::http::EventFacade {
+        catalog: context.catalog().map(std::sync::Arc::clone),
         store,
         producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
         producer_files: config
@@ -1075,7 +1076,7 @@ mod tests {
         let file: Vec<(String, String)> = vec![
             (
                 permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
-                "127.0.0.1:7556".to_owned(),
+                "127.0.0.1:6443".to_owned(),
             ),
             (SETTING_WORKING_DIR.to_owned(), root.display().to_string()),
             (SETTING_EVENT_STORE_ENABLED.to_owned(), "true".to_owned()),

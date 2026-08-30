@@ -42,12 +42,12 @@ One process, both planes, and **both directions already configured** — there i
 nothing to connect by hand:
 
 ```text
-                    ┌──────────────────────── control plane :7556 ───────────────┐
+                    ┌──────────────────────── control plane :6443 ───────────────┐
    apply ─────────► │  ledgers (git-like objects)      decision log (segments)   │
                     └───────┬─────────────────────────────────▲──────────────────┘
                             │ mirrors, every 15s              │ ships, every 1s
                     ┌───────▼─────────────────────────────────┴──────────────────┐
-   check ─────────► │  data plane :7656 — decides from what it mirrored,          │
+   check ─────────► │  data plane :7443 — decides from what it mirrored,          │
                     │  records every decision, ships it back                      │
                     └────────────────────────────────────────────────────────────┘
 ```
@@ -68,20 +68,20 @@ Policies up, decisions answered, decisions read back.
 ### A1. Start, and create the ledger
 
 ```bash
-task run:all          # control :7556, data :7656
+task run:all          # control :6443, data :7443
 ```
 
 ```bash
-permguard zones create acme --endpoint http://127.0.0.1:7556
-permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+permguard zones create acme --endpoint http://127.0.0.1:6443
+permguard ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:6443
 ```
 
 <details>
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- zones create acme --endpoint http://127.0.0.1:7556
-task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7556
+task cli -- zones create acme --endpoint http://127.0.0.1:6443
+task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:6443
 ```
 
 </details>
@@ -90,7 +90,7 @@ task cli -- ledgers create main-ledger --zone acme --endpoint http://127.0.0.1:7
 
 ```bash
 permguard -w examples/basics init basics --language cedar,rego    # adopts the existing manifest.yml
-permguard -w examples/basics remote add origin http://127.0.0.1:7556
+permguard -w examples/basics remote add origin http://127.0.0.1:6443
 permguard -w examples/basics validate                              # Cedar + Rego parse, schema, identities
 permguard -w examples/basics checkout origin/acme/main-ledger      # bind + resolve GUIDs
 permguard -w examples/basics plan
@@ -102,7 +102,7 @@ permguard -w examples/basics apply -m "lab policies"               # negotiate �
 
 ```bash
 task cli -- -w examples/basics init basics --language cedar,rego    # adopts the existing manifest.yml
-task cli -- -w examples/basics remote add origin http://127.0.0.1:7556
+task cli -- -w examples/basics remote add origin http://127.0.0.1:6443
 task cli -- -w examples/basics validate                              # Cedar + Rego parse, schema, identities
 task cli -- -w examples/basics checkout origin/acme/main-ledger      # bind + resolve GUIDs
 task cli -- -w examples/basics plan
@@ -251,11 +251,11 @@ task cli -- -w examples/basics check -f requests/error-unknown-ledger.json --ign
 Same over gRPC, and straight at the API:
 
 ```bash
-permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
+permguard -w examples/basics --data-endpoint grpc://127.0.0.1:7443 check -f requests/permit.json
 
 # what `permguard.pdp.v1` offers here — the endpoints below come from this document
-curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
-curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+curl -s http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration | jq
+curl -s -X POST http://127.0.0.1:7443/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
@@ -264,11 +264,11 @@ curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7656 check -f requests/permit.json
+task cli -- -w examples/basics --data-endpoint grpc://127.0.0.1:7443 check -f requests/permit.json
 
 # what `permguard.pdp.v1` offers here — the endpoints below come from this document
-curl -s http://127.0.0.1:7656/.well-known/permguard-pdp-v1-configuration | jq
-curl -s -X POST http://127.0.0.1:7656/access/v1/evaluation \
+curl -s http://127.0.0.1:7443/.well-known/permguard-pdp-v1-configuration | jq
+curl -s -X POST http://127.0.0.1:7443/access/v1/evaluation \
   -H 'content-type: application/json' -H 'x-request-id: lab-1' \
   -d "$(jq '. + {zone: "acme", ledger: "main-ledger"}' examples/basics/requests/permit.json)" | jq
 ```
@@ -326,7 +326,7 @@ permguard decisions tail --zone acme --ledger main-ledger --follow   # as they a
 permguard decisions get 68aa1f3c9e2b47d0 --zone acme --ledger main-ledger
 permguard decisions export --zone acme --ledger main-ledger -o json  # bulk, resumable
 permguard decisions list --zone acme --ledger main-ledger -o yaml --limit 5
-permguard --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+permguard --control-endpoint grpc://127.0.0.1:6443 decisions list --zone acme --ledger main-ledger
 ```
 
 <details>
@@ -337,7 +337,7 @@ task cli -- decisions tail --zone acme --ledger main-ledger --follow   # as they
 task cli -- decisions get 68aa1f3c9e2b47d0 --zone acme --ledger main-ledger
 task cli -- decisions export --zone acme --ledger main-ledger -o json  # bulk, resumable
 task cli -- decisions list --zone acme --ledger main-ledger -o yaml --limit 5
-task cli -- --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme --ledger main-ledger
+task cli -- --control-endpoint grpc://127.0.0.1:6443 decisions list --zone acme --ledger main-ledger
 ```
 
 </details>
@@ -345,7 +345,7 @@ task cli -- --control-endpoint grpc://127.0.0.1:7556 decisions list --zone acme 
 **Verify it yourself**, without trusting the server that served it:
 
 ```bash
-curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
 permguard decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
 ```
 
@@ -353,7 +353,7 @@ permguard decisions list --zone acme --ledger main-ledger --verify --keys /tmp/p
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone acme --ledger main-ledger --verify --keys /tmp/pdp-keys.json
 ```
 
@@ -423,14 +423,14 @@ Two ways — pick either.
 **Clone** (one command, fetches everything into a fresh directory):
 
 ```bash
-permguard -w /tmp clone http://127.0.0.1:7556/acme/main-ledger lab-clone
+permguard -w /tmp clone http://127.0.0.1:6443/acme/main-ledger lab-clone
 ```
 
 <details>
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w /tmp clone http://127.0.0.1:7556/acme/main-ledger lab-clone
+task cli -- -w /tmp clone http://127.0.0.1:6443/acme/main-ledger lab-clone
 ```
 
 </details>
@@ -441,7 +441,7 @@ task cli -- -w /tmp clone http://127.0.0.1:7556/acme/main-ledger lab-clone
 mkdir -p /tmp/lab-b
 permguard -w /tmp/lab-b init lab-b --language cedar,rego
 rm /tmp/lab-b/manifest.yml                    # the manifest arrives from the ledger
-permguard -w /tmp/lab-b remote add origin http://127.0.0.1:7556
+permguard -w /tmp/lab-b remote add origin http://127.0.0.1:6443
 permguard -w /tmp/lab-b checkout origin/acme/main-ledger
 ls /tmp/lab-b/cedar /tmp/lab-b/rego           # policies and schema, materialized by alias
 ```
@@ -453,7 +453,7 @@ ls /tmp/lab-b/cedar /tmp/lab-b/rego           # policies and schema, materialize
 mkdir -p /tmp/lab-b
 task cli -- -w /tmp/lab-b init lab-b --language cedar,rego
 rm /tmp/lab-b/manifest.yml                    # the manifest arrives from the ledger
-task cli -- -w /tmp/lab-b remote add origin http://127.0.0.1:7556
+task cli -- -w /tmp/lab-b remote add origin http://127.0.0.1:6443
 task cli -- -w /tmp/lab-b checkout origin/acme/main-ledger
 ls /tmp/lab-b/cedar /tmp/lab-b/rego           # policies and schema, materialized by alias
 ```
@@ -591,14 +591,14 @@ Every flow above also rides gRPC — the scheme is the transport, nothing else
 changes:
 
 ```bash
-permguard -w /tmp clone grpc://127.0.0.1:7556/acme/main-ledger lab-grpc
+permguard -w /tmp clone grpc://127.0.0.1:6443/acme/main-ledger lab-grpc
 ```
 
 <details>
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-task cli -- -w /tmp clone grpc://127.0.0.1:7556/acme/main-ledger lab-grpc
+task cli -- -w /tmp clone grpc://127.0.0.1:6443/acme/main-ledger lab-grpc
 ```
 
 </details>

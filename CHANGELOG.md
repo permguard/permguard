@@ -65,6 +65,15 @@ is cut.
 
 ### Changed - breaking, pre-release
 
+- **Ports now identify server roles independently of transport security.** Server Host operations
+  use `5443`, the Control Plane uses `6443`, the Data Plane uses `7443`, and `8443` is assigned to
+  the Trust Plane. HTTP and HTTPS use the same role port; the scheme selects transport security.
+  Every shipped configuration, client default, container, Helm workload, example, and discovery
+  document now follows this convention. Standalone Server Hosts sharing a machine need distinct IP
+  addresses or network namespaces rather than a different role port. The shipped mTLS profiles now
+  multiplex HTTP and gRPC on the role port with one mutual-TLS policy, so both transports require a
+  trusted client certificate instead of silently creating `7557/7657` side ports.
+
 - **`permguard.pdp.v1` is now `permguard.api.pdp.native.v1`.** The old name says which product the
   interface belongs to; the new one says which of the two interfaces it *is*. A manifest that still
   writes the old name loads and is served identically — there is one contract and one legacy
@@ -165,7 +174,7 @@ is cut.
 - **A plane publishes where it is reached, not where it binds.** `public.http.advertised_url` is
   the address the discovery documents name; absent, the bind address is used as before. This was a
   real defect on Kubernetes: a pod binds `0.0.0.0` because it has to, and every document this
-  deployment served named `http://0.0.0.0:7656` — an address a listener understands and nothing can
+  deployment served named `http://0.0.0.0:7443` — an address a listener understands and nothing can
   dial. The chart now sets it to the Service DNS by default and takes an override for an Ingress or
   a load balancer. A plane that binds a wildcard and was told nothing to advertise warns at
   startup, beside the line that says where it is listening.

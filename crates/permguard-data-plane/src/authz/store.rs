@@ -172,7 +172,7 @@ mod tests {
             zone_name: zone.to_owned(),
             ledger_id: format!("{ledger}-id"),
             ledger_name: ledger.to_owned(),
-            server: "http://127.0.0.1:7556".to_owned(),
+            server: "http://127.0.0.1:6443".to_owned(),
         }
     }
 

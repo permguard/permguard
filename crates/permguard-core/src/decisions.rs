@@ -637,12 +637,12 @@ mod tests {
     #[test]
     fn the_log_carries_its_own_client_identity_not_the_mirrors() {
         let section: DecisionsSection = serde_norway::from_str(
-            "log:\n  enabled: \"true\"\n  pdp_id: plane-a\n  server:\n    url: \"grpcs://control:7557\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
+            "log:\n  enabled: \"true\"\n  pdp_id: plane-a\n  server:\n    url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/decision-log-client.pem\n      key: tls/decision-log-client.key\n",
         )
         .expect("the section parses");
 
         let destination = section.destination().expect("a server is named");
-        assert_eq!(destination.url, "grpcs://control:7557");
+        assert_eq!(destination.url, "grpcs://control:6443");
         assert_eq!(
             destination.tls.cert.as_deref(),
             Some("tls/decision-log-client.pem"),

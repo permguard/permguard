@@ -257,7 +257,7 @@ fn provision(
         zone_name: zone.to_owned(),
         ledger_id: format!("{ledger}-id"),
         ledger_name: ledger.to_owned(),
-        server: "http://127.0.0.1:7556".to_owned(),
+        server: "http://127.0.0.1:6443".to_owned(),
     };
     permguard_data_plane::authz::store::record(&path, &identity).expect("the identity is recorded");
 
@@ -907,7 +907,7 @@ async fn a_ledger_with_no_history_is_unavailable_not_a_deny() {
             zone_name: "acme".to_owned(),
             ledger_id: "main-ledger-id".to_owned(),
             ledger_name: "main-ledger".to_owned(),
-            server: "http://127.0.0.1:7556".to_owned(),
+            server: "http://127.0.0.1:6443".to_owned(),
         },
     )
     .expect("the identity is recorded");
@@ -959,7 +959,7 @@ mod surface {
         http::routes(http::Surface {
             decider: decider(root),
             disclosure: Disclosure::Full,
-            base_url: "http://127.0.0.1:7656".to_owned(),
+            base_url: "http://127.0.0.1:7443".to_owned(),
         })
     }
 
@@ -1153,11 +1153,11 @@ mod surface {
         assert_eq!(document["interface"], json!("permguard.api.pdp.native.v1"));
         assert_eq!(
             document["endpoints"]["evaluation"],
-            json!("http://127.0.0.1:7656/access/v1/evaluation")
+            json!("http://127.0.0.1:7443/access/v1/evaluation")
         );
         assert_eq!(
             document["endpoints"]["evaluations"],
-            json!("http://127.0.0.1:7656/access/v1/evaluations")
+            json!("http://127.0.0.1:7443/access/v1/evaluations")
         );
         assert_eq!(document["store_scope"]["zone"], json!("required"));
 
@@ -1177,7 +1177,7 @@ mod surface {
             let path = document["endpoints"][endpoint]
                 .as_str()
                 .expect("an endpoint")
-                .trim_start_matches("http://127.0.0.1:7656")
+                .trim_start_matches("http://127.0.0.1:7443")
                 .to_owned();
             let (status, _, _) = post(&root, &path, json!({})).await;
             assert_ne!(

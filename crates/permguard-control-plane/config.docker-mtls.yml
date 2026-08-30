@@ -1,9 +1,8 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# TLS on HTTP, mutual TLS on gRPC, in a container. The same split as config.local-mtls.yml, and for
-# the same reason: HTTP is what an operator and a probe reach, gRPC is what a service reaches. An
-# address serves one TLS policy, so the two protocols need two ports.
+# Mutual TLS on the Control Plane role port, in a container. HTTP and gRPC share one listener and
+# one client-authentication policy.
 development_mode: true
 autogenerate: true
 working_dir: /var/lib/permguard/control-plane
@@ -38,7 +37,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 0.0.0.0:7558
+  addr: 0.0.0.0:5443
   # Server authentication only: a scraper is not a Permguard client.
   tls:
     cert: tls/server.pem
@@ -48,13 +47,17 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        allow:
+          - cn:local-operator
     grpc:
       enabled: true
-      addr: 0.0.0.0:7557
+      addr: 0.0.0.0:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key

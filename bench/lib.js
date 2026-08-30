@@ -19,7 +19,7 @@ import { check } from 'k6';
 import exec from 'k6/execution';
 
 // The endpoint under test. The same script runs against local and remote by changing this alone.
-export const BASE = __ENV.PERMGUARD_URL || 'http://127.0.0.1:7556';
+export const BASE = __ENV.PERMGUARD_URL || 'http://127.0.0.1:6443';
 
 // One request against the identity endpoint, checked for shape and not just status: a load test
 // that only counts 200s would happily benchmark an error page.
@@ -50,11 +50,11 @@ export function hitHealth() {
 
 // The decision endpoint, and what a real answer looks like.
 //
-// `PERMGUARD_PDP_URL` is the data plane (`:7656` locally); `PERMGUARD_ZONE` and `PERMGUARD_LEDGER`
+// `PERMGUARD_PDP_URL` is the data plane (`:7443` locally); `PERMGUARD_ZONE` and `PERMGUARD_LEDGER`
 // name a ledger it mirrors. The request is deliberately one a policy has to think about: the
 // subject reaches the resource through the entity store the request carries, so the store is
 // walked rather than skipped.
-export const PDP = __ENV.PERMGUARD_PDP_URL || 'http://127.0.0.1:7656';
+export const PDP = __ENV.PERMGUARD_PDP_URL || 'http://127.0.0.1:7443';
 export const ZONE = __ENV.PERMGUARD_ZONE || 'acme';
 export const LEDGER = __ENV.PERMGUARD_LEDGER || 'main-ledger';
 export const PROFILE = __ENV.PERMGUARD_PROFILE || 'default';

@@ -81,9 +81,9 @@ This starts one all-in-one process with:
 
 | Surface | Address | Purpose |
 | --- | --- | --- |
-| Control plane | `http://127.0.0.1:7556` | policies and replicated event evidence |
-| Data plane | `http://127.0.0.1:7656` | event ingestion and temporal decisions |
-| Telemetry | `http://127.0.0.1:7558` | `/healthz` and `/metrics` |
+| Control plane | `http://127.0.0.1:6443` | policies and replicated event evidence |
+| Data plane | `http://127.0.0.1:7443` | event ingestion and temporal decisions |
+| Server Host / operations | `http://127.0.0.1:5443` | process discovery, health, readiness, version, and metrics |
 
 Dogwood is deliberately disabled by the ordinary `task run:all`; the temporal
 contract is still `v1alpha1` and must be enabled explicitly.
@@ -95,7 +95,7 @@ control-plane configuration expects them:
 
 ```bash
 mkdir -p .volume/all-in-one/trust
-curl -fsS http://127.0.0.1:7656/data-plane/keys \
+curl -fsS http://127.0.0.1:7443/data-plane/keys \
   -o .volume/all-in-one/trust/data-plane-events.jwks
 ```
 
@@ -112,7 +112,7 @@ task cli -- ledgers create --zone acme agent-governance
 task cli -- -w examples/dogwood-session-access \
   init agent-governance --language dogwood
 task cli -- -w examples/dogwood-session-access \
-  remote add origin http://127.0.0.1:7556
+  remote add origin http://127.0.0.1:6443
 task cli -- -w examples/dogwood-session-access validate
 task cli -- -w examples/dogwood-session-access \
   checkout origin/acme/agent-governance
@@ -163,7 +163,7 @@ export PERMGUARD_DEMO_ID="demo-$(date +%s)"
 
 The script accepts a path relative to either the current directory or the
 example itself. `--endpoint` can target another data plane; by default it uses
-`http://127.0.0.1:7656`.
+`http://127.0.0.1:7443`.
 
 > **This walkthrough starts from an empty history.** The event schema pins
 > `callerPrincipal`, so alice's history belongs to alice and outlives the run —

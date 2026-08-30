@@ -36,6 +36,38 @@ type Addressed<'a> = (&'a Arc<Partition>, &'a dyn Temporal);
 /// One partition, its engine, and what the schemas said about this occurrence.
 type Verified<'a> = (Arc<Partition>, &'a dyn Temporal, Checked);
 
+/// What the uncancellable core produced.
+///
+/// Both arms are boxed: they are the two ends of one submission and neither is rare, so sizing
+/// every return by the larger of them would move a response-sized value through the pool's result
+/// for no benefit.
+enum Staged {
+    /// The answer is complete: an accepted receipt, or a retry answered from what was recorded.
+    Answered(Box<SubmitResponse>),
+    /// A verdict was reached, and it may not leave before it is recorded.
+    Decided(Box<Decided>),
+}
+
+/// A verdict, and everything the recording of it still needs.
+///
+/// Boxed because it is the rare arm: most submissions to a history-only kind answer without one,
+/// and an enum sized by its largest variant would make every one of them carry this.
+struct Decided {
+    loaded: Loaded,
+    occurrence: Occurrence,
+    occurrence_kind: String,
+    profile: String,
+    zone: String,
+    ledger: String,
+    record: Record,
+    watermark: Watermark,
+    history: HistoryScope,
+    evaluations: Vec<permguard_languages::temporal::PartitionEvaluation>,
+    outcome: permguard_languages::evaluate::Outcome,
+    decision_id: String,
+    reason: permguard_languages::temporal::Reason,
+}
+
 /// The temporal interface's implementation.
 ///
 /// Holds the [`Decider`] rather than duplicating it: the ledger a submission names is resolved,
@@ -118,7 +150,10 @@ impl Submitter {
     }
 
     /// Submits one occurrence.
-    pub async fn submit(&self, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+    pub async fn submit(
+        self: &Arc<Self>,
+        request: &SubmitRequest,
+    ) -> Result<SubmitResponse, ApiError> {
         let started = Instant::now();
         let answered = self.answer(request).await;
         self.metrics.observe(
@@ -130,7 +165,7 @@ impl Submitter {
         answered
     }
 
-    async fn answer(&self, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
+    async fn answer(self: &Arc<Self>, request: &SubmitRequest) -> Result<SubmitResponse, ApiError> {
         // The plane's own clock on this submission, which the decision record carries: how long
         // this plane took, separate from how long the transport took.
         let started_at = Instant::now();
@@ -200,6 +235,180 @@ impl Submitter {
         }
 
         let loaded = self.decider.loaded(&zone, &ledger, &profile).await?;
+        // Everything synchronous the submission does — validating the occurrence against every
+        // addressed partition, appending it, taking its turn, rebuilding the history and evaluating
+        // it — runs here, on the shared blocking pool, as one unit.
+        //
+        // # Why one unit and not several
+        //
+        // The turn is the reason. `Sequencer` advances only when a `Turn` is dropped, so the span
+        // from "this sequence exists" to "this sequence has been applied" must not contain a
+        // suspension point: a request cancelled inside it would drop the turn with the record
+        // durable and unapplied. Splitting the work across two `blocking.run(...).await` calls would
+        // put an `.await` in exactly that span. So the whole span is one closure, and
+        // `spawn_blocking` work is not cancelled — the caller may go away, the unit still finishes.
+        //
+        // # Why it belongs on the pool at all
+        //
+        // What is inside is not bookkeeping. Replay rescans the journal, and `apply` reaches
+        // upstream's engine, which runs providers synchronously and cannot be interrupted. Left on
+        // a runtime worker — which is where it used to be — one slow evaluation blocks a thread the
+        // whole process shares, outside the bound the deployment configured, and health checks and
+        // unrelated ledgers go unanswered behind it. On the pool it costs one permit of a bounded
+        // budget, and the ceiling refuses rather than queues.
+        let staged =
+            {
+                let this = Arc::clone(self);
+                let staging = (
+                    Loaded {
+                        mirror: loaded.mirror.clone(),
+                        head: Arc::clone(&loaded.head),
+                        partitions: loaded.partitions.clone(),
+                    },
+                    temporal_event_type(request).to_owned(),
+                    zone.clone(),
+                    ledger.clone(),
+                    profile.clone(),
+                    occurrence.clone(),
+                    occurrence_kind.clone(),
+                    event,
+                );
+                self.blocking
+                .run(&labels, move || {
+                    let (loaded, event_type, zone, ledger, profile, occurrence, kind, event) =
+                        staging;
+
+                    this.stage(loaded, event_type, zone, ledger, profile, occurrence, kind, event)
+                })
+                .await
+                .map_err(|refused| match refused {
+                    crate::blocking::Refused::AtCapacity(held) => {
+                        self.metrics
+                            .count(&measure::REFUSALS, &[("reason", "at_capacity")]);
+
+                        ApiError::new(
+                            ErrorClass::Unavailable,
+                            "event_submission_at_capacity",
+                            format!(
+                                "{held}. A submission holds one of them from the durable append \
+                                 through the evaluation that follows it, so this plane bounds how \
+                                 many may be outstanding and refuses beyond it rather than \
+                                 queueing behind a disk or a provider"
+                            ),
+                        )
+                    }
+                    crate::blocking::Refused::Failed(why) => ApiError::new(
+                        ErrorClass::Unavailable,
+                        "event_not_durable",
+                        format!("the occurrence could not be applied: {why}"),
+                    ),
+                })??
+            };
+        let Decided {
+            loaded,
+            occurrence,
+            occurrence_kind,
+            profile,
+            zone,
+            ledger,
+            record,
+            watermark,
+            history,
+            evaluations,
+            outcome,
+            decision_id,
+            reason,
+        } = match staged {
+            Staged::Answered(response) => return Ok(*response),
+            Staged::Decided(decided) => *decided,
+        };
+
+        // Recorded before the answer leaves. A plane told to refuse rather than answer unrecorded
+        // decisions refuses *here*, with the event already durable — which is the only order that
+        // keeps both promises: the history is whole whatever happens next, and no verdict this
+        // plane could not record has left it.
+        self.decider
+            .record_temporal(&crate::authz::decide::TemporalDecision {
+                decision_id: &decision_id,
+                mirror: &loaded.mirror,
+                head: &loaded.head,
+                profile: &profile,
+                subject: (
+                    occurrence.principal.kind.as_str(),
+                    occurrence.principal.id.as_str(),
+                ),
+                resource: (
+                    occurrence.resource.kind.as_str(),
+                    occurrence.resource.id.as_str(),
+                ),
+                action: occurrence.action.as_str(),
+                context: serde_json::to_value(&record.event).ok(),
+                permit: outcome.permitted,
+                policies: outcome.determining(),
+                reason: &reason.code,
+                request_id: None,
+                latency_us: u64::try_from(started_at.elapsed().as_micros()).unwrap_or(u64::MAX),
+                event: permguard_decisions::record::EventRef {
+                    event_id: record.event_id.clone(),
+                    event_type: record.event_type.clone(),
+                    instance: watermark.instance.clone(),
+                    sequence: watermark.sequence,
+                    history: watermark.history.clone(),
+                    consistency: Some(history.mode.clone()),
+                    watermark: history.watermark.clone(),
+                },
+            })
+            .await?;
+
+        self.metrics.count(
+            &measure::SUBMISSIONS,
+            &[("outcome", "decided"), ("zone", zone.as_str())],
+        );
+
+        let response = SubmitResponse {
+            outcome: Outcome::Decided,
+            event_id: occurrence.event_id,
+            watermark,
+            decision: Some(outcome.permitted),
+            decision_id: Some(decision_id),
+            policies: outcome.determining().to_vec(),
+            evaluations,
+            reason: Some(reason),
+            history,
+        };
+        self.keep_outcome(
+            &zone,
+            &ledger,
+            &response.event_id,
+            crate::temporal::streams::Routed {
+                profile: &profile,
+                kind: &occurrence_kind,
+            },
+            &response,
+        )?;
+
+        Ok(response)
+    }
+
+    /// The uncancellable core: validate, append, order, replay, evaluate.
+    ///
+    /// Called only through [`crate::blocking::Blocking`], and everything in it is synchronous by
+    /// design — see the call site for why the span may not be split and why it may not run on a
+    /// runtime worker.
+    #[allow(clippy::too_many_arguments)]
+    fn stage(
+        &self,
+        loaded: Loaded,
+        event_type: String,
+        zone: String,
+        ledger: String,
+        profile: String,
+        occurrence: Occurrence,
+        occurrence_kind: String,
+        event: serde_json::Value,
+    ) -> Result<Staged, ApiError> {
+        let labels = [("zone", zone.as_str()), ("ledger", ledger.as_str())];
+
         let addressed = self.addressed(&loaded, &profile)?;
 
         // Every partition, before anything is written. A profile may address several with
@@ -271,6 +480,9 @@ impl Submitter {
         // startup: accepting the event and discovering the mismatch after eviction would make the
         // same policy change its answer as the volume ages.
         self.admit_history_window(&checks, &zone, &ledger)?;
+        // And it must not arrive behind what this history has already observed. Checked before the
+        // append, so a refusal costs nothing: no record, no sequence, no hole to repair.
+        self.admit_order(&zone, &ledger, &partition_key, &occurrence)?;
 
         let proposed = Record {
             v: 1,
@@ -284,7 +496,7 @@ impl Submitter {
             },
             seq: 0,
             prev: String::new(),
-            event_type: temporal_event_type(request),
+            event_type: event_type.clone(),
             event_id: occurrence.event_id.clone(),
             occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
                 ApiError::new(
@@ -330,49 +542,43 @@ impl Submitter {
         // to apply. That is the pool doing its job: bounded, and refusing at the ceiling rather
         // than blocking a runtime worker as this used to.
         let (appended, appending, prepared) = {
-            let streams = Arc::clone(&self.streams);
-            let (held_zone, held_ledger) = (zone.clone(), ledger.clone());
-            self.blocking
-                .run(&labels, move || {
-                    // Timed inside, and only around the append: the wait for a turn that follows
-                    // is another submission applying, and folding it in would make this metric
-                    // report the ledger's queue as the cost of a durable write.
-                    let started = Instant::now();
-                    let appended = streams.append(&held_zone, &held_ledger, proposed);
-                    let appending = started.elapsed();
-                    let prepared = match &appended {
-                        Ok((Written::Appended { seq, .. }, _)) => streams
-                            .sequencer(&held_zone, &held_ledger)
-                            .ok()
-                            .map(|sequencer| sequencer.turn(*seq)),
-                        _ => None,
-                    };
+            // The sequencer *before* the append, and its failure refuses before anything is
+            // durable.
+            //
+            // Asking after the append is what this used to do, and the error had nowhere to go: the
+            // record was already on disk, so the only options were to invent a turn or to return an
+            // error for a sequence that now exists and would never be applied. A sequence nobody
+            // takes a turn for stalls every sequence after it — and because the turn is waited on
+            // while holding a blocking permit, every later submission to that ledger would hold one
+            // for ever until the pool, which is shared with every other ledger and with the
+            // stateless path, had none left. One unorderable ledger would have stopped the plane.
+            //
+            // Asked first, the failure costs nothing: no record, no sequence, no hole.
+            let sequencer = self.streams.sequencer(&zone, &ledger).map_err(|error| {
+                self.metrics
+                    .count(&measure::REFUSALS, &[("reason", "history_unorderable")]);
 
-                    (appended, appending, prepared)
-                })
-                .await
-                .map_err(|refused| match refused {
-                    crate::blocking::Refused::AtCapacity(held) => {
-                        self.metrics
-                            .count(&measure::REFUSALS, &[("reason", "at_capacity")]);
-
-                        ApiError::new(
-                            ErrorClass::Unavailable,
-                            "event_append_at_capacity",
-                            format!(
-                                "{held}. An append waits for the flush that covers it and then for \
-                                 its turn to be applied, so this plane bounds how many may be \
-                                 outstanding and refuses beyond it rather than queueing behind a \
-                                 disk"
-                            ),
-                        )
-                    }
-                    crate::blocking::Refused::Failed(why) => ApiError::new(
-                        ErrorClass::Unavailable,
-                        "event_not_durable",
-                        format!("the occurrence could not be made durable: {why}"),
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "history_unorderable",
+                    format!(
+                        "`{zone}/{ledger}` cannot order this occurrence against the ones before \
+                         it, so it was not recorded: {error}"
                     ),
-                })?
+                )
+            })?;
+            // Timed around the append alone: the wait for a turn that follows is another
+            // submission applying, and folding it in would make this metric report the ledger's
+            // queue as the cost of a durable write.
+            let started = Instant::now();
+            let appended = self.streams.append(&zone, &ledger, proposed);
+            let appending = started.elapsed();
+            let prepared = match &appended {
+                Ok((Written::Appended { seq, .. }, _)) => Some(sequencer.turn(*seq)),
+                _ => None,
+            };
+
+            (appended, appending, prepared)
         };
         let (written, mut record) = appended.map_err(|failed| {
             // The turn, if one was taken, is dropped with `prepared` here — the sequence is
@@ -467,7 +673,7 @@ impl Submitter {
                                 &[("outcome", "replayed"), ("zone", zone.as_str())],
                             );
 
-                            return Ok(response);
+                            return Ok(Staged::Answered(Box::new(response)));
                         }
                         Err(error) => {
                             return Err(ApiError::new(
@@ -552,7 +758,20 @@ impl Submitter {
         let turn = match prepared {
             Some(turn) => turn,
             None => {
+                // Only the recovery path reaches here: an idempotent retry whose response was
+                // never committed, taking the turn of a sequence that is already durable. An
+                // `Appended` always arrives with its turn already held, taken beside the append.
                 let sequencer = self.streams.sequencer(&zone, &ledger).map_err(|error| {
+                    // The sequence this abandons is durable, so the history it belongs to is left
+                    // one record short of the journal. Marking it for replay is what the module's
+                    // liveness contract requires of every path that abandons a sequence: the next
+                    // occurrence in this history is evaluated against a run rebuilt from the
+                    // journal — which holds the record — rather than against a prefix missing it.
+                    // Without this the ledger keeps answering, and answers from the hole.
+                    self.invalidate_history(&zone, &ledger, &partition_key);
+                    self.metrics
+                        .count(&measure::REFUSALS, &[("reason", "history_unorderable")]);
+
                     ApiError::new(
                         ErrorClass::Unavailable,
                         "history_unorderable",
@@ -590,7 +809,7 @@ impl Submitter {
                         &[("outcome", "replayed"), ("zone", zone.as_str())],
                     );
 
-                    return Ok(response);
+                    return Ok(Staged::Answered(Box::new(response)));
                 }
                 Ok(None) => {}
                 Err(error) => {
@@ -703,7 +922,7 @@ impl Submitter {
                 &response,
             )?;
 
-            return Ok(response);
+            return Ok(Staged::Answered(Box::new(response)));
         }
 
         // The profile's single registered batch semantic: an explicit deny wins, silence is not a
@@ -743,71 +962,21 @@ impl Submitter {
             })?;
         let reason = reason_of(&outcome);
 
-        // Recorded before the answer leaves. A plane told to refuse rather than answer unrecorded
-        // decisions refuses *here*, with the event already durable — which is the only order that
-        // keeps both promises: the history is whole whatever happens next, and no verdict this
-        // plane could not record has left it.
-        self.decider
-            .record_temporal(&crate::authz::decide::TemporalDecision {
-                decision_id: &decision_id,
-                mirror: &loaded.mirror,
-                head: &loaded.head,
-                profile: &profile,
-                subject: (
-                    occurrence.principal.kind.as_str(),
-                    occurrence.principal.id.as_str(),
-                ),
-                resource: (
-                    occurrence.resource.kind.as_str(),
-                    occurrence.resource.id.as_str(),
-                ),
-                action: occurrence.action.as_str(),
-                context: serde_json::to_value(&record.event).ok(),
-                permit: outcome.permitted,
-                policies: outcome.determining(),
-                reason: &reason.code,
-                request_id: None,
-                latency_us: u64::try_from(started_at.elapsed().as_micros()).unwrap_or(u64::MAX),
-                event: permguard_decisions::record::EventRef {
-                    event_id: record.event_id.clone(),
-                    event_type: record.event_type.clone(),
-                    instance: watermark.instance.clone(),
-                    sequence: watermark.sequence,
-                    history: watermark.history.clone(),
-                    consistency: Some(history.mode.clone()),
-                    watermark: history.watermark.clone(),
-                },
-            })
-            .await?;
-
-        self.metrics.count(
-            &measure::SUBMISSIONS,
-            &[("outcome", "decided"), ("zone", zone.as_str())],
-        );
-
-        let response = SubmitResponse {
-            outcome: Outcome::Decided,
-            event_id: occurrence.event_id,
+        Ok(Staged::Decided(Box::new(Decided {
+            loaded,
+            occurrence,
+            occurrence_kind,
+            profile,
+            zone,
+            ledger,
+            record,
             watermark,
-            decision: Some(outcome.permitted),
-            decision_id: Some(decision_id),
-            policies: outcome.determining().to_vec(),
-            evaluations,
-            reason: Some(reason),
             history,
-        };
-        self.keep_outcome(
-            &zone,
-            &ledger,
-            &response.event_id,
-            crate::temporal::streams::Routed {
-                profile: &profile,
-                kind: &occurrence_kind,
-            },
-            &response,
-        )?;
-
-        Ok(response)
+            evaluations,
+            outcome,
+            decision_id,
+            reason,
+        })))
     }
 
     /// Keeps the answer given for one occurrence, so a retry of it is answered and not refused.
@@ -927,6 +1096,96 @@ impl Submitter {
     }
 
     /// Refuses a loaded temporal contract whose longest window can outlive the journal.
+    /// Refuses an occurrence that is older than one this history has already observed.
+    ///
+    /// # Why an out-of-order arrival cannot simply be applied
+    ///
+    /// A temporal engine is fed occurrences in timestamp order, and that is not a convention — it
+    /// is what lets it answer `within the last hour` without holding every event for ever.
+    /// [`Temporal::rebuild`](permguard_languages::temporal::Temporal::rebuild) states the contract:
+    /// a late arrival is not inserted, the affected history is rebuilt.
+    ///
+    /// The local path did not honour it. `allowed_lateness` admits an event whose instant is behind
+    /// the clock, and nothing then compared that instant with what the engine had already seen — so
+    /// an occurrence at `t1` submitted after one at `t2` was observed *after* it. `previous`,
+    /// `since` and every window operator then answer from a sequence that never happened.
+    ///
+    /// # Why refusing rather than rebuilding
+    ///
+    /// Rebuilding to absorb the late arrival is the other half of the contract, and it is not a
+    /// drop-in here: [`Self::observable`] bounds its scan at the occurrence's own instant, so a
+    /// rebuild for `t1` would exclude the `t2` that is already durable and hand the engine a
+    /// history missing an event it had already been told about. Making that correct means
+    /// rebuilding to the newest instant, re-applying everything after `t1`, and deciding what
+    /// happens to the answers those later occurrences were already given — which is a change to
+    /// what a decision means, not a repair.
+    ///
+    /// So this refuses, which is what the rest of this path does with an input it cannot honour.
+    /// Nothing is written, the caller is told the ledger has moved past this instant, and no
+    /// decision is served from an order the journal never held.
+    fn admit_order(
+        &self,
+        zone: &str,
+        ledger: &str,
+        history: &str,
+        occurrence: &Occurrence,
+    ) -> Result<(), ApiError> {
+        // Everything strictly after this occurrence, in its own history. A single record is enough
+        // to know the ledger has moved past it; the scan is bounded by the index, not by retention.
+        let query = permguard_events::index::Query {
+            event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            history: history.to_owned(),
+            action: None,
+            kind: None,
+            from: occurrence.occurred_at_epoch.saturating_add(1),
+            until: i64::MAX,
+        };
+
+        let mut newer = self.streams.scan(zone, ledger, &query).map_err(|error| {
+            ApiError::new(
+                ErrorClass::Unavailable,
+                "history_unreadable",
+                format!("this plane's own journal could not be read: {error}"),
+            )
+        })?;
+        // The imported half feeds the same engine in a shared mode, so it settles the same question.
+        if let Some(imports) = &self.imports
+            && self.consistency.is_shared()
+            && newer.is_empty()
+        {
+            newer = imports.window(zone, ledger, &query).map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "imported_history_unreadable",
+                    format!("the imported history could not be read: {error}"),
+                )
+            })?;
+        }
+
+        let Some(ahead) = newer.first() else {
+            return Ok(());
+        };
+        let at = ahead
+            .get("occurred_at")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("a later instant");
+        self.metrics
+            .count(&measure::REFUSALS, &[("reason", "event_out_of_order")]);
+
+        Err(ApiError::new(
+            ErrorClass::Conflict,
+            "event_out_of_order",
+            format!(
+                "`{}` occurred at {} and this history has already observed an occurrence at {at}. A \
+                 temporal engine is fed in timestamp order, so recording this one now would place \
+                 it after an event it happened before, and every window operator would answer from \
+                 an order that never happened. Submit it to a history that has not moved past it, \
+                 or accept that it is late and drop it",
+                occurrence.event_id, occurrence.occurred_at
+            ),
+        ))
+    }
+
     fn admit_history_window(
         &self,
         checks: &[Verified<'_>],

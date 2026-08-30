@@ -174,12 +174,12 @@ mod tests {
 
     #[test]
     fn test_a_plain_endpoint_is_not_tls() {
-        let endpoint = Endpoint::parse("http://127.0.0.1:7556").expect("a valid endpoint");
+        let endpoint = Endpoint::parse("http://127.0.0.1:6443").expect("a valid endpoint");
 
         assert!(!endpoint.is_tls());
-        assert_eq!(endpoint.authority(), "127.0.0.1:7556");
-        assert_eq!(endpoint.host_header(), "127.0.0.1:7556");
-        assert_eq!(endpoint.to_string(), "http://127.0.0.1:7556");
+        assert_eq!(endpoint.authority(), "127.0.0.1:6443");
+        assert_eq!(endpoint.host_header(), "127.0.0.1:6443");
+        assert_eq!(endpoint.to_string(), "http://127.0.0.1:6443");
     }
 
     #[test]
@@ -195,13 +195,13 @@ mod tests {
     #[test]
     fn test_what_is_refused_and_why() {
         for (written, expected) in [
-            ("127.0.0.1:7556", "an endpoint is a URL"),
-            ("localhost:7556", "an endpoint is a URL"),
-            ("grpc://127.0.0.1:7556", "not a scheme this CLI speaks"),
+            ("127.0.0.1:6443", "an endpoint is a URL"),
+            ("localhost:6443", "an endpoint is a URL"),
+            ("grpc://127.0.0.1:6443", "not a scheme this CLI speaks"),
             // The shape someone writes when they expect the scheme to name a security posture.
-            ("tls:127.0.0.1:7556", "an endpoint is a URL"),
-            ("mtls://127.0.0.1:7556", "not a scheme this CLI speaks"),
-            ("http://127.0.0.1:7556/version", "carries a path"),
+            ("tls:127.0.0.1:6443", "an endpoint is a URL"),
+            ("mtls://127.0.0.1:6443", "not a scheme this CLI speaks"),
+            ("http://127.0.0.1:6443/version", "carries a path"),
             ("http://", "names no host"),
         ] {
             let error = Endpoint::parse(written).expect_err(written).to_string();

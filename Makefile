@@ -99,13 +99,13 @@ run-as-tls-data: ## Run the data plane locally, with TLS.
 run-as-tls-all: ## Run the all-in-one runtime locally, with TLS.
 	$(MAKE) run-all CONFIG=config.local-tls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
-run-as-mtls-control: ## Run the control plane locally, with TLS on HTTP and mutual TLS on gRPC.
+run-as-mtls-control: ## Run the control plane locally, with mutual TLS on its shared HTTP+gRPC listener.
 	$(MAKE) plane-run PLANE=control CONFIG=config.local-mtls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
-run-as-mtls-data: ## Run the data plane locally, with TLS on HTTP and mutual TLS on gRPC.
+run-as-mtls-data: ## Run the data plane locally, with mutual TLS on its shared HTTP+gRPC listener.
 	$(MAKE) plane-run PLANE=data CONFIG=config.local-mtls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
-run-as-mtls-all: ## Run the all-in-one runtime locally, with TLS on HTTP and mutual TLS on gRPC.
+run-as-mtls-all: ## Run all-in-one locally, with mutual TLS on each shared HTTP+gRPC plane listener.
 	$(MAKE) run-all CONFIG=config.local-mtls.yml ARGS="$(ARGS)" RELEASE=$(RELEASE)
 
 lab-up: ## Start the compose lab: both planes, Prometheus, Grafana, Loki.
@@ -142,8 +142,10 @@ lab-where: ## Print where the lab is listening.
 	@printf 'Grafana     http://127.0.0.1:%s   (dashboards are already provisioned)\n' "$${PERMGUARD_GRAFANA_PORT:-7590}"
 	@printf 'Prometheus  http://127.0.0.1:%s\n' "$${PERMGUARD_PROMETHEUS_PORT:-7591}"
 	@printf 'Loki        http://127.0.0.1:%s\n' "$${PERMGUARD_LOKI_PORT:-7592}"
-	@printf 'Control     http://127.0.0.1:%s\n' "$${PERMGUARD_CONTROL_HTTP_PORT:-7556}"
-	@printf 'Data        http://127.0.0.1:%s\n' "$${PERMGUARD_DATA_HTTP_PORT:-7656}"
+	@printf 'Host        http://%s:5443   (all-in-one or control)\n' "$${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}"
+	@printf 'Host        http://%s:5443   (standalone data)\n' "$${PERMGUARD_DATA_HOST_IP:-127.0.0.2}"
+	@printf 'Control     http://127.0.0.1:%s\n' "$${PERMGUARD_CONTROL_HTTP_PORT:-6443}"
+	@printf 'Data        http://127.0.0.1:%s\n' "$${PERMGUARD_DATA_HTTP_PORT:-7443}"
 
 bench-server: ## Run the control plane for capacity benchmarks: release build, limits out of the way (each PERMGUARD_LIMITS_* overridable).
 	PERMGUARD_LIMITS_CONCURRENT_REQUESTS=$${PERMGUARD_LIMITS_CONCURRENT_REQUESTS:-100000} PERMGUARD_LIMITS_CONNECTIONS=$${PERMGUARD_LIMITS_CONNECTIONS:-20000} PERMGUARD_LIMITS_CONNECTIONS_PER_PEER=$${PERMGUARD_LIMITS_CONNECTIONS_PER_PEER:-0} cargo run --release -p permguard-control-plane --bin permguard-control-plane -- crates/permguard-control-plane/config.local.yml $(ARGS)

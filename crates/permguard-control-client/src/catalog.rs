@@ -166,7 +166,13 @@ fn paged(path: &str, page: Option<u32>, size: Option<u32>) -> String {
 }
 
 pub fn get_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Zone, Failure> {
-    call(client, endpoint, "GET", &format!("/v1/zones/{zone}"), None)
+    call(
+        client,
+        endpoint,
+        "GET",
+        &format!("/v1/zones/{}", crate::encode::value(zone)),
+        None,
+    )
 }
 
 pub fn rename_zone(
@@ -179,7 +185,7 @@ pub fn rename_zone(
         client,
         endpoint,
         "PATCH",
-        &format!("/v1/zones/{zone}"),
+        &format!("/v1/zones/{}", crate::encode::value(zone)),
         Some(&name_body(name)?),
     )
 }
@@ -189,7 +195,7 @@ pub fn delete_zone(client: &Client, endpoint: &Endpoint, zone: &str) -> Result<Z
         client,
         endpoint,
         "DELETE",
-        &format!("/v1/zones/{zone}"),
+        &format!("/v1/zones/{}", crate::encode::value(zone)),
         None,
     )
 }
@@ -204,7 +210,7 @@ pub fn create_ledger(
         client,
         endpoint,
         "POST",
-        &format!("/v1/zones/{zone}/ledgers"),
+        &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
         Some(&name_body(name)?),
     )
 }
@@ -220,7 +226,11 @@ pub fn list_ledgers(
         client,
         endpoint,
         "GET",
-        &paged(&format!("/v1/zones/{zone}/ledgers"), page, size),
+        &paged(
+            &format!("/v1/zones/{}/ledgers", crate::encode::value(zone)),
+            page,
+            size,
+        ),
         None,
     )
 }
@@ -235,7 +245,11 @@ pub fn get_ledger(
         client,
         endpoint,
         "GET",
-        &format!("/v1/zones/{zone}/ledgers/{ledger}"),
+        &format!(
+            "/v1/zones/{}/ledgers/{}",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
         None,
     )
 }
@@ -251,7 +265,11 @@ pub fn rename_ledger(
         client,
         endpoint,
         "PATCH",
-        &format!("/v1/zones/{zone}/ledgers/{ledger}"),
+        &format!(
+            "/v1/zones/{}/ledgers/{}",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
         Some(&name_body(name)?),
     )
 }
@@ -266,7 +284,11 @@ pub fn delete_ledger(
         client,
         endpoint,
         "DELETE",
-        &format!("/v1/zones/{zone}/ledgers/{ledger}"),
+        &format!(
+            "/v1/zones/{}/ledgers/{}",
+            crate::encode::value(zone),
+            crate::encode::value(ledger)
+        ),
         None,
     )
 }

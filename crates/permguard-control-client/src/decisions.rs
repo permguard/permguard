@@ -374,13 +374,20 @@ impl DecisionSink for HttpSink {
 
 impl DecisionReader for HttpSink {
     fn read(&self, scope: &ReadScope, window: &ReadWindow) -> Result<Page, ReadError> {
+        // Escaped like the event reader's, and for the same reason: these are names and identifiers
+        // a caller chose, and one carrying a URL delimiter would otherwise change which request
+        // this is rather than being refused.
         let mut path = match scope {
-            ReadScope::Tenant { zone, ledger } => {
-                format!("/zones/{zone}/ledgers/{ledger}/decisions/v1/records?")
-            }
-            ReadScope::Stream { pdp_id, instance } => {
-                format!("/decisions/v1/records?pdp={pdp_id}&instance={instance}")
-            }
+            ReadScope::Tenant { zone, ledger } => format!(
+                "/zones/{}/ledgers/{}/decisions/v1/records?",
+                crate::encode::value(zone),
+                crate::encode::value(ledger)
+            ),
+            ReadScope::Stream { pdp_id, instance } => format!(
+                "/decisions/v1/records?pdp={}&instance={}",
+                crate::encode::value(pdp_id),
+                crate::encode::value(instance)
+            ),
         };
         if window.limit_records > 0 {
             path.push_str(&format!("&limit_records={}", window.limit_records));
@@ -394,10 +401,10 @@ impl DecisionReader for HttpSink {
         // Offsets and watermarks are opaque and base64url, so they are already safe in a query
         // string: encoding them again would change them.
         if let Some(offset) = &window.from {
-            path.push_str(&format!("&from={offset}"));
+            path.push_str(&format!("&from={}", crate::encode::value(offset)));
         }
         if let Some(until) = &window.until {
-            path.push_str(&format!("&until={until}"));
+            path.push_str(&format!("&until={}", crate::encode::value(until)));
         }
 
         let response = self

@@ -5,9 +5,9 @@
 // more or less than HTTP/1 with JSON on this stack? Run beside `peak.js` at the same concurrency
 // and the difference between the two reports is the answer.
 //
-// Plain by default. For the mutual-TLS profile (`task run-as-mtls:control`, gRPC on 7557) set:
+// Plain by default. For the mutual-TLS profile (`task run-as-mtls:control`, gRPC on 6443) set:
 //
-//   PERMGUARD_GRPC_ADDR=127.0.0.1:7557 BENCH_TLS=true \
+//   PERMGUARD_GRPC_ADDR=127.0.0.1:6443 BENCH_TLS=true \
 //   BENCH_CA=.volume/control-plane-mtls/tls/ca.pem \
 //   BENCH_CERT=.volume/control-plane-mtls/tls/client.pem \
 //   BENCH_KEY=.volume/control-plane-mtls/tls/client.key
@@ -18,7 +18,7 @@
 import grpc from 'k6/net/grpc';
 import { check } from 'k6';
 
-const ADDR = __ENV.PERMGUARD_GRPC_ADDR || '127.0.0.1:7556';
+const ADDR = __ENV.PERMGUARD_GRPC_ADDR || '127.0.0.1:6443';
 const TLS = (__ENV.BENCH_TLS || 'false') === 'true';
 
 const client = new grpc.Client();

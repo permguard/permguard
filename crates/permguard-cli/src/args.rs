@@ -304,7 +304,7 @@ pub enum Command {
     },
     /// Clone a remote ledger into a fresh workspace directory.
     #[command(
-        after_help = "Examples:\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline\n  permguard clone https://permguard.internal:7556/delivery/release-pipeline ./release-pipeline"
+        after_help = "Examples:\n  permguard clone https://permguard.internal:6443/delivery/release-pipeline\n  permguard clone https://permguard.internal:6443/delivery/release-pipeline ./release-pipeline"
     )]
     Clone {
         /// The ledger to clone, as `https://host[:port][/prefix]/<zone>/<ledger>`.
@@ -694,7 +694,7 @@ pub struct DecisionsQuery {
 pub enum RemoteAction {
     /// Add (or replace) a named remote.
     #[command(
-        after_help = "Examples:\n  permguard remote add origin https://permguard.internal:7556\n  permguard remote add origin https://permguard.internal:7556 -o json"
+        after_help = "Examples:\n  permguard remote add origin https://permguard.internal:6443\n  permguard remote add origin https://permguard.internal:6443 -o json"
     )]
     Add {
         /// The name this remote is known by.
@@ -780,7 +780,7 @@ pub enum ConfigAction {
     },
     /// Write one setting into the configuration file.
     #[command(
-        after_help = "Examples:\n  permguard config set control-plane.endpoint https://permguard.internal:7556\n  permguard config set data-plane.endpoint https://permguard.internal:7557"
+        after_help = "Examples:\n  permguard config set control-plane.endpoint https://permguard.internal:6443\n  permguard config set data-plane.endpoint https://permguard.internal:7443"
     )]
     Set {
         /// The setting to write.

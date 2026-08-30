@@ -143,7 +143,7 @@ fn advertised_url(config: &Config, plane: PlaneId) -> Option<String> {
 /// and the only moment anybody can be told is startup.
 pub fn is_wildcard_address(addr: &str) -> bool {
     let host = if let Some(rest) = addr.strip_prefix('[') {
-        // `[::]:7656` — bracketed, so the host ends at the bracket and the colons inside it are
+        // `[::]:7443` — bracketed, so the host ends at the bracket and the colons inside it are
         // the address's own.
         rest.split_once(']').map_or(rest, |(host, _)| host)
     } else {
@@ -236,7 +236,7 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
     }
 }
 
-/// The process-level registry, as JSON text — what the telemetry surface
+/// The process-level registry, as JSON text — what the Server Host operations surface
 /// answers at `/.well-known/server-configuration`: every plane this process
 /// hosts, each pointing at **its own** configuration document. Pointers,
 /// never copies: the plane's well-known is the single source of truth, and
@@ -329,22 +329,22 @@ mod document_tests {
     #[test]
     fn both_planes_are_discovered_with_their_http_bases() {
         let config = config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
-            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
         ]);
 
         let planes = discovered_planes(&config);
         let ids: Vec<&str> = planes.iter().map(|plane| plane.id).collect();
         assert_eq!(ids, vec!["control-plane", "data-plane"]);
-        assert_eq!(planes[0].http_base, "http://127.0.0.1:7556");
+        assert_eq!(planes[0].http_base, "http://127.0.0.1:6443");
     }
 
     #[test]
     fn a_disabled_plane_never_appears_in_discovery() {
         let config = config_with(&[
             (SETTING_RUNTIME_PLANES, "control"),
-            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
-            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
         ]);
 
         let planes = discovered_planes(&config);
@@ -355,7 +355,7 @@ mod document_tests {
 
     #[test]
     fn the_plane_document_names_itself_and_its_keys() {
-        let config = config_with(&[(SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556")]);
+        let config = config_with(&[(SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443")]);
 
         let document = serde_json::to_string(&plane_configuration(&config, PlaneId::Control))
             .expect("the plane configuration serializes");
@@ -364,7 +364,7 @@ mod document_tests {
             "{document}"
         );
         assert!(
-            document.contains("http://127.0.0.1:7556/control-plane/keys"),
+            document.contains("http://127.0.0.1:6443/control-plane/keys"),
             "{document}"
         );
     }
@@ -372,14 +372,14 @@ mod document_tests {
     #[test]
     fn the_registry_points_at_each_plane_and_copies_nothing() {
         let config = config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
-            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "127.0.0.1:7443"),
         ]);
 
         let registry = server_configuration_document(&config);
         assert!(
             registry.contains(
-                "\"control-plane\":{\"server_configuration\":\"http://127.0.0.1:7556/.well-known/server-configuration\"}"
+                "\"control-plane\":{\"server_configuration\":\"http://127.0.0.1:6443/.well-known/server-configuration\"}"
             ),
             "{registry}"
         );
@@ -391,7 +391,7 @@ mod document_tests {
     #[test]
     fn a_tls_plane_discovers_as_https() {
         let config = config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
             // The scheme follows the material: a plane with a certificate is https.
             (SETTING_CONTROL_HTTP_TLS_CERT, "certs/control.pem"),
             (SETTING_CONTROL_HTTP_TLS_KEY, "certs/control.key"),
@@ -399,7 +399,7 @@ mod document_tests {
 
         assert_eq!(
             plane_http_base(&config, PlaneId::Control).expect("the plane is discovered"),
-            "https://127.0.0.1:7556"
+            "https://127.0.0.1:6443"
         );
     }
 
@@ -457,13 +457,13 @@ mod advertisement_tests {
 
     #[test]
     fn a_wildcard_bind_is_recognised_and_a_real_address_is_not() {
-        for wildcard in ["0.0.0.0:7656", "[::]:7656", "0.0.0.0", "::"] {
+        for wildcard in ["0.0.0.0:7443", "[::]:7443", "0.0.0.0", "::"] {
             assert!(is_wildcard_address(wildcard), "{wildcard}");
         }
         for routable in [
-            "127.0.0.1:7656",
-            "permguard-data-plane:7656",
-            "10.0.0.4:7656",
+            "127.0.0.1:7443",
+            "permguard-data-plane:7443",
+            "10.0.0.4:7443",
         ] {
             assert!(!is_wildcard_address(routable), "{routable}");
         }
@@ -473,8 +473,8 @@ mod advertisement_tests {
     #[test]
     fn an_advertised_url_replaces_the_bind_address_everywhere() {
         let config = document_tests::config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "0.0.0.0:7556"),
-            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "0.0.0.0:6443"),
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
             (SETTING_DATA_HTTP_ADVERTISED_URL, "https://pdp.example.com/"),
         ]);
 
@@ -486,7 +486,7 @@ mod advertisement_tests {
         // And the plane that was told nothing still falls back to its bind address.
         assert_eq!(
             plane_http_base(&config, PlaneId::Control).expect("the control plane is discovered"),
-            "http://0.0.0.0:7556"
+            "http://0.0.0.0:6443"
         );
     }
 
@@ -494,8 +494,8 @@ mod advertisement_tests {
     #[test]
     fn a_wildcard_bind_without_an_advertised_url_is_reported() {
         let config = document_tests::config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "0.0.0.0:7556"),
-            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "0.0.0.0:6443"),
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
             (SETTING_DATA_HTTP_ADVERTISED_URL, "https://pdp.example.com"),
         ]);
 
@@ -507,8 +507,8 @@ mod advertisement_tests {
 
         // Told, both of them: nothing to report.
         let told = document_tests::config_with(&[
-            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
-            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7656"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+            (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
             (SETTING_DATA_HTTP_ADVERTISED_URL, "https://pdp.example.com"),
         ]);
         assert!(unroutable_planes(&told).is_empty());

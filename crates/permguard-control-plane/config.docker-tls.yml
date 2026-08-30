@@ -35,7 +35,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 0.0.0.0:7558
+  addr: 0.0.0.0:5443
   tls:
     cert: tls/server.pem
     key: tls/server.key
@@ -44,13 +44,13 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key
     grpc:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key

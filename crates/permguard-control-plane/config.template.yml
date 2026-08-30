@@ -23,7 +23,7 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       # tls:
       #   enabled: false
       #   cert: tls/http-server.pem
@@ -36,7 +36,7 @@ controlPlane:
       #   min_version: "1.3"
     grpc:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       # tls:
       #   enabled: false
       #   cert: tls/grpc-server.pem
@@ -129,8 +129,9 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
+# Server Host operations surface: process discovery, health, readiness, version, and metrics.
 telemetry:
-  addr: 0.0.0.0:7558
+  addr: 0.0.0.0:5443
 
 # What one surface — and one client — may spend. Every value has a bounded default; this block exists
 # to move them, not to enable them.

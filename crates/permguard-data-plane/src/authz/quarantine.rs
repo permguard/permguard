@@ -48,7 +48,10 @@ const OVERRUNS_TO_OPEN: u32 = 3;
 const COOLDOWN: Duration = Duration::from_secs(30);
 
 /// What a profile is allowed to do right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Not `Copy`, and deliberately: [`Admits::Probe`] carries a reservation that has to be given back
+/// if the probe never runs, and a type that could be copied could not own that.
+#[derive(Debug)]
 pub enum Admits {
     /// Evaluate normally.
     Yes,
@@ -60,7 +63,52 @@ pub enum Admits {
         retry_in: Duration,
     },
     /// The one request after a cooldown, whose outcome decides whether the breaker closes.
-    Probe,
+    ///
+    /// Carries the reservation. Hold it until the evaluation actually starts, then hand it over
+    /// with [`ProbeLease::started`]; drop it and the reservation goes back.
+    Probe(ProbeLease),
+}
+
+/// The right to be the one request let through a cooldown.
+///
+/// # Why a lease rather than a flag
+///
+/// Reserving the probe and starting it are not the same instant. Between them the request still has
+/// to take a blocking permit, and that can be refused — at which point nothing evaluated, no
+/// watchdog exists, and nothing will ever record an outcome. A bare `probing` flag set at
+/// reservation time is then set for ever: every later request is told a probe is already out, the
+/// cooldown never produces another one, and the profile stays quarantined until the process
+/// restarts. That is a breaker that has stopped being a breaker.
+///
+/// So the reservation is owned. Every path that fails to start the probe — at capacity, an error
+/// before the work is handed over, a cancelled request, an unwind — drops this, and the drop gives
+/// the reservation back. Only [`started`](Self::started) hands it to the watchdog, which is the
+/// one thing that guarantees an outcome will be recorded.
+#[must_use = "dropping the lease gives the probe reservation back, which is only right if the probe never ran"]
+#[derive(Debug)]
+pub struct ProbeLease {
+    quarantine: Arc<Quarantine>,
+    key: String,
+    /// Set once the evaluation is under way and the watchdog owns the outcome.
+    handed_over: bool,
+}
+
+impl ProbeLease {
+    /// The evaluation has begun; from here the watchdog will record how it ended.
+    ///
+    /// Call this only once the work is actually running — after the blocking permit is held — so
+    /// that a refusal before that point still returns the reservation.
+    pub fn started(mut self) {
+        self.handed_over = true;
+    }
+}
+
+impl Drop for ProbeLease {
+    fn drop(&mut self) {
+        if !self.handed_over {
+            self.quarantine.release_probe(&self.key);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -164,8 +212,12 @@ impl Quarantine {
         }
     }
 
-    /// What `key` may do now, and marks a probe as taken so only one request is let through.
-    pub fn admits(&self, key: &str) -> Admits {
+    /// What `key` may do now, and reserves the probe so only one request is let through.
+    ///
+    /// The reservation comes back inside [`Admits::Probe`]. Whoever receives it owns it: hand it to
+    /// the watchdog with [`ProbeLease::started`] once the evaluation is under way, or drop it and
+    /// the next request may probe instead.
+    pub fn admits(self: &Arc<Self>, key: &str) -> Admits {
         let Ok(mut held) = self.held.lock() else {
             // A poisoned breaker cannot say a profile is healthy, and refusing every decision over
             // a poisoned mutex would be worse than the thing it guards. It stops guarding.
@@ -194,7 +246,25 @@ impl Quarantine {
         }
         state.probing = true;
 
-        Admits::Probe
+        Admits::Probe(ProbeLease {
+            quarantine: Arc::clone(self),
+            key: key.to_owned(),
+            handed_over: false,
+        })
+    }
+
+    /// Gives a reservation back, because the probe it was taken for never ran.
+    ///
+    /// Only clears the flag: the breaker stays open and the cooldown keeps whatever position it had
+    /// reached, because nothing was learned. A probe that did not evaluate is not evidence that the
+    /// profile recovered, and treating it as such would close a breaker on no observation at all.
+    fn release_probe(&self, key: &str) {
+        let Ok(mut held) = self.held.lock() else {
+            return;
+        };
+        if let Some(state) = held.get_mut(key) {
+            state.probing = false;
+        }
     }
 
     /// Records that evaluating `key` finished inside its deadline.
@@ -251,18 +321,36 @@ mod tests {
 
     const KEY: &str = "acme/agent-governance/session-access";
 
+    /// Opens the breaker on `key`, the way three overruns in a row would.
+    fn opened(held: &Arc<Quarantine>) {
+        assert!(!held.record_overrun(KEY, 1));
+        assert!(!held.record_overrun(KEY, 2));
+        assert!(held.record_overrun(KEY, 3), "the third opens it");
+    }
+
+    /// Moves the cooldown into the past, so a probe is due without a test waiting thirty seconds.
+    fn cooldown_elapsed(held: &Arc<Quarantine>) {
+        let mut state = held.held.lock().expect("the breaker is writable");
+        let state = state.get_mut(KEY).expect("the breaker knows this profile");
+        state.opened_at = Some(
+            Instant::now()
+                .checked_sub(COOLDOWN + Duration::from_secs(1))
+                .expect("this machine has been up longer than one cooldown"),
+        );
+    }
+
     /// One overrun is not a verdict.
     #[test]
     fn a_single_overrun_does_not_take_a_profile_out_of_service() {
-        let held = Quarantine::new();
+        let held = Arc::new(Quarantine::new());
         assert!(!held.record_overrun(KEY, 1));
-        assert_eq!(held.admits(KEY), Admits::Yes);
+        assert!(matches!(held.admits(KEY), Admits::Yes));
     }
 
     /// Enough of them in a row is.
     #[test]
     fn repeated_overruns_open_the_breaker_and_it_refuses() {
-        let held = Quarantine::new();
+        let held = Arc::new(Quarantine::new());
         assert!(!held.record_overrun(KEY, 1));
         assert!(!held.record_overrun(KEY, 2));
         assert!(
@@ -283,16 +371,15 @@ mod tests {
     /// Recovery clears it, so a slow patch does not leave a profile out for ever.
     #[test]
     fn an_evaluation_in_time_closes_the_breaker() {
-        let held = Quarantine::new();
+        let held = Arc::new(Quarantine::new());
         for token in 1..=3 {
             held.record_overrun(KEY, token);
         }
         assert!(matches!(held.admits(KEY), Admits::No { .. }));
 
         held.record_in_time(KEY, 4);
-        assert_eq!(
-            held.admits(KEY),
-            Admits::Yes,
+        assert!(
+            matches!(held.admits(KEY), Admits::Yes),
             "an evaluation that finished in time is the evidence the breaker was waiting for"
         );
     }
@@ -300,14 +387,14 @@ mod tests {
     /// A profile that never overran is never guarded.
     #[test]
     fn an_untroubled_profile_is_admitted_without_bookkeeping() {
-        let held = Quarantine::new();
-        assert_eq!(held.admits("something-else"), Admits::Yes);
+        let held = Arc::new(Quarantine::new());
+        assert!(matches!(held.admits("something-else"), Admits::Yes));
     }
 
     /// An old provider returning must not erase a newer timeout observation.
     #[test]
     fn a_stale_completion_does_not_close_newer_overruns() {
-        let held = Quarantine::new();
+        let held = Arc::new(Quarantine::new());
         held.record_overrun(KEY, 2);
         held.record_in_time(KEY, 1);
 
@@ -330,5 +417,89 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(20)).await;
         assert!(matches!(held.admits(KEY), Admits::No { overruns: 3, .. }));
+    }
+
+    /// A reserved probe that never runs gives the reservation back.
+    ///
+    /// # Why this is the test that matters
+    ///
+    /// Reserving the probe and running it are separated by taking a blocking permit, and that can
+    /// be refused. When it is, nothing evaluates, no watchdog is created, and nothing will ever
+    /// record an outcome — so a reservation that is not returned is held for the life of the
+    /// process. Every later request is then told a probe is already out, the cooldown never yields
+    /// another one, and the profile is quarantined until somebody restarts the plane. The breaker
+    /// would have become the outage it exists to prevent.
+    #[test]
+    fn a_probe_that_never_ran_gives_its_reservation_back() {
+        let held = Arc::new(Quarantine::new());
+        opened(&held);
+        assert!(
+            matches!(held.admits(KEY), Admits::No { .. }),
+            "an open breaker refuses before its cooldown"
+        );
+
+        cooldown_elapsed(&held);
+        let lease = match held.admits(KEY) {
+            Admits::Probe(lease) => lease,
+            other => panic!("the cooldown lets one request through: {other:?}"),
+        };
+        assert!(
+            matches!(held.admits(KEY), Admits::No { .. }),
+            "while a probe is out, nobody else joins it"
+        );
+
+        // What `Blocking::run` does when it refuses at capacity: the closure holding the lease is
+        // dropped without ever being called.
+        drop(lease);
+
+        assert!(
+            matches!(held.admits(KEY), Admits::Probe(_)),
+            "the reservation came back, so the cooldown can produce another probe"
+        );
+    }
+
+    /// A probe that started belongs to the watchdog, and still excludes everybody else.
+    #[test]
+    fn a_probe_that_started_is_not_given_back() {
+        let held = Arc::new(Quarantine::new());
+        opened(&held);
+        cooldown_elapsed(&held);
+
+        let lease = match held.admits(KEY) {
+            Admits::Probe(lease) => lease,
+            other => panic!("the cooldown lets one request through: {other:?}"),
+        };
+        lease.started();
+
+        assert!(
+            matches!(held.admits(KEY), Admits::No { .. }),
+            "a probe that is running is the one request allowed: its outcome decides, and until it \
+             arrives nothing else may spend capacity on this profile"
+        );
+    }
+
+    /// Returning a reservation is not evidence of recovery.
+    #[test]
+    fn a_returned_reservation_does_not_close_the_breaker() {
+        let held = Arc::new(Quarantine::new());
+        opened(&held);
+        cooldown_elapsed(&held);
+
+        drop(match held.admits(KEY) {
+            Admits::Probe(lease) => lease,
+            other => panic!("a probe is due: {other:?}"),
+        });
+
+        let state = held.held.lock().expect("the breaker is readable");
+        let state = &state[KEY];
+        assert!(
+            state.opened_at.is_some(),
+            "nothing evaluated, so nothing was learned: the breaker stays open"
+        );
+        assert_eq!(
+            state.overruns.len(),
+            OVERRUNS_TO_OPEN as usize,
+            "and the overruns that opened it are untouched"
+        );
     }
 }

@@ -247,7 +247,7 @@ fn provision(root: &Path, manifest: &Manifest) -> Mirror {
         zone_name: ZONE.to_owned(),
         ledger_id: format!("{LEDGER}-id"),
         ledger_name: LEDGER.to_owned(),
-        server: "http://127.0.0.1:7556".to_owned(),
+        server: "http://127.0.0.1:6443".to_owned(),
     };
     permguard_data_plane::authz::store::record(&path, &identity).expect("the identity is recorded");
 
@@ -265,6 +265,11 @@ struct Plane {
 }
 
 fn plane(tag: &str) -> Plane {
+    plane_with(tag, blocking())
+}
+
+/// The same plane, against a blocking budget the test chooses.
+fn plane_with(tag: &str, blocking: Blocking) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
@@ -297,7 +302,7 @@ fn plane(tag: &str) -> Plane {
         submitter: Arc::new(Submitter::new(
             decider,
             Arc::clone(&streams),
-            blocking(),
+            blocking,
             Metrics::none(),
         )),
         events,
@@ -484,16 +489,25 @@ async fn concurrent_submissions_are_applied_in_the_order_the_journal_assigned() 
 
     // One history — the pinned schema keys it by caller — so every one of these is a turn in the
     // same queue rather than independent work that never had to be ordered.
+    // One instant for all of them, and the identifiers made distinct on their own.
+    //
+    // They used to carry rising instants, which is a shape this plane cannot honour concurrently:
+    // the journal assigns sequences in arrival order, so a submission whose instant is older than
+    // one already recorded is refused rather than applied behind it — see
+    // `an_occurrence_behind_what_the_history_holds_is_refused`. Racing rising instants therefore
+    // made the outcome depend on the scheduler. What this test is about is the sequencer, and the
+    // instants were only ever a convenient way to tell twenty-four occurrences apart.
     let mut inflight = Vec::with_capacity(SUBMISSIONS);
     for nth in 0..SUBMISSIONS {
         let router = router.clone();
-        let body = submission(
-            i64::try_from(nth).expect("the index is small"),
+        let mut body = submission(
+            0,
             "Drupe::Action::Login",
             "response",
             "alice",
             json!({"user": "alice", "server": format!("s{nth}")}),
         );
+        body["event"]["data"]["event_id"] = json!(format!("login-response-{nth}"));
         inflight.push(tokio::spawn(async move { post(&router, body).await }));
     }
 
@@ -1075,7 +1089,7 @@ mod shipped_example {
             zone_name: ZONE.to_owned(),
             ledger_id: format!("{LEDGER}-id"),
             ledger_name: LEDGER.to_owned(),
-            server: "http://127.0.0.1:7556".to_owned(),
+            server: "http://127.0.0.1:6443".to_owned(),
         };
         permguard_data_plane::authz::store::record(&path, &identity).expect("recorded");
 
@@ -1625,5 +1639,189 @@ async fn a_ledger_named_two_ways_keeps_one_history() {
     assert!(
         !plane.events.join(ZONE).join(LEDGER).exists(),
         "and nothing was written under the display names"
+    );
+}
+
+/// A submission is bounded by the shared blocking pool, and the ceiling refuses rather than queues.
+///
+/// # What this is really asserting
+///
+/// Everything a submission does synchronously — validating the occurrence, appending it, taking its
+/// turn, rebuilding the history and evaluating it — used to run on the runtime worker that carried
+/// the request. Only the append had been moved to the pool. That meant an evaluation which stopped
+/// returning, and upstream's providers are synchronous and cannot be interrupted, blocked a thread
+/// the whole process shares: outside the deployment's configured bound, invisible to
+/// `permguard_blocking_*`, and with health checks and unrelated ledgers queued behind it.
+///
+/// The permit here is taken by something that is *not* a submission, which is the point: the budget
+/// is one budget. If the submission path had its own, or none, this test would pass with the bug in
+/// place.
+///
+/// It also shows the runtime is still turning while the permit is held — the refusal is served, not
+/// stalled — and that the capacity comes back when the work ends.
+#[tokio::test]
+async fn a_submission_spends_a_permit_of_the_shared_pool_and_the_ceiling_refuses() {
+    let pool = Blocking::new(1, Metrics::none());
+    let plane = plane_with("temporal-pool-bound", pool.clone());
+    let router = surface(&plane);
+
+    // Hold the only permit from outside the submission path. `recv` returns when the test drops the
+    // sender, so nothing here depends on a sleep being long enough.
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    let occupying = {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            pool.run(&[], move || {
+                let _ = wait.recv();
+            })
+            .await
+        })
+    };
+    while pool.in_flight() == 0 {
+        tokio::task::yield_now().await;
+    }
+
+    let (status, refused) = post(
+        &router,
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the budget is spent, so the submission is refused: {refused}"
+    );
+    assert_eq!(
+        refused["code"], "event_submission_at_capacity",
+        "and refused for the budget, not for anything about the occurrence: {refused}"
+    );
+
+    drop(release);
+    occupying
+        .await
+        .expect("the occupying task finishes")
+        .expect("it held a permit rather than being refused");
+    while pool.in_flight() > 0 {
+        tokio::task::yield_now().await;
+    }
+
+    let (status, body) = post(
+        &router,
+        submission(
+            1,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the capacity came back with the work that held it: {body}"
+    );
+}
+
+/// An occurrence older than one this history already holds is refused, not applied behind it.
+///
+/// # What this is really asserting
+///
+/// `allowed_lateness` admits an event whose instant is behind the clock, and nothing used to
+/// compare that instant with what the engine had already observed. So an occurrence at `t1`
+/// submitted after one at `t2` was *observed* after it, and a temporal engine is fed in timestamp
+/// order by contract — `Temporal::rebuild` says a late arrival is rebuilt, never inserted. Applied
+/// out of order, `previous`, `since` and every window operator answer from a sequence that never
+/// happened, and the ledger's own journal disagrees with the engine that decided from it.
+///
+/// The refusal happens before the append, so a rejected submission leaves no record, no sequence
+/// and no hole: the assertion on the journal length is the half that proves it.
+#[tokio::test]
+async fn an_occurrence_behind_what_the_history_holds_is_refused() {
+    let plane = plane("temporal-out-of-order");
+    let router = surface(&plane);
+
+    // `t2` first: the login response the history will have moved past.
+    let (status, body) = post(
+        &router,
+        submission(
+            4000,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s1"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // `t1`, which happened earlier and arrived later.
+    let (status, refused) = post(
+        &router,
+        submission(
+            100,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": "s0"}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "an occurrence behind the history is a conflict with what is already there: {refused}"
+    );
+    assert_eq!(
+        refused["code"], "event_out_of_order",
+        "and it is refused for its order, not for its content: {refused}"
+    );
+
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("the journal reads")
+            .len(),
+        1,
+        "the refusal happens before the append, so nothing was written and there is no hole"
+    );
+}
+
+/// Two occurrences in timestamp order are both accepted, so the guard is not a blanket refusal.
+#[tokio::test]
+async fn occurrences_in_order_are_still_accepted() {
+    let plane = plane("temporal-in-order");
+    let router = surface(&plane);
+
+    for at in [100i64, 4000] {
+        let (status, body) = post(
+            &router,
+            submission(
+                at,
+                "Drupe::Action::Login",
+                "response",
+                "alice",
+                json!({"user": "alice", "server": "s1"}),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "@{at}: {body}");
+    }
+
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("the journal reads")
+            .len(),
+        2,
+        "order is what is refused, not lateness itself"
     );
 }

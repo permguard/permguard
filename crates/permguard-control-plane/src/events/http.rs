@@ -73,6 +73,11 @@ pub struct EventFacade {
     pub producer_files: Vec<ProducerFile>,
     /// The secret read offsets are signed with.
     pub cursor_key: CursorKey,
+    /// The catalog, for turning the scope a reader named into the one records are keyed by.
+    ///
+    /// Optional because the contract makes it optional: a build that composes no catalog has no
+    /// names to resolve, and a reader there addresses records by identity or not at all.
+    pub catalog: Option<Arc<dyn permguard_core::catalog::Catalog>>,
     /// How much a refusal says about the inside.
     pub disclosure: Disclosure,
     /// What to count.
@@ -509,7 +514,13 @@ async fn record(
             ),
         );
     };
-    let scope = Scope::Tenant { zone, ledger };
+    // Resolved like every other read, and like the gRPC `get` beside it. Without this the two
+    // transports answered the same request differently: gRPC found the record by name, REST looked
+    // for a directory named after it and reported the occurrence missing.
+    let scope = match read::canonical(facade.catalog.as_ref(), Scope::Tenant { zone, ledger }) {
+        Ok(scope) => scope,
+        Err(error) => return read_refusal(&facade, error),
+    };
 
     let found = {
         let (facade, scope) = (facade.clone(), scope.clone());
@@ -535,6 +546,10 @@ async fn record(
 }
 
 async fn serve(facade: EventFacade, scope: Scope, asked: Asked, kind: &'static str) -> Response {
+    let scope = match read::canonical(facade.catalog.as_ref(), scope) {
+        Ok(scope) => scope,
+        Err(error) => return read_refusal(&facade, error),
+    };
     let window = asked.window();
     let filters = asked.filters.clone();
     let page = {
@@ -575,6 +590,12 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
                 "offset_invalid",
                 refused.to_string(),
             ),
+        ),
+        // A scope nobody holds is a 404, never an empty page: the two are the same shape to a
+        // script, and only one of them means the ledger is empty.
+        read::ReadError::Unknown(detail) => refuse(
+            facade,
+            ApiError::new(ErrorClass::NotFound, "ledger_not_held", detail),
         ),
         read::ReadError::Unavailable(detail) => refuse(
             facade,

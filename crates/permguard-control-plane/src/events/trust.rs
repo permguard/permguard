@@ -213,6 +213,8 @@ mod tests {
     fn facade(files: Vec<ProducerFile>) -> EventFacade {
         let root = scratch("store");
         EventFacade {
+            // This test is about producer trust, not about scope: it addresses records by identity.
+            catalog: None,
             store: Arc::new(crate::events::EventStore::open(&root).expect("the store opens")),
             producers: Arc::new(std::sync::RwLock::new(Vec::new())),
             producer_files: files,

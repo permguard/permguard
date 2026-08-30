@@ -99,7 +99,7 @@ pub const SETTINGS: &[Setting] = &[
         key: "control-plane.endpoint",
         description: "Where the control plane is reached",
         env: "PERMGUARD_CONTROL_PLANE_ENDPOINT",
-        default: "http://127.0.0.1:7556",
+        default: "http://127.0.0.1:6443",
         read: |file| file.control_plane.endpoint.as_deref(),
         write: |file, value| file.control_plane.endpoint = value,
     },
@@ -107,7 +107,7 @@ pub const SETTINGS: &[Setting] = &[
         key: "data-plane.endpoint",
         description: "Where the data plane is reached",
         env: "PERMGUARD_DATA_PLANE_ENDPOINT",
-        default: "http://127.0.0.1:7656",
+        default: "http://127.0.0.1:7443",
         read: |file| file.data_plane.endpoint.as_deref(),
         write: |file, value| file.data_plane.endpoint = value,
     },
@@ -395,35 +395,35 @@ mod tests {
     fn test_a_setting_nothing_states_is_its_default() {
         let resolved = resolve(control(), &ConfigFile::default(), None, &nothing);
 
-        assert_eq!(resolved.value, "http://127.0.0.1:7556");
+        assert_eq!(resolved.value, "http://127.0.0.1:6443");
         assert_eq!(resolved.origin, Origin::Default);
     }
 
     #[test]
     fn test_each_layer_overrides_the_one_below_it() {
         let mut file = ConfigFile::default();
-        file.set(control(), Some("http://from-file:7556".to_owned()));
+        file.set(control(), Some("http://from-file:6443".to_owned()));
 
         let from_file = resolve(control(), &file, None, &nothing);
 
-        assert_eq!(from_file.value, "http://from-file:7556");
+        assert_eq!(from_file.value, "http://from-file:6443");
         assert_eq!(from_file.origin, Origin::File);
 
         let environment =
-            |name: &str| (name == control().env).then(|| "http://from-environment:7556".to_owned());
+            |name: &str| (name == control().env).then(|| "http://from-environment:6443".to_owned());
         let from_environment = resolve(control(), &file, None, &environment);
 
-        assert_eq!(from_environment.value, "http://from-environment:7556");
+        assert_eq!(from_environment.value, "http://from-environment:6443");
         assert_eq!(from_environment.origin, Origin::Environment);
 
         let from_flag = resolve(
             control(),
             &file,
-            Some("http://from-flag:7556"),
+            Some("http://from-flag:6443"),
             &environment,
         );
 
-        assert_eq!(from_flag.value, "http://from-flag:7556");
+        assert_eq!(from_flag.value, "http://from-flag:6443");
         assert_eq!(from_flag.origin, Origin::Flag);
     }
 
@@ -443,12 +443,12 @@ mod tests {
 
         assert!(file.is_empty());
 
-        file.set(control(), Some("http://one:7556".to_owned()));
+        file.set(control(), Some("http://one:6443".to_owned()));
 
         let written = serde_norway::to_string(&file).expect("a file serialises");
 
         assert!(written.contains("controlPlane"), "{written}");
-        assert!(written.contains("http://one:7556"), "{written}");
+        assert!(written.contains("http://one:6443"), "{written}");
         // The setting nobody stated is absent, not pinned to today's default.
         assert!(!written.contains("dataPlane"), "{written}");
 

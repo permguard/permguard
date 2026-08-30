@@ -122,13 +122,13 @@ fn config_set_get_show_reset_round_trip() {
             "config",
             "set",
             "control-plane.endpoint",
-            "http://10.0.0.9:7556",
+            "http://10.0.0.9:6443",
         ],
     );
     assert!(set.status.success(), "{}", stderr(&set));
 
     let get = run(&dir, &["config", "get", "control-plane.endpoint"]);
-    assert_eq!(stdout(&get).trim(), "http://10.0.0.9:7556");
+    assert_eq!(stdout(&get).trim(), "http://10.0.0.9:6443");
 
     let show = run(&dir, &["-o", "json", "config", "show"]);
     assert!(stdout(&show).contains("10.0.0.9"), "{}", stdout(&show));
@@ -136,7 +136,7 @@ fn config_set_get_show_reset_round_trip() {
     let reset = run(&dir, &["config", "reset", "control-plane.endpoint"]);
     assert!(reset.status.success(), "{}", stderr(&reset));
     let get = run(&dir, &["config", "get", "control-plane.endpoint"]);
-    assert!(stdout(&get).contains("127.0.0.1:7556"), "{}", stdout(&get));
+    assert!(stdout(&get).contains("127.0.0.1:6443"), "{}", stdout(&get));
 }
 
 #[test]
@@ -369,7 +369,7 @@ fn skip_verify_over_grpcs_is_refused_with_the_alternative() {
 #[test]
 fn a_malformed_endpoint_names_whats_wrong() {
     let dir = scratch("bad-endpoint");
-    let output = run(&dir, &["--endpoint", "127.0.0.1:7556", "zones", "list"]);
+    let output = run(&dir, &["--endpoint", "127.0.0.1:6443", "zones", "list"]);
 
     assert_eq!(output.status.code(), Some(64));
     assert!(stderr(&output).contains("http://"), "{}", stderr(&output));

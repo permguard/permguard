@@ -260,7 +260,7 @@ fn test_validate_rejects_a_config_with_no_public_address() {
 fn test_validate_accepts_a_declared_plane_address() {
     let config = declaring(
         &[CONTROL_HTTP_ADDR],
-        &[(CONTROL_HTTP_ADDR, "127.0.0.1:7556")],
+        &[(CONTROL_HTTP_ADDR, "127.0.0.1:6443")],
         &[],
         &[],
     );
@@ -274,7 +274,7 @@ fn test_validate_rejects_a_disabled_declared_plane_address() {
         &[CONTROL_HTTP_ENABLED, CONTROL_HTTP_ADDR],
         &[
             (CONTROL_HTTP_ENABLED, "false"),
-            (CONTROL_HTTP_ADDR, "127.0.0.1:7556"),
+            (CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
         ],
         &[],
         &[],
@@ -401,7 +401,7 @@ fn test_an_issuer_that_offers_no_protection_is_refused() {
     // The issuer is a public identity clients fetch keys from — RFC 8414 requires https — so a
     // plaintext one is refused outside development, and loopback is not an exception: nobody
     // advertises a loopback issuer to real clients.
-    for plaintext in ["http://login.example.com", "http://localhost:7556"] {
+    for plaintext in ["http://login.example.com", "http://localhost:6443"] {
         let refused = config(
             &[
                 (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
@@ -421,7 +421,7 @@ fn test_an_issuer_that_offers_no_protection_is_refused() {
     let local = config(
         &[
             (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
-            (SETTING_ISSUER, "http://localhost:7556"),
+            (SETTING_ISSUER, "http://localhost:6443"),
             (SETTING_DEVELOPMENT_MODE, "true"),
         ],
         &[],
@@ -1277,7 +1277,7 @@ fn test_an_allow_list_without_a_client_authority_is_refused() {
             (SETTING_PUBLIC_TLS_CERT, "tls/server.pem"),
             (SETTING_PUBLIC_TLS_KEY, "tls/server.key"),
             (SETTING_PUBLIC_TLS_ALLOW, "cn:the-billing-service"),
-            (SETTING_PUBLIC_HTTP_ADDR, "127.0.0.1:7556"),
+            (SETTING_PUBLIC_HTTP_ADDR, "127.0.0.1:6443"),
         ],
         &[],
         &[],

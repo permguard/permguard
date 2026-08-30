@@ -346,10 +346,10 @@ mod tests {
     #[test]
     fn test_an_address_in_use_says_which_one() {
         let error = ServiceError::AddressInUse {
-            address: "0.0.0.0:7556".to_owned(),
+            address: "0.0.0.0:6443".to_owned(),
         };
 
-        assert!(format!("{error}").contains("0.0.0.0:7556"));
+        assert!(format!("{error}").contains("0.0.0.0:6443"));
     }
 
     #[test]

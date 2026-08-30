@@ -8,7 +8,7 @@
 // `http_req_tls_handshaking`), so this run answers two questions at once: what a request costs on a
 // warm connection, and what the first request on a cold one pays.
 //
-//   PERMGUARD_URL=https://127.0.0.1:7556 \
+//   PERMGUARD_URL=https://127.0.0.1:6443 \
 //   BENCH_CA=.volume/control-plane-mtls/tls/ca.pem \
 //   BENCH_CERT=.volume/control-plane-mtls/tls/client.pem \
 //   BENCH_KEY=.volume/control-plane-mtls/tls/client.key \

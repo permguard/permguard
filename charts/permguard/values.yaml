@@ -35,11 +35,12 @@ controlPlane:
   # cluster discover it. Availability comes from a PodDisruptionBudget and a fast restart until the
   # catalog lives in something that arbitrates.
   replicaCount: 1
-  # The public surface, and the telemetry surface which must never be part of it.
+  # The plane's public surface and the Server Host operations surface. The latter serves process
+  # discovery, health, readiness and metrics and must never be part of the public API.
   ports:
-    http: 7556
-    grpc: 7556
-    telemetry: 7558
+    http: 6443
+    grpc: 6443
+    telemetry: 5443
   service:
     type: ClusterIP
     annotations: {}
@@ -154,9 +155,10 @@ dataPlane:
   # not.
   replicaCount: 3
   ports:
-    http: 7656
-    grpc: 7656
-    telemetry: 7658
+    http: 7443
+    grpc: 7443
+    # Pods have independent network namespaces, so every Server Host uses the canonical port.
+    telemetry: 5443
   service:
     type: ClusterIP
     annotations: {}
@@ -197,7 +199,7 @@ dataPlane:
   #       parallelism: "4"
   #       jitter: "0.1"          # so replicas do not all wake on the same second
   #       servers:
-  #         - url: "https://permguard-control-plane:7556"
+  #         - url: "https://permguard-control-plane:6443"
   #           zones: ["acme-.*"]                   # absent: every zone the server lists
   #           ledgers: ["main-ledger"]             # absent: every ledger of a matching zone
   #           tls:
@@ -214,7 +216,7 @@ dataPlane:
   #         enabled: "true"
   #         pdp_id: permguard-data-plane-0
   #         server:
-  #           url: "grpcs://permguard-control-plane:7557"
+  #           url: "grpcs://permguard-control-plane:6443"
   #           tls:
   #             ca_file: tls/control-plane-ca.pem
   #             cert: tls/decision-log-client.pem   # its own identity, not the mirror's
@@ -241,9 +243,9 @@ allInOne:
   repository: all-in-one
   replicaCount: 1
   ports:
-    controlHttp: 7556
-    dataHttp: 7656
-    telemetry: 7558
+    controlHttp: 6443
+    dataHttp: 7443
+    telemetry: 5443
   service:
     type: ClusterIP
     annotations: {}

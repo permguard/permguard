@@ -34,7 +34,7 @@ USER 65532:65532
 VOLUME ["/var/lib/permguard"]
 ENV PERMGUARD_WORKING_DIR=/var/lib/permguard
 
-EXPOSE 7556 7558
+EXPOSE 5443 6443
 
 # The configuration file is an argument, not a flag, and it is required. Naming a default here says
 # where to mount one — `-v ./config.yml:/etc/permguard/config.yml` — instead of answering a bare

@@ -30,16 +30,16 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 127.0.0.1:7558
+  addr: 127.0.0.1:5443
 
 controlPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
 
   # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
   # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.

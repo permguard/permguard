@@ -274,7 +274,7 @@ mod tests {
             "subject": {"type": "user", "id": "alice"}
         });
         let workspace = target::Target {
-            endpoint: "http://127.0.0.1:7656".to_owned(),
+            endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: Some("acme".to_owned()),
             ledger: Some("main-ledger".to_owned()),
             origin: "workspace",
@@ -287,7 +287,7 @@ mod tests {
 
         let mut untouched = serde_json::json!({"zone": "from-file", "ledger": "from-file"});
         let ignored = target::Target {
-            endpoint: "http://127.0.0.1:7656".to_owned(),
+            endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: None,
             ledger: None,
             origin: "payload",
@@ -302,7 +302,7 @@ mod tests {
     fn a_request_that_names_no_store_anywhere_is_refused_before_the_round_trip() {
         let mut payload = serde_json::json!({"subject": {"type": "user", "id": "alice"}});
         let nothing = target::Target {
-            endpoint: "http://127.0.0.1:7656".to_owned(),
+            endpoint: "http://127.0.0.1:7443".to_owned(),
             zone: None,
             ledger: None,
             origin: "payload",

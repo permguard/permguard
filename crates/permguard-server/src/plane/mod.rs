@@ -544,8 +544,9 @@ impl PlaneServer {
         //
         // `admin.addr`, `admin.tls` and `admin.allow` are read and validated — mutual TLS
         // demanded, the allow list required outside development — and then no listener binds them.
-        // The planes registered here serve one public surface and one telemetry surface, and the
-        // catalog's mutations, the policy push and the audit reads are answered on the public one.
+        // The planes registered here serve one public surface and one Server Host operations
+        // surface. The catalog's mutations, policy push and audit reads are answered on the public
+        // surface.
         //
         // The danger is not the missing listener. It is an operator reading a configuration that
         // names an admin address behind mutual TLS and an allow list, concluding that

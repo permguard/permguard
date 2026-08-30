@@ -30,16 +30,16 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 127.0.0.1:7658
+  addr: 127.0.0.1:5443
 
 dataPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
 
   # The lab's data plane mirrors the lab's control plane. Everything it lists: the URL alone means
   # every zone and every ledger.
@@ -50,7 +50,7 @@ dataPlane:
     parallelism: "4"
     servers:
       # The control plane started with permguard-control-plane's config.lab.yml.
-      - url: "http://127.0.0.1:7556"
+      - url: "http://127.0.0.1:6443"
 
   # The decision path, sized for a laptop: a handful of ledgers, a small heap.
   decisions:
@@ -71,7 +71,7 @@ dataPlane:
       enabled: "true"
       pdp_id: data-plane-lab          # half of every stream identity: two replicas must never share one
       server:
-        url: "http://127.0.0.1:7556"
+        url: "http://127.0.0.1:6443"
       spool:
         directory: "data/decisions/spool"
         bytes: "64M"              # decision records only; the terminal record is reserved apart
@@ -126,7 +126,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

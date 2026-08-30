@@ -368,7 +368,7 @@ fn provision(root: &Path, name: &str) -> Manifest {
             zone_name: ZONE.to_owned(),
             ledger_id: format!("{LEDGER}-id"),
             ledger_name: LEDGER.to_owned(),
-            server: "http://127.0.0.1:7556".to_owned(),
+            server: "http://127.0.0.1:6443".to_owned(),
         },
     )
     .expect("the identity is recorded");

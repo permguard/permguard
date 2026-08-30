@@ -14,7 +14,8 @@ services:
     command:
       - /etc/permguard/config.yml
     ports:
-      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-7556}:7556"
+      - "${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}:5443:5443"
+      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-6443}:6443"
     volumes:
       - ./crates/permguard-control-plane/config.docker.yml:/etc/permguard/config.yml:ro
       - control-plane-state:/var/lib/permguard
@@ -29,7 +30,8 @@ services:
     command:
       - /etc/permguard/config.yml
     ports:
-      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7656}:7656"
+      - "${PERMGUARD_DATA_HOST_IP:-127.0.0.2}:5443:5443"
+      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7443}:7443"
     volumes:
       - ./crates/permguard-data-plane/config.docker.yml:/etc/permguard/config.yml:ro
       - data-plane-state:/var/lib/permguard
@@ -37,7 +39,7 @@ services:
   # The all-in-one IS a control plane and a data plane in one process, so its profile and the two
   # planes' profile are mutually exclusive by construction: `--profile lab` OR `--profile
   # all-in-one`, never both. Compose cannot forbid combining profiles on the command line, so the
-  # exclusion is also enforced physically — this service publishes the same 7556 and 7656 the
+  # exclusion is also enforced physically — this service publishes the same 5443, 6443 and 7443 the
   # standalone planes publish, and starting both shapes together fails at the port bind, loudly,
   # before anything serves. Use `task lab:up` / `task lab:all`, which each pick exactly one.
   all-in-one:
@@ -52,8 +54,9 @@ services:
     environment:
       PERMGUARD_RUNTIME_PLANES: ${PERMGUARD_RUNTIME_PLANES:-control,data}
     ports:
-      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-7556}:7556"
-      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7656}:7656"
+      - "${PERMGUARD_CONTROL_HOST_IP:-127.0.0.1}:5443:5443"
+      - "127.0.0.1:${PERMGUARD_CONTROL_HTTP_PORT:-6443}:6443"
+      - "127.0.0.1:${PERMGUARD_DATA_HTTP_PORT:-7443}:7443"
     volumes:
       - ./crates/permguard-all-in-one/config.docker.yml:/etc/permguard/config.yml:ro
       - all-in-one-state:/var/lib/permguard

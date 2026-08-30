@@ -35,7 +35,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 127.0.0.1:7658
+  addr: 127.0.0.1:5443
   tls:
     cert: tls/server.pem
     key: tls/server.key
@@ -44,13 +44,13 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
     grpc:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
@@ -67,7 +67,7 @@ dataPlane:
     servers:
       # The control plane started with permguard-control-plane's config.local-tls.yml. Its
       # certificate names both localhost and 127.0.0.1, so no server_name is needed here.
-      - url: "https://127.0.0.1:7556"
+      - url: "https://127.0.0.1:6443"
         tls:
           ca_file: ../control-plane-tls/tls/ca.pem
 
@@ -90,7 +90,7 @@ dataPlane:
       enabled: "true"
       pdp_id: data-plane-local-tls          # half of every stream identity: two replicas must never share one
       server:
-        url: "https://127.0.0.1:7556"
+        url: "https://127.0.0.1:6443"
         tls:
           ca_file: ../control-plane-tls/tls/ca.pem
       spool:
@@ -147,7 +147,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

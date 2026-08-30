@@ -94,19 +94,90 @@ fn ramp(t: f32) -> [u8; 3] {
     rgb
 }
 
+/// The six values a channel of the 6×6×6 cube can actually take.
+///
+/// They are not evenly spaced, and treating them as though they were is the mistake this constant
+/// exists to prevent: `round(c / 255 * 5)` picks the right *index* for an even ramp and the wrong
+/// *colour* for this one. `0x8a` lands on index 3, which is `175` — a colour thirty-seven points
+/// lighter than the one asked for, and on a light terminal that is the difference between chrome
+/// and something nobody can read.
+const CUBE: [u8; 6] = [0, 95, 135, 175, 215, 255];
+
+/// The first index of the 24-step grey ramp, whose entries are `8 + 10 * step`.
+const GREY_RAMP: u8 = 232;
+
+/// The palette entry nearest `rgb`, by squared distance.
+///
+/// Both halves of the palette are considered, because for a grey they disagree: the cube can only
+/// offer six evenly-named-but-unevenly-spaced greys, while the ramp offers twenty-four ten apart —
+/// so a grey that the cube would miss by tens the ramp usually hits exactly.
+fn nearest(rgb: [u8; 3]) -> u8 {
+    let distance = |from: [u8; 3]| -> i32 {
+        (0..3)
+            .map(|channel| {
+                let apart = i32::from(from[channel]) - i32::from(rgb[channel]);
+                apart * apart
+            })
+            .sum()
+    };
+
+    let level = |c: u8| {
+        CUBE.iter()
+            .position(|value| *value == nearest_of(&CUBE, c))
+            .unwrap_or(0)
+    };
+    let (red, green, blue) = (level(rgb[0]), level(rgb[1]), level(rgb[2]));
+    let cube = [CUBE[red], CUBE[green], CUBE[blue]];
+    let cube_index = 16 + 36 * red + 6 * green + blue;
+
+    let average = (i32::from(rgb[0]) + i32::from(rgb[1]) + i32::from(rgb[2])) / 3;
+    let step = ((average - 8) as f32 / 10.0).round().clamp(0.0, 23.0) as i32;
+    let grey = u8::try_from(8 + 10 * step).unwrap_or(u8::MAX);
+
+    match distance([grey; 3]) < distance(cube) {
+        true => GREY_RAMP.saturating_add(u8::try_from(step).unwrap_or(0)),
+        false => u8::try_from(cube_index).unwrap_or(u8::MAX),
+    }
+}
+
+/// The value of `levels` closest to `c`.
+fn nearest_of(levels: &[u8], c: u8) -> u8 {
+    levels
+        .iter()
+        .copied()
+        .min_by_key(|level| (i32::from(*level) - i32::from(c)).abs())
+        .unwrap_or(0)
+}
+
 /// The escape that sets `rgb` as the foreground, at the best fidelity available.
 fn foreground(depth: Depth, rgb: [u8; 3]) -> String {
     match depth {
         Depth::True => format!("\x1b[38;2;{};{};{}m", rgb[0], rgb[1], rgb[2]),
-        // The 6×6×6 cube: each channel snapped to the nearest of its six levels.
-        Depth::Ansi256 => {
-            let level = |c: u8| u16::from((f32::from(c) / 255.0 * 5.0).round() as u8);
-            let index = 16 + 36 * level(rgb[0]) + 6 * level(rgb[1]) + level(rgb[2]);
-            format!("\x1b[38;5;{index}m")
-        }
+        Depth::Ansi256 => format!("\x1b[38;5;{}m", nearest(rgb)),
         // Bright magenta is the closest the sixteen colors get to the brand.
         _ => "\x1b[95m".to_owned(),
     }
+}
+
+/// The colour a terminal actually shows for a 256-palette index.
+///
+/// The inverse of [`nearest`], and it exists for the tests: asserting the colour that was *asked*
+/// for says nothing about what a reader sees, which is exactly how the uneven cube went unnoticed.
+#[cfg(test)]
+fn rendered(index: u8) -> [u8; 3] {
+    if index >= GREY_RAMP {
+        let value = 8 + 10 * u16::from(index - GREY_RAMP);
+
+        return [u8::try_from(value).unwrap_or(u8::MAX); 3];
+    }
+
+    let index = usize::from(index.saturating_sub(16));
+
+    [
+        CUBE[(index / 36) % 6],
+        CUBE[(index / 6) % 6],
+        CUBE[index % 6],
+    ]
 }
 
 fn paint_with(depth: Depth, code: &str, text: &str) -> String {
@@ -248,6 +319,7 @@ pub fn ok(text: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -269,29 +341,104 @@ mod tests {
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
     }
 
-    /// Chrome stays readable on a dark terminal and on a light one.
-    ///
-    /// # Why a contrast assertion rather than an escape assertion
-    ///
-    /// Pinning the escape sequence would pin the mistake as easily as the fix: SGR 90 was a
-    /// perfectly stable escape, and it was unreadable. What has to hold is the property — that the
-    /// grey stays clear of both ends — so that is what is asserted, and a future colour is free to
-    /// move as long as it stays legible.
-    #[test]
-    fn chrome_keeps_its_distance_from_both_a_dark_and_a_light_background() {
-        const NEAR_BLACK: [u8; 3] = [0x0f, 0x1b, 0x2d];
-        const WHITE: [u8; 3] = [0xff, 0xff, 0xff];
+    const NEAR_BLACK: [u8; 3] = [0x0f, 0x1b, 0x2d];
+    const WHITE: [u8; 3] = [0xff, 0xff, 0xff];
 
-        assert!(
-            contrast(CHROME, NEAR_BLACK) >= 4.5,
-            "chrome on a dark terminal is {:.2}:1, which is what `bright black` already failed",
-            contrast(CHROME, NEAR_BLACK)
+    /// The colour an escape actually paints, read back out of the escape itself.
+    fn painted(escape: &str) -> [u8; 3] {
+        if let Some(rest) = escape.strip_prefix("\x1b[38;2;") {
+            let mut channels = rest.trim_end_matches('m').split(';');
+            let mut next = || {
+                channels
+                    .next()
+                    .and_then(|held| held.parse::<u8>().ok())
+                    .expect("a 24-bit escape names three channels")
+            };
+
+            return [next(), next(), next()];
+        }
+        let index = escape
+            .strip_prefix("\x1b[38;5;")
+            .and_then(|rest| rest.trim_end_matches('m').parse::<u8>().ok())
+            .expect("the escape is one of the two forms this module emits");
+
+        rendered(index)
+    }
+
+    /// Chrome stays readable on a dark terminal and on a light one — *as rendered*.
+    ///
+    /// # Why the rendered colour and not the requested one
+    ///
+    /// Asserting `CHROME` itself is what let the palette bug through. The constant was legible; the
+    /// escape the 256-colour tier emitted for it was not, because the cube's six levels are
+    /// `0, 95, 135, 175, 215, 255` and the conversion treated them as evenly spaced. `0x8a` was
+    /// sent as `175`, which is 2.19:1 on white — worse than the `bright black` the constant
+    /// replaced. The test passed the whole time, because it was checking a number nobody sees.
+    ///
+    /// So the assertion goes through the escape: whatever the tier does to the colour, what is
+    /// measured is what a reader gets.
+    #[test]
+    fn chrome_is_legible_at_every_tier_that_can_paint_it() {
+        for depth in [Depth::True, Depth::Ansi256] {
+            let shown = painted(&foreground(depth, CHROME));
+            assert!(
+                contrast(shown, NEAR_BLACK) >= 4.5,
+                "{depth:?} paints chrome as {shown:?}, which is {:.2}:1 on a dark terminal",
+                contrast(shown, NEAR_BLACK)
+            );
+            assert!(
+                contrast(shown, WHITE) >= 3.0,
+                "{depth:?} paints chrome as {shown:?}, which is {:.2}:1 on a light terminal",
+                contrast(shown, WHITE)
+            );
+        }
+    }
+
+    /// The 256-colour tier snaps to entries the palette has, not to an even ramp it does not.
+    #[test]
+    fn the_palette_snaps_to_colours_the_terminal_really_has() {
+        // Chrome is a grey, and the 24-step ramp holds it exactly — the cube could only have
+        // offered 175.
+        assert_eq!(
+            painted(&foreground(Depth::Ansi256, CHROME)),
+            CHROME,
+            "a grey on the ramp is painted exactly, not snapped to a cube level tens away"
         );
-        assert!(
-            contrast(CHROME, WHITE) >= 3.0,
-            "chrome on a light terminal is {:.2}:1",
-            contrast(CHROME, WHITE)
+
+        // A chromatic colour lands on real cube levels rather than on interpolated ones.
+        for asked in [[0xff, 0x00, 0x80], [0x40, 0xa0, 0xc0], [0x12, 0x34, 0x56]] {
+            let shown = painted(&foreground(Depth::Ansi256, asked));
+            for channel in shown {
+                assert!(
+                    CUBE.contains(&channel) || shown[0] == shown[1] && shown[1] == shown[2],
+                    "{asked:?} was painted {shown:?}, which is not a colour this palette holds"
+                );
+            }
+        }
+    }
+
+    /// The gradient degrades through the tiers without emitting an escape a terminal cannot read.
+    #[test]
+    fn the_gradient_degrades_across_every_tier() {
+        const BLOCK: &str = "██\n██";
+
+        assert_eq!(
+            brand_gradient(Depth::None, BLOCK),
+            BLOCK,
+            "with no colour there is nothing to paint"
         );
+        for (depth, expected) in [
+            (Depth::True, "\x1b[38;2;"),
+            (Depth::Ansi256, "\x1b[38;5;"),
+            (Depth::Basic, "\x1b[95m"),
+        ] {
+            let painted = brand_gradient(depth, BLOCK);
+            assert!(
+                painted.contains(expected),
+                "{depth:?} must paint the gradient with {expected:?}: {painted:?}"
+            );
+            assert!(painted.contains(RESET), "{depth:?} closes what it opens");
+        }
     }
 
     /// Chrome is quieter than the prose beside it — it must not become plain text.

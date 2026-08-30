@@ -57,7 +57,7 @@ Two consequences worth knowing before the demo:
 task run:all
 ```
 
-Control plane on `:7556`, data plane on `:7656`, mirroring and decision shipping
+Control plane on `:6443`, data plane on `:7443`, mirroring and decision shipping
 already wired.
 
 ## Step 2 — Create the zone and the ledger
@@ -81,7 +81,7 @@ task cli -- ledgers create --zone delivery release-pipeline
 
 ```bash
 permguard -w examples/release-pipeline init release-pipeline --language cedar,rego
-permguard -w examples/release-pipeline remote add origin http://127.0.0.1:7556
+permguard -w examples/release-pipeline remote add origin http://127.0.0.1:6443
 permguard -w examples/release-pipeline validate
 permguard -w examples/release-pipeline checkout origin/delivery/release-pipeline
 permguard -w examples/release-pipeline plan
@@ -93,7 +93,7 @@ permguard -w examples/release-pipeline apply -m "release pipeline policies"
 
 ```bash
 task cli -- -w examples/release-pipeline init release-pipeline --language cedar,rego
-task cli -- -w examples/release-pipeline remote add origin http://127.0.0.1:7556
+task cli -- -w examples/release-pipeline remote add origin http://127.0.0.1:6443
 task cli -- -w examples/release-pipeline validate
 task cli -- -w examples/release-pipeline checkout origin/delivery/release-pipeline
 task cli -- -w examples/release-pipeline plan
@@ -373,7 +373,7 @@ task cli -- decisions list --zone delivery --ledger release-pipeline
 Verify it without trusting the server that served it:
 
 ```bash
-curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
 permguard decisions list --zone delivery --ledger release-pipeline \
   --verify --keys /tmp/pdp-keys.json
 ```
@@ -382,7 +382,7 @@ permguard decisions list --zone delivery --ledger release-pipeline \
 <summary>Run it through the Taskfile instead</summary>
 
 ```bash
-curl -s http://127.0.0.1:7656/data-plane/keys -o /tmp/pdp-keys.json
+curl -s http://127.0.0.1:7443/data-plane/keys -o /tmp/pdp-keys.json
 task cli -- decisions list --zone delivery --ledger release-pipeline \
   --verify --keys /tmp/pdp-keys.json
 ```
@@ -515,7 +515,7 @@ permguard -w examples/release-pipeline test --remote
 ```text
   ok    nobody approves the release they created themselves        [admin] deny by delivery-guardrails
   …
-  asked http://127.0.0.1:7656 about delivery/release-pipeline [workspace]
+  asked http://127.0.0.1:7443 about delivery/release-pipeline [workspace]
 
 23 case(s), 23 passed, 0 failed.
 ```

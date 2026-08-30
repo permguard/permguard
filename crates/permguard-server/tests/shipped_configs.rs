@@ -17,7 +17,10 @@ use std::path::{Path, PathBuf};
 
 use permguard_core::ConfigFile;
 use permguard_core::mirrors::check_source;
-use permguard_server::plane::settings::{PlaneSettingKeys, mirror_sources, plane_settings};
+use permguard_server::plane::settings::{
+    PlaneSettingKeys, SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_HTTP_ADDR, mirror_sources,
+    plane_settings,
+};
 
 /// Every `config.*.yml` beside the three server crates.
 fn shipped() -> Vec<PathBuf> {
@@ -63,6 +66,79 @@ fn every_shipped_configuration_parses() {
         // wrong shape is refused here rather than at the first request.
         let _ = file.settings();
     }
+}
+
+#[test]
+fn every_shipped_configuration_uses_the_canonical_role_ports() {
+    use permguard_core::config::SETTING_TELEMETRY_ADDR;
+
+    for path in shipped() {
+        for (setting_name, role, expected) in [
+            (SETTING_TELEMETRY_ADDR, "Server Host", "5443"),
+            (SETTING_CONTROL_HTTP_ADDR, "Control Plane", "6443"),
+            (SETTING_DATA_HTTP_ADDR, "Data Plane", "7443"),
+        ] {
+            let Some(address) = setting(&path, setting_name) else {
+                continue;
+            };
+            assert_eq!(
+                address.rsplit_once(':').map(|(_, port)| port),
+                Some(expected),
+                "{} does not follow the {role} port convention",
+                path.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn shipped_mtls_profiles_multiplex_each_plane_on_one_role_port() {
+    let mut profiles = 0;
+    let mut planes = 0;
+
+    for path in shipped() {
+        let name = path.file_name().and_then(|name| name.to_str());
+        if !matches!(
+            name,
+            Some("config.local-mtls.yml" | "config.docker-mtls.yml")
+        ) {
+            continue;
+        }
+        profiles += 1;
+
+        let file = ConfigFile::load(&path).expect("the mTLS profile parses");
+        for section in ["controlPlane", "dataPlane"] {
+            let Some(value) = file.section(section) else {
+                continue;
+            };
+            let public = value.get("public").expect("a plane has a public block");
+            let http = public.get("http").expect("the mTLS profile enables HTTP");
+            let grpc = public.get("grpc").expect("the mTLS profile enables gRPC");
+
+            assert_eq!(
+                http.get("addr"),
+                grpc.get("addr"),
+                "{} splits {section} across role ports",
+                path.display()
+            );
+            assert_eq!(
+                http.get("tls"),
+                grpc.get("tls"),
+                "{} gives one listener two TLS policies",
+                path.display()
+            );
+            planes += 1;
+        }
+    }
+
+    assert_eq!(
+        profiles, 6,
+        "local and Docker mTLS profile per server crate"
+    );
+    assert_eq!(
+        planes, 8,
+        "one plane in each standalone profile and two in all-in-one"
+    );
 }
 
 #[test]

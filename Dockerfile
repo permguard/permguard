@@ -64,7 +64,7 @@ COPY LICENSE /usr/share/doc/permguard/
 
 USER 65532:65532
 
-EXPOSE 7556 7558 7656 7658
+EXPOSE 5443 6443 7443
 
 ENTRYPOINT ["/usr/local/bin/permguard"]
 CMD ["/etc/permguard/config.yml"]

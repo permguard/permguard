@@ -28,7 +28,7 @@ experimental:
     enabled: "true"
 
 telemetry:
-  addr: 127.0.0.1:7558
+  addr: 127.0.0.1:5443
 
 runtime:
   planes:
@@ -39,10 +39,10 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
 
   # Reclaiming what nothing references. A laptop cadence, so the loop is watchable; `grace` is at
   # the floor this server accepts — below it, a sweep could delete the uploads of a push in flight.
@@ -79,10 +79,10 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
 
   # Mirroring, in one process. The control plane in this very binary is where the ledgers are, and
   # this data plane keeps its own verified copy of them on the same volume — over the loopback, the
@@ -96,7 +96,7 @@ dataPlane:
     parallelism: "4"
     servers:
       # This process's own control plane. The URL alone: every zone and every ledger it lists.
-      - url: "http://127.0.0.1:7556"
+      - url: "http://127.0.0.1:6443"
 
   # The decision path, sized for a laptop: a handful of ledgers, a small heap.
   decisions:
@@ -117,7 +117,7 @@ dataPlane:
       enabled: "true"
       pdp_id: all-in-one-local          # half of every stream identity: two replicas must never share one
       server:
-        url: "http://127.0.0.1:7556"
+        url: "http://127.0.0.1:6443"
       spool:
         directory: "data/decisions/spool"
         bytes: "64M"              # decision records only; the terminal record is reserved apart
@@ -167,7 +167,7 @@ dataPlane:
     # The store above, in this same process. Named rather than left to the decision log's
     # destination, because this file exists to be read.
     destination:
-      url: "http://127.0.0.1:7556"
+      url: "http://127.0.0.1:6443"
 
     # `local` is not a lesser mode: a decision ranges over what this plane recorded, which is
     # exactly reproducible. A shared mode ranges over what had *arrived*, which is a different

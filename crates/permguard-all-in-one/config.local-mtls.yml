@@ -1,11 +1,8 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# The all-in-one runtime: TLS on HTTP, mutual TLS on gRPC.
-#
-# See the plane configurations for why the split is that way round — HTTP is what an operator and a
-# probe reach, gRPC is what a service reaches — and why it needs a second port per plane: an address
-# serves one TLS policy.
+# The all-in-one runtime with mutual TLS. Each plane keeps its role port; HTTP and gRPC share one
+# listener and one client-authentication policy on that port.
 development_mode: true
 autogenerate: true
 working_dir: .volume/all-in-one-mtls
@@ -40,7 +37,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 127.0.0.1:7558
+  addr: 127.0.0.1:5443
   tls:
     cert: tls/server.pem
     key: tls/server.key
@@ -54,13 +51,17 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7556
+      addr: 127.0.0.1:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        allow:
+          - cn:local-operator
     grpc:
       enabled: true
-      addr: 127.0.0.1:7557
+      addr: 127.0.0.1:6443
       tls:
         cert: tls/server.pem
         key: tls/server.key
@@ -113,13 +114,17 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        allow:
+          - cn:local-operator
     grpc:
       enabled: true
-      addr: 127.0.0.1:7657
+      addr: 127.0.0.1:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
@@ -141,7 +146,7 @@ dataPlane:
     timeout: "1m"
     parallelism: "4"
     servers:
-      - url: "grpcs://127.0.0.1:7557"
+      - url: "grpcs://127.0.0.1:6443"
         tls:
           # The authority this runtime generated beside the certificate it serves.
           ca_file: tls/ca.pem
@@ -169,7 +174,7 @@ dataPlane:
       enabled: "true"
       pdp_id: all-in-one-local-mtls          # half of every stream identity: two replicas must never share one
       server:
-        url: "grpcs://127.0.0.1:7557"
+        url: "grpcs://127.0.0.1:6443"
         tls:
           ca_file: tls/ca.pem
           cert: tls/client.pem
@@ -230,7 +235,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

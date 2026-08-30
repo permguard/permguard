@@ -37,15 +37,10 @@ scrape_configs:
   - job_name: permguard-containers
     metrics_path: /metrics
     dns_sd_configs:
-      # The planes whose telemetry is on 7558.
-      - names: [control-plane, all-in-one]
+      # Each container is a separate Server Host and therefore uses the canonical operations port.
+      - names: [control-plane, data-plane, all-in-one]
         type: A
-        port: 7558
-        refresh_interval: 10s
-      # The standalone data plane, whose telemetry is on 7658.
-      - names: [data-plane]
-        type: A
-        port: 7658
+        port: 5443
         refresh_interval: 10s
     relabel_configs:
       # `__meta_dns_name` is the service that was asked for, which is exactly the component name.
@@ -54,25 +49,20 @@ scrape_configs:
       - target_label: source
         replacement: container
 
-  # The planes a developer runs on the host: `task run:all`, `task run:control`, `task run:data`.
-  # These stay static — there is nothing to discover about a process outside Docker — and one of the
-  # two being down is the normal state, since the all-in-one and a standalone data plane put their
-  # telemetry on different ports.
+  # The Server Host a developer runs on the host with `task run:all`, `task run:control`, or
+  # `task run:data`. It stays static because there is nothing to discover about a process outside
+  # Docker. Additional standalone processes should use separate IP addresses or network namespaces
+  # while retaining the canonical 5443 port.
   #
   # `host.docker.internal` is the host as seen from a container; on Linux the compose file maps it
   # explicitly, because only Docker Desktop provides it for free.
   - job_name: permguard-host
     metrics_path: /metrics
     static_configs:
-      - targets: ["host.docker.internal:7558"]
+      - targets: ["host.docker.internal:5443"]
         labels:
-          component: all-in-one
+          component: server-host
           source: host
-      - targets: ["host.docker.internal:7658"]
-        labels:
-          component: data-plane
-          source: host
-
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]

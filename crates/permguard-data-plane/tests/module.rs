@@ -60,11 +60,11 @@ fn deployed() -> Config {
             file: [
                 (
                     permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
-                    "127.0.0.1:7556".to_owned(),
+                    "127.0.0.1:6443".to_owned(),
                 ),
                 (
                     permguard_server::plane::SETTING_DATA_HTTP_ADDR.to_owned(),
-                    "127.0.0.1:7656".to_owned(),
+                    "127.0.0.1:7443".to_owned(),
                 ),
             ]
             .into_iter()
@@ -177,11 +177,11 @@ fn deployed_with(extra: &[(&str, &str)]) -> Config {
     let mut file: Vec<(String, String)> = vec![
         (
             permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
-            "127.0.0.1:7556".to_owned(),
+            "127.0.0.1:6443".to_owned(),
         ),
         (
             permguard_server::plane::SETTING_DATA_HTTP_ADDR.to_owned(),
-            "127.0.0.1:7656".to_owned(),
+            "127.0.0.1:7443".to_owned(),
         ),
     ];
     for (name, value) in extra {

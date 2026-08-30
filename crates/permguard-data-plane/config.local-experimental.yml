@@ -3,7 +3,7 @@
 
 # config.local.yml with the temporal interface actually on.
 #
-# The same laptop deployment — one control plane on 7556, this plane on 7656 — plus the two things
+# The same laptop deployment — one control plane on 6443, this plane on 7443 — plus the two things
 # `permguard.api.pdp.temporal.v1alpha1` needs said out loud: a durable event history, and the
 # acceptance that the contract carrying it is `v1alpha1`. Start the control plane with its own
 # config.local-experimental.yml, which is the receiving end of what this one ships.
@@ -28,16 +28,16 @@ experimental:
     enabled: "true"
 
 telemetry:
-  addr: 127.0.0.1:7658
+  addr: 127.0.0.1:5443
 
 dataPlane:
   public:
     http:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
     grpc:
       enabled: true
-      addr: 127.0.0.1:7656
+      addr: 127.0.0.1:7443
 
   mirrors:
     enabled: "true"
@@ -46,7 +46,7 @@ dataPlane:
     parallelism: "4"
     servers:
       # The control plane started with permguard-control-plane's config.local-experimental.yml.
-      - url: "http://127.0.0.1:7556"
+      - url: "http://127.0.0.1:6443"
 
   decisions:
     cache:
@@ -58,7 +58,7 @@ dataPlane:
       enabled: "true"
       pdp_id: data-plane-local
       server:
-        url: "http://127.0.0.1:7556"
+        url: "http://127.0.0.1:6443"
       spool:
         directory: "data/decisions/spool"
         bytes: "64M"
@@ -108,7 +108,7 @@ dataPlane:
     # plane, and naming it twice is two settings to keep in step. Named here anyway, because this
     # file exists to be read.
     destination:
-      url: "http://127.0.0.1:7556"
+      url: "http://127.0.0.1:6443"
 
     # `local` is the default and it is not a lesser mode: a decision ranges over what this plane
     # recorded, which is exactly reproducible. A shared mode ranges over what had *arrived*, which

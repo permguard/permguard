@@ -788,24 +788,32 @@ impl Decider {
         // the same profile take another permit is how a plane spends its whole capacity on work
         // nobody is waiting for; the breaker spends one request per cooldown instead.
         let guarded = format!("{}/{}/{}", resolved.zone, resolved.ledger, resolved.profile);
-        if let super::quarantine::Admits::No { overruns, retry_in } =
-            self.quarantine.admits(&guarded)
-        {
-            self.metrics
-                .count(&super::measure::REFUSALS, &[("reason", "quarantined")]);
+        // The probe reservation, when this is the one request a cooldown lets through, is *held*
+        // rather than discarded: it travels into the blocking closure below and is handed to the
+        // watchdog only once the work is actually running. Every path that does not get that far —
+        // at capacity above all — drops it, and the reservation goes back so the next request may
+        // probe. Discarding it here instead would open the breaker for one request and then never
+        // for another.
+        let probe = match self.quarantine.admits(&guarded) {
+            super::quarantine::Admits::No { overruns, retry_in } => {
+                self.metrics
+                    .count(&super::measure::REFUSALS, &[("reason", "quarantined")]);
 
-            return Err(ApiError::new(
-                ErrorClass::Unavailable,
-                "evaluation_quarantined",
-                format!(
-                    "evaluating `{guarded}` overran its deadline {overruns} times in a row and is \
-                     out of service for another {}s. A provider inside an evaluation cannot be \
-                     interrupted, so this plane stops spending capacity on it and lets one request \
-                     through when the cooldown ends",
-                    retry_in.as_secs()
-                ),
-            ));
-        }
+                return Err(ApiError::new(
+                    ErrorClass::Unavailable,
+                    "evaluation_quarantined",
+                    format!(
+                        "evaluating `{guarded}` overran its deadline {overruns} times in a row and \
+                         is out of service for another {}s. A provider inside an evaluation cannot \
+                         be interrupted, so this plane stops spending capacity on it and lets one \
+                         request through when the cooldown ends",
+                        retry_in.as_secs()
+                    ),
+                ));
+            }
+            super::quarantine::Admits::Probe(lease) => Some(lease),
+            super::quarantine::Admits::Yes => None,
+        };
 
         let deadline = self.budget.map(|budget| started + budget);
         let plan = Plan {
@@ -842,6 +850,12 @@ impl Decider {
             .blocking
             .run(&[], move || {
                 let (quarantine, guarded, deadline, runtime) = watching;
+                // The reservation is handed over here and nowhere earlier. This closure runs only
+                // when a permit was taken, so a request refused at capacity drops `probe` with the
+                // closure and gives the reservation back instead of stranding it.
+                if let Some(probe) = probe {
+                    probe.started();
+                }
                 // Started only after the blocking permit was acquired: a
                 // request refused at capacity did not evaluate and therefore
                 // did not overrun this profile. The timer itself belongs to the

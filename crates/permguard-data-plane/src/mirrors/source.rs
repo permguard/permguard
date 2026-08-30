@@ -170,7 +170,7 @@ mod tests {
     fn a_relative_trust_path_resolves_against_the_volume() {
         let followed = Source::compile(
             &MirrorSource {
-                url: "grpcs://control:7556".to_owned(),
+                url: "grpcs://control:6443".to_owned(),
                 tls: permguard_core::mirrors::MirrorTls {
                     ca_file: Some("tls/ca.pem".to_owned()),
                     ..permguard_core::mirrors::MirrorTls::default()

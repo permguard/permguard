@@ -8,7 +8,7 @@
 set -euo pipefail
 
 example_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-endpoint="${PERMGUARD_DATA_PLANE_ENDPOINT:-http://127.0.0.1:7656}"
+endpoint="${PERMGUARD_DATA_PLANE_ENDPOINT:-http://127.0.0.1:7443}"
 session="${PERMGUARD_DEMO_ID:-}"
 input=""
 

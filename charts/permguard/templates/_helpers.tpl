@@ -69,9 +69,10 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{/*
-The probes. Both point at the telemetry port, never at the public one: probing the port that faces
-the world means a load balancer's health check and a client's request share a connection limit, and
-the first thing that fails under load is the check that says whether anything is wrong.
+The probes. Both point at the Server Host operations port (still named `telemetry` in the stable
+chart values), never at the public one: probing the port that faces the world means a load
+balancer's health check and a client's request share a connection limit, and the first thing that
+fails under load is the check that says whether anything is wrong.
 */}}
 {{- define "permguard.probes" -}}
 {{- $probes := .root.Values.probes -}}

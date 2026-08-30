@@ -227,13 +227,15 @@ fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
 
     Arc::new(Wire {
         facade: EventFacade {
+            // These fixtures address records by identity, so there are no names to resolve.
+            catalog: None,
             store: Arc::new(store),
             producers: Arc::new(std::sync::RwLock::new(producers)),
             producer_files: Vec::new(),
             cursor_key,
             disclosure: Disclosure::Full,
             metrics: Metrics::none(),
-            base_url: "http://127.0.0.1:7556".to_owned(),
+            base_url: "http://127.0.0.1:6443".to_owned(),
         },
         down: std::sync::atomic::AtomicBool::new(false),
     })
@@ -720,7 +722,7 @@ mod two_planes {
                 zone_name: ZONE.to_owned(),
                 ledger_id: format!("{LEDGER}-id"),
                 ledger_name: LEDGER.to_owned(),
-                server: "http://127.0.0.1:7556".to_owned(),
+                server: "http://127.0.0.1:6443".to_owned(),
             },
         )
         .expect("recorded");
@@ -772,7 +774,7 @@ mod two_planes {
     }
 
     /// One occurrence of the example, submitted.
-    async fn submit(submitter: &Submitter, fixture: &str) -> Value {
+    async fn submit(submitter: &Arc<Submitter>, fixture: &str) -> Value {
         let body: Value = serde_json::from_str(&example(fixture))
             .unwrap_or_else(|error| panic!("{fixture}: {error}"));
         let request: permguard_languages::temporal::SubmitRequest =

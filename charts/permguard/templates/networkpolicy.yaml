@@ -6,10 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 One NetworkPolicy per running component, default-on.
 
 What it always does is close every port the pod does not serve: selected pods
-accept ingress only on the public ports and the telemetry port. What the values
+accept ingress only on the public ports and the Server Host operations port. What the values
 decide is who may reach the two surfaces — `public.from` and `telemetry.from`
 are lists of NetworkPolicyPeer, and an empty list means any peer, because a PDP
-usually serves the whole cluster and a telemetry port is scraped from a
+usually serves the whole cluster and an operations port is scraped from a
 namespace this chart cannot guess. Narrowing them is one values entry, not a
 forked template.
 

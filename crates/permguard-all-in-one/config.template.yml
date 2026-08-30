@@ -32,8 +32,9 @@ experimental:
     # interface nobody can reach.
     enabled: "false"
 
+# Server Host operations surface: process discovery, health, readiness, version, and metrics.
 telemetry:
-  addr: 0.0.0.0:7558
+  addr: 0.0.0.0:5443
   # Distributed tracing over OTLP/gRPC. Off by default; when on, spans leave from a
   # dedicated background thread with a bounded queue — a collector that is down means
   # dropped spans and a warning, never a slower or failing request.
@@ -58,7 +59,7 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       # tls:
       #   enabled: false
       #   cert: tls/control-http-server.pem
@@ -70,7 +71,7 @@ controlPlane:
       #   min_version: "1.3"
     grpc:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
       # tls:
       #   enabled: false
       #   cert: tls/control-grpc-server.pem
@@ -127,7 +128,7 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7656
+      addr: 0.0.0.0:7443
       # tls:
       #   enabled: false
       #   cert: tls/data-http-server.pem
@@ -139,7 +140,7 @@ dataPlane:
       #   min_version: "1.3"
     grpc:
       enabled: true
-      addr: 0.0.0.0:7656
+      addr: 0.0.0.0:7443
       # tls:
       #   enabled: false
       #   cert: tls/data-grpc-server.pem
@@ -176,14 +177,14 @@ dataPlane:
   #                          # mirror (503). A revocation that matters makes "indefinitely" wrong;
   #                          # a flaky link makes "minutes" wrong — this is the deployment's number.
   #   servers:
-  #     - url: "http://control-plane:7556"    # everything this server lists: no zones, no ledgers
+  #     - url: "http://control-plane:6443"    # everything this server lists: no zones, no ledgers
   #     - url: "https://control.acme.com"     # narrowed, and reached over TLS
   #       zones: ["acme-.*"]                  # absent means every zone the server lists
   #       ledgers: ["main-ledger", "prod"]    # absent means every ledger of a matching zone
   #       tls:
   #         ca_file: tls/control-plane-ca.pem   # the authority its certificate is checked against;
   #                                             # absent means the platform trust store
-  #     - url: "grpcs://control.internal:7557"  # the same NOTP transfer, over gRPC
+  #     - url: "grpcs://control.internal:6443"  # the same NOTP transfer, over gRPC
   #       zones: ["eu", "us"]                   # several patterns are alternatives
   #       tls:
   #         ca_file: tls/control-plane-ca.pem
@@ -226,7 +227,7 @@ dataPlane:
   #     # Where the record goes. Described exactly like a mirror source, because it is the same kind
   #     # of relationship: a server this plane authenticates before it speaks to it.
   #     server:
-  #       url: "grpcs://control.acme.com:7557"     # exact: this is who you trust
+  #       url: "grpcs://control.acme.com:6443"     # exact: this is who you trust
   #       tls:
   #         ca_file: tls/control-plane-ca.pem      # absent: the platform trust store
   #         cert: tls/decision-log-client.pem      # its own identity, deliberately not the mirror's:
@@ -310,7 +311,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

@@ -25,8 +25,9 @@ Reach them from your machine, and ask them what they are:
   permguard inspect
 {{- end }}
 
-Liveness and readiness are answered on the telemetry port, which has a service of its own and is
-never part of the public one. Metrics are on {{ if .Values.allInOne.enabled }}{{ .Values.allInOne.ports.telemetry }}{{ else }}{{ .Values.controlPlane.ports.telemetry }}{{ end }}/metrics.
+The Server Host operations surface has a service of its own and is never part of the public plane
+service. It answers process discovery, liveness, readiness, version and metrics on
+{{ if .Values.allInOne.enabled }}{{ .Values.allInOne.ports.telemetry }}{{ else }}{{ .Values.controlPlane.ports.telemetry }}{{ end }}; metrics are under `/metrics`.
 
 {{ if not .Values.persistence.enabled }}
 NOTE: persistence is off, so each pod keeps its keys and its audit trail in an emptyDir. A restart

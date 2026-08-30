@@ -229,8 +229,8 @@ mod tests {
     fn a_well_shaped_source_passes() {
         for url in [
             "https://control.acme.com",
-            "http://127.0.0.1:7556",
-            "grpcs://control.internal:7556",
+            "http://127.0.0.1:6443",
+            "grpcs://control.internal:6443",
         ] {
             check_source(&declared(url)).expect(url);
         }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn the_file_shape_carries_the_trust_material_and_the_scalars_stay_settings() {
         let section: MirrorsSection = serde_norway::from_str(
-            "enabled: \"true\"\ninterval: \"15s\"\nservers:\n  - url: \"grpcs://control:7556\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/client.pem\n      key: tls/client.key\n    zones: [\"acme\"]\n",
+            "enabled: \"true\"\ninterval: \"15s\"\nservers:\n  - url: \"grpcs://control:6443\"\n    tls:\n      ca_file: tls/ca.pem\n      cert: tls/client.pem\n      key: tls/client.key\n    zones: [\"acme\"]\n",
         )
         .expect("the section parses");
 
@@ -265,7 +265,7 @@ mod tests {
         );
         let sources = section.sources();
         assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].url, "grpcs://control:7556");
+        assert_eq!(sources[0].url, "grpcs://control:6443");
         assert_eq!(sources[0].zones, vec!["acme".to_owned()]);
         assert_eq!(sources[0].tls.ca_file.as_deref(), Some("tls/ca.pem"));
         check_source(&sources[0]).expect("a fully-dressed source is well shaped");

@@ -855,7 +855,7 @@ mod tests {
         assert_eq!(
             plane_settings(
                 &value(
-                    "public:\n  http:\n    enabled: true\n    addr: 127.0.0.1:7556\n  grpc:\n    enabled: false\n"
+                    "public:\n  http:\n    enabled: true\n    addr: 127.0.0.1:6443\n  grpc:\n    enabled: false\n"
                 ),
                 PlaneSettingKeys::CONTROL,
             )
@@ -864,7 +864,7 @@ mod tests {
                 (SETTING_CONTROL_HTTP_ENABLED.to_owned(), "true".to_owned()),
                 (
                     SETTING_CONTROL_HTTP_ADDR.to_owned(),
-                    "127.0.0.1:7556".to_owned()
+                    "127.0.0.1:6443".to_owned()
                 ),
                 (SETTING_CONTROL_GRPC_ENABLED.to_owned(), "false".to_owned()),
             ]
@@ -875,18 +875,18 @@ mod tests {
     fn a_bare_http_address_also_defaults_grpc_to_the_same_address() {
         assert_eq!(
             plane_settings(
-                &value("public:\n  http: 127.0.0.1:7656\n"),
+                &value("public:\n  http: 127.0.0.1:7443\n"),
                 PlaneSettingKeys::DATA,
             )
             .expect("plane section parses"),
             vec![
                 (
                     SETTING_DATA_HTTP_ADDR.to_owned(),
-                    "127.0.0.1:7656".to_owned()
+                    "127.0.0.1:7443".to_owned()
                 ),
                 (
                     SETTING_DATA_GRPC_ADDR.to_owned(),
-                    "127.0.0.1:7656".to_owned()
+                    "127.0.0.1:7443".to_owned()
                 ),
             ]
         );
@@ -894,7 +894,7 @@ mod tests {
 
     #[test]
     fn the_data_plane_mirrors_block_becomes_settings_and_the_control_plane_refuses_it() {
-        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n  servers:\n    - url: \"http://127.0.0.1:7556\"\n";
+        let block = "mirrors:\n  enabled: \"true\"\n  interval: \"15s\"\n  servers:\n    - url: \"http://127.0.0.1:6443\"\n";
 
         assert_eq!(
             plane_settings(&value(block), PlaneSettingKeys::DATA).expect("the data plane mirrors"),
@@ -947,18 +947,18 @@ mod tests {
     #[test]
     fn the_servers_arrive_as_structured_configuration_with_their_trust_material() {
         let sources = mirror_sources(&value(
-            "mirrors:\n  servers:\n    - url: \"grpcs://control:7557\"\n      zones: [\"acme-.*\"]\n      tls:\n        ca_file: tls/ca.pem\n",
+            "mirrors:\n  servers:\n    - url: \"grpcs://control:6443\"\n      zones: [\"acme-.*\"]\n      tls:\n        ca_file: tls/ca.pem\n",
         ))
         .expect("the servers parse");
 
         assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].url, "grpcs://control:7557");
+        assert_eq!(sources[0].url, "grpcs://control:6443");
         assert_eq!(sources[0].zones, vec!["acme-.*".to_owned()]);
         assert_eq!(sources[0].tls.ca_file.as_deref(), Some("tls/ca.pem"));
 
         // A section with no `mirrors` block follows nothing, and says so plainly.
         assert!(
-            mirror_sources(&value("public:\n  http: 127.0.0.1:7656\n"))
+            mirror_sources(&value("public:\n  http: 127.0.0.1:7443\n"))
                 .expect("a plane may mirror nothing")
                 .is_empty()
         );
@@ -969,7 +969,7 @@ mod tests {
         assert_eq!(
             plane_settings(
                 &value(
-                    "public:\n  grpc:\n    addr: 127.0.0.1:7557\n    tls:\n      enabled: true\n      cert: tls/grpc.pem\n      key: tls/grpc.key\n      client_ca: tls/clients.pem\n      crl: tls/clients.crl\n      min_version: '1.3'\n"
+                    "public:\n  grpc:\n    addr: 127.0.0.1:6443\n    tls:\n      enabled: true\n      cert: tls/grpc.pem\n      key: tls/grpc.key\n      client_ca: tls/clients.pem\n      crl: tls/clients.crl\n      min_version: '1.3'\n"
                 ),
                 PlaneSettingKeys::CONTROL,
             )
@@ -977,7 +977,7 @@ mod tests {
             vec![
                 (
                     SETTING_CONTROL_GRPC_ADDR.to_owned(),
-                    "127.0.0.1:7557".to_owned()
+                    "127.0.0.1:6443".to_owned()
                 ),
                 (SETTING_CONTROL_GRPC_TLS_ENABLED.to_owned(), "true".to_owned()),
                 (

@@ -35,7 +35,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 0.0.0.0:7658
+  addr: 0.0.0.0:5443
   tls:
     cert: tls/server.pem
     key: tls/server.key
@@ -44,13 +44,13 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7656
+      addr: 0.0.0.0:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
     grpc:
       enabled: true
-      addr: 0.0.0.0:7656
+      addr: 0.0.0.0:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
@@ -64,7 +64,7 @@ dataPlane:
     timeout: "1m"
     parallelism: "4"
     servers:
-      - url: "https://control-plane:7556"
+      - url: "https://control-plane:6443"
         tls:
           ca_file: tls/control-plane-ca.pem
           # The generated certificate names `localhost`, and this plane dials the compose service
@@ -91,7 +91,7 @@ dataPlane:
       enabled: "true"
       pdp_id: data-plane-docker-tls          # half of every stream identity: two replicas must never share one
       server:
-        url: "https://control-plane:7556"
+        url: "https://control-plane:6443"
         tls:
           ca_file: tls/control-plane-ca.pem
           server_name: localhost
@@ -149,7 +149,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

@@ -1,9 +1,8 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# TLS on HTTP, mutual TLS on gRPC, in a container. The same split as config.local-mtls.yml, and for
-# the same reason: HTTP is what an operator and a probe reach, gRPC is what a service reaches. An
-# address serves one TLS policy, so the two protocols need two ports.
+# Mutual TLS on the Data Plane role port, in a container. HTTP and gRPC share one listener and one
+# client-authentication policy.
 development_mode: true
 autogenerate: true
 working_dir: /var/lib/permguard/data-plane
@@ -38,7 +37,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 0.0.0.0:7658
+  addr: 0.0.0.0:5443
   # Server authentication only: a scraper is not a Permguard client.
   tls:
     cert: tls/server.pem
@@ -48,13 +47,17 @@ dataPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7656
+      addr: 0.0.0.0:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
+        client_ca: tls/ca.pem
+        crl: tls/ca.crl
+        allow:
+          - cn:local-operator
     grpc:
       enabled: true
-      addr: 0.0.0.0:7657
+      addr: 0.0.0.0:7443
       tls:
         cert: tls/server.pem
         key: tls/server.key
@@ -74,8 +77,8 @@ dataPlane:
     timeout: "1m"
     parallelism: "4"
     servers:
-      # Mutual TLS is on the gRPC address (7557): an address serves one TLS policy.
-      - url: "grpcs://control-plane:7557"
+      # Mutual TLS is on the shared Control Plane role port.
+      - url: "grpcs://control-plane:6443"
         tls:
           ca_file: tls/control-plane-ca.pem
           cert: tls/control-plane-client.pem
@@ -101,7 +104,7 @@ dataPlane:
       enabled: "true"
       pdp_id: data-plane-docker-mtls          # half of every stream identity: two replicas must never share one
       server:
-        url: "grpcs://control-plane:7557"
+        url: "grpcs://control-plane:6443"
         tls:
           ca_file: tls/control-plane-ca.pem
           cert: tls/control-plane-client.pem
@@ -163,7 +166,7 @@ dataPlane:
   #   # Where records are shipped. Absent, the decision log's destination is used — one deployment
   #   # ships both to one control plane, and naming it twice is two settings to keep in step.
   #   destination:
-  #     url: "grpcs://control.acme.com:7557"
+  #     url: "grpcs://control.acme.com:6443"
   #     transport: grpc              # absent: the URL's own scheme decides
   #     tls:
   #       ca_file: tls/control-plane-ca.pem

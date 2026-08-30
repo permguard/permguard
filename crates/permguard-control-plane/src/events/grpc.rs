@@ -97,6 +97,11 @@ impl EventLog for EventFacade {
     ) -> Result<Response<ListRecordsResponse>, Status> {
         let asked = request.into_inner();
         let (scope, kind) = scope_of(&asked)?;
+        // Same resolution as the HTTP list, so the two transports narrow to the same records.
+        let scope = match read::canonical(self.catalog.as_ref(), scope) {
+            Ok(scope) => scope,
+            Err(error) => return Err(read_status(error, self.disclosure)),
+        };
         let filters = filters_of(&asked);
         let window = permguard_stream::Window {
             from: (!asked.from.is_empty()).then(|| asked.from.clone()),
@@ -148,9 +153,18 @@ impl EventLog for EventFacade {
                 self.disclosure,
             ));
         }
-        let scope = Scope::Tenant {
-            zone: asked.zone,
-            ledger: asked.ledger,
+        // Resolved the same way the HTTP surface resolves it, so a reader gets one answer whichever
+        // transport asked: a name and an identity address the same ledger, and a scope nobody holds
+        // is a refusal rather than an empty answer.
+        let scope = match read::canonical(
+            self.catalog.as_ref(),
+            Scope::Tenant {
+                zone: asked.zone,
+                ledger: asked.ledger,
+            },
+        ) {
+            Ok(scope) => scope,
+            Err(error) => return Err(read_status(error, self.disclosure)),
         };
 
         let facade = self.clone();
@@ -317,6 +331,10 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
                 "offset_invalid",
                 refused.to_string(),
             ),
+            disclosure,
+        ),
+        read::ReadError::Unknown(detail) => status_of(
+            &ApiError::new(ErrorClass::NotFound, "ledger_not_held", detail),
             disclosure,
         ),
         read::ReadError::Unavailable(detail) => status_of(

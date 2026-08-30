@@ -65,7 +65,7 @@ languages="${languages:-cedar,rego}"
 
 printf 'Next:\n'
 printf '  task cli -- -w %s init %s --language %s\n' "${destination}" "${example}" "${languages}"
-printf '  task cli -- -w %s remote add origin http://127.0.0.1:7556\n' "${destination}"
+printf '  task cli -- -w %s remote add origin http://127.0.0.1:6443\n' "${destination}"
 printf '  task cli -- -w %s validate\n' "${destination}"
 
 if [ "${example}" = "dogwood-session-access" ]; then

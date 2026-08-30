@@ -182,6 +182,13 @@ pub enum ReadError {
     },
     /// The store could not answer.
     Unavailable(String),
+    /// The scope named does not resolve to a ledger this plane holds.
+    ///
+    /// Distinct from an empty page, and the distinction is the point: a page with no records says
+    /// this ledger recorded nothing, and that is a statement about the data. A scope that does not
+    /// resolve is a statement about the request, and answering it with an empty page would let a
+    /// mistyped or wrongly-shaped scope read as an audit trail with nothing in it.
+    Unknown(String),
     /// The search gave up before reaching the end of its snapshot.
     ///
     /// Distinct from "not found", and it has to be: a lookup that walked its bound and stopped has
@@ -199,6 +206,7 @@ impl std::fmt::Display for ReadError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Offset(error) => write!(formatter, "{error}"),
+            Self::Unknown(detail) => write!(formatter, "{detail}"),
             Self::Expired {
                 oldest,
                 oldest_sequence,
@@ -762,4 +770,299 @@ fn proofs(store: &EventStore, records: &[Value]) -> Result<(Vec<Value>, Vec<Valu
     }
 
     Ok((proof, inclusion))
+}
+
+/// Turns the scope a reader named into the one the records are keyed by.
+///
+/// # Why a read has to do this at all
+///
+/// A record is written under the zone and ledger **identities**, because those are what a rename
+/// cannot move. A reader names whichever of the two they have — a name from the catalog listing, an
+/// identity from a previous answer — and `Selector` already reads either, everywhere else in this
+/// product. Here it did not: a name went to the store verbatim, matched nothing, and came back as
+/// an empty page.
+///
+/// An empty page is the dangerous answer. It is indistinguishable from a ledger that recorded
+/// nothing, so somebody auditing a trail concludes nothing happened when what actually happened is
+/// that they typed the form this path did not accept. A scope that does not resolve is a refusal,
+/// and an unknown one says so.
+///
+/// # Why an identity is not looked up
+///
+/// An identity is already the key the records carry, so resolving it would only be asking the
+/// catalog to agree — and the catalog is the wrong authority for that question. A ledger deleted
+/// from the catalog keeps its records in this store until retention removes them, and that is
+/// deliberate: deleting a configuration must not destroy evidence early. Requiring the lookup made
+/// the deletion do exactly that — the records were still here, and nothing could name them any
+/// more. So an identity addresses the store directly, and only a *name* needs the catalog to say
+/// what it stands for.
+fn identify(
+    catalog: &std::sync::Arc<dyn permguard_core::catalog::Catalog>,
+    zone: &str,
+    ledger: &str,
+) -> Result<(String, String), ReadError> {
+    use permguard_core::catalog::Selector;
+
+    let (selected_zone, selected_ledger) = (Selector::parse(zone), Selector::parse(ledger));
+    // Both already identities: nothing to resolve, and nothing to ask.
+    if let (Selector::Id(zone), Selector::Id(ledger)) = (&selected_zone, &selected_ledger) {
+        return Ok((zone.clone(), ledger.clone()));
+    }
+
+    let found = catalog.get_zone(&selected_zone).and_then(|found| {
+        let held = catalog.get_ledger(&Selector::Id(found.id.clone()), &selected_ledger)?;
+
+        Ok((found.id, held.id))
+    });
+
+    found.map_err(|_| {
+        ReadError::Unknown(format!(
+            "`{zone}/{ledger}` is not a ledger this plane holds. A zone and a ledger may be named \
+             by name or by identity, and neither form matched"
+        ))
+    })
+}
+
+/// The scope a read is served from, with its zone and ledger canonicalized.
+///
+/// Both shapes carry a zone and a ledger, and both are keyed by identity in the store, so both are
+/// resolved. `Stream` used to be returned untouched, which meant the privileged deployment-wide
+/// read — the one an auditor reaches for — answered a named scope with an empty page while the
+/// records sat under their identities.
+pub(crate) fn canonical(
+    catalog: Option<&std::sync::Arc<dyn permguard_core::catalog::Catalog>>,
+    scope: crate::events::store::Scope,
+) -> Result<crate::events::store::Scope, ReadError> {
+    use crate::events::store::Scope;
+
+    let Some(catalog) = catalog else {
+        return Ok(scope);
+    };
+
+    match scope {
+        Scope::Tenant { zone, ledger } => {
+            let (zone, ledger) = identify(catalog, &zone, &ledger)?;
+
+            Ok(Scope::Tenant { zone, ledger })
+        }
+        Scope::Stream {
+            zone,
+            ledger,
+            class,
+            producer,
+            instance,
+        } => {
+            let (zone, ledger) = identify(catalog, &zone, &ledger)?;
+
+            Ok(Scope::Stream {
+                zone,
+                ledger,
+                class,
+                producer,
+                instance,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use crate::events::store::Scope;
+    use permguard_core::catalog::{Catalog, Selector};
+    use permguard_std::catalog::FileCatalog;
+
+    /// A catalog holding one zone and one ledger, so a test can ask for either form.
+    pub(super) fn catalog(tag: &str) -> (std::sync::Arc<dyn Catalog>, String, String) {
+        let root = std::env::temp_dir().join(format!("permguard-scope-{tag}"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("the catalog root is created");
+
+        let catalog = FileCatalog::new(&root);
+        let zone = catalog.create_zone("acme").expect("the zone is created");
+        let ledger = catalog
+            .create_ledger(&Selector::Id(zone.id.clone()), "agent-governance")
+            .expect("the ledger is created");
+
+        (std::sync::Arc::new(catalog), zone.id, ledger.id)
+    }
+
+    /// A scope named by name reads the same records as one named by identity.
+    ///
+    /// # Why this is worth pinning
+    ///
+    /// Records are keyed by identity, because that is what a rename cannot move. Readers name
+    /// whichever of the two they have, and `Selector` reads either everywhere else in this product.
+    /// Here it did not: a name went to the store verbatim and matched nothing, and the answer was
+    /// an empty page — indistinguishable from a ledger that recorded nothing. Somebody auditing a
+    /// trail would have concluded that nothing happened.
+    #[test]
+    fn a_scope_named_by_name_resolves_to_the_one_records_are_keyed_by() {
+        let (catalog, zone_id, ledger_id) = catalog("by-name");
+
+        let by_name = canonical(
+            Some(&catalog),
+            Scope::Tenant {
+                zone: "acme".to_owned(),
+                ledger: "agent-governance".to_owned(),
+            },
+        )
+        .expect("a ledger the catalog holds resolves");
+        let by_id = canonical(
+            Some(&catalog),
+            Scope::Tenant {
+                zone: zone_id.clone(),
+                ledger: ledger_id.clone(),
+            },
+        )
+        .expect("an identity resolves to itself");
+
+        assert_eq!(
+            by_name, by_id,
+            "the two forms must address one ledger, or a reader's choice of spelling changes the \
+             answer"
+        );
+        assert_eq!(
+            by_name,
+            Scope::Tenant {
+                zone: zone_id,
+                ledger: ledger_id
+            },
+            "and both resolve to the identity, which is what the records carry"
+        );
+    }
+
+    /// A scope nobody holds is refused, never answered with an empty page.
+    #[test]
+    fn a_scope_that_does_not_resolve_is_refused_rather_than_empty() {
+        let (catalog, zone_id, _) = catalog("unknown");
+
+        for (zone, ledger) in [
+            ("acme", "no-such-ledger"),
+            ("no-such-zone", "agent-governance"),
+            (zone_id.as_str(), "no-such-ledger"),
+        ] {
+            let refused = canonical(
+                Some(&catalog),
+                Scope::Tenant {
+                    zone: zone.to_owned(),
+                    ledger: ledger.to_owned(),
+                },
+            );
+            assert!(
+                matches!(refused, Err(ReadError::Unknown(_))),
+                "`{zone}/{ledger}` is not held, and an empty page would read as an empty ledger"
+            );
+        }
+    }
+
+    /// A build with no catalog has no names to resolve, and passes the scope through.
+    #[test]
+    fn without_a_catalog_the_scope_is_left_as_it_was_given() {
+        let scope = Scope::Tenant {
+            zone: "acme".to_owned(),
+            ledger: "agent-governance".to_owned(),
+        };
+        assert_eq!(
+            canonical(None, scope.clone()).expect("no catalog is not a refusal"),
+            scope
+        );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod scope_tests {
+    use super::tests::catalog;
+    use super::*;
+    use crate::events::store::Scope;
+    use permguard_core::catalog::Selector;
+
+    /// The privileged stream read is resolved too, not returned as it was named.
+    ///
+    /// # Why this needed its own case
+    ///
+    /// Only `Tenant` used to be resolved, and `Stream` fell through untouched. `Stream` is the
+    /// deployment-wide read — the one an auditor reaches for to verify a producer's chain end to
+    /// end — so the shape that mattered most was the one that answered a named scope with an empty
+    /// page while the records sat under their identities.
+    #[test]
+    fn a_stream_scope_is_resolved_like_a_tenant_scope() {
+        let (catalog, zone_id, ledger_id) = catalog("stream-by-name");
+
+        let resolved = canonical(
+            Some(&catalog),
+            Scope::Stream {
+                zone: "acme".to_owned(),
+                ledger: "agent-governance".to_owned(),
+                class: "data-plane".to_owned(),
+                producer: "plane-a".to_owned(),
+                instance: "01a0".to_owned(),
+            },
+        )
+        .expect("a ledger the catalog holds resolves");
+
+        assert_eq!(
+            resolved,
+            Scope::Stream {
+                zone: zone_id,
+                ledger: ledger_id,
+                class: "data-plane".to_owned(),
+                producer: "plane-a".to_owned(),
+                instance: "01a0".to_owned(),
+            },
+            "the producer half is untouched; only the tenant half is keyed by identity"
+        );
+    }
+
+    /// Records outlive the catalog entry that named them, and stay readable by identity.
+    ///
+    /// # Why this matters more than it looks
+    ///
+    /// Deleting a ledger removes it from the catalog; it does not remove what this store recorded,
+    /// which stays until retention takes it. That is deliberate — configuration is not evidence,
+    /// and deleting the first must not destroy the second early. Resolving an identity through the
+    /// catalog made the deletion do exactly that: the records were still on disk and nothing could
+    /// name them any more.
+    #[test]
+    fn an_identity_still_reads_after_the_ledger_is_deleted_from_the_catalog() {
+        let (catalog, zone_id, ledger_id) = catalog("deleted-ledger");
+        catalog
+            .delete_ledger(
+                &Selector::Id(zone_id.clone()),
+                &Selector::Id(ledger_id.clone()),
+            )
+            .expect("the ledger is deleted");
+
+        let resolved = canonical(
+            Some(&catalog),
+            Scope::Tenant {
+                zone: zone_id.clone(),
+                ledger: ledger_id.clone(),
+            },
+        )
+        .expect("evidence outlives the configuration that named it");
+        assert_eq!(
+            resolved,
+            Scope::Tenant {
+                zone: zone_id,
+                ledger: ledger_id
+            }
+        );
+
+        assert!(
+            matches!(
+                canonical(
+                    Some(&catalog),
+                    Scope::Tenant {
+                        zone: "acme".to_owned(),
+                        ledger: "agent-governance".to_owned(),
+                    },
+                ),
+                Err(ReadError::Unknown(_))
+            ),
+            "the name, however, no longer stands for anything: nothing is there to resolve it"
+        );
+    }
 }

@@ -178,7 +178,7 @@ mod tests {
         // Connecting is lazy on both sides: what is asserted here is the
         // dispatch, not that anything answers.
         assert!(matches!(
-            connect("http://127.0.0.1:7556"),
+            connect("http://127.0.0.1:6443"),
             Ok(AnyRemote::Http(_))
         ));
         assert!(matches!(
@@ -186,17 +186,17 @@ mod tests {
             Ok(AnyRemote::Http(_))
         ));
         assert!(matches!(
-            connect("grpc://127.0.0.1:7556"),
+            connect("grpc://127.0.0.1:6443"),
             Ok(AnyRemote::Grpc(_))
         ));
-        let grpcs = connect_with_ca("grpcs://localhost:7556");
+        let grpcs = connect_with_ca("grpcs://localhost:6443");
         assert!(matches!(grpcs, Ok(AnyRemote::Grpc(_))), "{:?}", grpcs.err());
     }
 
     #[test]
     fn what_is_refused_and_why() {
         for (url, expected) in [
-            ("127.0.0.1:7556", "a URL"),
+            ("127.0.0.1:6443", "a URL"),
             ("ftp://host", "not supported here"),
             ("grpc://host/with/path", "no path"),
         ] {

@@ -30,7 +30,7 @@ experimental:
     enabled: "false"
 
 telemetry:
-  addr: 0.0.0.0:7558
+  addr: 0.0.0.0:5443
   # The lab ships a Tempo beside the planes; spans go there. Fail-open: with
   # Tempo down the planes serve unchanged and spans are dropped.
   otel:
@@ -42,10 +42,10 @@ controlPlane:
   public:
     http:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
     grpc:
       enabled: true
-      addr: 0.0.0.0:7556
+      addr: 0.0.0.0:6443
 
   # Reclaiming what nothing references, on a cadence a demo can watch.
   storage:

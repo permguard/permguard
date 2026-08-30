@@ -51,7 +51,7 @@ fn identity() -> ProductIdentity {
 fn deployed(extra: &[(&str, &str)]) -> Config {
     let mut file: Vec<(String, String)> = vec![(
         permguard_server::plane::SETTING_CONTROL_HTTP_ADDR.to_owned(),
-        "127.0.0.1:7556".to_owned(),
+        "127.0.0.1:6443".to_owned(),
     )];
     for (name, value) in extra {
         file.push(((*name).to_owned(), (*value).to_owned()));

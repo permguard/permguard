@@ -469,7 +469,21 @@ pub fn epoch_seconds(instant: &str) -> Option<i64> {
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     let days = era * 146_097 + day_of_era - 719_468;
 
-    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
+    let seconds = days * 86_400 + hour * 3_600 + minute * 60 + second;
+
+    // The round trip is what "canonical" means here, so it is what is checked.
+    //
+    // Every field above is in range on its own, and that is not enough: `1..=31` admits a day the
+    // month does not have, and the civil-days arithmetic has no notion of a date that does not
+    // exist — it converts `2025-02-29` into the instant three lines of algebra say it is, which is
+    // `2025-03-01`. Accepting that puts two spellings on one instant, and leaves a record holding a
+    // date the calendar never had while the index and the engine use a different one. A February
+    // 29th in a year that has none is an ordinary client bug, not an exotic input.
+    //
+    // Rendering the result and requiring it back is exact, and needs no second table of month
+    // lengths and no second leap rule to disagree with this one: the only strings that survive are
+    // the ones this system also writes.
+    (render_epoch_seconds(seconds)? == instant).then_some(seconds)
 }
 
 /// The canonical instant of an epoch second — the exact inverse of [`epoch_seconds`].
@@ -547,6 +561,82 @@ mod tests {
         fs::create_dir_all(&path).expect("the directory is created");
 
         path
+    }
+
+    /// A date the calendar does not have is refused, not moved to one that exists.
+    ///
+    /// # Why this needs a test of its own
+    ///
+    /// Each field passes on its own: `02` is a month and `29` is inside `1..=31`. What fails is the
+    /// combination, and the civil-days arithmetic has no opinion about it — it converts
+    /// `2025-02-29` into the instant the algebra says, which is `2025-03-01`. That put two
+    /// spellings on one instant: the audit record kept the date the caller sent while the index and
+    /// the engine used another, three days apart at the extreme. A leap year off by one is an
+    /// ordinary client bug, so this is an input that really arrives.
+    #[test]
+    fn a_date_the_calendar_does_not_have_is_refused_rather_than_moved() {
+        for absent in [
+            // February, in years that have no twenty-ninth.
+            "2025-02-29T00:00:00Z",
+            "2026-02-29T00:00:00Z",
+            "2100-02-29T00:00:00Z",
+            // February never has these at all.
+            "2024-02-30T00:00:00Z",
+            "2026-02-31T00:00:00Z",
+            // The thirty-day months have no thirty-first.
+            "2026-04-31T00:00:00Z",
+            "2026-06-31T00:00:00Z",
+            "2026-09-31T00:00:00Z",
+            "2026-11-31T00:00:00Z",
+        ] {
+            assert_eq!(
+                epoch_seconds(absent),
+                None,
+                "`{absent}` is not a date, and accepting it would record an instant days from the \
+                 one it spells"
+            );
+        }
+    }
+
+    /// The dates that do exist still convert, including the awkward ones.
+    #[test]
+    fn the_calendar_dates_that_do_exist_are_accepted() {
+        for present in [
+            // Leap days, by each of the rules that decide them.
+            "2024-02-29T00:00:00Z",
+            "2000-02-29T00:00:00Z",
+            // The last day of each length of month.
+            "2026-01-31T00:00:00Z",
+            "2026-02-28T00:00:00Z",
+            "2026-04-30T00:00:00Z",
+            // Either side of a year boundary.
+            "2026-12-31T23:59:59Z",
+            "2027-01-01T00:00:00Z",
+        ] {
+            assert!(
+                epoch_seconds(present).is_some(),
+                "`{present}` is a date this system must keep accepting"
+            );
+        }
+    }
+
+    /// Parsing and rendering are inverse, which is what makes the spelling one.
+    #[test]
+    fn an_instant_survives_a_round_trip() {
+        let mut at = 0i64;
+        // Steps of a second, a minute, an hour, a day, a year and a leap cycle: the walk crosses
+        // month ends, leap days and the epoch without enumerating a century.
+        for step in [1i64, 59, 3_600, 86_400, 86_400 * 365, 86_400 * 1_461] {
+            for _ in 0..64 {
+                let text = render_epoch_seconds(at).expect("the instant renders");
+                assert_eq!(
+                    epoch_seconds(&text),
+                    Some(at),
+                    "`{text}` must read back as the second it was written from"
+                );
+                at = at.saturating_add(step);
+            }
+        }
     }
 
     #[test]

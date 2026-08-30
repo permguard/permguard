@@ -31,7 +31,7 @@ fn config(settings: &[(&str, &str)]) -> Config {
 
 /// The least a configuration needs before any of the rules below are the reason it fails.
 fn serving(extra: &[(&str, &str)]) -> Config {
-    let mut settings = vec![(SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:7556")];
+    let mut settings = vec![(SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443")];
     settings.extend_from_slice(extra);
 
     config(&settings)
@@ -65,16 +65,16 @@ fn test_generating_material_is_refused_to_a_deployment_that_has_not_said_it_is_a
 #[test]
 fn test_an_administrative_surface_the_world_can_reach_must_demand_a_certificate() {
     // The configuration that reads as fine and hands administration to anyone who can route to it.
-    let exposed = serving(&[(SETTING_ADMIN_ADDR, "0.0.0.0:7557")]);
+    let exposed = serving(&[(SETTING_ADMIN_ADDR, "0.0.0.0:6443")]);
     let why = refusal(&exposed);
 
-    assert!(why.contains("0.0.0.0:7557"));
+    assert!(why.contains("0.0.0.0:6443"));
     assert!(why.contains("client_ca"));
 }
 
 #[test]
 fn test_the_same_surface_on_loopback_is_allowed() {
-    for address in ["127.0.0.1:7557", "localhost:7557", "[::1]:7557"] {
+    for address in ["127.0.0.1:6443", "localhost:6443", "[::1]:6443"] {
         serving(&[(SETTING_ADMIN_ADDR, address)])
             .validate()
             .unwrap_or_else(|error| panic!("{address} was refused: {error:#}"));
@@ -100,7 +100,7 @@ fn test_mutual_tls_without_a_list_of_peers_is_refused_outside_development() {
 
     let mutual = [
         (SETTING_WORKING_DIR, volume),
-        (SETTING_ADMIN_ADDR, "0.0.0.0:7557"),
+        (SETTING_ADMIN_ADDR, "0.0.0.0:6443"),
         (SETTING_ADMIN_TLS_CERT, "tls/server.pem"),
         (SETTING_ADMIN_TLS_KEY, "tls/server.key"),
         (SETTING_ADMIN_TLS_CLIENT_CA, "tls/ca.pem"),
