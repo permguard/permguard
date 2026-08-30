@@ -2137,7 +2137,7 @@ async fn a_stale_partition_is_rebuilt_even_after_a_sibling_profile_was() {
     assert_eq!(status, StatusCode::OK, "{body}");
 
     // Now the temporal profile asks. Its only login is the refused one at t=3900 — the audit
-    // profile's login at t=5000 is addressed to the other partition and is never its input — so
+    // profile's login at t=4050 is addressed to the other partition and is never its input — so
     // this permit exists only if the temporal partition was still stale and rebuilt here.
     let (status, body) = post(
         &router,
