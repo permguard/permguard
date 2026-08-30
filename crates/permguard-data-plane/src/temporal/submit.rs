@@ -480,9 +480,6 @@ impl Submitter {
         // startup: accepting the event and discovering the mismatch after eviction would make the
         // same policy change its answer as the volume ages.
         self.admit_history_window(&checks, &zone, &ledger)?;
-        // And it must not arrive behind what this history has already observed. Checked before the
-        // append, so a refusal costs nothing: no record, no sequence, no hole to repair.
-        self.admit_order(&zone, &ledger, &partition_key, &occurrence)?;
 
         let proposed = Record {
             v: 1,
@@ -825,6 +822,21 @@ impl Submitter {
             }
         }
 
+        // Order, under the turn. Everything with a lower sequence is durable and settled by now, so
+        // this is the first point at which "has this history already moved past that instant" has a
+        // stable answer — asked before the append it is a race, and two concurrent submissions can
+        // both pass it and then be journalled either way round.
+        if let Err(error) = self.admit_order(&zone, &ledger, &partition_key, &occurrence, sequence)
+        {
+            // The record stays: it is evidence, and losing it would change what future decisions
+            // mean. What is marked is the history, so the next occurrence in it is evaluated
+            // against a run rebuilt from the journal — and `observable` sorts that run, so the late
+            // arrival takes its right place there rather than being appended to what came after it.
+            self.invalidate_history(&zone, &ledger, &partition_key);
+
+            return Err(error);
+        }
+
         // Replay while holding this sequence's turn. This used to happen before the append, which
         // allowed a later concurrent submission to pass the freshness check while an earlier,
         // durable sequence was still waiting to be applied. The current record is excluded by its
@@ -1096,7 +1108,7 @@ impl Submitter {
     }
 
     /// Refuses a loaded temporal contract whose longest window can outlive the journal.
-    /// Refuses an occurrence that is older than one this history has already observed.
+    /// Refuses to *decide* an occurrence that is older than one this history already holds.
     ///
     /// # Why an out-of-order arrival cannot simply be applied
     ///
@@ -1110,28 +1122,33 @@ impl Submitter {
     /// an occurrence at `t1` submitted after one at `t2` was observed *after* it. `previous`,
     /// `since` and every window operator then answer from a sequence that never happened.
     ///
-    /// # Why refusing rather than rebuilding
+    /// # Why here, and not before the append
     ///
-    /// Rebuilding to absorb the late arrival is the other half of the contract, and it is not a
-    /// drop-in here: [`Self::observable`] bounds its scan at the occurrence's own instant, so a
-    /// rebuild for `t1` would exclude the `t2` that is already durable and hand the engine a
-    /// history missing an event it had already been told about. Making that correct means
-    /// rebuilding to the newest instant, re-applying everything after `t1`, and deciding what
-    /// happens to the answers those later occurrences were already given — which is a change to
-    /// what a decision means, not a repair.
+    /// Because before the append the answer is not stable. Two submissions racing for one ledger
+    /// can both find nothing ahead of them and then be journalled in either order, so a check there
+    /// refuses whichever loses a scheduling race and lets the same pair through on the next run.
+    /// Under the turn every lower sequence is durable and settled, and `before_local_sequence`
+    /// excludes this record and everything the journal placed after it. The question has one answer.
     ///
-    /// So this refuses, which is what the rest of this path does with an input it cannot honour.
-    /// Nothing is written, the caller is told the ledger has moved past this instant, and no
-    /// decision is served from an order the journal never held.
+    /// # Why the record survives the refusal
+    ///
+    /// It is evidence, and evidence is not the plane's to discard: an occurrence that happened is
+    /// an input to every *future* decision in its history, and dropping it because this one could
+    /// not be answered would change what those later decisions mean. So the same bargain the
+    /// freshness check makes is made here — the record is kept, the history is marked for replay,
+    /// and only the answer is withheld. [`Self::observable`] sorts the run it rebuilds, so the late
+    /// arrival is fed in its right place rather than appended to what came after it, and the
+    /// history heals on the next occurrence instead of at the next restart.
     fn admit_order(
         &self,
         zone: &str,
         ledger: &str,
         history: &str,
         occurrence: &Occurrence,
+        before_local_sequence: u64,
     ) -> Result<(), ApiError> {
-        // Everything strictly after this occurrence, in its own history. A single record is enough
-        // to know the ledger has moved past it; the scan is bounded by the index, not by retention.
+        // Everything strictly after this occurrence, in its own history. One record is enough to
+        // know the ledger has moved past it; the scan is bounded by the index, not by retention.
         let query = permguard_events::index::Query {
             event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
             history: history.to_owned(),
@@ -1148,6 +1165,14 @@ impl Submitter {
                 format!("this plane's own journal could not be read: {error}"),
             )
         })?;
+        // This record and everything the journal placed after it are not "already observed": the
+        // engine has not been told about them, and this one is the occurrence being decided.
+        newer.retain(|record| {
+            record
+                .get("seq")
+                .and_then(serde_json::Value::as_u64)
+                .is_some_and(|sequence| sequence < before_local_sequence)
+        });
         // The imported half feeds the same engine in a shared mode, so it settles the same question.
         if let Some(imports) = &self.imports
             && self.consistency.is_shared()
@@ -1176,11 +1201,11 @@ impl Submitter {
             ErrorClass::Conflict,
             "event_out_of_order",
             format!(
-                "`{}` occurred at {} and this history has already observed an occurrence at {at}. A \
-                 temporal engine is fed in timestamp order, so recording this one now would place \
+                "`{}` occurred at {} and this history already holds an occurrence at {at}. A \
+                 temporal engine is fed in timestamp order, so deciding this one now would place \
                  it after an event it happened before, and every window operator would answer from \
-                 an order that never happened. Submit it to a history that has not moved past it, \
-                 or accept that it is late and drop it",
+                 an order that never happened. The occurrence is recorded and remains evidence; \
+                 the history is rebuilt in order before the next decision is served from it",
                 occurrence.event_id, occurrence.occurred_at
             ),
         ))

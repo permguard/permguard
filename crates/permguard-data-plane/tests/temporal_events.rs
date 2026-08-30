@@ -1783,14 +1783,45 @@ async fn an_occurrence_behind_what_the_history_holds_is_refused() {
         "and it is refused for its order, not for its content: {refused}"
     );
 
+    // The record is kept. An occurrence that happened is an input to every future decision in its
+    // history, so discarding it because this one could not be answered would change what those
+    // later decisions mean. Only the answer is withheld.
     assert_eq!(
         plane
             .streams
             .read_from(ZONE_ID, LEDGER_ID, 0, 100)
             .expect("the journal reads")
             .len(),
-        1,
-        "the refusal happens before the append, so nothing was written and there is no hole"
+        2,
+        "the occurrence is evidence and stays; what was refused is the verdict, not the record"
+    );
+
+    // And the ledger is not wedged by it: the history was marked for replay, so the next
+    // occurrence is decided against a run rebuilt from the journal — with the late arrival sorted
+    // into its right place rather than appended after what followed it.
+    let (status, body) = post(
+        &router,
+        submission(
+            4100,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": "doc1"}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the history heals on the next occurrence, not at the next restart: {body}"
+    );
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("the journal reads")
+            .len(),
+        3
     );
 }
 
@@ -1823,5 +1854,69 @@ async fn occurrences_in_order_are_still_accepted() {
             .len(),
         2,
         "order is what is refused, not lateness itself"
+    );
+}
+
+/// Concurrent submissions with rising instants are ordered or refused — never applied out of order.
+///
+/// # The property this pins
+///
+/// The journal assigns sequences in arrival order, and arrival order is the scheduler's. So a set
+/// of occurrences whose instants rise cannot be guaranteed to arrive in that order, and one of them
+/// will find the history already past it. The guarantee is not that every submission is decided —
+/// it cannot be — but that none is decided *out of order*, and that none is lost.
+///
+/// Checked under the ledger turn, where every lower sequence is durable, the answer is the same on
+/// every run: whichever occurrence the journal placed behind a later instant is refused, and it is
+/// refused for that reason rather than for anything about its content.
+///
+/// Every record survives either way. An occurrence that happened is an input to future decisions in
+/// its history, so the refusal withholds the verdict and keeps the evidence — and because the
+/// history is marked for replay, the rebuilt run sorts the refused arrival into its right place.
+#[tokio::test]
+async fn concurrent_rising_instants_are_never_applied_out_of_order() {
+    const SUBMISSIONS: usize = 16;
+
+    let plane = plane("temporal-concurrent-order");
+    let router = surface(&plane);
+
+    let mut inflight = Vec::with_capacity(SUBMISSIONS);
+    for nth in 0..SUBMISSIONS {
+        let router = router.clone();
+        let body = submission(
+            i64::try_from(nth).expect("the index is small") * 10,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": format!("s{nth}")}),
+        );
+        inflight.push(tokio::spawn(async move { post(&router, body).await }));
+    }
+
+    let mut decided = 0;
+    for handle in inflight {
+        let (status, body) = handle.await.expect("the submission finishes");
+        match status {
+            StatusCode::OK => decided += 1,
+            StatusCode::CONFLICT => assert_eq!(
+                body["code"], "event_out_of_order",
+                "the only conflict this races into is the ordering one: {body}"
+            ),
+            other => panic!("neither decided nor refused for order: {other} {body}"),
+        }
+    }
+
+    assert!(
+        decided > 0,
+        "an ordering guard that refuses everything is not a guard, it is an outage"
+    );
+    assert_eq!(
+        plane
+            .streams
+            .read_from(ZONE_ID, LEDGER_ID, 0, 100)
+            .expect("the journal reads")
+            .len(),
+        SUBMISSIONS,
+        "every occurrence is durable, decided or not: the verdict is withheld, the evidence is not"
     );
 }
