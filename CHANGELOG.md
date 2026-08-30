@@ -17,6 +17,10 @@ is cut.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.6] - 2026-08-30
+
 ### Added
 
 - **A second decision interface: `permguard.api.pdp.temporal.v1alpha1`.** The one Permguard has
