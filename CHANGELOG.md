@@ -7,7 +7,7 @@ All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) as described in
-[COMPATIBILITY.md](COMPATIBILITY.md).
+[compatibility policy](docs/compatibility.md).
 
 Release notes on GitHub are generated from commit subjects. This file is the other half: what changed
 for somebody *running* Permguard — a setting that moved, an exit status that gained a meaning, a
@@ -17,7 +17,19 @@ is cut.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Event and decision ingest now validates signer-manifest changes before replacing any retained
+  envelope or record. Reusing one `kid` with different key material is refused without changing
+  the acknowledged evidence.
+- Signer discovery no longer sorts the complete on-disk stream tree on every request, and signer
+  ranges have a fixed response ceiling. Cursors are complete, canonical triples on REST, gRPC, and
+  the CLI.
+- Concurrent stream-layout claims cannot overwrite a version marker another process published;
+  uncommitted key-archive staging files are ignored while malformed committed keys still fail
+  closed.
+- The standalone experimental control-plane configuration now declares the exact decision
+  producer it accepts, so the documented paired-plane command passes startup preflight.
 
 ## [0.1.6] - 2026-08-30
 

@@ -48,6 +48,10 @@ pub const SEGMENT_RECORDS: u64 = 10_000;
 /// The monotonic append position and producer frontier of a merged tenant view.
 const VIEW_STATE_FILE: &str = "VIEW_STATE";
 
+type TenantName = (String, String);
+type ProducerPosition = (String, String, String);
+type StreamIndex = BTreeMap<TenantName, BTreeSet<ProducerPosition>>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ViewState {
     next: u64,
@@ -94,6 +98,15 @@ impl StreamState {
             closed: None,
         }
     }
+}
+
+/// One bounded page of a ledger's producer streams, and whether more follow it.
+#[derive(Debug, Clone)]
+pub struct StreamPage {
+    pub streams: Vec<permguard_events::Stream>,
+    /// True when the walk stopped at the bound with positions still unvisited: the last stream's
+    /// `(class, producer, instance)` is the cursor for the next page.
+    pub truncated: bool,
 }
 
 /// Which records a reader is asking for.
@@ -211,6 +224,12 @@ pub struct EventStore {
     /// file that several producers share.
     view_gates:
         std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>>,
+    /// The acknowledged producer streams, ordered for bounded signer-manifest pagination.
+    ///
+    /// Rebuilt once from durable stream state at open and updated only after acknowledgement.
+    /// This keeps a request from sorting the complete on-disk history every time it asks for one
+    /// page.
+    stream_index: std::sync::RwLock<StreamIndex>,
 }
 
 impl EventStore {
@@ -223,12 +242,14 @@ impl EventStore {
         let lock = lock_exclusively(&root.join(LOCK_FILE))?;
         recover_torn_segments(&root)?;
         recover_views(&root)?;
+        let stream_index = discover_streams(&root)?;
 
         Ok(Self {
             root,
             _lock: lock,
             gates: std::sync::Mutex::new(std::collections::HashMap::new()),
             view_gates: std::sync::Mutex::new(std::collections::HashMap::new()),
+            stream_index: std::sync::RwLock::new(stream_index),
         })
     }
 
@@ -416,76 +437,72 @@ impl EventStore {
         Ok(())
     }
 
-    /// Every producer stream this store holds for one ledger.
+    /// One bounded, sorted, filtered page of the producer streams this store holds for one
+    /// ledger.
     ///
-    /// Walked from the directories, which are the streams' names verbatim: this store creates a
-    /// stream directory only from segments [`safe`] accepted unchanged.
-    pub fn producer_streams(
+    /// Read from the ordered in-memory index rebuilt from durable state at startup and updated
+    /// after every acknowledgement. The filesystem tree is never collected and sorted on a
+    /// request path, and the answer stops as soon as one position beyond the requested page is
+    /// known.
+    ///
+    /// Streams come back in `(class, producer, instance)` order, so `after` — the last triple of
+    /// the previous page — is a stable cursor.
+    #[allow(clippy::too_many_arguments)]
+    pub fn producer_streams_page(
         &self,
         zone: &str,
         ledger: &str,
-    ) -> Result<Vec<permguard_events::Stream>> {
-        let mut streams = Vec::new();
-        let ledger_root = self
-            .root
-            .join("streams")
-            .join(safe(zone)?)
-            .join(safe(ledger)?);
-        let classes = match fs::read_dir(&ledger_root) {
-            Ok(classes) => classes,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(streams),
-            Err(error) => {
-                return Err(error).with_context(|| format!("listing {}", ledger_root.display()));
-            }
+        class: Option<&str>,
+        producer: Option<&str>,
+        instance: Option<&str>,
+        after: Option<(&str, &str, &str)>,
+        limit: usize,
+    ) -> Result<StreamPage> {
+        let _ = safe(zone)?;
+        let _ = safe(ledger)?;
+        let index = match self.stream_index.read() {
+            Ok(index) => index,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        for class in classes {
-            let class = class.context("listing producer classes")?;
-            if !class.path().is_dir() {
+        let Some(held) = index.get(&(zone.to_owned(), ledger.to_owned())) else {
+            return Ok(StreamPage {
+                streams: Vec::new(),
+                truncated: false,
+            });
+        };
+
+        let mut streams = Vec::new();
+        let mut truncated = false;
+        for (held_class, held_id, held_instance) in held {
+            if class.is_some_and(|wanted| held_class != wanted)
+                || producer.is_some_and(|wanted| held_id != wanted)
+                || instance.is_some_and(|wanted| held_instance != wanted)
+                || after.is_some_and(|last| {
+                    (
+                        held_class.as_str(),
+                        held_id.as_str(),
+                        held_instance.as_str(),
+                    ) <= last
+                })
+            {
                 continue;
             }
-            for id in fs::read_dir(class.path()).context("listing producers")? {
-                let id = id.context("listing producers")?;
-                if !id.path().is_dir() {
-                    continue;
-                }
-                for instance in fs::read_dir(id.path()).context("listing incarnations")? {
-                    let instance = instance.context("listing incarnations")?;
-                    if !instance.path().is_dir() {
-                        continue;
-                    }
-                    let (class, id, instance) =
-                        (class.file_name(), id.file_name(), instance.file_name());
-                    let (Some(class), Some(id), Some(instance)) =
-                        (class.to_str(), id.to_str(), instance.to_str())
-                    else {
-                        continue;
-                    };
-                    streams.push(permguard_events::Stream::new(
-                        permguard_events::Producer {
-                            class: class.to_owned(),
-                            id: id.to_owned(),
-                            instance: instance.to_owned(),
-                        },
-                        zone,
-                        ledger,
-                    ));
-                }
+            if streams.len() == limit {
+                truncated = true;
+                break;
             }
+            streams.push(permguard_events::Stream::new(
+                permguard_events::Producer {
+                    class: held_class.clone(),
+                    id: held_id.clone(),
+                    instance: held_instance.clone(),
+                },
+                zone,
+                ledger,
+            ));
         }
-        streams.sort_by(|one, other| {
-            (
-                &one.producer.class,
-                &one.producer.id,
-                &one.producer.instance,
-            )
-                .cmp(&(
-                    &other.producer.class,
-                    &other.producer.id,
-                    &other.producer.instance,
-                ))
-        });
 
-        Ok(streams)
+        Ok(StreamPage { streams, truncated })
     }
 
     /// Records which key verified the batch starting at `first_seq`, beside the stream.
@@ -515,6 +532,26 @@ impl EventStore {
         }
 
         Ok(())
+    }
+
+    /// Validates a signer observation without changing the manifest.
+    ///
+    /// Ingest calls this under the stream gate before writing records or replacing an envelope.
+    pub fn check_signer(
+        &self,
+        stream: &permguard_events::Stream,
+        first_seq: u64,
+        key: &permguard_core::keys::Jwk,
+    ) -> Result<()> {
+        let path = self
+            .stream_path(stream)?
+            .join(permguard_stream::SIGNERS_FILE);
+        let signers =
+            permguard_stream::Signers::load(&path).context("reading the signer manifest")?;
+        let jwk = serde_json::to_value(key).context("rendering a signer key")?;
+        signers
+            .check_observation(first_seq, &key.kid, &jwk)
+            .map_err(|error| anyhow::anyhow!("recording a signer: {error}"))
     }
 
     /// Which key signed which stretch of one stream, as this store verified it.
@@ -691,6 +728,16 @@ impl EventStore {
         for entry in entries {
             let entry = entry.with_context(|| format!("reading {}", directory.display()))?;
             let path = entry.path();
+            let committed = entry.file_type().is_ok_and(|kind| kind.is_file())
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "json")
+                && !path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'));
+            if !committed {
+                continue;
+            }
             // Read and parsed, not `filter_map`ped. Skipping an unreadable key would turn "this
             // archive is damaged" into "this key was never archived", and the batch it verifies
             // would then be refused as unattributable — a corruption reported as somebody else's
@@ -758,6 +805,23 @@ impl EventStore {
         state.acked = acked;
         state.head = head.to_owned();
         self.write_state(&directory, &state)?;
+
+        // Once the producer state is durable, this is an acknowledged stream. Keep the derived
+        // request index in step with that exact commit point; tenant-view recovery can repair its
+        // own derived state independently if the remainder of this function is interrupted.
+        let mut index = match self.stream_index.write() {
+            Ok(index) => index,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        index
+            .entry((stream.zone.clone(), stream.ledger.clone()))
+            .or_default()
+            .insert((
+                stream.producer.class.clone(),
+                stream.producer.id.clone(),
+                stream.producer.instance.clone(),
+            ));
+        drop(index);
 
         let view = self.view_path(&stream.zone, &stream.ledger)?;
         // The current ingest deliberately left an uncommitted suffix in this view. Reading the
@@ -973,6 +1037,67 @@ fn stream_key(stream: &permguard_events::Stream) -> String {
         stream.producer.id,
         stream.producer.instance
     )
+}
+
+/// Rebuilds the request-time stream index from acknowledged state.
+///
+/// Directories without `STATE` are unacknowledged crash debris and deliberately do not become
+/// discoverable streams. A malformed committed state fails startup rather than silently hiding
+/// evidence from pagination.
+fn discover_streams(root: &Path) -> Result<StreamIndex> {
+    fn directories(path: &Path) -> Result<Vec<(String, PathBuf)>> {
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => {
+                return Err(error).with_context(|| format!("listing {}", path.display()));
+            }
+        };
+        let mut names = Vec::new();
+        for entry in entries {
+            let entry = entry.with_context(|| format!("listing {}", path.display()))?;
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            if let Ok(name) = entry.file_name().into_string() {
+                names.push((name, entry.path()));
+            }
+        }
+
+        Ok(names)
+    }
+
+    let mut found = BTreeMap::new();
+    for (zone, zone_path) in directories(&root.join("streams"))? {
+        for (ledger, ledger_path) in directories(&zone_path)? {
+            for (class, class_path) in directories(&ledger_path)? {
+                for (producer, producer_path) in directories(&class_path)? {
+                    for (instance, instance_path) in directories(&producer_path)? {
+                        let state_path = instance_path.join(STATE_FILE);
+                        let bytes = match fs::read(&state_path) {
+                            Ok(bytes) => bytes,
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(error) => {
+                                return Err(error)
+                                    .with_context(|| format!("reading {}", state_path.display()));
+                            }
+                        };
+                        let state: StreamState = serde_json::from_slice(&bytes)
+                            .with_context(|| format!("reading {}", state_path.display()))?;
+                        if state.acked == 0 {
+                            continue;
+                        }
+                        found
+                            .entry((zone.clone(), ledger.clone()))
+                            .or_insert_with(BTreeSet::new)
+                            .insert((class.clone(), producer.clone(), instance));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(found)
 }
 
 /// A path segment that is one segment.
@@ -1543,9 +1668,17 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
-    let temporary = parent.join(format!(".{name}.writing"));
-    let mut file =
-        File::create(&temporary).with_context(|| format!("opening {}", temporary.display()))?;
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temporary = parent.join(format!(
+        ".{name}.writing-{}-{}",
+        std::process::id(),
+        NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .with_context(|| format!("opening {}", temporary.display()))?;
     file.write_all(bytes)
         .with_context(|| format!("writing {}", temporary.display()))?;
     file.sync_all()
@@ -1665,5 +1798,110 @@ mod tests {
         for malformed in ["", "%", "%0", "%GG", "raw:colon"] {
             assert_eq!(unslug(malformed), None, "{malformed}");
         }
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn the_stream_walk_is_paged_filtered_and_cut_at_the_directory() {
+        let root = std::env::temp_dir().join(format!("stream-page-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        // Five acknowledged incarnations across two producers of one class. The request-time
+        // index is rebuilt from these durable states when the store opens.
+        for (id, instance) in [
+            ("plane-a", "i1"),
+            ("plane-a", "i2"),
+            ("plane-a", "i3"),
+            ("plane-b", "i1"),
+            ("plane-b", "i2"),
+        ] {
+            let directory = root
+                .join("streams")
+                .join("acme")
+                .join("main")
+                .join("data-plane")
+                .join(id)
+                .join(instance);
+            std::fs::create_dir_all(&directory).expect("the stream directory is created");
+            std::fs::write(
+                directory.join(super::STATE_FILE),
+                br#"{"acked":1,"head":"held"}"#,
+            )
+            .expect("the state is written");
+        }
+        let store = super::EventStore::open(&root).expect("the store opens");
+
+        // A page smaller than the whole: cut, truthful about it, resumable from the last triple.
+        let first = store
+            .producer_streams_page("acme", "main", None, None, None, None, 2)
+            .expect("the first page walks");
+        assert_eq!(first.streams.len(), 2);
+        assert!(first.truncated);
+        let last = &first.streams[1].producer;
+        let second = store
+            .producer_streams_page(
+                "acme",
+                "main",
+                None,
+                None,
+                None,
+                Some(("data-plane", last.id.as_str(), last.instance.as_str())),
+                2,
+            )
+            .expect("the second page walks");
+        assert_eq!(second.streams.len(), 2);
+        assert!(second.truncated);
+        let third = store
+            .producer_streams_page(
+                "acme",
+                "main",
+                None,
+                None,
+                None,
+                Some((
+                    "data-plane",
+                    second.streams[1].producer.id.as_str(),
+                    second.streams[1].producer.instance.as_str(),
+                )),
+                2,
+            )
+            .expect("the last page walks");
+        assert_eq!(third.streams.len(), 1);
+        assert!(!third.truncated, "the last page says it is the last");
+
+        // Pages tile: every incarnation exactly once, in order.
+        let mut walked: Vec<(String, String)> = Vec::new();
+        for page in [&first, &second, &third] {
+            walked.extend(
+                page.streams
+                    .iter()
+                    .map(|held| (held.producer.id.clone(), held.producer.instance.clone())),
+            );
+        }
+        assert_eq!(
+            walked,
+            [
+                ("plane-a", "i1"),
+                ("plane-a", "i2"),
+                ("plane-a", "i3"),
+                ("plane-b", "i1"),
+                ("plane-b", "i2"),
+            ]
+            .map(|(id, instance)| (id.to_owned(), instance.to_owned()))
+        );
+
+        // The filter cuts at the walk, and an unmatched one is empty rather than an error.
+        let one = store
+            .producer_streams_page("acme", "main", None, Some("plane-b"), None, None, 10)
+            .expect("the filter walks");
+        assert_eq!(one.streams.len(), 2);
+        assert!(!one.truncated);
+        assert!(one.streams.iter().all(|held| held.producer.id == "plane-b"));
+        let nobody = store
+            .producer_streams_page("acme", "main", None, Some("plane-x"), None, None, 10)
+            .expect("an unmatched filter walks");
+        assert!(nobody.streams.is_empty());
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }

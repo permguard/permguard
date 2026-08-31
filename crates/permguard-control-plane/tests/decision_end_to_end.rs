@@ -79,7 +79,16 @@ impl DecisionSink for DirectSink {
                 code: "malformed_batch".to_owned(),
                 detail: error.to_string(),
             })?;
-        let keys = self.keys.public_keys().expect("published");
+        let keys: Vec<ingest::ProducerTrust> = self
+            .keys
+            .public_keys()
+            .expect("published")
+            .into_iter()
+            .map(|key| ingest::ProducerTrust {
+                key,
+                pdp: "plane-a".to_owned(),
+            })
+            .collect();
 
         match ingest::accept(&self.store, &batch, &keys) {
             Ok(Accepted::Ok { acked, stored }) => {
@@ -160,7 +169,13 @@ fn pair(tag: &str, bounds: Bounds) -> Pair {
             ))
         }
 
-        fn signers(&self, _pdp_id: &str, _instance: &str) -> Result<Value, ReadError> {
+        fn signers(
+            &self,
+            _pdp_id: &str,
+            _instance: &str,
+            _from_seq: u64,
+            _until_seq: u64,
+        ) -> Result<Value, ReadError> {
             Err(ReadError::Unavailable(
                 "this test reads through the store, not through the client".to_owned(),
             ))
@@ -469,4 +484,27 @@ fn the_signer_manifest_travels_with_the_decision_stream_on_both_sides() {
         1,
         "a bounded range still names the span covering it"
     );
+}
+
+#[test]
+fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
+    // An empty manifest reads as "held, nothing signed yet"; a typo in a producer name must not
+    // read as that.
+    let pair = pair("unknown-signers", bounds());
+    let facade = permguard_control_plane::decisions::http::DecisionFacade {
+        store: Arc::clone(&pair.store),
+        local: None,
+        local_pdp: String::new(),
+        cursor_key: permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
+            .expect("a cursor key"),
+        producers: Arc::new(std::sync::RwLock::new(Vec::new())),
+        producer_files: Vec::new(),
+        disclosure: permguard_core::Disclosure::Full,
+        metrics: Metrics::none(),
+    };
+
+    let refused = facade
+        .signers_of("no-such-plane", "no-such-instance", 0, 0)
+        .expect_err("an unknown stream is a refusal");
+    assert_eq!(refused.code(), "stream_unknown", "{refused:?}");
 }

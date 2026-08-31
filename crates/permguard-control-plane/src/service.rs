@@ -207,32 +207,33 @@ impl PlaneModule for ControlPlaneModule {
     fn streams(&self, config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
         let mut streams = Vec::new();
 
+        // Declared whether or not the deployment turned them on: "not here" and "here, turned
+        // off" are different answers, and discovery serves the second one too. Only enabled
+        // streams own their directories.
+
         // The decision store: what the data planes ship, kept and served. The directory predates
         // the versioned layout and stays where recorded evidence already is.
-        if config.decision_store_enabled()
-            && let Ok(identity) =
-                permguard_stream::StreamIdentity::new("control-plane", "decisions")
-        {
+        if let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "decisions") {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Consumer,
                 record_type: "permguard.decision.v1".to_owned(),
                 directory: config.working_dir().join(config.decision_store_directory()),
                 legacy: true,
+                enabled: config.decision_store_enabled(),
             });
         }
 
         // The event store, likewise. Its default directory nests under the root the data plane
         // journals in — the exact fragility the registry names at startup on an all-in-one.
-        if events_served(config)
-            && let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "events")
-        {
+        if let Ok(identity) = permguard_stream::StreamIdentity::new("control-plane", "events") {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Consumer,
                 record_type: permguard_events::RECORD_TYPE.to_owned(),
                 directory: config.event_store_directory(),
                 legacy: true,
+                enabled: events_served(config),
             });
         }
 
@@ -253,7 +254,10 @@ impl PlaneModule for ControlPlaneModule {
             .route("/", get(info))
             .route("/health", get(health))
             .route("/version", get(info))
-            .with_state(state);
+            .with_state(state)
+            .merge(permguard_server::plane::streams_route(
+                self.streams(context.config()),
+            ));
 
         // The catalog is optional in the contract and composed by every shipped binary; a build
         // that leaves it out simply has no zone routes, rather than routes that answer 500.
@@ -507,7 +511,8 @@ fn control_configuration_document(context: &ServerContext<'_>, events_composed: 
             "\"object_fetch_endpoint\":\"{ledger}/notp/objects/fetch\"",
             "}},",
             "\"zones_endpoint\":\"{base}/v1/zones\",",
-            "\"ledgers_endpoint\":\"{base}/v1/zones/{{zone}}/ledgers\"",
+            "\"ledgers_endpoint\":\"{base}/v1/zones/{{zone}}/ledgers\",",
+            "\"streams_endpoint\":\"{base}/v1/streams\"",
             "{interfaces}",
             "}}"
         ),
@@ -675,10 +680,11 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
     if !config.decision_store_enabled() {
         return Ok(());
     }
-    if config.decision_producer_keys().is_empty() && !config.data_signing_keys_enabled() {
+    if config.decision_producer_keys().is_empty() && !local_producer_composed(config) {
         anyhow::bail!(
             "the decision store is enabled and this process has neither \
-             `controlPlane.decisions.producer_keys` nor a local data-plane signing ring. It would \
+             `controlPlane.decisions.producer_keys` nor a data plane in the same process with \
+             its decision log on (`dataPlane.decisions.log.enabled` and `pdp_id`). It would \
              serve no decision routes because no batch could be verified"
         );
     }
@@ -789,6 +795,18 @@ fn build_event_facade(
     Some(facade)
 }
 
+/// Whether this process actually contains a decision producer of its own: a data plane with the
+/// decision log on and a named identity, plus the ring that signs for it.
+///
+/// The signing ring alone is not it: a control-plane-only process composes a data signing ring
+/// whenever the key lifecycle is on, and trusting that ring would bind keys to an empty
+/// `pdp_id` — a producer nothing can ever legitimately claim, dressed as a working fallback.
+fn local_producer_composed(config: &permguard_core::Config) -> bool {
+    config.data_signing_keys_enabled()
+        && config.log_enabled()
+        && !config.log_pdp_id().trim().is_empty()
+}
+
 fn build_decision_facade(
     context: &ServerContext<'_>,
     directory: &std::path::Path,
@@ -798,7 +816,11 @@ fn build_decision_facade(
     // Whose signatures this plane accepts. Its own ring is deliberately not
     // among them: a batch is signed by the plane that decided.
     let producers = load_producer_keys(config);
-    let local = context.data_signing_keys().map(std::sync::Arc::clone);
+    // The ring sharing this process is trusted only when a local producer actually exists to
+    // bind it to — see `local_producer_composed`.
+    let local = local_producer_composed(config)
+        .then(|| context.data_signing_keys().map(std::sync::Arc::clone))
+        .flatten();
     if producers.is_empty() && local.is_none() {
         if config.decision_producer_keys().is_empty() {
             // The startup check reports this before listeners are built. Keep
@@ -856,12 +878,18 @@ fn build_decision_facade(
     let facade = crate::decisions::http::DecisionFacade {
         store,
         local,
+        // The ring sharing this process signs as the data plane it belongs to: bound to that
+        // plane's own producer identity, never floating free of one.
+        local_pdp: config.log_pdp_id().to_owned(),
         cursor_key,
         producers: std::sync::Arc::new(std::sync::RwLock::new(producers)),
         producer_files: config
             .decision_producer_keys()
             .iter()
-            .map(|path| config.working_dir().join(path))
+            .map(|source| crate::decisions::http::ProducerFile {
+                path: config.working_dir().join(&source.path),
+                pdp: source.pdp.clone(),
+            })
             .collect(),
         disclosure: config.error_detail(),
         metrics: context.metrics().clone(),
@@ -873,13 +901,26 @@ fn build_decision_facade(
     Some(facade)
 }
 
-/// Reads the producers' published key sets from the paths the file names.
+/// Reads the producers' published key sets from the paths the file names, each bound to the
+/// producer its entry declares.
 ///
 /// A path that cannot be read is reported and skipped rather than fatal: a
 /// deployment with three producers and one unreadable file should keep
 /// accepting the other two, and hear about the third.
-fn load_producer_keys(config: &permguard_core::Config) -> Vec<permguard_core::Jwk> {
-    load_keys_from(config, config.decision_producer_keys())
+fn load_producer_keys(
+    config: &permguard_core::Config,
+) -> Vec<crate::decisions::ingest::ProducerTrust> {
+    let mut trusted = Vec::new();
+    for source in config.decision_producer_keys() {
+        for key in load_keys_from(config, std::slice::from_ref(&source.path)) {
+            trusted.push(crate::decisions::ingest::ProducerTrust {
+                key,
+                pdp: source.pdp.clone(),
+            });
+        }
+    }
+
+    trusted
 }
 
 /// The event producers' published sets, from wherever this deployment named them.
@@ -1079,7 +1120,7 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
     if let Some(decisions) = &state.decisions {
         let composed = decisions.lock().ok().and_then(|held| {
             held.as_ref()
-                .map(|facade| facade.accepted_keys().map(|keys| keys.len()))
+                .map(|facade| facade.accepted_producers().map(|keys| keys.len()))
         });
         match composed {
             None => degraded.push(Degraded {

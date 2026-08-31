@@ -42,16 +42,18 @@ pub struct DecisionFacade {
     /// is a *producer's* ring that happens to be here rather than this plane's
     /// own. A control plane with no such neighbour has none.
     pub local: Option<Arc<dyn KeyManager>>,
-    /// The published key sets of the producers this plane accepts, from the
-    /// file. Never fetched: ingestion must not depend on reaching the planes
-    /// that are shipping to it.
+    /// The producers this plane accepts, each key bound to the one `pdp_id` it may sign for.
+    /// From the file, never fetched: ingestion must not depend on reaching the planes that are
+    /// shipping to it.
     ///
     /// Re-read when a batch cannot be attributed, so a producer that rotates
     /// its ring is a file to update rather than a plane to restart. Behind a
     /// lock because that re-read happens on a request.
-    pub producers: std::sync::Arc<std::sync::RwLock<Vec<Jwk>>>,
-    /// Where those sets are read from.
-    pub producer_files: Vec<std::path::PathBuf>,
+    pub producers: std::sync::Arc<std::sync::RwLock<Vec<ingest::ProducerTrust>>>,
+    /// Where those sets are read from, each path bound to the producer it speaks for.
+    pub producer_files: Vec<ProducerFile>,
+    /// The producer identity of the ring sharing this process, when one does — the all-in-one.
+    pub local_pdp: String,
     /// The secret read offsets are signed with.
     ///
     /// The server keeps no per-consumer cursor, so the only thing between a consumer and a
@@ -85,6 +87,36 @@ impl DecisionFacade {
         from_seq: u64,
         until_seq: u64,
     ) -> Result<StreamSignersView, ApiError> {
+        if !permguard_stream::is_portable_name(pdp_id)
+            || !permguard_stream::is_portable_name(instance)
+        {
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "stream_malformed",
+                "`pdp` and `instance` are unchanged portable names",
+            ));
+        }
+        // A stream this store never held is a `404`, not an empty manifest: an empty answer
+        // reads as "held, nothing signed yet", and a typo in a producer name must not read as
+        // that.
+        let exists = self
+            .store
+            .stream_exists(pdp_id, instance)
+            .map_err(|error| {
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    "store_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        if !exists {
+            return Err(ApiError::new(
+                ErrorClass::NotFound,
+                "stream_unknown",
+                format!("this store holds no stream for `{pdp_id}/{instance}`"),
+            ));
+        }
+
         let until = if until_seq == 0 { u64::MAX } else { until_seq };
         let state = self.store.stream_state(pdp_id, instance).map_err(|error| {
             ApiError::new(
@@ -101,29 +133,51 @@ impl DecisionFacade {
             )
         })?;
 
+        let spans = signers.covering(from_seq, until);
+        if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                "signer_range_too_wide",
+                format!(
+                    "this range crosses more than {} signing-key spans; narrow `from_seq` and \
+                     `until_seq`",
+                    permguard_stream::MAX_SIGNER_SPANS
+                ),
+            ));
+        }
+
         Ok(StreamSignersView {
             acked: state.acked,
-            spans: signers.covering(from_seq, until).to_vec(),
+            spans: spans.to_vec(),
         })
     }
 
-    /// Every key a producer's batch may legitimately be signed by.
+    /// Every producer binding a batch may legitimately verify under.
     ///
     /// The union of what the file declares and what a producer sharing this
-    /// process publishes. Never this plane's own signing ring: a control plane
-    /// that verified against itself would accept anything it could have
+    /// process publishes — the latter bound to that producer's own `pdp_id`,
+    /// never floating free. Never this plane's own signing ring: a control
+    /// plane that verified against itself would accept anything it could have
     /// written, which is the opposite of what the signature is for.
-    pub(crate) fn accepted_keys(&self) -> anyhow::Result<Vec<Jwk>> {
-        let mut keys = self
+    pub(crate) fn accepted_producers(&self) -> anyhow::Result<Vec<ingest::ProducerTrust>> {
+        let mut producers = self
             .producers
             .read()
             .map(|held| held.clone())
             .unwrap_or_default();
         if let Some(local) = &self.local {
-            keys.extend(local.public_keys()?);
+            producers.extend(
+                local
+                    .public_keys()?
+                    .into_iter()
+                    .map(|key| ingest::ProducerTrust {
+                        key,
+                        pdp: self.local_pdp.clone(),
+                    }),
+            );
         }
 
-        Ok(keys)
+        Ok(producers)
     }
 
     /// Re-reads the producers' key sets from disk.
@@ -152,10 +206,10 @@ impl DecisionFacade {
         }
     }
 
-    pub(crate) fn reload_producers(&self) -> Vec<Jwk> {
-        let mut keys = Vec::new();
-        for path in &self.producer_files {
-            let parsed = std::fs::read_to_string(path)
+    pub(crate) fn reload_producers(&self) -> Vec<ingest::ProducerTrust> {
+        let mut producers = Vec::new();
+        for file in &self.producer_files {
+            let parsed = std::fs::read_to_string(&file.path)
                 .ok()
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
             let Some(parsed) = parsed else {
@@ -163,20 +217,33 @@ impl DecisionFacade {
             };
             let set = parsed.get("keys").cloned().unwrap_or(parsed);
             if let Ok(found) = serde_json::from_value::<Vec<Jwk>>(set) {
-                keys.extend(found);
+                producers.extend(found.into_iter().map(|key| ingest::ProducerTrust {
+                    key,
+                    pdp: file.pdp.clone(),
+                }));
             }
         }
         if let Ok(mut held) = self.producers.write() {
-            held.clone_from(&keys);
+            held.clone_from(&producers);
         }
         if let Some(local) = &self.local
             && let Ok(published) = local.public_keys()
         {
-            keys.extend(published);
+            producers.extend(published.into_iter().map(|key| ingest::ProducerTrust {
+                key,
+                pdp: self.local_pdp.clone(),
+            }));
         }
 
-        keys
+        producers
     }
+}
+
+/// One producer's published key set on disk, and the identity it signs for.
+#[derive(Debug, Clone)]
+pub struct ProducerFile {
+    pub path: std::path::PathBuf,
+    pub pdp: String,
 }
 
 /// The routes the control plane answers about decisions.
@@ -229,7 +296,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
         }
     };
 
-    let keys = match facade.accepted_keys() {
+    let keys = match facade.accepted_producers() {
         Ok(keys) => keys,
         Err(error) => {
             return refuse(
@@ -461,7 +528,21 @@ async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
         }
     };
 
-    match facade.signers_of(&pdp_id, &instance, from_seq, until_seq) {
+    let answered = {
+        let facade = facade.clone();
+        tokio::task::spawn_blocking(move || {
+            facade.signers_of(&pdp_id, &instance, from_seq, until_seq)
+        })
+        .await
+        .unwrap_or_else(|error| {
+            Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "store_unavailable",
+                error.to_string(),
+            ))
+        })
+    };
+    match answered {
         Ok(view) => (StatusCode::OK, Json(view)).into_response(),
         Err(error) => refuse(&facade, error),
     }

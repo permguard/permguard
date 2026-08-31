@@ -44,7 +44,7 @@ pub mod settings;
 
 pub use discovery::{
     DiscoveredPlane, InterfaceLink, PlaneConfiguration, PlaneId, discovered_planes,
-    plane_configuration, plane_http_base, server_configuration_document,
+    plane_configuration, plane_http_base, server_configuration_document, streams_route,
 };
 pub use factories::build_settings;
 pub use settings::*;
@@ -593,8 +593,12 @@ impl PlaneServer {
             );
         });
 
-        // Every stream every selected plane declares, registered once: the first directory
-        // collision is a refusal here, at startup, rather than a runtime surprise on a volume.
+        // Every stream every selected plane declares, registered once — a validation pass, by
+        // design: the registry lives for this check and is dropped with it, because nothing at
+        // runtime consumes it yet. Discovery serves the descriptors directly (`/v1/streams` on
+        // each plane), and a long-lived registry arrives with the stream runtime itself. What
+        // this pass buys today is that the first directory collision is a refusal here, at
+        // startup, rather than a runtime surprise on a volume.
         // A nesting between two directories that predate the versioned layout is tolerated and
         // logged — an existing volume keeps starting — and anything involving a new stream is
         // refused outright.
@@ -602,11 +606,18 @@ impl PlaneServer {
             self.planes.iter().map(PlaneService::module).collect();
         app = app.with_startup_check(move |config| {
             let mut registry = permguard_stream::StreamRegistry::new();
+            let mut serving_any = false;
             for module in &modules {
                 if !plane_enabled(config, module.id()) {
                     continue;
                 }
                 for descriptor in module.streams(config) {
+                    // A disabled stream is declared — discovery lists it as disabled — but it
+                    // owns no directory and registers nothing: only writers can collide.
+                    if !descriptor.enabled {
+                        continue;
+                    }
+                    serving_any = true;
                     let identity = descriptor.identity.to_string();
                     match registry.register(descriptor) {
                         Ok(permguard_stream::Registered::Clean) => {}
@@ -624,6 +635,14 @@ impl PlaneServer {
                         ),
                     }
                 }
+            }
+
+            // The versioned layout is claimed before any stream serves: the marker under
+            // `data/streams` says which rule the directories below it follow, and a root laid
+            // out by a rule this build does not know is refused rather than guessed at.
+            if serving_any {
+                permguard_stream::layout::claim(&config.data_directory())
+                    .map_err(|error| anyhow::anyhow!("claiming the stream layout: {error}"))?;
             }
 
             Ok(())

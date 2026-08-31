@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use permguard_control_plane::decisions::store::Scope;
 use permguard_control_plane::decisions::{Accepted, DecisionStore, Refused, ingest, read};
-use permguard_core::KeyManager;
+use permguard_core::{KeyId, KeyManager, Maintenance, Signature};
 use permguard_decisions::envelope::{Batch, Envelope, Signed};
 use permguard_decisions::record::{
     ActionRef, Body, Build, Commitments, DecisionBody, GENESIS, Inputs, MarkerBody, Party, Reason,
@@ -50,6 +50,45 @@ fn ring(tag: &str) -> DirectoryKeyManager {
     keys.maintain().expect("the ring produces a key");
 
     keys
+}
+
+/// A real key ring presented under a chosen key id, for substitution regression tests.
+struct AliasedRing<'a> {
+    inner: &'a DirectoryKeyManager,
+    kid: String,
+}
+
+impl KeyManager for AliasedRing<'_> {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
+        self.inner.public_keys().map(|mut keys| {
+            for key in &mut keys {
+                key.kid.clone_from(&self.kid);
+            }
+            keys
+        })
+    }
+
+    fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+        Ok(KeyId::new(self.kid.clone()))
+    }
+
+    fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+        self.inner.sign(payload).map(|signature| {
+            Signature::new(
+                KeyId::new(self.kid.clone()),
+                signature.algorithm(),
+                signature.bytes().to_vec(),
+            )
+        })
+    }
+
+    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+        self.inner.maintain()
+    }
 }
 
 fn store(tag: &str) -> DecisionStore {
@@ -139,7 +178,7 @@ fn stream(instance: &str, count: u64) -> Vec<Value> {
     records
 }
 
-fn batch(records: &[Value], previous_head: &str, keys: &DirectoryKeyManager) -> Batch {
+fn batch(records: &[Value], previous_head: &str, keys: &dyn KeyManager) -> Batch {
     let verified = chain::verify(records, None).expect("it is a chain");
     let leaves: Vec<String> = records
         .iter()
@@ -165,8 +204,20 @@ fn batch(records: &[Value], previous_head: &str, keys: &DirectoryKeyManager) -> 
     }
 }
 
-fn published(keys: &DirectoryKeyManager) -> Vec<permguard_core::Jwk> {
-    keys.public_keys().expect("published")
+fn published(keys: &dyn KeyManager) -> Vec<ingest::ProducerTrust> {
+    trusted_for(keys, "plane")
+}
+
+/// The published keys, bound to one exact producer — the binding ingest verifies against.
+fn trusted_for(keys: &dyn KeyManager, pdp: &str) -> Vec<ingest::ProducerTrust> {
+    keys.public_keys()
+        .expect("published")
+        .into_iter()
+        .map(|key| ingest::ProducerTrust {
+            key,
+            pdp: pdp.to_owned(),
+        })
+        .collect()
 }
 
 /// One bounded page, read the way a consumer reads one.
@@ -205,6 +256,56 @@ fn a_batch_is_stored_and_acknowledged_by_its_last_sequence() {
             acked: 10,
             stored: 10
         })
+    );
+}
+
+#[test]
+fn a_substituted_key_cannot_replace_the_envelope_before_its_kid_conflict_is_found() {
+    let (first, second, store) = (
+        ring("kid-order-first"),
+        ring("kid-order-second"),
+        store("kid-order"),
+    );
+    let records = stream("inst", 5);
+    ingest::accept(
+        &store,
+        &batch(&records[..3], GENESIS, &first),
+        &published(&first),
+    )
+    .expect("the original evidence is accepted");
+    let envelope = store
+        .root()
+        .join("streams")
+        .join("plane")
+        .join("inst")
+        .join("batch-00000000000000000001.jws");
+    let original = std::fs::read(&envelope).expect("the original envelope is durable");
+    let kid = published(&first)[0].key.kid.clone();
+    let substituted = AliasedRing {
+        inner: &second,
+        kid,
+    };
+
+    let refused = ingest::accept(
+        &store,
+        &batch(&records, GENESIS, &substituted),
+        &trusted_for(&substituted, "plane"),
+    );
+    assert!(
+        matches!(&refused, Err(Refused::Unverifiable(detail)) if detail.contains("different public key")),
+        "{refused:?}"
+    );
+    assert_eq!(
+        std::fs::read(&envelope).expect("the original envelope still reads"),
+        original,
+        "a refused substitution must not replace retained signed evidence"
+    );
+    assert_eq!(
+        store
+            .stream_state("plane", "inst")
+            .expect("the state reads")
+            .acked,
+        3
     );
 }
 
@@ -391,6 +492,29 @@ fn a_batch_that_does_continue_it_is_accepted() {
 }
 
 #[test]
+fn a_trusted_key_cannot_sign_for_a_producer_it_is_not_bound_to() {
+    // The records — and therefore the envelope — declare the stream identity `plane`. The same
+    // keys, trusted but bound to a *different* producer, must not attribute this batch: a valid
+    // signature under somebody else's binding is the identity-borrowing attack, not a producer.
+    let (keys, store) = (ring("bound"), store("bound"));
+    let records = stream("inst", 4);
+
+    let refused = ingest::accept(
+        &store,
+        &batch(&records, GENESIS, &keys),
+        &trusted_for(&keys, "plane-b"),
+    );
+    assert!(
+        matches!(&refused, Err(Refused::Unattributable(detail)) if detail.contains("not bound")),
+        "{refused:?}"
+    );
+
+    // And the honest binding still works, so the refusal above is the binding, not the key.
+    ingest::accept(&store, &batch(&records, GENESIS, &keys), &published(&keys))
+        .expect("the bound producer is accepted");
+}
+
+#[test]
 fn a_batch_nobody_can_attribute_is_refused_before_anything_is_stored() {
     let (ours, theirs, store) = (ring("ours"), ring("theirs"), store("unattributable"));
     let records = stream("inst", 4);
@@ -448,7 +572,16 @@ fn the_key_that_signed_is_archived_beside_what_it_attests() {
         1,
         "a batch signed today must verify in 2031"
     );
-    assert_eq!(archived[0].kid, published(&keys)[0].kid);
+    assert_eq!(archived[0].kid, published(&keys)[0].key.kid);
+
+    // A crash can leave a staging file beside committed keys. It is not evidence and must not be
+    // parsed as though it were a committed archive entry.
+    std::fs::write(
+        store.root().join("verification-keys/.key.json.next-123"),
+        b"partial",
+    )
+    .expect("the crash remnant is written");
+    assert_eq!(store.archived_keys().expect("staging is ignored").len(), 1);
 }
 
 #[test]

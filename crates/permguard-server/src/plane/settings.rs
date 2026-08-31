@@ -491,16 +491,40 @@ pub fn events_destination(
 
 /// The producers a control plane accepts decision records from.
 ///
-/// Structured, so it comes from the file only: a list of key-set paths has no
-/// sensible single-variable form.
-pub fn producer_keys(value: &Value) -> Result<Vec<String>> {
+/// Structured, so it comes from the file only: a binding of key-set path to producer identity
+/// has no sensible single-variable form. Every entry names both halves — a set that only said
+/// "these keys are trusted" would let any authorized data plane sign an envelope claiming
+/// another's identity.
+pub fn producer_keys(
+    value: &Value,
+) -> Result<Vec<permguard_core::decisions::DecisionProducerSource>> {
     let section: PlaneSectionConfig =
         serde_norway::from_value(value.clone()).context("parsing a plane section")?;
     let Some(decisions) = section.decisions.as_ref() else {
         return Ok(Vec::new());
     };
-    let decisions: DecisionStoreSection =
-        serde_norway::from_value(decisions.clone()).context("parsing `controlPlane.decisions`")?;
+    let decisions: DecisionStoreSection = serde_norway::from_value(decisions.clone()).context(
+        "parsing `controlPlane.decisions` (each `producer_keys` entry is `{path, pdp}`: the \
+         JWKS document and the exact producer it signs for)",
+    )?;
+    for source in decisions.producer_keys() {
+        if source.path.trim().is_empty() || source.pdp.trim().is_empty() || source.pdp == "*" {
+            anyhow::bail!(
+                "every decision producer key names a non-empty `path` and an exact `pdp`: the \
+                 binding of key to producer is what stops one plane signing as another"
+            );
+        }
+        // The same rule the store applies when it makes a directory of the name: refused here,
+        // at load, rather than at the first batch — a `pdp` the store cannot hold is a producer
+        // that could never ship.
+        let held = source.pdp.as_str();
+        if !permguard_stream::is_portable_name(held) {
+            anyhow::bail!(
+                "`{held}` cannot name a decision producer: the name becomes a directory, so \
+                 only an unchanged portable name is accepted"
+            );
+        }
+    }
 
     Ok(decisions.producer_keys().to_vec())
 }

@@ -53,7 +53,11 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
     // The producer may publish its file after this process: the facade mounts
     // fail-closed and reloads it, but the configured path is enough to state
     // where that authority will come from.
-    let waiting = no_trust.with_decision_producer_keys(["producer.jwks".to_owned()]);
+    let waiting =
+        no_trust.with_decision_producer_keys([permguard_core::decisions::DecisionProducerSource {
+            path: "producer.jwks".to_owned(),
+            pdp: "plane-a".to_owned(),
+        }]);
     module
         .startup_check(&waiting)
         .expect("a usable store and a declared trust source start");
@@ -61,7 +65,12 @@ fn the_decision_store_is_preflighted_instead_of_disappearing_behind_health() {
 
     let blocked = root.join("blocked");
     std::fs::write(&blocked, b"not a directory").expect("the path is blocked");
-    let broken = configured("blocked").with_decision_producer_keys(["producer.jwks".to_owned()]);
+    let broken = configured("blocked").with_decision_producer_keys([
+        permguard_core::decisions::DecisionProducerSource {
+            path: "producer.jwks".to_owned(),
+            pdp: "plane-a".to_owned(),
+        },
+    ]);
     let refused = module
         .startup_check(&broken)
         .expect_err("an unusable configured store stops startup");

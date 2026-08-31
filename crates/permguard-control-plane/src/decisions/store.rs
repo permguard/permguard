@@ -329,6 +329,36 @@ impl DecisionStore {
         Ok(())
     }
 
+    /// Validates a signer observation without changing the manifest.
+    ///
+    /// Called under the stream gate before any evidence is replaced, so a reused `kid` with
+    /// different material cannot be discovered only after the old envelope has gone.
+    pub fn check_signer(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        first_seq: u64,
+        key: &Jwk,
+    ) -> Result<()> {
+        let path = self
+            .stream_path(pdp_id, instance)?
+            .join(permguard_stream::SIGNERS_FILE);
+        let signers =
+            permguard_stream::Signers::load(&path).context("reading the signer manifest")?;
+        let jwk = serde_json::to_value(key).context("rendering a signer key")?;
+        signers
+            .check_observation(first_seq, &key.kid, &jwk)
+            .map_err(|error| anyhow::anyhow!("recording a signer: {error}"))
+    }
+
+    /// Whether this store holds anything at all for one producer stream.
+    ///
+    /// Existence is the directory's: a stream that never shipped a batch has no directory, and
+    /// answering questions about it with empty defaults would dress a typo as a quiet stream.
+    pub fn stream_exists(&self, pdp_id: &str, instance: &str) -> Result<bool> {
+        Ok(self.stream_path(pdp_id, instance)?.is_dir())
+    }
+
     /// Which key signed which stretch of one stream, as this store verified it.
     pub fn signers(&self, pdp_id: &str, instance: &str) -> Result<permguard_stream::Signers> {
         let path = self
@@ -354,12 +384,41 @@ impl DecisionStore {
     /// anywhere near it.
     pub fn archive_key(&self, key: &Jwk) -> Result<()> {
         let name = safe(&key.kid).ok_or_else(|| anyhow!("a key id that is not a name"))?;
-        let path = self.root.join(KEYS_DIRECTORY).join(format!("{name}.json"));
-        if path.exists() {
-            return Ok(());
+        let rendered = serde_json::to_vec(key).context("describing a verification key")?;
+        // The content fingerprint is part of the name, exactly as the event archive does it: a
+        // `kid` is a producer-local label, not a global identifier, and two producers reusing one
+        // label are two archive entries rather than the second being refused as a substitution.
+        // (Per-stream substitution — one stream, one name, two keys — is the signer manifest's
+        // refusal, where the scope is right.)
+        let fingerprint = fingerprint_hex(&rendered);
+        let path = self
+            .root
+            .join(KEYS_DIRECTORY)
+            .join(format!("{name}-{fingerprint}.json"));
+        // An existing file is still read, never trusted by its name: a file that mismatches its
+        // own fingerprint or no longer parses is evidence this archive cannot stand behind, and
+        // it fails closed rather than shrugging.
+        match fs::read(&path) {
+            Ok(bytes) => {
+                let held: Jwk = serde_json::from_slice(&bytes).with_context(|| {
+                    format!("the archived key {} no longer parses", path.display())
+                })?;
+                if &held != key {
+                    bail!(
+                        "the archived key {} does not match the material its name claims",
+                        path.display()
+                    );
+                }
+
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                write_durable(&path, &rendered)
+            }
+            Err(error) => {
+                Err(error).with_context(|| format!("reading the archived key {}", path.display()))
+            }
         }
-        let bytes = serde_json::to_vec(key).context("describing a verification key")?;
-        write_durable(&path, &bytes)
     }
 
     /// Every archived verification key.
@@ -371,10 +430,20 @@ impl DecisionStore {
         };
         for entry in entries {
             let entry = entry.context("listing the archived keys")?;
-            let bytes = fs::read(entry.path()).context("reading an archived key")?;
-            if let Ok(key) = serde_json::from_slice(&bytes) {
-                keys.push(key);
+            let path = entry.path();
+            let committed = entry.file_type().is_ok_and(|kind| kind.is_file())
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension == "json");
+            if !committed {
+                continue;
             }
+            let bytes = fs::read(&path).context("reading an archived key")?;
+            // Fail closed: an archived key that no longer parses is not one fewer key, it is an
+            // archive that can no longer stand behind what it verified.
+            let key: Jwk = serde_json::from_slice(&bytes)
+                .with_context(|| format!("the archived key {} no longer parses", path.display()))?;
+            keys.push(key);
         }
 
         Ok(keys)
@@ -643,13 +712,35 @@ fn truncate_above(path: &Path, acked: u64) -> Result<u64> {
     Ok(dropped)
 }
 
+/// The SHA-256 of `bytes`, hex, shortened to a filename-sized prefix — the same digest the event
+/// archive names its entries with.
+fn fingerprint_hex(bytes: &[u8]) -> String {
+    let mut digest = permguard_events::record::digest_hex(bytes);
+    digest.truncate(32);
+
+    digest
+}
+
 fn write_durable(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("creating a directory")?;
     }
-    let temporary = path.with_extension("next");
+    // The staging name is unique per writer: streams hold their own gates, but two first-time
+    // ingests under one key share this file's *target*, and a fixed `.next` would let one
+    // writer's rename race the other's half-written staging into place.
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let unique = format!(
+        "next-{}-{}",
+        std::process::id(),
+        NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
+    let temporary = path.with_extension(unique);
     {
-        let mut file = File::create(&temporary).context("writing")?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .context("writing")?;
         file.write_all(bytes).context("writing")?;
         file.sync_all().context("flushing")?;
     }
@@ -689,21 +780,7 @@ fn flush_tree(directory: &Path) -> Result<()> {
 /// reach this store from outside. A name carrying `..` or a separator would
 /// place a segment wherever the sender chose.
 fn safe(name: &str) -> Option<String> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() || trimmed.len() > 128 {
-        return None;
-    }
-    if !trimmed
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
-    {
-        return None;
-    }
-    if trimmed.starts_with('.') {
-        return None;
-    }
-
-    Some(trimmed.to_owned())
+    permguard_stream::is_portable_name(name).then(|| name.to_owned())
 }
 
 /// Reads the records of `path` after `position`, up to `limit`.

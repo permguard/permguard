@@ -102,12 +102,18 @@ impl DecisionSink for GrpcSink {
 }
 
 impl DecisionReader for GrpcSink {
-    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError> {
+    fn signers(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<serde_json::Value, ReadError> {
         let request = crate::v1::GetDecisionSignersRequest {
             pdp: pdp_id.to_owned(),
             instance: instance.to_owned(),
-            from_seq: 0,
-            until_seq: 0,
+            from_seq,
+            until_seq,
         };
 
         let answer = self.endpoint.run(

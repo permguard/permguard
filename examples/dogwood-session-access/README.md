@@ -471,7 +471,7 @@ Do not use that second reset against a volume containing data you intend to keep
 Adapted from Dogwood's Apache-2.0
 [`dogwood-docs/examples/read_login_not_logout`](https://github.com/dogwood-policy/dogwood/tree/main/dogwood-docs/examples/read_login_not_logout)
 example. The reviewed revision and full attribution are in
-[`NOTICE.md`](../../NOTICE.md). Neither Amazon nor the Dogwood maintainers
+[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md). Neither Amazon nor the Dogwood maintainers
 endorse this integration.
 
 Dogwood support is **experimental**. Its API and replication contracts are

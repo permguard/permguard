@@ -49,7 +49,11 @@ pub fn decisions(globals: &Globals, action: &DecisionsAction) -> Result<ExitCode
         DecisionsAction::List(query) => list(globals, query, false),
         DecisionsAction::Tail { query, follow } => tail(globals, query, *follow),
         DecisionsAction::Get { id, query } => get(globals, query, id),
-        DecisionsAction::Signers(query) => signers(globals, query),
+        DecisionsAction::Signers {
+            query,
+            from_seq,
+            until_seq,
+        } => signers(globals, query, *from_seq, *until_seq),
         DecisionsAction::Export(query) => list(globals, query, true),
     }
 }
@@ -200,7 +204,12 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
 
 /// The reader, and what it is reading.
 /// Which key signed which stretch of one producer stream, public keys included.
-fn signers(globals: &Globals, query: &DecisionsQuery) -> Result<ExitCode, Failure> {
+fn signers(
+    globals: &Globals,
+    query: &DecisionsQuery,
+    from_seq: Option<u64>,
+    until_seq: Option<u64>,
+) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
     let ReadScope::Stream { pdp_id, instance } = scope else {
@@ -209,7 +218,14 @@ fn signers(globals: &Globals, query: &DecisionsQuery) -> Result<ExitCode, Failur
         ));
     };
 
-    let document = reader.signers(&pdp_id, &instance).map_err(read_failure)?;
+    let document = reader
+        .signers(
+            &pdp_id,
+            &instance,
+            from_seq.unwrap_or(0),
+            until_seq.unwrap_or(0),
+        )
+        .map_err(read_failure)?;
     render(
         &DecisionSignersReport {
             scope: format!("{pdp_id}/{instance}"),

@@ -52,8 +52,13 @@ controlPlane:
       #   controlPlane:
       #     extraConfig:
       #       controlPlane:
-      #         decisions: { enabled: "true", directory: "data/decisions/store", retention: "90d" }
-      #         producer_keys: …          # the JWKS of each data plane that ships here
+      #         decisions:
+      #           enabled: "true"
+      #           directory: "data/decisions/store"
+      #           retention: "90d"
+      #           producer_keys:          # each JWKS bound to the ONE pdp it signs for
+      #             - path: trust/data-plane-decisions.jwks
+      #               pdp: data-plane-eu-1
       #   dataPlane:
       #     persistence: { enabled: true }  # with persistence.perReplica: true for >1 replica
       #     extraConfig:

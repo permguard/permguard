@@ -127,23 +127,25 @@ impl EventFacade {
     /// The published sets plus the archive. Read-only by construction: nothing that reaches this
     /// admits a record, it only re-checks records admitted earlier under keys that were current
     /// then.
-    pub fn verification_keys(&self) -> Vec<Jwk> {
+    pub fn verification_keys(&self) -> Result<Vec<Jwk>, String> {
         let mut keys: Vec<Jwk> = self
             .accepted_producers()
             .into_iter()
             .map(|held| held.key)
             .collect();
-        if let Ok(archived) = self.store.archived_keys() {
-            for key in archived {
-                // A key id is scoped to its producer. Two producers may legitimately publish
-                // different material under the same label, and a verifier must try both.
-                if !keys.iter().any(|held| held == &key) {
-                    keys.push(key);
-                }
+        let archived = self
+            .store
+            .archived_keys()
+            .map_err(|error| error.to_string())?;
+        for key in archived {
+            // A key id is scoped to its producer. Two producers may legitimately publish
+            // different material under the same label, and a verifier must try both.
+            if !keys.iter().any(|held| held == &key) {
+                keys.push(key);
             }
         }
 
-        keys
+        Ok(keys)
     }
 
     /// Re-reads the producers' published sets, for a batch nothing could attribute.
@@ -195,13 +197,18 @@ impl EventFacade {
     /// transports serve, so REST and gRPC cannot drift apart about who signed what.
     ///
     /// `until_seq` of zero means "from `from_seq` onward"; both zero means the whole history.
+    /// The filters narrow to one producer class, producer or incarnation; the answer is one
+    /// bounded page of [`SIGNERS_STREAM_CEILING`] streams, walked and cut at the directory —
+    /// never collected whole and trimmed — and a truncated page carries `next`, the cursor the
+    /// following ask passes back as `after`.
     pub fn signers_of(
         &self,
         zone: &str,
         ledger: &str,
         from_seq: u64,
         until_seq: u64,
-    ) -> Result<Vec<StreamSignersView>, ApiError> {
+        ask: &StreamsAsked,
+    ) -> Result<SignersDocument, ApiError> {
         let scope = super::read::canonical(
             self.catalog.as_ref(),
             Scope::Tenant {
@@ -228,9 +235,19 @@ impl EventFacade {
         };
         let until = if until_seq == 0 { u64::MAX } else { until_seq };
 
-        let streams = self
+        let page = self
             .store
-            .producer_streams(&zone, &ledger)
+            .producer_streams_page(
+                &zone,
+                &ledger,
+                ask.producer_class.as_deref(),
+                ask.producer.as_deref(),
+                ask.instance.as_deref(),
+                ask.after
+                    .as_ref()
+                    .map(permguard_stream::StreamPosition::as_tuple),
+                SIGNERS_STREAM_CEILING,
+            )
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -238,8 +255,9 @@ impl EventFacade {
                     error.to_string(),
                 )
             })?;
-        let mut answered = Vec::with_capacity(streams.len());
-        for stream in streams {
+        let truncated = page.truncated;
+        let mut answered = Vec::with_capacity(page.streams.len());
+        for stream in page.streams {
             let state = self.store.stream_state(&stream).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -255,16 +273,43 @@ impl EventFacade {
                 )
             })?;
 
+            let spans = signers.covering(from_seq, until);
+            if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
+                return Err(ApiError::new(
+                    ErrorClass::Validation,
+                    "signer_range_too_wide",
+                    format!(
+                        "this range crosses more than {} signing-key spans; narrow `from_seq` and \
+                         `until_seq`",
+                        permguard_stream::MAX_SIGNER_SPANS
+                    ),
+                ));
+            }
             answered.push(StreamSignersView {
                 producer_class: stream.producer.class,
                 producer: stream.producer.id,
                 instance: stream.producer.instance,
                 acked: state.acked,
-                spans: signers.covering(from_seq, until).to_vec(),
+                spans: spans.to_vec(),
             });
         }
 
-        Ok(answered)
+        // The cursor is the last stream of a truncated page: the next ask passes it back as
+        // `after` and the walk resumes strictly past it.
+        let next = truncated
+            .then(|| answered.last())
+            .flatten()
+            .map(|held| StreamCursor {
+                producer_class: held.producer_class.clone(),
+                producer: held.producer.clone(),
+                instance: held.instance.clone(),
+            });
+
+        Ok(SignersDocument {
+            streams: answered,
+            truncated,
+            next,
+        })
     }
 
     pub fn ingest(&self, batch: &Batch) -> Result<Accepted, Refused> {
@@ -364,6 +409,42 @@ pub fn routes(facade: EventFacade) -> Router {
         .with_state(facade)
 }
 
+/// The most producer streams one signers answer carries.
+///
+/// A ledger's incarnation count grows without bound over its lifetime; an answer must not. Past
+/// the ceiling the response says `truncated`, and `producer`/`instance` narrow the next ask.
+pub const SIGNERS_STREAM_CEILING: usize = 256;
+
+/// The signers answer: one page of streams, and where the next page starts when there is one.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SignersDocument {
+    pub streams: Vec<StreamSignersView>,
+    /// True when more streams matched than one page carries. Never a failure: `next` is the
+    /// cursor, and the filters narrow the ask.
+    pub truncated: bool,
+    /// The position to resume from — passed back as `after`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<StreamCursor>,
+}
+
+/// A position in the `(class, producer, instance)` order of one ledger's streams.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StreamCursor {
+    pub producer_class: String,
+    pub producer: String,
+    pub instance: String,
+}
+
+/// What narrows a stream listing: filters, and the cursor of the previous page.
+#[derive(Debug, Clone, Default)]
+pub struct StreamsAsked {
+    pub producer_class: Option<String>,
+    pub producer: Option<String>,
+    pub instance: Option<String>,
+    /// Resume strictly after this `(class, producer, instance)`.
+    pub after: Option<permguard_stream::StreamPosition>,
+}
+
 /// One producer stream's signer history, with the receiver's durable frontier — what a verifier
 /// needs to check a range of that stream without reaching the producer.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -402,12 +483,63 @@ async fn signers(
         }
     };
 
-    match facade.signers_of(&zone, &ledger, from_seq, until_seq) {
-        Ok(streams) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "streams": streams })),
-        )
-            .into_response(),
+    // The cursor is all-or-nothing: two thirds of a position is not a position.
+    let after = match (
+        asked.value("after_class"),
+        asked.value("after_producer"),
+        asked.value("after_instance"),
+    ) {
+        (None, None, None) => None,
+        (Some(class), Some(producer), Some(instance)) => {
+            match permguard_stream::StreamPosition::new(class, producer, instance) {
+                Ok(position) => Some(position),
+                Err(error) => {
+                    return refuse(
+                        &facade,
+                        ApiError::new(
+                            ErrorClass::Validation,
+                            "cursor_malformed",
+                            error.to_string(),
+                        ),
+                    );
+                }
+            }
+        }
+        _ => {
+            return refuse(
+                &facade,
+                ApiError::new(
+                    ErrorClass::Validation,
+                    "cursor_malformed",
+                    "a stream cursor names all of `after_class`, `after_producer` and \
+                     `after_instance`, or none of them",
+                ),
+            );
+        }
+    };
+    let wanted = StreamsAsked {
+        producer_class: asked.value("producer_class"),
+        producer: asked.value("producer"),
+        instance: asked.value("instance"),
+        after,
+    };
+
+    let answered = {
+        let facade = facade.clone();
+        tokio::task::spawn_blocking(move || {
+            facade.signers_of(&zone, &ledger, from_seq, until_seq, &wanted)
+        })
+        .await
+        .unwrap_or_else(|error| {
+            Err(ApiError::new(
+                ErrorClass::Unavailable,
+                "store_unavailable",
+                error.to_string(),
+            ))
+        })
+    };
+    match answered {
+        Ok(document) => (StatusCode::OK, Json(document)).into_response(),
         Err(error) => refuse(&facade, error),
     }
 }

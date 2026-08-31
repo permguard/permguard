@@ -2281,6 +2281,7 @@ dependencies = [
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
+ "permguard-stream",
  "rcgen",
  "ring",
  "serde",

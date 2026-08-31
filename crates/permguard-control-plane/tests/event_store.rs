@@ -27,7 +27,7 @@ use std::time::Duration;
 use permguard_control_plane::events::ingest::{self, Accepted, Batch, Refused};
 use permguard_control_plane::events::read::{self, Filters};
 use permguard_control_plane::events::store::{EventStore, Scope};
-use permguard_core::KeyManager;
+use permguard_core::{KeyId, KeyManager, Maintenance, Signature};
 use permguard_events::envelope::{Envelope, Signed};
 use permguard_events::record::{GENESIS, PRODUCER_CLASS_DATA_PLANE, Producer, Record, Stream};
 use permguard_events::{chain, record};
@@ -62,6 +62,44 @@ fn ring(tag: &str) -> DirectoryKeyManager {
     keys.maintain().expect("the ring produces a key");
 
     keys
+}
+
+struct AliasedRing<'a> {
+    inner: &'a DirectoryKeyManager,
+    kid: String,
+}
+
+impl KeyManager for AliasedRing<'_> {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
+        self.inner.public_keys().map(|mut keys| {
+            for key in &mut keys {
+                key.kid.clone_from(&self.kid);
+            }
+            keys
+        })
+    }
+
+    fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+        Ok(KeyId::new(self.kid.clone()))
+    }
+
+    fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+        self.inner.sign(payload).map(|signature| {
+            Signature::new(
+                KeyId::new(self.kid.clone()),
+                signature.algorithm(),
+                signature.bytes().to_vec(),
+            )
+        })
+    }
+
+    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+        self.inner.maintain()
+    }
 }
 
 fn store(tag: &str) -> EventStore {
@@ -138,7 +176,7 @@ fn records_for(producer: &str, instance: &str, count: u64, event_type: &str) -> 
 }
 
 /// One signed batch over `records`, continuing from `previous_head`.
-fn batch(held: &[Value], previous_head: &str, keys: &DirectoryKeyManager) -> Batch {
+fn batch(held: &[Value], previous_head: &str, keys: &dyn KeyManager) -> Batch {
     let verified = chain::verify(held, Some(previous_head)).expect("the records chain");
     let mut event_types: Vec<String> = held
         .iter()
@@ -166,11 +204,11 @@ fn batch(held: &[Value], previous_head: &str, keys: &DirectoryKeyManager) -> Bat
     }
 }
 
-fn published(keys: &DirectoryKeyManager) -> Vec<permguard_core::Jwk> {
+fn published(keys: &dyn KeyManager) -> Vec<permguard_core::Jwk> {
     keys.public_keys().expect("the ring publishes")
 }
 
-fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ingest::ProducerTrust> {
+fn trusted(keys: &dyn KeyManager, producer: &str) -> Vec<ingest::ProducerTrust> {
     published(keys)
         .into_iter()
         .map(|key| ingest::ProducerTrust {
@@ -182,11 +220,7 @@ fn trusted(keys: &DirectoryKeyManager, producer: &str) -> Vec<ingest::ProducerTr
         .collect()
 }
 
-fn accept(
-    store: &EventStore,
-    batch: &Batch,
-    keys: &DirectoryKeyManager,
-) -> Result<Accepted, Refused> {
+fn accept(store: &EventStore, batch: &Batch, keys: &dyn KeyManager) -> Result<Accepted, Refused> {
     let producer = batch
         .records
         .first()
@@ -228,6 +262,52 @@ fn a_batch_is_stored_and_acknowledged_by_its_last_sequence() {
             acked: 10,
             stored: 10
         })
+    );
+}
+
+#[test]
+fn a_substituted_key_cannot_replace_the_envelope_before_its_kid_conflict_is_found() {
+    let (first, second, store) = (
+        ring("kid-order-first"),
+        ring("kid-order-second"),
+        store("kid-order"),
+    );
+    let held = records("i-1", 5, DOGWOOD);
+    accept(&store, &batch(&held[..3], GENESIS, &first), &first)
+        .expect("the original evidence is accepted");
+    let envelope = store
+        .stream_path(&stream("i-1"))
+        .expect("the stream path")
+        .join("batch-00000000000000000001.jws");
+    let original = std::fs::read(&envelope).expect("the original envelope is durable");
+    let kid = published(&first)[0].kid.clone();
+    let substituted = AliasedRing {
+        inner: &second,
+        kid,
+    };
+    let forged = batch(&held, GENESIS, &substituted);
+
+    let refused = ingest::accept(
+        &store,
+        &forged,
+        &trusted(&substituted, "plane-a"),
+        &[DOGWOOD],
+    );
+    assert!(
+        matches!(&refused, Err(Refused::Unverifiable(detail)) if detail.contains("different public key")),
+        "{refused:?}"
+    );
+    assert_eq!(
+        std::fs::read(&envelope).expect("the original envelope still reads"),
+        original,
+        "a refused substitution must not replace retained signed evidence"
+    );
+    assert_eq!(
+        store
+            .stream_state(&stream("i-1"))
+            .expect("the state reads")
+            .acked,
+        3
     );
 }
 
@@ -978,6 +1058,22 @@ fn the_archive_keeps_two_different_keys_under_one_key_id() {
     assert_eq!(held.len(), 2);
     assert!(held.contains(&first));
     assert!(held.contains(&second));
+
+    std::fs::write(
+        store
+            .root()
+            .join(permguard_control_plane::events::store::KEYS_DIRECTORY)
+            .join(".key.json.writing-123"),
+        b"partial",
+    )
+    .expect("the crash remnant is written");
+    assert_eq!(
+        store
+            .archived_keys()
+            .expect("an uncommitted staging file is ignored")
+            .len(),
+        2
+    );
 
     // A damaged archive is an error, not an empty archive: skipping it would report a corruption
     // as somebody else's bad signature.

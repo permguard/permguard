@@ -34,6 +34,7 @@ permguard-control-client.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true
 permguard-languages.workspace = true
+permguard-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
@@ -44,4 +45,3 @@ base64.workspace = true
 permguard-control-plane.workspace = true
 rcgen.workspace = true
 ring.workspace = true
-

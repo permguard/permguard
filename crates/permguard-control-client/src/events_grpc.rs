@@ -164,12 +164,28 @@ impl EventReader for GrpcEventSink {
         }
     }
 
-    fn signers(&self, zone: &str, ledger: &str) -> Result<serde_json::Value, ReadError> {
+    fn signers(
+        &self,
+        zone: &str,
+        ledger: &str,
+        ask: &crate::events::SignersAsk,
+    ) -> Result<serde_json::Value, ReadError> {
         let request = crate::v1::GetSignersRequest {
             zone: zone.to_owned(),
             ledger: ledger.to_owned(),
-            from_seq: 0,
-            until_seq: 0,
+            from_seq: ask.from_seq,
+            until_seq: ask.until_seq,
+            producer: ask.producer.clone().unwrap_or_default(),
+            instance: ask.instance.clone().unwrap_or_default(),
+            producer_class: ask.producer_class.clone().unwrap_or_default(),
+            after: ask
+                .after
+                .clone()
+                .map(|(class, producer, instance)| crate::v1::StreamCursor {
+                    producer_class: class,
+                    producer,
+                    instance,
+                }),
         };
 
         let answer = self.endpoint.run(
@@ -214,7 +230,17 @@ impl EventReader for GrpcEventSink {
                     })
                     .collect::<Result<Vec<_>, ReadError>>()?;
 
-                Ok(serde_json::json!({ "streams": streams }))
+                let mut document =
+                    serde_json::json!({ "streams": streams, "truncated": answer.truncated });
+                if let Some(next) = answer.next {
+                    document["next"] = serde_json::json!({
+                        "producer_class": next.producer_class,
+                        "producer": next.producer,
+                        "instance": next.instance,
+                    });
+                }
+
+                Ok(document)
             }
             Err(status) => Err(read_error(&status)),
         }

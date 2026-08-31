@@ -59,6 +59,11 @@ jobs:
         run: ./scripts/check-build-systems.sh
       - name: every source file carries the licence header
         run: ./scripts/check-license-headers.sh
+      - name: the third-party notices match what the build links
+        # A dependency change that does not reach THIRD_PARTY_NOTICES.md is a distribution whose
+        # notices are wrong, which is why this fails the build rather than warning. The fix it
+        # prints is one command: `task notices`, then commit.
+        run: ./scripts/third-party-notices.sh --check
       - name: every feature combination still builds
         run: |
           cargo check -p permguard-std --all-targets --no-default-features --locked

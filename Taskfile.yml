@@ -104,6 +104,7 @@ tasks:
       - task: check:core-deps
       - task: check:systems
       - task: check:headers
+      - task: check:notices
       - task: test
 
   coverage:
@@ -137,6 +138,16 @@ tasks:
     desc: Check that the Makefile and the Taskfile offer the same commands.
     cmds:
       - ./scripts/check-build-systems.sh
+
+  notices:
+    desc: Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
+    cmds:
+      - ./scripts/third-party-notices.sh
+
+  check:notices:
+    desc: Check that THIRD_PARTY_NOTICES.md matches the dependency graph.
+    cmds:
+      - ./scripts/third-party-notices.sh --check
 
   check:core-deps:
     desc: Check that permguard-core keeps its dependency list minimal.

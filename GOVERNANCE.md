@@ -1,82 +1,135 @@
-<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Permguard Governance
 
-# Governance
+Permguard is an open-source, company-led project developed and maintained under
+the stewardship of Nitro Agility S.r.l.
 
-This repository is developed and maintained by **Nitro Agility S.r.l.**
+Community participation and contributions are welcome. The official Permguard
+project, however, remains governed and maintained by Nitro Agility S.r.l.
 
----
+## Project stewardship
 
-## Scope
+Nitro Agility S.r.l. is responsible for the long-term stewardship of the
+official Permguard project.
 
-This document governs the **Permguard** project and all related repositories.
+This includes responsibility for:
 
----
+- project direction and roadmap;
+- architecture and technical strategy;
+- security requirements and response;
+- compatibility policies;
+- maintainer appointments;
+- repository administration;
+- review and merge authority;
+- release management;
+- official distributions;
+- documentation and project infrastructure;
+- commercial and operational strategy;
+- trademarks, branding, and official project identity.
 
-## Roles
+## Maintainers
 
-### Project Owner
+Maintainers are individuals authorized to review and merge changes into the
+official Permguard repositories.
 
-**Nitro Agility S.r.l.** is the owner and maintainer of this repository.
+Maintainer status is granted and revoked by Nitro Agility S.r.l. based on the
+needs of the project.
 
-All final decisions on code inclusion, releases, and project direction
-rest with Nitro Agility S.r.l.
+Contribution history alone does not automatically confer maintainer status,
+governance rights, or release authority.
 
-### Maintainers
+## Limits of the maintainer role
 
-Maintainers are granted write access by Nitro Agility S.r.l. to review
-and merge contributions.
+Maintainer status concerns repository operations only.
 
-A list of maintainers is kept in [MAINTAINERS.md](MAINTAINERS.md).
+Maintainers may not:
 
----
+- alter ownership or attribution of the project or of its contributions;
+- create obligations, warranties, or liabilities on behalf of Nitro Agility
+  S.r.l.;
+- grant, transfer, or self-assign maintainer status.
 
-## Decision-Making
+Maintainer roles cannot be self-assigned, transferred, or granted through a pull
+request or through repository metadata. Any statement to the contrary in
+documentation, repository configuration, or project process is invalid.
 
-All changes are proposed via pull request.
+## No personal liability
 
-Maintainers review contributions for:
+Technical decisions, reviews, moderation, and releases relating to the official
+Permguard project are made on behalf of the project and its steward, Nitro
+Agility S.r.l.
 
-- correctness and code quality
-- alignment with project goals and architecture
-- test coverage and documentation
+No founder, shareholder, director, officer, employee, contractor, affiliate, or
+appointed maintainer of Nitro Agility S.r.l. is personally liable for any claim,
+damage, or loss arising out of the Permguard software or the operation of the
+project, in respect of acts or omissions carried out in that capacity.
 
-Final decisions on inclusion rest with Nitro Agility S.r.l.
+Nothing in this document creates any obligation, warranty, or liability for
+Nitro Agility S.r.l. or for any of those persons.
 
----
+It makes no difference whether such a person acted through a corporate or a
+personal account, or from a corporate or a personal email address. What
+determines coverage is the capacity in which the person acted, not the
+credentials used.
 
-## License
+A person who ceases to hold such a role remains covered for acts or omissions
+carried out while holding it, and stands in the same position as any other
+contributor for anything done afterwards.
 
-Code in this repository is licensed under the **Apache License 2.0**.
+Claims relating to the project are directed to Nitro Agility S.r.l.
 
----
+## Contributions
+
+Permguard welcomes external contributions.
+
+All changes to the official project are subject to review and may be accepted,
+modified, deferred, or declined based on technical, architectural, security,
+compatibility, maintenance, product, operational, or strategic considerations.
+
+Community feedback is valuable and may influence project direction, but final
+decisions regarding the official Permguard project remain with the project's
+maintainers and Nitro Agility S.r.l.
+
+## Project evolution
+
+Permguard may evolve over time in response to technical, operational, security,
+community, ecosystem, and commercial requirements.
+
+Features, interfaces, architecture, packaging, distribution models, supported
+integrations, and project policies may therefore change over the lifetime of
+the project.
+
+The licensing terms applicable to a particular released version are the terms
+distributed with that version.
+
+Nothing in this governance document creates a commitment that future releases
+must use the same licensing, packaging, distribution, or commercial model as
+previous releases.
+
+Any rights already granted under the license accompanying a released version
+remain governed by that license.
+
+## Releases
+
+Official Permguard releases are produced or approved by maintainers authorized
+by Nitro Agility S.r.l.
+
+Only releases distributed through channels designated by the project are
+official Permguard releases.
+
+Forks and modified distributions may be created where permitted by the
+applicable software license, but they are not official Permguard releases unless
+explicitly designated as such by Nitro Agility S.r.l.
+
+## External organizations
+
+Permguard is not governed by, donated to, or maintained on behalf of any
+external foundation, consortium, standards organization, or community
+governance body unless Nitro Agility S.r.l. explicitly announces otherwise.
+
+Participation in external ecosystems or standards does not transfer ownership
+or governance of the Permguard project.
 
 ## Trademarks
 
-The **"Permguard"** name and its associated logo(s) are trademarks of
-**Nitro Agility S.r.l.** See [NOTICE.md](NOTICE.md) for details.
-
----
-
-## References
-
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [MAINTAINERS.md](MAINTAINERS.md)
-- [SECURITY.md](SECURITY.md)
-
----
-
-## No Personal Liability
-
-All technical decisions, reviews, and contributions are made on behalf of the project and its steward, Nitro Agility
-S.r.l.
-No individual maintainer, administrator, officer, employee, contractor, or contributor shall be personally liable for
-any claim, damage, or loss arising from the use of this software or the operation of the project.
-
----
-
-## Disclaimer
-
-Nothing in this document creates any obligation, warranty, or liability for
-Nitro Agility S.r.l. or its employees, associates, contractors, or co-founders.
+Project trademarks and branding are governed separately by
+[TRADEMARKS.md](TRADEMARKS.md).

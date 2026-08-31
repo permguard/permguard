@@ -239,6 +239,40 @@ pub fn plane_http_base(config: &Config, plane: PlaneId) -> Option<String> {
         .map(|held| held.http_base)
 }
 
+/// The `GET /v1/streams` discovery route: every evidence stream this plane declares, enabled or
+/// not.
+///
+/// "Not here" and "here, turned off" are different answers, and a caller deciding where to read
+/// needs the second one — a disabled stream is listed with `enabled: false` rather than omitted.
+/// The directories stay out: discovery says what a plane serves, never how its volume is laid
+/// out.
+pub fn streams_route(streams: Vec<permguard_stream::StreamDescriptor>) -> axum::Router {
+    use axum::routing::get;
+
+    let document = serde_json::json!({
+        "streams": streams
+            .iter()
+            .map(permguard_stream::StreamDescriptor::public_view)
+            .collect::<Vec<_>>(),
+    })
+    .to_string();
+
+    axum::Router::new().route(
+        "/v1/streams",
+        get(move || {
+            let document = document.clone();
+            async move {
+                use axum::response::IntoResponse as _;
+                (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    document,
+                )
+                    .into_response()
+            }
+        }),
+    )
+}
+
 /// Where one interface publishes what it offers.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct InterfaceLink {
@@ -264,6 +298,9 @@ pub struct PlaneConfiguration {
     pub plane: String,
     /// Where this plane's signing keys are published.
     pub jwks_uri: String,
+    /// Where this plane lists the evidence streams it declares, enabled or not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streams_endpoint: Option<String>,
     /// The interfaces this plane exposes, each pointing at its own configuration. Absent when a
     /// plane exposes none, rather than present and empty: nothing to follow is not an empty list
     /// of things to follow.
@@ -282,9 +319,15 @@ pub fn plane_configuration(config: &Config, plane: PlaneId) -> PlaneConfiguratio
         .map(|held| format!("{}/{}/keys", held.http_base, held.id))
         .unwrap_or_default();
 
+    let streams_endpoint = discovered_planes(config)
+        .into_iter()
+        .find(|held| held.id == plane.public_name())
+        .map(|held| format!("{}/v1/streams", held.http_base));
+
     PlaneConfiguration {
         plane: plane.public_name().to_owned(),
         jwks_uri,
+        streams_endpoint,
         interfaces: std::collections::BTreeMap::new(),
     }
 }

@@ -24,6 +24,7 @@
 //! says so. What the versioned layout owns today is every stream that did not exist yet.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::descriptor::{Role, StreamIdentity};
 
@@ -32,6 +33,8 @@ pub const LAYOUT_VERSION: &str = "v1";
 
 /// The marker file's name, directly under the streams root.
 pub const LAYOUT_MARKER: &str = "LAYOUT";
+
+static CLAIM_NONCE: AtomicU64 = AtomicU64::new(0);
 
 /// The directory every versioned stream lives under.
 pub fn streams_root(data_root: &Path) -> PathBuf {
@@ -64,26 +67,58 @@ pub fn claim(data_root: &Path) -> std::io::Result<String> {
     let marker = root.join(LAYOUT_MARKER);
 
     match std::fs::read_to_string(&marker) {
-        Ok(held) => {
-            let held = held.trim().to_owned();
-            if held != LAYOUT_VERSION {
-                return Err(std::io::Error::other(format!(
-                    "the streams root {} is laid out as `{held}` and this build writes \
-                     `{LAYOUT_VERSION}`: refusing to guess what its directories mean",
-                    root.display()
-                )));
-            }
-
-            Ok(held)
-        }
+        Ok(held) => agreed(&root, &held),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             std::fs::create_dir_all(&root)?;
-            std::fs::write(&marker, format!("{LAYOUT_VERSION}\n"))?;
+            // Staged and linked into place without replacement. `rename` would overwrite a marker
+            // another process won the race to publish, including one for a newer layout.
+            let staged = root.join(format!(
+                ".{LAYOUT_MARKER}.next-{}-{}",
+                std::process::id(),
+                CLAIM_NONCE.fetch_add(1, Ordering::Relaxed)
+            ));
+            {
+                use std::io::Write as _;
 
-            Ok(LAYOUT_VERSION.to_owned())
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&staged)?;
+                file.write_all(format!("{LAYOUT_VERSION}\n").as_bytes())?;
+                file.sync_all()?;
+            }
+            match std::fs::hard_link(&staged, &marker) {
+                Ok(()) => {
+                    let _ = std::fs::remove_file(&staged);
+                    std::fs::File::open(&root)?.sync_all()?;
+                    Ok(LAYOUT_VERSION.to_owned())
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let _ = std::fs::remove_file(&staged);
+                    let held = std::fs::read_to_string(&marker)?;
+                    agreed(&root, &held)
+                }
+                Err(error) => {
+                    let _ = std::fs::remove_file(&staged);
+                    Err(error)
+                }
+            }
         }
         Err(error) => Err(error),
     }
+}
+
+fn agreed(root: &Path, held: &str) -> std::io::Result<String> {
+    let held = held.trim().to_owned();
+    if held != LAYOUT_VERSION {
+        return Err(std::io::Error::other(format!(
+            "the streams root {} is laid out as `{held}` and this build writes \
+             `{LAYOUT_VERSION}`: refusing to guess what its directories mean",
+            root.display()
+        )));
+    }
+
+    Ok(held)
 }
 
 #[cfg(test)]
@@ -118,5 +153,34 @@ mod tests {
         assert!(claim(&root).is_err());
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn concurrent_claims_never_replace_the_winner() {
+        let root = std::env::temp_dir().join(format!(
+            "layout-race-test-{}-{}",
+            std::process::id(),
+            CLAIM_NONCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let root = std::sync::Arc::new(root);
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let mut claims = Vec::new();
+        for _ in 0..8 {
+            let root = std::sync::Arc::clone(&root);
+            let barrier = std::sync::Arc::clone(&barrier);
+            claims.push(std::thread::spawn(move || {
+                barrier.wait();
+                claim(&root)
+            }));
+        }
+        for claimed in claims {
+            assert_eq!(claimed.join().unwrap().unwrap(), LAYOUT_VERSION);
+        }
+        assert_eq!(
+            std::fs::read_to_string(streams_root(&root).join(LAYOUT_MARKER)).unwrap(),
+            "v1\n"
+        );
+        std::fs::remove_dir_all(root.as_ref()).ok();
     }
 }

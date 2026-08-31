@@ -1513,17 +1513,23 @@ fn the_event_producers_are_named_in_their_own_right() {
         zone: "acme".to_owned(),
         ledger: "main".to_owned(),
     };
+    let decisions = permguard_core::decisions::DecisionProducerSource {
+        path: "decisions.jwks".to_owned(),
+        pdp: "plane-a".to_owned(),
+    };
     let both = config(&[], &[], &[])
-        .with_decision_producer_keys(["decisions.jwks".to_owned()])
+        .with_decision_producer_keys([decisions.clone()])
         .with_event_producer_keys([events.clone()]);
     assert_eq!(both.event_producer_keys(), [events]);
-    assert_eq!(both.decision_producer_keys(), ["decisions.jwks"]);
+    assert_eq!(
+        both.decision_producer_keys(),
+        std::slice::from_ref(&decisions)
+    );
     assert!(both.event_producer_keys_declared());
 
     // An event signature proves bytes, not authorization to claim a producer or tenant. The
-    // decision key list has no such bindings and therefore cannot stand in.
-    let inherited =
-        config(&[], &[], &[]).with_decision_producer_keys(["decisions.jwks".to_owned()]);
+    // decision key list carries a different binding — key to `pdp` — and cannot stand in.
+    let inherited = config(&[], &[], &[]).with_decision_producer_keys([decisions]);
     assert!(inherited.event_producer_keys().is_empty());
     assert!(
         !inherited.event_producer_keys_declared(),

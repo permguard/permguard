@@ -1,0 +1,62 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Records who accepted the Contributor License Agreement, and blocks a merge until they have.
+#
+# The checkbox in the pull request template is what a contributor sees; this is what makes it
+# evidence. The action keeps a signature file — who, which pull request, when — in the repository
+# named below, so an acceptance can be produced years later, which is the only moment it matters.
+#
+# Before enabling, two things have to exist:
+#
+#   * a `CLA_SIGNATURES_TOKEN` repository secret: a fine-grained personal access token with
+#     contents write access to the signature repository, and pull-request write access here. The
+#     default `GITHUB_TOKEN` cannot write to another repository.
+#   * the signature repository itself (`permguard/cla-signatures` below), private, with the
+#     branch this writes to.
+#
+# Until both exist this workflow fails closed: no acceptance is recorded, so nothing is merged
+# claiming one.
+
+name: cla
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check or record the CLA acceptance
+        # Runs on a signature comment, or on any pull request event.
+        if: (github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
+        with:
+          path-to-signatures: signatures/permguard.json
+          path-to-document: https://github.com/permguard/.github/blob/main/CLA.md
+          branch: main
+          remote-organization-name: permguard
+          remote-repository-name: cla-signatures
+          # The sentence a contributor comments to sign, and the reply they get.
+          custom-notsigned-prcomment: |
+            Thank you for the contribution.
+
+            Permguard requires acceptance of the [Contributor License Agreement](https://github.com/permguard/.github/blob/main/CLA.md) before a pull request can be merged. You keep ownership of what you contribute.
+
+            To accept, post exactly this as a comment on this pull request:
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
+          custom-allsigned-prcomment: 'All contributors have accepted the CLA.'
+          # Bots author no copyrightable contribution, so they have nothing to license.
+          allowlist: dependabot[bot],renovate[bot],github-actions[bot]

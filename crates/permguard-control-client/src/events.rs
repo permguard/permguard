@@ -281,9 +281,26 @@ pub trait EventReader {
     /// Which key signed which stretch of each producer stream of one ledger, public keys
     /// included — what `verify --keys` wants, fetched once and kept.
     ///
-    /// The shape is the signers document both transports serve: `{"streams": [...]}`, each stream
-    /// carrying its producer, its durable frontier and its spans.
-    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError>;
+    /// The shape is the signers document both transports serve: `{"streams": [...], "truncated"}`,
+    /// each stream carrying its producer, its durable frontier and its spans.
+    fn signers(&self, zone: &str, ledger: &str, ask: &SignersAsk) -> Result<Value, ReadError>;
+}
+
+/// What narrows a signers read: an offset range, and optionally one producer or incarnation.
+///
+/// All bounds optional — the zero value asks for everything a single answer carries.
+#[derive(Debug, Clone, Default)]
+pub struct SignersAsk {
+    /// Inclusive offset range; zero means unbounded on that side.
+    pub from_seq: u64,
+    pub until_seq: u64,
+    /// Narrow to one producer class, one producer, or one incarnation of it.
+    pub producer_class: Option<String>,
+    pub producer: Option<String>,
+    pub instance: Option<String>,
+    /// Resume strictly after this `(class, producer, instance)` — the `next` of the previous
+    /// page.
+    pub after: Option<(String, String, String)>,
 }
 
 /// Both halves of the event log, over one connection.
@@ -370,12 +387,35 @@ impl EventReader for HttpEventSink {
         Err(read_refusal(&response.body, response.status))
     }
 
-    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
-        let path = format!(
-            "/v1/zones/{}/ledgers/{}/events/v1alpha1/signers",
+    fn signers(&self, zone: &str, ledger: &str, ask: &SignersAsk) -> Result<Value, ReadError> {
+        let mut path = format!(
+            "/v1/zones/{}/ledgers/{}/events/v1alpha1/signers?",
             encode::value(zone),
             encode::value(ledger)
         );
+        if ask.from_seq > 0 {
+            path.push_str(&format!("&from_seq={}", ask.from_seq));
+        }
+        if ask.until_seq > 0 {
+            path.push_str(&format!("&until_seq={}", ask.until_seq));
+        }
+        if let Some(class) = &ask.producer_class {
+            path.push_str(&format!("&producer_class={}", encode::value(class)));
+        }
+        if let Some(producer) = &ask.producer {
+            path.push_str(&format!("&producer={}", encode::value(producer)));
+        }
+        if let Some(instance) = &ask.instance {
+            path.push_str(&format!("&instance={}", encode::value(instance)));
+        }
+        if let Some((class, producer, instance)) = &ask.after {
+            path.push_str(&format!(
+                "&after_class={}&after_producer={}&after_instance={}",
+                encode::value(class),
+                encode::value(producer),
+                encode::value(instance)
+            ));
+        }
         let response = self
             .client
             .request(&self.endpoint, "GET", &path, None)

@@ -807,8 +807,9 @@ make lint
 make coverage
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution rules and
-[COMPATIBILITY.md](COMPATIBILITY.md) for compatibility promises.
+See the organization-wide
+[contribution rules](https://github.com/permguard/.github/blob/main/CONTRIBUTING.md) and this
+repository's [compatibility promises](docs/compatibility.md).
 
 ## Documentation
 

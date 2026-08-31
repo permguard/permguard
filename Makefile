@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-seams check-systems cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -32,6 +32,7 @@ check: ## Run lint, structural checks, and tests.
 	$(MAKE) check-core-deps
 	$(MAKE) check-systems
 	$(MAKE) check-headers
+	$(MAKE) check-notices
 	$(MAKE) test
 
 coverage: ## Measure test coverage and enforce the 60% per-crate line floor.
@@ -189,6 +190,12 @@ prepare-release: ## Move the repository to a version, so that tagging it is safe
 
 check-headers: ## Check that every source file carries the licence header.
 	./scripts/check-license-headers.sh
+
+notices: ## Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
+	./scripts/third-party-notices.sh
+
+check-notices: ## Check that THIRD_PARTY_NOTICES.md matches the dependency graph.
+	./scripts/third-party-notices.sh --check
 
 check-systems: ## Check that the Makefile and the Taskfile offer the same commands.
 	./scripts/check-build-systems.sh

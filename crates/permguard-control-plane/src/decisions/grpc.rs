@@ -20,6 +20,7 @@
 //! carrying this product's class and code in its metadata, so a gRPC caller
 //! and an HTTP caller branch on the same vocabulary.
 
+use permguard_core::{ApiError, ErrorClass};
 use permguard_decisions::envelope::Batch;
 use serde_json::Value;
 use tonic::{Request, Response, Status};
@@ -53,7 +54,7 @@ impl DecisionLog for DecisionFacade {
                 )
             })?;
 
-        let keys = self.accepted_keys().map_err(|error| {
+        let keys = self.accepted_producers().map_err(|error| {
             refusal(
                 Status::unavailable(format!(
                     "this plane cannot verify signatures right now: {error}"
@@ -141,15 +142,19 @@ impl DecisionLog for DecisionFacade {
             ));
         }
 
-        let view = self
-            .signers_of(&asked.pdp, &asked.instance, asked.from_seq, asked.until_seq)
-            .map_err(|error| {
-                refusal(
-                    Status::unavailable(error.to_string()),
-                    "unavailable",
-                    "store_unavailable",
-                )
-            })?;
+        let (facade, disclosure) = (self.clone(), self.disclosure);
+        let view = tokio::task::spawn_blocking(move || {
+            facade.signers_of(&asked.pdp, &asked.instance, asked.from_seq, asked.until_seq)
+        })
+        .await
+        .map_err(|error| {
+            refusal(
+                Status::unavailable(error.to_string()),
+                "unavailable",
+                "store_unavailable",
+            )
+        })?
+        .map_err(|error| api_status(&error, disclosure))?;
 
         let spans = view
             .spans
@@ -345,6 +350,19 @@ fn status_of(refused: &Refused) -> Status {
             "store_unavailable",
         ),
     }
+}
+
+fn api_status(failed: &ApiError, disclosure: permguard_core::Disclosure) -> Status {
+    let message = failed.disclosed_message(disclosure);
+    let status = match failed.class() {
+        ErrorClass::Validation => Status::invalid_argument(message),
+        ErrorClass::Conflict => Status::failed_precondition(message),
+        ErrorClass::NotFound => Status::not_found(message),
+        ErrorClass::Unavailable => Status::unavailable(message),
+        ErrorClass::Internal => Status::internal(message),
+    };
+
+    refusal(status, failed.class().as_str(), failed.code())
 }
 
 /// Attaches this product's class and code, so both transports say one thing.

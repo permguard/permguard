@@ -153,10 +153,11 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         (false, Some(command)) => command,
         // A bare `permguard`, or global flags with no command. Neither is a usage error — the
         // question is "and now what?", and the help is its answer: stdout, status zero.
+        // `print_help`, not `write_help`: clap styles the former like `--help` and renders the
+        // latter plain, and the bare command must not be the one place the banner goes white.
         (false, None) => {
-            let mut out = std::io::stdout();
             crate::args::command()
-                .write_help(&mut out)
+                .print_help()
                 .map_err(Failure::internal)?;
 
             return Ok(ExitCode::from(EXIT_READY));

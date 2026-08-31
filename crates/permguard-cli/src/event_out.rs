@@ -381,6 +381,39 @@ impl Report for SignersReport {
             }
         }
         writeln!(out)?;
+        // Truncation is part of the answer: a reader shown a silent prefix would take it for the
+        // whole, and the cursor is how they get the rest.
+        if self
+            .document
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            let next = self.document.get("next");
+            let cursor = next
+                .map(|held| {
+                    let field = |name: &str| {
+                        held.get(name)
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    format!(
+                        "{}/{}/{}",
+                        field("producer_class"),
+                        field("producer"),
+                        field("instance")
+                    )
+                })
+                .unwrap_or_default();
+            writeln!(
+                out,
+                "  {} more streams follow: resume with --after {}",
+                style::dim("truncated"),
+                style::id(&cursor)
+            )?;
+            writeln!(out)?;
+        }
         writeln!(
             out,
             "  {}",

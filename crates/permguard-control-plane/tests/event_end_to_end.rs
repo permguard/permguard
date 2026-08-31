@@ -187,13 +187,32 @@ impl EventReader for Wire {
         }
     }
 
-    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
-        let streams = self
+    fn signers(
+        &self,
+        zone: &str,
+        ledger: &str,
+        ask: &permguard_control_client::events::SignersAsk,
+    ) -> Result<Value, ReadError> {
+        let document = self
             .facade
-            .signers_of(zone, ledger, 0, 0)
+            .signers_of(
+                zone,
+                ledger,
+                ask.from_seq,
+                ask.until_seq,
+                &permguard_control_plane::events::http::StreamsAsked {
+                    producer_class: ask.producer_class.clone(),
+                    producer: ask.producer.clone(),
+                    instance: ask.instance.clone(),
+                    after: ask.after.clone().map(|(class, producer, instance)| {
+                        permguard_stream::StreamPosition::new(class, producer, instance)
+                            .expect("the test cursor is canonical")
+                    }),
+                },
+            )
             .map_err(|error| ReadError::Unavailable(error.to_string()))?;
 
-        serde_json::to_value(serde_json::json!({ "streams": streams }))
+        serde_json::to_value(serde_json::json!({ "streams": document.streams }))
             .map_err(|error| ReadError::Unavailable(error.to_string()))
     }
 
@@ -582,8 +601,13 @@ impl EventReader for Handed {
         self.0.read(scope, window)
     }
 
-    fn signers(&self, zone: &str, ledger: &str) -> Result<Value, ReadError> {
-        self.0.signers(zone, ledger)
+    fn signers(
+        &self,
+        zone: &str,
+        ledger: &str,
+        ask: &permguard_control_client::events::SignersAsk,
+    ) -> Result<Value, ReadError> {
+        self.0.signers(zone, ledger, ask)
     }
 
     fn get(&self, zone: &str, ledger: &str, event_id: &str) -> Result<Option<Value>, ReadError> {
@@ -1005,8 +1029,10 @@ fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
     // after the producer is gone.
     let answered = wire
         .facade
-        .signers_of(ZONE_ID, LEDGER_ID, 0, 0)
+        .signers_of(ZONE_ID, LEDGER_ID, 0, 0, &Default::default())
         .expect("the store answers");
+    assert!(!answered.truncated);
+    let answered = answered.streams;
     assert_eq!(answered.len(), 1, "one producer stream");
     assert_eq!(answered[0].acked, 12);
     assert_eq!(answered[0].spans.len(), 1);
@@ -1015,8 +1041,42 @@ fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
     // A bounded range still names the span covering it.
     let bounded = wire
         .facade
-        .signers_of(ZONE_ID, LEDGER_ID, 3, 7)
+        .signers_of(ZONE_ID, LEDGER_ID, 3, 7, &Default::default())
         .expect("the store answers a range");
-    assert_eq!(bounded[0].spans.len(), 1);
-    assert_eq!(bounded[0].spans[0].kid, kid);
+    assert_eq!(bounded.streams[0].spans.len(), 1);
+    assert_eq!(bounded.streams[0].spans[0].kid, kid);
+
+    // The filters narrow: the producer that shipped is found, a stranger is not — and neither
+    // answer is truncation, because nothing was cut short.
+    let producer = &answered[0].producer.clone();
+    let found = wire
+        .facade
+        .signers_of(
+            ZONE_ID,
+            LEDGER_ID,
+            0,
+            0,
+            &permguard_control_plane::events::http::StreamsAsked {
+                producer: Some(producer.clone()),
+                ..Default::default()
+            },
+        )
+        .expect("the filter matches");
+    assert_eq!(found.streams.len(), 1);
+    assert!(!found.truncated);
+    let nobody = wire
+        .facade
+        .signers_of(
+            ZONE_ID,
+            LEDGER_ID,
+            0,
+            0,
+            &permguard_control_plane::events::http::StreamsAsked {
+                producer: Some("somebody-else".to_owned()),
+                ..Default::default()
+            },
+        )
+        .expect("an unmatched filter is empty, not an error");
+    assert!(nobody.streams.is_empty());
+    assert!(!nobody.truncated);
 }

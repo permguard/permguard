@@ -43,6 +43,12 @@ use serde_json::Value;
 /// The file a stream's signer manifest is kept in, inside the stream's own directory.
 pub const SIGNERS_FILE: &str = "signers.json";
 
+/// The most signer spans one API response may carry for one stream.
+///
+/// A caller needing a longer rotation history narrows the inclusive sequence range and pages that
+/// history deliberately instead of making one response grow with the age of the deployment.
+pub const MAX_SIGNER_SPANS: usize = 1_024;
+
 /// One stretch of a stream and the key that signed it.
 ///
 /// A span covers `[from, next span's from)`; the last span covers everything from its `from`
@@ -62,6 +68,8 @@ pub struct SignerSpan {
 pub enum SignerError {
     /// A span may not start before the one already on file: history does not change.
     Regression { held: u64, offered: u64 },
+    /// One name, two keys: a `kid` seen with different material is a substitution, not a rotation.
+    KeyMismatch { kid: String },
 }
 
 impl fmt::Display for SignerError {
@@ -71,6 +79,11 @@ impl fmt::Display for SignerError {
                 formatter,
                 "the manifest already covers from offset {held}, and a span may not start \
                  earlier, at {offered}: who signed the past does not change"
+            ),
+            Self::KeyMismatch { kid } => write!(
+                formatter,
+                "`{kid}` already names a different public key in this manifest: one name, two \
+                 keys is a substitution, not a rotation"
             ),
         }
     }
@@ -99,6 +112,19 @@ impl Signers {
     /// was rebuilt and re-signed before anything extended past it, and the signed evidence beside
     /// this file was overwritten by the same round. Anything earlier is refused.
     pub fn observe(&mut self, from: u64, kid: &str, jwk: &Value) -> Result<bool, SignerError> {
+        // One name, one key, across the whole manifest: a `kid` returning with different
+        // material is how a substituted key would inherit an honest name's history, and the
+        // amendment below must never be reachable by that route.
+        if self
+            .spans
+            .iter()
+            .any(|span| span.kid == kid && &span.jwk != jwk)
+        {
+            return Err(SignerError::KeyMismatch {
+                kid: kid.to_owned(),
+            });
+        }
+
         let Some(last) = self.spans.last_mut() else {
             self.spans.push(SignerSpan {
                 from,
@@ -135,6 +161,16 @@ impl Signers {
         });
 
         Ok(true)
+    }
+
+    /// Checks whether an observation could be recorded without changing this manifest.
+    ///
+    /// Evidence stores use this before writing records or replacing a signed envelope. The later
+    /// [`observe`](Self::observe) then cannot discover a semantic conflict after durable evidence
+    /// has already changed; only an I/O failure can still interrupt the commit.
+    pub fn check_observation(&self, from: u64, kid: &str, jwk: &Value) -> Result<(), SignerError> {
+        let mut proposed = self.clone();
+        proposed.observe(from, kid, jwk).map(|_| ())
     }
 
     /// The spans whose stretch intersects `[from, until]`, in offset order.
@@ -280,6 +316,34 @@ mod tests {
                 offered: 150
             })
         );
+    }
+
+    #[test]
+    fn one_name_never_carries_two_keys() {
+        let mut signers = Signers::empty();
+        signers.observe(0, "k1", &key("k1")).unwrap();
+
+        // The same kid arriving with different material is refused wherever it lands: extending
+        // the current span, starting a new one, or amending the tail.
+        let mut forged = key("k1");
+        forged["x"] = serde_json::json!("BBBB");
+        assert_eq!(
+            signers.observe(100, "k1", &forged),
+            Err(SignerError::KeyMismatch {
+                kid: "k1".to_owned()
+            })
+        );
+
+        // And a kid deeper in history is protected too, not only the last span.
+        signers.observe(100, "k2", &key("k2")).unwrap();
+        assert_eq!(
+            signers.observe(200, "k1", &forged),
+            Err(SignerError::KeyMismatch {
+                kid: "k1".to_owned()
+            })
+        );
+        // While the honest key returning is still a rotation.
+        assert!(signers.observe(200, "k1", &key("k1")).unwrap());
     }
 
     #[test]

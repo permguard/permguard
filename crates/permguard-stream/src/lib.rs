@@ -58,6 +58,7 @@ pub mod frontier;
 pub mod jcs;
 pub mod layout;
 pub mod merkle;
+pub mod name;
 pub mod signers;
 pub mod window;
 
@@ -66,5 +67,6 @@ pub use descriptor::{
     Registered, RegistryError, Role, StreamDescriptor, StreamIdentity, StreamRegistry,
 };
 pub use frontier::Frontier;
-pub use signers::{SIGNERS_FILE, SignerError, SignerSpan, Signers};
+pub use name::{PositionError, StreamPosition, is_portable_name};
+pub use signers::{MAX_SIGNER_SPANS, SIGNERS_FILE, SignerError, SignerSpan, Signers};
 pub use window::{Block, Coverage, Expired, Window, more};

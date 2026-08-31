@@ -257,6 +257,9 @@ pub struct Globals {
     pub tls_skip_verify: bool,
 }
 
+// One value of this enum exists per process, parsed once and consumed once: the size spread
+// between `Version` and the query-carrying commands costs nothing worth boxing a clap tree for.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Report this CLI's version and the build it came from.
@@ -483,9 +486,18 @@ pub enum DecisionsAction {
     /// The offset-ranged companion to `verify --keys`: fetched once and kept, it names exactly
     /// the keys a range of records needs, without reaching the producer that signed them.
     #[command(
-        after_help = "Examples:\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c -o json > signers.json"
+        after_help = "Examples:\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c\n  permguard decisions signers --pdp pdp-eu-1 --instance 7f3c --from-seq 1000 -o json"
     )]
-    Signers(DecisionsQuery),
+    Signers {
+        #[command(flatten)]
+        query: DecisionsQuery,
+        /// The first offset of the range to name keys for, inclusive.
+        #[arg(long, value_name = "SEQ")]
+        from_seq: Option<u64>,
+        /// The last offset of the range, inclusive. Absent means to the head.
+        #[arg(long, value_name = "SEQ")]
+        until_seq: Option<u64>,
+    },
     /// Read in bulk, resumably: every page, from an offset, to standard output.
     #[command(
         after_help = "Examples:\n  permguard decisions export -o json > decisions.json\n  permguard decisions export --pdp pdp-eu-1 --instance 7f3c --verify --keys data-plane-keys.json"
@@ -527,9 +539,22 @@ pub enum EventsAction {
     /// The offset-ranged companion to `verify --keys`: fetched once and kept, it names exactly
     /// the keys a range of records needs, without reaching the producer that signed them.
     #[command(
-        after_help = "Examples:\n  permguard events signers --zone acme --ledger agent-governance\n  permguard events signers -o json > signers.json"
+        after_help = "Examples:\n  permguard events signers --zone acme --ledger agent-governance\n  permguard events signers --from-seq 1000 --until-seq 2000 -o json > signers.json"
     )]
-    Signers(EventsQuery),
+    Signers {
+        #[command(flatten)]
+        query: EventsQuery,
+        /// The first offset of the range to name keys for, inclusive.
+        #[arg(long, value_name = "SEQ")]
+        from_seq: Option<u64>,
+        /// The last offset of the range, inclusive. Absent means to the head.
+        #[arg(long, value_name = "SEQ")]
+        until_seq: Option<u64>,
+        /// Resume after a truncated page: the `next` cursor it returned, as
+        /// `class/producer/instance`.
+        #[arg(long, value_name = "CURSOR")]
+        after: Option<String>,
+    },
     /// Read a finite snapshot in bulk, resumably: every page, to standard output.
     ///
     /// The snapshot is fixed by the first page's watermark, so an export of a ledger that is still

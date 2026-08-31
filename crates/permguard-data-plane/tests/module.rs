@@ -98,6 +98,17 @@ async fn the_http_surface_answers_info_health_and_discovery() {
     assert_eq!(status, 200);
     assert!(health.contains("live"), "{health}");
 
+    // The stream declarations, disabled ones included: "not here" and "here, turned off" are
+    // different answers, and this deployment has the temporal interface off.
+    let (status, streams) = get(module.http_routes(&context), "/v1/streams").await;
+    assert_eq!(status, 200);
+    assert!(
+        streams.contains("\"stream_type\":\"decisions\"")
+            && streams.contains("\"stream_type\":\"events\""),
+        "{streams}"
+    );
+    assert!(streams.contains("\"enabled\":false"), "{streams}");
+
     // Discovery, followed rather than pattern-matched. `contains` on a JSON body proves a
     // substring is somewhere in the text; a client does not read a substring, it reads a field and
     // then goes where the field points. So this walks the same two hops a client walks, and would

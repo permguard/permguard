@@ -1,191 +1,81 @@
-<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # Contributing to Permguard
 
-Thank you for your interest in contributing to **Permguard**.
+Thank you for your interest in contributing to Permguard.
 
-This repository is developed and maintained by **Nitro Agility S.r.l.**
+Permguard is an open-source, company-led project developed and maintained under
+the stewardship of Nitro Agility S.r.l.
 
----
+We welcome bug reports, feature proposals, documentation improvements, tests,
+and code contributions from the community.
 
-## 1. Governance and Ownership
+## Before contributing
 
-This repository is developed, published, and maintained by
-**Nitro Agility S.r.l.**
+For substantial changes, please open an issue or discussion before starting
+implementation. This helps align the proposed work with the architecture,
+security model, and roadmap of the project.
 
-All contributions made by employees, associates, contractors, or co-founders
-of Nitro Agility S.r.l. — regardless of the account, platform, or method used —
-are made **on behalf of Nitro Agility S.r.l.** and not in a personal capacity.
+Contributions should:
 
----
+- be focused and reasonably scoped;
+- include tests where appropriate;
+- preserve security and compatibility requirements;
+- follow the project's formatting and quality checks;
+- update documentation when behavior changes.
 
-## 2. External Contributors
+## Pull requests
 
-Contributors not acting on behalf of Nitro Agility S.r.l. ("External Contributors")
-are welcome to submit contributions.
+Pull requests are reviewed by Permguard maintainers.
 
-By submitting a contribution, External Contributors represent and warrant that:
+Submitting a pull request does not guarantee that it will be accepted or merged.
+Changes may be accepted, modified, deferred, or declined based on technical,
+security, compatibility, maintenance, product, or architectural considerations.
 
-1. **Right to Submit** — They have the legal right to submit the contribution
-2. **Original Work** — The contribution is original or all necessary rights
-   have been obtained
-3. **No Infringement** — The contribution does not infringe any third-party rights
-4. **No Encumbrances** — The contribution is free of restrictions that would
-   prevent use under the repository license
+Final merge decisions for the official Permguard repositories are made by
+maintainers appointed by Nitro Agility S.r.l.
 
-External Contributors:
+## Licensing and the Contributor License Agreement
 
-- Provide contributions **"as is"**
-- Are **solely responsible** for their contributions
-- Assume **all liability** arising from their contributions
+Permguard is currently distributed under the Apache License, Version 2.0.
 
----
+Contributions of code, documentation, tests, or examples require acceptance of
+the [Permguard Contributor License Agreement](CLA.md).
 
-## 3. Indemnification
+You keep ownership of what you contribute. The CLA grants Nitro Agility S.r.l.
+the rights it needs to distribute your contribution as part of Permguard,
+including under future licensing terms. [CLA.md](CLA.md) says exactly what that
+covers.
 
-By submitting a contribution, External Contributors agree to **indemnify and hold harmless**
-**Nitro Agility S.r.l.**, its employees, associates, contractors, and co-founders
-from any claims, damages, losses, or expenses (including reasonable legal fees) arising from:
+Acceptance happens in the pull request: the contribution process asks you to
+confirm it, and the confirmation is recorded. A pull request without a recorded
+acceptance is not merged.
 
-- The contribution
-- Any claim that the contribution infringes third-party rights
-- Any breach of the representations in Section 2
+By submitting a pull request, you acknowledge that you have reviewed the
+project policies applicable to your participation, including this contribution
+guide, the Contributor License Agreement, the Code of Conduct, and the
+project's governance, security, and trademark policies.
 
----
+By submitting a contribution, you represent that you have the right to submit
+the contributed material and that doing so does not knowingly violate
+third-party rights.
 
-## 4. License
+Do not submit third-party source code, generated material, or other copyrighted
+content unless its origin and applicable license are clearly disclosed and are
+compatible with the project.
 
-All code in this repository is licensed under the **Apache License 2.0**.
+## Project governance
 
-By submitting a contribution, you agree that your contribution is licensed
-under the Apache License 2.0.
+Community participation does not transfer ownership, governance, release
+authority, trademarks, or stewardship of the official Permguard project.
 
----
+Project governance is described in [GOVERNANCE.md](GOVERNANCE.md).
 
-## 5. Code of Conduct
+## Code of Conduct
 
-By contributing to this project, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+Participation in the Permguard community is governed by
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
----
+## Security issues
 
-## 6. Creating a commit
+Please do not disclose suspected security vulnerabilities through public issues.
 
-Commit messages should be clear and consistent.
-To maintain a common standard, we follow the Conventional Commits specification.
-You can find the full documentation on [their website](https://www.conventionalcommits.org).
-
----
-
-## 7. Submitting a pull request
-
-Push your branch to your `permguard` fork and open a pull request against the main branch.
-
-Below are a few recommendations:
-
-- Before submitting a pull request, please raise an issue to discuss the changes you wish to make. This will help us
-  understand the context of your changes and provide feedback.
-- Make sure sure each source file include the appropriate license header.
-
-```go
-  // Copyright (c) 2022 Nitro Agility S.r.l.
-  // SPDX-License-Identifier: Apache-2.0
-```
-
-- Add test cases for your changes.
-- Ensure the documentation is updated accordingly to reflect the changes you made.
-- It is very important to commit only required files and not any unnecessary files, whenever necessary it is recommended
-  to use `.gitignore` to exclude files.
-- Code cannot be reverted if you by mistake commit any sensitive information, so please make sure to not commit any
-  sensitive information.
-- Do not add third-party content in-line without attribution. Use links where possible.
-- Make sure the development guidance is followed.
-
----
-
-## 7.1 Working on the Rust workspace
-
-Before opening a pull request:
-
-```sh
-task check      # or: make check
-```
-
-That runs, in order: `cargo fmt --check`, `clippy` with warnings as errors, and four structural
-checks that are as much a part of the design as the code —
-
-| Check | What it refuses |
-| --- | --- |
-| `check:seams` | a crate that is not a composition root constructing a concrete collaborator |
-| `check:core-deps` | a dependency added to `permguard-core` outside its allowlist |
-| `check:headers` | a source file with no licence header |
-| `check:systems` | the `Makefile` and the `Taskfile` no longer offering the same commands |
-
-— and then the tests, with `--all-features`, because `permguard-std` keeps `provision` outside its
-default set and a plain run never compiles the tests that cover it.
-
-Two more things a reviewer will look for:
-
-- **A changelog entry** in `CHANGELOG.md` under *Unreleased*, if the change is visible to somebody
-  running Permguard. Nothing blocks a release without one, which is exactly why it is a review
-  question: written at release time, it is written from memory. `scripts/prepare-release.sh` promotes
-  whatever is under *Unreleased* into the released version's section.
-- **A versioned interface, treated as one.** Configuration keys, environment variables, CLI flags and
-  exit statuses, HTTP routes, gRPC messages, metric names and labels, chart values: these are what
-  people automate against. [COMPATIBILITY.md](COMPATIBILITY.md) lists them, and says what changing one
-  costs.
-
----
-
-## 8. Development Platform Notes
-
-Permguard is primarily developed and tested on macOS (Darwin) environments.
-While Go's cross-platform support allows the project to build and run on other operating systems such as Linux and
-Windows, most of our local development runs on macOS.
-
-If you experience any platform-specific issues, differences in behavior, or build failures on other systems, your
-feedback is highly appreciated.
-You can either:
-
-- Open a pull request with fixes or suggestions, or
-- Contact us directly at 📧 **<opensource@permguard.com>**
-
----
-
-## 9. Legal and Licensing Compliance
-
-All contributions to **Permguard** must fully comply with the project's Apache 2.0 License and any applicable
-third-party terms.
-By submitting a contribution, you confirm that you have the right to do so and that your submission does not violate any
-intellectual property or contractual obligations.
-
-If your contribution introduces third-party technologies, external dependencies, or materials under a different license:
-
-- Provide clear attribution and include a reference to the corresponding license.
-- Add a short note in your pull request description under a "Third-Party Notice" section.
-- Ensure the license terms of any added dependency are compatible with the Apache 2.0 License.
-- If you're unsure about the licensing implications or compliance requirements, please contact us before submitting the
-  PR.
-
-📧 For any legal or licensing concerns, reach out to 📧 **<opensource@permguard.com>**
-
-⚖️ Note: Contributions that introduce incompatible or unverified third-party materials may be declined to protect the
-integrity and legal safety of the project.
-
-Contributions by employees, officers, directors, or contractors of Nitro Agility S.r.l. are made on behalf of Nitro
-Agility S.r.l. and are subject to the applicable corporate agreements and policies.
-
----
-
-## 10. Questions
-
-For questions about contributions, open an issue or contact **<opensource@permguard.com>**.
-
----
-
-## 11. Disclaimer
-
-Nothing in this document creates any obligation, warranty, or liability for
-Nitro Agility S.r.l. or its employees, associates, contractors, or co-founders.
-
-Contributions are accepted at the sole discretion of Nitro Agility S.r.l.
+See [SECURITY.md](SECURITY.md) for the responsible disclosure process.

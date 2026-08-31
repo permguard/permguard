@@ -1064,7 +1064,7 @@ pub struct Config {
     event_store_directory: String,
     event_store_retention: Duration,
     decision_store_retention: Duration,
-    decision_producer_keys: Vec<String>,
+    decision_producer_keys: Vec<crate::decisions::DecisionProducerSource>,
     /// The published key sets of the producers this plane accepts *event* records from.
     ///
     /// Separate from the decision one because they are separate trust decisions: a deployment may
@@ -2682,16 +2682,20 @@ produce: use `EdDSA` or `ES256`"
         self.decision_store_retention
     }
 
-    /// The published key sets of the producers this plane accepts records from.
-    pub fn decision_producer_keys(&self) -> &[String] {
+    /// The published key sets of the producers this plane accepts records from, each bound to
+    /// one exact producer identity.
+    pub fn decision_producer_keys(&self) -> &[crate::decisions::DecisionProducerSource] {
         &self.decision_producer_keys
     }
 
-    /// Records where a control plane's producers publish their keys.
+    /// Records where a control plane's producers publish their keys, and who each set signs for.
     ///
-    /// Structured, so it comes from the file: a list of paths has no sensible
+    /// Structured, so it comes from the file: a binding of path to producer has no sensible
     /// single-variable form.
-    pub fn with_decision_producer_keys(mut self, keys: impl IntoIterator<Item = String>) -> Self {
+    pub fn with_decision_producer_keys(
+        mut self,
+        keys: impl IntoIterator<Item = crate::decisions::DecisionProducerSource>,
+    ) -> Self {
         self.decision_producer_keys = keys.into_iter().collect();
 
         self

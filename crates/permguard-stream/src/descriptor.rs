@@ -122,6 +122,26 @@ pub struct StreamDescriptor {
     /// Whether the directory predates the versioned layout. Legacy directories keep working;
     /// what they lose is only the right to *new* collisions.
     pub legacy: bool,
+    /// Whether this deployment turned the stream on. A disabled stream stays declared — and
+    /// therefore discoverable as disabled — because "not here" and "here, turned off" are
+    /// different answers, and a caller deciding where to read needs the second one.
+    pub enabled: bool,
+}
+
+impl StreamDescriptor {
+    /// What discovery publishes about this stream: identity, direction, contract, state.
+    ///
+    /// Deliberately not the whole descriptor — the directory is this process's own business, and
+    /// a discovery document that leaked filesystem layout would be volunteering a map.
+    pub fn public_view(&self) -> serde_json::Value {
+        serde_json::json!({
+            "plane": self.identity.plane(),
+            "stream_type": self.identity.stream_type(),
+            "role": self.role.as_str(),
+            "record_type": self.record_type,
+            "enabled": self.enabled,
+        })
+    }
 }
 
 /// What registering a descriptor concluded.
@@ -278,6 +298,7 @@ mod tests {
             record_type: format!("permguard.{stream_type}.record.v1"),
             directory: PathBuf::from(directory),
             legacy,
+            enabled: true,
         }
     }
 

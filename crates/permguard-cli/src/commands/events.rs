@@ -63,7 +63,12 @@ pub fn events(globals: &Globals, action: &EventsAction) -> Result<ExitCode, Fail
         EventsAction::List(query) => list(globals, query, false),
         EventsAction::Tail { query, follow } => tail(globals, query, *follow),
         EventsAction::Get { event_id, query } => get(globals, query, event_id),
-        EventsAction::Signers(query) => signers(globals, query),
+        EventsAction::Signers {
+            query,
+            from_seq,
+            until_seq,
+            after,
+        } => signers(globals, query, *from_seq, *until_seq, after.as_deref()),
         EventsAction::Export(query) => list(globals, query, true),
         EventsAction::Verify { file, query } => match file {
             Some(file) => verify_file(globals, query, file),
@@ -207,7 +212,13 @@ fn get(globals: &Globals, query: &EventsQuery, event_id: &str) -> Result<ExitCod
 }
 
 /// Which key signed which stretch of each producer stream, public keys included.
-fn signers(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
+fn signers(
+    globals: &Globals,
+    query: &EventsQuery,
+    from_seq: Option<u64>,
+    until_seq: Option<u64>,
+    after: Option<&str>,
+) -> Result<ExitCode, Failure> {
     let trace = Trace::new(globals.verbose);
     let (reader, scope) = connect(globals, query, &trace)?;
     let (zone, ledger) = match &scope {
@@ -215,8 +226,28 @@ fn signers(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> 
             (zone.clone(), ledger.clone())
         }
     };
+    let after = after
+        .map(|held| {
+            permguard_stream::StreamPosition::parse(held)
+                .map(permguard_stream::StreamPosition::into_tuple)
+                .map_err(|_| {
+                    Failure::usage(
+                        "`--after` is the complete cursor a truncated page returned: \
+                         `class/producer/instance`",
+                    )
+                })
+        })
+        .transpose()?;
+    let ask = permguard_control_client::events::SignersAsk {
+        from_seq: from_seq.unwrap_or(0),
+        until_seq: until_seq.unwrap_or(0),
+        producer_class: query.producer_class.clone(),
+        producer: query.producer.clone(),
+        instance: query.instance.clone(),
+        after,
+    };
 
-    let document = reader.signers(&zone, &ledger).map_err(read_failure)?;
+    let document = reader.signers(&zone, &ledger, &ask).map_err(read_failure)?;
     render(
         &SignersReport {
             scope: format!("{zone}/{ledger}"),

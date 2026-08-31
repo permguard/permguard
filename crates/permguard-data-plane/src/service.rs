@@ -208,6 +208,9 @@ impl PlaneModule for DataPlaneModule {
             .route("/health", get(health))
             .route("/version", get(info))
             .with_state(state)
+            .merge(permguard_server::plane::streams_route(
+                self.streams(context.config()),
+            ))
             .merge(discovery_routes(context))
             // The reason this plane exists: decisions, over HTTP.
             .merge(authz::http::routes(authz::http::Surface {
@@ -226,30 +229,32 @@ impl PlaneModule for DataPlaneModule {
     fn streams(&self, config: &permguard_core::Config) -> Vec<permguard_stream::StreamDescriptor> {
         let mut streams = Vec::new();
 
+        // Declared whether or not the deployment turned them on: "not here" and "here, turned
+        // off" are different answers, and discovery serves the second one too. Only enabled
+        // streams own their directories.
+
         // The decision log: this plane produces it into a local spool and ships it. The spool
         // directory predates the versioned layout and stays where recorded evidence already is.
-        if config.log_enabled()
-            && let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "decisions")
-        {
+        if let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "decisions") {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Producer,
                 record_type: "permguard.decision.v1".to_owned(),
                 directory: config.working_dir().join(config.log_spool_directory()),
                 legacy: true,
+                enabled: config.log_enabled(),
             });
         }
 
         // The temporal events: journals per ledger under the events root, produced and shipped.
-        if crate::temporal::served(config)
-            && let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "events")
-        {
+        if let Ok(identity) = permguard_stream::StreamIdentity::new("data-plane", "events") {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Producer,
                 record_type: permguard_events::RECORD_TYPE.to_owned(),
                 directory: config.events_directory(),
                 legacy: true,
+                enabled: crate::temporal::served(config),
             });
         }
 

@@ -72,6 +72,11 @@ controlPlane:
     enabled: "true"
     directory: "data/decisions/store"
     retention: "7d"
+    # The paired data plane publishes the same operational public ring its decision batches use.
+    # The binding is exact: a trusted plane may never sign as another producer.
+    producer_keys:
+      - path: trust/data-plane-decisions.jwks
+        pdp: data-plane-local
 
 operations:
   keys:

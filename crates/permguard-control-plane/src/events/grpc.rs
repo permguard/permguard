@@ -203,11 +203,50 @@ impl EventLog for EventFacade {
     ) -> Result<Response<GetSignersResponse>, Status> {
         let asked = request.into_inner();
 
-        let streams = self
-            .signers_of(&asked.zone, &asked.ledger, asked.from_seq, asked.until_seq)
-            .map_err(|error| status_of(&error, self.disclosure))?;
+        let filter = |held: String| (!held.is_empty()).then_some(held);
+        let after = match asked.after {
+            Some(held) => Some(
+                permguard_stream::StreamPosition::new(
+                    held.producer_class,
+                    held.producer,
+                    held.instance,
+                )
+                .map_err(|error| {
+                    status_of(
+                        &ApiError::new(
+                            ErrorClass::Validation,
+                            "cursor_malformed",
+                            error.to_string(),
+                        ),
+                        self.disclosure,
+                    )
+                })?,
+            ),
+            None => None,
+        };
+        let wanted = super::http::StreamsAsked {
+            producer_class: filter(asked.producer_class),
+            producer: filter(asked.producer),
+            instance: filter(asked.instance),
+            after,
+        };
+        let (facade, zone, ledger, disclosure) =
+            (self.clone(), asked.zone, asked.ledger, self.disclosure);
+        let document = tokio::task::spawn_blocking(move || {
+            facade.signers_of(&zone, &ledger, asked.from_seq, asked.until_seq, &wanted)
+        })
+        .await
+        .map_err(|error| Status::unavailable(error.to_string()))?
+        .map_err(|error| status_of(&error, disclosure))?;
 
-        let streams = streams
+        let truncated = document.truncated;
+        let next = document.next.map(|held| crate::v1::StreamCursor {
+            producer_class: held.producer_class,
+            producer: held.producer,
+            instance: held.instance,
+        });
+        let streams = document
+            .streams
             .into_iter()
             .map(|held| {
                 let spans = held
@@ -241,7 +280,11 @@ impl EventLog for EventFacade {
             })
             .collect::<Result<Vec<_>, Status>>()?;
 
-        Ok(Response::new(GetSignersResponse { streams }))
+        Ok(Response::new(GetSignersResponse {
+            streams,
+            truncated,
+            next,
+        }))
     }
 
     async fn get_event_configuration(

@@ -45,6 +45,20 @@ message GetSignersRequest {
   // `until_seq` of zero with a nonzero `from_seq` means "from there onward".
   uint64 from_seq = 3;
   uint64 until_seq = 4;
+  // Narrow to one producer class, one producer, or one incarnation. Empty means all.
+  string producer = 5;
+  string instance = 6;
+  string producer_class = 7;
+  // Resume strictly after this position — the `next` of the previous page.
+  // All three fields or none: two thirds of a position is not a position.
+  StreamCursor after = 8;
+}
+
+// A position in the (class, producer, instance) order of one ledger's streams.
+message StreamCursor {
+  string producer_class = 1;
+  string producer = 2;
+  string instance = 3;
 }
 
 // One stretch of one stream and the key that signed it. The stretch runs from
@@ -69,6 +83,12 @@ message StreamSigners {
 
 message GetSignersResponse {
   repeated StreamSigners streams = 1;
+  // The answer is one bounded page: when a ledger holds more producer streams
+  // than one page carries, this is true and `next` is the cursor the following
+  // ask passes back as `after`. The bound protects the server; it is never an
+  // error.
+  bool truncated = 2;
+  StreamCursor next = 3;
 }
 
 message GetEventConfigurationRequest {}

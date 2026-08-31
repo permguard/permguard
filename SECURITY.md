@@ -1,88 +1,89 @@
-<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # Security Policy
 
-This document describes how security vulnerabilities related to
-Permguard are handled.
+Security is a core property of Permguard.
 
----
+We appreciate responsible reports from security researchers, users, and
+contributors.
 
-## Supported Versions
+## Reporting a vulnerability
 
-Only the latest stable release is supported for security updates
-at any given time.
+Please do not report suspected security vulnerabilities through public GitHub
+issues, discussions, or pull requests.
 
-Earlier versions are provided for reference only and are not maintained.
+Report vulnerabilities privately to:
 
----
+security@nitroagility.com
 
-## Reporting a Vulnerability
+If available, GitHub Private Vulnerability Reporting may also be used through
+the official Permguard repository.
 
-Security issues **must be reported privately**.
+Please include, where possible:
 
-Please use GitHub Security Advisories:
+- the affected component;
+- affected version or commit;
+- a description of the vulnerability;
+- reproduction steps or proof of concept;
+- potential security impact;
+- relevant logs or traces;
+- suggested remediation, if known.
 
-<https://github.com/permguard/permguard/security/advisories/new>
+## Disclosure
 
-Do **not** open public issues for security vulnerabilities.
+Please allow reasonable time for investigation and remediation before publicly
+disclosing a vulnerability.
 
----
+Nitro Agility S.r.l. will determine remediation and disclosure coordination for
+vulnerabilities affecting official Permguard releases.
 
 ## Scope
 
-We consider vulnerabilities that could compromise the:
+Reports concerning the following are welcome:
 
-- confidentiality,
-- integrity,
-- or availability
+- Permguard source code;
+- official Permguard binaries and containers;
+- protocol implementations maintained by Permguard;
+- authentication and authorization behavior;
+- privilege escalation;
+- authority or trust-boundary violations;
+- signature or verification failures;
+- unsafe defaults;
+- sensitive information exposure;
+- vulnerabilities in official deployment artifacts.
 
-of Permguard or its users.
+Issues that exist solely in an upstream third-party dependency may also need to
+be reported to the relevant upstream project.
 
----
+## Supported versions
 
-## Response Timeline
+Security fixes are generally applied according to the versions actively
+supported by the Permguard project.
 
-We aim to:
+The currently supported versions should be documented with each release or in
+the project's release documentation.
 
-- acknowledge reports within **5 business days**,
-- provide an assessment or resolution within **30 days**, when feasible.
+## Safe harbour
 
-Timelines may vary depending on severity and complexity.
+Nitro Agility S.r.l. will not pursue or support legal action against security
+researchers who, in good faith:
 
----
+- follow this policy;
+- report promptly and privately;
+- avoid privacy violations, service disruption, and the destruction or
+  exfiltration of data beyond what is needed to demonstrate the issue;
+- allow reasonable time for remediation before public disclosure.
 
-## Credit
+If a third party brings a claim against you for research carried out in
+accordance with this policy, we will make it known that the research was
+authorised under it.
 
-We are happy to publicly acknowledge security reporters in release notes
-unless anonymity is requested.
+This safe harbour covers the source code, binaries, containers, and deployment
+artefacts listed under Scope. It does not extend to systems, infrastructure, or
+data owned by third parties.
 
----
+## No authorization to access third-party systems
 
-## Governance
+This policy does not authorize testing against systems, infrastructure, or data
+that you do not own or do not have explicit permission to test.
 
-Security response and coordination are handled by **Nitro Agility S.r.l.**
-
----
-
-## Disclaimer
-
-This security policy is provided for **informational purposes only**.
-
-Nothing in this document creates any obligation, warranty, or liability for:
-
-- Nitro Agility S.r.l.
-- Project maintainers or contributors
-
-Specifically:
-
-- There is **no obligation** to respond to any report within any timeframe
-- There is **no obligation** to fix, patch, or remediate any reported issue
-- There is **no obligation** to provide support, updates, or maintenance
-- There is **no warranty** that any issue will be addressed
-
-Response timelines stated above are **goals, not commitments**.
-
-All security matters are handled at the sole discretion of Nitro Agility S.r.l.
-
-This policy may be changed at any time without notice.
+Please conduct security research responsibly and avoid privacy violations,
+service disruption, destruction of data, or unauthorized access.

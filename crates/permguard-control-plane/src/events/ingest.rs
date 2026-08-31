@@ -199,12 +199,6 @@ pub fn accept(
         )));
     }
 
-    // The key that signed is archived beside what it attests, the first time it is seen: a batch
-    // signed today must still verify after that key has been rotated a dozen times.
-    if let Err(error) = store.archive_key(signing_key) {
-        return Err(Refused::Unavailable(error.to_string()));
-    }
-
     // One writer per stream, from the first read of its state to the acknowledgement.
     let gate = store.gate(&envelope.stream);
     let _writing = match gate.lock() {
@@ -242,6 +236,17 @@ pub fn accept(
     if envelope.first_seq == state.acked + 1 {
         continues(&envelope, batch, &state)?;
     }
+
+    // Refuse a semantic signer conflict before rollback, records or the retained envelope can
+    // change. A `kid` is one key for the complete history of this producer stream.
+    store
+        .check_signer(&envelope.stream, envelope.first_seq, signing_key)
+        .map_err(|error| Refused::Unverifiable(error.to_string()))?;
+    // Preserve the public key before committing evidence. This is idempotent and deliberately
+    // happens only after the batch passed every validation above.
+    store
+        .archive_key(signing_key)
+        .map_err(|error| Refused::Unavailable(error.to_string()))?;
 
     let dropped = store
         .rollback_unacked(&envelope.stream, state.acked)

@@ -91,33 +91,65 @@ impl std::fmt::Display for Refused {
     }
 }
 
+/// One decision producer identity and a published key that may attest it.
+///
+/// The binding is the point: a trusted key that could sign for *any* producer would let one
+/// authorized data plane ship evidence wearing another's identity, and nothing downstream could
+/// tell.
+#[derive(Debug, Clone)]
+pub struct ProducerTrust {
+    pub key: Jwk,
+    /// The exact `pdp_id` this key may sign for.
+    pub pdp: String,
+}
+
+impl ProducerTrust {
+    fn authorizes(&self, pdp_id: &str) -> bool {
+        self.pdp == pdp_id
+    }
+}
+
 /// Accepts one signed batch into `store`.
-pub fn accept(store: &DecisionStore, batch: &Batch, keys: &[Jwk]) -> Result<Accepted, Refused> {
-    let envelope = batch
+pub fn accept(
+    store: &DecisionStore,
+    batch: &Batch,
+    producers: &[ProducerTrust],
+) -> Result<Accepted, Refused> {
+    let protected = batch
         .signature
-        .verify(keys)
+        .protected()
         .map_err(|error| Refused::Unattributable(error.to_string()))?;
 
-    // The key that signed is archived beside what it attests, the first time
-    // it is seen: a batch signed today must still verify after that key has
-    // been rotated a dozen times. And *which stretch* it signed is recorded in
-    // the stream's signer manifest, so a verifier can name the keys a range
-    // needs without downloading every key the producer ever held.
-    if let Ok(protected) = batch.signature.protected()
-        && let Some(key) = keys.iter().find(|candidate| candidate.kid == protected.kid)
+    // Verified against each candidate the kid names, and accepted only when the verifying key is
+    // bound to the producer the envelope itself declares. A valid signature under a key bound to
+    // somebody else is refused as unattributable, not honoured — that mismatch is the attack.
+    let mut verified = None;
+    let mut wrong_scope = false;
+    for producer in producers
+        .iter()
+        .filter(|held| held.key.kid == protected.kid)
     {
-        if let Err(error) = store.archive_key(key) {
-            return Err(Refused::Unavailable(error.to_string()));
+        let Ok(envelope) = batch.signature.verify(std::slice::from_ref(&producer.key)) else {
+            continue;
+        };
+        if producer.authorizes(&envelope.stream.id) {
+            verified = Some((envelope, &producer.key));
+            break;
         }
-        if let Err(error) = store.note_signer(
-            &envelope.stream.id,
-            &envelope.stream.instance,
-            envelope.first_seq,
-            key,
-        ) {
-            return Err(Refused::Unavailable(error.to_string()));
-        }
+        wrong_scope = true;
     }
+    let Some((envelope, signing_key)) = verified else {
+        return Err(Refused::Unattributable(if wrong_scope {
+            "the signature is valid, but its key is not bound to the producer this batch \
+             declares"
+                .to_owned()
+        } else {
+            format!(
+                "no current key bound to an authorized decision producer verifies key id `{}`",
+                protected.kid
+            )
+        }));
+    };
 
     // One writer per stream, from the first read of its state to the
     // acknowledgement: ingest is read-check-append across several files, and
@@ -157,6 +189,24 @@ pub fn accept(store: &DecisionStore, batch: &Batch, keys: &[Jwk]) -> Result<Acce
     if envelope.first_seq == state.acked + 1 {
         continues(&envelope, batch, &state)?;
     }
+
+    // Semantic signer conflicts must be found before rollback, records or an envelope change.
+    // In particular, reusing a `kid` with different material is never allowed to overwrite the
+    // envelope that proves the already-held range.
+    store
+        .check_signer(
+            &envelope.stream.id,
+            &envelope.stream.instance,
+            envelope.first_seq,
+            signing_key,
+        )
+        .map_err(|error| Refused::Unverifiable(error.to_string()))?;
+    // Archive failures are also discovered before touching this stream. Archiving is idempotent
+    // and does not make the key admissible for new batches; it only preserves verification
+    // material for evidence that is about to be committed.
+    store
+        .archive_key(signing_key)
+        .map_err(|error| Refused::Unavailable(error.to_string()))?;
 
     // Whatever sits above the acknowledged point was written and never
     // confirmed, so it is scratch: this batch is authoritative for that range.
@@ -201,6 +251,20 @@ pub fn accept(store: &DecisionStore, batch: &Batch, keys: &[Jwk]) -> Result<Acce
             &envelope.stream.instance,
             envelope.first_seq,
             &signature,
+        )
+        .map_err(|error| Refused::Unavailable(error.to_string()))?;
+
+    // The key is archived and the signer manifest advances **here** — under the stream's gate,
+    // and only for a batch that passed every structural check and whose envelope is durable
+    // beside its records. Done any earlier, a signed-but-invalid batch would edit the manifest,
+    // two concurrent ingests would race the same file, and a replay re-signed under a rotated
+    // key would blame the new key for a stretch whose kept envelope names the old one.
+    store
+        .note_signer(
+            &envelope.stream.id,
+            &envelope.stream.instance,
+            envelope.first_seq,
+            signing_key,
         )
         .map_err(|error| Refused::Unavailable(error.to_string()))?;
 

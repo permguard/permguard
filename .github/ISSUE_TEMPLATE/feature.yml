@@ -25,4 +25,4 @@ body:
       label: What you would like
       description: |
         If it touches something automated against — a configuration key, a flag, an exit status, a
-        metric — say which. Those are versioned interfaces, see COMPATIBILITY.md.
+        metric — say which. Those are versioned interfaces, see docs/compatibility.md.

@@ -19,7 +19,7 @@ use permguard_core::ConfigFile;
 use permguard_core::mirrors::check_source;
 use permguard_server::plane::settings::{
     PlaneSettingKeys, SETTING_CONTROL_HTTP_ADDR, SETTING_DATA_HTTP_ADDR, mirror_sources,
-    plane_settings,
+    plane_settings, producer_keys,
 };
 
 /// Every `config.*.yml` beside the three server crates.
@@ -431,10 +431,8 @@ fn the_dogwood_variants_are_the_only_shipped_configurations_that_turn_it_on() {
 
         // And the plane's own half of the gate, for whichever planes this file configures. Both
         // are needed: one without the other is refused at startup.
-        let has_data = ConfigFile::load(&path)
-            .expect("the file parses")
-            .section("dataPlane")
-            .is_some();
+        let file = ConfigFile::load(&path).expect("the file parses");
+        let has_data = file.section("dataPlane").is_some();
         if has_data {
             assert_eq!(
                 setting(&path, SETTING_EVENTS_ENABLED).as_deref(),
@@ -443,10 +441,19 @@ fn the_dogwood_variants_are_the_only_shipped_configurations_that_turn_it_on() {
                 path.display()
             );
         }
-        let has_control = ConfigFile::load(&path)
-            .expect("the file parses")
-            .section("controlPlane")
-            .is_some();
+        if name.contains("permguard-control-plane") {
+            let control = file
+                .section("controlPlane")
+                .expect("the standalone control plane configures its plane");
+            assert!(
+                !producer_keys(control)
+                    .expect("the decision producer bindings parse")
+                    .is_empty(),
+                "{} enables the standalone decision store without trusting any exact producer",
+                path.display()
+            );
+        }
+        let has_control = file.section("controlPlane").is_some();
         if has_control {
             assert_eq!(
                 setting(&path, SETTING_EVENT_STORE_ENABLED).as_deref(),

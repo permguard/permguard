@@ -5,8 +5,8 @@
 
 `read-login-not-logout.*` are the artifacts of Dogwood's own
 `dogwood-docs/examples/read_login_not_logout` example, copied verbatim from the reviewed upstream
-revision (see `NOTICE.md` for the attribution, and `crates/permguard-languages/Cargo.toml` for the
-revision itself).
+revision (see `THIRD_PARTY_NOTICES.md` for the dependency inventory, and
+`crates/permguard-languages/Cargo.toml` for the revision itself).
 
 They are here rather than paraphrased so the test that uses them proves something worth proving:
 that Permguard's Dogwood partition, loaded from a ledger commit and driven through Permguard's own

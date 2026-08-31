@@ -282,8 +282,15 @@ pub trait DecisionReader {
     /// Which key signed which stretch of one producer stream, public keys included.
     ///
     /// The shape is the signers document both transports serve: the receiver's `acked` frontier
-    /// and the `spans`, each carrying `from`, `kid` and the public JWK itself.
-    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError>;
+    /// and the `spans`, each carrying `from`, `kid` and the public JWK itself. The bounds are an
+    /// inclusive offset range; zero means unbounded on that side.
+    fn signers(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<serde_json::Value, ReadError>;
 }
 
 /// The HTTP shipper.
@@ -379,12 +386,24 @@ impl DecisionSink for HttpSink {
 }
 
 impl DecisionReader for HttpSink {
-    fn signers(&self, pdp_id: &str, instance: &str) -> Result<serde_json::Value, ReadError> {
-        let path = format!(
+    fn signers(
+        &self,
+        pdp_id: &str,
+        instance: &str,
+        from_seq: u64,
+        until_seq: u64,
+    ) -> Result<serde_json::Value, ReadError> {
+        let mut path = format!(
             "/decisions/v1/signers?pdp={}&instance={}",
             crate::encode::value(pdp_id),
             crate::encode::value(instance)
         );
+        if from_seq > 0 {
+            path.push_str(&format!("&from_seq={from_seq}"));
+        }
+        if until_seq > 0 {
+            path.push_str(&format!("&until_seq={until_seq}"));
+        }
         let response = self
             .client
             .request(&self.endpoint, "GET", &path, None)

@@ -248,8 +248,23 @@ pub struct DecisionStoreSection {
     /// A list, so it comes from the file only. Empty means this plane accepts
     /// records from producers that share its process — the all-in-one — and
     /// from nobody else.
+    ///
+    /// Every entry binds key material to one exact producer, because a set
+    /// that only said "these keys are trusted" would let any authorized data
+    /// plane sign an envelope claiming another's identity.
     #[serde(default)]
-    producer_keys: Vec<String>,
+    producer_keys: Vec<DecisionProducerSource>,
+}
+
+/// One decision producer identity and the published key set that may attest it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionProducerSource {
+    /// The JWKS document, relative to the working directory.
+    pub path: String,
+    /// The exact `pdp_id` these keys may sign for. Never a wildcard: the
+    /// binding is the point.
+    pub pdp: String,
 }
 
 impl DecisionStoreSection {
@@ -265,8 +280,8 @@ impl DecisionStoreSection {
         .collect()
     }
 
-    /// The producers' key sets, as declared: paths to JWKS documents.
-    pub fn producer_keys(&self) -> &[String] {
+    /// The producers' key sets, as declared: each a JWKS path bound to one producer.
+    pub fn producer_keys(&self) -> &[DecisionProducerSource] {
         &self.producer_keys
     }
 }
