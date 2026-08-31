@@ -38,12 +38,12 @@ maintainers appointed by Nitro Agility S.r.l.
 Permguard is currently distributed under the Apache License, Version 2.0.
 
 Contributions of code, documentation, tests, or examples require acceptance of
-the [Permguard Contributor License Agreement](CLA.md).
+the [Permguard Contributor License Agreement](https://github.com/permguard/.github/blob/main/CLA.md).
 
 You keep ownership of what you contribute. The CLA grants Nitro Agility S.r.l.
 the rights it needs to distribute your contribution as part of Permguard,
-including under future licensing terms. [CLA.md](CLA.md) says exactly what that
-covers.
+including under future licensing terms. The
+[CLA](https://github.com/permguard/.github/blob/main/CLA.md) says exactly what that covers.
 
 Acceptance happens in the pull request: the contribution process asks you to
 confirm it, and the confirmation is recorded. A pull request without a recorded
