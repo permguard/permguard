@@ -30,7 +30,7 @@ regorus = "0.11"
 # The Rego partition schema: JSON Schema, compiled once at load. Already in this
 # workspace's graph — regorus carries it — so it is a direct dependency of the
 # crate that actually validates with it rather than a transitive accident.
-jsonschema = { version = "0.47", default-features = false }
+jsonschema = { version = "0.52", default-features = false }
 # Dogwood, the temporal governance language. Experimental and disabled at runtime by
 # `experimental.dogwood.enabled`; the dependency is compiled in either way, because a language is
 # a build and not a deployment action — the gate decides whether a ledger may *use* it, not
