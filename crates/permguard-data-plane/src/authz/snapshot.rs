@@ -296,10 +296,11 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
 
     let footprint = collected.footprint();
     let policies = collected.policies.len();
-    let evaluator: Arc<dyn Evaluator> = engine
-        .compile(&collected.policies, &collected.artifacts)
-        .map_err(Refusal::Incompatible)?
-        .into();
+    let evaluator: Arc<dyn Evaluator> = permguard_languages::headroom::with(|| {
+        engine.compile(&collected.policies, &collected.artifacts)
+    })
+    .map_err(Refusal::Incompatible)?
+    .into();
 
     // What the manifest declared about this partition's history, against what its schemas turned
     // out to say. Checked here rather than only where the ledger was authored, because a mirror is

@@ -264,10 +264,10 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
         )
         .map_err(|why| err(why.to_string()))?;
 
-        let evaluator: std::sync::Arc<dyn Evaluator> = evaluating
-            .compile(&held.policies, &held.artifacts)
-            .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?
-            .into();
+        let evaluator: std::sync::Arc<dyn Evaluator> =
+            languages::headroom::with(|| evaluating.compile(&held.policies, &held.artifacts))
+                .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?
+                .into();
         partitions.insert(entry.name.clone(), evaluator);
         languages.insert(entry.name.clone(), runtime.language.name.clone());
     }

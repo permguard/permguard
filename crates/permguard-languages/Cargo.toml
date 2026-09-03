@@ -27,6 +27,12 @@ permguard-events.workspace = true
 # engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
 cedar-policy = "4.11"
 regorus = "0.11"
+# Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
+# expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
+# "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy
+# carries it — so it is a direct dependency of the crate that has to guarantee the headroom rather
+# than a transitive accident. See `evaluate_all`.
+stacker = "0.1"
 # The Rego partition schema: JSON Schema, compiled once at load. Already in this
 # workspace's graph — regorus carries it — so it is a direct dependency of the
 # crate that actually validates with it rather than a transitive accident.
