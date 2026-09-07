@@ -423,7 +423,10 @@ impl Asking {
             )
         })?;
         if let Some(evaluator) = target.evaluator {
-            evaluator.check_input(&normalized).map_err(|why| {
+            // Entered with room to recurse in: checking an entity store means deserializing it
+            // in the engine, which recurses over the graph and is guarded by the engine's own
+            // stack check. See `crate::headroom`.
+            crate::headroom::with(|| evaluator.check_input(&normalized)).map_err(|why| {
                 malformed(
                     "partition_input_schema",
                     format!("`partition_inputs.{}`: {why}", target.name),

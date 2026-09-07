@@ -65,6 +65,17 @@ use crate::trace::Trace;
 pub use crate::failure::{EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNREACHABLE, EXIT_USAGE};
 
 fn main() -> ExitCode {
+    // Claimed once, for the whole command: a policy engine guards its own recursion by asking how
+    // much stack is left, and on a musl build — which every Linux release is — the answer for the
+    // process's first thread is the pages that happen to be mapped rather than the stack it has.
+    // An engine that believes it has 128 KiB declines to parse, deserialize or evaluate anything
+    // at all, so `permguard test` answered "recursion limit reached" on Linux for policies that
+    // passed everywhere else. Claiming the room here covers every call this command makes; the
+    // engine boundaries in `permguard-languages` cover the threads it hands work to.
+    permguard_languages::headroom::with(run_command)
+}
+
+fn run_command() -> ExitCode {
     // Parsed by hand so that a wrong command line exits `EX_USAGE` rather than clap's default of
     // 2 — which is a status this CLI has already given a meaning of its own.
     let matches = match args::command().try_get_matches() {

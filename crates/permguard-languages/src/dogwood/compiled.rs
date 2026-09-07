@@ -843,7 +843,10 @@ impl crate::temporal::Temporal for CompiledDogwood {
             })?;
             // The verdicts of a replay are discarded: what is being rebuilt is the *history*, and
             // a decision made now against a partial replay would be a decision nobody asked for.
-            let _ = fresh.is_authorized(&event);
+            // Entered with room to recurse in, like every other call into an engine — see
+            // `crate::headroom`; a replay that declined for want of stack would rebuild a history
+            // missing the very events it is replaying.
+            let _ = crate::headroom::with(|| fresh.is_authorized(&event));
         }
 
         let engine = self.engine(history)?;
@@ -909,7 +912,11 @@ impl crate::temporal::Temporal for CompiledDogwood {
                     .observed
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-                authorizer.is_authorized(&event)
+                // Entered with room to recurse in: this is where a Dogwood partition
+                // actually decides, and a thread whose stack the platform under-reports would
+                // have every policy here answer "recursion limit reached". See
+                // `crate::headroom`.
+                crate::headroom::with(|| authorizer.is_authorized(&event))
             }
             // A history whose lock a panicking thread left poisoned is one nobody can vouch for.
             // Fail closed rather than reach past the poison for the state.
@@ -1048,17 +1055,19 @@ impl CompiledDogwood {
             })
             .collect();
 
-        Entities::from_json_value(serde_json::Value::Array(store), Some(&self.cedar_schema))
-            .map(|_| ())
-            .map_err(|error| {
-                Refused::new(
-                    "event_entities_rejected",
-                    format!(
-                        "the attributed entity store does not conform to this partition's action \
+        crate::headroom::with(|| {
+            Entities::from_json_value(serde_json::Value::Array(store), Some(&self.cedar_schema))
+        })
+        .map(|_| ())
+        .map_err(|error| {
+            Refused::new(
+                "event_entities_rejected",
+                format!(
+                    "the attributed entity store does not conform to this partition's action \
                          schema: {error}"
-                    ),
-                )
-            })
+                ),
+            )
+        })
     }
 }
 

@@ -34,6 +34,7 @@ mod rego;
 pub mod artifact;
 pub mod evaluate;
 pub mod fanout;
+pub mod headroom;
 pub mod input;
 pub mod lookup;
 pub mod manifest_file;

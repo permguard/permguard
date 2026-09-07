@@ -254,7 +254,10 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
                             .to_owned(),
                     )
                 } else {
-                    let verdict = evaluator.evaluate(&query);
+                    // Entered with room to recurse in, whatever thread this is: an engine
+                    // handed a stack it cannot measure declines rather than answers. See
+                    // `crate::headroom`.
+                    let verdict = crate::headroom::with(|| evaluator.evaluate(&query));
                     // A synchronous provider cannot be interrupted once it has
                     // entered upstream's engine. That does not make its late
                     // answer valid: in particular, a permit produced after the
