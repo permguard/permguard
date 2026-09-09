@@ -1055,18 +1055,20 @@ impl CompiledDogwood {
             })
             .collect();
 
+        // The refusal is built inside, not outside: upstream's entity error is a large value, and
+        // a closure that returned it would carry it out through every frame this grows.
         crate::headroom::with(|| {
             Entities::from_json_value(serde_json::Value::Array(store), Some(&self.cedar_schema))
-        })
-        .map(|_| ())
-        .map_err(|error| {
-            Refused::new(
-                "event_entities_rejected",
-                format!(
-                    "the attributed entity store does not conform to this partition's action \
-                         schema: {error}"
-                ),
-            )
+                .map(|_| ())
+                .map_err(|error| {
+                    Refused::new(
+                        "event_entities_rejected",
+                        format!(
+                            "the attributed entity store does not conform to this partition's \
+                             action schema: {error}"
+                        ),
+                    )
+                })
         })
     }
 }

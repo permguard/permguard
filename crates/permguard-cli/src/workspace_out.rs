@@ -133,6 +133,17 @@ pub struct PullReport {
     pub head: String,
     pub fetched: usize,
     pub materialized: Vec<String>,
+    /// Files advanced to the incoming head's content.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub updated: Vec<String>,
+    /// Files the incoming head dropped.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<String>,
+    /// The counter held before the pull, when one was held. Not serialized: it
+    /// is here to tell "nothing to do" from "the ref moved", and `counter`
+    /// already carries where the workspace landed.
+    #[serde(skip)]
+    pub previous_counter: Option<u64>,
 }
 
 impl Report for PullReport {
@@ -150,26 +161,43 @@ impl Report for PullReport {
         for path in &self.materialized {
             writeln!(out, "  {} {}", style::create("+"), style::create(path))?;
         }
+        for path in &self.updated {
+            writeln!(out, "  {} {}", style::modify("~"), style::modify(path))?;
+        }
+        for path in &self.removed {
+            writeln!(out, "  {} {}", style::delete("-"), style::delete(path))?;
+        }
+        // "Already up to date" has to mean the pull found nothing to do, not
+        // that it fetched nothing: a refused pull leaves its objects in the
+        // store, so `pull --resolved` fetches none and still moves the ref.
+        let moved = self.fetched > 0
+            || !self.materialized.is_empty()
+            || !self.updated.is_empty()
+            || !self.removed.is_empty()
+            || self
+                .previous_counter
+                .is_some_and(|held| held != self.counter);
         let outcome = match self.action {
             "clone" => "Clone complete.",
             "checkout" => "Checkout complete.",
+            _ if moved => "Pull complete.",
             _ => "Already up to date.",
-        };
-        let outcome = if self.fetched > 0 && self.action == "pull" {
-            "Pull complete."
-        } else {
-            outcome
         };
         write!(out, "{} ", style::ok(&style::bold(outcome)))?;
         if let Some(directory) = &self.directory {
             write!(out, "Into `{directory}` — ")?;
         }
+        // Written, advanced and removed are counted apart: "files written"
+        // alone read like a no-op success on the pull that advanced content.
         writeln!(
             out,
-            "counter {}, {} objects fetched, {} files written (signed head verified).",
+            "counter {}, {} objects fetched, {} files written, {} advanced, {} removed (signed \
+             head verified).",
             self.counter,
             self.fetched,
-            self.materialized.len()
+            self.materialized.len(),
+            self.updated.len(),
+            self.removed.len()
         )?;
         writeln!(out, "  head {}", style::id(&self.head))
     }
@@ -866,6 +894,9 @@ mod tests {
             head: "sha256:ff".into(),
             fetched: 2,
             materialized: vec!["app/x.cedar".into()],
+            updated: vec![],
+            removed: vec![],
+            previous_counter: Some(2),
         };
         assert!(terminal(&base).contains("Pull complete."));
 
@@ -886,8 +917,44 @@ mod tests {
             head: String::new(),
             fetched: 0,
             materialized: vec![],
+            updated: vec![],
+            removed: vec![],
+            previous_counter: None,
         };
         assert!(terminal(&empty).contains("Bound."), "an empty ledger binds");
+    }
+
+    #[test]
+    fn a_pull_that_only_moves_the_ref_still_says_it_pulled() {
+        // What `pull --resolved` looks like after a refused pull: the objects
+        // are already in the store, the tree was reconciled by hand, so
+        // nothing is fetched and nothing is written — and the ref still moves.
+        let resolved = PullReport {
+            action: "pull",
+            reference: None,
+            directory: None,
+            counter: 8,
+            head: "sha256:ff".into(),
+            fetched: 0,
+            materialized: vec![],
+            updated: vec![],
+            removed: vec![],
+            previous_counter: Some(7),
+        };
+        let text = terminal(&resolved);
+        assert!(
+            text.contains("Pull complete."),
+            "a pull that advanced the ref cannot claim there was nothing to do: {text}"
+        );
+
+        let standing = PullReport {
+            counter: 7,
+            ..resolved
+        };
+        assert!(
+            terminal(&standing).contains("Already up to date."),
+            "a pull that changed nothing says so"
+        );
     }
 
     #[test]
