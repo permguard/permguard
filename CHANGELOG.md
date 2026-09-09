@@ -19,6 +19,18 @@ is cut.
 
 ### Fixed
 
+- `pull` now lands the incoming head in the working tree instead of only creating the files that
+  were missing. A file the remote moved and the author had not is advanced; a file the remote
+  dropped and the author had not touched is removed; a file both sides moved is a conflict, and the
+  pull refuses without advancing the checkpoint or writing anything. Previously the checkpoint moved
+  while the tree kept the old content, so the next `apply` — which diffs the tree against the
+  checkpoint — silently reverted the other author's commit and reported success. The refusal names
+  each file and the object to read it with (`permguard objects cat <digest>`); `pull --resolved`
+  accepts the working tree as already reconciled and advances.
+- `pull`, `checkout` and `clone` now count what they advanced and removed alongside what they
+  wrote. "0 files written" alone read like a no-op on a pull that changed content. `pull` also
+  says `Already up to date.` only when it truly had nothing to do: a refused pull leaves its
+  objects in the local store, so the `--resolved` retry fetches none and still moves the ref.
 - Event and decision ingest now validates signer-manifest changes before replacing any retained
   envelope or record. Reusing one `kid` with different key material is refused without changing
   the acknowledged evidence.

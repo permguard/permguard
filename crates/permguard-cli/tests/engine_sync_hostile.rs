@@ -304,7 +304,7 @@ fn advance_remote(remote: &EngineRemote) {
                 .as_bytes(),
         )
         .unwrap();
-    ws_b.pull(remote).unwrap();
+    ws_b.pull(remote, false).unwrap();
     ws_b.apply(remote, "tester-b", "advance").unwrap();
 }
 
@@ -322,7 +322,7 @@ fn an_object_nobody_asked_for_is_refused_and_the_checkpoint_stays() {
         lie: Lie::SmuggleObject,
     };
     let error = Workspace::open(&store)
-        .pull(&hostile)
+        .pull(&hostile, false)
         .expect_err("a smuggled object must be refused");
 
     assert!(error.message.contains("not asked for"), "{}", error.message);
@@ -345,7 +345,7 @@ fn a_withheld_closure_is_refused_and_the_checkpoint_stays() {
         lie: Lie::WithholdObjects,
     };
     let error = Workspace::open(&store)
-        .pull(&hostile)
+        .pull(&hostile, false)
         .expect_err("an incomplete closure must be refused");
 
     assert!(
@@ -376,7 +376,7 @@ fn a_head_signed_by_a_foreign_key_is_refused_everywhere_it_appears() {
 
     // The pull path refuses before anything advances.
     let error = ws
-        .pull(&hostile)
+        .pull(&hostile, false)
         .expect_err("a forged head must be refused");
     assert!(
         error.message.contains("does not verify"),
@@ -446,7 +446,8 @@ fn without_a_tracked_ledger_the_syncing_commands_say_what_to_do() {
     ws.init("untracked", &["cedar"]).unwrap();
 
     for error in [
-        ws.pull(&remote).expect_err("pull needs a tracked ledger"),
+        ws.pull(&remote, false)
+            .expect_err("pull needs a tracked ledger"),
         ws.apply(&remote, "t", "m")
             .expect_err("apply needs a tracked ledger"),
         ws.verify(&remote)
@@ -473,7 +474,7 @@ fn a_corrupt_local_checkpoint_stops_the_sync_instead_of_trusting_it() {
         .unwrap();
 
     let error = Workspace::open(&store)
-        .pull(&honest)
+        .pull(&honest, false)
         .expect_err("a corrupt checkpoint must stop the pull");
     assert!(
         error.message.to_lowercase().contains("checkpoint"),
