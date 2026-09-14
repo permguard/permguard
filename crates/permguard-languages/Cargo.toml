@@ -26,7 +26,7 @@ permguard-events.workspace = true
 # core cannot be two versions in one build, so 4.11 is the only line where Permguard's own Cedar
 # engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
 cedar-policy = "4.11"
-regorus = "0.11"
+regorus = "0.12"
 # Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
 # expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
 # "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy
