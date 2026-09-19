@@ -1746,8 +1746,8 @@ dependencies = [
  "fraction 0.17.0",
  "getrandom 0.3.4",
  "itoa",
- "jsonschema-regex 0.53.0",
- "jsonschema-value 0.53.0",
+ "jsonschema-regex 0.56.0",
+ "jsonschema-value 0.56.0",
  "num-cmp",
  "num-traits",
  "percent-encoding",
@@ -1794,7 +1794,7 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-value"
-version = "0.53.0"
+version = "0.56.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a05cd404c5ff6e2731dbbf7e290a27417750acfb59e329560a1d0af384c93fb0"
 dependencies = [
