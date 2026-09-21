@@ -46,6 +46,15 @@ pub struct PullOutcome {
     pub counter: u64,
     pub fetched: usize,
     pub materialized: Vec<String>,
+    /// Files the incoming head moved forward that the author had not touched.
+    pub updated: Vec<String>,
+    /// Files the incoming head dropped that the author had not touched.
+    pub removed: Vec<String>,
+    /// The counter this workspace held before the pull, when it held one — so
+    /// the report can tell a pull that moved the ref from one that found
+    /// nothing to do, which the object count alone cannot: a refused pull
+    /// leaves its objects in the store, so the retry fetches none.
+    pub previous_counter: Option<u64>,
 }
 
 impl Workspace<'_> {
@@ -199,7 +208,7 @@ impl Workspace<'_> {
     /// materialization between the proof and the checkpoint — a failure
     /// writing sources can never leave the checkpoint claiming more than
     /// the disk holds.
-    pub fn pull(&self, remote: &dyn Remote) -> Result<PullOutcome> {
+    pub fn pull(&self, remote: &dyn Remote, resolved: bool) -> Result<PullOutcome> {
         let config = self.config()?;
         let ledger = config
             .ledger
@@ -214,6 +223,9 @@ impl Workspace<'_> {
             ledger_id: ledger.ledger_id.clone(),
             r#ref: r#ref.clone(),
         };
+        let previous_counter = config::read_checkpoint(self.store, &r#ref)
+            .map_err(err)?
+            .map(|held| held.counter);
         let verified = pull::fetch_closure(
             self.store,
             crate::engine::workspace::inventory::OBJECTS_DIR,
@@ -223,7 +235,7 @@ impl Workspace<'_> {
         )
         .map_err(err)?;
 
-        let materialized = self.materialize(&verified.head)?;
+        let landed = self.materialize(&verified.head, resolved)?;
 
         pull::commit_checkpoint(self.store, &config::checkpoint_path(&r#ref), &verified)
             .map_err(err)?;
@@ -232,7 +244,10 @@ impl Workspace<'_> {
             head: verified.head.to_string(),
             counter: verified.counter,
             fetched: verified.fetched,
-            materialized,
+            materialized: landed.created(),
+            updated: landed.updated(),
+            removed: landed.removals,
+            previous_counter,
         })
     }
 
@@ -256,7 +271,7 @@ impl Workspace<'_> {
         });
         self.save_config(&config)?;
         config::write_head(self.store, r#ref).map_err(err)?;
-        match self.pull(remote) {
+        match self.pull(remote, false) {
             Ok(outcome) => Ok(outcome),
             // A ledger with no ref yet is not an error to bind to: the first
             // apply will create it. The binding stays; the pull found nothing.
@@ -268,6 +283,9 @@ impl Workspace<'_> {
                     counter: 0,
                     fetched: 0,
                     materialized: Vec::new(),
+                    updated: Vec::new(),
+                    removed: Vec::new(),
+                    previous_counter: None,
                 })
             }
             Err(error) => Err(error),
@@ -343,103 +361,457 @@ impl Workspace<'_> {
         })
     }
 
-    /// Materializes what the workspace lacks from a snapshot: the manifest
-    /// file when there is none, and one new file per missing policy. Files
-    /// the author already keeps are never touched.
-    fn materialize(&self, head: &Digest) -> Result<Vec<String>> {
+    /// Materializes the incoming head into the working tree.
+    ///
+    /// Three-way, per policy: the tracked head is the base, the working tree
+    /// is the author's, the incoming head is the remote's. A policy only one
+    /// side moved follows that side — the remote's change lands, the author's
+    /// stays pending for `apply`. A policy both sides moved is a conflict, and
+    /// a conflict stops the pull before a byte is written.
+    ///
+    /// Advancing the checkpoint over content the tree does not hold is how a
+    /// later `apply` silently reverts somebody else's commit: the diff is
+    /// taken tree-against-checkpoint, so content the tree never received
+    /// reads as a deliberate deletion. The checkpoint may only claim what
+    /// the disk holds.
+    fn materialize(&self, head: &Digest, resolved: bool) -> Result<Materialization> {
+        let plan = self.plan_materialization(head)?;
+        if !resolved && !plan.conflicts.is_empty() {
+            return Err(err(plan.refusal()));
+        }
+        for (path, content) in plan.creates.iter().chain(&plan.updates) {
+            self.store.write(path, content).map_err(err)?;
+        }
+        for path in &plan.removals {
+            self.store.remove(path).map_err(err)?;
+        }
+        Ok(plan)
+    }
+
+    /// Decides what the incoming head does to the working tree, without
+    /// touching it — so a conflict costs nothing and leaves nothing behind.
+    fn plan_materialization(&self, head: &Digest) -> Result<Materialization> {
         let commit = load_commit(self.store, head)?;
-        let root = load_tree(self.store, &commit.tree)?;
-        let mut written = Vec::new();
+        let incoming = head_contents(self.store, head)?;
+        let tracked = tracked_head(self.store)?;
+        let base = match &tracked {
+            Some(previous) => head_contents(self.store, previous)?,
+            // Nothing tracked yet: a clone, where every file is a create.
+            None => HeadContents::default(),
+        };
+        let mut plan = Materialization::default();
 
         // The manifest: written as manifest.yml only when no manifest file
-        // exists — the CLI never picks between two silently.
+        // exists — the CLI never picks between two silently, and it does not
+        // three-way a generated document against a hand-written one either.
         if manifest_file::find(self.store).map_err(err)?.is_none() {
             let manifest_blob = load_blob_data(self.store, &commit.manifest)?;
             let manifest = permguard_objects::manifest::Manifest::decode(&manifest_blob)
                 .map_err(|error| err(error.to_string()))?;
             let yaml = manifest_file::to_yaml(&manifest).map_err(err)?;
-            self.store
-                .write(manifest_file::MANIFEST_YML, yaml.as_bytes())
-                .map_err(err)?;
-            written.push(manifest_file::MANIFEST_YML.to_owned());
+            plan.creates
+                .push((manifest_file::MANIFEST_YML.to_owned(), yaml.into_bytes()));
         }
 
-        // Local ids: what the sources already hold, wherever they hold it.
+        // Local ids: what the sources already hold, wherever they hold it. A
+        // fresh clone has no sources to compare, so everything is a create. A
+        // tracked workspace whose sources do not build is another matter: the
+        // pull cannot tell what the author changed, and advancing the
+        // checkpoint over a tree it could not read is how the next `apply`,
+        // once the tree builds again, reverts somebody else's commit.
         let local: BTreeMap<String, PolicyRecord> = match self.refresh() {
             Ok(snapshot) => snapshot
                 .policies
                 .into_iter()
                 .map(|policy| (policy.id.clone(), policy))
                 .collect(),
-            // A fresh clone has no sources yet: everything materializes.
+            Err(error) if tracked.is_some() => {
+                return Err(err(format!(
+                    "the working tree does not build, so the pull cannot tell what it changed: \
+                     fix it, then pull again\n{error}"
+                )));
+            }
             Err(_) => BTreeMap::new(),
         };
 
-        for entry in &root.entries {
-            if entry.kind != Kind::Tree {
+        // A file may hold several policies, and each moves on its own: the
+        // edits are gathered per file, and applied to the file's own text.
+        let mut edits: BTreeMap<String, FileEdits> = BTreeMap::new();
+        let mut policies_per_file: BTreeMap<&str, usize> = BTreeMap::new();
+        for held in local.values() {
+            *policies_per_file.entry(held.source.as_str()).or_default() += 1;
+        }
+
+        for (id, (digest, canonical)) in &incoming.policies {
+            let Some(held) = local.get(id) else {
+                // Not held here under any name: materialize it — unless the
+                // name it would take is already in use. Writing over that
+                // would clobber the author's file; skipping it would advance
+                // the checkpoint over a policy the tree never received, and
+                // the next `apply` would delete it from the ledger.
+                if self.store.exists(canonical) {
+                    plan.conflicts.push(Conflict {
+                        path: canonical.clone(),
+                        reason: Reason::NameTaken {
+                            incoming: digest.clone(),
+                        },
+                    });
+                } else {
+                    plan.creates
+                        .push((canonical.clone(), load_blob_data(self.store, digest)?));
+                }
+                continue;
+            };
+            if &held.digest == digest {
                 continue;
             }
-            self.materialize_tree(&entry.name, &entry.digest, &local, &mut written)?;
+            let based = base.policies.get(id).map(|(digest, _)| digest);
+            if based == Some(digest) {
+                // Only the author moved it: that change is what `apply` sends.
+                continue;
+            }
+            if based == Some(&held.digest) {
+                // Only the remote moved it: its text advances inside the
+                // author's file, whatever else that file holds.
+                edits.entry(held.source.clone()).or_default().splices.push((
+                    load_blob_data(self.store, &held.digest)?,
+                    Some(load_blob_data(self.store, digest)?),
+                ));
+                continue;
+            }
+            plan.conflicts.push(Conflict {
+                path: held.source.clone(),
+                reason: Reason::BothChanged {
+                    incoming: digest.clone(),
+                },
+            });
         }
-        Ok(written)
+
+        // Policies the incoming head dropped.
+        for (id, (digest, _)) in &base.policies {
+            if incoming.policies.contains_key(id) {
+                continue;
+            }
+            let Some(held) = local.get(id) else {
+                continue;
+            };
+            if &held.digest == digest {
+                edits
+                    .entry(held.source.clone())
+                    .or_default()
+                    .splices
+                    .push((load_blob_data(self.store, digest)?, None));
+            } else {
+                plan.conflicts.push(Conflict {
+                    path: held.source.clone(),
+                    reason: Reason::DroppedThere,
+                });
+            }
+        }
+
+        // The edits, file by file. A file every policy of which was dropped
+        // goes with them; any other is rewritten with each policy spliced in
+        // place, so whatever else it holds — other policies, the author's
+        // comments — is kept.
+        for (path, edit) in edits {
+            let held = policies_per_file.get(path.as_str()).copied().unwrap_or(0);
+            let dropped = edit.splices.iter().filter(|(_, new)| new.is_none()).count();
+            if dropped == held {
+                plan.removals.push(path);
+                continue;
+            }
+            let Some(mut content) = self.store.read(&path).map_err(err)? else {
+                return Err(err(format!("{path} vanished mid-pull")));
+            };
+            for (old, new) in &edit.splices {
+                content = splice(&content, old, new.as_deref()).ok_or_else(|| {
+                    err(format!(
+                        "{path}: the policy to advance is not where the last build read it: \
+                         run `permguard refresh`, then pull again"
+                    ))
+                })?;
+            }
+            plan.updates.push((path, content));
+        }
+
+        // Schemas and every other non-policy blob: no identity to track them
+        // by, so the path is the identity and the bytes are the comparison.
+        for (path, digest) in &incoming.others {
+            let theirs = load_blob_data(self.store, digest)?;
+            let Some(ours) = self.store.read(path).map_err(err)? else {
+                plan.creates.push((path.clone(), theirs));
+                continue;
+            };
+            if ours == theirs {
+                continue;
+            }
+            let based = match base.others.get(path) {
+                Some(based) => load_blob_data(self.store, based)?,
+                None => {
+                    plan.conflicts.push(Conflict {
+                        path: path.clone(),
+                        reason: Reason::BothChanged {
+                            incoming: digest.clone(),
+                        },
+                    });
+                    continue;
+                }
+            };
+            if based == theirs {
+                continue;
+            }
+            if based == ours {
+                plan.updates.push((path.clone(), theirs));
+            } else {
+                plan.conflicts.push(Conflict {
+                    path: path.clone(),
+                    reason: Reason::BothChanged {
+                        incoming: digest.clone(),
+                    },
+                });
+            }
+        }
+
+        for (path, digest) in &base.others {
+            if incoming.others.contains_key(path) {
+                continue;
+            }
+            let Some(ours) = self.store.read(path).map_err(err)? else {
+                continue;
+            };
+            if ours == load_blob_data(self.store, digest)? {
+                plan.removals.push(path.clone());
+            } else {
+                plan.conflicts.push(Conflict {
+                    path: path.clone(),
+                    reason: Reason::DroppedThere,
+                });
+            }
+        }
+
+        Ok(plan)
     }
 }
 
-impl Workspace<'_> {
-    /// Materializes one subtree, recursing — the folder structure of the
-    /// snapshot (a Rego package tree, say) is rebuilt exactly: directory
-    /// names are the subtree entry names.
-    fn materialize_tree(
-        &self,
-        directory: &str,
-        tree_digest: &Digest,
-        local: &BTreeMap<String, PolicyRecord>,
-        written: &mut Vec<String>,
-    ) -> Result<()> {
-        let tree = load_tree(self.store, tree_digest)?;
-        for item in &tree.entries {
-            match item.kind {
-                Kind::Tree => {
-                    self.materialize_tree(
-                        &format!("{directory}/{}", item.name),
-                        &item.digest,
-                        local,
-                        written,
-                    )?;
-                }
-                Kind::Blob => match item.annotations.get(ANNOTATION_POLICY_ID) {
-                    Some(id) => {
-                        if local.contains_key(id) {
-                            continue;
-                        }
-                        let stem = item
-                            .annotations
-                            .get(ANNOTATION_POLICY_ALIAS)
-                            .cloned()
-                            .unwrap_or_else(|| id.clone());
-                        let extension = item.name.rsplit('.').next().unwrap_or("txt");
-                        let path = format!("{directory}/{stem}.{extension}");
-                        if !self.store.exists(&path) {
-                            let data = load_blob_data(self.store, &item.digest)?;
-                            self.store.write(&path, &data).map_err(err)?;
-                            written.push(path);
-                        }
-                    }
-                    None => {
-                        // A schema or other non-policy blob: keep its name.
-                        let path = format!("{directory}/{name}", name = item.name);
-                        if !self.store.exists(&path) {
-                            let data = load_blob_data(self.store, &item.digest)?;
-                            self.store.write(&path, &data).map_err(err)?;
-                            written.push(path);
-                        }
-                    }
-                },
-                Kind::Commit => {}
+/// What a pull does to the working tree, decided before anything is written.
+#[derive(Debug, Default)]
+pub(crate) struct Materialization {
+    /// Files the tree does not hold: path and content.
+    creates: Vec<(String, Vec<u8>)>,
+    /// Files the incoming head moved and the author had not: path and content.
+    updates: Vec<(String, Vec<u8>)>,
+    /// Files the incoming head dropped and the author had not touched.
+    removals: Vec<String>,
+    /// Files the author has to reconcile. Non-empty means the pull does not
+    /// happen.
+    conflicts: Vec<Conflict>,
+}
+
+impl Materialization {
+    /// The paths created, in the order they were written.
+    fn created(&self) -> Vec<String> {
+        self.creates.iter().map(|(path, _)| path.clone()).collect()
+    }
+
+    /// The paths advanced to the incoming head's content.
+    fn updated(&self) -> Vec<String> {
+        self.updates.iter().map(|(path, _)| path.clone()).collect()
+    }
+
+    /// The refusal: every file the author has to reconcile, and how to read
+    /// what the remote holds so they can.
+    fn refusal(&self) -> String {
+        let mut message = String::from(
+            "the incoming head cannot land on this working tree as it is: reconcile the files \
+             below, then pull again",
+        );
+        for conflict in &self.conflicts {
+            let path = &conflict.path;
+            match &conflict.reason {
+                Reason::BothChanged { incoming } => message.push_str(&format!(
+                    "\n  - {path}: changed here and on the remote — read the remote's version \
+                     with `permguard objects cat {incoming}`"
+                )),
+                Reason::DroppedThere => message.push_str(&format!(
+                    "\n  - {path}: the remote dropped it and this workspace changed it — delete \
+                     the file to accept the removal, or apply it back"
+                )),
+                Reason::NameTaken { incoming } => message.push_str(&format!(
+                    "\n  - {path}: the remote adds a policy that would be written here, but the \
+                     name is taken — move the file aside, or add the policy yourself from \
+                     `permguard objects cat {incoming}`"
+                )),
             }
         }
-        Ok(())
+        message
     }
+}
+
+/// One file the pull cannot land without the author.
+#[derive(Debug)]
+struct Conflict {
+    /// The local file, as the author knows it — or, for a policy the remote
+    /// added, the file it would have been written to.
+    path: String,
+    reason: Reason,
+}
+
+/// Why a file is the author's to reconcile.
+#[derive(Debug)]
+enum Reason {
+    /// Both sides moved it. The digest is what the remote holds, so
+    /// `permguard objects cat` can show it.
+    BothChanged { incoming: Digest },
+    /// The remote dropped it, and this workspace changed it.
+    DroppedThere,
+    /// The remote adds a policy whose file name this workspace already uses
+    /// for something else.
+    NameTaken { incoming: Digest },
+}
+
+/// The edits one file receives from the incoming head, one per policy in it
+/// that the remote moved: the policy's current text, and the text replacing
+/// it — `None` when the remote dropped the policy.
+#[derive(Debug, Default)]
+struct FileEdits {
+    splices: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+}
+
+/// Replaces one policy's text inside a file, or cuts it out.
+///
+/// A policy's blob is the verbatim slice the build read from the file, so the
+/// slice is found by its bytes. `None` when it is not there: the file moved
+/// since the last build, and the pull does not guess.
+fn splice(content: &[u8], old: &[u8], new: Option<&[u8]>) -> Option<Vec<u8>> {
+    let at = find(content, old)?;
+    let (before, after) = (&content[..at], &content[at + old.len()..]);
+    Some(match new {
+        Some(new) => [before, new, after].concat(),
+        None => {
+            // The policy goes, and the blank lines that set it apart go with
+            // it; what is left is joined the way the file joined its policies.
+            let before = trim_end(before);
+            let after = trim_start(after);
+            match (before.is_empty(), after.is_empty()) {
+                (true, true) => Vec::new(),
+                (true, false) => after.to_vec(),
+                (false, true) => [before, b"\n".as_slice()].concat(),
+                (false, false) => [before, b"\n\n".as_slice(), after].concat(),
+            }
+        }
+    })
+}
+
+/// The first position of `needle` in `haystack`.
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn trim_start(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    &bytes[start..]
+}
+
+fn trim_end(bytes: &[u8]) -> &[u8] {
+    let end = bytes
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map_or(0, |last| last + 1);
+    &bytes[..end]
+}
+
+/// Every blob one head materializes, keyed the way the working tree keys it:
+/// policies by identity, because the author may keep one under any file name;
+/// everything else by the path it lands at.
+#[derive(Debug, Default)]
+struct HeadContents {
+    /// Policy id → its blob, and the path a fresh materialization writes it to.
+    policies: BTreeMap<String, (Digest, String)>,
+    /// Non-policy blobs: path → blob.
+    others: BTreeMap<String, Digest>,
+}
+
+/// Reads one head's contents from the local store.
+fn head_contents(store: &dyn Store, head: &Digest) -> Result<HeadContents> {
+    let commit = load_commit(store, head)?;
+    let root = load_tree(store, &commit.tree)?;
+    let mut contents = HeadContents::default();
+    for entry in &root.entries {
+        if entry.kind != Kind::Tree {
+            continue;
+        }
+        read_tree_contents(store, &entry.name, &entry.digest, &mut contents)?;
+    }
+    Ok(contents)
+}
+
+/// Reads one subtree, recursing — the folder structure of the snapshot (a
+/// Rego package tree, say) is keyed exactly: directory names are the subtree
+/// entry names.
+fn read_tree_contents(
+    store: &dyn Store,
+    directory: &str,
+    tree_digest: &Digest,
+    contents: &mut HeadContents,
+) -> Result<()> {
+    let tree = load_tree(store, tree_digest)?;
+    for item in &tree.entries {
+        match item.kind {
+            Kind::Tree => read_tree_contents(
+                store,
+                &format!("{directory}/{name}", name = item.name),
+                &item.digest,
+                contents,
+            )?,
+            Kind::Blob => match item.annotations.get(ANNOTATION_POLICY_ID) {
+                Some(id) => {
+                    let stem = item
+                        .annotations
+                        .get(ANNOTATION_POLICY_ALIAS)
+                        .cloned()
+                        .unwrap_or_else(|| id.clone());
+                    let extension = item.name.rsplit('.').next().unwrap_or("txt");
+                    contents.policies.insert(
+                        id.clone(),
+                        (
+                            item.digest.clone(),
+                            format!("{directory}/{stem}.{extension}"),
+                        ),
+                    );
+                }
+                None => {
+                    // A schema or other non-policy blob: keep its name.
+                    contents.others.insert(
+                        format!("{directory}/{name}", name = item.name),
+                        item.digest.clone(),
+                    );
+                }
+            },
+            Kind::Commit => {}
+        }
+    }
+    Ok(())
+}
+
+/// The commit this workspace last converged on, or `None` before the first.
+fn tracked_head(store: &dyn Store) -> Result<Option<Digest>> {
+    let r#ref = config::read_head(store)
+        .map_err(err)?
+        .unwrap_or_else(|| super::DEFAULT_REF.to_owned());
+    let Some(checkpoint) = config::read_checkpoint(store, &r#ref).map_err(err)? else {
+        return Ok(None);
+    };
+    Digest::parse(&checkpoint.head)
+        .map(Some)
+        .map_err(|_| err("corrupt checkpoint"))
 }
 
 /// The identity hooks of the previous (tracked) snapshot: entry path → id,

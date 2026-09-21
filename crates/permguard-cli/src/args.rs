@@ -323,9 +323,16 @@ pub enum Command {
         /// The ledger to bind to, as `<remote>/<zone>/<ledger>[@<ref>]`.
         reference: String,
     },
-    /// Fetch the latest changes, verify them, and materialize what is missing.
-    #[command(after_help = "Examples:\n  permguard pull\n  permguard pull -v")]
-    Pull,
+    /// Fetch the latest changes, verify them, and land them in the working tree.
+    #[command(after_help = "Examples:\n  permguard pull\n  permguard pull -v\n  \
+                            permguard pull --resolved")]
+    Pull {
+        /// Accept the working tree as already reconciled with the incoming
+        /// head: land what is missing and advance, instead of refusing the
+        /// files both sides changed. Use it after merging a conflict by hand.
+        #[arg(long)]
+        resolved: bool,
+    },
     /// Scan the sources and build the local snapshot.
     #[command(
         after_help = "Examples:\n  permguard refresh\n  permguard refresh -o json | jq '.root'"
