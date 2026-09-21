@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-451 packages.
+467 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -80,10 +80,10 @@ says so and its repository is the authority.
 | `chacha20` | 0.10.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/stream-ciphers |
 | `chrono` | 0.4.45 | MIT OR Apache-2.0 | https://github.com/chronotope/chrono |
 | `chrono-tz` | 0.10.4 | MIT OR Apache-2.0 | https://github.com/chronotope/chrono-tz |
-| `clap` | 4.6.6 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
-| `clap_builder` | 4.6.6 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
-| `clap_complete` | 4.6.9 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
-| `clap_derive` | 4.6.4 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
+| `clap` | 4.6.7 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
+| `clap_builder` | 4.6.7 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
+| `clap_complete` | 4.6.11 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
+| `clap_derive` | 4.6.7 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
 | `clap_lex` | 1.1.0 | MIT OR Apache-2.0 | https://github.com/clap-rs/clap |
 | `cmov` | 0.5.4 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | `cobs` | 0.3.0 | MIT OR Apache-2.0 | https://github.com/jamesmunns/cobs.rs |
@@ -91,6 +91,7 @@ says so and its repository is the authority.
 | `const-oid` | 0.10.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/formats |
 | `const-random` | 0.1.18 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/constrandom |
 | `const-random-macro` | 0.1.16 | MIT OR Apache-2.0 | https://github.com/tkaitchuck/constrandom |
+| `convert_case` | 0.4.0 | MIT | https://github.com/rutrum/convert-case |
 | `core-foundation` | 0.10.1 | MIT OR Apache-2.0 | https://github.com/servo/core-foundation-rs |
 | `core-foundation-sys` | 0.8.7 | MIT OR Apache-2.0 | https://github.com/servo/core-foundation-rs |
 | `cpufeatures` | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
@@ -123,17 +124,18 @@ says so and its repository is the authority.
 | `enum-ordinalize-derive` | 4.4.2 | MIT | https://github.com/magiclen/enum-ordinalize |
 | `equivalent` | 1.0.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent |
 | `errno` | 0.3.14 | MIT OR Apache-2.0 | https://github.com/lambda-fairy/rust-errno |
-| `fancy-regex` | 0.18.0 | MIT | https://github.com/fancy-regex/fancy-regex |
+| `fancy-regex` | 0.19.1 | MIT | https://github.com/fancy-regex/fancy-regex |
 | `fastrand` | 2.5.0 | Apache-2.0 OR MIT | https://github.com/smol-rs/fastrand |
 | `find-msvc-tools` | 0.1.10 | MIT OR Apache-2.0 | https://github.com/rust-lang/cc-rs |
 | `fixedbitset` | 0.5.7 | MIT OR Apache-2.0 | https://github.com/petgraph/fixedbitset |
-| `flate2` | 1.1.9 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
+| `flate2` | 1.1.10 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs |
 | `fluent-uri` | 0.4.1 | MIT | https://github.com/yescallop/fluent-uri-rs |
 | `fnv` | 1.0.7 | Apache-2.0 / MIT | https://github.com/servo/rust-fnv |
 | `foldhash` | 0.1.5 | Zlib | https://github.com/orlp/foldhash |
 | `foldhash` | 0.2.0 | Zlib | https://github.com/orlp/foldhash |
 | `form_urlencoded` | 1.2.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
 | `fraction` | 0.15.4 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
+| `fraction` | 0.17.0 | MIT OR Apache-2.0 | https://github.com/dnsl48/fraction.git |
 | `fs-err` | 3.3.1 | MIT OR Apache-2.0 | https://github.com/andrewhickman/fs-err |
 | `funty` | 2.0.0 | MIT | https://github.com/myrrlyn/funty |
 | `futures-channel` | 0.3.33 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
@@ -189,13 +191,18 @@ says so and its repository is the authority.
 | `jiff-tzdb` | 0.1.8 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
 | `jiff-tzdb-platform` | 0.1.3 | Unlicense OR MIT | https://github.com/BurntSushi/jiff |
 | `js-sys` | 0.3.104 | MIT OR Apache-2.0 | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys |
-| `jsonschema` | 0.47.0 | MIT | https://github.com/Stranger6667/jsonschema |
-| `jsonschema-regex` | 0.47.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-regex` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-regex` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-value` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
+| `jsonschema-value` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `keccak` | 0.1.6 | Apache-2.0 OR MIT | https://github.com/RustCrypto/sponges/tree/master/keccak |
 | `lalrpop` | 0.22.2 | Apache-2.0 OR MIT | https://github.com/lalrpop/lalrpop |
 | `lalrpop-util` | 0.22.2 | Apache-2.0 OR MIT | https://github.com/lalrpop/lalrpop |
 | `lazy_static` | 1.5.0 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
 | `libc` | 0.2.189 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
+| `libyaml-rs` | 0.3.0 | MIT | https://github.com/yaml/libyaml-rs |
 | `linked-hash-map` | 0.5.6 | MIT/Apache-2.0 | https://github.com/contain-rs/linked-hash-map |
 | `linked_hash_set` | 0.1.6 | Apache-2.0 | https://github.com/alexheretic/linked-hash-set |
 | `linux-raw-sys` | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/sunfishcode/linux-raw-sys |
@@ -214,7 +221,7 @@ says so and its repository is the authority.
 | `miette-derive` | 7.6.0 | Apache-2.0 | https://github.com/zkat/miette |
 | `mime` | 0.3.17 | MIT OR Apache-2.0 | https://github.com/hyperium/mime |
 | `minimal-lexical` | 0.2.1 | MIT/Apache-2.0 | https://github.com/Alexhuszagh/minimal-lexical |
-| `miniz_oxide` | 0.8.9 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
+| `miniz_oxide` | 0.9.1 | MIT OR Zlib OR Apache-2.0 | https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide |
 | `mio` | 1.2.2 | MIT | https://github.com/tokio-rs/mio |
 | `msvc_spectre_libs` | 0.1.3 | MIT OR Apache-2.0 | https://github.com/microsoft/rust_msvc_spectre_libs |
 | `multimap` | 0.10.1 | MIT OR Apache-2.0 | https://github.com/havarnov/multimap |
@@ -246,7 +253,7 @@ says so and its repository is the authority.
 | `outref` | 0.5.2 | MIT | https://github.com/Nugine/outref |
 | `parking_lot` | 0.12.5 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
 | `parking_lot_core` | 0.9.12 | MIT OR Apache-2.0 | https://github.com/Amanieu/parking_lot |
-| `pem` | 3.0.6 | MIT | https://github.com/jcreekmore/pem-rs.git |
+| `pem` | 4.0.0 | MIT | https://github.com/jcreekmore/pem-rs.git |
 | `percent-encoding` | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | `pest` | 2.9.0 | MIT OR Apache-2.0 | https://github.com/pest-parser/pest |
 | `pest_derive` | 2.9.0 | MIT OR Apache-2.0 | https://github.com/pest-parser/pest |
@@ -293,15 +300,16 @@ says so and its repository is the authority.
 | `rand_core` | 0.10.1 | MIT OR Apache-2.0 | https://github.com/rust-random/rand_core |
 | `rand_core` | 0.6.4 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | `rand_core` | 0.9.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| `rcgen` | 0.14.8 | MIT OR Apache-2.0 | https://github.com/rustls/rcgen |
+| `rcgen` | 0.14.10 | MIT OR Apache-2.0 | https://github.com/rustls/rcgen |
 | `redox_syscall` | 0.5.18 | MIT | https://gitlab.redox-os.org/redox-os/syscall |
 | `ref-cast` | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
 | `ref-cast-impl` | 1.0.27 | MIT OR Apache-2.0 | https://github.com/dtolnay/ref-cast |
-| `referencing` | 0.47.0 | MIT | https://github.com/Stranger6667/jsonschema |
+| `referencing` | 0.49.9 | MIT | https://github.com/Stranger6667/jsonschema |
+| `referencing` | 0.56.0 | MIT | https://github.com/Stranger6667/jsonschema |
 | `regex` | 1.13.1 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | `regex-automata` | 0.4.18 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
 | `regex-syntax` | 0.8.11 | MIT OR Apache-2.0 | https://github.com/rust-lang/regex |
-| `regorus` | 0.11.0 | MIT AND Apache-2.0 AND BSD-3-Clause | https://github.com/microsoft/regorus |
+| `regorus` | 0.12.0 | MIT AND Apache-2.0 AND BSD-3-Clause | https://github.com/microsoft/regorus |
 | `rend` | 0.4.2 | MIT | https://github.com/djkoloski/rend |
 | `rhai` | 1.26.0 | MIT OR Apache-2.0 | https://github.com/rhaiscript/rhai |
 | `rhai_codegen` | 3.2.0 | MIT OR Apache-2.0 | https://github.com/rhaiscript/rhai |
@@ -312,10 +320,10 @@ says so and its repository is the authority.
 | `rustc-literal-escaper` | 0.0.7 | Apache-2.0 OR MIT | https://github.com/rust-lang/literal-escaper |
 | `rusticata-macros` | 4.1.0 | MIT/Apache-2.0 | https://github.com/rusticata/rusticata-macros.git |
 | `rustix` | 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/rustix |
-| `rustls` | 0.23.43 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
+| `rustls` | 0.23.45 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls |
 | `rustls-native-certs` | 0.8.4 | Apache-2.0 OR ISC OR MIT | https://github.com/rustls/rustls-native-certs |
 | `rustls-pki-types` | 1.15.1 | MIT OR Apache-2.0 | https://github.com/rustls/pki-types |
-| `rustls-webpki` | 0.103.13 | ISC | https://github.com/rustls/webpki |
+| `rustls-webpki` | 0.103.15 | ISC | https://github.com/rustls/webpki |
 | `rustversion` | 1.0.23 | MIT OR Apache-2.0 | https://github.com/dtolnay/rustversion |
 | `ryu` | 1.0.23 | Apache-2.0 OR BSL-1.0 | https://github.com/dtolnay/ryu |
 | `same-file` | 1.0.6 | Unlicense/MIT | https://github.com/BurntSushi/same-file |
@@ -336,7 +344,6 @@ says so and its repository is the authority.
 | `serde_spanned` | 1.1.1 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `serde_with` | 3.22.0 | MIT OR Apache-2.0 | https://github.com/jonasbb/serde_with/ |
 | `serde_with_macros` | 3.22.0 | MIT OR Apache-2.0 | https://github.com/jonasbb/serde_with/ |
-| `serde_yaml` | 0.9.34+deprecated | MIT OR Apache-2.0 | https://github.com/dtolnay/serde-yaml |
 | `sha2` | 0.11.0 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `sha3` | 0.10.9 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | `sharded-slab` | 0.1.7 | MIT | https://github.com/hawkw/sharded-slab |
@@ -357,6 +364,8 @@ says so and its repository is the authority.
 | `static_assertions` | 1.1.0 | MIT OR Apache-2.0 | https://github.com/nvzqz/static-assertions-rs |
 | `string_cache` | 0.8.9 | MIT OR Apache-2.0 | https://github.com/servo/string-cache |
 | `strsim` | 0.11.1 | MIT | https://github.com/rapidfuzz/strsim-rs |
+| `strum` | 0.28.0 | MIT | https://github.com/Peternator7/strum |
+| `strum_macros` | 0.28.0 | MIT | https://github.com/Peternator7/strum |
 | `subtle` | 2.6.1 | BSD-3-Clause | https://github.com/dalek-cryptography/subtle |
 | `syn` | 1.0.109 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | `syn` | 2.0.119 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
@@ -381,10 +390,10 @@ says so and its repository is the authority.
 | `tinyvec_macros` | 0.1.1 | MIT OR Apache-2.0 OR Zlib | https://github.com/Soveu/tinyvec_macros |
 | `tokio` | 1.53.1 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-macros` | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
-| `tokio-rustls` | 0.26.4 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
+| `tokio-rustls` | 0.26.5 | MIT OR Apache-2.0 | https://github.com/rustls/tokio-rustls |
 | `tokio-stream` | 0.1.19 | MIT | https://github.com/tokio-rs/tokio |
 | `tokio-util` | 0.7.19 | MIT | https://github.com/tokio-rs/tokio |
-| `toml` | 1.1.4+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
+| `toml` | 1.1.6+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `toml_datetime` | 1.1.1+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `toml_edit` | 0.25.13+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
 | `toml_parser` | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | https://github.com/toml-rs/toml |
@@ -395,7 +404,7 @@ says so and its repository is the authority.
 | `tonic-prost-build` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
 | `tonic-types` | 0.14.6 | MIT | https://github.com/hyperium/tonic |
 | `tower` | 0.5.3 | MIT | https://github.com/tower-rs/tower |
-| `tower-http` | 0.7.0 | MIT | https://github.com/tower-rs/tower-http |
+| `tower-http` | 0.7.1 | MIT | https://github.com/tower-rs/tower-http |
 | `tower-layer` | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | `tower-service` | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | `tracing` | 0.1.44 | MIT | https://github.com/tokio-rs/tracing |
@@ -418,7 +427,6 @@ says so and its repository is the authority.
 | `unicode-width` | 0.1.14 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-width |
 | `unicode-width` | 0.2.2 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-width |
 | `unicode-xid` | 0.2.6 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-xid |
-| `unsafe-libyaml` | 0.2.11 | MIT | https://github.com/dtolnay/unsafe-libyaml |
 | `unsafe-libyaml-norway` | 0.2.15 | MIT | https://github.com/cafkafk/unsafe-libyaml-norway |
 | `untrusted` | 0.9.0 | ISC | https://github.com/briansmith/untrusted |
 | `url` | 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url |
@@ -428,7 +436,13 @@ says so and its repository is the authority.
 | `uuid-simd` | 0.8.0 | MIT | https://github.com/Nugine/simd |
 | `valuable` | 0.1.1 | MIT | https://github.com/tokio-rs/valuable |
 | `version_check` | 0.9.5 | MIT/Apache-2.0 | https://github.com/SergioBenitez/version_check |
+| `verus_builtin` | 0.0.0-2026-08-09-0044 | MIT | https://github.com/verus-lang/verus |
+| `verus_builtin_macros` | 0.0.0-2026-08-23-0033 | MIT | https://github.com/verus-lang/verus |
+| `verus_prettyplease` | 0.0.0-2026-08-09-0044 | MIT OR Apache-2.0 | https://github.com/dtolnay/prettyplease |
+| `verus_state_machines_macros` | 0.0.0-2026-08-02-0125 | MIT | https://github.com/verus-lang/verus |
+| `verus_syn` | 0.0.0-2026-08-02-0125 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | `vsimd` | 0.8.0 | MIT | https://github.com/Nugine/simd |
+| `vstd` | 0.0.0-2026-08-23-0033 | MIT | https://github.com/verus-lang/verus |
 | `walkdir` | 2.5.0 | Unlicense/MIT | https://github.com/BurntSushi/walkdir |
 | `want` | 0.3.1 | MIT | https://github.com/seanmonstar/want |
 | `wasi` | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
@@ -461,6 +475,7 @@ says so and its repository is the authority.
 | `writeable` | 0.6.4 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `wyz` | 0.5.1 | MIT | https://github.com/myrrlyn/wyz |
 | `x509-parser` | 0.18.1 | MIT OR Apache-2.0 | https://github.com/rusticata/x509-parser.git |
+| `yaml_serde` | 0.10.7 | MIT OR Apache-2.0 | https://github.com/yaml/yaml-serde |
 | `yasna` | 0.6.0 | MIT OR Apache-2.0 | https://github.com/qnighy/yasna.rs |
 | `yoke` | 0.8.3 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `yoke-derive` | 0.8.2 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
@@ -473,6 +488,7 @@ says so and its repository is the authority.
 | `zerotrie` | 0.2.5 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `zerovec` | 0.11.8 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
 | `zerovec-derive` | 0.11.6 | Unicode-3.0 | https://github.com/unicode-org/icu4x |
+| `zlib-rs` | 0.6.7 | Zlib | https://github.com/trifectatechfoundation/zlib-rs |
 | `zmij` | 1.0.23 | MIT | https://github.com/dtolnay/zmij |
 
 ## Packages without a declared licence
