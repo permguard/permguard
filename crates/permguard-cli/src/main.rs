@@ -215,7 +215,9 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Checkout { reference } => {
             workspace_command(&globals, WorkspaceOp::Checkout { reference }, &trace)
         }
-        Command::Pull => workspace_command(&globals, WorkspaceOp::Pull, &trace),
+        Command::Pull { resolved } => {
+            workspace_command(&globals, WorkspaceOp::Pull { resolved }, &trace)
+        }
         Command::Refresh => workspace_command(&globals, WorkspaceOp::Refresh, &trace),
         Command::Validate => workspace_command(&globals, WorkspaceOp::Validate, &trace),
         Command::Test {

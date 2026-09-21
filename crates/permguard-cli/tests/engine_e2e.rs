@@ -266,7 +266,7 @@ fn the_whole_developer_flow() {
     assert_eq!(applied_b.counter, 2);
 
     // ---- author one converges: pull, files untouched but content advanced ----
-    let pulled_a = ws_a.pull(&remote).unwrap();
+    let pulled_a = ws_a.pull(&remote, false).unwrap();
     assert_eq!(pulled_a.counter, 2);
     // The edited policy keeps its identity: same alias, same id, so nothing
     // new materializes as a file (the author's file stays the author's).
@@ -275,15 +275,400 @@ fn the_whole_developer_flow() {
         "{:?}",
         pulled_a.materialized
     );
+    // The author's file, though, now holds the other author's content. A
+    // checkpoint at counter 2 over a tree still holding counter 1 is how the
+    // next apply reverts a commit nobody asked it to touch.
+    // It lands in *their* file, `billing.cedar` — the identity is the policy
+    // id, not the name the other author happens to keep it under.
+    assert_eq!(
+        pulled_a.updated,
+        vec!["cedar/billing.cedar".to_owned()],
+        "the remote's change has to land in the file the author holds it in"
+    );
+    let landed = String::from_utf8(store_a.read("cedar/billing.cedar").unwrap().unwrap()).unwrap();
+    assert!(
+        landed.contains("Action::\"list\""),
+        "author one's file did not advance: {landed}"
+    );
+    // And so the tree agrees with the checkpoint: nothing to apply.
+    let (_, converged) = ws_a.plan().unwrap();
+    assert!(
+        converged.actions.is_empty(),
+        "a converged workspace plans nothing: {converged:?}"
+    );
 
     // History shows both commits.
     let history = ws_a.history().unwrap();
     assert_eq!(history.len(), 2);
 
     // A second pull is a clean no-op at the same counter.
-    let same = ws_a.pull(&remote).unwrap();
+    let same = ws_a.pull(&remote, false).unwrap();
     assert_eq!(same.counter, 2);
     assert_eq!(same.fetched, 0);
+}
+
+/// Both authors change the same policy: the pull refuses instead of
+/// advancing the checkpoint over content the tree does not hold, and names
+/// the object so the author can read the version they have to reconcile with.
+#[test]
+fn a_pull_does_not_advance_over_a_conflict() {
+    let remote = EngineRemote::new("conflict");
+
+    // Author one publishes the base.
+    let store_a = FsStore::new(scratch("conflict-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    // Author two clones it.
+    let store_b = FsStore::new(scratch("conflict-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+
+    // Both edit the same policy, differently. Author one gets there first.
+    store_a
+        .write(
+            "cedar/billing.cedar",
+            CEDAR
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "list").unwrap().counter,
+        2
+    );
+    store_b
+        .write(
+            "cedar/billing-ro.cedar",
+            CEDAR
+                .replace("Action::\"read\"", "Action::\"purge\"")
+                .as_bytes(),
+        )
+        .unwrap();
+
+    // Author two is refused the push, told to pull — and the pull refuses
+    // too, rather than quietly making the next apply a revert.
+    assert!(ws_b.apply(&remote, "b@acme.com", "purge").is_err());
+    let refused = ws_b.pull(&remote, false).unwrap_err().to_string();
+    assert!(
+        refused.contains("cedar/billing-ro.cedar") && refused.contains("objects cat"),
+        "the refusal has to name the file and how to read theirs: {refused}"
+    );
+
+    // Nothing moved: the checkpoint still says 1, so the apply still refuses
+    // and author one's commit cannot be lost.
+    assert_eq!(ws_b.status().unwrap().checkpoint.unwrap().counter, 1);
+    assert!(ws_b.apply(&remote, "b@acme.com", "purge").is_err());
+    let held = String::from_utf8(store_b.read("cedar/billing-ro.cedar").unwrap().unwrap()).unwrap();
+    assert!(
+        held.contains("Action::\"purge\""),
+        "the tree was not touched"
+    );
+
+    // Reconciled by hand, `--resolved` lets it through, and the apply lands
+    // on top of author one's commit instead of replacing it.
+    ws_b.pull(&remote, true).unwrap();
+    assert_eq!(ws_b.status().unwrap().checkpoint.unwrap().counter, 2);
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "purge").unwrap().counter,
+        3
+    );
+}
+
+/// One Cedar file, two policies.
+const DOCUMENTS: &str = r#"// Who may do what on documents.
+
+@alias("document-readers")
+permit (
+    principal in Group::"finance",
+    action == Action::"read",
+    resource
+);
+
+@alias("document-owners")
+permit (
+    principal,
+    action == Action::"write",
+    resource
+) when { resource.owner == principal };
+"#;
+
+/// A workspace bound to the test remote. The store outlives the borrow.
+fn bind(store: &FsStore) -> Workspace<'_> {
+    let ws = Workspace::open(store);
+    ws.init("acme-authz", &["cedar", "rego"]).unwrap();
+    let mut config = ws.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws.save_config(&config).unwrap();
+    ws
+}
+
+/// The file on disk, as text.
+fn text(store: &FsStore, path: &str) -> String {
+    String::from_utf8(store.read(path).unwrap().unwrap()).unwrap()
+}
+
+/// One file, two policies, and the remote moves one of them: the pull
+/// advances that policy inside the file and keeps the other, instead of
+/// rewriting the file as the one policy the remote sent — which is how the
+/// next apply would delete the other policy from the ledger.
+#[test]
+fn a_pull_advances_one_policy_of_a_file_and_keeps_the_rest() {
+    let remote = EngineRemote::new("two-in-one");
+
+    // Author one publishes both policies from one file.
+    let store_a = FsStore::new(scratch("two-in-one-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/documents.cedar", DOCUMENTS.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    // Author two clones: a clone writes one file per policy.
+    let store_b = FsStore::new(scratch("two-in-one-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    let cloned = ws_b
+        .checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    for file in [
+        "cedar/document-readers.cedar",
+        "cedar/document-owners.cedar",
+    ] {
+        assert!(
+            cloned.materialized.iter().any(|path| path == file),
+            "{file} not cloned: {:?}",
+            cloned.materialized
+        );
+    }
+
+    // Author two changes the readers and commits.
+    let readers = text(&store_b, "cedar/document-readers.cedar");
+    store_b
+        .write(
+            "cedar/document-readers.cedar",
+            readers
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "readers may list")
+            .unwrap()
+            .counter,
+        2
+    );
+
+    // Author one pulls: the readers advance inside the file, the owners and
+    // the file's own text stay.
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert_eq!(pulled.counter, 2);
+    assert!(pulled.materialized.is_empty(), "{:?}", pulled.materialized);
+    assert_eq!(pulled.updated, vec!["cedar/documents.cedar".to_owned()]);
+    assert!(pulled.removed.is_empty(), "{:?}", pulled.removed);
+    let documents = text(&store_a, "cedar/documents.cedar");
+    assert!(
+        documents.contains("Action::\"list\""),
+        "the readers did not advance: {documents}"
+    );
+    assert!(
+        documents.contains("document-owners") && documents.contains("resource.owner == principal"),
+        "the owners were lost: {documents}"
+    );
+    assert!(
+        documents.starts_with("// Who may do what on documents."),
+        "the file's own text was lost: {documents}"
+    );
+    let (_, plan) = ws_a.plan().unwrap();
+    assert!(
+        plan.actions.is_empty(),
+        "a converged workspace plans nothing: {plan:?}"
+    );
+
+    // Author two drops the owners: the file keeps the readers.
+    std::fs::remove_file(store_b.root().join("cedar/document-owners.cedar")).unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "no more owners")
+            .unwrap()
+            .counter,
+        3
+    );
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert_eq!(pulled.updated, vec!["cedar/documents.cedar".to_owned()]);
+    assert!(pulled.removed.is_empty(), "{:?}", pulled.removed);
+    let documents = text(&store_a, "cedar/documents.cedar");
+    assert!(
+        documents.contains("Action::\"list\"") && !documents.contains("document-owners"),
+        "{documents}"
+    );
+    let (_, plan) = ws_a.plan().unwrap();
+    assert!(plan.actions.is_empty(), "{plan:?}");
+
+    // And the readers: nothing left in the file, so the file goes.
+    std::fs::remove_file(store_b.root().join("cedar/document-readers.cedar")).unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "no more documents")
+            .unwrap()
+            .counter,
+        4
+    );
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert!(pulled.updated.is_empty(), "{:?}", pulled.updated);
+    assert_eq!(pulled.removed, vec!["cedar/documents.cedar".to_owned()]);
+    assert!(!store_a.exists("cedar/documents.cedar"));
+    let (_, plan) = ws_a.plan().unwrap();
+    assert!(plan.actions.is_empty(), "{plan:?}");
+}
+
+/// A tree that does not build cannot say what the author changed, so the pull
+/// refuses rather than advance the checkpoint over it: once the tree builds
+/// again, an apply against that checkpoint would revert the remote's commit.
+#[test]
+fn a_pull_refuses_a_tree_it_cannot_read() {
+    let remote = EngineRemote::new("unbuildable");
+
+    let store_a = FsStore::new(scratch("unbuildable-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    let store_b = FsStore::new(scratch("unbuildable-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    store_b
+        .write(
+            "cedar/billing-ro.cedar",
+            CEDAR
+                .replace("Action::\"read\"", "Action::\"list\"")
+                .as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "list").unwrap().counter,
+        2
+    );
+
+    // Author one is mid-edit, and the file does not parse.
+    store_a
+        .write(
+            "cedar/billing.cedar",
+            b"@alias(\"billing-ro\")\npermit (principal, action, resource) when { 1 + };\n",
+        )
+        .unwrap();
+    let refused = ws_a.pull(&remote, false).unwrap_err().to_string();
+    assert!(refused.contains("does not build"), "{refused}");
+    assert_eq!(ws_a.status().unwrap().checkpoint.unwrap().counter, 1);
+    // Nor does `--resolved` get past it: there is nothing reconciled to accept.
+    assert!(ws_a.pull(&remote, true).is_err());
+    assert_eq!(ws_a.status().unwrap().checkpoint.unwrap().counter, 1);
+
+    // The file fixed, the pull lands the remote's change in it.
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert_eq!(pulled.counter, 2);
+    assert_eq!(pulled.updated, vec!["cedar/billing.cedar".to_owned()]);
+    assert!(text(&store_a, "cedar/billing.cedar").contains("Action::\"list\""));
+}
+
+/// The remote adds a policy whose file name this workspace already uses for
+/// another policy: the pull refuses, because writing would clobber the
+/// author's file, and skipping would let the next apply delete the remote's
+/// policy from the ledger.
+#[test]
+fn a_pull_does_not_advance_over_a_name_it_cannot_write() {
+    let remote = EngineRemote::new("name-taken");
+
+    let store_a = FsStore::new(scratch("name-taken-a"));
+    let ws_a = bind(&store_a);
+    store_a
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store_a.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let _ = ws_a.checkout(&remote, "origin", "delivery", "main-ledger", "main");
+    assert_eq!(
+        ws_a.apply(&remote, "a@acme.com", "base").unwrap().counter,
+        1
+    );
+
+    // Author two adds `audit`, whose file is cedar/audit.cedar.
+    let store_b = FsStore::new(scratch("name-taken-b"));
+    let ws_b = bind(&store_b);
+    std::fs::remove_file(store_b.root().join("manifest.yml")).unwrap();
+    ws_b.checkout(&remote, "origin", "delivery", "main-ledger", "main")
+        .unwrap();
+    store_b
+        .write(
+            "cedar/audit.cedar",
+            CEDAR.replace("billing-ro", "audit").as_bytes(),
+        )
+        .unwrap();
+    assert_eq!(
+        ws_b.apply(&remote, "b@acme.com", "audit").unwrap().counter,
+        2
+    );
+
+    // Author one already keeps a different policy under that name, unapplied.
+    let local = CEDAR
+        .replace("billing-ro", "audit-local")
+        .replace("Action::\"read\"", "Action::\"write\"");
+    store_a
+        .write("cedar/audit.cedar", local.as_bytes())
+        .unwrap();
+    let refused = ws_a.pull(&remote, false).unwrap_err().to_string();
+    assert!(
+        refused.contains("cedar/audit.cedar") && refused.contains("objects cat"),
+        "the refusal has to name the file and how to read theirs: {refused}"
+    );
+    assert_eq!(ws_a.status().unwrap().checkpoint.unwrap().counter, 1);
+    assert_eq!(
+        text(&store_a, "cedar/audit.cedar"),
+        local,
+        "the author's file was touched"
+    );
+
+    // Moved aside, the remote's policy lands under its own name, and the
+    // author's is what is left to apply.
+    store_a
+        .write("cedar/audit-local.cedar", local.as_bytes())
+        .unwrap();
+    store_a.remove("cedar/audit.cedar").unwrap();
+    let pulled = ws_a.pull(&remote, false).unwrap();
+    assert_eq!(pulled.counter, 2);
+    assert_eq!(pulled.materialized, vec!["cedar/audit.cedar".to_owned()]);
+    let (_, plan) = ws_a.plan().unwrap();
+    assert_eq!(plan.actions.len(), 1, "{plan:?}");
 }
 
 #[test]

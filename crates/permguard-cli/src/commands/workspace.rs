@@ -393,7 +393,10 @@ pub enum WorkspaceOp {
     Checkout {
         reference: String,
     },
-    Pull,
+    Pull {
+        /// The working tree is reconciled: land and advance, do not refuse.
+        resolved: bool,
+    },
     Refresh,
     Validate,
     Test {
@@ -697,6 +700,9 @@ pub fn workspace_command(
                     head: pulled.head,
                     fetched: pulled.fetched,
                     materialized: pulled.materialized,
+                    updated: pulled.updated,
+                    removed: pulled.removed,
+                    previous_counter: pulled.previous_counter,
                 },
                 format,
                 trace,
@@ -737,14 +743,17 @@ pub fn workspace_command(
                     head: pulled.head,
                     fetched: pulled.fetched,
                     materialized: pulled.materialized,
+                    updated: pulled.updated,
+                    removed: pulled.removed,
+                    previous_counter: pulled.previous_counter,
                 },
                 format,
                 trace,
             )?;
         }
-        WorkspaceOp::Pull => {
+        WorkspaceOp::Pull { resolved } => {
             let remote = tracked_remote(trace)?;
-            let pulled = ws.pull(&remote).map_err(usage)?;
+            let pulled = ws.pull(&remote, resolved).map_err(usage)?;
             render(
                 &PullReport {
                     action: "pull",
@@ -754,6 +763,9 @@ pub fn workspace_command(
                     head: pulled.head,
                     fetched: pulled.fetched,
                     materialized: pulled.materialized,
+                    updated: pulled.updated,
+                    removed: pulled.removed,
+                    previous_counter: pulled.previous_counter,
                 },
                 format,
                 trace,
