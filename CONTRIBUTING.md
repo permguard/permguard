@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Contributing to Permguard
 
 Thank you for your interest in contributing to Permguard.

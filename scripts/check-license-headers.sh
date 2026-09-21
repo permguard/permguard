@@ -25,6 +25,8 @@ while IFS= read -r file; do
     case "${file}" in
         # Nowhere to put a comment, or not ours to annotate.
         Cargo.lock | LICENSE | *.json) continue ;;
+        # Adapted from the Contributor Covenant, which is CC BY-SA 4.0: not ours to relicense.
+        CODE_OF_CONDUCT.md) continue ;;
         # Third-party or generated.
         .gitignore | */node_modules/* | target/*) continue ;;
     esac

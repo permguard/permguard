@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Permguard Governance
 
 Permguard is an open-source, company-led project developed and maintained under

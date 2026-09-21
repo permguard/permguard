@@ -77,5 +77,4 @@ homebrew_casks:
     license: "Apache-2.0"
     url:
       template: "https://github.com/permguard/permguard/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-      verified: "github.com/permguard/permguard/"
     skip_upload: false

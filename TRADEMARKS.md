@@ -1,3 +1,6 @@
+<!-- Copyright (c) 2022 Nitro Agility S.r.l. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Permguard Trademark Policy
 
 "Permguard", the Permguard name, and the associated Permguard logos and branding
