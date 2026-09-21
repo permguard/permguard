@@ -55,3 +55,59 @@ const GROW_TO: usize = 8 * 1024 * 1024;
 pub fn with<T>(work: impl FnOnce() -> T) -> T {
     stacker::maybe_grow(RED_ZONE, GROW_TO, work)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{GROW_TO, RED_ZONE};
+
+    /// The guarantee, on a thread that does not have the room to begin with.
+    ///
+    /// This is the whole defect in one assertion: Cedar asks
+    /// [`stacker::remaining_stack`] for [`RED_ZONE`] and declines the evaluation
+    /// when it is not there, so entering an engine on a thread that reports less
+    /// is entering it to be refused. A small explicit stack reproduces on any
+    /// platform what musl reports on the process's first thread.
+    #[test]
+    fn an_engine_is_entered_with_room_to_recurse_in() {
+        let starved = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let before = stacker::remaining_stack();
+                assert!(
+                    before.is_some_and(|remaining| remaining < RED_ZONE),
+                    "the thread was meant to start short of the red zone: {before:?}"
+                );
+                super::with(stacker::remaining_stack)
+            })
+            .expect("spawn")
+            .join()
+            .expect("join");
+
+        assert!(
+            starved.is_some_and(|remaining| remaining >= RED_ZONE),
+            "an engine would decline rather than answer with {starved:?} of stack"
+        );
+    }
+
+    /// A thread that already has the room is not made to pay for a segment.
+    #[test]
+    fn room_already_there_is_left_alone() {
+        let before = stacker::remaining_stack();
+        let inside = super::with(stacker::remaining_stack);
+        if let (Some(before), Some(inside)) = (before, inside)
+            && before >= RED_ZONE
+        {
+            assert!(
+                inside <= before,
+                "no segment should have been claimed: {before} -> {inside}"
+            );
+        }
+    }
+
+    /// The claim is at least as large as the guarantee, or growing would not
+    /// satisfy the guard it exists for.
+    #[test]
+    fn the_claim_covers_the_guarantee() {
+        const { assert!(GROW_TO >= RED_ZONE) };
+    }
+}
