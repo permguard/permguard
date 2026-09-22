@@ -636,6 +636,152 @@ fn test_answers_in_every_format_and_says_when_there_is_nothing_to_run() {
     );
 }
 
+/// A `--name` that matches nothing names the filter and what it was applied to. It used to say the
+/// workspace had no `tests` folder — right after reading that folder and finding cases in it.
+#[test]
+fn a_name_filter_that_matches_nothing_names_the_filter_not_a_missing_folder() {
+    let dir = scratch("test-name-filter");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    write_one_case(&dir);
+
+    let output = run(&dir, &["test", "--name", "zzz-nonexistent"]);
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    let said = stderr(&output);
+    assert!(said.contains("no cases"), "{said}");
+    assert!(
+        said.contains("zzz-nonexistent"),
+        "the filter is named: {said}"
+    );
+    assert!(
+        said.contains("1 case(s)"),
+        "and what it was applied to: {said}"
+    );
+    assert!(
+        !said.contains("has no `tests` folder"),
+        "the folder was read, and is not to blame: {said}"
+    );
+}
+
+/// One file that is not a list of cases does not stop the others: the valid case runs, the broken
+/// file is reported beside it, and the run is not green.
+#[test]
+fn a_file_that_does_not_read_as_cases_is_reported_and_the_others_still_run() {
+    let dir = scratch("test-broken-file");
+    write_sources(&dir);
+    run(&dir, &["init", "cases"]);
+    write_one_case(&dir);
+    std::fs::write(dir.join("tests/broken.yml"), "invalid: yaml: [[[\n").expect("the broken file");
+
+    let output = run(&dir, &["test", "--name", "alice reads"]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a broken file is a failed run, not a usage error: {}",
+        stderr(&output)
+    );
+    let said = stdout(&output);
+    assert!(said.contains("alice reads"), "the valid case ran: {said}");
+    assert!(
+        said.contains("tests/broken.yml"),
+        "the broken file is named: {said}"
+    );
+    assert!(said.contains("1 file(s) could not be read"), "{said}");
+
+    let output = run(&dir, &["-o", "json", "test"]);
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("the JSON report parses");
+    assert_eq!(
+        report["unreadable"].as_array().map(Vec::len),
+        Some(1),
+        "{report}"
+    );
+    assert_eq!(
+        report["unreadable"][0]["source"], "tests/broken.yml",
+        "{report}"
+    );
+    assert_eq!(
+        report["cases"].as_array().map(Vec::len),
+        Some(1),
+        "{report}"
+    );
+    // Every case line has every field, whatever it decided.
+    for field in ["decision", "policies", "evaluations", "error", "problems"] {
+        assert!(
+            report["cases"][0].get(field).is_some(),
+            "`{field}` is present on every case: {report}"
+        );
+    }
+}
+
+/// One case beside its request, the way `test_answers_in_every_format…` writes them.
+fn write_one_case(dir: &Path) {
+    std::fs::create_dir_all(dir.join("tests")).expect("the cases directory is created");
+    std::fs::create_dir_all(dir.join("requests")).expect("the requests directory is created");
+    std::fs::write(
+        dir.join("requests/read.json"),
+        r#"{"subject":{"type":"user","id":"alice"},"action":{"name":"read"},
+            "resource":{"type":"document","id":"budget"}}"#,
+    )
+    .expect("the request is written");
+    std::fs::write(
+        dir.join("tests/cases.yml"),
+        "- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit, policies: [readers] }\n",
+    )
+    .expect("the cases are written");
+}
+
+/// A value that cannot mean anything is refused where it is typed, before any network: a page or
+/// a limit of zero, an empty commit message, a `--since` that is not a timestamp, and a document
+/// sent beside the flags that would describe another request.
+#[test]
+fn a_value_that_cannot_mean_anything_is_refused_before_any_network() {
+    let dir = scratch("refused-values");
+    write_sources(&dir);
+    run(&dir, &["init", "refused"]);
+    std::fs::write(dir.join("request.json"), "{}").expect("the request is written");
+
+    let scope = [
+        "--zone",
+        "z",
+        "--ledger",
+        "l",
+        "--control-endpoint",
+        "http://127.0.0.1:1",
+    ];
+    let cases: Vec<(Vec<&str>, &str)> = vec![
+        (vec!["zones", "list", "--page", "0"], "--page"),
+        (vec!["zones", "list", "--size", "0"], "--size"),
+        (vec!["history", "--limit", "0"], "at least 1"),
+        (vec!["apply", "-m", ""], "cannot be empty"),
+        (
+            vec!["check", "-f", "request.json", "--subject", "user:alice"],
+            "cannot be used with",
+        ),
+    ];
+    let mut cases = cases;
+    for (flag, value, said) in [
+        ("--limit", "0", "at least 1"),
+        ("--since", "not-a-date", "RFC 3339"),
+        ("--since", "1789981824", "RFC 3339"),
+        ("--since", "", "RFC 3339"),
+    ] {
+        let mut argv = vec!["decisions", "list", flag, value];
+        argv.extend(scope);
+        cases.push((argv, said));
+    }
+
+    for (argv, said) in cases {
+        let output = run(&dir, &argv);
+        assert!(!output.status.success(), "{argv:?} was accepted");
+        assert!(
+            stderr(&output).contains(said),
+            "{argv:?} did not say `{said}`: {}",
+            stderr(&output)
+        );
+    }
+}
+
 /// `-w` says it is "the directory relative paths are resolved against", and every flag that names
 /// a file has to mean it. Before this was true of the TLS material and of nothing else a person
 /// types by hand, so `permguard -w somewhere check -f request.json` looked for the request beside

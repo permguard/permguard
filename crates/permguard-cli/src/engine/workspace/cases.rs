@@ -113,12 +113,33 @@ pub struct Outcome {
     pub problems: Vec<String>,
 }
 
+/// A case file that could not be read as cases, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unreadable {
+    /// The file, workspace-relative.
+    pub source: String,
+    /// What is wrong with it.
+    pub problem: String,
+}
+
+/// What reading the case files found: the cases, and the files that were not cases.
+#[derive(Debug, Clone, Default)]
+pub struct Collected {
+    pub cases: Vec<Located>,
+    pub unreadable: Vec<Unreadable>,
+}
+
 /// Reads the cases named, or every case in the workspace's own directory.
 ///
 /// A named path may be a case file or a directory of them, so that a workspace can
 /// keep its cases wherever it likes and a person can run one file while working on
 /// it.
-pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Vec<Located>> {
+///
+/// One file that does not read as cases does not stop the others: it comes back beside
+/// them, as a finding, and the caller decides what a run with one in it means. Stopping
+/// at it used to switch off the whole suite — including a `--name` run aimed at another
+/// file entirely — and a suite that cannot run is a suite nobody fixes.
+pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Collected> {
     let roots: Vec<String> = if paths.is_empty() {
         vec![DEFAULT_DIRECTORY.to_owned()]
     } else {
@@ -143,36 +164,49 @@ pub fn collect(store: &dyn Store, paths: &[String]) -> Result<Vec<Located>> {
     files.sort();
     files.dedup();
 
-    let mut cases = Vec::new();
+    let mut collected = Collected::default();
     for file in files {
-        let bytes = store
-            .read(&file)
-            .map_err(err)?
-            .ok_or_else(|| err(format!("{file} vanished mid-read")))?;
-        let text = String::from_utf8(bytes).map_err(|_| err(format!("{file} is not UTF-8")))?;
-        let read: Vec<Case> = serde_norway::from_str(&text)
-            .map_err(|error| err(format!("{file}: not a list of cases: {error}")))?;
-
-        for case in read {
-            // A case with an empty `expect` runs a request and asserts nothing about the answer.
-            // It reads as coverage and is not: the suite goes green whatever the policies decide.
-            if case.expect == Expectation::default() {
-                return Err(err(format!(
-                    "{file}: the case `{}` expects nothing — state a `decision`, the `policies` \
-                     that must decide, an `error`, or what each evaluation must answer",
-                    case.name
-                )));
-            }
-
-            let request = beside(&file, &case.request);
-            let events = case.events.iter().map(|held| beside(&file, held)).collect();
-            cases.push(Located {
-                case,
-                source: file.clone(),
-                request,
-                events,
-            });
+        match read_cases(store, &file) {
+            Ok(cases) => collected.cases.extend(cases),
+            Err(problem) => collected.unreadable.push(Unreadable {
+                source: file,
+                problem,
+            }),
         }
+    }
+
+    Ok(collected)
+}
+
+/// The cases of one file, or what is wrong with it.
+fn read_cases(store: &dyn Store, file: &str) -> std::result::Result<Vec<Located>, String> {
+    let bytes = store
+        .read(file)?
+        .ok_or_else(|| format!("{file} vanished mid-read"))?;
+    let text = String::from_utf8(bytes).map_err(|_| format!("{file} is not UTF-8"))?;
+    let read: Vec<Case> = serde_norway::from_str(&text)
+        .map_err(|error| format!("{file}: not a list of cases: {error}"))?;
+
+    let mut cases = Vec::with_capacity(read.len());
+    for case in read {
+        // A case with an empty `expect` runs a request and asserts nothing about the answer.
+        // It reads as coverage and is not: the suite goes green whatever the policies decide.
+        if case.expect == Expectation::default() {
+            return Err(format!(
+                "{file}: the case `{}` expects nothing — state a `decision`, the `policies` \
+                 that must decide, an `error`, or what each evaluation must answer",
+                case.name
+            ));
+        }
+
+        let request = beside(file, &case.request);
+        let events = case.events.iter().map(|held| beside(file, held)).collect();
+        cases.push(Located {
+            case,
+            source: file.to_owned(),
+            request,
+            events,
+        });
     }
 
     Ok(cases)
@@ -1002,5 +1036,63 @@ mod tests {
             "requests/permit.json"
         );
         assert_eq!(beside("tests/release.yml", "here.json"), "tests/here.json");
+    }
+
+    /// One file that is not a list of cases is reported, and the others still run.
+    #[test]
+    fn a_file_that_does_not_read_as_cases_does_not_stop_the_others() {
+        use permguard_control_client::store::FsStore;
+
+        let root = std::env::temp_dir().join(format!(
+            "permguard-cases-unreadable-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let store = FsStore::new(&root);
+        store
+            .write(
+                "tests/good.yml",
+                b"- name: alice reads\n  request: ../requests/read.json\n  expect: { decision: permit }\n",
+            )
+            .expect("the good file is written");
+        store
+            .write("tests/broken.yml", b"invalid: yaml: [[[\n")
+            .expect("the broken file is written");
+        store
+            .write(
+                "tests/empty.yml",
+                b"- name: asserts nothing\n  request: ../requests/read.json\n  expect: {}\n",
+            )
+            .expect("the empty-expectation file is written");
+
+        let collected = collect(&store, &[]).expect("a directory with one bad file still reads");
+
+        assert_eq!(collected.cases.len(), 1, "{:?}", collected.cases);
+        assert_eq!(collected.cases[0].case.name, "alice reads");
+        assert_eq!(collected.cases[0].request, "requests/read.json");
+        let unreadable: Vec<&str> = collected
+            .unreadable
+            .iter()
+            .map(|held| held.source.as_str())
+            .collect();
+        assert_eq!(unreadable, ["tests/broken.yml", "tests/empty.yml"]);
+        assert!(
+            collected.unreadable[0]
+                .problem
+                .contains("not a list of cases"),
+            "{}",
+            collected.unreadable[0].problem
+        );
+        assert!(
+            collected.unreadable[1].problem.contains("expects nothing"),
+            "{}",
+            collected.unreadable[1].problem
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -15,7 +15,7 @@ use crate::commands::objects::{inspect_report, write_human};
 use crate::failure::{EXIT_NOT_READY, EXIT_READY, Failure};
 use crate::narrator;
 use crate::session::{open_store, render, resolve_endpoint};
-use crate::trace::Trace;
+use crate::trace::{self, Trace};
 use permguard_control_client::AnyRemote;
 use permguard_control_client::TlsOptions;
 
@@ -412,7 +412,10 @@ pub enum WorkspaceOp {
     Apply {
         message: String,
     },
-    History,
+    History {
+        /// At most this many commits, newest first.
+        limit: Option<usize>,
+    },
     Status,
     Objects(ObjectsAction),
     Verify,
@@ -462,7 +465,7 @@ pub fn workspace_command(
     // flight holds this same lock.
     let mutating = !matches!(
         op,
-        WorkspaceOp::History
+        WorkspaceOp::History { .. }
             | WorkspaceOp::Objects(ObjectsAction::List { .. } | ObjectsAction::Cat { .. })
             | WorkspaceOp::Verify
             | WorkspaceOp::Clone { .. }
@@ -605,11 +608,21 @@ pub fn workspace_command(
         }
         WorkspaceOp::Remote(action) => match action {
             RemoteAction::Add { name, url } => {
+                let mut config = ws.config().map_err(usage)?;
+                // A name already taken is refused, as `git remote add` refuses it. Replacing the
+                // URL under the name the tracked ledger points at redirects every push, and doing
+                // that while announcing "added" is the one thing this command must not do.
+                if let Some(held) = config.remotes.get(&name) {
+                    return Err(Failure::usage(format!(
+                        "the remote `{name}` already exists ({}): remove it first with `permguard \
+                         remote remove {name}`, or pick another name",
+                        held.url
+                    )));
+                }
                 // Verified before it is remembered: the discovery document
                 // is the proof the URL is a Permguard plane.
                 let remote = connect(&url)?;
                 remote.verify_discovery().map_err(usage)?;
-                let mut config = ws.config().map_err(usage)?;
                 config.remotes.insert(
                     name.clone(),
                     permguard_cli::engine::workspace::config::RemoteConfig {
@@ -646,6 +659,19 @@ pub fn workspace_command(
                     return Err(Failure::usage(format!("no remote `{name}`")));
                 }
                 ws.save_config(&config).map_err(usage)?;
+                // The binding stays, and so does publishing — through the CLI's own endpoint,
+                // which is the documented fallback. Said here, once, rather than discovered at
+                // the next `apply`.
+                if let Some(ledger) = &config.ledger
+                    && ledger.remote == name
+                {
+                    trace::warn(format!(
+                        "this workspace still tracks {name}/{}/{}: until a remote named `{name}` \
+                         is added again, `pull`, `apply` and `verify` go to the CLI's configured \
+                         control-plane endpoint",
+                        ledger.zone, ledger.ledger
+                    ));
+                }
                 render(
                     &RemoteChangedReport {
                         action: "removed",
@@ -844,12 +870,22 @@ pub fn workspace_command(
                     (count("create"), count("update"), count("delete"))
                 })
                 .unwrap_or((0, 0, 0));
+            // The URL the next `apply` would actually use, and whether the workspace named it.
+            // `status` used to say "url unknown" for a tracked ledger whose remote had been
+            // removed while `apply` went ahead through the CLI's fallback: the two have to
+            // describe the same path.
+            let remote_configured = status.remote_url.is_some();
+            let remote_url = match (&status.ledger, status.remote_url.clone()) {
+                (Some(_), None) => fallback_url(trace).ok(),
+                (_, held) => held,
+            };
             render(
                 &StatusReport {
                     workspace: status.manifest_name,
                     languages: status.languages,
                     remote: status.ledger.as_ref().map(|ledger| ledger.remote.clone()),
-                    remote_url: status.remote_url,
+                    remote_url,
+                    remote_configured,
                     zone: status.ledger.as_ref().map(|ledger| ledger.zone.clone()),
                     ledger: status.ledger.as_ref().map(|ledger| ledger.ledger.clone()),
                     r#ref: status.r#ref,
@@ -870,15 +906,16 @@ pub fn workspace_command(
                 trace,
             )?;
         }
-        WorkspaceOp::History => {
+        WorkspaceOp::History { limit } => {
             let commits = ws
                 .history()
                 .map_err(usage)?
                 .into_iter()
+                .take(limit.unwrap_or(usize::MAX))
                 .map(|(digest, commit)| HistoryLine {
                     commit: digest.to_string(),
                     author: commit.author,
-                    author_at: commit.author_at,
+                    author_at: permguard_core::time::to_rfc3339(commit.author_at),
                     message: commit.message,
                 })
                 .collect();
@@ -977,7 +1014,11 @@ pub fn workspace_command(
             zone,
             ledger,
         } => {
-            let mut cases = cases::collect(&store, &paths).map_err(usage)?;
+            let cases::Collected {
+                mut cases,
+                unreadable,
+            } = cases::collect(&store, &paths).map_err(usage)?;
+            let found = cases.len();
             if let Some(pattern) = &name {
                 cases.retain(|located| located.case.name.contains(pattern.as_str()));
             }
@@ -986,16 +1027,40 @@ pub fn workspace_command(
                     located.case.profile = Some(profile.clone());
                 }
             }
-            if cases.is_empty() {
-                return Err(usage(if paths.is_empty() {
-                    format!(
+            // Nothing to run, and the message says why. A filter that matched nothing names the
+            // filter and what it was applied to: "no `tests` folder" right after that folder was
+            // read blames the wrong thing.
+            if cases.is_empty() && unreadable.is_empty() {
+                let looked_in = if paths.is_empty() {
+                    format!("`{}`", cases::DEFAULT_DIRECTORY)
+                } else {
+                    paths
+                        .iter()
+                        .map(|path| format!("`{path}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                return Err(usage(match &name {
+                    Some(pattern) if found > 0 => format!(
+                        "no cases: none of the {found} case(s) in {looked_in} has a name \
+                         containing `{pattern}`"
+                    ),
+                    _ if paths.is_empty() => format!(
                         "no cases: this workspace has no `{}` folder, and none was named",
                         cases::DEFAULT_DIRECTORY
-                    )
-                } else {
-                    "no cases matched".to_owned()
+                    ),
+                    _ => format!("no cases: {looked_in} hold no case file"),
                 }));
             }
+            // A file that did not read as cases is part of the run's answer, whatever else ran:
+            // a suite with a broken file in it is not green.
+            let unreadable: Vec<UnreadableLine> = unreadable
+                .iter()
+                .map(|held| UnreadableLine {
+                    source: held.source.clone(),
+                    problem: held.problem.clone(),
+                })
+                .collect();
 
             if list {
                 render(
@@ -1009,6 +1074,7 @@ pub fn workspace_command(
                                 expects: expectation_line(&located.case.expect),
                             })
                             .collect(),
+                        unreadable,
                     },
                     format,
                     trace,
@@ -1059,12 +1125,16 @@ pub fn workspace_command(
                 });
             }
 
+            // A file that did not read as cases keeps the run from being green without being
+            // counted as a case that failed: "1 case, 1 passed, 1 failed" would be wrong twice.
+            let green = failed == 0 && unreadable.is_empty();
             render(
                 &TestReport {
                     cases: lines,
                     passed,
                     failed,
                     asked,
+                    unreadable,
                 },
                 format,
                 trace,
@@ -1072,7 +1142,7 @@ pub fn workspace_command(
 
             // The command worked; the workspace is what did not. Same distinction
             // `inspect` draws between "nothing answered" and "answered, not ready".
-            if failed > 0 {
+            if !green {
                 return Ok(ExitCode::from(EXIT_NOT_READY));
             }
         }

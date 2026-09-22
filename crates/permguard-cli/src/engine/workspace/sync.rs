@@ -262,6 +262,26 @@ impl Workspace<'_> {
     ) -> Result<PullOutcome> {
         let (zone_id, ledger_id) = remote.resolve(zone, ledger).map_err(err)?;
         let mut config = self.config()?;
+        // The checkpoint is kept per ref, and every ledger's default ref is `main`, so two
+        // ledgers checked out in turn would share one checkpoint file. Left standing, the old
+        // ledger's `(head, counter)` would be read as the new one's: `status` would report a
+        // counter the new ledger never reached, `plan` would diff against a head it does not
+        // hold, and an `apply` with nothing to send would return that stale checkpoint as a
+        // success — a publication that never happened. A checkpoint belongs to the ledger it was
+        // taken from, and goes when the binding does.
+        let rebound = config.ledger.as_ref().is_some_and(|held| {
+            if held.zone_id.is_empty() || held.ledger_id.is_empty() {
+                // A binding written before the ids were recorded: the names are all there is.
+                held.zone != zone || held.ledger != ledger
+            } else {
+                held.zone_id != zone_id || held.ledger_id != ledger_id
+            }
+        });
+        if rebound {
+            self.store
+                .remove(&config::checkpoint_path(r#ref))
+                .map_err(err)?;
+        }
         config.ledger = Some(crate::engine::workspace::config::LedgerConfig {
             remote: remote_name.to_owned(),
             zone: zone.to_owned(),
@@ -317,6 +337,19 @@ impl Workspace<'_> {
             }
         }
         Ok(commits)
+    }
+
+    /// The aliases of the tracked head's policies, identity → alias.
+    ///
+    /// A plane cites policies by identity and a person reads them by the alias their author
+    /// wrote. `test` already names them that way; a `check` asked from inside a checkout can name
+    /// them the same way from the head it tracks — without building the tree, and without
+    /// pretending the plane cited anything but the identity.
+    pub fn tracked_aliases(&self) -> Result<BTreeMap<String, String>> {
+        Ok(tracked_policies(self.store)?
+            .into_values()
+            .filter_map(|policy| policy.alias.map(|alias| (policy.id, alias)))
+            .collect())
     }
 
     /// Verifies the remote head statement against the key ring and the
@@ -394,6 +427,71 @@ impl Workspace<'_> {
         let commit = load_commit(self.store, head)?;
         let incoming = head_contents(self.store, head)?;
         let tracked = tracked_head(self.store)?;
+
+        // A manifest already in the tree is the author's, and it says which partitions the tree
+        // has. A head carrying a partition the manifest does not declare cannot land on it: the
+        // files would be written where no build reads them, and the next `plan` — the tracked
+        // head against a tree that never declared them — would delete them from the ledger.
+        // Refused before a byte is written, naming the partition and both ways out.
+        if manifest_file::find(self.store).map_err(err)?.is_some() {
+            let manifest = manifest_file::load(self.store).map_err(err)?;
+            let root = load_tree(self.store, &commit.tree)?;
+            let undeclared: Vec<String> = root
+                .entries
+                .iter()
+                .filter(|entry| entry.kind == Kind::Tree)
+                .filter(|entry| !manifest.partitions.contains_key(&entry.name))
+                .map(|entry| format!("`{}`", entry.name))
+                .collect();
+            if !undeclared.is_empty() {
+                return Err(err(format!(
+                    "the incoming head holds the partition(s) {} and this workspace's manifest \
+                     does not declare them: declare them in the manifest (`init` names its \
+                     languages with --language), or remove the manifest so the checkout adopts \
+                     the ledger's",
+                    undeclared.join(", ")
+                )));
+            }
+
+            // The same for what a declared partition holds. A schema the head carries lands in
+            // a partition whose manifest says `schema: false`, and the build then refuses the
+            // tree — after the checkout reported success. The head's own manifest says what each
+            // partition declares, so the two are compared before anything is written: a contract
+            // the ledger has and this manifest lacks is refused by name. The reverse — a contract
+            // this manifest declares and the ledger does not yet — is the author being ahead, and
+            // `plan` is where that shows.
+            let theirs = permguard_objects::manifest::Manifest::decode(&load_blob_data(
+                self.store,
+                &commit.manifest,
+            )?)
+            .map_err(|error| err(error.to_string()))?;
+            let mut lacking: Vec<String> = Vec::new();
+            for (name, declared) in &theirs.partitions {
+                let Some(ours) = manifest.partitions.get(name) else {
+                    continue;
+                };
+                // The legacy `schema` flag and a typed `artifacts` list are two spellings, and
+                // the registry is what says whether they name the same contract. Compared only
+                // when both sides spell it the same way; a mixed pair is left to the build.
+                if ours.artifacts.is_empty() != declared.artifacts.is_empty() {
+                    continue;
+                }
+                let held = contracts_of(ours);
+                for contract in contracts_of(declared) {
+                    if !held.contains(&contract) {
+                        lacking.push(format!("`{name}` declares no {contract}"));
+                    }
+                }
+            }
+            if !lacking.is_empty() {
+                return Err(err(format!(
+                    "the incoming head's manifest declares what this workspace's does not — {}: \
+                     declare it in the manifest (a partition with a language schema is \
+                     `schema: true`), or remove the manifest so the checkout adopts the ledger's",
+                    lacking.join("; ")
+                )));
+            }
+        }
         let base = match &tracked {
             Some(previous) => head_contents(self.store, previous)?,
             // Nothing tracked yet: a clone, where every file is a create.
@@ -591,6 +689,24 @@ impl Workspace<'_> {
 
         Ok(plan)
     }
+}
+
+/// The artifact contracts a partition declares, by name: its typed `artifacts`, or the one
+/// legacy `schema` — the same reading `build` gives the manifest, so the comparison above refuses
+/// exactly what the build would have refused after the files had landed.
+fn contracts_of(partition: &permguard_objects::manifest::Partition) -> Vec<String> {
+    if !partition.artifacts.is_empty() {
+        return partition
+            .artifacts
+            .iter()
+            .map(|contract| format!("artifact `{}`", contract.r#type))
+            .collect();
+    }
+    if partition.schema {
+        return vec!["schema".to_owned()];
+    }
+
+    Vec::new()
 }
 
 /// What a pull does to the working tree, decided before anything is written.

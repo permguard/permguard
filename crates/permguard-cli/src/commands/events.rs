@@ -880,6 +880,16 @@ fn read_failure(error: ReadError) -> Failure {
             oldest_sequence.saturating_sub(requested_sequence)
         ))
         .named("not_found", "offset_expired"),
+        // The path is not served at all — not a refusal of what was asked, but a plane that has
+        // no event store to ask. Two things look exactly like this from here, and the message
+        // names both: the deployment did not opt in, or the plane predates the API.
+        ReadError::Refused { code, detail } if code == "route_unknown" => Failure::usage(format!(
+            "{detail}. The event store is served only where the control plane has both \
+             `controlPlane.events.enabled` and `experimental.dogwood.enabled` set — a plane \
+             with either off answers this path with nothing, and so does a plane older than \
+             this CLI"
+        ))
+        .named("not_found", code),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
         ReadError::Unavailable(detail) => {
             Failure::internal(detail).named("unavailable", "event_store_unreachable")

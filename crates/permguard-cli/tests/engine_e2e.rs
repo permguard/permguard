@@ -24,10 +24,17 @@ struct EngineRemote {
     key: Ed25519KeyPair,
     /// What this simulated deployment has opted into, so a test can be a plane that has *not*.
     enabled: permguard_languages::registry::Enabled,
+    /// The one ledger this remote serves — what `resolve` answers, whatever names it is asked.
+    identity: LedgerIdentity,
 }
 
 impl EngineRemote {
     fn new(tag: &str) -> Self {
+        Self::for_ledger(tag, "ledger-guid")
+    }
+
+    /// The same plane, serving a different ledger: two of these are two ledgers of one zone.
+    fn for_ledger(tag: &str, ledger_id: &str) -> Self {
         let dir = std::env::temp_dir().join(format!("pg-ws-remote-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let doc = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
@@ -35,6 +42,10 @@ impl EngineRemote {
             store: FileObjectStore::new(dir),
             key: Ed25519KeyPair::from_pkcs8(doc.as_ref()).unwrap(),
             enabled: permguard_languages::registry::Enabled::everything(),
+            identity: LedgerIdentity {
+                zone_id: "zone-guid".into(),
+                ledger_id: ledger_id.into(),
+            },
         }
     }
 
@@ -49,10 +60,7 @@ impl EngineRemote {
     fn engine(&self) -> Engine<'_> {
         Engine {
             store: &self.store,
-            identity: LedgerIdentity {
-                zone_id: "zone-guid".into(),
-                ledger_id: "ledger-guid".into(),
-            },
+            identity: self.identity.clone(),
             limits: EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
                 max_batch_objects: 3, // deliberately tiny: exercise batching
@@ -80,7 +88,10 @@ impl EngineRemote {
 
 impl Remote for EngineRemote {
     fn resolve(&self, _zone: &str, _ledger: &str) -> Result<(String, String), String> {
-        Ok(("zone-guid".into(), "ledger-guid".into()))
+        Ok((
+            self.identity.zone_id.clone(),
+            self.identity.ledger_id.clone(),
+        ))
     }
 
     fn keyring(&self) -> Result<Vec<u8>, String> {
@@ -305,6 +316,90 @@ fn the_whole_developer_flow() {
     let same = ws_a.pull(&remote, false).unwrap();
     assert_eq!(same.counter, 2);
     assert_eq!(same.fetched, 0);
+}
+
+/// Checking out another ledger drops the checkpoint the previous one left behind.
+///
+/// The checkpoint is kept per ref and every ledger's default ref is `main`, so before this the two
+/// ledgers shared one file. A workspace bound to a ledger at counter 1 and re-bound to an empty one
+/// reported counter 1, planned nothing, and an `apply` returned the stale checkpoint as a success —
+/// with nothing published.
+#[test]
+fn checking_out_another_ledger_does_not_keep_the_previous_ledgers_checkpoint() {
+    let source = EngineRemote::new("rebind-source");
+    let empty = EngineRemote::for_ledger("rebind-empty", "ledger-empty-guid");
+
+    let dir = scratch("rebind");
+    let store = FsStore::new(&dir);
+    let ws = Workspace::open(&store);
+    ws.init("acme-authz", &["cedar", "rego"]).unwrap();
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let mut config = ws.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws.save_config(&config).unwrap();
+
+    // Bound to the first ledger and applied: counter 1, and a checkpoint that says so.
+    let _ = ws.checkout(&source, "origin", "acme", "source", "main");
+    assert_eq!(
+        ws.apply(&source, "alice@acme.com", "first")
+            .unwrap()
+            .counter,
+        1
+    );
+    assert_eq!(ws.status().unwrap().checkpoint.unwrap().counter, 1);
+
+    // Re-bound to an empty ledger. The ref does not exist there yet, which this in-process
+    // remote reports as an error; the binding is saved all the same, as it is over the wire.
+    assert!(
+        ws.checkout(&empty, "origin", "acme", "empty", "main")
+            .is_err(),
+        "the empty ledger has no ref yet"
+    );
+    let status = ws.status().unwrap();
+    assert_eq!(
+        status.ledger.as_ref().unwrap().ledger_id,
+        "ledger-empty-guid"
+    );
+    assert!(
+        status.checkpoint.is_none(),
+        "the previous ledger's checkpoint must not survive the rebinding: {:?}",
+        status.checkpoint
+    );
+
+    // So the plan is the whole tree, and the apply publishes it — for real.
+    let (_, plan) = ws.plan().unwrap();
+    assert_eq!(
+        plan.actions.len(),
+        2,
+        "everything is new to the empty ledger: {plan:?}"
+    );
+    let applied = ws
+        .apply(&empty, "alice@acme.com", "first on the empty ledger")
+        .unwrap();
+    assert_eq!(applied.counter, 1);
+    assert!(
+        applied.uploaded > 0,
+        "an apply to an empty ledger uploads its closure"
+    );
+    assert_eq!(
+        empty.get_ref("main").unwrap().map(|answer| answer.counter),
+        Some(1),
+        "the empty ledger now has a head"
+    );
+    assert_eq!(
+        source.get_ref("main").unwrap().map(|answer| answer.counter),
+        Some(1),
+        "and the ledger left behind was not touched"
+    );
 }
 
 /// Both authors change the same policy: the pull refuses instead of

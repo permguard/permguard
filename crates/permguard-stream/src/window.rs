@@ -136,6 +136,8 @@ pub struct Block<T> {
     ///
     /// Returned even for an empty block, because an empty block still advanced over the positions
     /// it examined and a consumer that re-presented its previous offset would examine them again.
+    /// It is therefore never absent, and never the signal that a read is over: a consumer
+    /// paginates on [`more`](Self::more), and a loop that waits for a missing `next` never ends.
     pub next: String,
     /// The oldest offset this scope still holds, so a new consumer can choose the retained
     /// beginning deliberately rather than by guessing.

@@ -19,6 +19,77 @@ is cut.
 
 ### Fixed
 
+- `checkout` towards another ledger no longer keeps the previous ledger's checkpoint. The
+  checkpoint is kept per ref, and every ledger's default ref is `main`, so two ledgers checked out
+  in turn shared one file: `status` reported the old counter, `plan` saw no changes, and a no-op
+  `apply` reported a publication that never happened. The checkpoint now goes with the binding it
+  belonged to.
+- A boxcarred `check` now explains the batch's verdict. The top-level `context` used to be the
+  first evaluation's, so an `execute_all` batch that ended in a deny answered `decision: false`
+  beside `permitted by …`. The reason now names the evaluations that decided, the policies are the
+  union of what they cited, and the batch carries no `id` of its own: the journal records one
+  decision per evaluation, none for the batch.
+- `checkout` and `pull` refuse a head that holds a partition the workspace's manifest does not
+  declare, or a schema or artifact contract it does not declare for one it does, before writing a
+  byte — naming what is missing and both ways out. Previously the files were written where no
+  build reads them: the next `plan` would have deleted an undeclared partition from the ledger,
+  and refused to build a partition holding a schema its manifest said it had none of.
+- `check -f` now refuses `--subject`, `--action`, `--resource` and `--context` beside it instead
+  of ignoring them in silence.
+- `check` warns on stderr when the document names a zone or ledger other than the one the
+  workspace or the flags resolved, and says how to send the document as written.
+- `check` tells a deny the policies reached from a request they never saw: `evaluated` is `false`
+  and `error` carries the reason when the plane could not evaluate the request. The exit status is
+  unchanged — a deny is an answer either way.
+- `check` names policies the way `test` does, by alias where the tracked head carries one, and
+  keeps the identities in `policy_ids`, so a failed case and the decision it corresponds to share
+  a name.
+- `decisions list --since` is validated as RFC 3339 and normalised before it is compared. An
+  empty string, a word or an epoch second used to be compared as text and exit 0 — matching
+  everything, nothing, or ignoring the filter.
+- `decisions list --limit N` returns N decisions. Marker events in the stream used to count
+  against the limit, so `--limit 1` returned none.
+- `remote add` refuses a name that already exists instead of replacing its URL and announcing
+  "added".
+- `remote remove` warns when the removed remote is the one the workspace tracks, and `status`
+  shows the URL the CLI's fallback would use, marked as such, instead of "url unknown".
+- `test` runs the case files it can read and reports the ones it cannot, instead of stopping at
+  the first unreadable file — including a `--name` run aimed at another file. The run exits as not
+  green while such a file is present; the file is not counted among the failed cases, because it
+  is not one.
+- `test --name` that matches nothing names the filter and how many cases it was applied to,
+  instead of blaming a missing `tests` folder.
+- `apply` with nothing to send no longer prints "Ref advanced" after "No changes".
+- `apply -m ""` is refused: a commit message cannot be empty.
+- `zones list`, `ledgers list`, `decisions list`, `events list` and `history` refuse `--page 0`,
+  `--size 0` and `--limit 0` where they are typed.
+- `plan` says what it is — the working tree against the tracked head, offline — in its help and
+  its "No changes" line, instead of claiming to have compared with the remote ledger.
+- `decisions get` for an identifier that is not there says that a plane ships records in batches
+  and the decision may not have arrived yet.
+- `events list` on a plane that serves no event store names the two switches that gate it,
+  instead of the bare `route_unknown`.
+
+### Changed
+
+- Every timestamp the CLI emits in JSON and YAML is RFC 3339 in UTC. `history` (`author_at`),
+  `objects cat --inspect` (`author_at`) and `zones`/`ledgers` (`created_at`, `updated_at`) used to
+  emit epoch seconds while `inspect` and the decision log emitted RFC 3339.
+- `check -o json`, `test -o json` and the catalog listings have one shape whatever the answer:
+  `policies`, `evaluations` and `problems` are `[]` rather than absent; `id`, `reason`, `error`,
+  `decision` and `page` are `null` rather than missing.
+- `decisions list --limit` counts decisions, not records.
+- `check -o json` inside a workspace names `policies` by alias where the tracked head carries one,
+  as `test` does; the identities the plane cited are in `policy_ids`. Outside a workspace the two
+  lists are the same.
+- A boxcarred `check` answer carries no top-level `context.id`: the identifiers are on the
+  evaluations, which are what the decision log records.
+
+### Added
+
+- `history --limit N`: at most N commits, newest first.
+- `check` answers carry `evaluated`, `error` and `policy_ids`; `test` and `test --list` carry
+  `unreadable`; `status` carries `remote_configured`.
 - `pull` now lands the incoming head in the working tree instead of only creating the files that
   were missing. A policy the remote moved and the author had not is advanced inside the author's
   file, whatever name that file has and whatever else it holds; a policy the remote dropped and the

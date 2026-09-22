@@ -77,7 +77,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::ZoneReport {
                         action: "created",
-                        zone,
+                        zone: zone.into(),
                     },
                     globals.output,
                     trace,
@@ -88,7 +88,7 @@ pub fn catalog_command(
 
                 render(
                     &workspace_out::ZoneListReport {
-                        zones: listed,
+                        zones: listed.into_iter().map(Into::into).collect(),
                         page,
                     },
                     globals.output,
@@ -101,7 +101,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::ZoneReport {
                         action: "found",
-                        zone,
+                        zone: zone.into(),
                     },
                     globals.output,
                     trace,
@@ -113,7 +113,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::ZoneReport {
                         action: "renamed",
-                        zone,
+                        zone: zone.into(),
                     },
                     globals.output,
                     trace,
@@ -125,7 +125,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::ZoneReport {
                         action: "deleted",
-                        zone,
+                        zone: zone.into(),
                     },
                     globals.output,
                     trace,
@@ -139,7 +139,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::LedgerReport {
                         action: "created",
-                        ledger,
+                        ledger: ledger.into(),
                     },
                     globals.output,
                     trace,
@@ -151,7 +151,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::LedgerListReport {
                         zone,
-                        ledgers: listed,
+                        ledgers: listed.into_iter().map(Into::into).collect(),
                         page,
                     },
                     globals.output,
@@ -164,7 +164,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::LedgerReport {
                         action: "found",
-                        ledger,
+                        ledger: ledger.into(),
                     },
                     globals.output,
                     trace,
@@ -178,7 +178,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::LedgerReport {
                         action: "renamed",
-                        ledger,
+                        ledger: ledger.into(),
                     },
                     globals.output,
                     trace,
@@ -190,7 +190,7 @@ pub fn catalog_command(
                 render(
                     &workspace_out::LedgerReport {
                         action: "deleted",
-                        ledger,
+                        ledger: ledger.into(),
                     },
                     globals.output,
                     trace,

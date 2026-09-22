@@ -920,10 +920,17 @@ impl Decider {
             ],
         );
 
-        let context = decisions
-            .first()
-            .and_then(|first| first.context.clone())
-            .unwrap_or_default();
+        // The whole request's context. A plain request has one decision, and that is its
+        // context. A batch has several, and its context is derived from the verdict its semantic
+        // produced — never copied from one of them.
+        let context = if resolved.boxcarred {
+            batch_context(resolved.semantic, overall, &decisions)
+        } else {
+            decisions
+                .first()
+                .and_then(|first| first.context.clone())
+                .unwrap_or_default()
+        };
         // Before the answer leaves: a plane told to refuse rather than decide
         // unrecorded must refuse *here*, where the answer has not gone out yet.
         self.journal(
@@ -1616,6 +1623,110 @@ fn reason_user(permit: bool) -> Reason {
     }
 }
 
+/// The context of a whole batch, derived from its verdict.
+///
+/// The first evaluation's context used to stand for the batch, so an `execute_all` batch that
+/// opened with a permit and ended in a deny answered `decision: false` beside `permitted by …` —
+/// a reason contradicting the verdict it was meant to explain, and the first evaluation's
+/// policies cited for a decision they did not make. The batch is not a decision of its own (the
+/// journal records one per evaluation, and none for the batch), so it carries no `id`; its reason
+/// names the evaluations that produced the verdict, by the `request_id` the caller gave them, and
+/// its policies are the union of what those evaluations cited.
+fn batch_context(
+    semantic: permguard_languages::Semantic,
+    overall: bool,
+    decisions: &[Decision],
+) -> DecisionContext {
+    let name = |index: usize, decision: &Decision| {
+        decision
+            .request_id
+            .clone()
+            .unwrap_or_else(|| format!("#{index}"))
+    };
+    let code_of = |decision: &Decision| {
+        decision
+            .context
+            .as_ref()
+            .and_then(|context| context.reason_admin.as_ref())
+            .map(|reason| reason.code.as_str())
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    // The evaluations whose answer *is* the verdict: under `&&` the denies of a deny and every
+    // permit of a permit; under `||` the permit of a permit and every deny of a deny.
+    let deciding: Vec<(usize, &Decision)> = decisions
+        .iter()
+        .enumerate()
+        .filter(|(_, decision)| decision.decision == overall)
+        .collect();
+    let mut policies: Vec<String> = Vec::new();
+    for (_, decision) in &deciding {
+        for policy in decision
+            .context
+            .as_ref()
+            .map(|context| context.policies.as_slice())
+            .unwrap_or_default()
+        {
+            if !policies.contains(policy) {
+                policies.push(policy.clone());
+            }
+        }
+    }
+    let named: Vec<String> = deciding
+        .iter()
+        .map(|(index, decision)| format!("`{}`", name(*index, decision)))
+        .collect();
+    let errored: Vec<String> = deciding
+        .iter()
+        .filter(|(_, decision)| code_of(decision) == "500")
+        .map(|(index, decision)| format!("`{}`", name(*index, decision)))
+        .collect();
+    let operator = semantic_named(semantic);
+
+    let reason_admin = if !overall && !errored.is_empty() {
+        Reason {
+            code: "500".to_owned(),
+            message: format!(
+                "the batch is denied under `{operator}`: evaluation(s) {} could not be evaluated",
+                errored.join(", ")
+            ),
+        }
+    } else if overall {
+        Reason {
+            code: "200".to_owned(),
+            message: format!(
+                "the batch is permitted under `{operator}`: evaluation(s) {} permitted",
+                named.join(", ")
+            ),
+        }
+    } else {
+        Reason {
+            code: "403".to_owned(),
+            message: format!(
+                "the batch is denied under `{operator}`: evaluation(s) {} denied",
+                named.join(", ")
+            ),
+        }
+    };
+
+    DecisionContext {
+        id: None,
+        reason_admin: Some(reason_admin),
+        reason_user: Some(reason_user(overall)),
+        policies,
+    }
+}
+
+/// A semantic in the words the wire uses for it, for a reason that has to name one.
+fn semantic_named(semantic: permguard_languages::Semantic) -> &'static str {
+    match semantic {
+        permguard_languages::Semantic::ExecuteAll => "execute_all",
+        permguard_languages::Semantic::DenyOnFirstDeny => "deny_on_first_deny",
+        permguard_languages::Semantic::PermitOnFirstPermit => "permit_on_first_permit",
+    }
+}
+
 /// The commit a mirror stands at, read cheaply and without a gate: the block
 /// file has to name a commit even when the gate is what refused it.
 fn current_commit(mirror: &std::path::Path) -> String {
@@ -1650,5 +1761,61 @@ mod tests {
             ["f1".to_owned()],
             "and a decision cites what refused it, not what permitted it"
         );
+    }
+
+    /// The batch's context explains the batch's verdict — not the first evaluation's.
+    #[test]
+    fn a_batch_context_explains_the_batch_verdict_not_its_first_evaluation() {
+        let decided = |permit: bool, id: &str, policies: &[&str], code: &str| Decision {
+            decision: permit,
+            request_id: Some(id.to_owned()),
+            context: Some(DecisionContext {
+                id: Some(format!("id-{id}")),
+                reason_admin: Some(Reason {
+                    code: code.to_owned(),
+                    message: String::new(),
+                }),
+                reason_user: None,
+                policies: policies.iter().map(|policy| (*policy).to_owned()).collect(),
+            }),
+        };
+        let batch = vec![
+            decided(true, "read", &["p1"], "200"),
+            decided(true, "create", &["p2"], "200"),
+            decided(false, "purge", &[], "403"),
+        ];
+
+        // `execute_all`: [permit, permit, deny] is a deny, and it says which one denied.
+        let context = batch_context(permguard_languages::Semantic::ExecuteAll, false, &batch);
+        let reason = context.reason_admin.expect("a reason");
+        assert_eq!(reason.code, "403");
+        assert!(
+            reason.message.contains("`purge`") && !reason.message.contains("permitted"),
+            "{}",
+            reason.message
+        );
+        assert!(
+            context.policies.is_empty(),
+            "a deny that nothing cited cites nothing: {:?}",
+            context.policies
+        );
+        assert!(
+            context.id.is_none(),
+            "the batch is not a decision of its own"
+        );
+
+        // `||` that stopped at the first permit: a permit, citing what permitted it.
+        let context = batch_context(
+            permguard_languages::Semantic::PermitOnFirstPermit,
+            true,
+            &batch[..1],
+        );
+        assert_eq!(context.reason_admin.expect("a reason").code, "200");
+        assert_eq!(context.policies, vec!["p1".to_owned()]);
+
+        // An evaluation that could not be performed keeps its `500`, batch or not.
+        let errored = vec![decided(false, "read", &[], "500")];
+        let context = batch_context(permguard_languages::Semantic::ExecuteAll, false, &errored);
+        assert_eq!(context.reason_admin.expect("a reason").code, "500");
     }
 }

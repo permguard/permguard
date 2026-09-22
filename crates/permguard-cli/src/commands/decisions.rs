@@ -85,7 +85,8 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
         proof: query.verify,
         ..ReadWindow::default()
     };
-    for page_number in 0..if everything { MAX_PAGES } else { 1 } {
+    let mut decisions_read = 0usize;
+    for page_number in 0..MAX_PAGES {
         let page = reader.read(&scope, &window).map_err(read_failure)?;
         if everything && page_number == 0 {
             // The snapshot this export is of. Every page after this one is bounded by it.
@@ -98,15 +99,32 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
         read.more = page.more;
         read.next.clone_from(&page.next);
         window.from = Some(page.next);
+        decisions_read += page
+            .records
+            .iter()
+            .filter(|record| record.get("kind").and_then(Value::as_str) == Some("decision"))
+            .count();
         read.proof.extend(page.proof);
         read.inclusion.extend(page.inclusion);
         read.records.extend(page.records);
         // An empty page is not the end: filtering and scan bounds mean a page may match nothing
         // while still advancing. The export stops from `more` against its own bound, and nothing
         // else.
-        if !everything || !read.more {
+        if !read.more {
             break;
         }
+        if everything {
+            continue;
+        }
+        // A page is `--limit` decisions, not `--limit` records. The stream carries marker events
+        // beside the decisions, and a limit counted in records handed back one decision fewer
+        // than asked. So the read goes on until the decisions add up, asking each time only for
+        // what is still missing: the server bounds a page by records, so the last one cannot
+        // overshoot and leave `next` past decisions that were never shown.
+        if decisions_read >= query.limit {
+            break;
+        }
+        window.limit_records = query.limit - decisions_read;
     }
 
     let report = report(&scope, read, query, keys.as_deref());
@@ -196,8 +214,13 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
         window.from = Some(page.next);
     }
 
+    // A plane writes its record locally before it answers, and ships it to the control plane in
+    // batches afterwards — so a decision made a moment ago is durable, and not yet here. The
+    // refusal says so, or a script reads "not found" as "never happened".
     Err(Failure::usage(format!(
-        "no decision in this scope carries the identifier `{id}`"
+        "no decision in this scope carries the identifier `{id}` — a plane ships its records to \
+         the control plane in batches, so a decision made moments ago may not have arrived yet: \
+         retry in a few seconds before concluding it does not exist"
     ))
     .named("not_found", "decision_not_found"))
 }

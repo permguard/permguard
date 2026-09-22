@@ -76,7 +76,7 @@ impl Report for PlanReport {
         if self.changes.is_empty() {
             return writeln!(
                 out,
-                "{} The remote ledger already matches this workspace.",
+                "{} The workspace matches the tracked head.",
                 style::bold("No changes.")
             );
         }
@@ -98,16 +98,21 @@ pub struct ApplyReport {
 
 impl Report for ApplyReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
+        // An apply with nothing to send advanced nothing, and must not say it did: "No changes"
+        // followed by "advanced" is two sentences contradicting each other about one command.
         if self.changes.is_empty() && self.uploaded == 0 {
             writeln!(
                 out,
-                "{} The remote ledger already matches this workspace.",
-                style::bold("No changes.")
+                "{} The workspace matches the tracked head; ref `{}` stays at counter {}.",
+                style::bold("No changes."),
+                self.r#ref,
+                self.counter
             )?;
-        } else {
-            render_plan_lines(&self.changes, out)?;
-            writeln!(out)?;
+
+            return writeln!(out, "  head {}", style::id(&self.head));
         }
+        render_plan_lines(&self.changes, out)?;
+        writeln!(out)?;
         writeln!(
             out,
             "{} Ref `{}` advanced to counter {} — {} objects uploaded.",
@@ -316,7 +321,8 @@ pub struct HistoryReport {
 pub struct HistoryLine {
     pub commit: String,
     pub author: String,
-    pub author_at: i64,
+    /// When it was authored, as RFC 3339 in UTC — the form every timestamp this CLI emits takes.
+    pub author_at: String,
     pub message: String,
 }
 
@@ -331,7 +337,7 @@ impl Report for HistoryReport {
             }
             writeln!(out, "{}", style::modify(&format!("commit {}", line.commit)))?;
             writeln!(out, "{} {}", style::dim("Author:"), line.author)?;
-            writeln!(out, "{} {}", style::dim("Date:  "), when(line.author_at))?;
+            writeln!(out, "{} {}", style::dim("Date:  "), line.author_at)?;
             writeln!(out, "\n    {}", line.message)?;
         }
         Ok(())
@@ -423,7 +429,8 @@ pub struct InspectCommit {
     pub manifest: String,
     pub predecessors: Vec<String>,
     pub author: String,
-    pub author_at: i64,
+    /// When it was authored, as RFC 3339 in UTC — the form every timestamp this CLI emits takes.
+    pub author_at: String,
     pub message: String,
 }
 
@@ -470,12 +477,7 @@ impl Report for InspectObjectReport {
                 )?;
             }
             writeln!(out, "{} {}", style::dim("author:     "), commit.author)?;
-            writeln!(
-                out,
-                "{} {}",
-                style::dim("authored at:"),
-                when(commit.author_at)
-            )?;
+            writeln!(out, "{} {}", style::dim("authored at:"), commit.author_at)?;
             writeln!(out, "{} {}", style::dim("message:    "), commit.message)?;
         }
         for entry in &self.entries {
@@ -539,8 +541,13 @@ pub struct StatusReport {
     pub languages: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<String>,
+    /// The URL the next `pull` or `apply` would go to: the tracked remote's when the workspace
+    /// names one, the CLI's configured endpoint otherwise — the same fallback `apply` takes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_url: Option<String>,
+    /// Whether `remote_url` is a remote this workspace configured. `false` with a URL present is
+    /// the fallback: the tracked remote was never added, or was removed.
+    pub remote_configured: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zone: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -567,14 +574,21 @@ impl Report for StatusReport {
         )?;
         match (&self.remote, &self.zone, &self.ledger) {
             (Some(remote), Some(zone), Some(ledger)) => {
+                // The path `apply` would take, said the way `apply` takes it. "url unknown" for
+                // a remote that had been removed, while `apply` went ahead through the CLI's
+                // fallback, was two commands describing one workspace differently.
+                let where_to = match (self.remote_url.as_deref(), self.remote_configured) {
+                    (Some(url), true) => format!("({url})"),
+                    (Some(url), false) => format!(
+                        "({url} — remote `{remote}` is not configured; the CLI's endpoint stands in)"
+                    ),
+                    (None, _) => "(url unknown)".to_owned(),
+                };
                 writeln!(
                     out,
                     "{} {remote}/{zone}/{ledger} {}",
                     style::dim("Tracking: "),
-                    style::dim(&format!(
-                        "({})",
-                        self.remote_url.as_deref().unwrap_or("url unknown")
-                    ))
+                    style::dim(&where_to)
                 )?;
             }
             _ => writeln!(
@@ -627,10 +641,12 @@ impl Report for StatusReport {
     }
 }
 
-/// An epoch second, rendered for a person: RFC 3339 in UTC.
+/// An epoch second, rendered as RFC 3339 in UTC — the one form every timestamp this CLI emits
+/// takes, in every format.
 ///
-/// Terminal only — the machine formats keep the raw epoch, which is what a
-/// script wants to sort and subtract. A person wants a date.
+/// The machine formats used to keep the raw epoch here while `inspect` and the decision log
+/// carried RFC 3339, so a script reading two commands parsed two shapes, and `--since` could not
+/// take back what `history` printed. One form, everywhere.
 fn when(seconds: impl TryInto<i64>) -> String {
     permguard_core::time::to_rfc3339(seconds.try_into().unwrap_or_default())
 }
@@ -640,12 +656,58 @@ fn when(seconds: impl TryInto<i64>) -> String {
 // The client crate answers with `Zone` and `Ledger`; how they read is this
 // crate's business, like every other report.
 
+/// One zone, as this CLI reports it: the server's answer, its timestamps in the form every report
+/// uses.
+#[derive(Debug, Clone, Serialize)]
+pub struct ZoneView {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<Zone> for ZoneView {
+    fn from(zone: Zone) -> Self {
+        Self {
+            id: zone.id,
+            name: zone.name,
+            created_at: when(zone.created_at),
+            updated_at: when(zone.updated_at),
+        }
+    }
+}
+
+/// One ledger, as this CLI reports it.
+#[derive(Debug, Clone, Serialize)]
+pub struct LedgerView {
+    pub id: String,
+    pub zone_id: String,
+    pub name: String,
+    /// The ledger's default ref.
+    pub default_ref: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<Ledger> for LedgerView {
+    fn from(ledger: Ledger) -> Self {
+        Self {
+            id: ledger.id,
+            zone_id: ledger.zone_id,
+            name: ledger.name,
+            default_ref: ledger.default_ref,
+            created_at: when(ledger.created_at),
+            updated_at: when(ledger.updated_at),
+        }
+    }
+}
+
 /// A verb done to one zone: created, renamed, deleted, or just looked at.
 #[derive(Debug, Serialize)]
 pub struct ZoneReport {
     pub action: &'static str,
     #[serde(flatten)]
-    pub zone: Zone,
+    pub zone: ZoneView,
 }
 
 impl Report for ZoneReport {
@@ -665,18 +727,8 @@ impl Report for ZoneReport {
             style::dim("id:     "),
             style::id(&self.zone.id)
         )?;
-        writeln!(
-            out,
-            "  {} {}",
-            style::dim("created:"),
-            when(self.zone.created_at)
-        )?;
-        writeln!(
-            out,
-            "  {} {}",
-            style::dim("updated:"),
-            when(self.zone.updated_at)
-        )
+        writeln!(out, "  {} {}", style::dim("created:"), self.zone.created_at)?;
+        writeln!(out, "  {} {}", style::dim("updated:"), self.zone.updated_at)
     }
 }
 
@@ -692,9 +744,9 @@ fn sigil(action: &str) -> String {
 
 #[derive(Debug, Serialize)]
 pub struct ZoneListReport {
-    pub zones: Vec<Zone>,
-    /// The page this listing is, when the caller asked for one.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zones: Vec<ZoneView>,
+    /// The page this listing is, when the caller asked for one — `null` otherwise, and present
+    /// either way: a consumer reads one shape whether or not `--page` was given.
     pub page: Option<u32>,
 }
 
@@ -724,7 +776,7 @@ impl Report for ZoneListReport {
 pub struct LedgerReport {
     pub action: &'static str,
     #[serde(flatten)]
-    pub ledger: Ledger,
+    pub ledger: LedgerView,
 }
 
 impl Report for LedgerReport {
@@ -752,13 +804,13 @@ impl Report for LedgerReport {
             out,
             "  {} {}",
             style::dim("created:"),
-            when(self.ledger.created_at)
+            self.ledger.created_at
         )?;
         writeln!(
             out,
             "  {} {}",
             style::dim("updated:"),
-            when(self.ledger.updated_at)
+            self.ledger.updated_at
         )
     }
 }
@@ -766,9 +818,9 @@ impl Report for LedgerReport {
 #[derive(Debug, Serialize)]
 pub struct LedgerListReport {
     pub zone: String,
-    pub ledgers: Vec<Ledger>,
-    /// The page this listing is, when the caller asked for one.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledgers: Vec<LedgerView>,
+    /// The page this listing is, when the caller asked for one — `null` otherwise, and present
+    /// either way.
     pub page: Option<u32>,
 }
 
@@ -882,6 +934,11 @@ mod tests {
             uploaded: 0,
         });
         assert!(noop.contains("No changes."), "{noop}");
+        assert!(
+            !noop.contains("advanced"),
+            "an apply that sent nothing did not advance the ref: {noop}"
+        );
+        assert!(noop.contains("counter 7"), "{noop}");
     }
 
     #[test]
@@ -1002,7 +1059,7 @@ mod tests {
             commits: vec![HistoryLine {
                 commit: "sha256:aa".into(),
                 author: "nicola".into(),
-                author_at: 1,
+                author_at: "1970-01-01T00:00:01Z".into(),
                 message: "first".into(),
             }],
         });
@@ -1058,7 +1115,7 @@ mod tests {
                 manifest: "sha256:m".into(),
                 predecessors: vec!["sha256:p".into()],
                 author: "nicola".into(),
-                author_at: 5,
+                author_at: "1970-01-01T00:00:05Z".into(),
                 message: "msg".into(),
             }),
         });
@@ -1110,6 +1167,7 @@ mod tests {
             languages: vec!["cedar".into()],
             remote: Some("origin".into()),
             remote_url: Some("https://x".into()),
+            remote_configured: true,
             zone: Some("acme".into()),
             ledger: Some("main-ledger".into()),
             r#ref: "main".into(),
@@ -1122,12 +1180,37 @@ mod tests {
         });
         assert!(clean.contains("Clean."), "{clean}");
         assert!(clean.contains("origin/acme/main-ledger"), "{clean}");
+        assert!(!clean.contains("stands in"), "{clean}");
+
+        // The remote was removed: the URL the fallback takes is shown, and named as the fallback.
+        let fallback = terminal(&StatusReport {
+            workspace: "lab".into(),
+            languages: vec!["cedar".into()],
+            remote: Some("origin".into()),
+            remote_url: Some("http://127.0.0.1:6443".into()),
+            remote_configured: false,
+            zone: Some("acme".into()),
+            ledger: Some("main-ledger".into()),
+            r#ref: "main".into(),
+            counter: Some(2),
+            head: Some("sha256:aa".into()),
+            pending_create: 0,
+            pending_update: 0,
+            pending_delete: 0,
+            sources_valid: true,
+        });
+        assert!(fallback.contains("http://127.0.0.1:6443"), "{fallback}");
+        assert!(
+            fallback.contains("is not configured"),
+            "a fallback URL says it is one: {fallback}"
+        );
 
         let pending = terminal(&StatusReport {
             workspace: "lab".into(),
             languages: vec![],
             remote: None,
             remote_url: None,
+            remote_configured: false,
             zone: None,
             ledger: None,
             r#ref: "main".into(),
@@ -1148,6 +1231,7 @@ mod tests {
                 languages: vec![],
                 remote: None,
                 remote_url: None,
+                remote_configured: false,
                 zone: None,
                 ledger: None,
                 r#ref: "main".into(),
@@ -1168,6 +1252,10 @@ mod tests {
 /// The server's decision, verbatim — the terminal rendering says what happened
 /// and cites the policies that decided it, `-o json` prints what the PDP sent.
 /// A deny is a decision, not a failure, and it reads like one.
+///
+/// Every field is present in every answer. A consumer reads one shape whether the decision was a
+/// permit, a deny, a batch or a request the policies never saw: `policies` is `[]` rather than
+/// absent, `id` and `reason` are `null` rather than missing.
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckReport {
     /// The store the question was about, and where that came from.
@@ -1180,38 +1268,50 @@ pub struct CheckReport {
     pub resource: String,
     /// The verdict.
     pub decision: bool,
-    /// The decision's own identifier, for the audit trail.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Whether the policies saw the request at all. `false` is the deny a plane answers a request
+    /// it could not evaluate with — a subject type the schema does not declare, a partition that
+    /// failed — and `error` says why. A script that has to tell "no" from "the question never
+    /// reached a policy" reads this, not the exit code: a deny is an answer either way.
+    pub evaluated: bool,
+    /// The decision's own identifier, for the audit trail. Absent for a batch, which is an answer
+    /// about decisions rather than one of them.
     pub id: Option<String>,
-    /// The policies that decided it, by identity.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// The policies that decided it, named the way `test` names them: by the alias their author
+    /// wrote where this workspace tracks one, by identity otherwise.
     pub policies: Vec<String>,
+    /// The same policies by identity alone — what the plane cited, and what the audit record
+    /// carries.
+    pub policy_ids: Vec<String>,
     /// The operator-facing reason, when the server sent one.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// One line per boxcarred evaluation, in the order they were asked.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// Why the request could not be evaluated, when it could not.
+    pub error: Option<String>,
+    /// One line per boxcarred evaluation, in the order they were asked. Empty for a plain request.
     pub evaluations: Vec<CheckLine>,
 }
 
-/// One boxcarred decision.
+/// One boxcarred decision, with the same fields as the whole answer.
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckLine {
     pub decision: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evaluated: bool,
     pub request_id: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_ids: Vec<String>,
     pub reason: Option<String>,
+    pub error: Option<String>,
 }
 
 impl CheckReport {
     /// Reads the answer beside the request that produced it.
+    ///
+    /// `aliases` names the policies: identity → the alias its author wrote, from the head the
+    /// workspace tracks. Empty outside a checkout, where the identity is all there is.
     pub fn of(
         payload: &serde_json::Value,
         answer: &serde_json::Value,
         store_from: &'static str,
+        aliases: &std::collections::BTreeMap<String, String>,
     ) -> Self {
         let text = |value: &serde_json::Value, field: &str| {
             value
@@ -1225,6 +1325,8 @@ impl CheckReport {
             None => String::new(),
         };
         let context = answer.get("context");
+        let (reason, error) = reasons(context);
+        let policy_ids = policies(context);
 
         Self {
             zone: text(payload, "zone"),
@@ -1240,29 +1342,41 @@ impl CheckReport {
                 .get("decision")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false),
+            evaluated: error.is_none(),
             id: context
                 .and_then(|context| context.get("id"))
                 .and_then(serde_json::Value::as_str)
                 .map(ToOwned::to_owned),
-            policies: policies(context),
-            reason: reason(context),
+            policies: named(&policy_ids, aliases),
+            policy_ids,
+            reason,
+            error,
             evaluations: answer
                 .get("evaluations")
                 .and_then(serde_json::Value::as_array)
                 .map(|entries| {
                     entries
                         .iter()
-                        .map(|entry| CheckLine {
-                            decision: entry
-                                .get("decision")
-                                .and_then(serde_json::Value::as_bool)
-                                .unwrap_or(false),
-                            request_id: entry
-                                .get("request_id")
-                                .and_then(serde_json::Value::as_str)
-                                .map(ToOwned::to_owned),
-                            policies: policies(entry.get("context")),
-                            reason: reason(entry.get("context")),
+                        .map(|entry| {
+                            let context = entry.get("context");
+                            let (reason, error) = reasons(context);
+                            let policy_ids = policies(context);
+
+                            CheckLine {
+                                decision: entry
+                                    .get("decision")
+                                    .and_then(serde_json::Value::as_bool)
+                                    .unwrap_or(false),
+                                evaluated: error.is_none(),
+                                request_id: entry
+                                    .get("request_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(ToOwned::to_owned),
+                                policies: named(&policy_ids, aliases),
+                                policy_ids,
+                                reason,
+                                error,
+                            }
                         })
                         .collect()
                 })
@@ -1284,13 +1398,45 @@ fn policies(context: Option<&serde_json::Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The operator's half of the reason: the full one, which is what somebody
-/// running a CLI is.
-fn reason(context: Option<&serde_json::Value>) -> Option<String> {
-    let reason = context?.get("reason_admin")?;
-    let message = reason.get("message")?.as_str()?;
+/// The policies by the names a person reads: the alias where one is tracked, the identity
+/// otherwise — the rule `test` names them by, so a failed case and the decision it corresponds to
+/// finally share a name.
+fn named(ids: &[String], aliases: &std::collections::BTreeMap<String, String>) -> Vec<String> {
+    ids.iter()
+        .map(|id| aliases.get(id).cloned().unwrap_or_else(|| id.clone()))
+        .collect()
+}
 
-    Some(message.to_owned())
+/// The operator's half of the reason, and — when its code says the request was never evaluated —
+/// the error it is.
+///
+/// The plane answers an evaluation it could not perform as a deny whose `reason_admin` carries
+/// code `500`, the same thing the local run calls a refusal. The code used to be dropped here,
+/// which left a deny nothing permitted and a deny nothing evaluated printing the same way.
+fn reasons(context: Option<&serde_json::Value>) -> (Option<String>, Option<String>) {
+    let Some(reason) = context.and_then(|context| context.get("reason_admin")) else {
+        return (None, None);
+    };
+    let message = reason
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned);
+    let code = reason
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let error = if code == "500" { message.clone() } else { None };
+
+    (message, error)
+}
+
+/// A policy as a person reads it: the alias, with the identity it stands for beside it.
+fn policy_named(name: &str, id: &str) -> String {
+    if name == id {
+        style::id(id)
+    } else {
+        format!("{} {}", style::bold(name), style::dim(id))
+    }
 }
 
 impl Report for CheckReport {
@@ -1317,33 +1463,63 @@ impl Report for CheckReport {
             self.action,
             style::id(&self.resource)
         )?;
-        if let Some(reason) = &self.reason {
-            let symbol = if self.decision {
-                style::create("+")
-            } else {
-                style::delete("-")
-            };
-            writeln!(out, "  {symbol} {reason}")?;
+        match (&self.error, &self.reason) {
+            // Not a deny the policies reached: said as what it is, on its own line.
+            (Some(error), _) => writeln!(out, "  {} {error}", style::delete("!"))?,
+            (None, Some(reason)) => {
+                let symbol = if self.decision {
+                    style::create("+")
+                } else {
+                    style::delete("-")
+                };
+                writeln!(out, "  {symbol} {reason}")?;
+            }
+            (None, None) => {}
         }
-        for policy in &self.policies {
-            writeln!(out, "    {} {}", style::dim("policy"), style::id(policy))?;
+        for (policy, id) in self.policies.iter().zip(&self.policy_ids) {
+            writeln!(
+                out,
+                "    {} {}",
+                style::dim("policy"),
+                policy_named(policy, id)
+            )?;
         }
         for (index, line) in self.evaluations.iter().enumerate() {
-            let symbol = if line.decision {
-                style::create("+")
-            } else {
-                style::delete("-")
-            };
             let named = line
                 .request_id
                 .clone()
                 .unwrap_or_else(|| format!("#{index}"));
-            writeln!(
-                out,
-                "  {symbol} {} {}",
-                style::id(&named),
-                line.reason.clone().unwrap_or_default()
-            )?;
+            match &line.error {
+                Some(error) => {
+                    writeln!(
+                        out,
+                        "  {} {} {error}",
+                        style::delete("!"),
+                        style::id(&named)
+                    )?;
+                }
+                None => {
+                    let symbol = if line.decision {
+                        style::create("+")
+                    } else {
+                        style::delete("-")
+                    };
+                    writeln!(
+                        out,
+                        "  {symbol} {} {}",
+                        style::id(&named),
+                        line.reason.clone().unwrap_or_default()
+                    )?;
+                }
+            }
+            for (policy, id) in line.policies.iter().zip(&line.policy_ids) {
+                writeln!(
+                    out,
+                    "      {} {}",
+                    style::dim("policy"),
+                    policy_named(policy, id)
+                )?;
+            }
         }
         if let Some(id) = &self.id {
             writeln!(out, "  {} {}", style::dim("decision id"), style::id(id))?;
@@ -1351,18 +1527,27 @@ impl Report for CheckReport {
         writeln!(out)?;
 
         let summary = if self.evaluations.is_empty() {
-            if self.decision {
-                "Permitted.".to_owned()
-            } else {
-                "Denied.".to_owned()
+            match (self.decision, self.evaluated) {
+                (true, _) => "Permitted.".to_owned(),
+                (false, true) => "Denied.".to_owned(),
+                (false, false) => "Not evaluated — denied.".to_owned(),
             }
         } else {
             let permitted = self.evaluations.iter().filter(|line| line.decision).count();
-            format!(
+            let unevaluated = self
+                .evaluations
+                .iter()
+                .filter(|line| !line.evaluated)
+                .count();
+            let mut summary = format!(
                 "{} of {} evaluations permitted.",
                 permitted,
                 self.evaluations.len()
-            )
+            );
+            if unevaluated > 0 {
+                summary.push_str(&format!(" {unevaluated} not evaluated."));
+            }
+            summary
         };
         writeln!(out, "{}", style::bold(&summary))?;
 
@@ -1445,10 +1630,20 @@ fn bytes_of(bytes: u64) -> String {
     }
 }
 
+/// A case file that did not read as cases, and why. Part of the run's answer, not a reason for
+/// the run not to happen: one broken file used to switch off the whole suite.
+#[derive(Debug, Clone, Serialize)]
+pub struct UnreadableLine {
+    pub source: String,
+    pub problem: String,
+}
+
 /// `test --list`: the cases and what each one claims, decided against nothing.
 #[derive(Debug, Serialize)]
 pub struct TestListReport {
     pub cases: Vec<TestListLine>,
+    /// The files that could not be read as cases. Empty when every file read.
+    pub unreadable: Vec<UnreadableLine>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1476,6 +1671,10 @@ impl Report for TestListReport {
                 style::id(&case.request)
             )?;
         }
+        for held in &self.unreadable {
+            writeln!(out, "  {} {}", style::delete("!"), held.source)?;
+            writeln!(out, "    {}", style::delete(&held.problem))?;
+        }
         writeln!(out)?;
         writeln!(
             out,
@@ -1498,24 +1697,29 @@ pub struct TestReport {
     /// What was actually asked: these sources, or a named plane. A report that does not say
     /// cannot be read six months later, and `--remote` makes the two look alike.
     pub asked: String,
+    /// The files that could not be read as cases. Not counted among `failed` — they are not cases
+    /// — and the run is not green while one is present, whatever its cases decided.
+    pub unreadable: Vec<UnreadableLine>,
 }
 
+/// One case's outcome. Every field is present in every line — `decision` is `null` when the
+/// request was not evaluated, the lists are `[]` when empty — so a consumer reads one shape for
+/// a permit, a deny, a refusal and a batch alike.
 #[derive(Debug, Serialize)]
 pub struct TestCaseLine {
     pub name: String,
     pub source: String,
     pub profile: String,
     pub passed: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The decision reached; `null` when the request could not be evaluated.
     pub decision: Option<bool>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// The policies that decided, by alias where one is authored.
     pub policies: Vec<String>,
     /// One per boxcarred evaluation, as `id=permit`. Empty for a plain request.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub evaluations: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// The refusal, when the request could not be evaluated.
     pub error: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// Why the case failed. Empty when it passed.
     pub problems: Vec<String>,
 }
 
@@ -1571,18 +1775,34 @@ impl Report for TestReport {
                 writeln!(out, "        {}", style::dim(&case.source))?;
             }
         }
+        for held in &self.unreadable {
+            writeln!(
+                out,
+                "  {}  {}  {}",
+                style::delete("fail"),
+                held.source,
+                style::dim("[not a list of cases]")
+            )?;
+            writeln!(out, "        {}", style::delete(&held.problem))?;
+        }
         writeln!(out)?;
         writeln!(out, "  {} {}", style::dim("asked"), style::dim(&self.asked))?;
         writeln!(out)?;
 
-        let summary = format!(
+        let mut summary = format!(
             "{} case(s), {} passed, {} failed.",
             self.cases.len(),
             self.passed,
             self.failed
         );
+        if !self.unreadable.is_empty() {
+            summary.push_str(&format!(
+                " {} file(s) could not be read as cases.",
+                self.unreadable.len()
+            ));
+        }
 
-        if self.failed == 0 {
+        if self.failed == 0 && self.unreadable.is_empty() {
             writeln!(out, "{}", style::ok(&style::bold(&summary)))
         } else {
             writeln!(out, "{}", style::delete(&style::bold(&summary)))

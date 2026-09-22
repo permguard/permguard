@@ -56,7 +56,7 @@ pub fn inspect_report(
                 manifest: commit.manifest.to_string(),
                 predecessors: commit.predecessors.iter().map(|p| p.to_string()).collect(),
                 author: commit.author.clone(),
-                author_at: commit.author_at,
+                author_at: permguard_core::time::to_rfc3339(commit.author_at),
                 message: commit.message.clone(),
             });
         }

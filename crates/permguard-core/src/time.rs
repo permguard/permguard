@@ -129,6 +129,72 @@ pub fn to_rfc3339(seconds: i64) -> String {
     )
 }
 
+/// Reads a timestamp written as RFC 3339, to the second — or nothing when it is not one.
+///
+/// `2026-08-01T00:00:00Z`, a lowercase `t` or `z`, a fraction of a second (dropped) and a numeric
+/// offset (`+02:00`, applied) are all accepted. A bare date, a bare number and a clock with no zone
+/// are refused. It exists so a filter typed at a terminal can be checked before it is compared:
+/// two timestamps compare correctly as text only when both are in this module's canonical form,
+/// and an input that is not a timestamp at all has to be a refusal — not a filter that quietly
+/// matches everything, or nothing.
+pub fn from_rfc3339(text: &str) -> Option<i64> {
+    let text = text.trim();
+    let (date, rest) = text.split_at_checked(10)?;
+    let date = Date::from_iso(date)?;
+    // `from_iso` checks the ranges a month cannot exceed; the round trip checks the one it can.
+    if date_of(days_of(date)) != date {
+        return None;
+    }
+    let rest = rest.strip_prefix(['T', 't'])?;
+
+    let (clock, rest) = rest.split_at_checked(8)?;
+    let mut parts = clock.split(':');
+    let hour: i64 = parts.next()?.parse().ok()?;
+    let minute: i64 = parts.next()?.parse().ok()?;
+    let second: i64 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || hour > 23 || minute > 59 || second > 60 {
+        return None;
+    }
+
+    // A fraction is allowed and dropped: records carry whole seconds.
+    let rest = match rest.strip_prefix('.') {
+        Some(fraction) => {
+            let digits = fraction
+                .find(|character: char| !character.is_ascii_digit())
+                .unwrap_or(fraction.len());
+            if digits == 0 {
+                return None;
+            }
+            &fraction[digits..]
+        }
+        None => rest,
+    };
+
+    let offset = match rest {
+        "Z" | "z" => 0,
+        signed => {
+            let sign = match signed.chars().next()? {
+                '+' => 1,
+                '-' => -1,
+                _ => return None,
+            };
+            let (hours, minutes) = signed.get(1..)?.split_once(':')?;
+            if hours.len() != 2 || minutes.len() != 2 {
+                return None;
+            }
+            let hours: i64 = hours.parse().ok()?;
+            let minutes: i64 = minutes.parse().ok()?;
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
+
+            sign * (hours * 3600 + minutes * 60)
+        }
+    };
+
+    Some(days_of(date) * DAY + hour * 3600 + minute * 60 + second - offset)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +282,45 @@ mod tests {
     #[test]
     fn test_a_timestamp_before_the_epoch_lands_on_the_day_it_belongs_to() {
         assert_eq!(to_rfc3339(-1), "1969-12-31T23:59:59Z");
+    }
+
+    #[test]
+    fn test_a_timestamp_reads_back_to_the_seconds_it_was_written_from() {
+        for seconds in [0, 951_782_400, 1_609_459_199, 1_754_697_600, 1_789_997_319] {
+            assert_eq!(from_rfc3339(&to_rfc3339(seconds)), Some(seconds));
+        }
+    }
+
+    #[test]
+    fn test_the_forms_rfc3339_allows_are_all_read_as_the_same_instant() {
+        let canonical = from_rfc3339("2026-08-01T00:00:00Z");
+        assert!(canonical.is_some());
+        for written in [
+            "2026-08-01t00:00:00z",
+            "2026-08-01T00:00:00.250Z",
+            "2026-08-01T02:00:00+02:00",
+            "2026-07-31T22:30:00-01:30",
+            " 2026-08-01T00:00:00Z ",
+        ] {
+            assert_eq!(from_rfc3339(written), canonical, "reading {written:?}");
+        }
+    }
+
+    #[test]
+    fn test_something_that_is_not_a_timestamp_is_refused() {
+        for written in [
+            "",
+            "1789981824",
+            "not-a-date",
+            "2026-08-01",
+            "2026-08-01T00:00:00",
+            "2026-08-01T24:00:00Z",
+            "2026-02-30T00:00:00Z",
+            "2026-08-01T00:00:00.Z",
+            "2026-08-01T00:00:00+2:00",
+            "2026-08-01 00:00:00Z",
+        ] {
+            assert!(from_rfc3339(written).is_none(), "reading {written:?}");
+        }
     }
 }

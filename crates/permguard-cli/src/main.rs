@@ -245,7 +245,9 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Apply { message } => {
             workspace_command(&globals, WorkspaceOp::Apply { message }, &trace)
         }
-        Command::History => workspace_command(&globals, WorkspaceOp::History, &trace),
+        Command::History { limit } => {
+            workspace_command(&globals, WorkspaceOp::History { limit }, &trace)
+        }
         Command::Status => workspace_command(&globals, WorkspaceOp::Status, &trace),
         Command::Objects { action } => {
             workspace_command(&globals, WorkspaceOp::Objects(action), &trace)

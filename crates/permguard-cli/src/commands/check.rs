@@ -27,14 +27,20 @@
 //!
 //! The server's answer, unchanged, through the CLI's one output contract:
 //! `terminal`, `json` and `yaml` from the same data. A **deny is an answer**,
-//! so it prints as a decision and exits 0; only a request that could not be
-//! evaluated is a failure with a non-zero exit.
+//! so it prints as a decision and exits 0 — including the deny a plane gives
+//! a request its policies never saw (a subject type the schema does not
+//! declare, a partition that failed). That one is told apart structurally,
+//! not by exit code: `evaluated` is `false` and `error` says why. Only a
+//! request the plane **refused** — malformed, or naming a ledger it does not
+//! serve — is a failure with a non-zero exit.
 
+use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
+use permguard_cli::engine::{FsStore, Workspace};
 use permguard_control_client::pdp;
 
 use crate::args::{CheckArgs, Globals};
@@ -83,7 +89,18 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
         .evaluate(&payload)
         .map_err(|failure| Failure::from_client(&failure))?;
 
-    let report = CheckReport::of(&payload, &answer, target.origin);
+    // Inside a checkout the policies a plane cites can be named the way `test` names them: by
+    // the alias their author wrote, read from the head this workspace tracks. Anywhere else the
+    // identity is all there is — and it is always reported beside the name.
+    let aliases = if target.origin == "workspace" {
+        let workspace_store = FsStore::new(&globals.workdir);
+        Workspace::open(&workspace_store)
+            .tracked_aliases()
+            .unwrap_or_default()
+    } else {
+        BTreeMap::new()
+    };
+    let report = CheckReport::of(&payload, &answer, target.origin, &aliases);
 
     render(&report, globals.output, &trace)?;
 
@@ -166,8 +183,31 @@ fn pair(value: Option<&str>, flag: &str, example: &str) -> Result<(String, Strin
 /// none — the same rule the server enforces, said before a round trip.
 fn apply_store(payload: &mut Value, target: &target::Target) -> Result<(), Failure> {
     if target.names_store() {
-        payload["zone"] = Value::String(target.zone.clone().unwrap_or_default());
-        payload["ledger"] = Value::String(target.ledger.clone().unwrap_or_default());
+        let zone = target.zone.clone().unwrap_or_default();
+        let ledger = target.ledger.clone().unwrap_or_default();
+        // The precedence stands — the flags, then the workspace, then the document — and it is
+        // documented. What is not acceptable is applying it in silence: a document that names
+        // another store and gets an answer about this one has been answered about the wrong
+        // ledger without anybody saying so.
+        let stated = |field: &str| {
+            payload
+                .get(field)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        };
+        if let (Some(stated_zone), Some(stated_ledger)) = (stated("zone"), stated("ledger"))
+            && (stated_zone != zone || stated_ledger != ledger)
+        {
+            crate::trace::warn(format!(
+                "the document names `{stated_zone}/{stated_ledger}`; this check asks about \
+                 `{zone}/{ledger}` [{}]. Pass --ignore-workspace to send the document as written",
+                target.origin
+            ));
+        }
+        payload["zone"] = Value::String(zone);
+        payload["ledger"] = Value::String(ledger);
     }
     let named = |field: &str| {
         payload

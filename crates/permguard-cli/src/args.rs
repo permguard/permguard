@@ -25,6 +25,44 @@ const GLOBAL_HEADING: &str = "Global options";
 /// A display order past anything the tree declares, so that `-h` closes every help.
 const HELP_LAST: usize = 1000;
 
+/// A commit message, which has to say something.
+///
+/// `-m ""` used to be accepted and stored: a commit whose history line is blank. Git refuses the
+/// same thing, for the same reason — the message is what the history is for.
+fn commit_message(text: &str) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err("a commit message says what changed: it cannot be empty".to_owned());
+    }
+
+    Ok(text.to_owned())
+}
+
+/// A count that has to be at least one: a page of nothing, a history of no commits.
+///
+/// Zero used to pass and mean something else downstream — the server's default page size, in the
+/// case of `--limit` — which is a surprise, not a page of zero.
+fn positive_count(text: &str) -> Result<usize, String> {
+    match text.trim().parse::<usize>() {
+        Ok(0) => Err("must be at least 1".to_owned()),
+        Ok(count) => Ok(count),
+        Err(_) => Err(format!("`{text}` is not a whole number")),
+    }
+}
+
+/// An RFC 3339 instant, normalised to the UTC form every record carries.
+///
+/// Checked here rather than compared as typed: a `--since` is compared as text against each
+/// record's `at`, which is correct only when both are in the same canonical form. Unchecked,
+/// `--since ""` matched everything, `--since not-a-date` matched nothing, and an epoch second —
+/// which is what this CLI used to print elsewhere — was quietly ignored. Every one exited 0.
+fn rfc3339_instant(text: &str) -> Result<String, String> {
+    permguard_core::time::from_rfc3339(text)
+        .map(permguard_core::time::to_rfc3339)
+        .ok_or_else(|| {
+            format!("`{text}` is not an RFC 3339 timestamp — write one like 2026-08-01T00:00:00Z")
+        })
+}
+
 /// The command tree, with one help instead of two.
 ///
 /// clap answers `-h` with a summary and `--help` with an expanded form, so the
@@ -388,7 +426,11 @@ pub enum Command {
         #[arg(long, value_name = "LEDGER", requires = "remote")]
         ledger: Option<String>,
     },
-    /// Show what apply would change on the remote ledger.
+    /// Show what apply would change: the working tree against the tracked head, offline.
+    ///
+    /// The tracked head is what the last `pull` or `apply` converged on. A commit somebody else
+    /// applied since is not seen until the next `pull`; `verify` is the command that asks the
+    /// remote where it stands.
     #[command(after_help = "Examples:\n  permguard plan\n  permguard plan -o json")]
     Plan,
     /// Plan, then push the changes to the remote ledger.
@@ -396,15 +438,19 @@ pub enum Command {
         after_help = "Examples:\n  permguard apply\n  permguard apply -m \"require a signed artifact before approval\""
     )]
     Apply {
-        /// The commit message.
-        #[arg(short, long, default_value = "apply")]
+        /// The commit message. It cannot be empty.
+        #[arg(short, long, default_value = "apply", value_parser = commit_message)]
         message: String,
     },
-    /// Show the commit history of the tracked ref.
+    /// Show the commit history of the tracked ref, newest first.
     #[command(
-        after_help = "Examples:\n  permguard history\n  permguard history -o json | jq '.commits[].commit'"
+        after_help = "Examples:\n  permguard history\n  permguard history --limit 5\n  permguard history -o json | jq '.commits[].commit'"
     )]
-    History,
+    History {
+        /// At most this many commits, newest first. Absent: the whole chain.
+        #[arg(long, value_name = "N", value_parser = positive_count)]
+        limit: Option<usize>,
+    },
     /// Show what this workspace tracks and where it stands — offline.
     #[command(after_help = "Examples:\n  permguard status\n  permguard status -o json")]
     Status,
@@ -613,12 +659,18 @@ pub struct EventsQuery {
     #[arg(long, value_name = "CLASS")]
     pub producer_class: Option<String>,
 
-    /// Where to resume from: the opaque offset a previous page returned.
+    /// Where to resume from: the `next` a previous page returned. Paginate on `more`, not on
+    /// `next`: every page carries a `next`, even when nothing follows it.
     #[arg(long, value_name = "OFFSET")]
     pub from: Option<String>,
 
-    /// How many records to read at once.
-    #[arg(long, default_value = "100", value_name = "N")]
+    /// How many records to read at once, at least 1.
+    #[arg(
+        long,
+        default_value = "100",
+        value_name = "N",
+        value_parser = positive_count
+    )]
     pub limit: usize,
 
     /// How many bytes to read at once. The server clamps both bounds.
@@ -704,16 +756,22 @@ pub struct DecisionsQuery {
     #[arg(long, value_name = "INSTANCE", requires = "pdp")]
     pub instance: Option<String>,
 
-    /// Where to resume from: the opaque offset a previous page returned.
+    /// Where to resume from: the `next` a previous page returned. Paginate on `more`, not on
+    /// `next`: every page carries a `next`, even when nothing follows it.
     #[arg(long, value_name = "OFFSET")]
     pub from: Option<String>,
 
-    /// How many records to read at once.
-    #[arg(long, default_value = "100", value_name = "N")]
+    /// How many decisions to read at once, at least 1. Marker events in the stream are not counted.
+    #[arg(
+        long,
+        default_value = "100",
+        value_name = "N",
+        value_parser = positive_count
+    )]
     pub limit: usize,
 
-    /// Only decisions at or after this RFC 3339 timestamp.
-    #[arg(long, value_name = "TIMESTAMP")]
+    /// Only decisions at or after this RFC 3339 timestamp, e.g. 2026-08-01T00:00:00Z.
+    #[arg(long, value_name = "TIMESTAMP", value_parser = rfc3339_instant)]
     pub since: Option<String>,
 
     /// Only permits, or only denies.
@@ -862,10 +920,10 @@ pub enum ZonesAction {
     )]
     List {
         /// Which page of the listing, starting at 1. Absent: everything.
-        #[arg(long, value_name = "N")]
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
         page: Option<u32>,
-        /// How many entries per page (server-capped). Absent with --page: 100.
-        #[arg(long, value_name = "N")]
+        /// How many entries per page, at least 1 (server-capped). Absent with --page: 100.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
         size: Option<u32>,
     },
     /// Show one zone, by name or id.
@@ -919,10 +977,10 @@ pub enum LedgersAction {
         #[arg(long, alias = "zone-id")]
         zone: String,
         /// Which page of the listing, starting at 1. Absent: everything.
-        #[arg(long, value_name = "N")]
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
         page: Option<u32>,
-        /// How many entries per page (server-capped). Absent with --page: 100.
-        #[arg(long, value_name = "N")]
+        /// How many entries per page, at least 1 (server-capped). Absent with --page: 100.
+        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
         size: Option<u32>,
     },
     /// Show one ledger, by name or id.
@@ -970,7 +1028,16 @@ pub enum LedgersAction {
 #[derive(Debug, Args)]
 pub struct CheckArgs {
     /// The request document (the `permguard.api.pdp.native.v1` payload). `-` reads standard input.
-    #[arg(short, long, value_name = "FILE")]
+    ///
+    /// A document is sent as written, so it excludes the flags that describe a request of their
+    /// own: `--subject`, `--action`, `--resource` and `--context` beside `-f` are a mistake, and
+    /// used to be ignored without a word.
+    #[arg(
+        short,
+        long,
+        value_name = "FILE",
+        conflicts_with_all = ["subject", "action", "resource", "context"]
+    )]
     pub file: Option<String>,
 
     /// The zone to ask about, overriding the workspace and the document.

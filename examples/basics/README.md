@@ -392,7 +392,8 @@ task cli -- decisions list --pdp $PDP --instance $INST --verify --keys /tmp/pdp-
 **Where the offset comes in.** The control plane keeps no cursor: each page
 returns an opaque offset that belongs to you, and presenting it is how you
 continue. It is **bound to the scope that issued it** — one from `acme`
-presented under another zone is refused rather than reinterpreted:
+presented under another zone is refused rather than reinterpreted.
+Paginate on `more`, not on `next`: every page carries a `next`, even the last one.
 
 ```bash
 NEXT=$(permguard decisions list --zone acme --ledger main-ledger -o json --limit 1 | jq -r .next)
