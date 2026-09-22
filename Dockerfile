@@ -7,7 +7,7 @@ FROM rust:1.97-slim-trixie AS builder
 WORKDIR /src
 
 RUN apt-get update \
- && apt-get install --no-install-recommends --yes protobuf-compiler musl-tools \
+ && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev musl-tools \
  && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
@@ -35,12 +35,12 @@ COPY . .
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    TRIPLE="$(cat /target-triple)"; \
-    UNDERSCORED="$(echo "${TRIPLE}" | tr '-' '_')"; \
-    export "CC_${UNDERSCORED}=musl-gcc"; \
-    export "CARGO_TARGET_$(echo "${UNDERSCORED}" | tr 'a-z' 'A-Z')_LINKER=musl-gcc"; \
-    cargo build --release --locked --target "${TRIPLE}" -p "${PACKAGE}" --bin "${BIN}"; \
-    cp "target/${TRIPLE}/release/${BIN}" /usr/local/bin/permguard
+    TRIPLE="$(cat /target-triple)" \
+ && UNDERSCORED="$(echo "${TRIPLE}" | tr '-' '_')" \
+ && export "CC_${UNDERSCORED}=musl-gcc" \
+ && export "CARGO_TARGET_$(echo "${UNDERSCORED}" | tr 'a-z' 'A-Z')_LINKER=musl-gcc" \
+ && cargo build --release --locked --target "${TRIPLE}" -p "${PACKAGE}" --bin "${BIN}" \
+ && cp "target/${TRIPLE}/release/${BIN}" /usr/local/bin/permguard
 
 RUN mkdir -p /staged/var/lib/permguard \
  && chown -R 65532:65532 /staged/var/lib/permguard \

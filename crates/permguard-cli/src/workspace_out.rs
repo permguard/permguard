@@ -99,23 +99,32 @@ pub struct ApplyReport {
 impl Report for ApplyReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         if self.changes.is_empty() && self.uploaded == 0 {
+            // Nothing was planned and nothing was uploaded: `Workspace::apply` returned the
+            // checkpoint's own counter without pushing (BUG-9). "advanced" would be a lie.
             writeln!(
                 out,
                 "{} The remote ledger already matches this workspace.",
                 style::bold("No changes.")
             )?;
+            writeln!(
+                out,
+                "{} Ref `{}` stays at counter {}.",
+                style::ok(&style::bold("Nothing to apply.")),
+                self.r#ref,
+                self.counter
+            )?;
         } else {
             render_plan_lines(&self.changes, out)?;
             writeln!(out)?;
+            writeln!(
+                out,
+                "{} Ref `{}` advanced to counter {} — {} objects uploaded.",
+                style::ok(&style::bold("Apply complete.")),
+                self.r#ref,
+                self.counter,
+                self.uploaded
+            )?;
         }
-        writeln!(
-            out,
-            "{} Ref `{}` advanced to counter {} — {} objects uploaded.",
-            style::ok(&style::bold("Apply complete.")),
-            self.r#ref,
-            self.counter,
-            self.uploaded
-        )?;
         writeln!(out, "  head {}", style::id(&self.head))
     }
 }
@@ -882,6 +891,12 @@ mod tests {
             uploaded: 0,
         });
         assert!(noop.contains("No changes."), "{noop}");
+        // A no-op apply pushes nothing and the counter never moves — saying "advanced" here
+        // is the lie BUG-9 reported: two consecutive lines that contradict each other.
+        assert!(noop.contains("Nothing to apply."), "{noop}");
+        assert!(noop.contains("stays at counter 7"), "{noop}");
+        assert!(!noop.contains("Apply complete."), "{noop}");
+        assert!(!noop.contains("advanced"), "{noop}");
     }
 
     #[test]
