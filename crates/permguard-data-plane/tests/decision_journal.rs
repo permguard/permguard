@@ -78,6 +78,7 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         principal: None,
         context: Some(json!({ "ip": "10.0.0.1" })),
         partition_inputs: Some(json!({})),
+        absent_inputs: Vec::new(),
         permit,
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),
@@ -128,6 +129,30 @@ fn what_is_written_is_a_chain_from_the_genesis() {
     let verified = chain::verify(&everything(&journal), None).expect("it is a chain");
     assert!(verified.from_genesis);
     assert_eq!(verified.last_seq, 21, "one marker and twenty decisions");
+}
+
+/// A partition that was addressed with none of the input it declares is named in the record — the
+/// difference, for an auditor, between a guardrail that did not object and one that could not
+/// have. A decision that was given every input carries no such field at all.
+#[test]
+fn a_declared_input_that_was_absent_is_named_and_a_present_one_is_not() {
+    let journal = journal("absent-inputs", "1.0", WhenFull::Open, bounds());
+    let mut without = decided("id-1", true);
+    without.absent_inputs = vec!["guardrails".to_owned()];
+    journal.record(&without).expect("it records");
+    journal.record(&decided("id-2", true)).expect("it records");
+
+    let decisions: Vec<Value> = everything(&journal)
+        .into_iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect();
+
+    assert_eq!(decisions[0]["inputs"]["absent"], json!(["guardrails"]));
+    assert!(
+        decisions[1]["inputs"].get("absent").is_none(),
+        "{}",
+        decisions[1]
+    );
 }
 
 #[test]

@@ -464,6 +464,7 @@ mod tests {
                     message: "insufficient privileges".to_owned(),
                 }),
                 policies: vec!["01a0".to_owned()],
+                absent_inputs: Vec::new(),
             }),
             evaluations: Some(vec![Decision {
                 decision: true,

@@ -93,6 +93,17 @@ is cut.
   everything. On gRPC `page` and `size` carry presence (`optional`), which is what tells page 0
   apart from no page; a client built against the previous contract, which sent 0 for "not asked",
   still gets everything.
+- A partition input is required unless the manifest says otherwise. `input: { type: … }` with
+  no `required` used to mean `required: false`: a request that omitted the input was decided
+  against an empty one, in silence. It now means `required: true`, and such a request is refused
+  by name (`partition_input_required`). Fail-open is still available, written down: `required:
+  false`. Every workspace in this repository already says which it wants.
+- The empty input a request is decided against when it omits an optional one is validated against
+  the partition's schema, exactly as the same input would be if stated. A Rego schema whose
+  top-level `required` names a list therefore refuses a request that sends no document
+  (`partition_input_schema`) instead of letting the rules read `{}` and never fire. Previously
+  only a stated input reached the schema, so one document could pass by omission and fail by
+  statement.
 - Exit status `69` (`EX_UNAVAILABLE`): a plane that could not answer right now — unreachable, or
   refusing a ledger that has no history yet (`ledger_empty`) — used to exit `70` beside genuine
   internal failures, so a data plane still syncing a ledger read as the CLI being broken. `70` is
@@ -101,6 +112,16 @@ is cut.
 
 ### Added
 
+- `validate` warns where a workspace is legal and fails open: a partition whose input is optional
+  and whose Rego rules read `input.partition`, and one whose input is optional and whose schema
+  refuses the empty input a request without one is decided against. The warnings are in the
+  report (`warnings`, `[]` when there are none) and change nothing else; each says what to write
+  to make the choice deliberate.
+- A decision says which of the profile's declared inputs the request left out. The answer carries
+  `context.absent_inputs`, the record `inputs.absent` (absent when every input arrived), `check`
+  prints them beside the verdict and `decisions list` beside the policies — for an auditor, the
+  difference between a guardrail that did not object and one that was given nothing to object
+  with.
 - `history --limit N`: at most N commits, newest first.
 - `check` answers carry `evaluated`, `error` and `policy_ids`; `test` and `test --list` carry
   `unreadable`; `status` carries `remote_configured`.

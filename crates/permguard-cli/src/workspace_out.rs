@@ -214,6 +214,9 @@ pub struct ValidateReport {
     pub policies: usize,
     pub objects: usize,
     pub root: String,
+    /// Configurations that are legal and fail open, said out loud. Present either way: `[]` when
+    /// there is nothing to say.
+    pub warnings: Vec<String>,
 }
 
 impl Report for ValidateReport {
@@ -225,7 +228,12 @@ impl Report for ValidateReport {
             self.policies,
             self.objects
         )?;
-        writeln!(out, "  root {}", style::id(&self.root))
+        writeln!(out, "  root {}", style::id(&self.root))?;
+        for warning in &self.warnings {
+            writeln!(out, "  {} {warning}", style::modify("!"))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1020,8 +1028,10 @@ mod tests {
             policies: 3,
             objects: 9,
             root: "sha256:aa".into(),
+            warnings: vec!["partition `p`: its input is optional".into()],
         });
         assert!(text.contains("3"), "{text}");
+        assert!(text.contains("its input is optional"), "{text}");
 
         let text = terminal(&InitReport {
             name: "lab".into(),
@@ -1286,6 +1296,10 @@ pub struct CheckReport {
     pub reason: Option<String>,
     /// Why the request could not be evaluated, when it could not.
     pub error: Option<String>,
+    /// The profile's partitions that declare an input and were addressed with none, as the plane
+    /// reported them: they decided against an empty input. `[]` when every declared input
+    /// arrived.
+    pub absent_inputs: Vec<String>,
     /// One line per boxcarred evaluation, in the order they were asked. Empty for a plain request.
     pub evaluations: Vec<CheckLine>,
 }
@@ -1300,6 +1314,7 @@ pub struct CheckLine {
     pub policy_ids: Vec<String>,
     pub reason: Option<String>,
     pub error: Option<String>,
+    pub absent_inputs: Vec<String>,
 }
 
 impl CheckReport {
@@ -1351,6 +1366,7 @@ impl CheckReport {
             policy_ids,
             reason,
             error,
+            absent_inputs: strings(context, "absent_inputs"),
             evaluations: answer
                 .get("evaluations")
                 .and_then(serde_json::Value::as_array)
@@ -1376,6 +1392,7 @@ impl CheckReport {
                                 policy_ids,
                                 reason,
                                 error,
+                                absent_inputs: strings(context, "absent_inputs"),
                             }
                         })
                         .collect()
@@ -1386,13 +1403,18 @@ impl CheckReport {
 }
 
 fn policies(context: Option<&serde_json::Value>) -> Vec<String> {
+    strings(context, "policies")
+}
+
+/// The strings under `field` of the answer's context, `[]` when it is not there.
+fn strings(context: Option<&serde_json::Value>, field: &str) -> Vec<String> {
     context
-        .and_then(|context| context.get("policies"))
+        .and_then(|context| context.get(field))
         .and_then(serde_json::Value::as_array)
-        .map(|policies| {
-            policies
+        .map(|items| {
+            items
                 .iter()
-                .filter_map(|policy| policy.as_str().map(ToOwned::to_owned))
+                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
                 .collect()
         })
         .unwrap_or_default()
@@ -1482,6 +1504,21 @@ impl Report for CheckReport {
                 "    {} {}",
                 style::dim("policy"),
                 policy_named(policy, id)
+            )?;
+        }
+        if !self.absent_inputs.is_empty() {
+            // Said beside the verdict, because it changes what the verdict means: a guardrail that
+            // was given no list did not decline to object, it could not have.
+            writeln!(
+                out,
+                "    {} {} {}",
+                style::modify("!"),
+                style::dim("decided without input:"),
+                self.absent_inputs
+                    .iter()
+                    .map(|name| style::id(name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )?;
         }
         for (index, line) in self.evaluations.iter().enumerate() {

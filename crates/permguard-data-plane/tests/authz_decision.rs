@@ -330,6 +330,50 @@ fn ask(zone: &str, ledger: &str, subject: &str, action: &str) -> wire::CheckRequ
     .expect("the payload parses")
 }
 
+/// A partition that declares an optional input and is asked without it decides against the
+/// empty one, legally — and the answer says so, so a reader can tell "the guardrail did not
+/// object" from "the guardrail was given nothing to object with". Send the input and the field
+/// is gone.
+#[tokio::test]
+async fn an_answer_names_the_declared_inputs_the_request_left_out() {
+    let root = scratch("absent-inputs").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let decider = decider(&root);
+
+    let answer = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect("an optional input may be omitted");
+    assert_eq!(
+        answer.context.as_ref().expect("a context").absent_inputs,
+        vec!["app".to_owned()]
+    );
+
+    let mut with_store = ask("acme", "main-ledger", "alice", "read");
+    with_store.partition_inputs = serde_json::from_value(json!({
+        "app": {"type": "permguard.cedar.entities.v1", "data": []}
+    }))
+    .expect("the inputs parse");
+    let answer = decider
+        .decide(&with_store, None)
+        .await
+        .expect("the store is legal");
+    assert!(
+        answer
+            .context
+            .as_ref()
+            .expect("a context")
+            .absent_inputs
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn a_permit_is_a_permit_and_cites_the_policy_that_decided_it() {
     let root = scratch("permit").join("mirrors");

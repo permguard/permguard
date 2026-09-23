@@ -359,6 +359,22 @@ impl Asking {
         Ok(())
     }
 
+    /// The partitions that declare an input and were addressed with none, in the order given.
+    ///
+    /// They decide against the type's empty input, which is legal when the input is optional and
+    /// is exactly what an auditor has to be able to see: a guardrail whose list never arrived is
+    /// not a guardrail that did not object. Reported beside the decision and in its record; a
+    /// partition that declares no input is not named, because it was given nothing to miss.
+    pub fn absent_inputs(&self, partitions: &[PartitionTarget<'_>]) -> Vec<String> {
+        partitions
+            .iter()
+            .filter(|target| {
+                target.input.is_some() && !self.partition_inputs.contains_key(target.name)
+            })
+            .map(|target| target.name.to_owned())
+            .collect()
+    }
+
     /// What one partition is given, by the table in [`Asking::route`].
     fn input_for(&self, target: &PartitionTarget<'_>) -> Result<PartitionData, Malformed> {
         // A partition that declares no input reads none. Anything addressed to it was refused by
@@ -390,7 +406,28 @@ impl Asking {
                 ));
             }
 
-            return Ok(registered.empty());
+            // Not required and not sent: the type's own empty input — which the partition's
+            // schema still gets to see. The rules will read this input, and a schema that
+            // refuses it must refuse it here, exactly as it refuses the same `{}` sent
+            // explicitly: one input cannot pass by omission and fail by statement, and a
+            // guardrail whose list is missing must not read as a guardrail that did not object.
+            let empty = registered.empty();
+            if let Some(evaluator) = target.evaluator {
+                crate::headroom::with(|| evaluator.check_input(&empty)).map_err(|why| {
+                    malformed(
+                        "partition_input_schema",
+                        format!(
+                            "the partition `{}` was addressed with no input, and the empty input \
+                             its rules would read does not satisfy its schema: {why}. State the \
+                             input, or declare it `required: true` so a request without it is \
+                             refused by name",
+                            target.name
+                        ),
+                    )
+                })?;
+            }
+
+            return Ok(empty);
         };
 
         let data = match &body.data {
@@ -640,6 +677,12 @@ pub struct DecisionContext {
     /// a rename, so a decision and its audit record cite the same thing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<String>,
+    /// The profile's partitions that declare an input and were addressed with none: they decided
+    /// against the type's empty input. Empty when every declared input arrived — and, for a
+    /// guardrail whose rules read that input, the difference between "it did not object" and
+    /// "it could not have".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub absent_inputs: Vec<String>,
 }
 
 /// One decision.
@@ -1659,6 +1702,83 @@ mod routing_tests {
             .expect_err("the schema refuses it");
 
         assert_eq!(refused.code, "partition_input_schema");
+    }
+
+    /// The empty input a request gets by omission is the same input it could have stated, and the
+    /// schema sees both: an optional document whose schema requires a field is refused when the
+    /// request omits the document, not silently read as `{}`.
+    #[test]
+    fn an_omitted_optional_input_still_has_to_satisfy_the_schema() {
+        struct Demanding;
+        impl crate::evaluate::Evaluator for Demanding {
+            fn evaluate(&self, _query: &Query) -> crate::evaluate::Verdict {
+                unreachable!("routing refuses before anything is evaluated")
+            }
+            fn check_input(&self, input: &PartitionData) -> Result<(), String> {
+                match input.rego_data() {
+                    Some(document) if document.contains_key("restricted") => Ok(()),
+                    _ => Err("'restricted' is a required property".to_owned()),
+                }
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let input = contract(REGO_DATA_V1, false);
+        let demanding = Demanding;
+        let refused = asking(plain())
+            .expect("it is well formed")
+            .route(&[PartitionTarget::new("p", "rego")
+                .accepting(Some(&input))
+                .evaluated_by(&demanding)])
+            .expect_err("the empty document does not satisfy the schema");
+
+        assert_eq!(refused.code, "partition_input_schema");
+        assert!(refused.message.contains("no input"), "{}", refused.message);
+        assert!(
+            refused.message.contains("required: true"),
+            "{}",
+            refused.message
+        );
+
+        // Stated, the same schema is satisfied, and the request goes through.
+        let mut payload = plain();
+        payload["partition_inputs"] =
+            json!({"p": {"type": REGO_DATA_V1, "data": {"restricted": []}}});
+        asking(payload)
+            .expect("it is well formed")
+            .route(&[PartitionTarget::new("p", "rego")
+                .accepting(Some(&input))
+                .evaluated_by(&demanding)])
+            .expect("the document satisfies the schema");
+    }
+
+    /// Which declared inputs a request left out is reported, in the profile's order, and a
+    /// partition that declares none is not "missing" anything.
+    #[test]
+    fn the_declared_inputs_a_request_omitted_are_named_in_order() {
+        let optional = contract(REGO_DATA_V1, false);
+        let mut payload = plain();
+        payload["partition_inputs"] = json!({"bbb": {"type": REGO_DATA_V1, "data": {}}});
+        let asked = asking(payload).expect("it is well formed");
+        let targets = [
+            PartitionTarget::new("zzz", "rego").accepting(Some(&optional)),
+            PartitionTarget::new("bbb", "rego").accepting(Some(&optional)),
+            PartitionTarget::new("aaa", "rego").accepting(Some(&optional)),
+            PartitionTarget::new("none", "rego"),
+        ];
+
+        assert_eq!(asked.absent_inputs(&targets), vec!["zzz", "aaa"]);
+        assert!(
+            asking(plain())
+                .expect("it is well formed")
+                .absent_inputs(&[PartitionTarget::new("none", "rego")])
+                .is_empty()
+        );
     }
 
     #[test]

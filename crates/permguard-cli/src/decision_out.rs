@@ -59,6 +59,10 @@ pub struct DecisionLine {
     /// Which policies decided.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<String>,
+    /// The partitions that declared an input and were addressed with none: they decided against
+    /// an empty one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub absent_inputs: Vec<String>,
     /// The decision's own identifier.
     pub id: String,
     /// How long the plane took.
@@ -159,6 +163,14 @@ impl Report for DecisionsReport {
                     "         {} {}",
                     style::dim("policy"),
                     style::id(policy)
+                )?;
+            }
+            for name in &line.absent_inputs {
+                writeln!(
+                    out,
+                    "         {} {}",
+                    style::dim("without input"),
+                    style::id(name)
                 )?;
             }
         }

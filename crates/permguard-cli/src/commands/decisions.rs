@@ -444,6 +444,17 @@ fn report(
                         .collect()
                 })
                 .unwrap_or_default(),
+            absent_inputs: record
+                .get("inputs")
+                .and_then(|inputs| inputs.get("absent"))
+                .and_then(Value::as_array)
+                .map(|names| {
+                    names
+                        .iter()
+                        .filter_map(|name| name.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default(),
             id: string(&record, "id"),
             latency_us: record
                 .get("latency_us")

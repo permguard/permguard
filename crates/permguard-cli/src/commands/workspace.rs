@@ -799,11 +799,16 @@ pub fn workspace_command(
         }
         WorkspaceOp::Refresh | WorkspaceOp::Validate => {
             let snapshot = ws.refresh().map_err(usage)?;
+            let manifest = ws.manifest().map_err(usage)?;
+            // Valid, and said out loud where it fails open: an optional input a rule reads, or one
+            // whose schema refuses the empty input a request without it is decided against.
+            let warnings = cases::warnings(&snapshot, &manifest).map_err(usage)?;
             render(
                 &ValidateReport {
                     policies: snapshot.policies.len(),
                     objects: snapshot.objects.len(),
                     root: snapshot.root.to_string(),
+                    warnings,
                 },
                 format,
                 trace,

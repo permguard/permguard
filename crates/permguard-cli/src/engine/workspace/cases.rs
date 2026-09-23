@@ -275,35 +275,15 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
         let Some(declared) = manifest.partitions.get(&entry.name) else {
             continue;
         };
-        let runtime = manifest
-            .runtimes
-            .get(&declared.runtime)
-            .ok_or_else(|| err(format!("partition `{}` names no runtime", entry.name)))?;
-        let evaluating = registry::evaluating(&runtime.language.name).ok_or_else(|| {
-            err(format!(
-                "this build carries `{}` but not its evaluating half",
-                runtime.language.name
-            ))
-        })?;
-
-        // Read by `permguard_languages::partition::collect` — the walk the data plane performs.
-        // Not a second implementation of it: the first one this file carried lost the recursion
-        // into nested folders, and the one that replaced it lost the two checks that a partition
-        // declaring a schema has one and a partition declaring none carries none.
-        let held = languages::partition::collect(
-            &Objects(snapshot),
-            &entry.digest.to_string(),
+        let built = build(
+            snapshot,
+            manifest,
             &entry.name,
+            &entry.digest.to_string(),
             declared,
-        )
-        .map_err(|why| err(why.to_string()))?;
-
-        let evaluator: std::sync::Arc<dyn Evaluator> =
-            languages::headroom::with(|| evaluating.compile(&held.policies, &held.artifacts))
-                .map_err(|error| err(format!("partition `{}`: {error}", entry.name)))?
-                .into();
-        partitions.insert(entry.name.clone(), evaluator);
-        languages.insert(entry.name.clone(), runtime.language.name.clone());
+        )?;
+        partitions.insert(entry.name.clone(), built.evaluator);
+        languages.insert(entry.name.clone(), built.language);
     }
 
     Ok(Compiled {
@@ -312,6 +292,151 @@ pub fn compile(snapshot: &Snapshot, manifest: &Manifest) -> Result<Compiled> {
         aliases,
         manifest: manifest.clone(),
     })
+}
+
+/// One partition of the working tree, read and compiled the way a plane reads it.
+struct Built {
+    /// The language its runtime speaks.
+    language: String,
+    /// What its subtree holds, as the shared walk read it.
+    held: languages::partition::Collected,
+    evaluator: std::sync::Arc<dyn Evaluator>,
+}
+
+fn build(
+    snapshot: &Snapshot,
+    manifest: &Manifest,
+    name: &str,
+    digest: &str,
+    declared: &permguard_objects::manifest::Partition,
+) -> Result<Built> {
+    let runtime = manifest
+        .runtimes
+        .get(&declared.runtime)
+        .ok_or_else(|| err(format!("partition `{name}` names no runtime")))?;
+    let evaluating = registry::evaluating(&runtime.language.name).ok_or_else(|| {
+        err(format!(
+            "this build carries `{}` but not its evaluating half",
+            runtime.language.name
+        ))
+    })?;
+
+    // Read by `permguard_languages::partition::collect` — the walk the data plane performs.
+    // Not a second implementation of it: the first one this file carried lost the recursion
+    // into nested folders, and the one that replaced it lost the two checks that a partition
+    // declaring a schema has one and a partition declaring none carries none.
+    let held = languages::partition::collect(&Objects(snapshot), digest, name, declared)
+        .map_err(|why| err(why.to_string()))?;
+
+    let evaluator: std::sync::Arc<dyn Evaluator> =
+        languages::headroom::with(|| evaluating.compile(&held.policies, &held.artifacts))
+            .map_err(|error| err(format!("partition `{name}`: {error}")))?
+            .into();
+
+    Ok(Built {
+        language: runtime.language.name.clone(),
+        held,
+        evaluator,
+    })
+}
+
+/// What `validate` says beside "valid": configurations that are legal and fail open.
+///
+/// A partition whose input is optional is decided against the type's empty input when a request
+/// omits it. That is a legitimate choice for data a rule can do without, and a silent hole for a
+/// guardrail: a rule that reads `input.partition.restricted[_]` against `{}` finds nothing and
+/// never fires, and nothing in the run says so. These are the two shapes of that hole that can be
+/// seen from the sources alone, said here so the choice is made out loud or corrected.
+pub fn warnings(snapshot: &Snapshot, manifest: &Manifest) -> Result<Vec<String>> {
+    let root = tree_at(snapshot, &snapshot.root.to_string())?;
+    let mut warnings = Vec::new();
+    for entry in &root.entries {
+        let Some(declared) = manifest.partitions.get(&entry.name) else {
+            continue;
+        };
+        let Some(input) = declared.input.as_ref().filter(|input| !input.required) else {
+            continue;
+        };
+        let built = build(
+            snapshot,
+            manifest,
+            &entry.name,
+            &entry.digest.to_string(),
+            declared,
+        )?;
+
+        // The empty input is what a request that omits it is decided against, and the schema
+        // sees it: one that refuses it turns every such request into `partition_input_schema` —
+        // fail-closed, under the wrong name.
+        if let Some(kind) = languages::input_type(&input.r#type)
+            && let Err(why) = languages::headroom::with(|| {
+                built
+                    .evaluator
+                    .check_input(&languages::input::InputType::empty(kind))
+            })
+        {
+            warnings.push(format!(
+                "partition `{}`: its input is optional and its schema refuses the empty input a \
+                 request without one is decided against, so such a request is refused with \
+                 `partition_input_schema` — declare `required: true` to refuse it by name, or \
+                 relax the schema ({why})",
+                entry.name
+            ));
+        }
+        if built.language == "rego"
+            && built
+                .held
+                .policies
+                .iter()
+                .any(|policy| reads_partition_input(&policy.source))
+        {
+            warnings.push(format!(
+                "partition `{}`: its rules read `input.partition` and its input is optional, so a \
+                 request that omits it is decided against an empty document and a rule written \
+                 there never fires — declare `required: true`, or make the absence deliberate and \
+                 cover it with a case in `{}/`",
+                entry.name, DEFAULT_DIRECTORY
+            ));
+        }
+    }
+
+    Ok(warnings)
+}
+
+/// Whether a Rego module reads its partition's document: `input.partition`, outside comments.
+///
+/// A textual reading, not the AST. It feeds a warning, and a module that reaches the document
+/// through a variable is rare enough that missing it costs a warning and never a decision; a `#`
+/// inside a string literal costs the same.
+fn reads_partition_input(source: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(source);
+    text.lines().any(|line| {
+        let code = line.split_once('#').map_or(line, |(code, _)| code);
+        code.match_indices("input.partition").any(|(at, needle)| {
+            let before = code[..at].chars().next_back();
+            let after = code[at + needle.len()..].chars().next();
+            !before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
+                && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    })
+}
+
+#[cfg(test)]
+mod input_warning_tests {
+    use super::reads_partition_input;
+
+    #[test]
+    fn a_rule_that_reads_the_partition_document_is_seen_and_a_comment_is_not() {
+        assert!(reads_partition_input(
+            b"deny if {\n    some s in input.partition.restricted\n}\n"
+        ));
+        assert!(reads_partition_input(b"deny if input.partition[\"x\"]\n"));
+        assert!(!reads_partition_input(
+            b"# it reads input.partition later\ndefault deny := false\n"
+        ));
+        assert!(!reads_partition_input(b"deny if input.partitions.x\n"));
+        assert!(!reads_partition_input(b"deny if data.input.partition\n"));
+    }
 }
 
 /// A built snapshot, as the shared partition walk reads it.

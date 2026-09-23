@@ -1124,6 +1124,8 @@ struct OwnedDecided {
     principal: Option<(String, String)>,
     context: Option<serde_json::Value>,
     partition_inputs: Option<serde_json::Value>,
+    /// The partitions that declare an input and were addressed with none.
+    absent_inputs: Vec<String>,
     permit: bool,
     policies: Vec<String>,
     reason: String,
@@ -1153,6 +1155,7 @@ impl OwnedDecided {
             principal: self.principal.clone(),
             context: self.context.clone(),
             partition_inputs: self.partition_inputs.clone(),
+            absent_inputs: self.absent_inputs.clone(),
             permit: self.permit,
             policies: self.policies.clone(),
             reason: self.reason.clone(),
@@ -1249,6 +1252,9 @@ impl Decider {
                     .map(|principal| ("Principal".to_owned(), token(principal))),
                 context: serde_json::to_value(&query.context).ok(),
                 partition_inputs: serde_json::to_value(&query.partition_inputs).ok(),
+                absent_inputs: context
+                    .map(|context| context.absent_inputs.clone())
+                    .unwrap_or_default(),
                 permit: decision.decision,
                 policies: context
                     .map(|context| context.policies.clone())
@@ -1317,6 +1323,7 @@ impl Decider {
             principal: None,
             context: at.context.clone(),
             partition_inputs: None,
+            absent_inputs: Vec::new(),
             permit: at.permit,
             policies: at.policies.to_vec(),
             reason: at.reason.to_owned(),
@@ -1504,7 +1511,10 @@ impl Plan {
 
                 ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
             })?;
-            let decision = self.evaluate(queries, request_id.clone());
+            // Which declared inputs this evaluation left out — decided against the type's empty
+            // input, legally, and said so beside the answer and in its record.
+            let absent_inputs = asking.absent_inputs(&targets);
+            let decision = self.evaluate(queries, request_id.clone(), absent_inputs);
             let stop = self.resolved.semantic.stops(decision.decision);
             decisions.push(decision);
             if stop {
@@ -1522,7 +1532,12 @@ impl Plan {
     /// the runtime's own reading of the action. They are paired by position, which
     /// `Asking::route` guarantees, and `evaluate_all` answers in that same order however the
     /// engines finished.
-    fn evaluate(&self, queries: Vec<Query>, request_id: Option<String>) -> Decision {
+    fn evaluate(
+        &self,
+        queries: Vec<Query>,
+        request_id: Option<String>,
+        absent_inputs: Vec<String>,
+    ) -> Decision {
         let work: Vec<(Arc<dyn permguard_languages::Evaluator>, Query)> = self
             .partitions
             .iter()
@@ -1566,6 +1581,7 @@ impl Plan {
                 )),
                 reason_user: Some(reason_user(permit)),
                 policies: outcome.determining().to_vec(),
+                absent_inputs,
             }),
         }
     }
@@ -1673,6 +1689,22 @@ fn batch_context(
             }
         }
     }
+    // What the batch as a whole was decided without: every evaluation's, once each. A reader of
+    // the top-level answer must not have to open each evaluation to learn that a guardrail's list
+    // never arrived.
+    let mut absent_inputs: Vec<String> = Vec::new();
+    for decision in decisions {
+        for name in decision
+            .context
+            .as_ref()
+            .map(|context| context.absent_inputs.as_slice())
+            .unwrap_or_default()
+        {
+            if !absent_inputs.contains(name) {
+                absent_inputs.push(name.clone());
+            }
+        }
+    }
     let named: Vec<String> = deciding
         .iter()
         .map(|(index, decision)| format!("`{}`", name(*index, decision)))
@@ -1715,6 +1747,7 @@ fn batch_context(
         reason_admin: Some(reason_admin),
         reason_user: Some(reason_user(overall)),
         policies,
+        absent_inputs,
     }
 }
 
@@ -1777,6 +1810,7 @@ mod tests {
                 }),
                 reason_user: None,
                 policies: policies.iter().map(|policy| (*policy).to_owned()).collect(),
+                absent_inputs: Vec::new(),
             }),
         };
         let batch = vec![

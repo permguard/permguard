@@ -84,6 +84,8 @@ pub struct Decided<'a> {
     pub context: Option<Value>,
     /// The entity graph, for the commitment.
     pub partition_inputs: Option<Value>,
+    /// The partitions that declare an input and were addressed with none.
+    pub absent_inputs: Vec<String>,
     /// The answer.
     pub permit: bool,
     /// Which policies decided.
@@ -877,6 +879,7 @@ impl Journal {
                 inputs: Inputs {
                     context: self.commit_to(decided.context.as_ref()),
                     partition_inputs: self.commit_to(decided.partition_inputs.as_ref()),
+                    absent: decided.absent_inputs.clone(),
                     external: Vec::new(),
                 },
                 decision: decided.permit,

@@ -19,10 +19,11 @@
 //! # Every section refuses a field it does not know
 //!
 //! `deny_unknown_fields`, on all of them, and it is not tidiness. Serde's default is to ignore
-//! what it cannot place, so `requred: true` was accepted and `required` stayed `false` — a typo
-//! turning a partition whose data is mandatory into one where it is optional, silently, in a file
-//! whose whole job is to say what is mandatory. A manifest is configuration for an authorization
-//! system: the failure mode of ignoring a key is a control that quietly is not there.
+//! what it cannot place, so `requred: false` would be accepted and `required` would keep its
+//! default — a typo silently changing what a manifest says about the data a partition needs, in
+//! a file whose whole job is to say what is mandatory. A manifest is configuration for an
+//! authorization system: the failure mode of ignoring a key is a control that quietly is not what
+//! its author wrote.
 //!
 //! This is the opposite of the rule the *request* contract follows, where an unknown field is
 //! ignored because forward compatibility is the reader's duty. A request comes from a caller who
@@ -155,9 +156,17 @@ impl From<HistoryScope> for HistoryScopeSection {
 #[serde(deny_unknown_fields)]
 pub struct InputSection {
     pub r#type: String,
-    /// Whether a request must address this partition. Default `false`.
-    #[serde(default)]
+    /// Whether a request must address this partition. Default `true`: a partition declares an
+    /// input because its rules read it, and a request that omits it is refused by name rather
+    /// than decided against an empty one. `required: false` is the explicit choice to decide
+    /// without it — a choice `validate` then asks to be deliberate.
+    #[serde(default = "required_by_default")]
     pub required: bool,
+}
+
+/// Fail closed unless the author says otherwise.
+fn required_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -373,11 +382,27 @@ profiles:
         assert!(input.required);
     }
 
+    /// An input a partition declares is one its rules read, so saying nothing about `required`
+    /// requires it: fail-open is the choice an author has to write down.
+    #[test]
+    fn an_input_that_says_nothing_about_required_is_required() {
+        let silent = WELL_FORMED.replace(", required: true", "");
+        let manifest = from_yaml(silent.as_bytes()).expect("it is well formed");
+
+        assert!(
+            manifest.partitions["p"]
+                .input
+                .as_ref()
+                .expect("the partition accepts an input")
+                .required
+        );
+    }
+
     /// A key nobody knows is a refusal, not a shrug.
     ///
-    /// `requred` was accepted and `required` stayed `false`: a partition whose data is mandatory
-    /// became one where it is optional, from one transposed letter, in the file whose whole job is
-    /// to say what is mandatory. Nothing in the run would ever have mentioned it.
+    /// `requred` was accepted and `required` kept its default: whatever the author meant to say
+    /// about the partition's data was silently not said, from one transposed letter, in the file
+    /// whose whole job is to say it. Nothing in the run would ever have mentioned it.
     #[test]
     fn a_misspelt_key_is_refused_rather_than_ignored() {
         let typo = WELL_FORMED.replace("required: true", "requred: true");

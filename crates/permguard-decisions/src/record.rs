@@ -113,6 +113,13 @@ pub struct Inputs {
     /// A keyed commitment over the inputs the request addressed to the profile's partitions.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub partition_inputs: Option<String>,
+    /// The profile's partitions that declare an input and were addressed with none, in the
+    /// profile's order: they decided against the type's empty input. Absent when every declared
+    /// input arrived. A commitment says what was sent; this says what was not, which for a
+    /// guardrail whose rules read that input is the difference between "it did not object" and
+    /// "it could not have".
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub absent: Vec<String>,
     /// Anything fetched at decision time. Empty until a PIP exists.
     #[serde(default)]
     pub external: Vec<Value>,

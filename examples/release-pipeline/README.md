@@ -292,6 +292,13 @@ with the rules.
 | addresses nothing, `required: true` | refused — `partition_input_required` |
 | addresses `pipeline-rego`, which declares no input | refused — `partition_input_unsupported` |
 | names a partition the profile does not hold | refused — `partition_unknown` |
+
+`required` defaults to `true`; `admin-rego` writes `required: false` on purpose, so that its guardrails can be
+asked without a list. That is a fail-open choice, and `permguard validate` says so: it warns that
+`admin-rego`'s rules read `input.partition` while the input is optional. The warning is the point of the
+example, not a defect in it — the case in `tests/` that asks without the document is what makes the
+choice deliberate. The answer to such a request names the partition in `context.absent_inputs`, and
+so does its record.
 | states a type the ledger does not declare | refused — `partition_input_type_mismatch` |
 | states a type nobody registered | refused — `partition_input_type_unknown` |
 | sends an object where the type carries an array | refused — `partition_input_malformed` |
