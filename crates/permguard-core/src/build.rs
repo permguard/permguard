@@ -17,16 +17,28 @@
 
 /// The version this binary reports: the release tag, or the workspace version
 /// for anything built outside a release.
-pub const VERSION: &str = match option_env!("PERMGUARD_BUILD_VERSION") {
-    Some(version) => version,
-    None => env!("CARGO_PKG_VERSION"),
-};
+pub const VERSION: &str = stamped(
+    option_env!("PERMGUARD_BUILD_VERSION"),
+    env!("CARGO_PKG_VERSION"),
+);
 
 /// The commit this binary was built from, or `unknown` for a build nothing stamped.
-pub const COMMIT: &str = match option_env!("PERMGUARD_BUILD_COMMIT") {
-    Some(commit) => commit,
-    None => "unknown",
-};
+pub const COMMIT: &str = stamped(option_env!("PERMGUARD_BUILD_COMMIT"), "unknown");
+
+/// The stamp, or the fallback when nobody stamped — where "nobody" includes a
+/// build that exported the variable empty.
+///
+/// `option_env!` answers `Some("")` for a variable that is set to nothing, and
+/// that is exactly what a `Dockerfile` whose `ARG` defaults to `""` exports:
+/// every image the compose lab built reported an empty version and an empty
+/// commit, and the fallback was never reached. Empty is not a version, so it
+/// is read as absent.
+const fn stamped(value: Option<&'static str>, fallback: &'static str) -> &'static str {
+    match value {
+        Some(value) if !value.is_empty() => value,
+        _ => fallback,
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -38,5 +50,13 @@ mod tests {
         // fallback path — which is the path every developer machine takes.
         assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
         assert_eq!(COMMIT, "unknown");
+    }
+
+    #[test]
+    fn test_an_empty_stamp_is_no_stamp() {
+        // What a `Dockerfile` exports when its `ARG` was left at `""`: set, and empty.
+        assert_eq!(stamped(Some(""), "fallback"), "fallback");
+        assert_eq!(stamped(None, "fallback"), "fallback");
+        assert_eq!(stamped(Some("v1.2.3"), "fallback"), "v1.2.3");
     }
 }

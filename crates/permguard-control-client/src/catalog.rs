@@ -304,7 +304,7 @@ pub fn delete_ledger(
 /// that administers.
 pub trait Catalog {
     /// Lists zones — all of them, or one page when the caller asks
-    /// (`page` 1-based, `size` capped by the server).
+    /// (`page` 0-based, `size` capped by the server).
     fn list_zones(&self, page: Option<u32>, size: Option<u32>) -> Result<Vec<Zone>, Failure>;
     fn get_zone(&self, zone: &str) -> Result<Zone, Failure>;
     /// Lists a zone's ledgers, whole or paged like [`Catalog::list_zones`].

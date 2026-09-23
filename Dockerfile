@@ -23,8 +23,10 @@ ARG BIN=permguard-control-plane
 ARG PERMGUARD_COPYRIGHT_YEAR=2022
 ARG PERMGUARD_COPYRIGHT_HOLDER="Nitro Agility S.r.l."
 ARG PERMGUARD_BUILD_COMMIT=""
-# Empty means "whatever the workspace says", which is what an unstamped build honestly is. A
-# release passes the tag here, the same string GoReleaser stamps into the published binaries.
+# Empty means "whatever the workspace says", which is what an unstamped build honestly is: the
+# binary reads an empty stamp as no stamp (`permguard_core::build`), so a lab image reports the
+# workspace version and `unknown`, not two blank fields. A release passes the tag here, the same
+# string GoReleaser stamps into the published binaries.
 ARG PERMGUARD_BUILD_VERSION=""
 ENV PERMGUARD_COPYRIGHT_YEAR=${PERMGUARD_COPYRIGHT_YEAR} \
     PERMGUARD_COPYRIGHT_HOLDER=${PERMGUARD_COPYRIGHT_HOLDER} \

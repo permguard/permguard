@@ -29,7 +29,7 @@ pub enum CatalogAction {
 /// Runs one catalog command against the control plane — over HTTP or gRPC,
 /// whichever the endpoint's scheme names; the semantics live on the server.
 /// A refusal the operator can fix — a taken name, a zone that is not empty —
-/// exits as a usage error; a transport failure exits as one.
+/// exits as a usage error; a plane that does not answer exits as unavailable.
 pub fn catalog_command(
     globals: &Globals,
     action: CatalogAction,
@@ -58,16 +58,11 @@ pub fn catalog_command(
     }
     let backend = catalog::client(&url, &tls, crate::narrator::for_run(globals.verbose))
         .map_err(Failure::usage)?;
-    // The message stays clean: the code is its own field, and only the terminal rendering appends
-    // it in parentheses — a structured error that repeats its code inside its sentence is a field
-    // nobody can trust to be prose.
-    let failed = |failure: catalog::Failure| {
-        if failure.usage {
-            Failure::usage(&failure.detail).named(failure.class, failure.reason)
-        } else {
-            Failure::internal(&failure.detail).named(failure.class, failure.reason)
-        }
-    };
+    // The one conversion every command that talks to a plane uses, so a refusal the operator can
+    // fix, a plane that is not answering and a failure inside one exit as three different
+    // statuses here exactly as they do from `check`. The message stays clean: the code is its own
+    // field, and only the terminal rendering appends it in parentheses.
+    let failed = |failure: catalog::Failure| Failure::from_client(&failure);
 
     match action {
         CatalogAction::Zones(action) => match action {

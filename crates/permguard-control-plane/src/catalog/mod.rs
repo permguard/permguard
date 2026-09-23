@@ -19,7 +19,7 @@
 ///
 /// `None` for both is the whole listing — the shape a synchronizing mirror
 /// needs, and what every caller asked for before pagination existed. Naming
-/// either narrows it: a page is 1-based, a size is clamped to
+/// either narrows it: a page is 0-based, a size is clamped to
 /// [`MAX_PAGE_SIZE`] so no caller can turn a listing into a memory test.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ListWindow {
@@ -35,11 +35,12 @@ pub(crate) const MAX_PAGE_SIZE: u32 = 1_000;
 pub(crate) const DEFAULT_PAGE_SIZE: u32 = 100;
 
 impl ListWindow {
-    /// A window from wire inputs, where zero means "not asked".
-    pub(crate) fn of(page: u32, size: u32) -> Self {
+    /// A window from wire inputs: an absent field is "not asked". Page 0 is
+    /// the first page, so it is kept; a size of 0 is no size, so it is not.
+    pub(crate) fn of(page: Option<u32>, size: Option<u32>) -> Self {
         Self {
-            page: (page > 0).then_some(page),
-            size: (size > 0).then_some(size),
+            page,
+            size: size.filter(|size| *size > 0),
         }
     }
 
@@ -55,11 +56,11 @@ impl ListWindow {
             .size
             .unwrap_or(DEFAULT_PAGE_SIZE)
             .clamp(1, MAX_PAGE_SIZE) as usize;
-        let page = self.page.unwrap_or(1).max(1) as usize;
+        let page = self.page.unwrap_or(0) as usize;
 
         items
             .into_iter()
-            .skip((page - 1).saturating_mul(size))
+            .skip(page.saturating_mul(size))
             .take(size)
             .collect()
     }
@@ -71,27 +72,41 @@ mod window_tests {
 
     #[test]
     fn no_window_is_the_whole_listing() {
-        assert_eq!(ListWindow::of(0, 0).apply(vec![1, 2, 3]), vec![1, 2, 3]);
+        assert_eq!(
+            ListWindow::of(None, None).apply(vec![1, 2, 3]),
+            vec![1, 2, 3]
+        );
     }
 
     #[test]
-    fn pages_partition_the_listing_without_overlap() {
+    fn pages_count_from_zero_and_partition_the_listing_without_overlap() {
         let items: Vec<u32> = (1..=7).collect();
-        assert_eq!(ListWindow::of(1, 3).apply(items.clone()), vec![1, 2, 3]);
-        assert_eq!(ListWindow::of(2, 3).apply(items.clone()), vec![4, 5, 6]);
-        assert_eq!(ListWindow::of(3, 3).apply(items.clone()), vec![7]);
-        assert_eq!(ListWindow::of(4, 3).apply(items), Vec::<u32>::new());
+        let page = |page: u32| ListWindow::of(Some(page), Some(3)).apply(items.clone());
+        assert_eq!(page(0), vec![1, 2, 3]);
+        assert_eq!(page(1), vec![4, 5, 6]);
+        assert_eq!(page(2), vec![7]);
+        assert_eq!(page(3), Vec::<u32>::new());
     }
 
     #[test]
     fn a_size_alone_is_the_first_page_and_a_page_alone_gets_the_default_size() {
-        assert_eq!(ListWindow::of(0, 2).apply(vec![1, 2, 3]), vec![1, 2]);
+        assert_eq!(
+            ListWindow::of(None, Some(2)).apply(vec![1, 2, 3]),
+            vec![1, 2]
+        );
         let many: Vec<u32> = (0..250).collect();
         assert_eq!(
-            ListWindow::of(2, 0).apply(many)[0],
+            ListWindow::of(Some(1), None).apply(many)[0],
             100,
-            "page 2 of the default size"
+            "page 1 of the default size is the second hundred"
         );
+    }
+
+    #[test]
+    fn a_size_of_zero_is_no_size() {
+        // The wire cannot refuse it, so it reads as "not asked": the default size applies.
+        let many: Vec<u32> = (0..250).collect();
+        assert_eq!(ListWindow::of(Some(1), Some(0)).apply(many)[0], 100);
     }
 }
 

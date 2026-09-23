@@ -20,7 +20,12 @@
 //! | `1` | no plane answered — there was nothing to inspect |
 //! | `2` | the command ran and its subject did not pass: planes answered and not all are ready, or cases failed |
 //! | `64` | the command line, or something it named, was wrong (`EX_USAGE`) |
+//! | `69` | the plane could not answer right now — unreachable, or a ledger with no history yet — and retrying is reasonable (`EX_UNAVAILABLE`) |
 //! | `70` | the command failed for an internal reason (`EX_SOFTWARE`) |
+//!
+//! `69` and `70` are the line between "wait" and "page somebody": a data plane that has not
+//! mirrored a ledger's first commit yet answers `ledger_empty`, which is nothing the operator
+//! typed and nothing in this CLI, and used to exit `70` beside a decode failure.
 //!
 //! The distinction between `1` and `2` is what makes `permguard inspect` usable as a gate: a
 //! deployment that waits for `0` waits for a runtime that is actually serving, and can tell "not up
@@ -62,7 +67,9 @@ use crate::output::OutputFormat;
 use crate::session::render;
 use crate::trace::Trace;
 
-pub use crate::failure::{EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNREACHABLE, EXIT_USAGE};
+pub use crate::failure::{
+    EXIT_NOT_READY, EXIT_READY, EXIT_SOFTWARE, EXIT_UNAVAILABLE, EXIT_UNREACHABLE, EXIT_USAGE,
+};
 
 fn main() -> ExitCode {
     // Claimed once, for the whole command: a policy engine guards its own recursion by asking how

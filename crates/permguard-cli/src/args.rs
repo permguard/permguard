@@ -919,8 +919,8 @@ pub enum ZonesAction {
         after_help = "Examples:\n  permguard zones list\n  permguard zones list --page 2 --size 50\n  permguard zones list -o json | jq '.zones[].name'"
     )]
     List {
-        /// Which page of the listing, starting at 1. Absent: everything.
-        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
+        /// Which page of the listing, counted from 0. Absent: everything.
+        #[arg(long, value_name = "N")]
         page: Option<u32>,
         /// How many entries per page, at least 1 (server-capped). Absent with --page: 100.
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
@@ -976,8 +976,8 @@ pub enum LedgersAction {
         /// The zone, by name or id.
         #[arg(long, alias = "zone-id")]
         zone: String,
-        /// Which page of the listing, starting at 1. Absent: everything.
-        #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]
+        /// Which page of the listing, counted from 0. Absent: everything.
+        #[arg(long, value_name = "N")]
         page: Option<u32>,
         /// How many entries per page, at least 1 (server-capped). Absent with --page: 100.
         #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..))]

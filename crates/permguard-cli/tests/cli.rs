@@ -416,7 +416,7 @@ fn a_decision_log_that_cannot_be_reached_is_unavailable_not_a_usage_error() {
 
     // The distinction a script depends on: nothing the operator typed is
     // wrong, so retrying later is the right response.
-    assert_eq!(output.status.code(), Some(70));
+    assert_eq!(output.status.code(), Some(69));
     assert!(
         stderr(&output).contains("decision_log_unreachable"),
         "{}",
@@ -731,7 +731,7 @@ fn write_one_case(dir: &Path) {
     .expect("the cases are written");
 }
 
-/// A value that cannot mean anything is refused where it is typed, before any network: a page or
+/// A value that cannot mean anything is refused where it is typed, before any network: a size or
 /// a limit of zero, an empty commit message, a `--since` that is not a timestamp, and a document
 /// sent beside the flags that would describe another request.
 #[test]
@@ -750,7 +750,6 @@ fn a_value_that_cannot_mean_anything_is_refused_before_any_network() {
         "http://127.0.0.1:1",
     ];
     let cases: Vec<(Vec<&str>, &str)> = vec![
-        (vec!["zones", "list", "--page", "0"], "--page"),
         (vec!["zones", "list", "--size", "0"], "--size"),
         (vec!["history", "--limit", "0"], "at least 1"),
         (vec!["apply", "-m", ""], "cannot be empty"),
@@ -780,6 +779,34 @@ fn a_value_that_cannot_mean_anything_is_refused_before_any_network() {
             stderr(&output)
         );
     }
+}
+
+/// Pages count from zero, as every C-like interface counts: `--page 0` is the first page, not a
+/// value refused where it is typed. The endpoint answers nothing, so the outcome is the plane
+/// being unavailable — which is what proves the request left the parser.
+#[test]
+fn page_zero_is_the_first_page_and_reaches_the_network() {
+    let dir = scratch("page-zero");
+    let output = run(
+        &dir,
+        &[
+            "zones",
+            "list",
+            "--page",
+            "0",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "-o",
+            "json",
+        ],
+    );
+
+    let said = stderr(&output);
+    assert_eq!(output.status.code(), Some(69), "{said}");
+    assert!(!said.contains("--page"), "{said}");
+    let failure: serde_json::Value =
+        serde_json::from_str(&said).unwrap_or_else(|error| panic!("{said}: {error}"));
+    assert_eq!(failure["class"], "unavailable", "{said}");
 }
 
 /// `-w` says it is "the directory relative paths are resolved against", and every flag that names
@@ -1260,7 +1287,7 @@ fn an_event_log_that_cannot_be_reached_is_unavailable_not_a_usage_error() {
         ],
     );
 
-    assert_eq!(output.status.code(), Some(70));
+    assert_eq!(output.status.code(), Some(69));
     let said = stderr(&output);
     let failure: serde_json::Value =
         serde_json::from_str(&said).unwrap_or_else(|error| panic!("{said}: {error}"));
@@ -1302,7 +1329,7 @@ fn events_answers_in_all_three_formats_and_keeps_refusals_off_stdout() {
             ],
         );
 
-        assert_eq!(output.status.code(), Some(70), "{format}");
+        assert_eq!(output.status.code(), Some(69), "{format}");
         assert!(
             output.stdout.is_empty(),
             "{format}: a refusal reached stdout: {}",

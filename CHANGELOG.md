@@ -61,14 +61,18 @@ is cut.
   instead of blaming a missing `tests` folder.
 - `apply` with nothing to send no longer prints "Ref advanced" after "No changes".
 - `apply -m ""` is refused: a commit message cannot be empty.
-- `zones list`, `ledgers list`, `decisions list`, `events list` and `history` refuse `--page 0`,
-  `--size 0` and `--limit 0` where they are typed.
+- `zones list` and `ledgers list` refuse `--size 0`, and `decisions list`, `events list` and
+  `history` refuse `--limit 0`, where they are typed.
 - `plan` says what it is — the working tree against the tracked head, offline — in its help and
   its "No changes" line, instead of claiming to have compared with the remote ledger.
 - `decisions get` for an identifier that is not there says that a plane ships records in batches
   and the decision may not have arrived yet.
 - `events list` on a plane that serves no event store names the two switches that gate it,
   instead of the bare `route_unknown`.
+- Planes built by the compose lab reported an empty `version` and `commit`, in `permguard inspect`
+  and on `/version`. The `Dockerfile` exports both stamps as empty strings when no build-arg names
+  them, and the binary took an empty stamp for a stamp. Empty is now no stamp: the workspace
+  version, and `unknown`.
 
 ### Changed
 
@@ -84,6 +88,16 @@ is cut.
   lists are the same.
 - A boxcarred `check` answer carries no top-level `context.id`: the identifiers are on the
   evaluations, which are what the decision log records.
+- Catalog pages count from 0, as every C-like interface counts: `zones list --page 0` and
+  `ledgers list --page 0` are the first page, `?page=0` on HTTP likewise, and absent still means
+  everything. On gRPC `page` and `size` carry presence (`optional`), which is what tells page 0
+  apart from no page; a client built against the previous contract, which sent 0 for "not asked",
+  still gets everything.
+- Exit status `69` (`EX_UNAVAILABLE`): a plane that could not answer right now — unreachable, or
+  refusing a ledger that has no history yet (`ledger_empty`) — used to exit `70` beside genuine
+  internal failures, so a data plane still syncing a ledger read as the CLI being broken. `70` is
+  now only a failure inside the CLI or the plane, and a script retries on `69`.
+  `ledger_not_served`, a ledger this plane does not mirror, stays `64`.
 
 ### Added
 

@@ -724,7 +724,7 @@ fn read_failure(error: ReadError) -> Failure {
         .named("not_found", "offset_expired"),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
         ReadError::Unavailable(detail) => {
-            Failure::internal(detail).named("unavailable", "decision_log_unreachable")
+            Failure::unavailable(detail).named("unavailable", "decision_log_unreachable")
         }
     }
 }

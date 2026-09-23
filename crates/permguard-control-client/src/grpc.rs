@@ -372,10 +372,7 @@ impl GrpcAdmin {
             .0
             .call(
                 "ListZones",
-                client.list_zones(proto::ListZonesRequest {
-                    page: page.unwrap_or(0),
-                    size: size.unwrap_or(0),
-                }),
+                client.list_zones(proto::ListZonesRequest { page, size }),
             )
             .map_err(Self::failure)?;
         Ok(answer
@@ -451,11 +448,7 @@ impl GrpcAdmin {
             .0
             .call(
                 "ListLedgers",
-                client.list_ledgers(proto::ListLedgersRequest {
-                    zone,
-                    page: page.unwrap_or(0),
-                    size: size.unwrap_or(0),
-                }),
+                client.list_ledgers(proto::ListLedgersRequest { zone, page, size }),
             )
             .map_err(Self::failure)?;
         Ok(answer

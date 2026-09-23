@@ -44,10 +44,11 @@ struct NameBody {
     name: String,
 }
 
-/// The paging a listing was asked for: `?page=2&size=50`. Absent means all —
-/// the pre-pagination contract, unchanged for every existing caller. Parsed by
-/// hand, like the decision store's window: two integers do not justify a query
-/// framework, and a parameter nobody declared is ignored rather than an error.
+/// The paging a listing was asked for: `?page=1&size=50`, pages counted from
+/// 0. Absent means all — the pre-pagination contract, unchanged for every
+/// existing caller. Parsed by hand, like the decision store's window: two
+/// integers do not justify a query framework, and a parameter nobody declared
+/// is ignored rather than an error.
 fn window_of(query: Option<&str>) -> super::ListWindow {
     let mut window = super::ListWindow::default();
     for pair in query.unwrap_or_default().split('&') {
@@ -55,7 +56,7 @@ fn window_of(query: Option<&str>) -> super::ListWindow {
             continue;
         };
         match name {
-            "page" => window.page = value.parse().ok().filter(|page| *page > 0),
+            "page" => window.page = value.parse().ok(),
             "size" => window.size = value.parse().ok().filter(|size| *size > 0),
             _ => {}
         }

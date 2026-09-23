@@ -32,7 +32,10 @@
 //! declare, a partition that failed). That one is told apart structurally,
 //! not by exit code: `evaluated` is `false` and `error` says why. Only a
 //! request the plane **refused** — malformed, or naming a ledger it does not
-//! serve — is a failure with a non-zero exit.
+//! serve — is a failure with a non-zero exit. Which exit says whose move it
+//! is: `64` for a request that was wrong, `69` for a plane that cannot answer
+//! yet — unreachable, or serving a ledger nothing has been applied to — so a
+//! script waits on one and not on the other.
 
 use std::collections::BTreeMap;
 use std::io::Read as _;

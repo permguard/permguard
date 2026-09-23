@@ -74,12 +74,15 @@ message Ledger {
 }
 
 message CreateZoneRequest { string name = 1; }
-// A page of the listing: 1-based `page`, at most `size` per page. Zero for
-// both means everything — the shape a synchronizing mirror wants, and what
-// every caller sent before pagination existed.
+// A page of the listing: 0-based `page`, at most `size` per page. Both absent
+// means everything — the shape a synchronizing mirror wants, and what every
+// caller sent before pagination existed. The fields carry presence so that
+// page 0, the first page, is told apart from no page at all; a `size` of 0 is
+// no size. A caller built against the earlier contract, which sent 0 for "not
+// asked", still gets everything: it sends no field at all.
 message ListZonesRequest {
-  uint32 page = 1;
-  uint32 size = 2;
+  optional uint32 page = 1;
+  optional uint32 size = 2;
 }
 message GetZoneRequest { string zone = 1; }
 message RenameZoneRequest { string zone = 1; string name = 2; }
@@ -92,8 +95,8 @@ message CreateLedgerRequest { string zone = 1; string name = 2; }
 message ListLedgersRequest {
   string zone = 1;
   // Same paging contract as ListZonesRequest.
-  uint32 page = 2;
-  uint32 size = 3;
+  optional uint32 page = 2;
+  optional uint32 size = 3;
 }
 message GetLedgerRequest { string zone = 1; string ledger = 2; }
 message RenameLedgerRequest { string zone = 1; string ledger = 2; string name = 3; }

@@ -892,7 +892,7 @@ fn read_failure(error: ReadError) -> Failure {
         .named("not_found", code),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
         ReadError::Unavailable(detail) => {
-            Failure::internal(detail).named("unavailable", "event_store_unreachable")
+            Failure::unavailable(detail).named("unavailable", "event_store_unreachable")
         }
     }
 }
