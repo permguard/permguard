@@ -181,6 +181,7 @@ fn context_to_proto(context: DecisionContext) -> ProtoContext {
         reason_admin: context.reason_admin.map(reason_to_proto),
         reason_user: context.reason_user.map(reason_to_proto),
         policies: context.policies,
+        absent_inputs: context.absent_inputs,
     }
 }
 
@@ -464,7 +465,7 @@ mod tests {
                     message: "insufficient privileges".to_owned(),
                 }),
                 policies: vec!["01a0".to_owned()],
-                absent_inputs: Vec::new(),
+                absent_inputs: vec!["guardrails".to_owned()],
             }),
             evaluations: Some(vec![Decision {
                 decision: true,
@@ -479,6 +480,7 @@ mod tests {
         let context = proto.context.expect("a context");
         assert_eq!(context.id, "d1");
         assert_eq!(context.policies, vec!["01a0".to_owned()]);
+        assert_eq!(context.absent_inputs, vec!["guardrails".to_owned()]);
         assert_eq!(
             context.reason_admin.expect("an admin reason").message,
             "denied by 01a0"

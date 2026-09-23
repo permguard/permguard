@@ -6,8 +6,13 @@ FROM rust:1.97-slim-trixie AS builder
 
 WORKDIR /src
 
+# `libprotobuf-dev` beside the compiler: `proto/permguard/data/v1/pdp.proto` imports the
+# well-known types (`google/protobuf/struct.proto`, `wrappers.proto`), and Debian ships those
+# `.proto` files in the -dev package, not with `protoc`. Without it a build from a clean clone —
+# or a clean BuildKit cache — fails in `permguard-control-client`'s `build.rs` before any Rust
+# source is compiled.
 RUN apt-get update \
- && apt-get install --no-install-recommends --yes protobuf-compiler musl-tools \
+ && apt-get install --no-install-recommends --yes protobuf-compiler libprotobuf-dev musl-tools \
  && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
@@ -35,14 +40,19 @@ ENV PERMGUARD_COPYRIGHT_YEAR=${PERMGUARD_COPYRIGHT_YEAR} \
 
 COPY . .
 
+# Joined with `&&`, not `;`: a `;`-chain runs every command whatever the previous one returned,
+# and the step's status is the last command's. A failed `cargo build` was followed by a `cp` of a
+# binary that was never produced, and *that* was the error BuildKit reported, with cargo's own
+# diagnostic scrolled away above it. Now `cp` never runs after a failed build, and the step fails
+# with cargo's status.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    TRIPLE="$(cat /target-triple)"; \
-    UNDERSCORED="$(echo "${TRIPLE}" | tr '-' '_')"; \
-    export "CC_${UNDERSCORED}=musl-gcc"; \
-    export "CARGO_TARGET_$(echo "${UNDERSCORED}" | tr 'a-z' 'A-Z')_LINKER=musl-gcc"; \
-    cargo build --release --locked --target "${TRIPLE}" -p "${PACKAGE}" --bin "${BIN}"; \
-    cp "target/${TRIPLE}/release/${BIN}" /usr/local/bin/permguard
+    TRIPLE="$(cat /target-triple)" \
+ && UNDERSCORED="$(echo "${TRIPLE}" | tr '-' '_')" \
+ && export "CC_${UNDERSCORED}=musl-gcc" \
+ && export "CARGO_TARGET_$(echo "${UNDERSCORED}" | tr 'a-z' 'A-Z')_LINKER=musl-gcc" \
+ && cargo build --release --locked --target "${TRIPLE}" -p "${PACKAGE}" --bin "${BIN}" \
+ && cp "target/${TRIPLE}/release/${BIN}" /usr/local/bin/permguard
 
 RUN mkdir -p /staged/var/lib/permguard \
  && chown -R 65532:65532 /staged/var/lib/permguard \

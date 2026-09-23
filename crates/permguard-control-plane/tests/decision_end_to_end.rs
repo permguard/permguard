@@ -225,6 +225,7 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         principal: None,
         context: Some(json!({ "ip": "10.0.0.1" })),
         partition_inputs: Some(json!({})),
+        absent_inputs: Vec::new(),
         permit,
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),

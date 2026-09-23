@@ -154,6 +154,10 @@ message DecisionContext {
   Reason reason_user = 3;
   // The policies that decided it, by identity.
   repeated string policies = 4;
+  // The profile's partitions that declare an input and were addressed with
+  // none: they decided against the type's empty input. Empty when every
+  // declared input arrived.
+  repeated string absent_inputs = 5;
 }
 
 message Decision {

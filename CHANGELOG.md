@@ -69,6 +69,12 @@ is cut.
   and the decision may not have arrived yet.
 - `events list` on a plane that serves no event store names the two switches that gate it,
   instead of the bare `route_unknown`.
+- `docker build` from a clean clone, or a clean BuildKit cache, no longer fails before compiling a
+  line of Rust: the image installs `libprotobuf-dev` beside `protobuf-compiler`, because the
+  well-known types `pdp.proto` imports ship in the -dev package on Debian.
+- A failed `cargo build` inside the image is reported as itself. The build step joined its
+  commands with `;`, so the `cp` of a binary that was never produced ran anyway and its error was
+  the one BuildKit showed, with cargo's diagnostic scrolled away above it.
 - Planes built by the compose lab reported an empty `version` and `commit`, in `permguard inspect`
   and on `/version`. The `Dockerfile` exports both stamps as empty strings when no build-arg names
   them, and the binary took an empty stamp for a stamp. Empty is now no stamp: the workspace

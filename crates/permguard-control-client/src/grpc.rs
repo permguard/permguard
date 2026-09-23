@@ -1188,6 +1188,18 @@ fn context_of(context: pdp::DecisionContext) -> serde_json::Value {
             Value::Array(context.policies.into_iter().map(Value::String).collect()),
         );
     }
+    if !context.absent_inputs.is_empty() {
+        object.insert(
+            "absent_inputs".to_owned(),
+            Value::Array(
+                context
+                    .absent_inputs
+                    .into_iter()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+    }
 
     Value::Object(object)
 }
