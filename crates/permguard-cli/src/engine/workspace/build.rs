@@ -47,6 +47,11 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
     let mut snapshot_objects: BTreeMap<Digest, Vec<u8>> = BTreeMap::new();
     let mut policies: Vec<PolicyRecord> = Vec::new();
     let mut problems: Vec<String> = Vec::new();
+    // What a workspace is: the manifest, the partitions it declares, `.permguardignore` and
+    // `.permguard/`. Anything else at the root is refused, not walked past: a policy in a folder
+    // nobody compiles is a policy nobody enforces, and the author who put it there believes
+    // otherwise. `.permguardignore` is where the neighbours that are not policy are excused.
+    problems.extend(root_dirt(store, manifest, &ignores)?);
     let mut ids_seen: BTreeMap<String, String> = BTreeMap::new(); // id → source file
     let mut aliases_seen: BTreeMap<String, String> = BTreeMap::new();
     let mut root_entries: Vec<TreeEntry> = Vec::new();
@@ -321,11 +326,7 @@ fn build_directory(
     for (name, is_dir) in context.store.list(fs_path).map_err(err)? {
         let child_fs = format!("{fs_path}/{name}");
         let child_logical = format!("{logical_path}/{name}");
-        if context
-            .ignores
-            .iter()
-            .any(|prefix| child_fs.starts_with(prefix.as_str()))
-        {
+        if ignored(context.ignores, &child_fs, is_dir) {
             continue;
         }
         if is_dir {
@@ -377,6 +378,18 @@ fn build_directory(
             _ => None,
         };
         if !is_policy_file && artifact.is_none() {
+            // Not a policy this runtime reads, not an artifact this partition may hold: refused,
+            // not walked past. `documents.cedr` beside `documents.cedar` is a policy nobody
+            // enforces, and the author who wrote it thinks otherwise. `.gitkeep` is the one file
+            // that only means "this folder exists".
+            if name != ".gitkeep" {
+                context.problems.push(format!(
+                    "`{child_fs}` is not a `{}` policy nor an artifact the partition `{}` \
+                     declares: move it, remove it, or list it in `.permguardignore`",
+                    context.plugin.name(),
+                    context.partition
+                ));
+            }
             continue;
         }
         let source = context
@@ -544,7 +557,43 @@ fn insert_entry(
     Ok(())
 }
 
-fn read_ignores(store: &dyn Store) -> Result<Vec<String>> {
+/// Whether `.permguardignore` excuses this path: an entry is a prefix of the path from the
+/// workspace root, and an entry written with a trailing `/` names that directory.
+pub(crate) fn ignored(ignores: &[String], path: &str, is_dir: bool) -> bool {
+    ignores.iter().any(|entry| {
+        path.starts_with(entry.as_str()) || (is_dir && entry.trim_end_matches('/') == path)
+    })
+}
+
+/// The root entries that are not part of this workspace.
+///
+/// A workspace is the manifest, the partitions it declares, `.permguardignore` and `.permguard/`.
+/// Everything else is refused rather than skipped: a `.cedar` file beside the partitions, or a
+/// folder named like a partition the manifest does not declare, is content the author can see
+/// and no build reads, and the worst outcome is the one where nothing says so. The three ways out
+/// are named, because each is right somewhere: into a partition, away, or excused by name.
+fn root_dirt(store: &dyn Store, manifest: &Manifest, ignores: &[String]) -> Result<Vec<String>> {
+    let mut dirt = Vec::new();
+    for (name, is_dir) in store.list("").map_err(err)? {
+        let known = name == ".permguard"
+            || name == ".permguardignore"
+            || name == super::manifest_file::MANIFEST_YML
+            || name == super::manifest_file::MANIFEST_YAML
+            || (is_dir && manifest.partitions.contains_key(&name));
+        if known || ignored(ignores, &name, is_dir) {
+            continue;
+        }
+        dirt.push(format!(
+            "`{name}{}` is not part of this workspace: move it into a partition, remove it, or \
+             list it in `.permguardignore`",
+            if is_dir { "/" } else { "" }
+        ));
+    }
+
+    Ok(dirt)
+}
+
+pub(crate) fn read_ignores(store: &dyn Store) -> Result<Vec<String>> {
     let Some(bytes) = store.read(".permguardignore").map_err(err)? else {
         return Ok(Vec::new());
     };

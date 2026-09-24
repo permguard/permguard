@@ -1,1 +1,5 @@
-# paths refresh never reads, one prefix per line
+# Paths Permguard never reads, one per line, a prefix of the path from the workspace root.
+# Everything else beside the manifest and the partitions is refused: what is not policy goes here.
+README.md
+requests/
+tests/

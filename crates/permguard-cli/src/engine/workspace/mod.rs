@@ -28,6 +28,24 @@ pub use sync::{ApplyOutcome, PullOutcome};
 /// The default ref a workspace starts on.
 pub const DEFAULT_REF: &str = "main";
 
+/// What `init` and `clone` write as `.permguardignore`: the neighbours a workspace usually has
+/// and no build reads. Everything else beside the manifest and the partitions is refused — see
+/// `build::root_dirt` — so this file is the one place a workspace says what it tolerates, and the
+/// list is a starting point the author edits, not a rule.
+pub const DEFAULT_IGNORES: &str = "\
+# Paths Permguard never reads: one per line, a prefix of the path from the workspace root.
+# Everything else that is not the manifest, a declared partition or `.permguard/` is refused:
+# a policy in a folder nobody compiles is a policy nobody enforces. What is not policy goes here.
+.git/
+.gitignore
+.gitattributes
+.github/
+.DS_Store
+README.md
+requests/
+tests/
+";
+
 /// One policy of a snapshot, as plans and reports show it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolicyRecord {
@@ -129,8 +147,14 @@ impl<'a> Workspace<'a> {
     /// `languages` are language names; every one must be built in, or the
     /// whole init refuses — a manifest naming an engine this build does not
     /// carry would only fail later and further from the cause.
+    ///
+    /// A workspace that is bound but holds no manifest — what a checkout of a ledger with no
+    /// history leaves — is given its shape here too, and keeps its binding: an empty ledger is
+    /// an empty workspace, and this is how it stops being one.
     pub fn init(&self, name: &str, languages: &[&str]) -> Result<()> {
-        if self.store.exists(config::CONFIG_PATH) {
+        let bound = self.store.exists(config::CONFIG_PATH);
+        let has_manifest = manifest_file::find(self.store).map_err(err)?.is_some();
+        if bound && has_manifest {
             return Err(err("this directory is already a workspace"));
         }
         if languages.is_empty() {
@@ -140,8 +164,15 @@ impl<'a> Workspace<'a> {
         // A directory that already holds a manifest is adopted, not
         // overwritten: the manifest is the author's, init only adds the
         // workspace state around it.
-        if manifest_file::find(self.store).map_err(err)?.is_some() {
+        if has_manifest {
             manifest_file::load(self.store).map_err(err)?;
+            // The manifest is the author's; the excuses for its neighbours are the workspace's,
+            // and a directory adopted without them would be dirty from its first `validate`.
+            if !self.store.exists(".permguardignore") {
+                self.store
+                    .write(".permguardignore", DEFAULT_IGNORES.as_bytes())
+                    .map_err(err)?;
+            }
             WorkspaceConfig::new().save(self.store).map_err(err)?;
             config::write_head(self.store, DEFAULT_REF).map_err(err)?;
             return Ok(());
@@ -185,15 +216,17 @@ impl<'a> Workspace<'a> {
         self.store
             .write(manifest_file::MANIFEST_YML, manifest.as_bytes())
             .map_err(err)?;
-        self.store
-            .write(
-                ".permguardignore",
-                b"# paths refresh never reads, one prefix per line\n",
-            )
-            .map_err(err)?;
+        if !self.store.exists(".permguardignore") {
+            self.store
+                .write(".permguardignore", DEFAULT_IGNORES.as_bytes())
+                .map_err(err)?;
+        }
 
-        WorkspaceConfig::new().save(self.store).map_err(err)?;
-        config::write_head(self.store, DEFAULT_REF).map_err(err)?;
+        // The binding, when there is one, is kept: the shape is new, the ledger is not.
+        if !bound {
+            WorkspaceConfig::new().save(self.store).map_err(err)?;
+            config::write_head(self.store, DEFAULT_REF).map_err(err)?;
+        }
         Ok(())
     }
 

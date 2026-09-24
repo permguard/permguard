@@ -99,6 +99,18 @@ is cut.
   everything. On gRPC `page` and `size` carry presence (`optional`), which is what tells page 0
   apart from no page; a client built against the previous contract, which sent 0 for "not asked",
   still gets everything.
+- A workspace is the manifest, the partitions it declares, `.permguardignore` and `.permguard/`,
+  and nothing else. A file or folder the build does not know — at the root, or inside a partition
+  with an extension no runtime reads — used to be skipped in silence; `validate`, `plan`, `apply`,
+  `pull`, `checkout` and `test` now refuse it by name, with the three ways out: move it into a
+  partition, remove it, or list it in `.permguardignore`. `documents.cedr` beside
+  `documents.cedar` was a policy nobody enforced, and nothing said so.
+- `checkout` of another ledger, or another ref, refuses while the tree holds changes not applied
+  to the one it tracks — a checkout never carries work from one ledger into another, where the
+  next `apply` would have published it under the wrong name. On a clean tree it now replaces the
+  manifest and the partitions with the other ledger's, like `git checkout`; what
+  `.permguardignore` names stays. Towards a ledger with no history yet the tree is emptied, and
+  `init` gives the bound workspace a shape again. The first checkout after `init` is unchanged.
 - A partition input is required unless the manifest says otherwise. `input: { type: … }` with
   no `required` used to mean `required: false`: a request that omitted the input was decided
   against an empty one, in silence. It now means `required: true`, and such a request is refused
@@ -118,6 +130,9 @@ is cut.
 
 ### Added
 
+- `init` and `clone` write a `.permguardignore` that excuses the usual neighbours of a workspace
+  (`.git/`, `.gitignore`, `.gitattributes`, `.github/`, `.DS_Store`, `README.md`, `requests/`,
+  `tests/`). An existing workspace that holds any of them lists them there once.
 - `validate` warns where a workspace is legal and fails open: a partition whose input is optional
   and whose Rego rules read `input.partition`, and one whose input is optional and whose schema
   refuses the empty input a request without one is decided against. The warnings are in the

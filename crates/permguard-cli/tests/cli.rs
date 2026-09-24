@@ -174,6 +174,41 @@ fn init_validate_plan_and_status_work_offline() {
     assert!(text.contains("workspace: cli-test"), "{text}");
 }
 
+/// A workspace is the manifest, the partitions it declares, `.permguardignore` and `.permguard/`:
+/// anything else is refused, not skipped. `notes.txt` at the root is refused by name with the
+/// three ways out; `app/typo.cedr` inside a partition — a policy nobody would ever enforce — is
+/// refused the same way; and the file `init` wrote is where the usual neighbours are excused.
+#[test]
+fn a_file_the_workspace_does_not_know_is_refused_until_it_is_moved_removed_or_ignored() {
+    let dir = scratch("dirt");
+    write_sources(&dir);
+    run(&dir, &["init", "dirt"]);
+    let ignores = std::fs::read_to_string(dir.join(".permguardignore")).expect("init wrote it");
+    assert!(ignores.contains("tests/"), "{ignores}");
+
+    std::fs::write(dir.join("notes.txt"), "todo\n").expect("the note is written");
+    std::fs::write(
+        dir.join("app/typo.cedr"),
+        "permit(principal, action, resource);\n",
+    )
+    .expect("the typo is written");
+    let refused = run(&dir, &["validate"]);
+    assert_eq!(refused.status.code(), Some(64), "{}", stderr(&refused));
+    let said = stderr(&refused);
+    for expected in ["notes.txt", "app/typo.cedr", ".permguardignore"] {
+        assert!(said.contains(expected), "{said}");
+    }
+
+    std::fs::remove_file(dir.join("app/typo.cedr")).expect("the typo is removed");
+    std::fs::write(
+        dir.join(".permguardignore"),
+        format!("{ignores}notes.txt\n"),
+    )
+    .expect("the note is excused");
+    let valid = run(&dir, &["validate"]);
+    assert!(valid.status.success(), "{}", stderr(&valid));
+}
+
 #[test]
 fn a_directory_without_a_workspace_refuses_with_the_way_in() {
     let dir = scratch("no-workspace");
@@ -1523,6 +1558,7 @@ fn the_shipped_dogwood_example_passes_its_own_test_plan() {
     std::fs::create_dir_all(&dir).expect("the workspace directory is created");
     for relative in [
         "manifest.yml",
+        ".permguardignore",
         "governance/read-after-login.dw",
         "governance/schema.cedarschema",
         "governance/events.dwschema",

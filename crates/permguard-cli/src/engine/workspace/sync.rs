@@ -13,7 +13,7 @@ use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Kind, Object, Tree};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID};
 
-use super::{PolicyRecord, Result, Workspace, err};
+use super::{PlanAction, PolicyRecord, Result, Workspace, err};
 use crate::engine::remote::Remote;
 use crate::engine::verify;
 use crate::engine::workspace::config::{self, Checkpoint};
@@ -252,6 +252,17 @@ impl Workspace<'_> {
     }
 
     /// Binds this workspace to a ledger and pulls it.
+    ///
+    /// Like `git checkout`, not like a merge: the tree becomes the ledger's. A checkout that
+    /// changes what is tracked — another ledger, or another ref of it — refuses while the tree
+    /// holds changes not applied to what it tracks now, because a checkout must never carry work
+    /// from one ledger into another, where the next `apply` would publish it under the wrong
+    /// name. On a clean tree it removes what the tracked ledger materialised — the manifest and
+    /// its partitions — and pulls the new one whole; what `.permguardignore` names was never the
+    /// ledger's and stays. Towards a ledger with no history yet that leaves an empty workspace,
+    /// which `init` gives a shape again without touching the binding. The first checkout of a
+    /// workspace only binds and pulls: `init` leaves nothing tracked to compare against, and so
+    /// does a workspace with no manifest.
     pub fn checkout(
         &self,
         remote: &dyn Remote,
@@ -262,6 +273,9 @@ impl Workspace<'_> {
     ) -> Result<PullOutcome> {
         let (zone_id, ledger_id) = remote.resolve(zone, ledger).map_err(err)?;
         let mut config = self.config()?;
+        let current_ref = config::read_head(self.store)
+            .map_err(err)?
+            .unwrap_or_else(|| super::DEFAULT_REF.to_owned());
         // The checkpoint is kept per ref, and every ledger's default ref is `main`, so two
         // ledgers checked out in turn would share one checkpoint file. Left standing, the old
         // ledger's `(head, counter)` would be read as the new one's: `status` would report a
@@ -277,6 +291,50 @@ impl Workspace<'_> {
                 held.zone_id != zone_id || held.ledger_id != ledger_id
             }
         });
+        // A workspace without a manifest holds nothing the tracked ledger materialised — a clone
+        // before its first pull, or the empty tree a checkout of an empty ledger leaves — so there
+        // is nothing to refuse over and nothing to clear.
+        let switching = config.ledger.is_some()
+            && (rebound || current_ref != r#ref)
+            && manifest_file::find(self.store).map_err(err)?.is_some();
+        if switching {
+            let tracked = config
+                .ledger
+                .as_ref()
+                .map(|held| format!("{}/{}/{}", held.remote, held.zone, held.ledger))
+                .unwrap_or_default();
+            // `plan` builds the tree first, so a workspace that does not validate — dirt
+            // included — is refused here in the build's own words, before anything is touched.
+            let (_, plan) = self.plan()?;
+            if !plan.is_empty() {
+                let (mut create, mut update, mut delete) = (0usize, 0usize, 0usize);
+                for action in &plan.actions {
+                    match action {
+                        PlanAction::Create(_) => create += 1,
+                        PlanAction::Update(_) => update += 1,
+                        PlanAction::Delete { .. } => delete += 1,
+                    }
+                }
+                let beyond = if plan.manifest_changed || !plan.other_changes.is_empty() {
+                    ", and the manifest or a schema"
+                } else {
+                    ""
+                };
+                return Err(err(format!(
+                    "the working tree has changes not applied to `{tracked}` ({create} to \
+                     create, {update} to update, {delete} to delete{beyond}): `apply` them, or \
+                     remove them, before checking out another ledger"
+                )));
+            }
+        }
+        // Whether the target has a history to pull, asked before anything is removed: towards a
+        // ledger with no ref yet there is nothing to pull, and the pull's "not found" must not be
+        // mistaken for a failure after the tree has already been cleared.
+        let target_head = if switching {
+            remote.get_ref(r#ref).map_err(err)?
+        } else {
+            None
+        };
         if rebound {
             self.store
                 .remove(&config::checkpoint_path(r#ref))
@@ -291,6 +349,39 @@ impl Workspace<'_> {
         });
         self.save_config(&config)?;
         config::write_head(self.store, r#ref).map_err(err)?;
+        if switching {
+            // The tree becomes the new ledger's. What the old one materialised goes: every
+            // partition its manifest declared, then the manifest itself. What `.permguardignore`
+            // names stays where it is, inside a partition too, as it would survive a clone.
+            let previous = manifest_file::load(self.store).map_err(err)?;
+            let ignores = super::build::read_ignores(self.store)?;
+            let mut removed = Vec::new();
+            for partition in previous.partitions.keys() {
+                clear_tree(self.store, partition, &ignores, &mut removed)?;
+            }
+            if let Some(file) = manifest_file::find(self.store).map_err(err)? {
+                self.store.remove(file).map_err(err)?;
+                removed.push(file.to_owned());
+            }
+            if target_head.is_none() {
+                // An empty ledger is an empty workspace: bound, with nothing to pull. `init`
+                // gives it a shape again, and the first `apply` creates the ledger's history.
+                return Ok(PullOutcome {
+                    head: String::new(),
+                    counter: 0,
+                    fetched: 0,
+                    materialized: Vec::new(),
+                    updated: Vec::new(),
+                    removed,
+                    previous_counter: None,
+                });
+            }
+            let mut outcome = self.pull(remote, false)?;
+            removed.append(&mut outcome.removed);
+            outcome.removed = removed;
+
+            return Ok(outcome);
+        }
         match self.pull(remote, false) {
             Ok(outcome) => Ok(outcome),
             // A ledger with no ref yet is not an error to bind to: the first
@@ -689,6 +780,37 @@ impl Workspace<'_> {
 
         Ok(plan)
     }
+}
+
+/// Removes what a directory holds, keeping what `.permguardignore` names and the directories that
+/// still hold something kept. Answers whether anything was kept.
+fn clear_tree(
+    store: &dyn Store,
+    path: &str,
+    ignores: &[String],
+    removed: &mut Vec<String>,
+) -> Result<bool> {
+    let mut kept = false;
+    for (name, is_dir) in store.list(path).map_err(err)? {
+        let child = format!("{path}/{name}");
+        if super::build::ignored(ignores, &child, is_dir) {
+            kept = true;
+            continue;
+        }
+        if is_dir {
+            if clear_tree(store, &child, ignores, removed)? {
+                kept = true;
+            }
+            continue;
+        }
+        store.remove(&child).map_err(err)?;
+        removed.push(child);
+    }
+    if !kept {
+        store.remove(path).map_err(err)?;
+    }
+
+    Ok(kept)
 }
 
 /// The artifact contracts a partition declares, by name: its typed `artifacts`, or the one

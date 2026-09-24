@@ -713,6 +713,16 @@ pub fn workspace_command(
                 },
             );
             ws.save_config(&config).map_err(usage)?;
+            // The same neighbours `init` excuses, so a clone that grows a README or a `tests/`
+            // folder is not dirty from its first commit.
+            if !permguard_cli::engine::Store::exists(&store, ".permguardignore") {
+                permguard_cli::engine::Store::write(
+                    &store,
+                    ".permguardignore",
+                    permguard_cli::engine::workspace::DEFAULT_IGNORES.as_bytes(),
+                )
+                .map_err(usage)?;
+            }
             let remote = connect(&base)?;
             let pulled = ws
                 .checkout(&remote, "origin", &zone, &ledger, "main")

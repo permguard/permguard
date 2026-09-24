@@ -26,7 +26,7 @@ pub trait Store: Send + Sync {
     /// Creates a file only if it does not exist — atomically, the primitive
     /// the lock is built on. `false` means someone else holds it.
     fn create_exclusive(&self, path: &str, bytes: &[u8]) -> Result<bool, String>;
-    /// Removes a file; removing an absent file succeeds.
+    /// Removes a file, or a directory and everything under it; removing an absent path succeeds.
     fn remove(&self, path: &str) -> Result<(), String>;
 }
 
@@ -203,7 +203,14 @@ impl Store for FsStore {
         let resolved = self.resolve(path)?;
         self.refuse_links(path)?;
 
-        match fs::remove_file(&resolved) {
+        // A directory goes with everything under it: `checkout` clears a partition this way, and
+        // `refuse_links` above is what keeps that from ever following a link out of the root.
+        let outcome = if resolved.is_dir() {
+            fs::remove_dir_all(&resolved)
+        } else {
+            fs::remove_file(&resolved)
+        };
+        match outcome {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(format!("removing {path}: {error}")),

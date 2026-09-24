@@ -3,4 +3,7 @@
 README.md
 requests/
 tests/
-release-pipeline.md
+events/
+refusals/
+session-access.md
+submit.sh

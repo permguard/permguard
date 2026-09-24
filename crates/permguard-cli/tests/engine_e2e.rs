@@ -357,13 +357,26 @@ fn checking_out_another_ledger_does_not_keep_the_previous_ledgers_checkpoint() {
     );
     assert_eq!(ws.status().unwrap().checkpoint.unwrap().counter, 1);
 
-    // Re-bound to an empty ledger. The ref does not exist there yet, which this in-process
-    // remote reports as an error; the binding is saved all the same, as it is over the wire.
+    // Re-bound to an empty ledger, from a clean tree. An empty ledger is an empty workspace: the
+    // manifest and the partitions go, nothing of the first ledger's is carried over to be
+    // published under the wrong name, and `init` gives the workspace a shape again without
+    // touching the binding.
+    let switched = ws
+        .checkout(&empty, "origin", "acme", "empty", "main")
+        .unwrap();
     assert!(
-        ws.checkout(&empty, "origin", "acme", "empty", "main")
-            .is_err(),
-        "the empty ledger has no ref yet"
+        switched
+            .removed
+            .iter()
+            .any(|path| path == "cedar/billing.cedar"),
+        "the switch says what it removed: {switched:?}"
     );
+    assert!(!store.exists("cedar/billing.cedar"));
+    assert!(!store.exists("rego/routes.rego"));
+    assert!(!store.exists("manifest.yml"));
+    assert!(!store.exists("cedar"));
+    ws.init("acme-authz", &["cedar", "rego"]).unwrap();
+    assert!(store.exists("manifest.yml"));
     let status = ws.status().unwrap();
     assert_eq!(
         status.ledger.as_ref().unwrap().ledger_id,
@@ -374,14 +387,16 @@ fn checking_out_another_ledger_does_not_keep_the_previous_ledgers_checkpoint() {
         "the previous ledger's checkpoint must not survive the rebinding: {:?}",
         status.checkpoint
     );
-
-    // So the plan is the whole tree, and the apply publishes it — for real.
     let (_, plan) = ws.plan().unwrap();
-    assert_eq!(
-        plan.actions.len(),
-        2,
-        "everything is new to the empty ledger: {plan:?}"
+    assert!(
+        plan.is_empty(),
+        "an emptied tree has nothing pending on the empty ledger: {plan:?}"
     );
+
+    // Written for the empty ledger, the apply publishes — for real, and only that.
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
     let applied = ws
         .apply(&empty, "alice@acme.com", "first on the empty ledger")
         .unwrap();
@@ -399,6 +414,177 @@ fn checking_out_another_ledger_does_not_keep_the_previous_ledgers_checkpoint() {
         source.get_ref("main").unwrap().map(|answer| answer.counter),
         Some(1),
         "and the ledger left behind was not touched"
+    );
+}
+
+/// A checkout never carries work from one ledger into another: with a policy not yet applied to
+/// the tracked ledger, checking out another one is refused, the binding does not move, and the
+/// file is still there for the author to `apply` or remove.
+#[test]
+fn a_checkout_refuses_to_carry_unapplied_work_into_another_ledger() {
+    let source = EngineRemote::new("carry-source");
+    let other = EngineRemote::for_ledger("carry-other", "ledger-other-guid");
+    let dir = scratch("carry");
+    let store = FsStore::new(&dir);
+    let ws = Workspace::open(&store);
+    ws.init("acme-authz", &["cedar", "rego"]).unwrap();
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let mut config = ws.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws.save_config(&config).unwrap();
+    let _ = ws.checkout(&source, "origin", "acme", "source", "main");
+    ws.apply(&source, "alice@acme.com", "first").unwrap();
+
+    // One more policy, not applied.
+    store
+        .write(
+            "cedar/extra.cedar",
+            "@alias(\"extra\")\npermit (principal, action == Action::\"write\", resource);\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    let refused = ws
+        .checkout(&other, "origin", "acme", "other", "main")
+        .expect_err("unapplied work does not travel");
+    assert!(
+        refused.message.contains("not applied") && refused.message.contains("1 to create"),
+        "{}",
+        refused.message
+    );
+    assert!(
+        refused.message.contains("origin/acme/source"),
+        "the refusal names what the tree still tracks: {}",
+        refused.message
+    );
+    let status = ws.status().unwrap();
+    assert_eq!(
+        status.ledger.as_ref().unwrap().ledger_id,
+        "ledger-guid",
+        "the binding did not move"
+    );
+    assert!(store.exists("cedar/extra.cedar"), "and nothing was lost");
+    assert_eq!(status.checkpoint.unwrap().counter, 1);
+}
+
+/// On a clean tree, checking out another ledger replaces the tree with that ledger's — the
+/// manifest and the partitions — and leaves what `.permguardignore` names alone.
+#[test]
+fn a_clean_checkout_replaces_the_tree_with_the_other_ledgers() {
+    let source = EngineRemote::new("replace-source");
+    let other = EngineRemote::for_ledger("replace-other", "ledger-other-guid");
+
+    // The other ledger, published by another author.
+    let dir_b = scratch("replace-author-b");
+    let store_b = FsStore::new(&dir_b);
+    let ws_b = Workspace::open(&store_b);
+    ws_b.init("other-authz", &["cedar", "rego"]).unwrap();
+    store_b
+        .write(
+            "cedar/other.cedar",
+            "@alias(\"other-ro\")\npermit (principal, action == Action::\"read\", resource);\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    store_b
+        .write(
+            "rego/other.rego",
+            "# METADATA\n# custom:\n#   alias: other-routes\npackage other.routes\n\nimport \
+             rego.v1\n\ndefault allow := false\n\nallow if input.action.name == \"list\"\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    let mut config_b = ws_b.config().unwrap();
+    config_b.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws_b.save_config(&config_b).unwrap();
+    let _ = ws_b.checkout(&other, "origin", "acme", "other", "main");
+    assert_eq!(
+        ws_b.apply(&other, "bob@acme.com", "first").unwrap().counter,
+        1
+    );
+
+    // This author: on the source ledger, clean, with a folder the ledger never knew.
+    let dir = scratch("replace");
+    let store = FsStore::new(&dir);
+    let ws = Workspace::open(&store);
+    ws.init("acme-authz", &["cedar", "rego"]).unwrap();
+    store
+        .write("cedar/billing.cedar", CEDAR.as_bytes())
+        .unwrap();
+    store.write("rego/routes.rego", REGO.as_bytes()).unwrap();
+    let ignores = String::from_utf8(store.read(".permguardignore").unwrap().unwrap()).unwrap();
+    store
+        .write(".permguardignore", format!("{ignores}notes/\n").as_bytes())
+        .unwrap();
+    store.write("notes/keep.md", b"mine\n").unwrap();
+    let mut config = ws.config().unwrap();
+    config.remotes.insert(
+        "origin".into(),
+        permguard_cli::engine::workspace::config::RemoteConfig {
+            url: "test://".into(),
+            tls_ca_file: None,
+        },
+    );
+    ws.save_config(&config).unwrap();
+    let _ = ws.checkout(&source, "origin", "acme", "source", "main");
+    ws.apply(&source, "alice@acme.com", "first").unwrap();
+
+    let switched = ws
+        .checkout(&other, "origin", "acme", "other", "main")
+        .unwrap();
+    assert_eq!(switched.counter, 1, "the other ledger's head: {switched:?}");
+    assert!(
+        !store.exists("cedar/billing.cedar"),
+        "the source's policy is gone"
+    );
+    assert!(!store.exists("rego/routes.rego"));
+    // Materialised under their canonical names, whatever the other author called the files.
+    let holds = |partition: &str, alias: &str| {
+        store.list(partition).unwrap().iter().any(|(name, _)| {
+            let bytes = store
+                .read(&format!("{partition}/{name}"))
+                .unwrap()
+                .unwrap_or_default();
+            String::from_utf8_lossy(&bytes).contains(alias)
+        })
+    };
+    assert!(
+        holds("cedar", "other-ro"),
+        "the other ledger's Cedar policy is here"
+    );
+    assert!(holds("rego", "other-routes"), "and its Rego module");
+    assert!(
+        store.exists("manifest.yml"),
+        "the manifest is the other ledger's"
+    );
+    assert!(
+        store.exists("notes/keep.md"),
+        "what is ignored is not the ledger's to remove"
+    );
+    let status = ws.status().unwrap();
+    assert_eq!(
+        status.ledger.as_ref().unwrap().ledger_id,
+        "ledger-other-guid"
+    );
+    assert_eq!(status.checkpoint.unwrap().counter, 1);
+    let (_, plan) = ws.plan().unwrap();
+    assert!(
+        plan.is_empty(),
+        "the tree is exactly the other ledger: {plan:?}"
     );
 }
 
@@ -980,6 +1166,9 @@ fn a_dogwood_bundle_the_cli_builds_is_accepted_by_the_control_plane() {
         let bytes = std::fs::read(example.join(file)).expect("the example carries it");
         store.write(file, &bytes).unwrap();
     }
+    // `init` named its partition after the language; the example's manifest declares
+    // `governance` instead, and a partition folder nobody declares is dirt, not decoration.
+    store.remove("dogwood").unwrap();
 
     let mut config = workspace.config().unwrap();
     config.remotes.insert(
@@ -1041,6 +1230,9 @@ fn a_plane_that_has_not_enabled_dogwood_refuses_the_push() {
         let bytes = std::fs::read(example.join(file)).expect("the example carries it");
         store.write(file, &bytes).unwrap();
     }
+    // `init` named its partition after the language; the example's manifest declares
+    // `governance` instead, and a partition folder nobody declares is dirt, not decoration.
+    store.remove("dogwood").unwrap();
 
     let mut config = workspace.config().unwrap();
     config.remotes.insert(
