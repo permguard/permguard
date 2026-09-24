@@ -557,11 +557,30 @@ fn insert_entry(
     Ok(())
 }
 
-/// Whether `.permguardignore` excuses this path: an entry is a prefix of the path from the
-/// workspace root, and an entry written with a trailing `/` names that directory.
+/// Whether `.permguardignore` excuses this path.
+///
+/// Two kinds of entry, the way `.gitignore` reads them: a name with no `/` in it matches a file
+/// or folder of that name at any depth, and everything under such a folder — `.DS_Store` is
+/// dropped by the Finder into every folder it opens, and `README.md` is no more a policy inside a
+/// partition than beside one; a path with a `/` in it is a prefix from the workspace root. A
+/// trailing `/` says the entry names a folder, never a file of that name.
 pub(crate) fn ignored(ignores: &[String], path: &str, is_dir: bool) -> bool {
+    let segments: Vec<&str> = path.split('/').collect();
+    let (last, ancestors) = segments.split_last().unwrap_or((&path, &[]));
     ignores.iter().any(|entry| {
-        path.starts_with(entry.as_str()) || (is_dir && entry.trim_end_matches('/') == path)
+        let (entry, folder_only) = match entry.strip_suffix('/') {
+            Some(folder) => (folder, true),
+            None => (entry.as_str(), false),
+        };
+        if entry.contains('/') {
+            if folder_only {
+                (path == entry && is_dir) || path.starts_with(&format!("{entry}/"))
+            } else {
+                path.starts_with(entry)
+            }
+        } else {
+            ancestors.contains(&entry) || (*last == entry && (!folder_only || is_dir))
+        }
     })
 }
 
@@ -603,4 +622,39 @@ pub(crate) fn read_ignores(store: &dyn Store) -> Result<Vec<String>> {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(ToOwned::to_owned)
         .collect())
+}
+
+#[cfg(test)]
+mod ignore_tests {
+    use super::ignored;
+
+    fn entries(list: &[&str]) -> Vec<String> {
+        list.iter().map(|entry| (*entry).to_owned()).collect()
+    }
+
+    #[test]
+    fn a_name_matches_at_any_depth_and_a_path_is_a_prefix_from_the_root() {
+        let ignores = entries(&[".DS_Store", "tests/", "README.md", "cedar/drafts/"]);
+        // The Finder's droppings, wherever it left them.
+        assert!(ignored(&ignores, ".DS_Store", false));
+        assert!(ignored(&ignores, "cedar/.DS_Store", false));
+        assert!(ignored(&ignores, "cedar/deep/.DS_Store", false));
+        // A folder entry names folders, at the root and below, what is under them, and never a
+        // file of that name.
+        assert!(ignored(&ignores, "tests", true));
+        assert!(ignored(&ignores, "cedar/tests", true));
+        assert!(ignored(&ignores, "tests/cases.yml", false));
+        assert!(!ignored(&ignores, "tests", false));
+        // A path is anchored: `cedar/drafts/` excuses the folder and what is under it, and
+        // nothing named alike elsewhere.
+        assert!(ignored(&ignores, "cedar/drafts", true));
+        assert!(ignored(&ignores, "cedar/drafts/old.cedar", false));
+        assert!(!ignored(&ignores, "rego/drafts", true));
+        assert!(!ignored(&ignores, "cedar/drafts.cedar", false));
+        // A name is exact: `README.md` is not `README.md.bak`, and a policy is never excused by
+        // a name it does not have.
+        assert!(ignored(&ignores, "README.md", false));
+        assert!(!ignored(&ignores, "README.md.bak", false));
+        assert!(!ignored(&ignores, "cedar/documents.cedar", false));
+    }
 }

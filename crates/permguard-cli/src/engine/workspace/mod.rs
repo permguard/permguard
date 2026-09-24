@@ -33,9 +33,10 @@ pub const DEFAULT_REF: &str = "main";
 /// `build::root_dirt` — so this file is the one place a workspace says what it tolerates, and the
 /// list is a starting point the author edits, not a rule.
 pub const DEFAULT_IGNORES: &str = "\
-# Paths Permguard never reads: one per line, a prefix of the path from the workspace root.
-# Everything else that is not the manifest, a declared partition or `.permguard/` is refused:
-# a policy in a folder nobody compiles is a policy nobody enforces. What is not policy goes here.
+# What Permguard never reads, one per line, as .gitignore reads them: a name matches a file or
+# folder of that name at any depth, a path with a `/` is a prefix from the workspace root, and a
+# trailing `/` names a folder. Everything else that is not the manifest, a declared partition or
+# `.permguard/` is refused: a policy in a folder nobody compiles is a policy nobody enforces.
 .git/
 .gitignore
 .gitattributes
