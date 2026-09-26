@@ -131,8 +131,11 @@ is cut.
 ### Added
 
 - `init` and `clone` write a `.permguardignore` that excuses the usual neighbours of a workspace
-  (`.git/`, `.gitignore`, `.gitattributes`, `.github/`, `.DS_Store`, `README.md`, `requests/`,
-  `tests/`). An existing workspace that holds any of them lists them there once.
+  (`.git/`, `.gitignore`, `.gitattributes`, `.github/`, `README.md`, `requests/`, `tests/`). It
+  reads like `.gitignore`: a name matches at any depth, a path with a `/` is a prefix from the
+  root, a trailing `/` names a folder. An existing workspace that holds any of them lists them
+  there once. What an operating system drops on its own — `.DS_Store`, `Thumbs.db`,
+  `desktop.ini` — is never read and needs no entry.
 - `validate` warns where a workspace is legal and fails open: a partition whose input is optional
   and whose Rego rules read `input.partition`, and one whose input is optional and whose schema
   refuses the empty input a request without one is decided against. The warnings are in the

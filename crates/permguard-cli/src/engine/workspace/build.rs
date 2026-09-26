@@ -326,7 +326,7 @@ fn build_directory(
     for (name, is_dir) in context.store.list(fs_path).map_err(err)? {
         let child_fs = format!("{fs_path}/{name}");
         let child_logical = format!("{logical_path}/{name}");
-        if ignored(context.ignores, &child_fs, is_dir) {
+        if os_noise(&name) || ignored(context.ignores, &child_fs, is_dir) {
             continue;
         }
         if is_dir {
@@ -557,6 +557,16 @@ fn insert_entry(
     Ok(())
 }
 
+/// The files an operating system drops into a folder on its own: never read, never dirt, and
+/// never something a `.permguardignore` has to name. `checkout` removes them with the partition
+/// they sit in rather than keeping the folder alive for them.
+pub(crate) const OS_NOISE: &[&str] = &[".DS_Store", "Thumbs.db", "desktop.ini"];
+
+/// Whether this is one of the files an operating system drops on its own.
+pub(crate) fn os_noise(name: &str) -> bool {
+    OS_NOISE.contains(&name)
+}
+
 /// Whether `.permguardignore` excuses this path.
 ///
 /// Two kinds of entry, the way `.gitignore` reads them: a name with no `/` in it matches a file
@@ -599,7 +609,7 @@ fn root_dirt(store: &dyn Store, manifest: &Manifest, ignores: &[String]) -> Resu
             || name == super::manifest_file::MANIFEST_YML
             || name == super::manifest_file::MANIFEST_YAML
             || (is_dir && manifest.partitions.contains_key(&name));
-        if known || ignored(ignores, &name, is_dir) {
+        if known || os_noise(&name) || ignored(ignores, &name, is_dir) {
             continue;
         }
         dirt.push(format!(
@@ -632,13 +642,24 @@ mod ignore_tests {
         list.iter().map(|entry| (*entry).to_owned()).collect()
     }
 
+    /// What the Finder and Explorer leave behind is known without being named, and nothing else
+    /// is: a policy is never noise.
+    #[test]
+    fn what_an_operating_system_drops_is_known_without_being_named() {
+        assert!(super::os_noise(".DS_Store"));
+        assert!(super::os_noise("Thumbs.db"));
+        assert!(super::os_noise("desktop.ini"));
+        assert!(!super::os_noise("documents.cedar"));
+        assert!(!super::os_noise(".gitkeep"));
+    }
+
     #[test]
     fn a_name_matches_at_any_depth_and_a_path_is_a_prefix_from_the_root() {
-        let ignores = entries(&[".DS_Store", "tests/", "README.md", "cedar/drafts/"]);
-        // The Finder's droppings, wherever it left them.
-        assert!(ignored(&ignores, ".DS_Store", false));
-        assert!(ignored(&ignores, "cedar/.DS_Store", false));
-        assert!(ignored(&ignores, "cedar/deep/.DS_Store", false));
+        let ignores = entries(&["notes.md", "tests/", "README.md", "cedar/drafts/"]);
+        // A name, wherever it turns up.
+        assert!(ignored(&ignores, "notes.md", false));
+        assert!(ignored(&ignores, "cedar/notes.md", false));
+        assert!(ignored(&ignores, "cedar/deep/notes.md", false));
         // A folder entry names folders, at the root and below, what is under them, and never a
         // file of that name.
         assert!(ignored(&ignores, "tests", true));

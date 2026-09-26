@@ -205,6 +205,9 @@ fn a_file_the_workspace_does_not_know_is_refused_until_it_is_moved_removed_or_ig
         format!("{ignores}notes.txt\n"),
     )
     .expect("the note is excused");
+    // What the Finder drops is known without being named, at the root and inside a partition.
+    std::fs::write(dir.join(".DS_Store"), "").expect("the Finder was here");
+    std::fs::write(dir.join("app/.DS_Store"), "").expect("and here");
     let valid = run(&dir, &["validate"]);
     assert!(valid.status.success(), "{}", stderr(&valid));
 }

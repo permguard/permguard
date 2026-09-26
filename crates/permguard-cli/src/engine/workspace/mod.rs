@@ -36,12 +36,13 @@ pub const DEFAULT_IGNORES: &str = "\
 # What Permguard never reads, one per line, as .gitignore reads them: a name matches a file or
 # folder of that name at any depth, a path with a `/` is a prefix from the workspace root, and a
 # trailing `/` names a folder. Everything else that is not the manifest, a declared partition or
-# `.permguard/` is refused: a policy in a folder nobody compiles is a policy nobody enforces.
+# `.permguard/` is refused: a policy in a folder nobody compiles is a policy nobody enforces. What
+# an operating system drops on its own (.DS_Store, Thumbs.db, desktop.ini) is never read and
+# needs no line here.
 .git/
 .gitignore
 .gitattributes
 .github/
-.DS_Store
 README.md
 requests/
 tests/

@@ -531,6 +531,8 @@ fn a_clean_checkout_replaces_the_tree_with_the_other_ledgers() {
         .write(".permguardignore", format!("{ignores}notes/\n").as_bytes())
         .unwrap();
     store.write("notes/keep.md", b"mine\n").unwrap();
+    // What the Finder left behind is not the ledger's either, and goes with the partition.
+    store.write("cedar/.DS_Store", b"").unwrap();
     let mut config = ws.config().unwrap();
     config.remotes.insert(
         "origin".into(),
@@ -574,6 +576,10 @@ fn a_clean_checkout_replaces_the_tree_with_the_other_ledgers() {
     assert!(
         store.exists("notes/keep.md"),
         "what is ignored is not the ledger's to remove"
+    );
+    assert!(
+        !store.exists("cedar/.DS_Store"),
+        "what the operating system dropped goes with the partition"
     );
     let status = ws.status().unwrap();
     assert_eq!(

@@ -13,6 +13,7 @@ use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Kind, Object, Tree};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID};
 
+use super::build::os_noise;
 use super::{PlanAction, PolicyRecord, Result, Workspace, err};
 use crate::engine::remote::Remote;
 use crate::engine::verify;
@@ -793,7 +794,10 @@ fn clear_tree(
     let mut kept = false;
     for (name, is_dir) in store.list(path).map_err(err)? {
         let child = format!("{path}/{name}");
-        if super::build::ignored(ignores, &child, is_dir) {
+        // What the operating system dropped goes with the folder: keeping a partition alive for
+        // a `.DS_Store` would leave a folder the new manifest does not declare — dirt, by the
+        // build's own rule, made by the checkout itself.
+        if !os_noise(&name) && super::build::ignored(ignores, &child, is_dir) {
             kept = true;
             continue;
         }

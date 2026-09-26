@@ -1,6 +1,5 @@
 # What Permguard never reads, as .gitignore reads them: a name matches at any depth, a path with a `/`
 # is a prefix from the workspace root. Everything else beside the manifest and the partitions is refused.
-.DS_Store
 README.md
 requests/
 tests/
