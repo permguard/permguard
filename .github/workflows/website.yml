@@ -1,16 +1,16 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# Checks the documentation site in `website/` and asks the organisation site to publish it.
+# Builds and publishes docs.permguard.com, whose custom domain belongs to this repository.
 #
-# The documentation is served at the root of docs.permguard.com, a domain owned by the
-# permguard/permguard.github.io repository. That repository builds `latest` from `main` and every
-# `MAJOR.MINOR` line from its newest `vMAJOR.MINOR.PATCH` tag (see `website/scripts/build-versions.sh`)
-# and deploys them. This workflow only makes sure `latest` still builds, then asks it for a run.
+#   /                the Permguard documentation, `latest`, built from `main`
+#   /MAJOR.MINOR/    each documented line, built from its newest `vMAJOR.MINOR.PATCH` tag
+#   /soglia/         the Soglia site, built from permguard/soglia
 #
-# The request needs the `DOCS_DISPATCH_TOKEN` secret: a token allowed to create repository dispatch
-# events on permguard/permguard.github.io (Contents: read and write). Without it the check still
-# runs, and the organisation site catches up on its daily schedule.
+# Pages replaces the whole site on each deploy, so each deploy rebuilds all of it
+# (see `website/scripts/build-versions.sh`). Deploys run only from `main`, which the `github-pages`
+# environment allows: a release tag asks for a fresh run on `main`, and that run picks the tag up.
+# The daily schedule brings Soglia changes in even when nothing changed here.
 
 name: website
 
@@ -26,14 +26,38 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/website.yml"
+  schedule:
+    - cron: "17 3 * * *"
+  repository_dispatch:
+    types: [soglia-docs]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# One deployment at a time; a newer run waits instead of cancelling one already publishing.
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: false
+
 jobs:
+  # A release tag hands over to a run on `main`, which rebuilds every version including this one.
+  retrigger:
+    name: rebuild from main
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: dispatch the website workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --repo "${GITHUB_REPOSITORY}" --ref main
+
+  # Pull requests only prove that `latest` still builds.
   check:
     name: build latest
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,25 +69,57 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
-      - name: install
-        run: npm ci
-      - name: build
-        run: npm run docs:build
+      - run: npm ci
+      - run: npm run docs:build
 
-  publish:
-    name: ask the organisation site to publish
-    needs: check
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+  build:
+    name: build the site
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: dispatch permguard-docs
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Every release tag is needed to build its version.
+          fetch-depth: 0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: permguard/soglia
+          ref: main
+          path: .soglia
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: build every Permguard version
+        run: >-
+          website/scripts/build-versions.sh
+          "${RUNNER_TEMP}/site"
+          "${{ steps.pages.outputs.base_path }}"
+          "${{ steps.pages.outputs.base_url }}"
+      - name: build Soglia under /soglia
+        working-directory: .soglia/website
         env:
-          GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+          VITEPRESS_BASE: ${{ steps.pages.outputs.base_path }}/soglia
         run: |
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "::warning::DOCS_DISPATCH_TOKEN is not set; docs.permguard.com updates on its daily schedule."
-            exit 0
-          fi
-          gh api repos/permguard/permguard.github.io/dispatches \
-            -f event_type=permguard-docs \
-            -f "client_payload[ref]=${GITHUB_REF}"
+          npm ci --no-audit --no-fund
+          npm run docs:build
+          mkdir -p "${RUNNER_TEMP}/site/soglia"
+          cp -R .vitepress/dist/. "${RUNNER_TEMP}/site/soglia/"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
