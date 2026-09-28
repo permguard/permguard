@@ -1,0 +1,14 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The site's pages are VitePress components written as HTML inside Markdown, and prose keeps one
+// sentence per line. A column limit fits neither, so this directory drops `line-length` and keeps
+// the rest of the repository's rules as they are.
+{
+  "no-duplicate-heading": {
+    "siblings_only": true
+  },
+  "line-length": false,
+  "no-inline-html": false,
+  "first-line-heading": false
+}

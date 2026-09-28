@@ -1,0 +1,529 @@
+/* Copyright (c) 2022 Nitro Agility S.r.l. */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+:root {
+  --brand: #d946ef;
+  --brand-deep: #b21fc6;
+  --brand-ink: #0b0c0f;
+  --brand-muted: #5d6168;
+  --vp-c-brand-1: var(--brand-deep);
+  --vp-c-brand-2: var(--brand);
+  --vp-c-brand-3: var(--brand);
+  --vp-c-brand-soft: rgba(217, 70, 239, 0.14);
+}
+
+.dark {
+  --vp-c-brand-1: #e879f9;
+  --vp-c-brand-2: #d946ef;
+  --vp-c-brand-3: #c026d3;
+  --vp-c-bg: #191a1c;
+  --vp-c-bg-alt: #1d1e23;
+  --vp-c-bg-elv: #1d1e23;
+  --vp-c-bg-soft: #1d1e23;
+}
+
+.pg-home {
+  --home-bg: #ffffff;
+  --home-fg: #0b0c0f;
+  --home-muted: #5d6168;
+  --rail-line: rgba(15, 23, 32, 0.16);
+  --surface-soft: #f8faf7;
+  --band-num: var(--brand-deep);
+  background: var(--home-bg);
+  color: var(--home-fg);
+  overflow: hidden;
+}
+
+.dark .pg-home {
+  --home-bg: #191a1c;
+  --home-fg: #f7f7f3;
+  --home-muted: #b5b7bb;
+  --rail-line: rgba(238, 242, 232, 0.14);
+  --surface-soft: #1d1e23;
+  --band-num: var(--brand);
+}
+
+.pg-section-inner {
+  width: min(1180px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.pg-hero {
+  position: relative;
+  isolation: isolate;
+  width: min(1240px, calc(100% - 48px));
+  min-height: 610px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: center;
+  gap: 54px;
+  padding: 82px 0 72px;
+}
+
+.pg-hero__copy,
+.pg-hero__brand {
+  position: relative;
+  z-index: 1;
+}
+
+.pg-kicker {
+  display: inline-block;
+  margin-bottom: 18px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+}
+
+.dark .pg-kicker {
+  color: var(--brand);
+}
+
+.pg-hero h1 {
+  max-width: 760px;
+  margin: 0 0 24px;
+  border: 0;
+  font-size: clamp(42px, 5.1vw, 72px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-weight: 760;
+  color: var(--home-fg);
+}
+
+.pg-hero__copy > p {
+  max-width: 670px;
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--home-muted);
+}
+
+.pg-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.pg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 19px;
+  border-radius: 9px;
+  font-weight: 700;
+  text-decoration: none !important;
+  transition: transform .16s ease, background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+
+.pg-btn:hover {
+  transform: translateY(-1px);
+}
+
+.pg-btn--primary {
+  background: var(--brand-deep);
+  color: #ffffff !important;
+}
+
+.pg-btn--ghost {
+  border: 1px solid rgba(127,127,127,.34);
+  color: var(--home-fg) !important;
+  background: color-mix(in srgb, var(--home-bg) 82%, transparent);
+  backdrop-filter: blur(5px);
+}
+
+.dark .pg-btn--ghost {
+  border-color: rgba(255,255,255,.17);
+  background: #1d1e23;
+}
+
+.pg-hero__brand {
+  min-height: 400px;
+  display: grid;
+  place-items: center;
+}
+
+.pg-logo {
+  display: block;
+  width: min(100%, 560px);
+  max-height: 380px;
+  object-fit: contain;
+  user-select: none;
+  filter: drop-shadow(0 18px 38px rgba(0,0,0,.04));
+}
+
+.dark .pg-logo {
+  filter: drop-shadow(0 22px 52px rgba(0,0,0,.24));
+}
+
+.pg-logo--dark {
+  display: none;
+}
+
+.dark .pg-logo--light {
+  display: none;
+}
+
+.dark .pg-logo--dark {
+  display: block;
+}
+
+/* A contrast band: dark on the light theme, light on the dark one. */
+.pg-principles {
+  --band-bg: #191a1c;
+  --band-card: #1d1e23;
+  --band-fg: #ffffff;
+  --band-muted: #c7c9cc;
+  --band-border: rgba(255,255,255,.06);
+  --band-num: var(--brand);
+  background: var(--band-bg);
+  color: var(--band-fg);
+}
+
+.pg-principles {
+  padding: 82px 0 72px;
+}
+
+.pg-principles article {
+  min-height: 210px;
+  padding: 28px;
+  border: 1px solid var(--band-border);
+  border-radius: 16px;
+  background: var(--band-card);
+}
+
+.dark .pg-principles {
+  --band-bg: #f7f7f3;
+  --band-card: #ffffff;
+  --band-fg: #0b0c0f;
+  --band-muted: #5d6168;
+  --band-border: rgba(15,23,32,.08);
+  --band-num: var(--brand-deep);
+}
+
+.pg-principles h3 {
+  margin: 0 0 12px;
+  font-size: 24px;
+  line-height: 1.18;
+  color: var(--band-fg);
+}
+
+.pg-principles p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--band-muted);
+}
+
+
+.pg-section-head {
+  margin-bottom: 36px;
+}
+
+.pg-section-head h2 {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font-size: clamp(30px, 3.2vw, 44px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--home-fg);
+}
+
+.pg-footer {
+  padding: 40px 0 34px;
+  background-color: #141517;
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 1px, transparent 1px 7px);
+  color: #9a9ca1;
+  font-size: 14px;
+}
+
+.pg-footer p {
+  margin: 0;
+}
+
+.pg-footer strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.pg-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(217, 70, 239, .6);
+  text-underline-offset: 3px;
+  transition: color .16s ease;
+}
+
+.pg-footer a:hover {
+  color: var(--brand);
+}
+
+.pg-footer__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.pg-footer__legal {
+  margin-top: 6px !important;
+}
+
+.pg-footer__copy {
+  margin-top: 30px !important;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .pg-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    padding: 58px 0 56px;
+    gap: 24px;
+  }
+
+  .pg-hero__brand {
+    min-height: 250px;
+    order: -1;
+  }
+
+  .pg-logo {
+    width: min(100%, 380px);
+    max-height: 260px;
+  }
+
+  .pg-footer__top {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .pg-section-inner,
+  .pg-hero {
+    width: min(100% - 30px, 1180px);
+  }
+
+  .pg-hero h1 {
+    font-size: 40px;
+  }
+
+  .pg-actions {
+    flex-wrap: wrap;
+  }
+
+  
+}
+
+/* Headings break into even lines instead of leaving one word alone. */
+.pg-home h1,
+.pg-home h2 {
+  text-wrap: balance;
+}
+
+/* The Home link appears on every page but the home page itself, in the bar and in the mobile menu.
+   It is the only nav link whose target ends with a slash. */
+.pg-page-home .VPNavMenuLink[href$="/"] {
+  display: none;
+}
+
+.pg-hero__copy > p strong {
+  color: var(--home-fg);
+}
+
+/* Documentation home ---------------------------------------------------------------------- */
+
+.pg-badge {
+  display: inline-block;
+  padding: .04em .32em .08em;
+  border-radius: .18em;
+  background: linear-gradient(135deg, #f05c80, var(--brand) 55%, #c52cf1);
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  transform: rotate(-3deg);
+}
+
+.pg-hero__copy > p a {
+  color: var(--home-fg);
+  text-decoration: underline;
+  text-decoration-color: var(--brand);
+  text-underline-offset: 3px;
+}
+
+.pg-docs {
+  padding: 78px 0;
+  background: var(--surface-soft);
+}
+
+.pg-docs .pg-section-head h2 {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font-size: clamp(30px, 3.2vw, 44px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--home-fg);
+}
+
+.pg-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.pg-doc {
+  position: relative;
+  display: block;
+  padding: 24px 26px;
+  border: 1px solid rgba(127,127,127,.16);
+  border-radius: 16px;
+  background: var(--home-bg);
+  text-decoration: none !important;
+  transition: border-color .16s ease, transform .16s ease;
+}
+
+.pg-doc:hover {
+  border-color: var(--brand);
+  transform: translateY(-2px);
+}
+
+.pg-doc h3 {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--home-fg);
+}
+
+.pg-doc p {
+  margin: 0;
+  padding-right: 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--home-muted);
+}
+
+.pg-doc span {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  color: var(--brand);
+  font-size: 18px;
+}
+
+/* A soft brand tint rather than a full inversion, in both themes. */
+.pg-product {
+  padding: 72px 0;
+  background: color-mix(in srgb, var(--brand) 7%, var(--home-bg));
+  border-top: 1px solid color-mix(in srgb, var(--brand) 16%, transparent);
+}
+
+.pg-product__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.pg-product h2 {
+  border: 0;
+  margin: 0 0 10px;
+  padding: 0;
+  font-size: clamp(28px, 3vw, 40px);
+  letter-spacing: -0.03em;
+  color: var(--home-fg);
+}
+
+.pg-product__inner p {
+  margin: 0;
+  font-size: 17px;
+  color: var(--home-muted);
+}
+
+@media (max-width: 900px) {
+  .pg-docs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* On a screen taller than the home page, the space above the footer takes the colour of the
+   last section instead of the page background. */
+.pg-page-home .VPContent {
+  background: color-mix(in srgb, var(--brand) 7%, #ffffff);
+}
+
+.dark .pg-page-home .VPContent {
+  background: color-mix(in srgb, var(--brand) 7%, #191a1c);
+}
+
+/* Behind the hero: trust anchors and decision points, with policies travelling between them.
+   When a policy arrives, its point lights up for a moment. Faint and slow on purpose. */
+.pg-home {
+  --mesh-line: rgba(15, 23, 32, 0.12);
+}
+
+.dark .pg-home {
+  --mesh-line: rgba(238, 242, 232, 0.10);
+}
+
+.pg-mesh {
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  right: -120px;
+  width: min(56vw, 720px);
+  height: 610px;
+  pointer-events: none;
+  /* Fade out at the edges, and open a soft clearing where the logo sits. */
+  -webkit-mask-image:
+    radial-gradient(ellipse 34% 20% at 55% 58%, transparent 0 55%, #000 100%),
+    radial-gradient(ellipse at 60% 45%, #000 0 35%, rgba(0,0,0,.8) 55%, transparent 80%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    radial-gradient(ellipse 34% 20% at 55% 58%, transparent 0 55%, #000 100%),
+    radial-gradient(ellipse at 60% 45%, #000 0 35%, rgba(0,0,0,.8) 55%, transparent 80%);
+  mask-composite: intersect;
+}
+
+.pg-mesh__edge {
+  stroke: var(--mesh-line);
+  stroke-width: 1;
+}
+
+.pg-mesh__point {
+  fill: var(--mesh-line);
+}
+
+.pg-mesh__anchor {
+  fill: none;
+  stroke: color-mix(in srgb, var(--brand) 45%, transparent);
+  stroke-width: 1;
+}
+
+.pg-mesh__policy {
+  fill: var(--brand);
+}
+
+.pg-mesh__decision {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 1.2;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-mesh__policy,
+  .pg-mesh__decision {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .pg-mesh {
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 330px;
+  }
+}
