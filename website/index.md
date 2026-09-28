@@ -9,7 +9,9 @@ description: The documentation of Permguard, authorization and trust for the age
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
 <script setup>
-import { withBase } from 'vitepress'
+import { useData, withBase } from 'vitepress'
+
+const { theme } = useData()
 </script>
 
 <div class="pg-home">
@@ -54,7 +56,7 @@ import { withBase } from 'vitepress'
       <circle class="pg-mesh__decision" cx="610" cy="300" r="4"><animate attributeName="r" values="4;4;5;16;16" keyTimes="0;0.4;0.42;0.62;1" dur="7s" begin="3.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;.75;0;0" keyTimes="0;0.4;0.43;0.62;1" dur="7s" begin="3.5s" repeatCount="indefinite"/></circle>
     </svg>
     <div class="pg-hero__copy">
-      <div class="pg-kicker">Documentation · version 0.1</div>
+      <div class="pg-kicker">Documentation · {{ theme.docsVersion === 'latest' ? 'latest' : `version ${theme.docsVersion}` }}</div>
       <h1>Permguard <span class="pg-badge">Docs</span></h1>
       <p>This is the documentation of <a href="https://permguard.com" target="_blank" rel="noopener noreferrer">Permguard</a>, authorization and trust for the agentic era. Learn how it works, and how to run the Command Line, the Control Plane, the Data Plane and the Trust Plane.</p>
       <div class="pg-actions">

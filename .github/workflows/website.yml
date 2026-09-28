@@ -1,16 +1,28 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-# Builds the VitePress site in `website/` and publishes it to GitHub Pages.
+# Checks the documentation site in `website/` and asks the organisation site to publish it.
 #
-# Pages serves the site below the repository path, so the build takes its base from
-# `configure-pages` rather than hard-coding it.
+# The documentation is served at the root of docs.permguard.com, a domain owned by the
+# permguard/permguard.github.io repository. That repository builds `latest` from `main` and every
+# `MAJOR.MINOR` line from its newest `vMAJOR.MINOR.PATCH` tag (see `website/scripts/build-versions.sh`)
+# and deploys them. This workflow only makes sure `latest` still builds, then asks it for a run.
+#
+# The request needs the `DOCS_DISPATCH_TOKEN` secret: a token allowed to create repository dispatch
+# events on permguard/permguard.github.io (Contents: read and write). Without it the check still
+# runs, and the organisation site catches up on its daily schedule.
 
 name: website
 
 on:
   push:
     branches: [main]
+    # Path filters are not evaluated for tag pushes, so every release tag reaches this workflow.
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+    tags: ["v*.*.*"]
+  pull_request:
     paths:
       - "website/**"
       - ".github/workflows/website.yml"
@@ -19,14 +31,9 @@ on:
 permissions:
   contents: read
 
-# One deployment at a time; a newer push waits instead of cancelling one already publishing.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
-  build:
-    name: build
+  check:
+    name: build latest
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -38,28 +45,25 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
-      - id: pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: install
         run: npm ci
       - name: build
         run: npm run docs:build
-        env:
-          VITEPRESS_BASE: ${{ steps.pages.outputs.base_path }}
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: website/.vitepress/dist
 
-  deploy:
-    name: deploy
-    needs: build
+  publish:
+    name: ask the organisation site to publish
+    needs: check
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: dispatch permguard-docs
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::DOCS_DISPATCH_TOKEN is not set; docs.permguard.com updates on its daily schedule."
+            exit 0
+          fi
+          gh api repos/permguard/permguard.github.io/dispatches \
+            -f event_type=permguard-docs \
+            -f "client_payload[ref]=${GITHUB_REF}"
