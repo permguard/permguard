@@ -104,6 +104,6 @@ tower-layer = "0.3"
 tower-service = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "registry"] }
-tracing-opentelemetry = "0.33"
+tracing-opentelemetry = "0.34"
 x509-parser = "0.18"
 zeroize = { version = "1", features = ["derive"] }
