@@ -527,3 +527,13 @@
     height: 330px;
   }
 }
+
+/* The line under the navigation bar: a hairline instead of the solid black VitePress draws on the
+   dark theme, as on the Soglia site. */
+:root {
+  --vp-nav-divider-color: rgba(15, 23, 32, .08);
+}
+
+.dark {
+  --vp-nav-divider-color: rgba(255, 255, 255, .06);
+}
