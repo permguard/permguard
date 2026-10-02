@@ -245,7 +245,7 @@ pub fn filter_digest(normalized: &serde_json::Value) -> String {
     use sha2::Digest as _;
 
     let mut hasher = Sha256::new();
-    hasher.update(b"permguard.stream.filters.v1\n");
+    hasher.update(permguard_core::domains::digest::STREAM_FILTERS.as_bytes());
     hasher.update(canonical(normalized).as_bytes());
     let digest = hasher.finalize();
 

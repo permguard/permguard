@@ -13,6 +13,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+permguard-core.workspace = true
 # The model a language plugs into: manifest runtimes for the load gate, and the
 # manifest's own validation. One direction only — the model knows no language.
 permguard-objects.workspace = true

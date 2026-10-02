@@ -22,7 +22,7 @@ use crate::v1::decision_log_client::DecisionLogClient;
 use crate::v1::{ReadRequest, ShipRequest};
 
 /// The metadata a refusal's code travels in.
-const CODE: &str = "permguard-error-code";
+const CODE: &str = permguard_core::GRPC_ERROR_CODE;
 
 /// The gRPC client.
 pub struct GrpcSink {

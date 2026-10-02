@@ -127,7 +127,7 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
     if let Some((records, envelopes, inclusion)) = evidence {
         render(
             &EventArchive {
-                format: "permguard.events.export.v1alpha1".to_owned(),
+                format: permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1.to_owned(),
                 scope_binding: archive_scope(&scope),
                 summary: answer,
                 records,
@@ -336,7 +336,7 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
             ))
             .named("validation", "event_export_malformed")
         })?;
-    if archive.format != "permguard.events.export.v1alpha1" {
+    if archive.format != permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1 {
         return Err(Failure::usage(format!(
             "{} declares export format `{}`; this CLI verifies \
              `permguard.events.export.v1alpha1`",

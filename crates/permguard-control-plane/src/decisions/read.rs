@@ -33,7 +33,7 @@ use super::store::{DecisionStore, Scope, read_segment};
 ///
 /// Inside every offset's signature, so a position in the decision log presented against the event
 /// log is a stable refusal rather than a read of the wrong evidence.
-pub const API: &str = "permguard.api.decisions.native.v1";
+pub const API: &str = permguard_core::domains::interface::DECISIONS_NATIVE_V1;
 
 /// The decision log declares no filters, and says so explicitly.
 ///

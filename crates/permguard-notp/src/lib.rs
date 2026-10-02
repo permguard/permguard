@@ -33,4 +33,4 @@ pub use push::{
 };
 
 /// The REST media type of every NOTP body.
-pub const MEDIA_TYPE: &str = "application/vnd.permguard.notp.v1+cbor";
+pub const MEDIA_TYPE: &str = permguard_core::domains::media::NOTP_V1_CBOR;

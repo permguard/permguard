@@ -217,7 +217,7 @@ impl PlaneModule for ControlPlaneModule {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Consumer,
-                record_type: "permguard.decision.v1".to_owned(),
+                record_type: permguard_core::domains::record::DECISION_V1.to_owned(),
                 directory: config.working_dir().join(config.decision_store_directory()),
                 legacy: true,
                 enabled: config.decision_store_enabled(),

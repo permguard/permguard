@@ -20,7 +20,7 @@
 //! carrying this product's class and code in its metadata, so a gRPC caller
 //! and an HTTP caller branch on the same vocabulary.
 
-use permguard_core::{ApiError, ErrorClass};
+use permguard_core::{ApiError, ErrorClass, codes};
 use permguard_decisions::envelope::Batch;
 use serde_json::Value;
 use tonic::{Request, Response, Status};
@@ -34,10 +34,6 @@ use crate::v1::{
     ReadResponse, ShipRequest, ShipResponse,
 };
 
-/// The metadata keys a refusal's class and code travel in.
-const CLASS: &str = "permguard-error-class";
-const CODE: &str = "permguard-error-code";
-
 #[tonic::async_trait]
 impl DecisionLog for DecisionFacade {
     async fn ship(&self, request: Request<ShipRequest>) -> Result<Response<ShipResponse>, Status> {
@@ -47,20 +43,24 @@ impl DecisionLog for DecisionFacade {
                 self.metrics
                     .count(&measure::REFUSALS, &[("reason", "malformed")]);
 
-                refusal(
-                    Status::invalid_argument(format!("this is not a decision batch: {error}")),
-                    "validation",
-                    "malformed_batch",
+                api_status(
+                    &ApiError::new(
+                        ErrorClass::Validation,
+                        codes::stream::MALFORMED_BATCH,
+                        format!("this is not a decision batch: {error}"),
+                    ),
+                    self.disclosure,
                 )
             })?;
 
         let keys = self.accepted_producers().map_err(|error| {
-            refusal(
-                Status::unavailable(format!(
-                    "this plane cannot verify signatures right now: {error}"
-                )),
-                "unavailable",
-                "keys_unavailable",
+            api_status(
+                &ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::stream::KEYS_UNAVAILABLE,
+                    format!("this plane cannot verify signatures right now: {error}"),
+                ),
+                self.disclosure,
             )
         })?;
 
@@ -121,7 +121,7 @@ impl DecisionLog for DecisionFacade {
                     self.metrics.count(&measure::CLOSED, &[]);
                 }
 
-                Err(status_of(&refused))
+                Err(api_status(&api_error_of(&refused), self.disclosure))
             }
         }
     }
@@ -133,12 +133,13 @@ impl DecisionLog for DecisionFacade {
     ) -> Result<Response<GetDecisionSignersResponse>, Status> {
         let asked = request.into_inner();
         if asked.pdp.is_empty() || asked.instance.is_empty() {
-            return Err(refusal(
-                Status::invalid_argument(
+            return Err(api_status(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    codes::stream::STREAM_REQUIRED,
                     "a signer manifest belongs to one producer stream: set `pdp` and `instance`",
                 ),
-                "validation",
-                "stream_required",
+                self.disclosure,
             ));
         }
 
@@ -148,10 +149,13 @@ impl DecisionLog for DecisionFacade {
         })
         .await
         .map_err(|error| {
-            refusal(
-                Status::unavailable(error.to_string()),
-                "unavailable",
-                "store_unavailable",
+            api_status(
+                &ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::stream::STORE_UNAVAILABLE,
+                    error.to_string(),
+                ),
+                disclosure,
             )
         })?
         .map_err(|error| api_status(&error, disclosure))?;
@@ -164,10 +168,13 @@ impl DecisionLog for DecisionFacade {
                     from_seq: span.from,
                     kid: span.kid,
                     jwk: serde_json::to_vec(&span.jwk).map_err(|error| {
-                        refusal(
-                            Status::internal(error.to_string()),
-                            "internal",
-                            "signer_malformed",
+                        api_status(
+                            &ApiError::new(
+                                ErrorClass::Internal,
+                                codes::stream::SIGNER_MALFORMED,
+                                error.to_string(),
+                            ),
+                            disclosure,
                         )
                     })?,
                 })
@@ -193,12 +200,13 @@ impl DecisionLog for DecisionFacade {
                 ledger: asked.ledger,
             }
         } else {
-            return Err(refusal(
-                Status::invalid_argument(
+            return Err(api_status(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    codes::stream::SCOPE_REQUIRED,
                     "name a zone and a ledger, or one producer stream with `pdp` and `instance`",
                 ),
-                "validation",
-                "scope_required",
+                self.disclosure,
             ));
         };
         let kind = match scope {
@@ -262,10 +270,13 @@ impl DecisionLog for DecisionFacade {
                 // The oldest offset and the size of the gap travel in the metadata, so a consumer
                 // learns where to resume and how much it lost from the refusal itself — the same
                 // three facts the HTTP binding puts in its body.
-                let mut status = refusal(
-                    Status::not_found(expired.to_string()),
-                    "not_found",
-                    "offset_expired",
+                let mut status = api_status(
+                    &ApiError::new(
+                        ErrorClass::NotFound,
+                        codes::stream::OFFSET_EXPIRED,
+                        expired.to_string(),
+                    ),
+                    self.disclosure,
                 );
                 let metadata = status.metadata_mut();
                 if let Ok(value) = oldest.parse() {
@@ -284,10 +295,13 @@ impl DecisionLog for DecisionFacade {
                 self.metrics
                     .count(&measure::READS, &[("scope", kind), ("outcome", "refused")]);
 
-                Err(refusal(
-                    Status::invalid_argument(error.to_string()),
-                    "validation",
-                    "offset_invalid",
+                Err(api_status(
+                    &ApiError::new(
+                        ErrorClass::Validation,
+                        codes::stream::OFFSET_INVALID,
+                        error.to_string(),
+                    ),
+                    self.disclosure,
                 ))
             }
         }
@@ -321,56 +335,38 @@ fn reason_of(refused: &Refused) -> &'static str {
     }
 }
 
-fn status_of(refused: &Refused) -> Status {
+/// The refusal as the taxonomy states it, so the gRPC and HTTP answers derive from one value.
+fn api_error_of(refused: &Refused) -> ApiError {
     match refused {
-        Refused::Unattributable(detail) => refusal(
-            Status::invalid_argument(detail.clone()),
-            "validation",
-            "batch_unattributable",
+        Refused::Unattributable(detail) => ApiError::new(
+            ErrorClass::Validation,
+            codes::stream::BATCH_UNATTRIBUTABLE,
+            detail.clone(),
         ),
-        Refused::Unverifiable(detail) => refusal(
-            Status::invalid_argument(detail.clone()),
-            "validation",
-            "batch_unverifiable",
+        Refused::Unverifiable(detail) => ApiError::new(
+            ErrorClass::Validation,
+            codes::stream::BATCH_UNVERIFIABLE,
+            detail.clone(),
         ),
-        Refused::Conflict { .. } => refusal(
-            Status::failed_precondition(refused.to_string()),
-            "conflict",
-            "stream_conflict",
+        Refused::Conflict { .. } => ApiError::new(
+            ErrorClass::Conflict,
+            codes::stream::STREAM_CONFLICT,
+            refused.to_string(),
         ),
-        Refused::Closed(_) => refusal(
-            Status::failed_precondition(refused.to_string()),
-            "conflict",
-            "stream_closed",
+        Refused::Closed(_) => ApiError::new(
+            ErrorClass::Conflict,
+            codes::stream::STREAM_CLOSED,
+            refused.to_string(),
         ),
         // The one a shipper must treat as *retry*, never as *drop*.
-        Refused::Unavailable(detail) => refusal(
-            Status::unavailable(detail.clone()),
-            "unavailable",
-            "store_unavailable",
+        Refused::Unavailable(detail) => ApiError::new(
+            ErrorClass::Unavailable,
+            codes::stream::STORE_UNAVAILABLE,
+            detail.clone(),
         ),
     }
 }
 
 fn api_status(failed: &ApiError, disclosure: permguard_core::Disclosure) -> Status {
-    let message = failed.disclosed_message(disclosure);
-    let status = match failed.class() {
-        ErrorClass::Validation => Status::invalid_argument(message),
-        ErrorClass::Conflict => Status::failed_precondition(message),
-        ErrorClass::NotFound => Status::not_found(message),
-        ErrorClass::Unavailable => Status::unavailable(message),
-        ErrorClass::Internal => Status::internal(message),
-    };
-
-    refusal(status, failed.class().as_str(), failed.code())
-}
-
-/// Attaches this product's class and code, so both transports say one thing.
-fn refusal(mut status: Status, class: &'static str, code: &'static str) -> Status {
-    if let (Ok(class), Ok(code)) = (class.parse(), code.parse()) {
-        status.metadata_mut().insert(CLASS, class);
-        status.metadata_mut().insert(CODE, code);
-    }
-
-    status
+    crate::wire::grpc_error(failed, disclosure)
 }

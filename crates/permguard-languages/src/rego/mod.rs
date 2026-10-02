@@ -19,7 +19,7 @@ pub const NAME: &str = "rego";
 /// The content is **JSON Schema**, not Rego: what a schema describes here is the document a
 /// request hands the partition (`input.partition`), and JSON Schema is what describes JSON. The
 /// media type says so in its suffix, so nothing has to guess from a file name.
-pub const SCHEMA_MEDIA_TYPE: &str = "application/vnd.permguard.schema.rego+json";
+pub const SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA_REGO_JSON;
 
 /// The extension an authored Rego partition schema carries.
 pub const SCHEMA_EXTENSION: &str = "regoschema";
@@ -38,7 +38,7 @@ impl Language for Rego {
     }
 
     fn policy_media_type(&self) -> &'static str {
-        "application/vnd.permguard.policy.rego"
+        permguard_core::domains::media::POLICY_REGO
     }
 
     fn schema_media_type(&self) -> Option<&'static str> {
@@ -164,7 +164,7 @@ impl Authoring for Rego {
 ///
 /// Described through the registry like every other artifact, so the legacy manifest flag
 /// `schema: true` names a type rather than a special case in the walk.
-pub const SCHEMA_ARTIFACT: &str = "permguard.rego.schema.v1";
+pub const SCHEMA_ARTIFACT: &str = permguard_core::domains::artifact::REGO_SCHEMA_V1;
 
 /// The Rego schema artifact.
 pub struct SchemaArtifact;

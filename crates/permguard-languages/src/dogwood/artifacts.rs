@@ -17,15 +17,15 @@
 use crate::artifact::{ArtifactRole, ArtifactType, Cardinality};
 
 /// The registered type of the required Cedar action schema.
-pub const ACTION_SCHEMA: &str = "permguard.dogwood.action-schema.v1";
+pub const ACTION_SCHEMA: &str = permguard_core::domains::artifact::DOGWOOD_ACTION_SCHEMA_V1;
 /// The registered type of the optional Dogwood event schema.
-pub const EVENT_SCHEMA: &str = "permguard.dogwood.event-schema.v1";
+pub const EVENT_SCHEMA: &str = permguard_core::domains::artifact::DOGWOOD_EVENT_SCHEMA_V1;
 /// The registered type of the optional macro library.
-pub const MACROS: &str = "permguard.dogwood.macros.v1";
+pub const MACROS: &str = permguard_core::domains::artifact::DOGWOOD_MACROS_V1;
 /// The registered type of the optional provider declarations.
-pub const PROVIDERS: &str = "permguard.dogwood.providers.v1";
+pub const PROVIDERS: &str = permguard_core::domains::artifact::DOGWOOD_PROVIDERS_V1;
 /// The registered type of one named Rhai provider implementation.
-pub const RHAI_PROVIDER: &str = "permguard.dogwood.provider.rhai.v1";
+pub const RHAI_PROVIDER: &str = permguard_core::domains::artifact::DOGWOOD_PROVIDER_RHAI_V1;
 
 /// The file name reserved for the required Cedar action schema.
 pub const ACTION_SCHEMA_FILENAME: &str = "schema.cedarschema";
@@ -45,7 +45,7 @@ impl ArtifactType for ActionSchema {
     }
 
     fn media_type(&self) -> &'static str {
-        "application/vnd.permguard.dogwood.action-schema"
+        permguard_core::domains::media::DOGWOOD_ACTION_SCHEMA
     }
 
     fn runtime(&self) -> &'static str {
@@ -111,7 +111,7 @@ impl ArtifactType for EventSchema {
     }
 
     fn media_type(&self) -> &'static str {
-        "application/vnd.permguard.dogwood.event-schema"
+        permguard_core::domains::media::DOGWOOD_EVENT_SCHEMA
     }
 
     fn runtime(&self) -> &'static str {
@@ -160,7 +160,7 @@ impl ArtifactType for Macros {
     }
 
     fn media_type(&self) -> &'static str {
-        "application/vnd.permguard.dogwood.macros"
+        permguard_core::domains::media::DOGWOOD_MACROS
     }
 
     fn runtime(&self) -> &'static str {
@@ -209,7 +209,7 @@ impl ArtifactType for Providers {
     }
 
     fn media_type(&self) -> &'static str {
-        "application/vnd.permguard.dogwood.providers"
+        permguard_core::domains::media::DOGWOOD_PROVIDERS
     }
 
     fn runtime(&self) -> &'static str {
@@ -262,7 +262,7 @@ impl ArtifactType for RhaiProvider {
     }
 
     fn media_type(&self) -> &'static str {
-        "application/vnd.permguard.dogwood.provider.rhai"
+        permguard_core::domains::media::DOGWOOD_PROVIDER_RHAI
     }
 
     fn runtime(&self) -> &'static str {

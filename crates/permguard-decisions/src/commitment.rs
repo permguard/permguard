@@ -36,7 +36,7 @@ use sha2::Sha256;
 use crate::jcs::{self, CanonicalError};
 
 /// The domain input commitments live in.
-pub const COMMITMENT_DOMAIN: &str = "permguard.input.v1\n";
+pub const COMMITMENT_DOMAIN: &str = permguard_core::domains::digest::INPUT_TAG;
 
 /// The algorithm, as it is declared in a marker.
 pub const COMMITMENT_ALGORITHM: &str = "HMAC-SHA256";

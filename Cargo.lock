@@ -2390,6 +2390,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-core",
  "http",
+ "permguard-core",
  "permguard-events",
  "permguard-languages",
  "permguard-notp",
@@ -2523,6 +2524,7 @@ dependencies = [
  "amzn-dogwood-language",
  "cedar-policy",
  "jsonschema 0.56.0",
+ "permguard-core",
  "permguard-events",
  "permguard-objects",
  "regorus",
@@ -2537,6 +2539,7 @@ dependencies = [
 name = "permguard-notp"
 version = "0.1.0"
 dependencies = [
+ "permguard-core",
  "permguard-objects",
  "proptest",
 ]
@@ -2546,6 +2549,7 @@ name = "permguard-objects"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "permguard-core",
  "proptest",
  "ring",
  "sha2",
@@ -2599,6 +2603,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "hmac",
+ "permguard-core",
  "serde",
  "serde_json",
  "sha2",

@@ -58,7 +58,7 @@ use crate::role::{Authoring, ExtractedPolicy, Language};
 pub const NAME: &str = "dogwood";
 
 /// The registered media type of a Dogwood policy.
-pub const POLICY_MEDIA_TYPE: &str = "application/vnd.permguard.policy.dogwood";
+pub const POLICY_MEDIA_TYPE: &str = permguard_core::domains::media::POLICY_DOGWOOD;
 
 /// The Dogwood plugin.
 pub struct Dogwood;

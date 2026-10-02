@@ -43,9 +43,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// The registered name of the Cedar entity store input.
-pub const CEDAR_ENTITIES_V1: &str = "permguard.cedar.entities.v1";
+pub const CEDAR_ENTITIES_V1: &str = permguard_core::domains::input::CEDAR_ENTITIES_V1;
 /// The registered name of the Rego document input.
-pub const REGO_DATA_V1: &str = "permguard.rego.data.v1";
+pub const REGO_DATA_V1: &str = permguard_core::domains::input::REGO_DATA_V1;
 /// The registered name of the Dogwood occurrence input.
 pub const DOGWOOD_EVENT_V1: &str = crate::dogwood::occurrence::EVENT_TYPE;
 

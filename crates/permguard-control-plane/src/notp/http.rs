@@ -417,11 +417,11 @@ mod tests {
         ] {
             let (status, body) = post(&routes, &path, deep.clone()).await;
 
-            // 422: the body is well-formed CBOR framing that this decoder will not walk, which
-            // is the status this surface gives an unprocessable message.
+            // 400: the body is well-formed CBOR framing that this decoder will not walk, which
+            // is the taxonomy's status for a request that is not the contract's shape.
             assert_eq!(
                 status,
-                422,
+                400,
                 "{path} did not refuse a body it cannot read: {}",
                 String::from_utf8_lossy(&body)
             );
@@ -586,8 +586,8 @@ mod tests {
         };
 
         let (status, body) = post(&routes, &format!("{base}/notp/objects"), bomb.encode()).await;
-        // Validation on the wire: 422, the taxonomy's own status.
-        assert_eq!(status, 422, "{}", String::from_utf8_lossy(&body));
+        // Validation on the wire: 400, the taxonomy's own status.
+        assert_eq!(status, 400, "{}", String::from_utf8_lossy(&body));
         let text = String::from_utf8_lossy(&body);
         assert!(text.contains("inflates past"), "{text}");
     }
@@ -617,6 +617,6 @@ mod tests {
             b"not cbor".to_vec(),
         )
         .await;
-        assert_eq!(status, 422, "{}", String::from_utf8_lossy(&body));
+        assert_eq!(status, 400, "{}", String::from_utf8_lossy(&body));
     }
 }

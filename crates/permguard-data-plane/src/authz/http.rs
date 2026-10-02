@@ -19,10 +19,8 @@
 //! | the ledger cannot be evaluated (empty, incompatible, damaged) | `503` |
 //! | this process failed | `500` |
 //!
-//! A deny is **never** a 4xx: it is an answer. And `400` here rather than the
-//! `422` the rest of this server uses for validation, deliberately — this
-//! surface implements a published contract, and the contract says
-//! `400 Bad Request`.
+//! A deny is **never** a 4xx: it is an answer. The statuses are the taxonomy's
+//! own, decided once in `permguard-core`; this surface only renders them.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
@@ -147,14 +145,8 @@ async fn pdp_configuration(State(surface): State<Surface>) -> Json<configuration
 
 /// Turns a refusal into the answer the contract names.
 fn error(failed: &ApiError, disclosure: Disclosure) -> Response {
-    let status = match failed.class() {
-        // The contract's own status for a payload that is not a request.
-        ErrorClass::Validation => StatusCode::BAD_REQUEST,
-        ErrorClass::NotFound => StatusCode::NOT_FOUND,
-        ErrorClass::Conflict => StatusCode::CONFLICT,
-        ErrorClass::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-        ErrorClass::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-    };
+    let status =
+        StatusCode::from_u16(failed.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     (status, Json(failed.on_the_wire(disclosure))).into_response()
 }

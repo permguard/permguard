@@ -239,7 +239,7 @@ impl PlaneModule for DataPlaneModule {
             streams.push(permguard_stream::StreamDescriptor {
                 identity,
                 role: permguard_stream::Role::Producer,
-                record_type: "permguard.decision.v1".to_owned(),
+                record_type: permguard_core::domains::record::DECISION_V1.to_owned(),
                 directory: config.working_dir().join(config.log_spool_directory()),
                 legacy: true,
                 enabled: config.log_enabled(),

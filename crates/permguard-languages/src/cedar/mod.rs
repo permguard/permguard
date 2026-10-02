@@ -20,9 +20,9 @@ use crate::role::{Authoring, ExtractedPolicy, Language};
 /// This language's name, as a manifest's `runtime.language.name` spells it.
 pub const NAME: &str = "cedar";
 /// The registered media type of a Cedar policy.
-pub const POLICY_MEDIA_TYPE: &str = "application/vnd.permguard.policy.cedar";
+pub const POLICY_MEDIA_TYPE: &str = permguard_core::domains::media::POLICY_CEDAR;
 /// The registered media type of a Cedar schema.
-pub const SCHEMA_MEDIA_TYPE: &str = "application/vnd.permguard.schema.cedar";
+pub const SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA_CEDAR;
 
 /// The Cedar plugin.
 pub struct Cedar;
@@ -245,7 +245,7 @@ impl Authoring for Cedar {
 /// downstream has to keep a second, older idea of what a partition holds beside the registry: the
 /// legacy manifest flag `schema: true` names *this* type, and the walk that reads a Cedar
 /// partition is the walk that reads a Dogwood one.
-pub const SCHEMA_ARTIFACT: &str = "permguard.cedar.schema.v1";
+pub const SCHEMA_ARTIFACT: &str = permguard_core::domains::artifact::CEDAR_SCHEMA_V1;
 /// The file extension a Cedar schema is authored in.
 pub const SCHEMA_EXTENSION: &str = "cedarschema";
 

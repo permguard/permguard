@@ -183,8 +183,7 @@ impl GrpcChannel {
 /// and people read one vocabulary whatever the transport.
 /// The metadata keys the server puts the structured half of a refusal in —
 /// the same two the planes write, so a client reads one convention.
-pub const GRPC_ERROR_CLASS: &str = "x-permguard-error-class";
-pub const GRPC_ERROR_CODE: &str = "x-permguard-error-code";
+pub use permguard_core::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 /// A refusal, in the **same shape both transports produce**: the sentence, then
 /// the class and the stable code in parentheses.

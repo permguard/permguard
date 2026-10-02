@@ -17,10 +17,12 @@
 //!
 //! # What a refusal says
 //!
-//! `403`, a stable body, and a log record naming the peer by its label and fingerprint. Not `401`:
-//! the client authenticated perfectly well — that is how we know who to name in the record. What it
-//! lacks is standing, and telling it so precisely is what lets the operator on the other end fix the
-//! list instead of debugging their certificate.
+//! Two refusals, never interchangeable. A peer that authenticated and is not on the list is told
+//! `403` with the `forbidden` body, and the log names it by label and fingerprint: what it lacks is
+//! standing, and telling it so precisely lets the operator on the other end fix the list instead of
+//! debugging a certificate. A request that arrived with no peer identity at all is told `401` with
+//! the `unauthenticated` body: it never authenticated, so there is nobody to name and nothing to
+//! grant. Neither answer says anything about what lives behind the gate.
 
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -29,7 +31,7 @@ use axum::body::Body;
 use http::{Request, Response, StatusCode};
 use tower_service::Service;
 
-use permguard_core::{AllowedPeer, PeerIdentity};
+use permguard_core::{AccessDenial, AllowedPeer, PeerIdentity};
 
 /// The `component` every record of a refusal carries.
 const COMPONENT: &str = "transport";
@@ -107,7 +109,11 @@ where
                     "refused an authenticated peer the allow list does not name"
                 );
 
-                Box::pin(async { Ok(refused()) })
+                Box::pin(async {
+                    Ok(refused(AccessDenial::forbidden(
+                        "this surface does not answer this peer",
+                    )))
+                })
             }
             None => {
                 tracing::warn!(
@@ -116,19 +122,29 @@ where
                     "refused a request that arrived with no peer identity on a surface with an allow list"
                 );
 
-                Box::pin(async { Ok(refused()) })
+                Box::pin(async {
+                    Ok(refused(AccessDenial::unauthenticated(
+                        "this surface answers only authenticated peers",
+                    )))
+                })
             }
         }
     }
 }
 
-/// What a peer that authenticated and lacks standing is told.
-fn refused() -> Response<Body> {
-    let mut response = Response::new(Body::from("this surface does not answer this peer\n"));
-    *response.status_mut() = StatusCode::FORBIDDEN;
+/// The answer a denial renders as: its status and the `{code, message}` body.
+fn refused(denial: AccessDenial) -> Response<Body> {
+    let body = format!(
+        "{{\"code\":\"{}\",\"message\":\"{}\"}}\n",
+        denial.code(),
+        denial.message()
+    );
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() =
+        StatusCode::from_u16(denial.http_status()).unwrap_or(StatusCode::FORBIDDEN);
     response.headers_mut().insert(
         http::header::CONTENT_TYPE,
-        http::HeaderValue::from_static("text/plain; charset=utf-8"),
+        http::HeaderValue::from_static("application/json"),
     );
 
     response

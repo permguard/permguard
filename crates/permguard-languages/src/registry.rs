@@ -17,9 +17,9 @@ use crate::role::Language;
 
 /// The registered media types of the built-in languages. Each language owns
 /// its own; the model knows only the family prefix and its own manifest.
-pub const MEDIA_TYPE_POLICY_CEDAR: &str = "application/vnd.permguard.policy.cedar";
-pub const MEDIA_TYPE_SCHEMA_CEDAR: &str = "application/vnd.permguard.schema.cedar";
-pub const MEDIA_TYPE_POLICY_REGO: &str = "application/vnd.permguard.policy.rego";
+pub const MEDIA_TYPE_POLICY_CEDAR: &str = permguard_core::domains::media::POLICY_CEDAR;
+pub const MEDIA_TYPE_SCHEMA_CEDAR: &str = permguard_core::domains::media::SCHEMA_CEDAR;
+pub const MEDIA_TYPE_POLICY_REGO: &str = permguard_core::domains::media::POLICY_REGO;
 pub const MEDIA_TYPE_SCHEMA_REGO: &str = crate::rego::SCHEMA_MEDIA_TYPE;
 pub const MEDIA_TYPE_MANIFEST: &str = permguard_objects::manifest::MEDIA_TYPE;
 

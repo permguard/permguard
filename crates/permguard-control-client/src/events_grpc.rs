@@ -21,7 +21,7 @@ use crate::v1::event_log_client::EventLogClient;
 use crate::v1::{GetRecordRequest, IngestBatchRequest, ListRecordsRequest};
 
 /// The metadata a refusal's code travels in.
-const CODE: &str = "permguard-error-code";
+const CODE: &str = permguard_core::GRPC_ERROR_CODE;
 
 /// The gRPC client.
 pub struct GrpcEventSink {

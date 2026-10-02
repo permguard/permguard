@@ -109,12 +109,12 @@ pub const EVALUATIONS_PATH: &str = "/access/v1/evaluations";
 /// | `structured-reasons` | every decision carries `reason_admin` and `reason_user` | `a_deny_is_an_answer_and_says_why` |
 /// | `boxcarring` | `evaluations[]`, resolved by `options.evaluations_semantic` | `a_batch_resolves_by_the_operator_its_semantic_names` |
 pub const CAPABILITIES: [&str; 6] = [
-    "urn:permguard:pdp:v1:store-in-payload",
-    "urn:permguard:pdp:v1:profile-selection",
-    "urn:permguard:pdp:v1:partition-inputs",
-    "urn:permguard:pdp:v1:principal",
-    "urn:permguard:pdp:v1:structured-reasons",
-    "urn:permguard:pdp:v1:boxcarring",
+    permguard_core::domains::capability::PDP_V1_STORE_IN_PAYLOAD,
+    permguard_core::domains::capability::PDP_V1_PROFILE_SELECTION,
+    permguard_core::domains::capability::PDP_V1_PARTITION_INPUTS,
+    permguard_core::domains::capability::PDP_V1_PRINCIPAL,
+    permguard_core::domains::capability::PDP_V1_STRUCTURED_REASONS,
+    permguard_core::domains::capability::PDP_V1_BOXCARRING,
 ];
 
 /// One entity as the wire carries it.

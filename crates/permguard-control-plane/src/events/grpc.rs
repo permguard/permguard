@@ -29,8 +29,7 @@ use crate::v1::{
 };
 
 /// The gRPC metadata keys carrying the structured half of a refusal.
-pub const GRPC_ERROR_CLASS: &str = "x-permguard-error-class";
-pub const GRPC_ERROR_CODE: &str = "x-permguard-error-code";
+pub use crate::wire::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 #[tonic::async_trait]
 impl EventLog for EventFacade {
@@ -447,23 +446,7 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
 }
 
 fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
-    let message = failed.disclosed_message(disclosure);
-    let mut status = match failed.class() {
-        ErrorClass::Validation => Status::invalid_argument(message),
-        ErrorClass::NotFound => Status::not_found(message),
-        ErrorClass::Conflict => Status::failed_precondition(message),
-        ErrorClass::Unavailable => Status::unavailable(message),
-        ErrorClass::Internal => Status::internal(message),
-    };
-    let metadata = status.metadata_mut();
-    if let Ok(class) = tonic::metadata::MetadataValue::try_from(failed.class().as_str()) {
-        metadata.insert(GRPC_ERROR_CLASS, class);
-    }
-    if let Ok(code) = tonic::metadata::MetadataValue::try_from(failed.code()) {
-        metadata.insert(GRPC_ERROR_CODE, code);
-    }
-
-    status
+    crate::wire::grpc_error(failed, disclosure)
 }
 
 /// One value as the bytes the wire carries it as.

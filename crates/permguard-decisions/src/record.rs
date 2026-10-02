@@ -42,7 +42,7 @@ use sha2::{Digest as _, Sha256};
 use crate::jcs::{self, CanonicalError};
 
 /// The domain this crate's digests live in.
-pub const DIGEST_DOMAIN: &str = "permguard.decision.v1\n";
+pub const DIGEST_DOMAIN: &str = permguard_core::domains::digest::DECISION_RECORD;
 
 /// The `prev` of the first record of any stream: sixty-four zeroes.
 ///

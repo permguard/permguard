@@ -25,7 +25,7 @@
 
 use tonic::{Request, Response, Status};
 
-use permguard_core::{ApiError, Disclosure, ErrorClass};
+use permguard_core::{ApiError, Disclosure, ErrorClass, GrpcCode};
 
 use super::configuration;
 use super::decide::Decider;
@@ -38,8 +38,7 @@ use crate::v1::{
 
 /// The gRPC metadata keys carrying the structured half of a refusal — the same
 /// keys the control plane uses, because a client should learn one convention.
-pub const GRPC_ERROR_CLASS: &str = "x-permguard-error-class";
-pub const GRPC_ERROR_CODE: &str = "x-permguard-error-code";
+pub use permguard_core::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 /// The service the plane mounts.
 pub struct PdpApi {
@@ -131,15 +130,18 @@ impl PdpApi {
     }
 }
 
-/// Turns a refusal into the gRPC answer, class and code as metadata.
-fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
+/// Turns a refusal into the gRPC answer: the taxonomy's status, class and code as metadata.
+pub(crate) fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
     let message = failed.disclosed_message(disclosure);
-    let mut status = match failed.class() {
-        ErrorClass::Validation => Status::invalid_argument(message),
-        ErrorClass::NotFound => Status::not_found(message),
-        ErrorClass::Conflict => Status::failed_precondition(message),
-        ErrorClass::Unavailable => Status::unavailable(message),
-        ErrorClass::Internal => Status::internal(message),
+    let mut status = match failed.grpc_code() {
+        GrpcCode::InvalidArgument => Status::invalid_argument(message),
+        GrpcCode::NotFound => Status::not_found(message),
+        GrpcCode::AlreadyExists => Status::already_exists(message),
+        GrpcCode::PermissionDenied => Status::permission_denied(message),
+        GrpcCode::FailedPrecondition => Status::failed_precondition(message),
+        GrpcCode::Internal => Status::internal(message),
+        GrpcCode::Unavailable => Status::unavailable(message),
+        GrpcCode::Unauthenticated => Status::unauthenticated(message),
     };
     let metadata = status.metadata_mut();
     if let Ok(class) = tonic::metadata::MetadataValue::try_from(failed.class().as_str()) {

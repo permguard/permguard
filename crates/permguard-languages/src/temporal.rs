@@ -289,7 +289,7 @@ pub trait Temporal: Send + Sync {
 /// `temporal` names the API's semantics; `dogwood` names its first runtime. Another temporal
 /// runtime must be able to implement this interface without the interface being renamed, and the
 /// stateless one must be able to stay exactly as it is.
-pub const INTERFACE: &str = "permguard.api.pdp.temporal.v1alpha1";
+pub const INTERFACE: &str = permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1;
 
 /// Where an occurrence is submitted.
 ///
@@ -318,11 +318,11 @@ pub const CONFIGURATION_PATH: &str = "/.well-known/permguard-pdp-temporal-v1alph
 /// | `history-receipts` | a history-only kind returns a receipt, not a fabricated verdict |
 /// | `durable-before-decided` | the occurrence is durable before it is observed or answered |
 pub const CAPABILITIES: [&str; 5] = [
-    "urn:permguard:pdp:temporal:v1alpha1:store-in-payload",
-    "urn:permguard:pdp:temporal:v1alpha1:typed-events",
-    "urn:permguard:pdp:temporal:v1alpha1:schema-derived-pins",
-    "urn:permguard:pdp:temporal:v1alpha1:history-receipts",
-    "urn:permguard:pdp:temporal:v1alpha1:durable-before-decided",
+    permguard_core::domains::capability::TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD,
+    permguard_core::domains::capability::TEMPORAL_V1ALPHA1_TYPED_EVENTS,
+    permguard_core::domains::capability::TEMPORAL_V1ALPHA1_SCHEMA_DERIVED_PINS,
+    permguard_core::domains::capability::TEMPORAL_V1ALPHA1_HISTORY_RECEIPTS,
+    permguard_core::domains::capability::TEMPORAL_V1ALPHA1_DURABLE_BEFORE_DECIDED,
 ];
 
 /// One submission, as the wire carries it.

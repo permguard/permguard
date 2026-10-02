@@ -17,7 +17,7 @@ use crate::grammar;
 use crate::semver::{Constraint, SemverError, Version};
 
 /// The registered media type of the manifest blob.
-pub const MEDIA_TYPE: &str = "application/vnd.permguard.manifest.v1+cbor";
+pub const MEDIA_TYPE: &str = permguard_core::domains::media::MANIFEST_V1_CBOR;
 
 /// The ledger kinds this build understands. One kind per ledger, never mixed.
 pub const KIND_POLICY: &str = "policy";
@@ -35,11 +35,12 @@ pub const KIND_POLICY: &str = "policy";
 /// discovery documents advertise the new name, and this build's own examples carry the new name.
 /// A ledger carrying the old one is read, served identically, and says so — there are not two
 /// contracts, there is one contract and one legacy spelling of its name.
-pub const PROFILE_PDP_NATIVE_V1: &str = "permguard.api.pdp.native.v1";
+pub const PROFILE_PDP_NATIVE_V1: &str = permguard_core::domains::interface::PDP_NATIVE_V1;
 /// The stateful temporal interface: events in, history kept, decisions against it.
-pub const PROFILE_PDP_TEMPORAL_V1ALPHA1: &str = "permguard.api.pdp.temporal.v1alpha1";
+pub const PROFILE_PDP_TEMPORAL_V1ALPHA1: &str =
+    permguard_core::domains::interface::PDP_TEMPORAL_V1ALPHA1;
 /// The stateless interface's former name. Accepted, never generated.
-pub const PROFILE_PDP_V1: &str = "permguard.pdp.v1";
+pub const PROFILE_PDP_V1: &str = permguard_core::domains::interface::PDP_V1_LEGACY;
 
 /// Every profile type this build serves, legacy spellings included.
 pub const PROFILE_TYPES: [&str; 3] = [

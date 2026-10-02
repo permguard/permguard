@@ -36,24 +36,24 @@ use permguard_stream::jcs::{self, CanonicalError};
 ///
 /// Distinct from the decision log's on purpose: a verifier must not be able to accept one where
 /// the other belongs.
-pub const DIGEST_DOMAIN: &str = "permguard.event.record.v1\n";
+pub const DIGEST_DOMAIN: &str = permguard_core::domains::digest::EVENT_RECORD;
 
 /// The domain an occurrence digest lives in.
 ///
 /// A *second* domain, and not the record's. The occurrence digest covers what the caller sent,
 /// before this plane added its sequence and clocks; digesting both under one domain would make a
 /// record and the occurrence inside it confusable.
-pub const OCCURRENCE_DOMAIN: &str = "permguard.event.occurrence.v1\n";
+pub const OCCURRENCE_DOMAIN: &str = permguard_core::domains::digest::EVENT_OCCURRENCE;
 
 /// The registered name of this storage/wire envelope.
-pub const RECORD_TYPE: &str = "permguard.event.record.v1";
+pub const RECORD_TYPE: &str = permguard_core::domains::record::EVENT_V1;
 
 /// The only producer class accepted in the first release.
 ///
 /// Registered as a class rather than assumed, so a future authenticated ingress — a PIP, another
 /// control-plane surface — can be admitted as a *different* class without changing offsets,
 /// records, signed batches or storage layout. It is not accepted today.
-pub const PRODUCER_CLASS_DATA_PLANE: &str = "permguard.event.producer.data-plane.v1";
+pub const PRODUCER_CLASS_DATA_PLANE: &str = permguard_core::domains::producer::DATA_PLANE_V1;
 
 /// The `prev` of the first record of any stream: sixty-four zeroes.
 pub const GENESIS: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
@@ -384,7 +384,7 @@ impl std::error::Error for DigestError {}
 ///
 /// Its own domain, like every other digest here: a history key is a short structure of text, and a
 /// digest that shared a domain with a record's could be presented as one.
-pub const HISTORY_DOMAIN: &str = "permguard.event.history.v1\n";
+pub const HISTORY_DOMAIN: &str = permguard_core::domains::digest::EVENT_HISTORY;
 
 /// The digest of a derived history key — the index key, never a substitute for its values.
 ///

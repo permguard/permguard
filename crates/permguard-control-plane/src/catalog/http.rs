@@ -243,7 +243,7 @@ mod tests {
         assert!(body.contains(r#""message":""#), "{body}");
 
         let (status, body) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"Pharma"}"#)).await;
-        assert_eq!(status, 422, "{body}");
+        assert_eq!(status, 400, "{body}");
         assert!(body.contains(r#""class":"validation""#), "{body}");
         assert!(body.contains("lowercase"), "{body}");
 

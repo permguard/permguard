@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use sha2::{Digest as _, Sha256};
 
 /// The domain-separation prefix of rule 3: 22 ASCII bytes, no separator.
-const DOMAIN_PREFIX: &[u8] = b"permguard.policy.id.v1";
+const DOMAIN_PREFIX: &[u8] = permguard_core::domains::digest::POLICY_ID.as_bytes();
 
 /// Derive the content-derived identity of rule 3: SHA-256 over the
 /// domain-separation prefix followed by the verbatim authored bytes, folded
@@ -23,14 +23,14 @@ const DOMAIN_PREFIX: &[u8] = b"permguard.policy.id.v1";
 /// The well-known annotation keys a tree entry carries for a policy: the
 /// identity, the author's alias, and the kind. Names in the model, because a
 /// tree entry is the model's — what fills them is somebody else's business.
-pub const ANNOTATION_POLICY_ID: &str = "permguard.policy.id";
-pub const ANNOTATION_POLICY_ALIAS: &str = "permguard.policy.alias";
-pub const ANNOTATION_POLICY_KIND: &str = "permguard.policy.kind";
+pub const ANNOTATION_POLICY_ID: &str = permguard_core::domains::annotation::POLICY_ID;
+pub const ANNOTATION_POLICY_ALIAS: &str = permguard_core::domains::annotation::POLICY_ALIAS;
+pub const ANNOTATION_POLICY_KIND: &str = permguard_core::domains::annotation::POLICY_KIND;
 
 /// The media-type family that marks a blob as a policy, and therefore as
 /// something that must carry identity annotations. A prefix, not a
 /// catalogue: the model recognises the *family*, never the languages in it.
-pub const POLICY_FAMILY_PREFIX: &str = "application/vnd.permguard.policy.";
+pub const POLICY_FAMILY_PREFIX: &str = permguard_core::domains::media::POLICY_PREFIX;
 
 pub fn derive_policy_id(authored_bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();

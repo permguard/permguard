@@ -22,10 +22,12 @@ pub mod audit;
 pub mod brand;
 pub mod build;
 pub mod catalog;
+pub mod codes;
 pub mod config;
 pub mod config_file;
 pub mod config_section;
 pub mod decisions;
+pub mod domains;
 pub mod error;
 pub mod future;
 pub mod identity;
@@ -44,7 +46,10 @@ pub mod storage;
 pub mod time;
 pub mod tls;
 
-pub use api::{ApiError, Disclosure, ErrorClass, WireError};
+pub use api::{
+    AccessDenial, ApiError, Disclosure, ErrorClass, GRPC_ERROR_CLASS, GRPC_ERROR_CODE, GrpcCode,
+    WireDenial, WireError,
+};
 pub use audit::{AuditDestination, AuditEvent, AuditSink, Sensitivity, Subject};
 pub use catalog::{Catalog, CatalogError, Ledger, Selector, Zone};
 pub use config::{BuildSettings, Config, Layers};

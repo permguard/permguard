@@ -13,6 +13,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+permguard-core.workspace = true
 # The objects the protocol moves: digests on the wire, the canonical codec
 # the bodies are framed in. The protocol knows the objects; the objects know
 # no protocol.

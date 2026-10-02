@@ -34,7 +34,7 @@ use serde_json::Value;
 use super::store::{EventStore, Scope, read_segment};
 
 /// The API family an event-log offset belongs to.
-pub const API: &str = "permguard.api.events.native.v1alpha1";
+pub const API: &str = permguard_core::domains::interface::EVENTS_NATIVE_V1ALPHA1;
 
 /// What a reader is narrowing to.
 ///

@@ -33,8 +33,7 @@ use crate::v1::{
 
 /// The gRPC metadata keys carrying the structured half of a refusal — the same keys every other
 /// surface uses, because a client should learn one convention.
-pub const GRPC_ERROR_CLASS: &str = "x-permguard-error-class";
-pub const GRPC_ERROR_CODE: &str = "x-permguard-error-code";
+pub use permguard_core::{GRPC_ERROR_CLASS, GRPC_ERROR_CODE};
 
 /// The service the plane mounts.
 pub struct TemporalPdpApi {
@@ -278,23 +277,7 @@ fn some(value: String) -> Option<String> {
     Some(value)
 }
 
-/// Turns a refusal into the gRPC answer, class and code as metadata.
+/// Turns a refusal into the gRPC answer: the taxonomy's status, class and code as metadata.
 fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
-    let message = failed.disclosed_message(disclosure);
-    let mut status = match failed.class() {
-        ErrorClass::Validation => Status::invalid_argument(message),
-        ErrorClass::NotFound => Status::not_found(message),
-        ErrorClass::Conflict => Status::failed_precondition(message),
-        ErrorClass::Unavailable => Status::unavailable(message),
-        ErrorClass::Internal => Status::internal(message),
-    };
-    let metadata = status.metadata_mut();
-    if let Ok(class) = tonic::metadata::MetadataValue::try_from(failed.class().as_str()) {
-        metadata.insert(GRPC_ERROR_CLASS, class);
-    }
-    if let Ok(code) = tonic::metadata::MetadataValue::try_from(failed.code()) {
-        metadata.insert(GRPC_ERROR_CODE, code);
-    }
-
-    status
+    crate::authz::grpc::status_of(failed, disclosure)
 }

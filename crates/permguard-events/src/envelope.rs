@@ -36,7 +36,7 @@ use crate::record::Stream;
 pub const ALGORITHM: &str = "EdDSA";
 
 /// The registered type of a signed event batch, declared in the protected header.
-pub const BATCH_TYPE: &str = "permguard.event.batch.v1";
+pub const BATCH_TYPE: &str = permguard_core::domains::protected::EVENT_BATCH;
 
 /// One batch, as the wire carries it: the signed envelope and the records it covers.
 ///

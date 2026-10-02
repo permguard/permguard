@@ -13,6 +13,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+permguard-core.workspace = true
 # zlib for objects at rest and negotiated wire batches — the same algorithm
 # git uses for loose objects; pure-Rust backend.
 flate2.workspace = true

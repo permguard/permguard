@@ -239,13 +239,8 @@ fn percent_decode(value: &str) -> String {
 
 /// Turns a refusal into the answer the contract names.
 fn error(failed: &ApiError, disclosure: Disclosure) -> Response {
-    let status = match failed.class() {
-        ErrorClass::Validation => StatusCode::BAD_REQUEST,
-        ErrorClass::NotFound => StatusCode::NOT_FOUND,
-        ErrorClass::Conflict => StatusCode::CONFLICT,
-        ErrorClass::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-        ErrorClass::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-    };
+    let status =
+        StatusCode::from_u16(failed.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     (status, Json(failed.on_the_wire(disclosure))).into_response()
 }

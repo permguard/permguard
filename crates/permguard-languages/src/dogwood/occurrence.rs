@@ -43,7 +43,7 @@ use serde_json::{Map, Value as Json};
 use super::value;
 
 /// The registered name of this event input.
-pub const EVENT_TYPE: &str = "permguard.dogwood.event.v1";
+pub const EVENT_TYPE: &str = permguard_core::domains::event::DOGWOOD_V1;
 
 /// The logged field Dogwood files the request principal under.
 pub const CALLER_PRINCIPAL: &str = "callerPrincipal";
