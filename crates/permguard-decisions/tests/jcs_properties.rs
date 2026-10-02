@@ -12,7 +12,9 @@ fn json_value() -> impl Strategy<Value = Value> {
     let leaf = prop_oneof![
         Just(Value::Null),
         any::<bool>().prop_map(Value::Bool),
-        any::<i64>().prop_map(|value| Value::Number(value.into())),
+        // The profile carries integers within ±2^53; anything beyond is refused by design.
+        (-(jcs::MAX_INTEGER as i64)..=(jcs::MAX_INTEGER as i64))
+            .prop_map(|value| Value::Number(value.into())),
         "[a-z0-9 _.-]{0,16}".prop_map(Value::String),
     ];
 
@@ -29,7 +31,7 @@ proptest! {
     #[test]
     fn canonical_json_is_a_fixed_point(value in json_value()) {
         let canonical = jcs::canonicalize(&value).unwrap();
-        let reparsed: Value = serde_json::from_slice(&canonical).unwrap();
+        let reparsed: Value = jcs::decode_canonical(&canonical).unwrap();
 
         prop_assert_eq!(jcs::canonicalize(&reparsed).unwrap(), canonical);
     }
@@ -37,7 +39,7 @@ proptest! {
     #[test]
     fn decision_record_digests_are_stable_for_equivalent_json_values(value in json_value()) {
         let canonical = jcs::canonicalize(&value).unwrap();
-        let reparsed: Value = serde_json::from_slice(&canonical).unwrap();
+        let reparsed: Value = jcs::parse_strict(&canonical).unwrap();
 
         prop_assert_eq!(
             permguard_decisions::record::digest_of(&value).unwrap(),

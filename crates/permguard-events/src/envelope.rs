@@ -52,6 +52,40 @@ pub struct Batch {
     pub records: Vec<serde_json::Value>,
 }
 
+impl Batch {
+    /// Reads a batch from one JSON body under the canonical JSON profile.
+    ///
+    /// The one way bytes become a batch at a trust boundary: a duplicated member, a fractional or
+    /// out-of-range number or a second value is refused here, before any record is digested.
+    pub fn decode(bytes: &[u8]) -> Result<Self, EnvelopeError> {
+        let value =
+            jcs::parse_strict(bytes).map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
+
+        serde_json::from_value(value).map_err(|error| EnvelopeError::Encoding(error.to_string()))
+    }
+
+    /// Reads a batch carried as its parts, the envelope and one byte string per record, as the
+    /// gRPC binding carries it; every part is read under the same profile as [`Self::decode`].
+    pub fn from_wire_parts(envelope: &[u8], records: &[Vec<u8>]) -> Result<Self, EnvelopeError> {
+        let signature = jcs::parse_strict(envelope)
+            .and_then(|value| {
+                serde_json::from_value(value)
+                    .map_err(|error| jcs::CanonicalError::Syntax(error.to_string()))
+            })
+            .map_err(|error| EnvelopeError::Encoding(format!("the envelope: {error}")))?;
+        let records = records
+            .iter()
+            .enumerate()
+            .map(|(index, bytes)| {
+                jcs::parse_strict(bytes)
+                    .map_err(|error| EnvelopeError::Encoding(format!("record {index}: {error}")))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self { signature, records })
+    }
+}
+
 /// What a batch attests to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope {
@@ -188,22 +222,28 @@ impl Signed {
         })
     }
 
-    /// The header, decoded — **not** verified.
+    /// The header, decoded under the canonical JSON profile — **not** verified.
     pub fn protected(&self) -> Result<Protected, EnvelopeError> {
         let bytes = B64
             .decode(&self.protected)
             .map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
+        let value = jcs::parse_strict(&bytes)
+            .map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
 
-        serde_json::from_slice(&bytes).map_err(|error| EnvelopeError::Encoding(error.to_string()))
+        serde_json::from_value(value).map_err(|error| EnvelopeError::Encoding(error.to_string()))
     }
 
     /// The envelope, decoded — **not** verified. Callers use [`Self::verify`].
+    ///
+    /// The payload bytes are what the signature covers, so they must be exactly canonical.
     pub fn envelope(&self) -> Result<Envelope, EnvelopeError> {
         let bytes = B64
             .decode(&self.payload)
             .map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
+        let value = jcs::decode_canonical(&bytes)
+            .map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
 
-        serde_json::from_slice(&bytes).map_err(|error| EnvelopeError::Encoding(error.to_string()))
+        serde_json::from_value(value).map_err(|error| EnvelopeError::Encoding(error.to_string()))
     }
 
     /// Verifies the signature against a published key set, and the envelope against itself.

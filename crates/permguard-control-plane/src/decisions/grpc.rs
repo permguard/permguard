@@ -38,20 +38,19 @@ use crate::v1::{
 impl DecisionLog for DecisionFacade {
     async fn ship(&self, request: Request<ShipRequest>) -> Result<Response<ShipResponse>, Status> {
         let started = std::time::Instant::now();
-        let batch: Batch =
-            serde_json::from_slice(&request.into_inner().batch).map_err(|error| {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", "malformed")]);
+        let batch: Batch = Batch::decode(&request.into_inner().batch).map_err(|error| {
+            self.metrics
+                .count(&measure::REFUSALS, &[("reason", "malformed")]);
 
-                api_status(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        codes::stream::MALFORMED_BATCH,
-                        format!("this is not a decision batch: {error}"),
-                    ),
-                    self.disclosure,
-                )
-            })?;
+            api_status(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    codes::stream::MALFORMED_BATCH,
+                    format!("this is not a decision batch: {error}"),
+                ),
+                self.disclosure,
+            )
+        })?;
 
         let keys = self.accepted_producers().map_err(|error| {
             api_status(

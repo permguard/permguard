@@ -1,0 +1,38 @@
+{
+  "profile": "RFC 8949 core deterministic encoding: definite lengths, shortest integers, bytewise-sorted unique keys, no tags, no floats, no simple values but true and false",
+  "canonical": [
+    { "name": "small positive", "hex": "0a" },
+    { "name": "small negative", "hex": "29" },
+    { "name": "two-byte positive", "hex": "1903e8" },
+    { "name": "i64 max", "hex": "1b7fffffffffffffff" },
+    { "name": "i64 min", "hex": "3b7fffffffffffffff" },
+    { "name": "text", "hex": "6449455446" },
+    { "name": "bytes", "hex": "4401020304" },
+    { "name": "true false", "hex": "82f5f4" },
+    { "name": "sorted map", "hex": "a2016161026162" },
+    { "name": "empty map and array", "hex": "82a080" },
+    { "name": "keys sorted bytewise by encoded key: shorter first", "hex": "a2016101190100616c" }
+  ],
+  "refused": [
+    { "name": "long-form zero", "hex": "1800", "error": "NotShortest" },
+    { "name": "two-byte for one-byte value", "hex": "190018", "error": "NotShortest" },
+    { "name": "unsorted keys", "hex": "a20200010000", "error": "KeyOrder" },
+    { "name": "duplicate keys", "hex": "a201000100", "error": "KeyOrder" },
+    { "name": "tag", "hex": "c000", "error": "Unsupported" },
+    { "name": "half float zero", "hex": "f90000", "error": "Unsupported" },
+    { "name": "half float NaN", "hex": "f97e00", "error": "Unsupported" },
+    { "name": "double NaN", "hex": "fb7ff8000000000000", "error": "Unsupported" },
+    { "name": "simple value null", "hex": "f6", "error": "Unsupported" },
+    { "name": "simple value undefined", "hex": "f7", "error": "Unsupported" },
+    { "name": "indefinite array", "hex": "9fff", "error": "Unsupported" },
+    { "name": "indefinite text", "hex": "7fff", "error": "Unsupported" },
+    { "name": "reserved additional info", "hex": "1c", "error": "Unsupported" },
+    { "name": "u64 beyond i64", "hex": "1b8000000000000000", "error": "IntRange" },
+    { "name": "negative beyond i64", "hex": "3b8000000000000000", "error": "IntRange" },
+    { "name": "invalid utf-8 text", "hex": "61ff", "error": "Utf8" },
+    { "name": "truncated text", "hex": "6449", "error": "Truncated" },
+    { "name": "truncated map", "hex": "a201", "error": "Truncated" },
+    { "name": "trailing bytes", "hex": "0000", "error": "TrailingBytes" },
+    { "name": "empty input", "hex": "", "error": "Truncated" }
+  ]
+}

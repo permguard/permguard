@@ -279,7 +279,7 @@ struct OutOfOrder {
 
 async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> Response {
     let started = std::time::Instant::now();
-    let batch: Batch = match serde_json::from_slice(&body) {
+    let batch: Batch = match Batch::decode(&body) {
         Ok(batch) => batch,
         Err(error) => {
             facade

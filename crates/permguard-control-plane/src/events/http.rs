@@ -556,12 +556,9 @@ async fn document(State(facade): State<EventFacade>) -> Json<super::configuratio
     ))
 }
 
-async fn batches(
-    State(facade): State<EventFacade>,
-    body: Result<Json<Batch>, axum::extract::rejection::JsonRejection>,
-) -> Response {
-    let Json(batch) = match body {
-        Ok(body) => body,
+async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> Response {
+    let batch = match Batch::decode(&body) {
+        Ok(batch) => batch,
         Err(rejection) => {
             return refuse(
                 &facade,

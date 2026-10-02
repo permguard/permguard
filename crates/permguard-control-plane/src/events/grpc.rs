@@ -38,36 +38,16 @@ impl EventLog for EventFacade {
         request: Request<IngestBatchRequest>,
     ) -> Result<Response<IngestBatchResponse>, Status> {
         let asked = request.into_inner();
-        let records = asked
-            .records
-            .iter()
-            .enumerate()
-            .map(|(index, bytes)| {
-                serde_json::from_slice(bytes).map_err(|error| {
-                    status_of(
-                        &ApiError::new(
-                            ErrorClass::Validation,
-                            "payload_malformed",
-                            format!("record {index} is not JSON: {error}"),
-                        ),
-                        self.disclosure,
-                    )
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let batch = Batch {
-            signature: serde_json::from_slice(&asked.envelope).map_err(|error| {
-                status_of(
-                    &ApiError::new(
-                        ErrorClass::Validation,
-                        "payload_malformed",
-                        format!("the envelope is not a signed batch: {error}"),
-                    ),
-                    self.disclosure,
-                )
-            })?,
-            records,
-        };
+        let batch = Batch::from_wire_parts(&asked.envelope, &asked.records).map_err(|error| {
+            status_of(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    "payload_malformed",
+                    format!("the request is not a signed batch: {error}"),
+                ),
+                self.disclosure,
+            )
+        })?;
 
         let facade = self.clone();
         let answered = tokio::task::spawn_blocking(move || facade.ingest(&batch))
