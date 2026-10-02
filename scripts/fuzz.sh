@@ -19,6 +19,14 @@ cd "$(git rev-parse --show-toplevel)"
 budget="${1:?usage: scripts/fuzz.sh <seconds-per-target> [target ...]}"
 shift
 
+# AddressSanitizer's bookkeeping, bounded. By default it keeps a 30-frame stack trace of every
+# allocation and a large quarantine of freed memory, and neither shrinks: a decoder that allocates
+# per input grows the fuzzer's resident set by about 100 MB a second while its live heap stays
+# under 40 MB, until libFuzzer reports an out-of-memory that is no bug at all. A 16 MB quarantine
+# still catches a use after free, and four frames still say where it was allocated. A single
+# oversized allocation is still caught: libFuzzer's malloc limit follows `-rss_limit_mb`.
+export ASAN_OPTIONS="${ASAN_OPTIONS:-quarantine_size_mb=16:malloc_context_size=4}"
+
 registry="crates/permguard-conformance/boundaries.json"
 if [ "$#" -gt 0 ]; then
     targets=("$@")
