@@ -308,11 +308,12 @@ fn test_the_sealed_key_envelope_matches_the_independent_encoder() {
         };
         let nonce: [u8; 12] = hex(text(entry, "unique_nonce")).try_into().unwrap();
         let kek_version = entry["kek_version"].as_u64().unwrap();
+        let provider = &entry["test_provider"];
         let kek = LocalKeyWrap::new(
             text(entry, "kek_ref"),
             kek_version,
-            Zeroizing::new(hex(text(entry, "kek")).try_into().unwrap()),
-            Box::new(Scripted::new(&[hex(text(entry, "wrap_nonce"))])),
+            Zeroizing::new(hex(text(provider, "kek")).try_into().unwrap()),
+            Box::new(Scripted::new(&[hex(text(provider, "wrap_nonce"))])),
         );
         assert_eq!(
             kek.wrap_algorithm(),
@@ -352,28 +353,39 @@ fn test_the_sealed_key_envelope_matches_the_independent_encoder() {
         );
         assert_eq!(
             hex::encode(&sealed.wrapped_dek),
-            text(entry, "wrapped_dek"),
+            text(provider, "wrapped_dek"),
             "{name}"
         );
         assert_eq!(
             hex::encode(sealed.encode().unwrap()),
-            text(entry, "on_disk"),
+            text(provider, "on_disk"),
             "{name}"
         );
 
-        // The vector's own bytes open, and the key inside is the one RFC 8032 signs with.
+        // The vector's own bytes open, and the key inside signs for the published public key.
         let public = hex(text(entry, "public"));
-        let opened = SealedKey::decode(&hex(text(entry, "on_disk")))
+        let opened = SealedKey::decode(&hex(text(provider, "on_disk")))
             .unwrap()
             .open(&binding, &kek, &public)
             .unwrap();
         assert_eq!(*opened.pkcs8, pkcs8, "{name}");
-        let rfc = &vectors["ed25519"][0];
+        let signature = opened.key.sign(b"sealed key vector").unwrap();
         assert_eq!(
-            hex::encode(opened.key.sign(&hex(text(rfc, "message"))).unwrap()),
-            text(rfc, "signature"),
+            binding
+                .suite
+                .verify(&public, b"sealed key vector", &signature),
+            Ok(()),
             "{name}"
         );
+        if binding.suite == Suite::Ed25519Sha256V1 {
+            // Deterministic signatures: the key inside is the one RFC 8032 test 1 signs with.
+            let rfc = &vectors["ed25519"][0];
+            assert_eq!(
+                hex::encode(opened.key.sign(&hex(text(rfc, "message"))).unwrap()),
+                text(rfc, "signature"),
+                "{name}"
+            );
+        }
     }
 }
 

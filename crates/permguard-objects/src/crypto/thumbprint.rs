@@ -109,11 +109,11 @@ pub fn kid(ring: &str, thumbprint: &str) -> String {
     format!("{ring}:{thumbprint}")
 }
 
-/// The ring and the thumbprint a `kid` names, when it has the profile's shape.
+/// The ring and the thumbprint a `kid` names, when it has the profile's shape: a non-empty ring,
+/// a colon, and a canonical thumbprint.
 pub fn split_kid(kid: &str) -> Option<(&str, &str)> {
     let (ring, thumbprint) = kid.rsplit_once(':')?;
-    (!ring.is_empty() && !thumbprint.is_empty() && !thumbprint.contains(':'))
-        .then_some((ring, thumbprint))
+    (!ring.is_empty() && is_thumbprint(thumbprint)).then_some((ring, thumbprint))
 }
 
 /// Whether `value` is an RFC 7638 SHA-256 thumbprint in its only encoding: 43 characters of
@@ -300,12 +300,14 @@ mod tests {
 
     #[test]
     fn test_a_kid_names_its_ring_and_splits_back() {
-        let kid = kid("host.identity", "abc_DEF-123");
-        assert_eq!(kid, "host.identity:abc_DEF-123");
-        assert_eq!(split_kid(&kid), Some(("host.identity", "abc_DEF-123")));
+        let thumbprint = "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k";
+        let kid = kid("host.identity", thumbprint);
+        assert_eq!(kid, format!("host.identity:{thumbprint}"));
+        assert_eq!(split_kid(&kid), Some(("host.identity", thumbprint)));
         assert_eq!(split_kid("no-colon"), None);
-        assert_eq!(split_kid(":x"), None);
+        assert_eq!(split_kid(&format!(":{thumbprint}")), None);
         assert_eq!(split_kid("ring:"), None);
+        assert_eq!(split_kid("ring:abc_DEF-123"), None, "not a thumbprint");
     }
 
     #[test]

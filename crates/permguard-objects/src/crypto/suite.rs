@@ -140,10 +140,7 @@ impl Suite {
                 .map_err(|_| SignatureError::Invalid),
             Self::P256Sha256V1 => {
                 if public_key[0] != 0x04 {
-                    return Err(SignatureError::KeyLength {
-                        expected: self.public_key_len(),
-                        actual: public_key.len(),
-                    });
+                    return Err(SignatureError::KeyEncoding);
                 }
                 if !is_low_s(&signature[32..]) {
                     return Err(SignatureError::HighS);
@@ -167,8 +164,10 @@ impl fmt::Display for Suite {
 pub enum SignatureError {
     /// The signature is not 64 bytes.
     Length { expected: usize, actual: usize },
-    /// The public key is not in the suite's encoding.
+    /// The public key is not the suite's length.
     KeyLength { expected: usize, actual: usize },
+    /// A P-256 public key that is not an uncompressed SEC1 point.
+    KeyEncoding,
     /// A P-256 signature with `s > n/2`: valid arithmetic, refused encoding.
     HighS,
     /// The signature does not verify.
@@ -186,6 +185,9 @@ impl fmt::Display for SignatureError {
                 formatter,
                 "the public key is {actual} bytes; this suite publishes {expected}"
             ),
+            Self::KeyEncoding => {
+                formatter.write_str("the public key is not an uncompressed SEC1 point")
+            }
             Self::HighS => formatter.write_str(
                 "the signature carries a high s value: this profile accepts only the low-s encoding",
             ),
@@ -203,8 +205,6 @@ pub enum KeyError {
     Entropy(EntropyUnavailable),
     /// The PKCS#8 document is not a key of this suite.
     Malformed,
-    /// The signing operation itself failed.
-    Signing,
 }
 
 impl fmt::Display for KeyError {
@@ -212,7 +212,6 @@ impl fmt::Display for KeyError {
         match self {
             Self::Entropy(error) => error.fmt(formatter),
             Self::Malformed => formatter.write_str("the key document is not a key of this suite"),
-            Self::Signing => formatter.write_str("the signing operation failed"),
         }
     }
 }
@@ -247,9 +246,14 @@ impl SigningKey {
     }
 
     /// Reads a key of `suite` from its PKCS#8 document.
+    ///
+    /// An Ed25519 document may be PKCS#8 v1 (RFC 8410, the form OpenSSL writes) or v2 (RFC 5958,
+    /// the form this crate generates). A v2 document's public key is checked against its seed; a
+    /// v1 document carries none, so the public key is computed, and whoever stores the key checks
+    /// it against the published thumbprint.
     pub fn from_pkcs8(suite: Suite, pkcs8: &[u8]) -> Result<Self, KeyError> {
         match suite {
-            Suite::Ed25519Sha256V1 => Ed25519KeyPair::from_pkcs8(pkcs8)
+            Suite::Ed25519Sha256V1 => Ed25519KeyPair::from_pkcs8_maybe_unchecked(pkcs8)
                 .map(Self::Ed25519)
                 .map_err(|_| KeyError::Malformed),
             Suite::P256Sha256V1 => EcdsaKeyPair::from_pkcs8(
@@ -294,9 +298,10 @@ impl SigningKey {
         match self {
             Self::Ed25519(pair) => out.copy_from_slice(pair.sign(message).as_ref()),
             Self::P256(pair) => {
+                // ring fails an ECDSA signature only when its nonce cannot be drawn.
                 let signature = pair
                     .sign(&SystemRandom::new(), message)
-                    .map_err(|_| KeyError::Signing)?;
+                    .map_err(|_| KeyError::Entropy(EntropyUnavailable))?;
                 out.copy_from_slice(signature.as_ref());
                 if !is_low_s(&out[32..]) {
                     let negated = negate_s(&out[32..]);
@@ -439,11 +444,62 @@ mod tests {
             })
         );
         assert_eq!(
+            Suite::P256Sha256V1.verify(&[0u8; 65], b"m", &[0u8; 64]),
+            Err(SignatureError::KeyEncoding)
+        );
+        assert_eq!(
             Suite::P256Sha256V1.verify(&[0u8; 32], b"m", &[0u8; 64]),
             Err(SignatureError::KeyLength {
                 expected: 65,
                 actual: 32
             })
         );
+    }
+
+    #[test]
+    fn test_an_ed25519_key_reads_from_pkcs8_v1_and_v2_and_a_v2_that_lies_is_refused() {
+        // RFC 8032 section 7.1 test 1.
+        let seed = [
+            0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a, 0xf4, 0x92, 0xec,
+            0x2c, 0xc4, 0x44, 0x49, 0xc5, 0x69, 0x7b, 0x32, 0x69, 0x19, 0x70, 0x3b, 0xac, 0x03,
+            0x1c, 0xae, 0x7f, 0x60,
+        ];
+        let public = [
+            0xd7, 0x5a, 0x98, 0x01, 0x82, 0xb1, 0x0a, 0xb7, 0xd5, 0x4b, 0xfe, 0xd3, 0xc9, 0x64,
+            0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68,
+            0xf7, 0x07, 0x51, 0x1a,
+        ];
+        let v1 = [
+            &[
+                0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22,
+                0x04, 0x20,
+            ][..],
+            &seed,
+        ]
+        .concat();
+        let v2 = |public: &[u8]| {
+            [
+                &[
+                    0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04,
+                    0x22, 0x04, 0x20,
+                ][..],
+                &seed,
+                &[0xa1, 0x23, 0x03, 0x21, 0x00],
+                public,
+            ]
+            .concat()
+        };
+
+        for (form, document) in [("v1", v1), ("v2", v2(&public))] {
+            let key = SigningKey::from_pkcs8(Suite::Ed25519Sha256V1, &document).unwrap();
+            assert_eq!(key.public_key(), &public[..], "{form}");
+        }
+        let mut other = public;
+        other[0] ^= 1;
+        assert!(
+            SigningKey::from_pkcs8(Suite::Ed25519Sha256V1, &v2(&other)).is_err(),
+            "a v2 document whose public key is not its seed's"
+        );
+        assert!(SigningKey::from_pkcs8(Suite::P256Sha256V1, &v2(&public)).is_err());
     }
 }

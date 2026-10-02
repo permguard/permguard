@@ -1,0 +1,9 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# What `cargo fuzz` writes while it runs: build output, the growing corpus, crash artifacts and
+# coverage reports. A finding worth keeping becomes a regression test, not a committed artifact.
+target/
+corpus/
+artifacts/
+coverage/

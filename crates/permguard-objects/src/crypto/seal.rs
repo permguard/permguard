@@ -19,8 +19,8 @@
 //!
 //! AES-GCM fails catastrophically when a nonce repeats under one key. The usual answer is careful
 //! nonce management; the answer here is to make repetition impossible: a [`Dek`] is minted inside
-//! [`SealedKey::seal`], encrypts exactly one message, and is dropped. There is no API that accepts a
-//! caller's DEK, so there is no way to encrypt twice under one.
+//! [`SealedKey::seal`], encrypts exactly one message, and is dropped. No path of [`SealedKey`]
+//! accepts a caller's DEK, so a sealed key is never encrypted twice under one.
 //!
 //! # Why two contexts
 //!
@@ -642,8 +642,9 @@ pub struct LocalKeyWrap {
 }
 
 impl LocalKeyWrap {
-    /// The algorithm name this provider writes.
-    pub const ALGORITHM: &'static str = "A256GCMKW";
+    /// The algorithm name this provider writes: deliberately not a JOSE name, because the layout
+    /// is not JOSE `A256GCMKW` and a test provider must not pass for a registered one.
+    pub const ALGORITHM: &'static str = "pg-test-a256gcm";
 
     /// Holds `kek` as `kek_ref` at `kek_version`.
     pub fn new(

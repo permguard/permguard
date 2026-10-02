@@ -15,7 +15,8 @@ publish = false
 [dependencies]
 permguard-core.workspace = true
 base64.workspace = true
-hmac.workspace = true
+# `zeroize` erases the HMAC state, which holds pads derived from the key or the HKDF PRK.
+hmac = { workspace = true, features = ["zeroize"] }
 zeroize.workspace = true
 # zlib for objects at rest and negotiated wire batches — the same algorithm
 # git uses for loose objects; pure-Rust backend.
