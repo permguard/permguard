@@ -245,15 +245,15 @@ impl SigningKey {
         Ok(Zeroizing::new(document))
     }
 
-    /// Reads a key of `suite` from its PKCS#8 document.
-    ///
-    /// An Ed25519 document may be PKCS#8 v1 (RFC 8410, the form OpenSSL writes) or v2 (RFC 5958,
-    /// the form this crate generates). A v2 document's public key is checked against its seed; a
-    /// v1 document carries none, so the public key is computed, and whoever stores the key checks
-    /// it against the published thumbprint.
+    /// Reads a key of `suite` from the one PKCS#8 form a key is kept in: the document carries its
+    /// public key, which is checked against the private half. For Ed25519 that is exactly the
+    /// 83-byte DER of RFC 5958 version 2 with `publicKey` as `[1] IMPLICIT`; a version 1 document,
+    /// or one with the legacy explicit tag, goes through [`SigningKey::import_pkcs8`] first.
     pub fn from_pkcs8(suite: Suite, pkcs8: &[u8]) -> Result<Self, KeyError> {
         match suite {
-            Suite::Ed25519Sha256V1 => Ed25519KeyPair::from_pkcs8_maybe_unchecked(pkcs8)
+            // The library also accepts the legacy tag; the kept form is one byte sequence.
+            Suite::Ed25519Sha256V1 if !is_kept_ed25519(pkcs8) => Err(KeyError::Malformed),
+            Suite::Ed25519Sha256V1 => Ed25519KeyPair::from_pkcs8(pkcs8)
                 .map(Self::Ed25519)
                 .map_err(|_| KeyError::Malformed),
             Suite::P256Sha256V1 => EcdsaKeyPair::from_pkcs8(
@@ -264,6 +264,38 @@ impl SigningKey {
             .map(|pair| Self::P256(Box::new(pair)))
             .map_err(|_| KeyError::Malformed),
         }
+    }
+
+    /// Brings a PKCS#8 document from outside into the form a key is kept in.
+    ///
+    /// An Ed25519 document is rewritten into the kept form when it is RFC 8410 version 1 — the
+    /// form OpenSSL writes, with no public key, which is then computed from the seed — or version 2
+    /// with the legacy explicit `publicKey` tag, whose public key must match its seed. Any other
+    /// document must already be in the kept form and is returned unchanged once
+    /// [`SigningKey::from_pkcs8`] accepts it.
+    pub fn import_pkcs8(suite: Suite, document: &[u8]) -> Result<Zeroizing<Vec<u8>>, KeyError> {
+        if suite == Suite::Ed25519Sha256V1 && !is_kept_ed25519(document) {
+            // Either form parses with the library's lenient reader, which checks a public key
+            // when the document carries one; the seed is then re-emitted in the kept form.
+            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(document)
+                .map_err(|_| KeyError::Malformed)?;
+            let seed = match document.len() {
+                48 if document.starts_with(&ED25519_PKCS8_V1_PREFIX) => &document[16..48],
+                85 if document.starts_with(&ED25519_PKCS8_V2_LEGACY_PREFIX) => &document[16..48],
+                _ => return Err(KeyError::Malformed),
+            };
+            let mut kept = Zeroizing::new(Vec::with_capacity(ED25519_PKCS8_KEPT_LEN));
+            kept.extend_from_slice(&ED25519_PKCS8_V2_PREFIX);
+            kept.extend_from_slice(seed);
+            kept.extend_from_slice(&ED25519_PKCS8_V2_PUBLIC);
+            kept.extend_from_slice(pair.public_key().as_ref());
+            Self::from_pkcs8(suite, &kept)?;
+
+            return Ok(kept);
+        }
+        Self::from_pkcs8(suite, document)?;
+
+        Ok(Zeroizing::new(document.to_vec()))
     }
 
     /// Reads an Ed25519 key from its 32-byte seed and the public key it must produce.
@@ -312,6 +344,30 @@ impl SigningKey {
 
         Ok(out)
     }
+}
+
+/// An RFC 8410 version 1 Ed25519 PKCS#8 document up to its 32-byte seed.
+const ED25519_PKCS8_V1_PREFIX: [u8; 16] = [
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+];
+/// An RFC 5958 version 2 Ed25519 PKCS#8 document up to its 32-byte seed.
+const ED25519_PKCS8_V2_PREFIX: [u8; 16] = [
+    0x30, 0x51, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+];
+/// The `[1] IMPLICIT BIT STRING` header of `publicKey` that follows the seed in version 2.
+const ED25519_PKCS8_V2_PUBLIC: [u8; 3] = [0x81, 0x21, 0x00];
+/// The whole kept document: prefix, seed, `publicKey` header, public key.
+const ED25519_PKCS8_KEPT_LEN: usize = 16 + 32 + 3 + 32;
+/// Version 2 as early implementations wrote it, with an explicit `[1]` around the BIT STRING.
+const ED25519_PKCS8_V2_LEGACY_PREFIX: [u8; 16] = [
+    0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+];
+
+/// Whether `document` has the exact byte layout of the kept Ed25519 form.
+fn is_kept_ed25519(document: &[u8]) -> bool {
+    document.len() == ED25519_PKCS8_KEPT_LEN
+        && document.starts_with(&ED25519_PKCS8_V2_PREFIX)
+        && document[48..51] == ED25519_PKCS8_V2_PUBLIC
 }
 
 /// The order `n` of the P-256 base point.
@@ -457,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn test_an_ed25519_key_reads_from_pkcs8_v1_and_v2_and_a_v2_that_lies_is_refused() {
+    fn test_a_key_is_kept_as_pkcs8_v2_and_a_v1_document_enters_only_through_import() {
         // RFC 8032 section 7.1 test 1.
         let seed = [
             0x9d, 0x61, 0xb1, 0x9d, 0xef, 0xfd, 0x5a, 0x60, 0xba, 0x84, 0x4a, 0xf4, 0x92, 0xec,
@@ -469,37 +525,67 @@ mod tests {
             0x07, 0x3a, 0x0e, 0xe1, 0x72, 0xf3, 0xda, 0xa6, 0x23, 0x25, 0xaf, 0x02, 0x1a, 0x68,
             0xf7, 0x07, 0x51, 0x1a,
         ];
-        let v1 = [
-            &[
-                0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22,
-                0x04, 0x20,
-            ][..],
+        let v1 = [&ED25519_PKCS8_V1_PREFIX[..], &seed].concat();
+        let legacy = [
+            &ED25519_PKCS8_V2_LEGACY_PREFIX[..],
             &seed,
+            &[0xa1, 0x23, 0x03, 0x21, 0x00],
+            &public,
         ]
         .concat();
         let v2 = |public: &[u8]| {
             [
-                &[
-                    0x30, 0x53, 0x02, 0x01, 0x01, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04,
-                    0x22, 0x04, 0x20,
-                ][..],
+                &ED25519_PKCS8_V2_PREFIX[..],
                 &seed,
-                &[0xa1, 0x23, 0x03, 0x21, 0x00],
+                &ED25519_PKCS8_V2_PUBLIC,
                 public,
             ]
             .concat()
         };
+        let suite = Suite::Ed25519Sha256V1;
 
-        for (form, document) in [("v1", v1), ("v2", v2(&public))] {
-            let key = SigningKey::from_pkcs8(Suite::Ed25519Sha256V1, &document).unwrap();
-            assert_eq!(key.public_key(), &public[..], "{form}");
-        }
+        // Kept form: version 2, its public key checked against its seed.
+        let key = SigningKey::from_pkcs8(suite, &v2(&public)).unwrap();
+        assert_eq!(key.public_key(), &public[..]);
         let mut other = public;
         other[0] ^= 1;
         assert!(
-            SigningKey::from_pkcs8(Suite::Ed25519Sha256V1, &v2(&other)).is_err(),
-            "a v2 document whose public key is not its seed's"
+            SigningKey::from_pkcs8(suite, &v2(&other)).is_err(),
+            "a version 2 document whose public key is not its seed's"
         );
-        assert!(SigningKey::from_pkcs8(Suite::P256Sha256V1, &v2(&public)).is_err());
+        assert!(
+            SigningKey::from_pkcs8(suite, &v1).is_err(),
+            "a version 1 document is not a kept key"
+        );
+        assert!(
+            SigningKey::from_pkcs8(suite, &legacy).is_err(),
+            "nor is version 2 with the legacy explicit tag"
+        );
+        // The kept form is what the library itself generates.
+        let generated = SigningKey::generate_pkcs8(suite).unwrap();
+        assert!(is_kept_ed25519(&generated));
+        assert!(SigningKey::from_pkcs8(suite, &generated).is_ok());
+
+        // Import rewrites version 1 into exactly the version 2 document, and keeps a kept one.
+        assert_eq!(*SigningKey::import_pkcs8(suite, &v1).unwrap(), v2(&public));
+        assert_eq!(
+            *SigningKey::import_pkcs8(suite, &v2(&public)).unwrap(),
+            v2(&public)
+        );
+        assert_eq!(
+            *SigningKey::import_pkcs8(suite, &legacy).unwrap(),
+            v2(&public)
+        );
+        assert!(SigningKey::import_pkcs8(suite, &v2(&other)).is_err());
+        let mut lying_legacy = legacy.clone();
+        lying_legacy[84] ^= 1;
+        assert!(SigningKey::import_pkcs8(suite, &lying_legacy).is_err());
+        assert!(SigningKey::import_pkcs8(suite, &v1[..v1.len() - 1]).is_err());
+        assert!(SigningKey::import_pkcs8(Suite::P256Sha256V1, &v1).is_err());
+        let p256 = SigningKey::generate_pkcs8(Suite::P256Sha256V1).unwrap();
+        assert_eq!(
+            *SigningKey::import_pkcs8(Suite::P256Sha256V1, &p256).unwrap(),
+            *p256
+        );
     }
 }

@@ -1230,4 +1230,35 @@ mod tests {
             "a KEK at its limit still unwraps what it wrapped"
         );
     }
+
+    #[test]
+    fn test_only_the_kept_pkcs8_form_is_sealed_and_a_version_1_document_is_imported_first() {
+        let kek = provider("secret://kek", 1);
+        let (pkcs8, public, kid) = key(Suite::Ed25519Sha256V1);
+        let bound = binding(&HOST, &kid, Suite::Ed25519Sha256V1);
+        // The same key as an RFC 8410 version 1 document: the seed sits at bytes 16..48 of v2.
+        let v1 = [
+            &[
+                0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22,
+                0x04, 0x20,
+            ][..],
+            &pkcs8[16..48],
+        ]
+        .concat();
+
+        assert_eq!(
+            SealedKey::seal(&v1, &bound, &kek, &SystemEntropy).err(),
+            Some(SealError::Key(KeyMismatch::Suite)),
+            "a document without its public half is not sealed"
+        );
+        assert_eq!(
+            forge(&v1, &bound, &kek).open(&bound, &kek, &public).err(),
+            Some(SealError::Key(KeyMismatch::Suite)),
+            "nor opened from a blob"
+        );
+        let imported = SigningKey::import_pkcs8(Suite::Ed25519Sha256V1, &v1).unwrap();
+        assert_eq!(*imported, *pkcs8);
+        let sealed = SealedKey::seal(&imported, &bound, &kek, &SystemEntropy).unwrap();
+        assert_eq!(*sealed.open(&bound, &kek, &public).unwrap().pkcs8, *pkcs8);
+    }
 }

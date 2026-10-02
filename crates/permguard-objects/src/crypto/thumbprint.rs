@@ -35,6 +35,8 @@ pub enum ThumbprintError {
     NotAThumbprint(String),
     /// The ring name is empty.
     EmptyRing,
+    /// A published set holds no key; an absent ring is a `disabled` capability, never an empty set.
+    EmptySet,
     /// The epoch does not fit the integer model of the canonical encoding.
     EpochRange(u64),
     /// The bytes are not a key-set statement of this profile.
@@ -60,6 +62,7 @@ impl fmt::Display for ThumbprintError {
                 "`{value}` is not an unpadded base64url SHA-256 thumbprint"
             ),
             Self::EmptyRing => formatter.write_str("a key set names its ring"),
+            Self::EmptySet => formatter.write_str("a published key set holds at least one key"),
             Self::EpochRange(epoch) => write!(formatter, "the epoch {epoch} cannot be encoded"),
             Self::Encoding(detail) => write!(formatter, "not a key-set statement: {detail}"),
         }
@@ -134,7 +137,7 @@ const KEYS_BY_THUMBPRINT: &str = "keys_by_thumbprint";
 ///
 /// The encoding is a closed deterministic-CBOR map with exactly the text keys `ring`, `epoch`,
 /// `algorithm` and `keys_by_thumbprint`. `epoch` is an unsigned integer, `algorithm` the exact
-/// suite id, and the thumbprints are unique and sorted bytewise: canonical CBOR fixes map order,
+/// suite id, and the thumbprints are one or more, unique and sorted bytewise: canonical CBOR fixes map order,
 /// not array order, and an array in two orders would be two digests of one set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeySet {
@@ -157,6 +160,9 @@ impl KeySet {
         }
         if i64::try_from(epoch).is_err() {
             return Err(ThumbprintError::EpochRange(epoch));
+        }
+        if thumbprints.is_empty() {
+            return Err(ThumbprintError::EmptySet);
         }
         if let Some(bad) = thumbprints.iter().find(|value| !is_thumbprint(value)) {
             return Err(ThumbprintError::NotAThumbprint((*bad).to_owned()));
@@ -374,6 +380,10 @@ mod tests {
             KeySet::new("", 1, Suite::Ed25519Sha256V1, &[A]),
             Err(ThumbprintError::EmptyRing)
         );
+        assert_eq!(
+            KeySet::new("data.attest", 1, Suite::Ed25519Sha256V1, &[]),
+            Err(ThumbprintError::EmptySet)
+        );
     }
 
     fn statement(members: Vec<(Value, Value)>) -> Vec<u8> {
@@ -420,6 +430,8 @@ mod tests {
         repeated[3].1 = Value::Array(vec![Value::Text(A.into()), Value::Text(A.into())]);
         let mut bytes_member = members();
         bytes_member[3].1 = Value::Array(vec![Value::Bytes(vec![0; 32])]);
+        let mut empty = members();
+        empty[3].1 = Value::Array(Vec::new());
         let mut renamed = members();
         renamed[0].0 = Value::Text("rings".into());
 
@@ -433,6 +445,7 @@ mod tests {
             ("a repeated thumbprint", statement(repeated)),
             ("a thumbprint as bytes", statement(bytes_member)),
             ("a renamed key", statement(renamed)),
+            ("an empty set", statement(empty)),
         ] {
             assert!(KeySet::decode(&bytes).is_err(), "{name} was accepted");
         }
