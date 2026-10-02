@@ -4,11 +4,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
+use permguard_objects::statement::SignedHead;
 
 fuzz_target!(|data: &[u8]| {
-    if let Ok(head) = permguard_objects::statement::SignedHead::decode(data) {
+    if let Ok(head) = SignedHead::decode(data) {
         let _ = head.kid();
         let _ = head.statement_unverified();
-        let _ = head.verify(&[0u8; 32]);
+        let _ = SignedHead::verify(&head, &[0u8; 32]);
     }
 });

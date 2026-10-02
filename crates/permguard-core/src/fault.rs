@@ -24,7 +24,7 @@
 //! A fault is scoped to a directory and every path below it, and held by the guard [`inject`]
 //! returns: tests running in parallel in one process do not see each other's faults. Nothing outside
 //! the process can arm one — there is no variable, file or flag that does — so the hooks cost a
-//! production store one relaxed atomic load per call and change nothing it does.
+//! production store one atomic load per call and change nothing it does.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -80,7 +80,7 @@ pub fn inject(scope: impl AsRef<Path>, fault: Fault) -> Injected {
             scope: scope.as_ref().to_path_buf(),
             fault,
         });
-    ARMED.fetch_add(1, Ordering::SeqCst);
+    ARMED.fetch_add(1, Ordering::Release);
 
     Injected { id }
 }
@@ -88,7 +88,7 @@ pub fn inject(scope: impl AsRef<Path>, fault: Fault) -> Injected {
 /// Runs `write`, which writes `len` bytes to a file at or below `path`, unless a disk-full fault
 /// for that path has no room left for them.
 pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
-    if ARMED.load(Ordering::Relaxed) > 0 {
+    if ARMED.load(Ordering::Acquire) > 0 {
         let mut rules = RULES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -115,7 +115,7 @@ pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) ->
 /// Runs `flush`, which flushes a file or directory at or below `path`, unless an fsync fault is
 /// armed for that path.
 pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
-    if ARMED.load(Ordering::Relaxed) > 0 {
+    if ARMED.load(Ordering::Acquire) > 0 {
         let rules = RULES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);

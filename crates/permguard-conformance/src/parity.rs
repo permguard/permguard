@@ -39,8 +39,11 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    /// The value with each named member removed at every depth: identifiers and timestamps a
-    /// mutation mints, which two separate calls cannot share.
+    /// The value with each named member's value replaced by `"<minted>"` at every depth:
+    /// identifiers and timestamps a mutation mints, which two separate calls cannot share.
+    ///
+    /// Replaced rather than removed, so a member that one transport omits still makes the two
+    /// outcomes differ.
     #[must_use]
     pub fn masked(self, members: &[&str]) -> Self {
         match self {
@@ -54,8 +57,13 @@ fn mask(value: Value, members: &[&str]) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.into_iter()
-                .filter(|(name, _)| !members.contains(&name.as_str()))
-                .map(|(name, value)| (name, mask(value, members)))
+                .map(|(name, value)| {
+                    if members.contains(&name.as_str()) {
+                        (name, Value::String("<minted>".to_owned()))
+                    } else {
+                        (name, mask(value, members))
+                    }
+                })
                 .collect(),
         ),
         Value::Array(items) => {
@@ -90,6 +98,33 @@ pub fn outcome<T: Serialize>(result: Result<T, Failure>) -> Outcome {
             }
         }
     }
+}
+
+/// The HTTP status and the gRPC code the central mapping gives a refusal of `class` and `code`.
+///
+/// Equal outcomes are not enough on their own: a client reads the class from the body or the
+/// metadata, so a transport answering `500` with a `validation` body would still compare equal. A
+/// suite that can see the raw answers checks them against this.
+pub fn expected_statuses(class: &str, code: &str) -> (u16, i32) {
+    let class: ErrorClass = class
+        .parse()
+        .unwrap_or_else(|error| panic!("a refusal names its class: {error}"));
+    // The mapping takes the static codes of the registry; a test leaks the few it compares.
+    let code: &'static str = Box::leak(code.to_owned().into_boxed_str());
+    let refusal = permguard_core::ApiError::new(class, code, "");
+
+    (refusal.http_status(), refusal.grpc_code().number())
+}
+
+/// Fails the test, naming the case, unless the raw statuses are the ones `{class, code}` maps to.
+#[track_caller]
+pub fn assert_statuses(case: &str, class: &str, code: &str, http_status: u16, grpc_code: i32) {
+    let (http, grpc) = expected_statuses(class, code);
+    assert_eq!(
+        (http_status, grpc_code),
+        (http, grpc),
+        "`{case}`: `{class}/{code}` must answer HTTP {http} and gRPC {grpc}"
+    );
 }
 
 /// Fails the test, naming the case, unless both transports gave the same outcome.
@@ -221,11 +256,34 @@ mod tests {
     }
 
     #[test]
-    fn test_masking_removes_minted_members_at_every_depth() {
+    fn test_masking_replaces_minted_values_at_every_depth_and_keeps_an_omission_visible() {
         let minted = Outcome::Answered(json!({"id": 1, "name": "a", "inner": [{"id": 2, "x": 3}]}));
         assert_eq!(
             minted.masked(&["id"]),
-            Outcome::Answered(json!({"name": "a", "inner": [{"x": 3}]}))
+            Outcome::Answered(
+                json!({"id": "<minted>", "name": "a", "inner": [{"id": "<minted>", "x": 3}]})
+            )
         );
+        let omitted = Outcome::Answered(json!({"name": "a"}));
+        assert_ne!(
+            Outcome::Answered(json!({"id": 1, "name": "a"})).masked(&["id"]),
+            omitted.masked(&["id"]),
+            "a member one transport omits is still a difference"
+        );
+    }
+
+    #[test]
+    fn test_the_expected_statuses_follow_the_central_mapping() {
+        assert_eq!(expected_statuses("validation", "invalid_name"), (400, 3));
+        assert_eq!(expected_statuses("conflict", "name_taken"), (409, 6));
+        assert_eq!(expected_statuses("conflict", "zone_not_empty"), (409, 9));
+        assert_eq!(expected_statuses("not_found", "zone_not_found"), (404, 5));
+        assert_statuses("ok", "internal", "internal", 500, 13);
+    }
+
+    #[test]
+    #[should_panic(expected = "must answer HTTP 400")]
+    fn test_a_status_that_does_not_follow_the_class_fails() {
+        assert_statuses("500 for validation", "validation", "invalid_name", 500, 3);
     }
 }

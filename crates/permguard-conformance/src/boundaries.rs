@@ -9,9 +9,9 @@
 //! (operator configuration, bytes the process wrote itself) is listed under `trusted` with the
 //! reason.
 //!
-//! The inventory is read from the source: every `pub fn` named `decode`, `decode_canonical`,
-//! `parse`, `parse_strict` or `from_wire_parts` in a scanned crate, and every `pub fn` preceded by
-//! the line `// conformance: boundary`. [`check`] fails when an inventory entry is not registered,
+//! The inventory is read from the source: every `pub fn` (also `const`, `async` or `unsafe`) whose
+//! name is one of the decoder, verifier and opener names below, every `impl FromStr for` a type,
+//! and every `pub fn` preceded by the line `// conformance: boundary`. [`check`] fails when an inventory entry is not registered,
 //! when a registered entry no longer exists, when a fuzz target is missing or does not call its
 //! entry point, and when a bound is missing — so exporting, renaming or removing a decoder without
 //! updating the registry fails CI.
@@ -32,13 +32,24 @@ pub const SCANNED: &[&str] = &[
     "crates/permguard-transport",
 ];
 
-/// The function names that are decoders wherever they appear.
+/// The function names that read outside input wherever they appear: decoders, parsers, verifiers
+/// of signed or authenticated containers, and openers of sealed or stored ones. A name here that is
+/// not an untrusted boundary is listed under `trusted` with its reason, so a new export under any
+/// of these names is a decision someone has to write down.
 const DECODER_NAMES: &[&str] = &[
     "decode",
     "decode_canonical",
     "parse",
     "parse_strict",
     "from_wire_parts",
+    "from_bytes",
+    "from_slice",
+    "from_str",
+    "verify",
+    "open",
+    "unseal",
+    "decrypt",
+    "read_from",
 ];
 
 /// The comment that registers a decoder whose name is not one of [`DECODER_NAMES`].
@@ -71,6 +82,9 @@ pub struct Boundary {
     pub max_input_bytes: u64,
     /// What enforces that bound, or why none is enforced at the decoder yet.
     pub limit: String,
+    /// Whether the decoder itself refuses an input above the bound, rather than relying on its
+    /// carrier's ceiling. Required, so that an unenforced bound is a stated fact, not a silence.
+    pub enforced_at_decoder: bool,
     /// The fuzz target that exercises it.
     pub fuzz: String,
 }
@@ -113,6 +127,15 @@ pub fn scan(source: &str, text: &str) -> Vec<Found> {
         }
         if line.starts_with("impl") {
             current_impl = impl_type(line);
+            // A `FromStr` impl is a parser whatever its `from_str` looks like.
+            if (line.contains(" FromStr for ") || line.contains("::FromStr for "))
+                && let Some(owner) = &current_impl
+            {
+                found.push(Found {
+                    source: source.to_owned(),
+                    item: format!("{owner}::from_str"),
+                });
+            }
         } else if line.starts_with('}') {
             current_impl = None;
         }
@@ -121,7 +144,13 @@ pub fn scan(source: &str, text: &str) -> Vec<Found> {
             marked = true;
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("pub fn ") {
+        let signature = ["const ", "async ", "unsafe "]
+            .iter()
+            .fold(trimmed.strip_prefix("pub "), |rest, qualifier| {
+                rest.map(|rest| rest.strip_prefix(qualifier).unwrap_or(rest))
+            })
+            .and_then(|rest| rest.strip_prefix("fn "));
+        if let Some(rest) = signature {
             let name: String = rest
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -387,6 +416,7 @@ mod tests {
                     entry: format!("permguard_objects::x::{item}"),
                     max_input_bytes: 1024,
                     limit: "the test".to_owned(),
+                    enforced_at_decoder: false,
                     fuzz: fuzz.to_owned(),
                 })
                 .collect(),
@@ -464,6 +494,35 @@ mod tests {
             check(&registry(&["decode"], "x"), &inventory, missing_file, read)
                 .iter()
                 .any(|p| p.contains("does not exist"))
+        );
+    }
+
+    #[test]
+    fn test_the_scan_sees_qualified_functions_verifiers_and_from_str_impls() {
+        let source = r#"
+impl Envelope {
+    pub async fn verify(&self) -> bool {}
+    pub const fn from_bytes(bytes: &[u8]) -> Self {}
+    pub fn digest(&self) -> String {}
+}
+
+impl std::str::FromStr for Level {
+    type Err = ();
+    fn from_str(text: &str) -> Result<Self, ()> {}
+}
+
+impl FromStr for Mode {
+    type Err = ();
+}
+"#;
+        assert_eq!(
+            scan("crates/permguard-objects/src/x.rs", source),
+            vec![
+                found("Envelope::verify"),
+                found("Envelope::from_bytes"),
+                found("Level::from_str"),
+                found("Mode::from_str"),
+            ]
         );
     }
 }

@@ -1439,3 +1439,48 @@ mod request_tests {
         assert!(states_none.inputs.is_empty());
     }
 }
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    fn with(mut status: tonic::Status, class: &str, code: &str) -> tonic::Status {
+        status
+            .metadata_mut()
+            .insert(GRPC_ERROR_CLASS, class.parse().expect("ascii"));
+        status
+            .metadata_mut()
+            .insert(GRPC_ERROR_CODE, code.parse().expect("ascii"));
+        status
+    }
+
+    #[test]
+    fn test_a_refusal_carries_the_class_and_code_the_server_named() {
+        let failure = GrpcAdmin::failure(with(
+            tonic::Status::failed_precondition("the zone holds ledgers"),
+            "conflict",
+            "zone_not_empty",
+        ));
+
+        assert_eq!(failure.class, "conflict", "the metadata, not the gRPC code");
+        assert_eq!(failure.reason, "zone_not_empty");
+        assert!(failure.usage, "a conflict is the caller's to resolve");
+    }
+
+    #[test]
+    fn test_without_metadata_the_class_and_code_follow_the_grpc_code() {
+        let precondition = GrpcAdmin::failure(tonic::Status::failed_precondition("x"));
+        assert_eq!(
+            (precondition.class.as_str(), precondition.reason.as_str()),
+            ("conflict", "conflict")
+        );
+        let unavailable = GrpcAdmin::failure(tonic::Status::unavailable("x"));
+        assert_eq!(unavailable.class, "unavailable");
+        assert!(
+            !unavailable.usage,
+            "an unavailable server is the world's problem"
+        );
+        let unknown = GrpcAdmin::failure(tonic::Status::unknown("x"));
+        assert_eq!(unknown.class, "internal");
+    }
+}

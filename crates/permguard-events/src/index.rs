@@ -42,6 +42,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead as _, BufReader, Write as _};
 use std::path::{Path, PathBuf};
 
+use permguard_core::fault;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -208,10 +209,11 @@ impl Index {
             .append(true)
             .open(self.directory.join(INDEX_FILE))
             .map_err(|error| JournalError::Io(error.to_string()))?;
-        file.write_all(&line)
-            .map_err(|error| JournalError::Io(error.to_string()))?;
-        file.write_all(b"\n")
-            .map_err(|error| JournalError::Io(error.to_string()))?;
+        fault::write(&self.directory, line.len() + 1, || {
+            file.write_all(&line)?;
+            file.write_all(b"\n")
+        })
+        .map_err(|error| JournalError::Io(error.to_string()))?;
 
         self.entries.insert(key, located);
 
@@ -232,7 +234,7 @@ impl Index {
             .append(true)
             .open(&path)
             .map_err(|error| JournalError::Io(error.to_string()))?;
-        file.sync_all()
+        fault::sync(&self.directory, || file.sync_all())
             .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())

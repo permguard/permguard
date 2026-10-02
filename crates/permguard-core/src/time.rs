@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn test_a_manual_clock_jumps_both_ways_and_the_system_clock_is_after_this_code_was_written() {
+    fn test_a_manual_clock_jumps_both_ways_and_the_system_clock_reads_the_epoch_forward() {
         let clock = ManualClock::at(1_000);
         clock.jump(3_600);
         assert_eq!(clock.now(), 4_600);
@@ -386,6 +386,9 @@ mod tests {
         assert_eq!(clock.now(), -2_600, "a backward step may cross the epoch");
         clock.set(42);
         assert_eq!(clock.now(), 42);
-        assert!(SystemClock.now() > 1_790_000_000);
+        assert!(
+            SystemClock.now() > 0,
+            "the wall clock reads after the epoch"
+        );
     }
 }

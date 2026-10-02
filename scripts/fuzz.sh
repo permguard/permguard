@@ -29,13 +29,23 @@ else
     done < <(sed -n 's/^name = "\(.*\)"$/\1/p' fuzz/Cargo.toml | grep -v '^permguard-fuzz$')
 fi
 
+failed=()
 for target in "${targets[@]}"; do
     max_len="$(jq --arg target "${target}" \
         '[.boundaries[] | select(.fuzz == $target) | .max_input_bytes] | max // 65536' \
         "${registry}")"
     printf 'fuzz: %s for %ss, max_len %s\n' "${target}" "${budget}" "${max_len}"
-    cargo +nightly fuzz run "${target}" -- \
+    # Every target runs even after one fails: a crash in one decoder says nothing about the others.
+    if ! cargo +nightly fuzz run "${target}" -- \
         -max_total_time="${budget}" \
         -max_len="${max_len}" \
-        -rss_limit_mb=2048
+        -rss_limit_mb=2048; then
+        failed+=("${target}")
+    fi
 done
+
+if [ "${#failed[@]}" -gt 0 ]; then
+    printf 'error: these fuzz targets failed: %s\n' "${failed[*]}" >&2
+    exit 1
+fi
+printf 'ok: %s fuzz targets ran for %ss each\n' "${#targets[@]}" "${budget}"

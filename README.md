@@ -823,7 +823,7 @@ Its crash harness kills a child appending to the decision spool and the event jo
 
 `crates/permguard-conformance/boundaries.json` registers every decoder of untrusted input, with its bound and its fuzz target.
 `task check:boundaries` fails when a decoder is exported, renamed or removed without the registry changing with it, so a change to a decoder updates both in the same commit.
-The fuzz targets run for a short budget on every pull request and a long one nightly; `task fuzz SECONDS=60` runs them locally with a nightly toolchain and `cargo install cargo-fuzz`.
+The fuzz targets run for a short budget on every pull request and a long one nightly; `task fuzz SECONDS=60` runs them locally with a nightly toolchain, `cargo install cargo-fuzz` and `jq`.
 
 Equivalent Make targets are available:
 

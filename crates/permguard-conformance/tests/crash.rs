@@ -44,14 +44,43 @@ fn jitter(min: u64, max: u64) -> Duration {
     Duration::from_millis(min + u64::from(nanos) % (max - min))
 }
 
-fn spawn_child(test: &str, directory: &Path) -> Child {
-    Command::new(std::env::current_exe().expect("the test binary is known"))
-        .args(["--ignored", "--exact", test, "--nocapture"])
-        .env(CHILD_DIRECTORY, directory)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("the child starts")
+/// The child process, killed when this guard drops: a parent that fails mid-round must not leave
+/// a child appending forever.
+struct Appender(Option<Child>);
+
+impl Appender {
+    fn spawn(test: &str, directory: &Path) -> Self {
+        Self(Some(
+            Command::new(std::env::current_exe().expect("the test binary is known"))
+                .args(["--ignored", "--exact", test, "--nocapture"])
+                .env(CHILD_DIRECTORY, directory)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("the child starts"),
+        ))
+    }
+
+    /// `SIGKILL`: no destructor, no flush, no unlock runs in the child.
+    fn kill(mut self) {
+        if let Some(child) = self.0.take() {
+            reap(child);
+        }
+    }
+}
+
+impl Drop for Appender {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.take() {
+            reap(child);
+        }
+    }
+}
+
+fn reap(mut child: Child) {
+    // `Child::kill` is SIGKILL on Unix.
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Waits until the child has appended at least once, so a kill lands mid-stream rather than before
@@ -67,14 +96,9 @@ fn wait_for_progress(directory: &Path, past: u64, read: impl Fn(&Path) -> Option
     panic!("the child made no progress past {past}");
 }
 
-fn kill(mut child: Child) {
-    // `Child::kill` is SIGKILL on Unix: no destructor, no flush, no unlock runs in the child.
-    child.kill().expect("the child is killed");
-    child.wait().expect("the child is reaped");
-}
-
-/// Durable appends since the directory was created, as the segments show them.
-fn spool_progress(directory: &Path) -> Option<u64> {
+/// Records in the directory's segments, durable or not: the lines of every `seg-*` file, which is
+/// the segment naming both the spool and the journal use.
+fn segment_lines(directory: &Path) -> Option<u64> {
     std::fs::read_dir(directory).ok().map(|entries| {
         entries
             .filter_map(Result::ok)
@@ -89,11 +113,12 @@ fn spool_progress(directory: &Path) -> Option<u64> {
 fn test_a_spool_killed_mid_append_reopens_to_a_valid_chain_every_round() {
     let directory = scratch("crash-spool");
     let mut recovered = 0u64;
+    let mut instance: Option<String> = None;
     for round in 0..rounds() {
-        let child = spawn_child("child_appends_to_a_spool_until_killed", &directory);
-        wait_for_progress(&directory, recovered, spool_progress);
+        let child = Appender::spawn("child_appends_to_a_spool_until_killed", &directory);
+        wait_for_progress(&directory, recovered, segment_lines);
         std::thread::sleep(jitter(1, 40));
-        kill(child);
+        child.kill();
 
         let spool = Spool::open(&directory, SpoolBounds::default())
             .unwrap_or_else(|error| panic!("round {round}: the spool does not reopen: {error}"));
@@ -102,6 +127,20 @@ fn test_a_spool_killed_mid_append_reopens_to_a_valid_chain_every_round() {
             records.len() as u64 >= recovered,
             "round {round}: an acknowledged record was lost ({} < {recovered})",
             records.len()
+        );
+        // STATE: the stream a kill interrupts is the stream that resumes, and nothing is
+        // acknowledged that the segments do not hold.
+        let current = spool.instance().to_owned();
+        if let Some(previous) = &instance {
+            assert_eq!(
+                &current, previous,
+                "round {round}: the stream instance changed"
+            );
+        }
+        instance = Some(current);
+        assert!(
+            spool.acked() <= spool.seq(),
+            "round {round}: acked beyond the tail"
         );
         recovered = records.len() as u64;
     }
@@ -113,10 +152,10 @@ fn test_a_journal_killed_mid_append_reopens_to_a_valid_chain_and_state_every_rou
     let directory = scratch("crash-journal");
     let mut recovered = 0u64;
     for round in 0..rounds() {
-        let child = spawn_child("child_appends_to_a_journal_until_killed", &directory);
-        wait_for_progress(&directory, recovered, spool_progress);
+        let child = Appender::spawn("child_appends_to_a_journal_until_killed", &directory);
+        wait_for_progress(&directory, recovered, segment_lines);
         std::thread::sleep(jitter(1, 40));
-        kill(child);
+        child.kill();
 
         let journal = Journal::open(&directory, stream(), JournalBounds::default())
             .unwrap_or_else(|error| panic!("round {round}: the journal does not reopen: {error}"));
@@ -125,6 +164,15 @@ fn test_a_journal_killed_mid_append_reopens_to_a_valid_chain_and_state_every_rou
             records.len() as u64 >= recovered,
             "round {round}: an acknowledged record was lost ({} < {recovered})",
             records.len()
+        );
+        // STATE after recovery: the stream is the one it was, and the durable watermark covers
+        // exactly the records the reopened journal holds.
+        let state = journal.state();
+        assert_eq!(state.stream, stream(), "round {round}: the stream changed");
+        assert_eq!(
+            state.durable_through,
+            state.next_seq - 1,
+            "round {round}: the recovered tail is not durable through its last record"
         );
         recovered = records.len() as u64;
     }

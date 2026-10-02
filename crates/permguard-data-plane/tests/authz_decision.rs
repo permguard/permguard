@@ -1761,8 +1761,11 @@ async fn a_decision_whose_budget_the_load_already_spent_refuses() {
 mod parity {
     use super::*;
 
-    use permguard_conformance::parity::{Outcome, assert_parity, outcome, serve};
+    use permguard_conformance::parity::{
+        Outcome, assert_parity, expected_statuses, outcome, serve,
+    };
     use permguard_data_plane::authz::grpc::PdpApi;
+    use permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPoint as _;
 
     fn pdp(url: &str) -> Box<dyn permguard_control_client::pdp::Pdp> {
         permguard_control_client::pdp::client(
@@ -1846,5 +1849,76 @@ mod parity {
             assert_parity(case, http.masked(&["id"]), grpc.masked(&["id"]));
         }
         assert!(refusals >= 3, "the refusals are exercised ({refusals})");
+    }
+
+    /// Below the client: each transport's raw status is the one its `{class, code}` maps to.
+    #[tokio::test]
+    async fn test_every_refusal_answers_the_status_its_class_maps_to_on_both_transports() {
+        let root = scratch("parity-raw").join("mirrors");
+        std::fs::create_dir_all(&root).expect("the root exists");
+
+        let mut unknown_ledger = ask("alice", "read");
+        unknown_ledger["ledger"] = json!("other-ledger");
+        for (case, payload) in [
+            (
+                "no store named over HTTP",
+                json!({"subject": {"type": "user", "id": "alice"}}),
+            ),
+            ("an unserved ledger over HTTP", unknown_ledger),
+        ] {
+            let (status, body, _) =
+                crate::surface::post(&root, "/access/v1/evaluation", payload).await;
+            let (class, code) = (
+                body["class"].as_str().unwrap_or_default(),
+                body["code"].as_str().unwrap_or_default(),
+            );
+            assert_eq!(
+                status.as_u16(),
+                expected_statuses(class, code).0,
+                "`{case}`: `{class}/{code}`"
+            );
+        }
+
+        let api = PdpApi {
+            decider: decider(&root),
+            disclosure: Disclosure::Full,
+            base_url: "http://127.0.0.1:7443".to_owned(),
+        };
+        for (case, request) in [
+            (
+                "no store named over gRPC",
+                permguard_data_plane::v1::EvaluateRequest::default(),
+            ),
+            (
+                "an unserved ledger over gRPC",
+                permguard_data_plane::v1::EvaluateRequest {
+                    zone: "acme".to_owned(),
+                    ledger: "other-ledger".to_owned(),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let refused = api
+                .evaluate(tonic::Request::new(request))
+                .await
+                .expect_err("the case is a refusal");
+            let metadata = |key: &str| {
+                refused
+                    .metadata()
+                    .get(key)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            let (class, code) = (
+                metadata(permguard_core::GRPC_ERROR_CLASS),
+                metadata(permguard_core::GRPC_ERROR_CODE),
+            );
+            assert_eq!(
+                refused.code() as i32,
+                expected_statuses(&class, &code).1,
+                "`{case}`: `{class}/{code}`"
+            );
+        }
     }
 }

@@ -18,7 +18,8 @@ fuzz_target!(|data: &[u8]| {
     }
     let (public_key, rest) = rest.split_at(key_len);
     let (signature, message) = rest.split_at(Suite::SIGNATURE_LEN);
-    if suite.verify(public_key, message, signature).is_ok() && suite == Suite::P256Sha256V1 {
+    if Suite::verify(suite, public_key, message, signature).is_ok() && suite == Suite::P256Sha256V1
+    {
         assert!(is_low_s(&signature[32..]), "a high-s signature verified");
     }
 });

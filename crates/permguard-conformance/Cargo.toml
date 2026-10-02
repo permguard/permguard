@@ -23,7 +23,5 @@ tokio = { workspace = true, features = ["macros", "net", "rt"] }
 tonic.workspace = true
 
 [dev-dependencies]
-permguard-core.workspace = true
 permguard-decisions.workspace = true
 permguard-events.workspace = true
-serde_json.workspace = true

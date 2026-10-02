@@ -5,8 +5,9 @@
       "source": "crates/permguard-core/src/catalog.rs",
       "item": "Selector::parse",
       "entry": "permguard_core::catalog::Selector::parse",
-      "max_input_bytes": 65536,
-      "limit": "request line and header limits of the HTTP and gRPC transports; the decoder enforces no length of its own",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: over HTTP the request line and header limits, over gRPC a message field inside the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -16,6 +17,7 @@
       "entry": "permguard_objects::cbor::decode_canonical",
       "max_input_bytes": 8388608,
       "limit": "its callers: an object (5 MiB) or a NOTP message (NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling); nesting capped at `limits::MAX_VALUE_DEPTH`",
+      "enforced_at_decoder": false,
       "fuzz": "cbor_decode"
     },
     {
@@ -25,6 +27,7 @@
       "entry": "permguard_objects::object::decode",
       "max_input_bytes": 5242880,
       "limit": "`limits::MAX_OBJECT_BYTES`, checked by the decoder before it parses",
+      "enforced_at_decoder": true,
       "fuzz": "object_decode"
     },
     {
@@ -34,6 +37,7 @@
       "entry": "permguard_objects::manifest::Manifest::decode",
       "max_input_bytes": 5242880,
       "limit": "carried as an object payload, so `limits::MAX_OBJECT_BYTES`",
+      "enforced_at_decoder": false,
       "fuzz": "manifest_decode"
     },
     {
@@ -43,6 +47,7 @@
       "entry": "permguard_objects::manifest::HistoryScope::parse",
       "max_input_bytes": 65536,
       "limit": "a manifest field, inside `limits::MAX_OBJECT_BYTES`",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -50,8 +55,9 @@
       "source": "crates/permguard-objects/src/digest.rs",
       "item": "Digest::parse",
       "entry": "permguard_objects::Digest::parse",
-      "max_input_bytes": 65536,
-      "limit": "request line and header limits of the HTTP and gRPC transports; the decoder enforces no length of its own",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: over HTTP the request line and header limits, over gRPC a message field inside the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -61,6 +67,7 @@
       "entry": "permguard_objects::semver::Version::parse",
       "max_input_bytes": 65536,
       "limit": "a manifest or discovery field, inside its carrier's ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -70,6 +77,7 @@
       "entry": "permguard_objects::semver::Constraint::parse",
       "max_input_bytes": 65536,
       "limit": "a manifest or discovery field, inside its carrier's ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -79,6 +87,7 @@
       "entry": "permguard_objects::statement::SignedHead::decode",
       "max_input_bytes": 8388608,
       "limit": "carried inside a NOTP message: NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "cose_head"
     },
     {
@@ -88,6 +97,7 @@
       "entry": "permguard_objects::crypto::seal::SealedKey::decode",
       "max_input_bytes": 65536,
       "limit": "none enforced at the decoder yet: read from the Host's own key volume; the storage contract of WP-1.1 must bound the read",
+      "enforced_at_decoder": false,
       "fuzz": "sealed_key"
     },
     {
@@ -97,6 +107,7 @@
       "entry": "permguard_objects::crypto::thumbprint::KeySet::decode",
       "max_input_bytes": 65536,
       "limit": "none enforced at the decoder yet: no peer sends one before the ring registry of WP-3.1, which must bound it",
+      "enforced_at_decoder": false,
       "fuzz": "crypto_statements"
     },
     {
@@ -106,6 +117,7 @@
       "entry": "permguard_stream::jcs::parse_strict",
       "max_input_bytes": 8388608,
       "limit": "its callers: HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads, or the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "jcs_parse"
     },
     {
@@ -115,6 +127,7 @@
       "entry": "permguard_stream::jcs::decode_canonical",
       "max_input_bytes": 8388608,
       "limit": "its callers: HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads, or the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "jcs_parse"
     },
     {
@@ -122,8 +135,9 @@
       "source": "crates/permguard-stream/src/cursor.rs",
       "item": "Cursor::open",
       "entry": "permguard_stream::cursor::Cursor::open",
-      "max_input_bytes": 65536,
-      "limit": "request line and header limits of the HTTP and gRPC transports; the decoder enforces no length of its own",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: over HTTP the request line and header limits, over gRPC a message field inside the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "cursor_open"
     },
     {
@@ -131,8 +145,9 @@
       "source": "crates/permguard-stream/src/frontier.rs",
       "item": "Frontier::decode",
       "entry": "permguard_stream::frontier::Frontier::decode",
-      "max_input_bytes": 65536,
-      "limit": "request line and header limits of the HTTP and gRPC transports; the decoder enforces no length of its own",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: over HTTP the request line and header limits, over gRPC a message field inside the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -140,8 +155,9 @@
       "source": "crates/permguard-stream/src/name.rs",
       "item": "StreamPosition::parse",
       "entry": "permguard_stream::name::StreamPosition::parse",
-      "max_input_bytes": 65536,
-      "limit": "request line and header limits of the HTTP and gRPC transports; the decoder enforces no length of its own",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: over HTTP the request line and header limits, over gRPC a message field inside the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "text_tokens"
     },
     {
@@ -151,6 +167,7 @@
       "entry": "permguard_decisions::Batch::decode",
       "max_input_bytes": 1048576,
       "limit": "HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads",
+      "enforced_at_decoder": false,
       "fuzz": "decision_batch"
     },
     {
@@ -160,6 +177,7 @@
       "entry": "permguard_events::Batch::decode",
       "max_input_bytes": 1048576,
       "limit": "HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads",
+      "enforced_at_decoder": false,
       "fuzz": "event_batch"
     },
     {
@@ -169,6 +187,7 @@
       "entry": "permguard_events::Batch::from_wire_parts",
       "max_input_bytes": 8388608,
       "limit": "gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
       "fuzz": "event_batch"
     },
     {
@@ -178,6 +197,7 @@
       "entry": "permguard_notp::NegotiatePullRequest::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -187,6 +207,7 @@
       "entry": "permguard_notp::NegotiatePullResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -196,6 +217,7 @@
       "entry": "permguard_notp::FetchObjectsRequest::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -205,6 +227,7 @@
       "entry": "permguard_notp::FetchObjectsResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -214,6 +237,7 @@
       "entry": "permguard_notp::NegotiatePushRequest::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -223,6 +247,7 @@
       "entry": "permguard_notp::NegotiatePushResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -232,6 +257,7 @@
       "entry": "permguard_notp::UploadObjectsRequest::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -241,6 +267,7 @@
       "entry": "permguard_notp::UploadObjectsResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -250,6 +277,7 @@
       "entry": "permguard_notp::CommitPushRequest::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
     },
     {
@@ -259,7 +287,88 @@
       "entry": "permguard_notp::CommitPushResponse::decode",
       "max_input_bytes": 8388608,
       "limit": "NOTP batch ceiling `PERMGUARD_NOTP_MAX_BATCH_BYTES` (default 8 MiB) and the gRPC decoding ceiling",
+      "enforced_at_decoder": false,
       "fuzz": "notp_decode"
+    },
+    {
+      "crate": "permguard-core",
+      "source": "crates/permguard-core/src/api.rs",
+      "item": "ErrorClass::from_str",
+      "entry": "permguard_core::ErrorClass::from_str",
+      "max_input_bytes": 65536,
+      "limit": "the class a server answer names, read by the clients; inside the answer's ceiling",
+      "enforced_at_decoder": false,
+      "fuzz": "text_tokens"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/statement.rs",
+      "item": "SignedHead::verify",
+      "entry": "permguard_objects::statement::SignedHead::verify",
+      "max_input_bytes": 8388608,
+      "limit": "a head decoded by `SignedHead::decode`, inside a NOTP message",
+      "enforced_at_decoder": false,
+      "fuzz": "cose_head"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/crypto/suite.rs",
+      "item": "Suite::verify",
+      "entry": "permguard_objects::crypto::suite::Suite::verify",
+      "max_input_bytes": 8388608,
+      "limit": "fixed key and signature lengths checked first; the message is the signed payload inside its carrier's ceiling",
+      "enforced_at_decoder": true,
+      "fuzz": "signature_verify"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/crypto/mac.rs",
+      "item": "verify",
+      "entry": "permguard_objects::crypto::mac::verify",
+      "max_input_bytes": 65536,
+      "limit": "a tag a caller presents beside its message, inside the carrier's ceiling",
+      "enforced_at_decoder": false,
+      "fuzz": "crypto_statements"
+    },
+    {
+      "crate": "permguard-decisions",
+      "source": "crates/permguard-decisions/src/envelope.rs",
+      "item": "Signed::verify",
+      "entry": "permguard_decisions::Signed::verify",
+      "max_input_bytes": 1048576,
+      "limit": "the signature of a batch decoded by `Batch::decode`, so the HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads",
+      "enforced_at_decoder": false,
+      "fuzz": "decision_batch"
+    },
+    {
+      "crate": "permguard-decisions",
+      "source": "crates/permguard-decisions/src/chain.rs",
+      "item": "verify",
+      "entry": "permguard_decisions::chain::verify",
+      "max_input_bytes": 1048576,
+      "limit": "the records of a batch decoded by `Batch::decode`, so the HTTP request body ceiling, `transport.body_bytes` (default 1 MiB), applied before the handler reads",
+      "enforced_at_decoder": false,
+      "fuzz": "decision_batch"
+    },
+    {
+      "crate": "permguard-events",
+      "source": "crates/permguard-events/src/envelope.rs",
+      "item": "Signed::verify",
+      "entry": "permguard_events::Signed::verify",
+      "max_input_bytes": 8388608,
+      "limit": "the signature of a batch decoded by `Batch::decode` or `Batch::from_wire_parts`, so the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
+      "fuzz": "event_batch"
+    },
+    {
+      "crate": "permguard-events",
+      "source": "crates/permguard-events/src/chain.rs",
+      "item": "verify",
+      "entry": "permguard_events::chain::verify",
+      "max_input_bytes": 8388608,
+      "limit": "the records of a batch decoded by `Batch::decode` or `Batch::from_wire_parts`, so the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
+      "enforced_at_decoder": false,
+      "fuzz": "event_batch"
     }
   ],
   "trusted": [
@@ -277,6 +386,76 @@
       "source": "crates/permguard-objects/src/crypto/kdf.rs",
       "item": "Info::decode",
       "reason": "an info tuple this process encodes for its own derivation; never received (fuzzed anyway by `crypto_statements`)"
+    },
+    {
+      "source": "crates/permguard-core/src/api.rs",
+      "item": "Disclosure::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/audit.rs",
+      "item": "AuditDestination::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/limits.rs",
+      "item": "PeerBlock::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/logging.rs",
+      "item": "LogFormat::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/logging.rs",
+      "item": "LogLevel::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/peer.rs",
+      "item": "AllowedPeer::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/secrets.rs",
+      "item": "SecretProvider::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-core/src/tls.rs",
+      "item": "TlsVersion::from_str",
+      "reason": "a configuration value the operator sets"
+    },
+    {
+      "source": "crates/permguard-decisions/src/spool.rs",
+      "item": "Spool::open",
+      "reason": "the store's own directory on the Host's volume, written by this process"
+    },
+    {
+      "source": "crates/permguard-decisions/src/spool.rs",
+      "item": "Spool::read_from",
+      "reason": "the store's own directory on the Host's volume, written by this process"
+    },
+    {
+      "source": "crates/permguard-events/src/index.rs",
+      "item": "Index::open",
+      "reason": "the store's own directory on the Host's volume, written by this process"
+    },
+    {
+      "source": "crates/permguard-events/src/journal.rs",
+      "item": "Journal::open",
+      "reason": "the store's own directory on the Host's volume, written by this process"
+    },
+    {
+      "source": "crates/permguard-events/src/journal.rs",
+      "item": "Journal::read_from",
+      "reason": "the store's own directory on the Host's volume, written by this process"
+    },
+    {
+      "source": "crates/permguard-objects/src/crypto/seal.rs",
+      "item": "SealedKey::open",
+      "reason": "a blob on the Host's own key volume, authenticated by AES-GCM under the configured provider; its bytes are read through `SealedKey::decode`, registered and fuzzed"
     }
   ]
 }
