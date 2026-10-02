@@ -10,6 +10,10 @@ publish = false
 [package.metadata]
 cargo-fuzz = true
 
+# Its own workspace: the fuzz crate builds with nightly sanitizers and is not a member of the
+# repository workspace, which would otherwise claim it.
+[workspace]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 permguard-decisions = { path = "../crates/permguard-decisions" }

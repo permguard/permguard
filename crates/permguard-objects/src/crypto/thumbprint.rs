@@ -31,8 +31,14 @@ pub enum ThumbprintError {
     KeyMalformed { suite: Suite, length: usize },
     /// Two keys of one set share a thumbprint, so the set does not describe two keys.
     DuplicateThumbprint(String),
+    /// A member of the set is not an unpadded base64url SHA-256 thumbprint.
+    NotAThumbprint(String),
+    /// The ring name is empty.
+    EmptyRing,
     /// The epoch does not fit the integer model of the canonical encoding.
     EpochRange(u64),
+    /// The bytes are not a key-set statement of this profile.
+    Encoding(String),
 }
 
 impl fmt::Display for ThumbprintError {
@@ -49,7 +55,13 @@ impl fmt::Display for ThumbprintError {
                     "the thumbprint `{thumbprint}` appears twice in one key set"
                 )
             }
+            Self::NotAThumbprint(value) => write!(
+                formatter,
+                "`{value}` is not an unpadded base64url SHA-256 thumbprint"
+            ),
+            Self::EmptyRing => formatter.write_str("a key set names its ring"),
             Self::EpochRange(epoch) => write!(formatter, "the epoch {epoch} cannot be encoded"),
+            Self::Encoding(detail) => write!(formatter, "not a key-set statement: {detail}"),
         }
     }
 }
@@ -104,46 +116,181 @@ pub fn split_kid(kid: &str) -> Option<(&str, &str)> {
         .then_some((ring, thumbprint))
 }
 
-/// The digest of one published key set.
+/// Whether `value` is an RFC 7638 SHA-256 thumbprint in its only encoding: 43 characters of
+/// unpadded base64url that decode to 32 bytes and encode back to themselves.
+pub fn is_thumbprint(value: &str) -> bool {
+    value.len() == 43
+        && B64
+            .decode(value)
+            .is_ok_and(|bytes| bytes.len() == 32 && B64.encode(&bytes) == value)
+}
+
+const RING: &str = "ring";
+const EPOCH: &str = "epoch";
+const ALGORITHM: &str = "algorithm";
+const KEYS_BY_THUMBPRINT: &str = "keys_by_thumbprint";
+
+/// The public statement a key-set digest commits: one ring, one epoch, one suite, its keys.
 ///
-/// `SHA-256("permguard.key-set.v1\n" || CBOR({ring, epoch, algorithm, keys_by_thumbprint}))`, with
-/// the thumbprints sorted bytewise and required unique.
+/// The encoding is a closed deterministic-CBOR map with exactly the text keys `ring`, `epoch`,
+/// `algorithm` and `keys_by_thumbprint`. `epoch` is an unsigned integer, `algorithm` the exact
+/// suite id, and the thumbprints are unique and sorted bytewise: canonical CBOR fixes map order,
+/// not array order, and an array in two orders would be two digests of one set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeySet {
+    ring: String,
+    epoch: u64,
+    suite: Suite,
+    thumbprints: Vec<String>,
+}
+
+impl KeySet {
+    /// The set of `thumbprints`, in any order, published by `ring` at `epoch` under `suite`.
+    pub fn new(
+        ring: &str,
+        epoch: u64,
+        suite: Suite,
+        thumbprints: &[&str],
+    ) -> Result<Self, ThumbprintError> {
+        if ring.is_empty() {
+            return Err(ThumbprintError::EmptyRing);
+        }
+        if i64::try_from(epoch).is_err() {
+            return Err(ThumbprintError::EpochRange(epoch));
+        }
+        if let Some(bad) = thumbprints.iter().find(|value| !is_thumbprint(value)) {
+            return Err(ThumbprintError::NotAThumbprint((*bad).to_owned()));
+        }
+        let mut sorted: Vec<String> = thumbprints
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect();
+        sorted.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+        if let Some(window) = sorted.windows(2).find(|window| window[0] == window[1]) {
+            return Err(ThumbprintError::DuplicateThumbprint(window[0].clone()));
+        }
+
+        Ok(Self {
+            ring: ring.to_owned(),
+            epoch,
+            suite,
+            thumbprints: sorted,
+        })
+    }
+
+    /// The ring that publishes the set.
+    pub fn ring(&self) -> &str {
+        &self.ring
+    }
+
+    /// The epoch of the set.
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    /// The suite every key of the set belongs to.
+    pub fn suite(&self) -> Suite {
+        self.suite
+    }
+
+    /// The thumbprints, sorted bytewise.
+    pub fn thumbprints(&self) -> &[String] {
+        &self.thumbprints
+    }
+
+    /// The canonical bytes the digest covers.
+    pub fn encode(&self) -> Vec<u8> {
+        cbor::encode(&Value::Map(vec![
+            (Value::Text(RING.into()), Value::Text(self.ring.clone())),
+            // Within range by construction: `new` and `decode` refuse a larger epoch.
+            (
+                Value::Text(EPOCH.into()),
+                Value::Int(i64::try_from(self.epoch).unwrap_or(i64::MAX)),
+            ),
+            (
+                Value::Text(ALGORITHM.into()),
+                Value::Text(self.suite.name().to_owned()),
+            ),
+            (
+                Value::Text(KEYS_BY_THUMBPRINT.into()),
+                Value::Array(
+                    self.thumbprints
+                        .iter()
+                        .map(|thumbprint| Value::Text(thumbprint.clone()))
+                        .collect(),
+                ),
+            ),
+        ]))
+    }
+
+    /// Reads a key-set statement strictly: canonical bytes, exactly the four keys with their exact
+    /// types, a known suite id, and unique thumbprints already in bytewise order.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ThumbprintError> {
+        let encoding = |detail: &str| ThumbprintError::Encoding(detail.to_owned());
+        let Value::Map(map) =
+            cbor::decode_canonical(bytes).map_err(|error| encoding(&error.to_string()))?
+        else {
+            return Err(encoding("a key set is a map"));
+        };
+        if map.len() != 4 {
+            return Err(encoding("a key set has exactly four members"));
+        }
+        let member = |name: &str| {
+            map.iter()
+                .find(|(key, _)| *key == Value::Text(name.to_owned()))
+                .map(|(_, value)| value)
+                .ok_or_else(|| encoding(&format!("the member `{name}` is missing")))
+        };
+        let Value::Text(ring) = member(RING)? else {
+            return Err(encoding("`ring` is text"));
+        };
+        let epoch = match member(EPOCH)? {
+            Value::Int(epoch) => {
+                u64::try_from(*epoch).map_err(|_| encoding("`epoch` is an unsigned integer"))?
+            }
+            _ => return Err(encoding("`epoch` is an unsigned integer")),
+        };
+        let Value::Text(algorithm) = member(ALGORITHM)? else {
+            return Err(encoding("`algorithm` is text"));
+        };
+        let suite = Suite::from_name(algorithm)
+            .ok_or_else(|| encoding(&format!("`{algorithm}` is not a suite of this profile")))?;
+        let Value::Array(keys) = member(KEYS_BY_THUMBPRINT)? else {
+            return Err(encoding("`keys_by_thumbprint` is an array"));
+        };
+        let mut thumbprints = Vec::with_capacity(keys.len());
+        for key in keys {
+            let Value::Text(thumbprint) = key else {
+                return Err(encoding("a thumbprint is text"));
+            };
+            thumbprints.push(thumbprint.as_str());
+        }
+        let set = Self::new(ring, epoch, suite, &thumbprints)?;
+        if set.thumbprints.iter().map(String::as_str).ne(thumbprints) {
+            return Err(encoding("the thumbprints are not in bytewise order"));
+        }
+
+        Ok(set)
+    }
+
+    /// `SHA-256("permguard.key-set.v1\n" || canonical-CBOR(set))`.
+    pub fn digest(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        hasher.update(permguard_core::domains::digest::KEY_SET.as_bytes());
+        hasher.update(self.encode());
+
+        hasher.finalize().into()
+    }
+}
+
+/// The digest of one published key set; see [`KeySet`].
 pub fn key_set_digest(
     ring: &str,
     epoch: u64,
     suite: Suite,
     thumbprints: &[&str],
 ) -> Result<[u8; 32], ThumbprintError> {
-    let mut sorted: Vec<&str> = thumbprints.to_vec();
-    sorted.sort_unstable_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-    if let Some(window) = sorted.windows(2).find(|window| window[0] == window[1]) {
-        return Err(ThumbprintError::DuplicateThumbprint(window[0].to_owned()));
-    }
-    let epoch = i64::try_from(epoch).map_err(|_| ThumbprintError::EpochRange(epoch))?;
-
-    let encoded = cbor::encode(&Value::Map(vec![
-        (Value::Text("ring".into()), Value::Text(ring.to_owned())),
-        (Value::Text("epoch".into()), Value::Int(epoch)),
-        (
-            Value::Text("algorithm".into()),
-            Value::Text(suite.name().to_owned()),
-        ),
-        (
-            Value::Text("keys_by_thumbprint".into()),
-            Value::Array(
-                sorted
-                    .into_iter()
-                    .map(|thumbprint| Value::Text(thumbprint.to_owned()))
-                    .collect(),
-            ),
-        ),
-    ]));
-
-    let mut hasher = Sha256::new();
-    hasher.update(permguard_core::domains::digest::KEY_SET.as_bytes());
-    hasher.update(&encoded);
-
-    Ok(hasher.finalize().into())
+    KeySet::new(ring, epoch, suite, thumbprints).map(|set| set.digest())
 }
 
 #[cfg(test)]
@@ -181,21 +328,117 @@ mod tests {
         ));
     }
 
+    const A: &str = "FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk";
+    const B: &str = "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k";
+
     #[test]
     fn test_the_key_set_digest_ignores_order_and_refuses_duplicates() {
-        let one = key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &["b", "a"]).unwrap();
-        let two = key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &["a", "b"]).unwrap();
+        let one = key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &[B, A]).unwrap();
+        let two = key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &[A, B]).unwrap();
         let other_epoch =
-            key_set_digest("data.attest", 4, Suite::Ed25519Sha256V1, &["a", "b"]).unwrap();
+            key_set_digest("data.attest", 4, Suite::Ed25519Sha256V1, &[A, B]).unwrap();
         let other_ring =
-            key_set_digest("control.attest", 3, Suite::Ed25519Sha256V1, &["a", "b"]).unwrap();
+            key_set_digest("control.attest", 3, Suite::Ed25519Sha256V1, &[A, B]).unwrap();
+        let other_suite = key_set_digest("data.attest", 3, Suite::P256Sha256V1, &[A, B]).unwrap();
 
         assert_eq!(one, two);
         assert_ne!(one, other_epoch);
         assert_ne!(one, other_ring);
+        assert_ne!(one, other_suite);
         assert_eq!(
-            key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &["a", "a"]),
-            Err(ThumbprintError::DuplicateThumbprint("a".to_owned()))
+            key_set_digest("data.attest", 3, Suite::Ed25519Sha256V1, &[A, A]),
+            Err(ThumbprintError::DuplicateThumbprint(A.to_owned()))
         );
+    }
+
+    #[test]
+    fn test_only_canonical_thumbprints_enter_a_set() {
+        assert!(is_thumbprint(A));
+        for bad in [
+            "a",
+            "",
+            "FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk=",
+            "FtIu+VbGrfe/KB6CH7GNwODB72MNxj/ml11dEvO+7kk",
+            // The last character carries two bits no 32-byte value sets: decodable, not canonical.
+            "FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kl",
+        ] {
+            assert!(!is_thumbprint(bad), "{bad}");
+            assert_eq!(
+                KeySet::new("data.attest", 1, Suite::Ed25519Sha256V1, &[bad]),
+                Err(ThumbprintError::NotAThumbprint(bad.to_owned()))
+            );
+        }
+        assert_eq!(
+            KeySet::new("", 1, Suite::Ed25519Sha256V1, &[A]),
+            Err(ThumbprintError::EmptyRing)
+        );
+    }
+
+    fn statement(members: Vec<(Value, Value)>) -> Vec<u8> {
+        cbor::encode(&Value::Map(members))
+    }
+
+    fn members() -> Vec<(Value, Value)> {
+        vec![
+            (
+                Value::Text("ring".into()),
+                Value::Text("data.attest".into()),
+            ),
+            (Value::Text("epoch".into()), Value::Int(3)),
+            (
+                Value::Text("algorithm".into()),
+                Value::Text("pg-ed25519-sha256-v1".into()),
+            ),
+            (
+                Value::Text("keys_by_thumbprint".into()),
+                Value::Array(vec![Value::Text(A.into()), Value::Text(B.into())]),
+            ),
+        ]
+    }
+
+    #[test]
+    fn test_a_key_set_statement_decodes_only_in_its_closed_form() {
+        let set = KeySet::new("data.attest", 3, Suite::Ed25519Sha256V1, &[B, A]).unwrap();
+        assert_eq!(KeySet::decode(&set.encode()).unwrap(), set);
+        assert_eq!(KeySet::decode(&statement(members())).unwrap(), set);
+
+        let mut unknown = members();
+        unknown.push((Value::Text("comment".into()), Value::Text("x".into())));
+        let mut missing = members();
+        missing.pop();
+        let mut negative = members();
+        negative[1].1 = Value::Int(-1);
+        let mut text_epoch = members();
+        text_epoch[1].1 = Value::Text("3".into());
+        let mut other_suite = members();
+        other_suite[2].1 = Value::Text("EdDSA".into());
+        let mut unsorted = members();
+        unsorted[3].1 = Value::Array(vec![Value::Text(B.into()), Value::Text(A.into())]);
+        let mut repeated = members();
+        repeated[3].1 = Value::Array(vec![Value::Text(A.into()), Value::Text(A.into())]);
+        let mut bytes_member = members();
+        bytes_member[3].1 = Value::Array(vec![Value::Bytes(vec![0; 32])]);
+        let mut renamed = members();
+        renamed[0].0 = Value::Text("rings".into());
+
+        for (name, bytes) in [
+            ("an unknown key", statement(unknown)),
+            ("a missing key", statement(missing)),
+            ("a negative epoch", statement(negative)),
+            ("a text epoch", statement(text_epoch)),
+            ("a JWS name for the suite", statement(other_suite)),
+            ("unsorted thumbprints", statement(unsorted)),
+            ("a repeated thumbprint", statement(repeated)),
+            ("a thumbprint as bytes", statement(bytes_member)),
+            ("a renamed key", statement(renamed)),
+        ] {
+            assert!(KeySet::decode(&bytes).is_err(), "{name} was accepted");
+        }
+
+        // A duplicate key never reaches the member checks: the canonical decoder refuses it.
+        let mut duplicate = set.encode();
+        duplicate[0] = 0xa5;
+        duplicate.extend_from_slice(&statement(vec![members().remove(0)])[1..]);
+        assert!(KeySet::decode(&duplicate).is_err());
     }
 }

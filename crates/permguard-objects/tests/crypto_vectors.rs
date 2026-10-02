@@ -5,20 +5,25 @@
 //!
 //! `tests/vectors/crypto.json` holds two kinds of entry. External vectors cite their RFC or
 //! specification and prove that this implementation agrees with the world. Derived vectors — the
-//! `info` tuples, the key-set digest, the sealed-key binding — were computed with an independent
-//! encoder and prove that another implementation of the profile would compute the same bytes. The
-//! file is edited only by a change to the profile, never to make a test pass.
+//! thumbprint of each suite, the key-set statement and digest, every derivation with its `info`
+//! tuple, the sealed-key contexts and envelope — were computed from the blueprint text with an
+//! independent encoder and prove that another implementation of the profile would compute the same
+//! bytes. The file is edited only by a change to the profile, never to make a test pass.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::sync::Mutex;
+
 use permguard_objects::crypto::kdf;
 use permguard_objects::crypto::mac;
-use permguard_objects::crypto::seal::{self, Binding};
+use permguard_objects::crypto::random::{Entropy, EntropyUnavailable};
+use permguard_objects::crypto::seal::{self, Binding, KeyWrap as _, LocalKeyWrap, SealedKey};
 use permguard_objects::crypto::suite::{
     P256_HALF_ORDER, P256_ORDER, SignatureError, SigningKey, Suite,
 };
-use permguard_objects::crypto::thumbprint;
+use permguard_objects::crypto::thumbprint::{self, KeySet};
 use serde_json::Value;
+use zeroize::Zeroizing;
 
 fn vectors() -> Value {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/vectors/crypto.json");
@@ -100,17 +105,18 @@ fn test_p256_order_constants_and_the_published_high_s_vector_is_refused_until_no
 }
 
 #[test]
-fn test_thumbprints_reproduce_rfc_8037() {
+fn test_thumbprints_reproduce_rfc_8037_and_the_independent_encoder_for_each_suite() {
     let vectors = vectors();
     for entry in entries(&vectors, "thumbprint") {
         let name = text(entry, "name");
         let suite = Suite::from_name(text(entry, "suite")).unwrap();
-        let x = base64url(text(entry, "x"));
-        let thumbprint = thumbprint::jwk_thumbprint(suite, &x).unwrap();
+        let thumbprint = thumbprint::jwk_thumbprint(suite, &hex(text(entry, "public"))).unwrap();
+        let (ring, _) = thumbprint::split_kid(text(entry, "kid")).unwrap();
 
         assert_eq!(thumbprint, text(entry, "thumbprint"), "{name}");
+        assert!(thumbprint::is_thumbprint(&thumbprint), "{name}");
         assert_eq!(
-            thumbprint::kid("host.identity", &thumbprint),
+            thumbprint::kid(ring, &thumbprint),
             text(entry, "kid"),
             "{name}"
         );
@@ -118,7 +124,7 @@ fn test_thumbprints_reproduce_rfc_8037() {
 }
 
 #[test]
-fn test_the_key_set_digest_matches_the_independent_encoder() {
+fn test_the_key_set_statement_and_digest_match_the_independent_encoder() {
     let vectors = vectors();
     for entry in entries(&vectors, "key_set_digest") {
         let name = text(entry, "name");
@@ -128,7 +134,7 @@ fn test_the_key_set_digest_matches_the_independent_encoder() {
             .iter()
             .map(|t| t.as_str().unwrap())
             .collect();
-        let digest = thumbprint::key_set_digest(
+        let set = KeySet::new(
             text(entry, "ring"),
             entry["epoch"].as_u64().unwrap(),
             Suite::from_name(text(entry, "suite")).unwrap(),
@@ -136,7 +142,13 @@ fn test_the_key_set_digest_matches_the_independent_encoder() {
         )
         .unwrap();
 
-        assert_eq!(hex::encode(digest), text(entry, "digest"), "{name}");
+        assert_eq!(hex::encode(set.encode()), text(entry, "cbor"), "{name}");
+        assert_eq!(hex::encode(set.digest()), text(entry, "digest"), "{name}");
+        assert_eq!(
+            KeySet::decode(&hex(text(entry, "cbor"))).unwrap(),
+            set,
+            "{name}"
+        );
     }
 }
 
@@ -159,30 +171,61 @@ fn test_hkdf_reproduces_rfc_5869() {
 }
 
 #[test]
-fn test_kdf_info_tuples_match_the_independent_encoder() {
+fn test_every_derivation_matches_the_independent_encoder() {
     let vectors = vectors();
-    for entry in entries(&vectors, "kdf_info") {
+    for entry in entries(&vectors, "kdf") {
         let name = text(entry, "name");
         let version = entry["version"].as_u64().unwrap();
-        let info = match text(entry, "kind") {
-            "host_local" => kdf::host_local_info(
-                text(entry, "purpose"),
-                &id(text(entry, "authority_host_id")),
-                text(entry, "resource"),
-                version,
+        let root = hex(text(entry, "root"));
+        let salt = id(text(entry, "salt_host_id"));
+        let (info, key) = match text(entry, "kind") {
+            "host_local" => (
+                kdf::host_local_info(
+                    text(entry, "purpose"),
+                    &id(text(entry, "authority_host_id")),
+                    text(entry, "resource"),
+                    version,
+                ),
+                kdf::derive_host_local(
+                    &root,
+                    &salt,
+                    text(entry, "purpose"),
+                    &id(text(entry, "authority_host_id")),
+                    text(entry, "resource"),
+                    version,
+                ),
             ),
-            "zone_root" => kdf::zone_root_info(&id(text(entry, "zone_id")), version),
-            "zone_use" => kdf::zone_use_info(
-                text(entry, "purpose"),
-                &id(text(entry, "zone_id")),
-                &id(text(entry, "scope")),
-                version,
+            "zone_root" => (
+                kdf::zone_root_info(&id(text(entry, "zone_id")), version),
+                kdf::derive_zone_root(&root, &salt, &id(text(entry, "zone_id")), version),
+            ),
+            "zone_use" => (
+                kdf::zone_use_info(
+                    text(entry, "purpose"),
+                    &id(text(entry, "zone_id")),
+                    &id(text(entry, "scope")),
+                    version,
+                ),
+                kdf::derive_distributed_key(
+                    &root,
+                    &salt,
+                    text(entry, "purpose"),
+                    &id(text(entry, "zone_id")),
+                    &id(text(entry, "scope")),
+                    version,
+                ),
             ),
             other => panic!("{name}: unknown kind {other}"),
-        }
-        .unwrap();
+        };
+        let info = info.unwrap();
 
-        assert_eq!(hex::encode(info), text(entry, "cbor"), "{name}");
+        assert_eq!(hex::encode(&info), text(entry, "info"), "{name}");
+        assert_eq!(hex::encode(*key.unwrap()), text(entry, "key"), "{name}");
+        assert_eq!(
+            kdf::Info::decode(&info).unwrap().encode().unwrap(),
+            info,
+            "{name}"
+        );
     }
 }
 
@@ -229,10 +272,32 @@ fn test_aes_256_gcm_reproduces_the_gcm_specification_vectors() {
     }
 }
 
+/// A source that answers each draw with the next fixed value, and refuses a draw it was not given.
+struct Scripted(Mutex<Vec<Vec<u8>>>);
+
+impl Scripted {
+    fn new(draws: &[Vec<u8>]) -> Self {
+        Self(Mutex::new(draws.iter().rev().cloned().collect()))
+    }
+}
+
+impl Entropy for Scripted {
+    fn fill(&self, buffer: &mut [u8]) -> Result<(), EntropyUnavailable> {
+        let next = self.0.lock().unwrap().pop().ok_or(EntropyUnavailable)?;
+        assert_eq!(
+            next.len(),
+            buffer.len(),
+            "the draws come in the documented order"
+        );
+        buffer.copy_from_slice(&next);
+        Ok(())
+    }
+}
+
 #[test]
-fn test_the_sealed_key_binding_matches_the_independent_encoder() {
+fn test_the_sealed_key_envelope_matches_the_independent_encoder() {
     let vectors = vectors();
-    for entry in entries(&vectors, "sealed_key_binding") {
+    for entry in entries(&vectors, "sealed_key") {
         let name = text(entry, "name");
         let host = id(text(entry, "host_id"));
         let binding = Binding {
@@ -241,16 +306,75 @@ fn test_the_sealed_key_binding_matches_the_independent_encoder() {
             kid: text(entry, "kid"),
             suite: Suite::from_name(text(entry, "suite")).unwrap(),
         };
+        let nonce: [u8; 12] = hex(text(entry, "unique_nonce")).try_into().unwrap();
+        let kek_version = entry["kek_version"].as_u64().unwrap();
+        let kek = LocalKeyWrap::new(
+            text(entry, "kek_ref"),
+            kek_version,
+            Zeroizing::new(hex(text(entry, "kek")).try_into().unwrap()),
+            Box::new(Scripted::new(&[hex(text(entry, "wrap_nonce"))])),
+        );
+        assert_eq!(
+            kek.wrap_algorithm(),
+            text(entry, "wrap_algorithm"),
+            "{name}"
+        );
 
-        assert_eq!(hex::encode(binding.aad()), text(entry, "aad"), "{name}");
+        assert_eq!(
+            hex::encode(binding.content_context(seal::CONTENT_ALGORITHM, &nonce)),
+            text(entry, "content_context"),
+            "{name}"
+        );
+        assert_eq!(
+            hex::encode(
+                binding
+                    .wrap_context(
+                        text(entry, "kek_ref"),
+                        kek_version,
+                        text(entry, "wrap_algorithm"),
+                        seal::CONTENT_ALGORITHM,
+                        &nonce
+                    )
+                    .unwrap()
+            ),
+            text(entry, "wrap_context"),
+            "{name}"
+        );
+
+        // The DEK is drawn first, then the content nonce.
+        let entropy = Scripted::new(&[hex(text(entry, "dek")), nonce.to_vec()]);
+        let pkcs8 = hex(text(entry, "pkcs8"));
+        let sealed = SealedKey::seal(&pkcs8, &binding, &kek, &entropy).unwrap();
+        assert_eq!(
+            hex::encode(&sealed.ciphertext),
+            text(entry, "ciphertext"),
+            "{name}"
+        );
+        assert_eq!(
+            hex::encode(&sealed.wrapped_dek),
+            text(entry, "wrapped_dek"),
+            "{name}"
+        );
+        assert_eq!(
+            hex::encode(sealed.encode().unwrap()),
+            text(entry, "on_disk"),
+            "{name}"
+        );
+
+        // The vector's own bytes open, and the key inside is the one RFC 8032 signs with.
+        let public = hex(text(entry, "public"));
+        let opened = SealedKey::decode(&hex(text(entry, "on_disk")))
+            .unwrap()
+            .open(&binding, &kek, &public)
+            .unwrap();
+        assert_eq!(*opened.pkcs8, pkcs8, "{name}");
+        let rfc = &vectors["ed25519"][0];
+        assert_eq!(
+            hex::encode(opened.key.sign(&hex(text(rfc, "message"))).unwrap()),
+            text(rfc, "signature"),
+            "{name}"
+        );
     }
-}
-
-fn base64url(value: &str) -> Vec<u8> {
-    use base64::Engine as _;
-    base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(value)
-        .expect("base64url")
 }
 
 mod hex {

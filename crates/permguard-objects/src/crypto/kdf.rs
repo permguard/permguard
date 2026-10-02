@@ -49,6 +49,8 @@ pub enum KdfError {
     OutputTooLong { length: usize },
     /// The version does not fit the integer model of the canonical encoding.
     VersionRange(u64),
+    /// The bytes are not an `info` tuple of this profile.
+    Encoding(&'static str),
     /// The MAC refused a key; HMAC accepts any key length, so this is unreachable by construction
     /// and exists only so that no path returns bytes it did not derive.
     Internal,
@@ -70,6 +72,7 @@ impl fmt::Display for KdfError {
             Self::VersionRange(version) => {
                 write!(formatter, "the version {version} cannot be encoded")
             }
+            Self::Encoding(detail) => write!(formatter, "not a KDF info tuple: {detail}"),
             Self::Internal => formatter.write_str("the MAC refused the key"),
         }
     }
@@ -124,6 +127,145 @@ pub fn hkdf_sha256(salt: &[u8], ikm: &[u8], info: &[u8], out: &mut [u8]) -> Resu
     Ok(())
 }
 
+/// One `info` tuple: a closed CBOR array whose positions and member types are fixed.
+///
+/// Labels and purposes are text, Host, zone and scope identifiers their 16 UUID bytes, `resource`
+/// the canonical resource text, versions unsigned integers. [`Info::decode`] refuses another
+/// length, another label or another member type rather than coercing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Info {
+    /// `["permguard.kdf.v1", "host-local", purpose, authority_host_id, resource, key_version]`.
+    HostLocal {
+        purpose: String,
+        authority_host_id: Id,
+        resource: String,
+        key_version: u64,
+    },
+    /// `["permguard.kdf.v1", "zone-root", zone_id, version]`.
+    ZoneRoot { zone_id: Id, version: u64 },
+    /// `["permguard.kdf.v1", "zone-use", purpose, zone_id, scope, version]`.
+    ZoneUse {
+        purpose: String,
+        zone_id: Id,
+        scope: Id,
+        version: u64,
+    },
+}
+
+impl Info {
+    /// The deterministic-CBOR bytes HKDF receives as `info`.
+    pub fn encode(&self) -> Result<Vec<u8>, KdfError> {
+        let members = match self {
+            Self::HostLocal {
+                purpose,
+                authority_host_id,
+                resource,
+                key_version,
+            } => vec![
+                Value::Text(labels::LABEL.to_owned()),
+                Value::Text(labels::HOST_LOCAL.to_owned()),
+                Value::Text(purpose.clone()),
+                Value::Bytes(authority_host_id.to_vec()),
+                Value::Text(resource.clone()),
+                version(*key_version)?,
+            ],
+            Self::ZoneRoot {
+                zone_id,
+                version: v,
+            } => vec![
+                Value::Text(labels::LABEL.to_owned()),
+                Value::Text(labels::ZONE_ROOT.to_owned()),
+                Value::Bytes(zone_id.to_vec()),
+                version(*v)?,
+            ],
+            Self::ZoneUse {
+                purpose,
+                zone_id,
+                scope,
+                version: v,
+            } => vec![
+                Value::Text(labels::LABEL.to_owned()),
+                Value::Text(labels::ZONE_USE.to_owned()),
+                Value::Text(purpose.clone()),
+                Value::Bytes(zone_id.to_vec()),
+                Value::Bytes(scope.to_vec()),
+                version(*v)?,
+            ],
+        };
+
+        Ok(cbor::encode(&Value::Array(members)))
+    }
+
+    /// Reads an `info` tuple strictly.
+    pub fn decode(bytes: &[u8]) -> Result<Self, KdfError> {
+        let Ok(Value::Array(members)) = cbor::decode_canonical(bytes) else {
+            return Err(KdfError::Encoding(
+                "an info tuple is one canonical CBOR array",
+            ));
+        };
+        let [Value::Text(label), Value::Text(kind), rest @ ..] = members.as_slice() else {
+            return Err(KdfError::Encoding(
+                "an info tuple opens with two text labels",
+            ));
+        };
+        if label != labels::LABEL {
+            return Err(KdfError::Encoding(
+                "the first member is not `permguard.kdf.v1`",
+            ));
+        }
+        match (kind.as_str(), rest) {
+            (
+                labels::HOST_LOCAL,
+                [
+                    Value::Text(purpose),
+                    Value::Bytes(authority),
+                    Value::Text(resource),
+                    Value::Int(key_version),
+                ],
+            ) => Ok(Self::HostLocal {
+                purpose: purpose.clone(),
+                authority_host_id: uuid(authority)?,
+                resource: resource.clone(),
+                key_version: unsigned(*key_version)?,
+            }),
+            (labels::ZONE_ROOT, [Value::Bytes(zone), Value::Int(v)]) => Ok(Self::ZoneRoot {
+                zone_id: uuid(zone)?,
+                version: unsigned(*v)?,
+            }),
+            (
+                labels::ZONE_USE,
+                [
+                    Value::Text(purpose),
+                    Value::Bytes(zone),
+                    Value::Bytes(scope),
+                    Value::Int(v),
+                ],
+            ) => Ok(Self::ZoneUse {
+                purpose: purpose.clone(),
+                zone_id: uuid(zone)?,
+                scope: uuid(scope)?,
+                version: unsigned(*v)?,
+            }),
+            (labels::HOST_LOCAL | labels::ZONE_ROOT | labels::ZONE_USE, _) => Err(
+                KdfError::Encoding("the tuple has another length or member type than its kind"),
+            ),
+            _ => Err(KdfError::Encoding(
+                "the second member is not a derivation kind",
+            )),
+        }
+    }
+}
+
+fn uuid(bytes: &[u8]) -> Result<Id, KdfError> {
+    bytes
+        .try_into()
+        .map_err(|_| KdfError::Encoding("an identifier is exactly 16 UUID bytes"))
+}
+
+fn unsigned(value: i64) -> Result<u64, KdfError> {
+    u64::try_from(value).map_err(|_| KdfError::Encoding("a version is an unsigned integer"))
+}
+
 /// The `info` of a Host-local key.
 pub fn host_local_info(
     purpose: &str,
@@ -131,24 +273,22 @@ pub fn host_local_info(
     resource: &str,
     key_version: u64,
 ) -> Result<Vec<u8>, KdfError> {
-    Ok(cbor::encode(&Value::Array(vec![
-        Value::Text(labels::LABEL.to_owned()),
-        Value::Text(labels::HOST_LOCAL.to_owned()),
-        Value::Text(purpose.to_owned()),
-        Value::Bytes(authority_host_id.to_vec()),
-        Value::Text(resource.to_owned()),
-        version(key_version)?,
-    ])))
+    Info::HostLocal {
+        purpose: purpose.to_owned(),
+        authority_host_id: *authority_host_id,
+        resource: resource.to_owned(),
+        key_version,
+    }
+    .encode()
 }
 
 /// The `info` of a zone root.
 pub fn zone_root_info(zone_id: &Id, zone_version: u64) -> Result<Vec<u8>, KdfError> {
-    Ok(cbor::encode(&Value::Array(vec![
-        Value::Text(labels::LABEL.to_owned()),
-        Value::Text(labels::ZONE_ROOT.to_owned()),
-        Value::Bytes(zone_id.to_vec()),
-        version(zone_version)?,
-    ])))
+    Info::ZoneRoot {
+        zone_id: *zone_id,
+        version: zone_version,
+    }
+    .encode()
 }
 
 /// The `info` of a distributed per-purpose, per-scope key.
@@ -158,14 +298,13 @@ pub fn zone_use_info(
     scope: &Id,
     zone_version: u64,
 ) -> Result<Vec<u8>, KdfError> {
-    Ok(cbor::encode(&Value::Array(vec![
-        Value::Text(labels::LABEL.to_owned()),
-        Value::Text(labels::ZONE_USE.to_owned()),
-        Value::Text(purpose.to_owned()),
-        Value::Bytes(zone_id.to_vec()),
-        Value::Bytes(scope.to_vec()),
-        version(zone_version)?,
-    ])))
+    Info::ZoneUse {
+        purpose: purpose.to_owned(),
+        zone_id: *zone_id,
+        scope: *scope,
+        version: zone_version,
+    }
+    .encode()
 }
 
 fn version(value: u64) -> Result<Value, KdfError> {
@@ -258,13 +397,14 @@ mod tests {
     fn test_distributed_keys_do_not_depend_on_the_member_and_do_separate_scopes() {
         let root = derive_zone_root(&ROOT, &HOST_A, &ZONE, 1).unwrap();
         let on_member_one =
-            derive_distributed_key(&root[..], &HOST_A, "decision-input", &ZONE, &LEDGER, 1)
+            derive_distributed_key(&root[..], &HOST_A, "decision.commitment", &ZONE, &LEDGER, 1)
                 .unwrap();
         let on_member_two =
-            derive_distributed_key(&root[..], &HOST_A, "decision-input", &ZONE, &LEDGER, 1)
+            derive_distributed_key(&root[..], &HOST_A, "decision.commitment", &ZONE, &LEDGER, 1)
                 .unwrap();
         let other_scope =
-            derive_distributed_key(&root[..], &HOST_A, "decision-input", &ZONE, &ZONE, 1).unwrap();
+            derive_distributed_key(&root[..], &HOST_A, "decision.commitment", &ZONE, &ZONE, 1)
+                .unwrap();
 
         assert_eq!(*on_member_one, *on_member_two);
         assert_ne!(*on_member_one, *other_scope);
@@ -272,5 +412,137 @@ mod tests {
         let info_a = host_local_info("ab", &HOST_A, "c", 1).unwrap();
         let info_b = host_local_info("a", &HOST_A, "bc", 1).unwrap();
         assert_ne!(info_a, info_b);
+    }
+
+    #[test]
+    fn test_every_info_tuple_decodes_back_and_nothing_else_decodes() {
+        for info in [
+            Info::HostLocal {
+                purpose: "audit.pseudonym".into(),
+                authority_host_id: HOST_A,
+                resource: "plane/data/zone/x".into(),
+                key_version: 1,
+            },
+            Info::ZoneRoot {
+                zone_id: ZONE,
+                version: 7,
+            },
+            Info::ZoneUse {
+                purpose: "decision.commitment".into(),
+                zone_id: ZONE,
+                scope: LEDGER,
+                version: 2,
+            },
+        ] {
+            assert_eq!(Info::decode(&info.encode().unwrap()).unwrap(), info);
+        }
+
+        let text = |value: &str| Value::Text(value.to_owned());
+        let id = |value: Id| Value::Bytes(value.to_vec());
+        let refused = [
+            ("not an array", Value::Text("x".into())),
+            (
+                "another label",
+                Value::Array(vec![
+                    text("permguard.kdf.v2"),
+                    text("zone-root"),
+                    id(ZONE),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "an unknown kind",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text("zone-other"),
+                    id(ZONE),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "one member short",
+                Value::Array(vec![text(labels::LABEL), text(labels::ZONE_ROOT), id(ZONE)]),
+            ),
+            (
+                "one member too many",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_ROOT),
+                    id(ZONE),
+                    Value::Int(1),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "an identifier as text",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_ROOT),
+                    text("zone"),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "a short identifier",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_ROOT),
+                    Value::Bytes(vec![3; 15]),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "a negative version",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_ROOT),
+                    id(ZONE),
+                    Value::Int(-1),
+                ]),
+            ),
+            (
+                "a version as text",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_ROOT),
+                    id(ZONE),
+                    text("1"),
+                ]),
+            ),
+            (
+                "a purpose as bytes",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_USE),
+                    Value::Bytes(b"decision.commitment".to_vec()),
+                    id(ZONE),
+                    id(LEDGER),
+                    Value::Int(1),
+                ]),
+            ),
+            (
+                "host-local members in zone-use positions",
+                Value::Array(vec![
+                    text(labels::LABEL),
+                    text(labels::ZONE_USE),
+                    text("audit.pseudonym"),
+                    id(HOST_A),
+                    text("plane/data/zone/x"),
+                    Value::Int(1),
+                ]),
+            ),
+        ];
+        for (name, value) in refused {
+            assert!(
+                Info::decode(&cbor::encode(&value)).is_err(),
+                "{name} was accepted"
+            );
+        }
+        let mut trailing = zone_root_info(&ZONE, 1).unwrap();
+        trailing.push(0x00);
+        assert!(
+            Info::decode(&trailing).is_err(),
+            "trailing bytes were accepted"
+        );
     }
 }
