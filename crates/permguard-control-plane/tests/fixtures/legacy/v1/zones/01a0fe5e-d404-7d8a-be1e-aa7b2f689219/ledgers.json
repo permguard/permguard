@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "ledgers": [
+    {
+      "id": "01a0fe5e-d41c-71f3-96a3-5a2abb5fb91b",
+      "zone_id": "01a0fe5e-d404-7d8a-be1e-aa7b2f689219",
+      "name": "invoices",
+      "default_ref": "main",
+      "created_at": 1790974022,
+      "updated_at": 1790974022
+    }
+  ]
+}

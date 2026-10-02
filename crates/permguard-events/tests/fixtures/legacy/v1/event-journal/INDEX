@@ -1,0 +1,2 @@
+[{"event_type":"permguard.dogwood.event.v1","history":"","action":"Acme::Action::Read","kind":"request","occurred_at":1790812800,"seq":1},{"seq":1,"segment":1,"offset":0,"length":747}]
+[{"event_type":"permguard.dogwood.event.v1","history":"","action":"Acme::Action::Read","kind":"request","occurred_at":1790812800,"seq":2},{"seq":2,"segment":1,"offset":747,"length":747}]

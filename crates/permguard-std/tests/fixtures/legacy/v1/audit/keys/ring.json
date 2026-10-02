@@ -1,0 +1,13 @@
+{
+  "version": 0,
+  "keys": [
+    {
+      "kid": "P4MWoAic1q25Lybuz3vYjwhdTjzb7Q8hN0PyXTODUeo",
+      "state": "active",
+      "algorithm": "EdDSA",
+      "public_key": "lwS66QHonX3oHEU1W7A4ZXJclqnCCStOG_1UIIVEKv8",
+      "created_at": 1759276800,
+      "activated_at": 1759276800
+    }
+  ]
+}

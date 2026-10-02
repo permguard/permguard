@@ -1,0 +1,7 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# Captured legacy volumes are bytes the current code wrote, read back by offset and by digest: an
+# index points into a segment by byte offset, and a blob is named by the hash of its content. A
+# checkout that converted line endings would hand the reader a volume no release ever wrote.
+crates/*/tests/fixtures/legacy/** -text

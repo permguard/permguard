@@ -1,0 +1,1 @@
+{"stream":{"producer":{"class":"permguard.event.producer.data-plane.v1","id":"pdp-fixture","instance":"inst-1"},"zone":"zone-a","ledger":"ledger-a"},"next_seq":3,"head":"sha256:83c2a794c03c714b812ff2b9be59323dd286b31af9489c7e0eebabce26541adc","durable_through":2,"signed_through":0,"acked_through":0,"oldest_retained":1}

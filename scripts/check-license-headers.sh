@@ -29,6 +29,9 @@ while IFS= read -r file; do
         CODE_OF_CONDUCT.md) continue ;;
         # Third-party or generated.
         .gitignore | */node_modules/* | target/*) continue ;;
+        # Captured volumes: bytes the current code wrote, kept verbatim as the compatibility
+        # baseline. A header would make them something no release ever wrote.
+        */tests/fixtures/legacy/*) continue ;;
     esac
 
     # Tracked but not on disk: a rename or deletion that has not been committed yet. The header

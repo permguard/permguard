@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "zones": [
+    {
+      "id": "01a0fe5e-d404-7e3e-8dee-2089138dabbd",
+      "name": "billing",
+      "created_at": 1790974022,
+      "updated_at": 1790974022
+    }
+  ]
+}
