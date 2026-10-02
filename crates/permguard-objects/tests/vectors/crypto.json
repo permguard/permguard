@@ -1,0 +1,122 @@
+{
+  "profile": "cryptographic profile v1; external vectors cite their source, derived vectors were computed with an independent encoder",
+  "ed25519": [
+    {
+      "name": "RFC 8032 section 7.1 test 1",
+      "seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "",
+      "signature": "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+    }
+  ],
+  "p256": {
+    "order": "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+    "half_order": "7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8",
+    "vectors": [
+      {
+        "name": "RFC 6979 A.2.5 P-256 SHA-256 message sample",
+        "public": "0460fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb67903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299",
+        "message": "sample",
+        "signature_as_published": "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8",
+        "published_is_high_s": true,
+        "signature_low_s": "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf37160834e36ad29a83bf2bc9385e491d6099c8fdf9d1ed67aa7ea5f51f93782857a9"
+      }
+    ]
+  },
+  "thumbprint": [
+    {
+      "name": "RFC 8037 appendix A.3",
+      "suite": "pg-ed25519-sha256-v1",
+      "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+      "thumbprint": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
+      "kid": "host.identity:kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k"
+    }
+  ],
+  "key_set_digest": [
+    {
+      "name": "two thumbprints given out of order",
+      "ring": "data.attest",
+      "epoch": 3,
+      "suite": "pg-ed25519-sha256-v1",
+      "thumbprints": [
+        "b",
+        "a"
+      ],
+      "cbor": "a46472696e676b646174612e6174746573746565706f63680369616c676f726974686d7470672d656432353531392d7368613235362d7631726b6579735f62795f7468756d627072696e748261616162",
+      "digest": "869d9ead0cd8d3e08053a829839b3f3e261385c717261be0fa5b2a08da6f3e0c"
+    }
+  ],
+  "hkdf": [
+    {
+      "name": "RFC 5869 A.1 test case 1",
+      "ikm": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "salt": "000102030405060708090a0b0c",
+      "info": "f0f1f2f3f4f5f6f7f8f9",
+      "length": 42,
+      "okm": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    }
+  ],
+  "kdf_info": [
+    {
+      "name": "host-local",
+      "kind": "host_local",
+      "purpose": "audit.pseudonym",
+      "authority_host_id": "01010101010101010101010101010101",
+      "resource": "plane/data/zone/x",
+      "version": 1,
+      "cbor": "86707065726d67756172642e6b64662e76316a686f73742d6c6f63616c6f61756469742e70736575646f6e796d500101010101010101010101010101010171706c616e652f646174612f7a6f6e652f7801"
+    },
+    {
+      "name": "zone-root",
+      "kind": "zone_root",
+      "zone_id": "03030303030303030303030303030303",
+      "version": 1,
+      "cbor": "84707065726d67756172642e6b64662e7631697a6f6e652d726f6f74500303030303030303030303030303030301"
+    },
+    {
+      "name": "zone-use",
+      "kind": "zone_use",
+      "purpose": "decision-input",
+      "zone_id": "03030303030303030303030303030303",
+      "scope": "04040404040404040404040404040404",
+      "version": 1,
+      "cbor": "86707065726d67756172642e6b64662e7631687a6f6e652d7573656e6465636973696f6e2d696e7075745003030303030303030303030303030303500404040404040404040404040404040401"
+    }
+  ],
+  "hmac": [
+    {
+      "name": "RFC 4231 test case 2",
+      "key": "4a656665",
+      "data": "7768617420646f2079612077616e7420666f72206e6f7468696e673f",
+      "tag": "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    }
+  ],
+  "aes256gcm": [
+    {
+      "name": "GCM spec test case 13",
+      "key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonce": "000000000000000000000000",
+      "aad": "",
+      "plaintext": "",
+      "ciphertext_and_tag": "530f8afbc74536b9a963b4f1c4cb738b"
+    },
+    {
+      "name": "GCM spec test case 14",
+      "key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonce": "000000000000000000000000",
+      "aad": "",
+      "plaintext": "00000000000000000000000000000000",
+      "ciphertext_and_tag": "cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919"
+    }
+  ],
+  "sealed_key_binding": [
+    {
+      "name": "binding of a host.identity key",
+      "host_id": "07070707070707070707070707070707",
+      "ring": "host.identity",
+      "kid": "host.identity:abc",
+      "suite": "pg-ed25519-sha256-v1",
+      "aad": "a5636b696471686f73742e6964656e746974793a6162636472696e676d686f73742e6964656e746974796573756974657470672d656432353531392d7368613235362d763166666f726d6174777065726d67756172642e7365616c65642d6b65792e763167686f73745f69645007070707070707070707070707070707"
+    }
+  ]
+}

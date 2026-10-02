@@ -18,6 +18,7 @@
 
 pub mod cbor;
 pub mod compress;
+pub mod crypto;
 pub mod digest;
 pub mod grammar;
 pub mod limits;

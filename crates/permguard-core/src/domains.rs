@@ -26,6 +26,7 @@
 //!   or a stream record asserts.
 //! * [`capability`] — capability URNs a discovery document lists.
 //! * [`annotation`] — tree-entry annotations of the object model.
+//! * [`format`] — format labels of files the Host writes.
 //! * [`kdf`] — labels inside HKDF `info` tuples.
 
 /// Prefixes of digests and MACs. Every value ends with `\n`.
@@ -179,6 +180,12 @@ pub mod annotation {
     pub const POLICY_KIND: &str = "permguard.policy.kind";
 }
 
+/// Format labels of files the Host writes, bound into their associated data.
+pub mod format {
+    /// A private key sealed at rest under envelope encryption.
+    pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
+}
+
 /// Labels inside HKDF `info` tuples.
 pub mod kdf {
     /// The first element of every info tuple.
@@ -328,6 +335,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("annotation.POLICY_ID", annotation::POLICY_ID),
         ("annotation.POLICY_ALIAS", annotation::POLICY_ALIAS),
         ("annotation.POLICY_KIND", annotation::POLICY_KIND),
+        ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("kdf.LABEL", kdf::LABEL),
         ("kdf.HOST_LOCAL", kdf::HOST_LOCAL),
         ("kdf.ZONE_ROOT", kdf::ZONE_ROOT),

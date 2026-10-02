@@ -15,6 +15,8 @@ libfuzzer-sys = "0.4"
 permguard-decisions = { path = "../crates/permguard-decisions" }
 permguard-notp = { path = "../crates/permguard-notp" }
 permguard-objects = { path = "../crates/permguard-objects" }
+permguard-events = { path = "../crates/permguard-events" }
+permguard-stream = { path = "../crates/permguard-stream" }
 serde_json = "1"
 
 [[bin]]
@@ -41,6 +43,48 @@ bench = false
 [[bin]]
 name = "decision_json"
 path = "fuzz_targets/decision_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jcs_parse"
+path = "fuzz_targets/jcs_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decision_batch"
+path = "fuzz_targets/decision_batch.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_batch"
+path = "fuzz_targets/event_batch.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cose_head"
+path = "fuzz_targets/cose_head.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sealed_key"
+path = "fuzz_targets/sealed_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "signature_verify"
+path = "fuzz_targets/signature_verify.rs"
 test = false
 doc = false
 bench = false
