@@ -1,0 +1,62 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The long run of the conformance harness, every night.
+#
+# A pull request fuzzes each target for seconds and kills the crash harness a handful of times; that
+# catches a decoder that falls over on its first malformed input. What it cannot catch needs time:
+# the input a coverage-guided fuzzer reaches after millions of executions, and the kill that lands in
+# the one window a few rounds never hit. Both run here, on `main`, with the same scripts.
+
+name: fuzz-nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  PERMGUARD_COPYRIGHT_YEAR: "2022"
+  PERMGUARD_COPYRIGHT_HOLDER: "Nitro Agility S.r.l."
+
+jobs:
+  fuzz:
+    name: fuzz every untrusted decoder (long budget)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: fuzz
+      - name: cargo-fuzz
+        run: cargo install cargo-fuzz@0.13.2 --locked
+      - name: every target, ten minutes each, bounded by the boundary registry
+        run: ./scripts/fuzz.sh 600
+      - name: keep what crashed
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
+
+  crash:
+    name: kill -9 the spool and the journal, many times
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the crash harness, 500 rounds per store
+        env:
+          PERMGUARD_CRASH_ROUNDS: "500"
+        run: cargo test -p permguard-conformance --test crash --locked

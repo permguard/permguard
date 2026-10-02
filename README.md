@@ -792,6 +792,7 @@ task bench:grafana
 | `permguard-data-plane` | Data-plane binary, mirror loop, authorization endpoint and decision recording. |
 | `permguard-all-in-one` | Local runtime that runs control and data planes in one process. |
 | `permguard-cli` | `permguard`, the command-line interface and authoring engine. |
+| `permguard-conformance` | Test-only harness: REST/gRPC parity, fault injection, the `kill -9` crash harness and the untrusted-boundary registry. |
 
 ## Development
 
@@ -810,7 +811,19 @@ task check:core-deps
 task check:seams
 task check:systems
 task check:headers
+task check:boundaries
 ```
+
+### Conformance harness
+
+`crates/permguard-conformance` holds what every plane proves the same way, and `task check` runs it.
+Its parity runner serves a plane's REST router and gRPC routes on real sockets and drives the same operation through the production client on each, requiring the same answer or the same `{class, code}`.
+Its fault hooks let a test fail an fsync, fill a disk or jump a clock; `src/fault.rs` shows how a test asks for each.
+Its crash harness kills a child appending to the decision spool and the event journal with `SIGKILL`, then reopens what it left; `PERMGUARD_CRASH_ROUNDS` raises the round count.
+
+`crates/permguard-conformance/boundaries.json` registers every decoder of untrusted input, with its bound and its fuzz target.
+`task check:boundaries` fails when a decoder is exported, renamed or removed without the registry changing with it, so a change to a decoder updates both in the same commit.
+The fuzz targets run for a short budget on every pull request and a long one nightly; `task fuzz SECONDS=60` runs them locally with a nightly toolchain and `cargo install cargo-fuzz`.
 
 Equivalent Make targets are available:
 

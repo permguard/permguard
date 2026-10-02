@@ -113,6 +113,7 @@ mod window_tests {
 pub(crate) mod grpc;
 pub(crate) mod http;
 pub(crate) mod ledgers;
+mod parity;
 pub(crate) mod zones;
 
 use std::sync::Arc;

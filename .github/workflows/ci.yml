@@ -59,6 +59,8 @@ jobs:
         run: ./scripts/check-build-systems.sh
       - name: every source file carries the licence header
         run: ./scripts/check-license-headers.sh
+      - name: every untrusted decoder is registered, bounded and fuzzed
+        run: cargo test -p permguard-conformance --test boundaries --locked
       - name: the third-party notices match what the build links
         # A dependency change that does not reach THIRD_PARTY_NOTICES.md is a distribution whose
         # notices are wrong, which is why this fails the build rather than warning. The fix it
@@ -72,6 +74,32 @@ jobs:
         # --all-features because `permguard-std` keeps `provision` outside its default set, and a
         # plain run would never compile the tests that cover it.
         run: cargo test --workspace --all-features --locked
+
+  fuzz:
+    name: fuzz every untrusted decoder (short budget)
+    # Pull requests only: a short run on every change catches a decoder that panics on its first
+    # malformed input; the nightly workflow runs the long budget.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # libFuzzer's sanitizer coverage needs nightly; nothing else in this repository does.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: fuzz
+      - name: cargo-fuzz
+        run: cargo install cargo-fuzz@0.13.2 --locked
+      - name: every target, 20 seconds each, bounded by the boundary registry
+        run: ./scripts/fuzz.sh 20
+      - name: keep what crashed
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
 
   supply-chain:
     name: advisories, licences, sources

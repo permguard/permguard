@@ -1,0 +1,18 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The conformance harness: what every plane must prove the same way, written once.
+//!
+//! | Module                 | Proves                                                                         |
+//! | ---------------------- | ------------------------------------------------------------------------------ |
+//! | [`parity`]             | a request answered over REST and over gRPC gets the same `{class, code}` or the same canonical value |
+//! | [`fault`]              | how a test asks for an fsync failure, a full disk or a clock jump              |
+//! | [`boundaries`]         | every untrusted decoder is registered, bounded and fuzzed, and nothing registered is dangling |
+//! | `tests/crash.rs`       | a spool and a journal killed with `SIGKILL` at random points reopen to a valid chain and `STATE` |
+//!
+//! The crate is a test dependency only. Nothing shipped links it, so it may start servers, spawn
+//! processes and inject faults freely.
+
+pub mod boundaries;
+pub mod fault;
+pub mod parity;

@@ -198,6 +198,7 @@ impl Cursor {
     /// checked after — so a token that was tampered with is `Forged`, and one that was issued for
     /// a different tenant or filter set is refused by which binding it violates. A caller learns
     /// that its cursor does not belong here; it does not learn anything about what is here.
+    // conformance: boundary
     pub fn open(
         token: &str,
         key: &CursorKey,

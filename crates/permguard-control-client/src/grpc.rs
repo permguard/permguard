@@ -289,27 +289,25 @@ impl GrpcAdmin {
     }
 
     fn failure(status: tonic::Status) -> CatalogFailure {
-        // The one taxonomy of every surface: the gRPC code maps onto the
-        // same classes the HTTP refusals carry, so scripts read one language.
-        let (class, usage) = match status.code() {
-            tonic::Code::InvalidArgument => ("validation", true),
-            tonic::Code::AlreadyExists | tonic::Code::Aborted => ("conflict", true),
-            tonic::Code::NotFound => ("not_found", true),
-            tonic::Code::Unavailable | tonic::Code::ResourceExhausted => ("unavailable", false),
-            _ => ("internal", false),
+        // The class and the stable code the server sent as metadata, when it sent them: a script
+        // that branches on either reads the same value whichever transport carried the refusal.
+        // Only a status without them — an older server, or one tonic produced itself — falls back
+        // to what its gRPC code means, through the same mapping every gRPC refusal here uses.
+        let metadata = |key: &str| {
+            status
+                .metadata()
+                .get(key)
+                .and_then(|value| value.to_str().ok())
+                .map(ToOwned::to_owned)
         };
-        // The stable code the server sent as metadata, when it sent one: a
-        // script that branches on `reason` should read the same value whichever
-        // transport carried the refusal.
-        let reason = status
-            .metadata()
-            .get(GRPC_ERROR_CODE)
-            .and_then(|value| value.to_str().ok())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| classify(status.code()).1.to_owned());
+        let (derived_class, derived_code) = classify(status.code());
+        let class = metadata(GRPC_ERROR_CLASS).unwrap_or_else(|| derived_class.to_owned());
+        let reason = metadata(GRPC_ERROR_CODE).unwrap_or_else(|| derived_code.to_owned());
+        // A usage error is a mistake in what was asked; the other classes are the world's.
+        let usage = matches!(class.as_str(), "validation" | "conflict" | "not_found");
 
         CatalogFailure {
-            class: class.to_owned(),
+            class,
             reason,
             detail: status.message().to_owned(),
             usage,

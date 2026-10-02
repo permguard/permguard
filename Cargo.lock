@@ -2333,6 +2333,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "permguard-conformance"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "permguard-control-client",
+ "permguard-core",
+ "permguard-decisions",
+ "permguard-events",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "permguard-control-client"
 version = "0.1.0"
 dependencies = [
@@ -2368,6 +2383,7 @@ dependencies = [
  "base64 0.23.1",
  "http",
  "http-body-util",
+ "permguard-conformance",
  "permguard-control-client",
  "permguard-core",
  "permguard-data-plane",
@@ -2412,6 +2428,7 @@ dependencies = [
  "futures-core",
  "http",
  "http-body-util",
+ "permguard-conformance",
  "permguard-control-client",
  "permguard-control-plane",
  "permguard-core",
@@ -2558,6 +2575,7 @@ dependencies = [
  "base64 0.23.1",
  "hmac",
  "permguard-core",
+ "proptest",
  "serde",
  "serde_json",
  "sha2",

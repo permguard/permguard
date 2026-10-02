@@ -58,6 +58,8 @@ tonic-prost.workspace = true
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+# Transport parity, fault injection and the boundary registry, shared by every plane.
+permguard-conformance.workspace = true
 permguard-control-plane.workspace = true
 # The release-pipeline example is read from disk, manifest included, so the test
 # cannot drift from the files the lab's README tells a reader to apply.

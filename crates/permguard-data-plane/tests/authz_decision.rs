@@ -1754,3 +1754,97 @@ async fn a_decision_whose_budget_the_load_already_spent_refuses() {
         "and it says why, rather than denying mutely: {reason}"
     );
 }
+
+/// The PDP answers the same over REST and gRPC: every payload below is sent through the production
+/// client once per transport, against one plane served on both, and must get the same canonical
+/// answer or the same `{class, code}`.
+mod parity {
+    use super::*;
+
+    use permguard_conformance::parity::{Outcome, assert_parity, outcome, serve};
+    use permguard_data_plane::authz::grpc::PdpApi;
+
+    fn pdp(url: &str) -> Box<dyn permguard_control_client::pdp::Pdp> {
+        permguard_control_client::pdp::client(
+            url,
+            &permguard_control_client::tls::TlsOptions::default(),
+            Box::new(permguard_control_client::narrate::Silent),
+        )
+        .expect("the endpoint parses")
+    }
+
+    fn ask(subject: &str, action: &str) -> Value {
+        json!({
+            "zone": "acme", "ledger": "main-ledger",
+            "subject": {"type": "user", "id": subject},
+            "resource": {"type": "document", "id": "budget"},
+            "action": {"name": action}
+        })
+    }
+
+    #[test]
+    fn test_every_payload_gets_the_same_answer_or_refusal_over_rest_and_grpc() {
+        let root = scratch("parity").join("mirrors");
+        let manifest = manifest(&[("app", "cedar", false)], ">=0.0.0");
+        provision(
+            &root,
+            "acme",
+            "main-ledger",
+            &manifest,
+            &[("app", vec![&CEDAR_READ, &CEDAR_NOT_BOB], None)],
+        );
+        let decider = decider(&root);
+        let base_url = "http://127.0.0.1:7443".to_owned();
+        let served = serve(
+            http::routes(http::Surface {
+                decider: decider.clone(),
+                disclosure: Disclosure::Full,
+                base_url: base_url.clone(),
+            }),
+            tonic::service::Routes::new(
+                permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(
+                    PdpApi {
+                        decider,
+                        disclosure: Disclosure::Full,
+                        base_url,
+                    },
+                ),
+            ),
+        );
+        let over_http = pdp(&served.http);
+        let over_grpc = pdp(&served.grpc);
+
+        let mut unknown_ledger = ask("alice", "read");
+        unknown_ledger["ledger"] = json!("other-ledger");
+        let mut boxcarred = ask("alice", "read");
+        boxcarred["evaluations"] = json!([
+            {"request_id": "one"},
+            {"request_id": "two", "subject": {"type": "user", "id": "bob"}}
+        ]);
+        let mut subject_without_id = ask("alice", "read");
+        subject_without_id["subject"] = json!({"type": "user"});
+        let cases = [
+            ("a permit", ask("alice", "read")),
+            ("a deny", ask("bob", "read")),
+            ("a boxcar of a permit and a deny", boxcarred),
+            (
+                "no store named",
+                json!({"subject": {"type": "user", "id": "alice"}}),
+            ),
+            ("a ledger this plane does not serve", unknown_ledger),
+            ("a subject without an id", subject_without_id),
+        ];
+
+        let mut refusals = 0;
+        for (case, payload) in cases {
+            let http = outcome(over_http.evaluate(&payload));
+            let grpc = outcome(over_grpc.evaluate(&payload));
+            if matches!(http, Outcome::Refused { .. }) {
+                refusals += 1;
+            }
+            // The decision id is minted per call: two calls cannot share it.
+            assert_parity(case, http.masked(&["id"]), grpc.masked(&["id"]));
+        }
+        assert!(refusals >= 3, "the refusals are exercised ({refusals})");
+    }
+}

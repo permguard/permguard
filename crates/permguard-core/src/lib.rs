@@ -29,6 +29,7 @@ pub mod config_section;
 pub mod decisions;
 pub mod domains;
 pub mod error;
+pub mod fault;
 pub mod future;
 pub mod identity;
 pub mod keys;

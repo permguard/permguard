@@ -1,0 +1,29 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-conformance"
+description = "The conformance harness: transport parity, fault injection and the untrusted-boundary registry, for tests only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# A test harness, never a dependency of a shipped crate: only `[dev-dependencies]` name it.
+publish = false
+
+[dependencies]
+axum.workspace = true
+permguard-control-client.workspace = true
+permguard-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt"] }
+tonic.workspace = true
+
+[dev-dependencies]
+permguard-core.workspace = true
+permguard-decisions.workspace = true
+permguard-events.workspace = true
+serde_json.workspace = true

@@ -105,6 +105,7 @@ tasks:
       - task: check:systems
       - task: check:headers
       - task: check:notices
+      - task: check:boundaries
       - task: test
 
   coverage:
@@ -128,6 +129,18 @@ tasks:
       VERSION: '{{.VERSION | default ""}}'
     cmds:
       - ./scripts/prepare-release.sh {{.VERSION}}
+
+  check:boundaries:
+    desc: Check that every untrusted decoder is registered, bounded and fuzzed.
+    cmds:
+      - cargo test -p permguard-conformance --test boundaries --locked
+
+  fuzz:
+    desc: Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).
+    vars:
+      SECONDS: '{{.SECONDS | default "30"}}'
+    cmds:
+      - ./scripts/fuzz.sh {{.SECONDS}}
 
   check:headers:
     desc: Check that every source file carries the licence header.

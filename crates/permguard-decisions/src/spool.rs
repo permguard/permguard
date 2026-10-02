@@ -68,6 +68,7 @@ use std::io::{BufRead as _, BufReader, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use permguard_core::fault;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -606,9 +607,9 @@ impl Spool {
             .map_err(|error| SpoolError::io("opening the reserve", error))?;
         file.seek(SeekFrom::Start(0))
             .map_err(|error| SpoolError::io("rewinding the reserve", error))?;
-        file.write_all(&padded)
+        fault::write(&self.directory, padded.len(), || file.write_all(&padded))
             .map_err(|error| SpoolError::io("writing the terminal record", error))?;
-        file.sync_all()
+        fault::sync(&self.directory, || file.sync_all())
             .map_err(|error| SpoolError::io("flushing the terminal record", error))?;
 
         // 3. The old stream is closed, and 4. the successor becomes live.
@@ -674,9 +675,7 @@ impl Spool {
             .open
             .as_mut()
             .ok_or_else(|| SpoolError::Malformed("no open segment".to_owned()))?;
-        segment
-            .file
-            .write_all(line)
+        fault::write(&self.directory, line.len(), || segment.file.write_all(line))
             .map_err(|error| SpoolError::io("appending a record", error))?;
         segment.bytes += line.len() as u64;
 
@@ -690,9 +689,7 @@ impl Spool {
     /// wrote it. A spool with nothing open has nothing to settle.
     pub fn sync_open(&mut self) -> Result<(), SpoolError> {
         if let Some(segment) = &self.open {
-            segment
-                .file
-                .sync_data()
+            fault::sync(&self.directory, || segment.file.sync_data())
                 .map_err(|error| SpoolError::io("flushing a segment", error))?;
         }
         self.promote_through(self.seq);
@@ -1005,9 +1002,9 @@ fn write_state(directory: &Path, state: &State) -> Result<(), SpoolError> {
     {
         let mut file = File::create(&temporary)
             .map_err(|error| SpoolError::io("writing the spool state", error))?;
-        file.write_all(&bytes)
+        fault::write(directory, bytes.len(), || file.write_all(&bytes))
             .map_err(|error| SpoolError::io("writing the spool state", error))?;
-        file.sync_all()
+        fault::sync(directory, || file.sync_all())
             .map_err(|error| SpoolError::io("flushing the spool state", error))?;
     }
     // Rename is the atomic step: a reader sees the old state or the new one,
@@ -1019,8 +1016,7 @@ fn write_state(directory: &Path, state: &State) -> Result<(), SpoolError> {
     // state file is the old one, which is a stream that resumes from a position it already used.
     let handle = File::open(directory)
         .map_err(|error| SpoolError::io("opening the spool directory to flush it", error))?;
-    handle
-        .sync_all()
+    fault::sync(directory, || handle.sync_all())
         .map_err(|error| SpoolError::io("flushing the spool directory", error))?;
 
     Ok(())

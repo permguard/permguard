@@ -16,6 +16,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+permguard-core = { path = "../crates/permguard-core" }
 permguard-decisions = { path = "../crates/permguard-decisions" }
 permguard-notp = { path = "../crates/permguard-notp" }
 permguard-objects = { path = "../crates/permguard-objects" }
@@ -89,6 +90,34 @@ bench = false
 [[bin]]
 name = "signature_verify"
 path = "fuzz_targets/signature_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cursor_open"
+path = "fuzz_targets/cursor_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "object_decode"
+path = "fuzz_targets/object_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text_tokens"
+path = "fuzz_targets/text_tokens.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_statements"
+path = "fuzz_targets/crypto_statements.rs"
 test = false
 doc = false
 bench = false

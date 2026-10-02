@@ -17,6 +17,59 @@
 //! Everything here is UTC. An audit trail whose day boundary moves twice a year is an audit trail
 //! with two hours that appear twice and one that never happened.
 
+/// Where "now" comes from, so that a test can move it.
+///
+/// A component that reads the time through a `Clock` can be shown what happens when the wall clock
+/// jumps forward past an expiry, or backward behind a sequence it already issued: hand it a
+/// [`ManualClock`] and [`ManualClock::jump`] it. Production hands it [`SystemClock`].
+pub trait Clock: Send + Sync {
+    /// Seconds since the Unix epoch, UTC.
+    fn now(&self) -> i64;
+}
+
+/// The operating system's wall clock.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| {
+                i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+            })
+    }
+}
+
+/// A clock that moves only when told to, in either direction.
+#[derive(Debug)]
+pub struct ManualClock(std::sync::atomic::AtomicI64);
+
+impl ManualClock {
+    /// A clock that reads `seconds` until moved.
+    pub fn at(seconds: i64) -> Self {
+        Self(std::sync::atomic::AtomicI64::new(seconds))
+    }
+
+    /// Sets the time.
+    pub fn set(&self, seconds: i64) {
+        self.0.store(seconds, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Moves the time by `seconds`: forward when positive, backward when negative — the jump an
+    /// NTP step or an operator's `date -s` makes.
+    pub fn jump(&self, seconds: i64) {
+        self.0
+            .fetch_add(seconds, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl Clock for ManualClock {
+    fn now(&self) -> i64 {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
 /// How many seconds there are in a day.
 const DAY: i64 = 86_400;
 
@@ -322,5 +375,17 @@ mod tests {
         ] {
             assert!(from_rfc3339(written).is_none(), "reading {written:?}");
         }
+    }
+
+    #[test]
+    fn test_a_manual_clock_jumps_both_ways_and_the_system_clock_is_after_this_code_was_written() {
+        let clock = ManualClock::at(1_000);
+        clock.jump(3_600);
+        assert_eq!(clock.now(), 4_600);
+        clock.jump(-7_200);
+        assert_eq!(clock.now(), -2_600, "a backward step may cross the epoch");
+        clock.set(42);
+        assert_eq!(clock.now(), 42);
+        assert!(SystemClock.now() > 1_790_000_000);
     }
 }

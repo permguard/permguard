@@ -53,6 +53,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use permguard_core::fault;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -410,7 +411,7 @@ impl Journal {
         if let Some((_, file)) = &mut self.open_segment {
             file.flush()
                 .map_err(|error| JournalError::Io(error.to_string()))?;
-            file.sync_all()
+            fault::sync(&self.directory, || file.sync_all())
                 .map_err(|error| JournalError::Io(error.to_string()))?;
         }
         // After the segment, never before: an index entry durable ahead of the record it points at
@@ -1037,7 +1038,7 @@ impl Journal {
             .metadata()
             .map_err(|error| JournalError::Io(error.to_string()))?
             .len();
-        file.write_all(line)
+        fault::write(&self.directory, line.len(), || file.write_all(line))
             .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok((first, offset))
@@ -1176,17 +1177,18 @@ impl Journal {
         {
             let mut file =
                 File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            file.write_all(&bytes)
+            fault::write(&self.directory, bytes.len(), || file.write_all(&bytes))
                 .map_err(|error| JournalError::Io(error.to_string()))?;
-            file.sync_all()
+            fault::sync(&self.directory, || file.sync_all())
                 .map_err(|error| JournalError::Io(error.to_string()))?;
         }
         // Atomically replaced: a reader either sees the old state or the new one, never a
         // half-written file.
         fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
-        File::open(&self.directory)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| JournalError::Io(error.to_string()))?;
+        fault::sync(&self.directory, || {
+            File::open(&self.directory).and_then(|directory| directory.sync_all())
+        })
+        .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())
     }
