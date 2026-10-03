@@ -1,37 +1,183 @@
 {
-  "profile": "RFC 8785 over I-JSON; integers within ±2^53; member names unique; one value",
+  "profile": "RFC 8785 over strict I-JSON: every finite double, written as ECMAScript Number.prototype.toString; an integer written without fraction or exponent must read back as written; member names unique; one value",
   "canonical": [
-    { "name": "members sorted and whitespace removed", "input": "{ \"b\": 1, \"a\": { \"d\": [1, 2], \"c\": true } }", "canonical": "{\"a\":{\"c\":true,\"d\":[1,2]},\"b\":1}" },
-    { "name": "keys sort by UTF-16 code unit", "input": "{\"\\ue000\":1,\"\\ud800\\udc00\":2}", "canonical": "{\"\ud800\udc00\":2,\"\ue000\":1}" },
-    { "name": "only mandatory escapes", "input": "{\"s\":\"a\\\"b\\\\c\\nd\\te\\u0001f\\/g\\u00e9\"}", "canonical": "{\"s\":\"a\\\"b\\\\c\\nd\\te\\u0001f/g\u00e9\"}" },
-    { "name": "largest carried integer", "input": "[9007199254740992,-9007199254740992]", "canonical": "[9007199254740992,-9007199254740992]" },
-    { "name": "null true false", "input": "[ null , true , false ]", "canonical": "[null,true,false]" },
-    { "name": "empty containers", "input": "{\"a\":{},\"b\":[]}", "canonical": "{\"a\":{},\"b\":[]}" }
+    {
+      "name": "members sorted and whitespace removed",
+      "input": "{ \"b\": 1, \"a\": { \"d\": [1, 2], \"c\": true } }",
+      "canonical": "{\"a\":{\"c\":true,\"d\":[1,2]},\"b\":1}"
+    },
+    {
+      "name": "keys sort by UTF-16 code unit",
+      "input": "{\"\\ue000\":1,\"\\ud800\\udc00\":2}",
+      "canonical": "{\"\ud800\udc00\":2,\"\ue000\":1}"
+    },
+    {
+      "name": "only mandatory escapes",
+      "input": "{\"s\":\"a\\\"b\\\\c\\nd\\te\\u0001f\\/g\\u00e9\"}",
+      "canonical": "{\"s\":\"a\\\"b\\\\c\\nd\\te\\u0001f/g\u00e9\"}"
+    },
+    {
+      "name": "largest carried integer",
+      "input": "[9007199254740992,-9007199254740992]",
+      "canonical": "[9007199254740992,-9007199254740992]"
+    },
+    {
+      "name": "null true false",
+      "input": "[ null , true , false ]",
+      "canonical": "[null,true,false]"
+    },
+    {
+      "name": "empty containers",
+      "input": "{\"a\":{},\"b\":[]}",
+      "canonical": "{\"a\":{},\"b\":[]}"
+    },
+    {
+      "name": "a fraction",
+      "input": "{\"x\":1.5}",
+      "canonical": "{\"x\":1.5}"
+    },
+    {
+      "name": "RFC 8785 3.2.2 numbers",
+      "input": "[333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001]",
+      "canonical": "[333333333.3333333,1e+30,4.5,0.002,1e-27]"
+    },
+    {
+      "name": "RFC 8785 3.2.2 literals and string",
+      "input": "{\"numbers\":[1],\"string\":\"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\"literals\":[null,true,false]}",
+      "canonical": "{\"literals\":[null,true,false],\"numbers\":[1],\"string\":\"\u20ac$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+    },
+    {
+      "name": "RFC 8785 3.2.3 sorting",
+      "input": "{\"\\u20ac\":\"Euro Sign\",\"\\r\":\"Carriage Return\",\"\\ufb33\":\"Hebrew Letter Dalet With Dagesh\",\"1\":\"One\",\"\\ud83d\\ude00\":\"Emoji: Grinning Face\",\"\\u0080\":\"Control\",\"\\u00f6\":\"Latin Small Letter O With Diaeresis\"}",
+      "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    {
+      "name": "a large integral double prints as ECMAScript does",
+      "input": "295147905179352830000",
+      "canonical": "295147905179352830000"
+    },
+    {
+      "name": "an integral double from 1e21 prints with an exponent",
+      "input": "1E21",
+      "canonical": "1e+21"
+    }
   ],
   "refused": [
-    { "name": "duplicate member", "input": "{\"a\":1,\"a\":2}", "error": "DuplicateName" },
-    { "name": "nested duplicate member", "input": "{\"o\":{\"k\":1,\"k\":1}}", "error": "DuplicateName" },
-    { "name": "fractional number", "input": "{\"x\":1.5}", "error": "NotAnInteger" },
-    { "name": "integral float spelling", "input": "1.0", "error": "NotAnInteger" },
-    { "name": "exponent", "input": "1e2", "error": "NotAnInteger" },
-    { "name": "negative zero", "input": "-0", "error": "NotAnInteger" },
-    { "name": "integer beyond 2^53", "input": "9007199254740993", "error": "OutOfRange" },
-    { "name": "u64 max", "input": "18446744073709551615", "error": "OutOfRange" },
-    { "name": "leading zero", "input": "01", "error": "Syntax" },
-    { "name": "NaN token", "input": "NaN", "error": "Syntax" },
-    { "name": "Infinity token", "input": "Infinity", "error": "Syntax" },
-    { "name": "lone surrogate", "input": "\"\\udc00\"", "error": "Syntax" },
-    { "name": "two values", "input": "1 2", "error": "Syntax" },
-    { "name": "trailing bytes", "input": "{\"a\":1} x", "error": "Syntax" },
-    { "name": "unquoted key", "input": "{a:1}", "error": "Syntax" },
-    { "name": "trailing comma", "input": "[1,]", "error": "Syntax" },
-    { "name": "empty input", "input": "", "error": "Syntax" }
+    {
+      "name": "duplicate member",
+      "input": "{\"a\":1,\"a\":2}",
+      "error": "DuplicateName"
+    },
+    {
+      "name": "nested duplicate member",
+      "input": "{\"o\":{\"k\":1,\"k\":1}}",
+      "error": "DuplicateName"
+    },
+    {
+      "name": "an integer that does not read back as written",
+      "input": "9007199254740993",
+      "error": "OutOfRange"
+    },
+    {
+      "name": "u64 max, beyond double precision",
+      "input": "18446744073709551615",
+      "error": "OutOfRange"
+    },
+    {
+      "name": "leading zero",
+      "input": "01",
+      "error": "Syntax"
+    },
+    {
+      "name": "NaN token",
+      "input": "NaN",
+      "error": "Syntax"
+    },
+    {
+      "name": "Infinity token",
+      "input": "Infinity",
+      "error": "Syntax"
+    },
+    {
+      "name": "lone surrogate",
+      "input": "\"\\udc00\"",
+      "error": "Syntax"
+    },
+    {
+      "name": "two values",
+      "input": "1 2",
+      "error": "Syntax"
+    },
+    {
+      "name": "trailing bytes",
+      "input": "{\"a\":1} x",
+      "error": "Syntax"
+    },
+    {
+      "name": "unquoted key",
+      "input": "{a:1}",
+      "error": "Syntax"
+    },
+    {
+      "name": "trailing comma",
+      "input": "[1,]",
+      "error": "Syntax"
+    },
+    {
+      "name": "empty input",
+      "input": "",
+      "error": "Syntax"
+    },
+    {
+      "name": "a number beyond the double range",
+      "input": "1e400",
+      "error": "Syntax"
+    }
   ],
   "not_canonical": [
-    { "name": "unsorted members", "input": "{\"b\":1,\"a\":2}" },
-    { "name": "whitespace", "input": "{ \"a\": 1 }" },
-    { "name": "escaped solidus", "input": "{\"a\":\"\\/\"}" },
-    { "name": "uppercase unicode escape", "input": "\"\\u00E9\"" },
-    { "name": "escaped non-ascii", "input": "\"\\u00e9\"" }
+    {
+      "name": "unsorted members",
+      "input": "{\"b\":1,\"a\":2}"
+    },
+    {
+      "name": "whitespace",
+      "input": "{ \"a\": 1 }"
+    },
+    {
+      "name": "escaped solidus",
+      "input": "{\"a\":\"\\/\"}"
+    },
+    {
+      "name": "uppercase unicode escape",
+      "input": "\"\\u00E9\""
+    },
+    {
+      "name": "escaped non-ascii",
+      "input": "\"\\u00e9\""
+    },
+    {
+      "name": "integral float spelling",
+      "input": "1.0"
+    },
+    {
+      "name": "exponent spelling of an integer",
+      "input": "1e2"
+    },
+    {
+      "name": "negative zero",
+      "input": "-0"
+    },
+    {
+      "name": "trailing fractional zero",
+      "input": "4.50"
+    },
+    {
+      "name": "uppercase exponent",
+      "input": "1E30"
+    },
+    {
+      "name": "more digits than the double holds",
+      "input": "333333333.33333329"
+    }
   ]
 }
