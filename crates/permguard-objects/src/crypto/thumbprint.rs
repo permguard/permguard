@@ -205,7 +205,7 @@ impl KeySet {
     }
 
     /// The canonical bytes the digest covers.
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>, ThumbprintError> {
         cbor::encode(&Value::Map(vec![
             (Value::Text(RING.into()), Value::Text(self.ring.clone())),
             // Within range by construction: `new` and `decode` refuse a larger epoch.
@@ -227,6 +227,7 @@ impl KeySet {
                 ),
             ),
         ]))
+        .map_err(|error| ThumbprintError::Encoding(error.to_string()))
     }
 
     /// Reads a key-set statement strictly: canonical bytes, exactly the four keys with their exact
@@ -280,12 +281,12 @@ impl KeySet {
     }
 
     /// `SHA-256("permguard.key-set.v1\n" || canonical-CBOR(set))`.
-    pub fn digest(&self) -> [u8; 32] {
+    pub fn digest(&self) -> Result<[u8; 32], ThumbprintError> {
         let mut hasher = Sha256::new();
         hasher.update(permguard_core::domains::digest::KEY_SET.as_bytes());
-        hasher.update(self.encode());
+        hasher.update(self.encode()?);
 
-        hasher.finalize().into()
+        Ok(hasher.finalize().into())
     }
 }
 
@@ -296,7 +297,7 @@ pub fn key_set_digest(
     suite: Suite,
     thumbprints: &[&str],
 ) -> Result<[u8; 32], ThumbprintError> {
-    KeySet::new(ring, epoch, suite, thumbprints).map(|set| set.digest())
+    KeySet::new(ring, epoch, suite, thumbprints).and_then(|set| set.digest())
 }
 
 #[cfg(test)]
@@ -387,7 +388,7 @@ mod tests {
     }
 
     fn statement(members: Vec<(Value, Value)>) -> Vec<u8> {
-        cbor::encode(&Value::Map(members))
+        cbor::encode(&Value::Map(members)).expect("it encodes")
     }
 
     fn members() -> Vec<(Value, Value)> {
@@ -411,7 +412,10 @@ mod tests {
     #[test]
     fn test_a_key_set_statement_decodes_only_in_its_closed_form() {
         let set = KeySet::new("data.attest", 3, Suite::Ed25519Sha256V1, &[B, A]).unwrap();
-        assert_eq!(KeySet::decode(&set.encode()).unwrap(), set);
+        assert_eq!(
+            KeySet::decode(&set.encode().expect("it encodes")).unwrap(),
+            set
+        );
         assert_eq!(KeySet::decode(&statement(members())).unwrap(), set);
 
         let mut unknown = members();
@@ -451,7 +455,7 @@ mod tests {
         }
 
         // A duplicate key never reaches the member checks: the canonical decoder refuses it.
-        let mut duplicate = set.encode();
+        let mut duplicate = set.encode().expect("it encodes");
         duplicate[0] = 0xa5;
         duplicate.extend_from_slice(&statement(vec![members().remove(0)])[1..]);
         assert!(KeySet::decode(&duplicate).is_err());

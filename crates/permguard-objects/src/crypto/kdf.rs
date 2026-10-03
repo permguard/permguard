@@ -193,7 +193,8 @@ impl Info {
             ],
         };
 
-        Ok(cbor::encode(&Value::Array(members)))
+        cbor::encode(&Value::Array(members))
+            .map_err(|_| KdfError::Encoding("the info tuple does not encode"))
     }
 
     /// Reads an `info` tuple strictly.
@@ -534,7 +535,7 @@ mod tests {
         ];
         for (name, value) in refused {
             assert!(
-                Info::decode(&cbor::encode(&value)).is_err(),
+                Info::decode(&cbor::encode(&value).expect("it encodes")).is_err(),
                 "{name} was accepted"
             );
         }

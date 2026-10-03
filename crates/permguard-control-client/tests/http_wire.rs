@@ -143,6 +143,7 @@ fn ref_answer(head: &Digest, counter: u64, statement: &[u8]) -> Vec<u8> {
         (cbor::Value::Int(2), cbor::Value::Int(counter as i64)),
         (cbor::Value::Int(3), cbor::Value::Bytes(statement.to_vec())),
     ]))
+    .expect("it encodes")
 }
 
 #[test]
@@ -216,7 +217,8 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
             max_batch_objects: 1000,
             compression: Some("deflate".into()),
         }
-        .encode(),
+        .encode()
+        .expect("it encodes"),
     );
     route(
         &mut routes,
@@ -226,7 +228,8 @@ fn a_push_rides_cbor_and_honours_the_advertised_compression() {
         UploadObjectsResponse {
             received: vec![d1.clone()],
         }
-        .encode(),
+        .encode()
+        .expect("it encodes"),
     );
     let stub = serve(routes);
     let remote = connected(&stub);
@@ -289,7 +292,8 @@ fn a_pull_undoes_the_compression_the_server_applied() {
             max_batch_objects: 1000,
             compression: Some("deflate".into()),
         }
-        .encode(),
+        .encode()
+        .expect("it encodes"),
     );
     route(
         &mut routes,
@@ -300,7 +304,8 @@ fn a_pull_undoes_the_compression_the_server_applied() {
             objects: vec![compress::deflate(&object)],
             compression: Some("deflate".into()),
         }
-        .encode(),
+        .encode()
+        .expect("it encodes"),
     );
     let stub = serve(routes);
     let remote = connected(&stub);

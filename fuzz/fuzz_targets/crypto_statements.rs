@@ -12,7 +12,7 @@ use permguard_objects::crypto::thumbprint::KeySet;
 // whatever decodes re-encoding to the same bytes; and a MAC tag presented by a caller.
 fuzz_target!(|data: &[u8]| {
     if let Ok(set) = KeySet::decode(data) {
-        assert_eq!(set.encode(), data);
+        assert_eq!(set.encode().ok().as_deref(), Some(data));
     }
     if let Ok(info) = Info::decode(data) {
         assert_eq!(info.encode().ok().as_deref(), Some(data));

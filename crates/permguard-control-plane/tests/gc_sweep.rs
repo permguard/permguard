@@ -161,6 +161,7 @@ fn manifest_bytes() -> Vec<u8> {
         profiles,
     }
     .encode()
+    .expect("the manifest encodes")
 }
 
 /// Makes an object look old enough to be a candidate.

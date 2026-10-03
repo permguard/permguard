@@ -106,6 +106,16 @@ pub fn outcome<T: Serialize>(result: Result<T, Failure>) -> Outcome {
 /// metadata, so a transport answering `500` with a `validation` body would still compare equal. A
 /// suite that can see the raw answers checks them against this.
 pub fn expected_statuses(class: &str, code: &str) -> (u16, i32) {
+    expected_statuses_under(permguard_core::StatusTable::Common, class, code)
+}
+
+/// The same, under the status table of the contract that answers: the temporal PDP answers a
+/// conflict `ABORTED` where the common table answers `FAILED_PRECONDITION`.
+pub fn expected_statuses_under(
+    table: permguard_core::StatusTable,
+    class: &str,
+    code: &str,
+) -> (u16, i32) {
     let class: ErrorClass = class
         .parse()
         .unwrap_or_else(|error| panic!("a refusal names its class: {error}"));
@@ -113,13 +123,36 @@ pub fn expected_statuses(class: &str, code: &str) -> (u16, i32) {
     let code: &'static str = Box::leak(code.to_owned().into_boxed_str());
     let refusal = permguard_core::ApiError::new(class, code, "");
 
-    (refusal.http_status(), refusal.grpc_code().number())
+    (
+        refusal.http_status(),
+        refusal.grpc_code_under(table).number(),
+    )
 }
 
 /// Fails the test, naming the case, unless the raw statuses are the ones `{class, code}` maps to.
 #[track_caller]
 pub fn assert_statuses(case: &str, class: &str, code: &str, http_status: u16, grpc_code: i32) {
-    let (http, grpc) = expected_statuses(class, code);
+    assert_statuses_under(
+        permguard_core::StatusTable::Common,
+        case,
+        class,
+        code,
+        http_status,
+        grpc_code,
+    );
+}
+
+/// The same, under the status table of the contract that answers.
+#[track_caller]
+pub fn assert_statuses_under(
+    table: permguard_core::StatusTable,
+    case: &str,
+    class: &str,
+    code: &str,
+    http_status: u16,
+    grpc_code: i32,
+) {
+    let (http, grpc) = expected_statuses_under(table, class, code);
     assert_eq!(
         (http_status, grpc_code),
         (http, grpc),
@@ -279,6 +312,15 @@ mod tests {
         assert_eq!(expected_statuses("conflict", "zone_not_empty"), (409, 9));
         assert_eq!(expected_statuses("not_found", "zone_not_found"), (404, 5));
         assert_statuses("ok", "internal", "internal", 500, 13);
+        // The temporal PDP's own table: a conflict is ABORTED, not FAILED_PRECONDITION.
+        assert_eq!(
+            expected_statuses_under(
+                permguard_core::StatusTable::TemporalPdp,
+                "conflict",
+                "event_id_conflict"
+            ),
+            (409, 10)
+        );
     }
 
     #[test]

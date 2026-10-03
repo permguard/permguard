@@ -49,6 +49,9 @@ pub enum CborError {
     NotShortest,
     /// Map keys out of bytewise order, or repeated.
     KeyOrder,
+    /// A map being built names one key twice. Refused rather than resolved: keeping either value
+    /// would sign a map its builder did not describe.
+    DuplicateKey,
     /// Text bytes that are not UTF-8.
     Utf8,
     /// The value decoded, but the input bytes are not its canonical form.
@@ -72,6 +75,7 @@ impl fmt::Display for CborError {
             CborError::Unsupported(what) => write!(f, "unsupported construct: {what}"),
             CborError::NotShortest => write!(f, "integer not in shortest encoding"),
             CborError::KeyOrder => write!(f, "map keys unsorted or duplicated"),
+            CborError::DuplicateKey => write!(f, "a map names one key twice"),
             CborError::Utf8 => write!(f, "text is not valid utf-8"),
             CborError::NotCanonical => write!(f, "input is not the canonical encoding"),
             CborError::TrailingBytes => write!(f, "trailing bytes after value"),
@@ -88,13 +92,16 @@ impl fmt::Display for CborError {
 impl std::error::Error for CborError {}
 
 /// Encode a value in the canonical form of the profile.
-pub fn encode(value: &Value) -> Vec<u8> {
+///
+/// Refuses a map that names one key twice, at any depth: the canonical form has unique keys, and
+/// the encoder does not choose which of two values the map meant.
+pub fn encode(value: &Value) -> Result<Vec<u8>, CborError> {
     let mut out = Vec::new();
-    encode_into(value, &mut out);
-    out
+    encode_into(value, &mut out)?;
+    Ok(out)
 }
 
-fn encode_into(value: &Value, out: &mut Vec<u8>) {
+fn encode_into(value: &Value, out: &mut Vec<u8>) -> Result<(), CborError> {
     match value {
         Value::Bool(b) => out.push(if *b { 0xf5 } else { 0xf4 }),
         Value::Int(n) => {
@@ -115,13 +122,19 @@ fn encode_into(value: &Value, out: &mut Vec<u8>) {
         Value::Array(items) => {
             encode_head(4, items.len() as u64, out);
             for item in items {
-                encode_into(item, out);
+                encode_into(item, out)?;
             }
         }
         Value::Map(pairs) => {
-            let mut encoded: Vec<(Vec<u8>, Vec<u8>)> =
-                pairs.iter().map(|(k, v)| (encode(k), encode(v))).collect();
+            let mut encoded = pairs
+                .iter()
+                .map(|(k, v)| Ok((encode(k)?, encode(v)?)))
+                .collect::<Result<Vec<(Vec<u8>, Vec<u8>)>, CborError>>()?;
             encoded.sort_by(|a, b| a.0.cmp(&b.0));
+            // Sorted by encoded key, so two equal keys are neighbours.
+            if encoded.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+                return Err(CborError::DuplicateKey);
+            }
             encode_head(5, encoded.len() as u64, out);
             for (k, v) in encoded {
                 out.extend_from_slice(&k);
@@ -129,6 +142,8 @@ fn encode_into(value: &Value, out: &mut Vec<u8>) {
             }
         }
     }
+
+    Ok(())
 }
 
 fn encode_head(major: u8, arg: u64, out: &mut Vec<u8>) {
@@ -162,7 +177,7 @@ pub fn decode_canonical(input: &[u8]) -> Result<Value, CborError> {
     if cursor.pos != input.len() {
         return Err(CborError::TrailingBytes);
     }
-    if encode(&value) != input {
+    if encode(&value)? != input {
         return Err(CborError::NotCanonical);
     }
     Ok(value)
@@ -287,7 +302,7 @@ impl Cursor<'_> {
                 let mut previous_key: Option<Vec<u8>> = None;
                 for _ in 0..arg {
                     let key = self.decode_value()?;
-                    let encoded_key = encode(&key);
+                    let encoded_key = encode(&key)?;
                     if let Some(prev) = &previous_key
                         && *prev >= encoded_key
                     {
@@ -328,7 +343,7 @@ mod tests {
             i64::MAX,
             i64::MIN,
         ] {
-            let bytes = encode(&Value::Int(n));
+            let bytes = encode(&Value::Int(n)).expect("it encodes");
             assert_eq!(decode_canonical(&bytes).unwrap(), Value::Int(n));
         }
     }
@@ -345,7 +360,7 @@ mod tests {
             (Value::Int(2), Value::Text("b".into())),
             (Value::Int(1), Value::Text("a".into())),
         ]);
-        let bytes = encode(&map);
+        let bytes = encode(&map).expect("it encodes");
         let decoded = decode_canonical(&bytes).unwrap();
         // Decoded pairs come back in canonical (sorted) order.
         assert_eq!(
@@ -394,17 +409,62 @@ mod tests {
         );
     }
 
+    /// A map that names a key twice is refused where it is built, at any depth, and never
+    /// resolved to either value.
+    #[test]
+    fn a_map_naming_a_key_twice_is_refused_at_every_depth() {
+        let twice =
+            |key: Value| Value::Map(vec![(key.clone(), Value::Int(1)), (key, Value::Int(2))]);
+
+        assert_eq!(encode(&twice(Value::Int(1))), Err(CborError::DuplicateKey));
+        assert_eq!(
+            encode(&twice(Value::Text("k".into()))),
+            Err(CborError::DuplicateKey)
+        );
+        assert_eq!(
+            encode(&Value::Map(vec![(Value::Int(0), twice(Value::Int(7)))])),
+            Err(CborError::DuplicateKey),
+            "nested in a map"
+        );
+        assert_eq!(
+            encode(&Value::Array(vec![Value::Int(0), twice(Value::Bool(true))])),
+            Err(CborError::DuplicateKey),
+            "nested in an array"
+        );
+    }
+
+    #[test]
+    fn distinct_keys_in_any_order_or_type_are_one_canonical_map() {
+        let unsorted = Value::Map(vec![
+            (Value::Text("1".into()), Value::Int(3)),
+            (Value::Int(1), Value::Int(2)),
+            (Value::Int(0), Value::Int(1)),
+        ]);
+        let sorted = Value::Map(vec![
+            (Value::Int(0), Value::Int(1)),
+            (Value::Int(1), Value::Int(2)),
+            (Value::Text("1".into()), Value::Int(3)),
+        ]);
+
+        let bytes = encode(&unsorted).expect("`1` and `\"1\"` are different keys");
+        assert_eq!(bytes, encode(&sorted).expect("it encodes"));
+        assert_eq!(decode_canonical(&bytes).expect("it decodes"), sorted);
+    }
+
     #[test]
     fn known_encodings_match_rfc_8949() {
-        assert_eq!(encode(&Value::Int(10)), vec![0x0a]);
-        assert_eq!(encode(&Value::Int(-10)), vec![0x29]);
-        assert_eq!(encode(&Value::Int(1000)), vec![0x19, 0x03, 0xe8]);
+        assert_eq!(encode(&Value::Int(10)).expect("it encodes"), vec![0x0a]);
+        assert_eq!(encode(&Value::Int(-10)).expect("it encodes"), vec![0x29]);
         assert_eq!(
-            encode(&Value::Text("IETF".into())),
+            encode(&Value::Int(1000)).expect("it encodes"),
+            vec![0x19, 0x03, 0xe8]
+        );
+        assert_eq!(
+            encode(&Value::Text("IETF".into())).expect("it encodes"),
             vec![0x64, 0x49, 0x45, 0x54, 0x46]
         );
         assert_eq!(
-            encode(&Value::Bytes(vec![1, 2, 3, 4])),
+            encode(&Value::Bytes(vec![1, 2, 3, 4])).expect("it encodes"),
             vec![0x44, 1, 2, 3, 4]
         );
     }

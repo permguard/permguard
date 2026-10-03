@@ -115,7 +115,7 @@ impl Fixture {
     {
         move |statement| {
             SignedHead::sign(statement, &self.key, b"test-key")
-                .map(|signed| signed.encode())
+                .map(|signed| signed.encode().expect("it encodes"))
                 .map_err(|e| EngineError::Internal {
                     detail: e.to_string(),
                 })
@@ -146,7 +146,7 @@ fn build_commit_with_id(
     let manifest = cedar_manifest();
     let manifest_blob = Blob {
         media_type: MEDIA_TYPE_MANIFEST.into(),
-        data: manifest.encode(),
+        data: manifest.encode().expect("it encodes"),
     };
     let manifest_bytes = manifest_blob.encode().unwrap();
     let manifest_digest = Digest::compute(&manifest_bytes);
@@ -609,7 +609,7 @@ fn policy_identity_is_recomputed_and_enforced() {
         let manifest = cedar_manifest();
         let manifest_blob = Blob {
             media_type: MEDIA_TYPE_MANIFEST.into(),
-            data: manifest.encode(),
+            data: manifest.encode().expect("it encodes"),
         };
         let manifest_bytes = manifest_blob.encode().unwrap();
         let mut annotations = BTreeMap::new();
@@ -906,7 +906,7 @@ fn alias_carries_identity_across_renames() {
         let manifest = cedar_manifest();
         let manifest_blob = Blob {
             media_type: MEDIA_TYPE_MANIFEST.into(),
-            data: manifest.encode(),
+            data: manifest.encode().expect("it encodes"),
         };
         let manifest_bytes = manifest_blob.encode().unwrap();
         let mut annotations = BTreeMap::new();
@@ -1022,7 +1022,7 @@ fn build_schema_commit(policy_source: &str, schema_source: Option<&str>) -> (Vec
         .push(MEDIA_TYPE_SCHEMA_CEDAR.to_string());
     let manifest_blob = Blob {
         media_type: MEDIA_TYPE_MANIFEST.into(),
-        data: manifest.encode(),
+        data: manifest.encode().expect("it encodes"),
     };
     let manifest_bytes = manifest_blob.encode().unwrap();
     let manifest_digest = Digest::compute(&manifest_bytes);

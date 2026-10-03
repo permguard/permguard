@@ -672,7 +672,10 @@ mod two_planes {
 
             objects::put(&store, "objects", &bytes).expect("the blob is stored")
         };
-        let manifest_digest = put_blob(permguard_objects::manifest::MEDIA_TYPE, &manifest.encode());
+        let manifest_digest = put_blob(
+            permguard_objects::manifest::MEDIA_TYPE,
+            &manifest.encode().expect("it encodes"),
+        );
 
         let mut annotations = BTreeMap::new();
         annotations.insert(

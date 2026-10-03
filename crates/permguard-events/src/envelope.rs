@@ -55,8 +55,8 @@ pub struct Batch {
 impl Batch {
     /// Reads a batch from one JSON body under the canonical JSON profile.
     ///
-    /// The one way bytes become a batch at a trust boundary: a duplicated member, a fractional or
-    /// out-of-range number or a second value is refused here, before any record is digested.
+    /// The one way bytes become a batch at a trust boundary: a duplicated member, an integer that
+    /// does not read back as written or a second value is refused here, before any record is digested.
     pub fn decode(bytes: &[u8]) -> Result<Self, EnvelopeError> {
         let value =
             jcs::parse_strict(bytes).map_err(|error| EnvelopeError::Encoding(error.to_string()))?;
@@ -455,7 +455,9 @@ mod tests {
         };
 
         assert_eq!(
-            signed(&canonical).envelope().expect("canonical bytes decode"),
+            signed(&canonical)
+                .envelope()
+                .expect("canonical bytes decode"),
             envelope()
         );
         for spelling in [
@@ -472,6 +474,23 @@ mod tests {
                 "{spelling}: {refused}"
             );
         }
+    }
+
+    /// A record is read under the strict profile and digested over its canonical form: a number
+    /// respelled in a record reads as the same value and digests the same, so a respelling cannot
+    /// change what the Merkle root over the digests proves.
+    #[test]
+    fn a_respelled_record_digests_as_its_canonical_form() {
+        let digest = |text: &str| {
+            crate::record::digest_of(&jcs::parse_strict(text.as_bytes()).expect("it reads"))
+                .expect("it digests")
+        };
+        let canonical = digest(r#"{"seq":1,"x":[2]}"#);
+
+        for spelling in [r#"{"seq":1.0,"x":[2]}"#, r#"{ "x":[2e0], "seq":1 }"#] {
+            assert_eq!(digest(spelling), canonical, "{spelling}");
+        }
+        assert_ne!(digest(r#"{"seq":1,"x":[2.5]}"#), canonical);
     }
 
     #[test]

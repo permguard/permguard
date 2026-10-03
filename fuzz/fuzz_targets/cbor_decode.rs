@@ -6,5 +6,11 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
-    let _ = permguard_objects::cbor::decode_canonical(data);
+    // A decoded value encodes back to exactly the bytes it came from.
+    if let Ok(value) = permguard_objects::cbor::decode_canonical(data) {
+        assert_eq!(
+            permguard_objects::cbor::encode(&value).ok().as_deref(),
+            Some(data)
+        );
+    }
 });

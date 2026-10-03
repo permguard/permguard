@@ -63,7 +63,7 @@ fn fixture_manifest() -> Manifest {
 #[test]
 fn v1_manifest_fixture_decodes_to_the_current_model() {
     let expected_hex = include_str!("fixtures/compat/v1/manifest.cbor.hex").trim();
-    let encoded = fixture_manifest().encode();
+    let encoded = fixture_manifest().encode().expect("it encodes");
 
     assert_eq!(hex(&encoded), expected_hex);
     assert_eq!(

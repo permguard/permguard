@@ -214,7 +214,10 @@ const PROFILE_PARTITIONS: i64 = 2;
 
 impl Manifest {
     /// Encode as the canonical inner CBOR payload of the manifest blob.
-    pub fn encode(&self) -> Vec<u8> {
+    ///
+    /// Fails only on a map that names a key twice, which the manifest's own maps — keyed by name,
+    /// one entry per name — cannot build; the encoder refuses rather than trusts that.
+    pub fn encode(&self) -> Result<Vec<u8>, ManifestError> {
         let text = |s: &str| Value::Text(s.to_owned());
         let requirement = |r: &Requirement| {
             Value::Map(vec![
@@ -330,6 +333,7 @@ impl Manifest {
             (Value::Int(KEY_PARTITIONS), partitions),
             (Value::Int(KEY_PROFILES), profiles),
         ]))
+        .map_err(|error| bad(format!("encode: {error}")))
     }
 
     /// Decode and structurally validate the canonical payload — the ingest
@@ -966,28 +970,34 @@ mod tests {
     #[test]
     fn round_trips_canonically() {
         let manifest = sample();
-        let bytes = manifest.encode();
+        let bytes = manifest.encode().expect("it encodes");
         assert_eq!(Manifest::decode(&bytes).unwrap(), manifest);
-        assert_eq!(bytes, Manifest::decode(&bytes).unwrap().encode());
+        assert_eq!(
+            bytes,
+            Manifest::decode(&bytes)
+                .unwrap()
+                .encode()
+                .expect("it encodes")
+        );
     }
 
     #[test]
     fn the_schema_is_fail_closed() {
         let mut manifest = sample();
         manifest.kind = "pipes".into();
-        assert!(Manifest::decode(&manifest.encode()).is_err());
+        assert!(Manifest::decode(&manifest.encode().expect("it encodes")).is_err());
 
         let mut manifest = sample();
         manifest.partitions.get_mut("app").unwrap().runtime = "ghost".into();
-        assert!(Manifest::decode(&manifest.encode()).is_err());
+        assert!(Manifest::decode(&manifest.encode().expect("it encodes")).is_err());
 
         let mut manifest = sample();
         manifest.profiles.get_mut("default").unwrap().partitions = vec!["ghost".into()];
-        assert!(Manifest::decode(&manifest.encode()).is_err());
+        assert!(Manifest::decode(&manifest.encode().expect("it encodes")).is_err());
 
         let mut manifest = sample();
         manifest.profiles.get_mut("default").unwrap().r#type = "acme.custom.v9".into();
-        assert!(Manifest::decode(&manifest.encode()).is_err());
+        assert!(Manifest::decode(&manifest.encode().expect("it encodes")).is_err());
     }
 
     #[test]
@@ -1125,13 +1135,14 @@ mod input_contract_tests {
                 required: true,
             }),
         );
-        let decoded = Manifest::decode(&built.encode()).expect("it round-trips");
+        let decoded =
+            Manifest::decode(&built.encode().expect("it encodes")).expect("it round-trips");
 
         assert_eq!(decoded.partitions["p"].input, built.partitions["p"].input);
         // And a manifest that declares none still encodes as one that never had the field.
         let plain = manifest("cedar", None);
         assert_eq!(
-            Manifest::decode(&plain.encode())
+            Manifest::decode(&plain.encode().expect("it encodes"))
                 .expect("it round-trips")
                 .partitions["p"]
                 .input,
@@ -1190,7 +1201,7 @@ mod profile_tests {
     }
 
     fn decode(manifest: &Manifest) -> Result<Manifest, ManifestError> {
-        Manifest::decode(&manifest.encode())
+        Manifest::decode(&manifest.encode().expect("it encodes"))
     }
 
     #[test]
@@ -1237,9 +1248,12 @@ mod profile_tests {
     /// that says a partition's input is mandatory.
     #[test]
     fn a_key_this_build_does_not_know_is_refused_rather_than_skipped() {
-        let mut encoded =
-            crate::cbor::decode_canonical(&manifest(vec![("admin", vec!["a"])]).encode())
-                .expect("it decodes");
+        let mut encoded = crate::cbor::decode_canonical(
+            &manifest(vec![("admin", vec!["a"])])
+                .encode()
+                .expect("it encodes"),
+        )
+        .expect("it decodes");
         let crate::cbor::Value::Map(pairs) = &mut encoded else {
             panic!("a manifest is a map")
         };
@@ -1247,8 +1261,8 @@ mod profile_tests {
         // simply carries one key more than this build knows.
         pairs.push((crate::cbor::Value::Int(99), crate::cbor::Value::Bool(true)));
 
-        let refused =
-            Manifest::decode(&crate::cbor::encode(&encoded)).expect_err("nobody here knows key 99");
+        let refused = Manifest::decode(&crate::cbor::encode(&encoded).expect("it encodes"))
+            .expect_err("nobody here knows key 99");
 
         assert!(refused.detail.contains("99"), "{refused}");
     }
@@ -1343,7 +1357,8 @@ mod artifact_contract_tests {
             false,
             None,
         );
-        let decoded = Manifest::decode(&built.encode()).expect("it round-trips");
+        let decoded =
+            Manifest::decode(&built.encode().expect("it encodes")).expect("it round-trips");
 
         assert_eq!(
             decoded.partitions["p"].artifacts,
@@ -1355,7 +1370,8 @@ mod artifact_contract_tests {
     #[test]
     fn a_partition_declaring_none_encodes_as_it_did_before_the_field_existed() {
         let plain = manifest(Vec::new(), false, None);
-        let decoded = Manifest::decode(&plain.encode()).expect("it round-trips");
+        let decoded =
+            Manifest::decode(&plain.encode().expect("it encodes")).expect("it round-trips");
 
         assert!(decoded.partitions["p"].artifacts.is_empty());
         assert_eq!(decoded.partitions["p"].history, None);
@@ -1369,7 +1385,8 @@ mod artifact_contract_tests {
             true,
             None,
         );
-        let refused = Manifest::decode(&both.encode()).expect_err("one way or the other");
+        let refused = Manifest::decode(&both.encode().expect("it encodes"))
+            .expect_err("one way or the other");
 
         assert!(refused.detail.contains("schema: true"), "{refused}");
     }
@@ -1384,7 +1401,8 @@ mod artifact_contract_tests {
             false,
             None,
         );
-        let refused = Manifest::decode(&twice.encode()).expect_err("once is once");
+        let refused =
+            Manifest::decode(&twice.encode().expect("it encodes")).expect_err("once is once");
 
         assert!(refused.detail.contains("twice"), "{refused}");
     }
@@ -1396,7 +1414,8 @@ mod artifact_contract_tests {
             false,
             Some(HistoryScope::Global),
         );
-        let decoded = Manifest::decode(&global.encode()).expect("it round-trips");
+        let decoded =
+            Manifest::decode(&global.encode().expect("it encodes")).expect("it round-trips");
         assert_eq!(decoded.partitions["p"].history, Some(HistoryScope::Global));
 
         assert_eq!(HistoryScope::parse("global"), Some(HistoryScope::Global));

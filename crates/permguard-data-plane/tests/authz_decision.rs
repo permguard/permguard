@@ -187,7 +187,10 @@ fn provision(
         objects::put(&store, "objects", &bytes).expect("the blob is stored")
     };
 
-    let manifest_digest = put_blob(permguard_objects::manifest::MEDIA_TYPE, &manifest.encode());
+    let manifest_digest = put_blob(
+        permguard_objects::manifest::MEDIA_TYPE,
+        &manifest.encode().expect("it encodes"),
+    );
 
     let mut root_entries = Vec::new();
     for (partition, policies, schema) in contents {

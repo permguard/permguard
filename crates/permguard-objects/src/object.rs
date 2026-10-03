@@ -239,7 +239,7 @@ impl Commit {
 }
 
 fn finish_encode(value: &Value) -> Result<Vec<u8>, ObjectError> {
-    let bytes = cbor::encode(value);
+    let bytes = cbor::encode(value)?;
     if bytes.len() > limits::MAX_OBJECT_BYTES {
         return Err(ObjectError::Limit("object bytes"));
     }
@@ -576,7 +576,7 @@ mod tests {
             (Value::Int(3), Value::Bytes(vec![1])),
             (Value::Int(9), Value::Int(0)),
         ]);
-        let bytes = cbor::encode(&value);
+        let bytes = cbor::encode(&value).expect("it encodes");
         assert!(matches!(decode(&bytes), Err(ObjectError::Schema(_))));
     }
 

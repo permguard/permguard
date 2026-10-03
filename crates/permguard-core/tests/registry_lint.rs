@@ -57,22 +57,50 @@ fn collect(directory: &Path, into: &mut Vec<PathBuf>) {
 
 /// The lines of a file that are code rather than test code or comments.
 ///
-/// A top-level `#[cfg(test)]` module runs to the end of the file in every crate here, so scanning
-/// stops at that attribute. Comment lines are skipped because documentation quotes the strings.
+/// A `#[cfg(test)]` that marks the test module ends the scan: the module runs to the end of the
+/// file in every crate here. One that marks a single item — a test-only function, constant or
+/// import — skips that item and reads on, so production code after it is still checked. Comment
+/// lines are skipped because documentation quotes the strings.
 fn code_lines(path: &Path) -> Vec<(usize, String)> {
     let Ok(text) = fs::read_to_string(path) else {
         return Vec::new();
     };
+    let all: Vec<&str> = text.lines().collect();
     let mut lines = Vec::new();
-    for (index, line) in text.lines().enumerate() {
-        let trimmed = line.trim_start();
+    let mut index = 0;
+    while index < all.len() {
+        let trimmed = all[index].trim_start();
         if trimmed.starts_with("#[cfg(test)]") {
-            break;
-        }
-        if trimmed.starts_with("//") {
+            // The item the attribute marks starts at the first line that is not an attribute.
+            let mut item = index + 1;
+            while item < all.len() && all[item].trim_start().starts_with("#[") {
+                item += 1;
+            }
+            let Some(first) = all.get(item) else {
+                break;
+            };
+            let first = first.trim_start();
+            if first.starts_with("mod ") || first.starts_with("pub mod ") {
+                break;
+            }
+            // Skip to the end of the item: a `;` or a closing brace at depth zero.
+            let mut depth = 0i32;
+            while item < all.len() {
+                let line = all[item];
+                depth += line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                let ends = depth <= 0 && (line.trim_end().ends_with(';') || line.contains('}'));
+                item += 1;
+                if ends {
+                    break;
+                }
+            }
+            index = item;
             continue;
         }
-        lines.push((index + 1, line.to_owned()));
+        if !trimmed.starts_with("//") {
+            lines.push((index + 1, all[index].to_owned()));
+        }
+        index += 1;
     }
     lines
 }
@@ -110,7 +138,9 @@ fn test_no_domain_literal_is_spelled_outside_the_registry() {
                 continue;
             }
             for literal in literals(&line) {
-                if looks_like_domain(&literal) {
+                // A registered value is caught whatever its shape — `host-local` looks like no
+                // domain, and is one.
+                if looks_like_domain(&literal) || registered.contains(&literal.as_str()) {
                     let known = if registered.contains(&literal.as_str()) {
                         "registered"
                     } else {
@@ -193,14 +223,44 @@ fn test_every_stable_code_is_registered() {
 
 /// Where a registered code's spelling may appear outside `permguard_core::codes`, and why. Every
 /// entry is narrow: a pattern a line must contain, never a whole file.
-const SPELLING_EXCEPTIONS: [(&str, &str); 2] = [
+const SPELLING_EXCEPTIONS: [(&str, &str); 1] = [
     // The metric label vocabularies are a registry of their own: a label value that is spelled
     // like a code is a word of that registry, declared there.
     ("permguard-core/src/metrics.rs", "label!("),
-    // A metric label value at a recording site, `(labels::NAME, "value")`: a word of the label
-    // registry, not a stable code on a wire.
-    ("", "(labels::"),
 ];
+
+/// A line with every metric label value at a recording site, `(labels::NAME, "value")`, blanked:
+/// that literal is a word of the label registry, not a stable code on a wire. Only the literal
+/// inside the tuple is excepted; the rest of the line is still read.
+fn without_label_values(line: &str) -> String {
+    let mut out = String::new();
+    let mut rest = line;
+    while let Some(start) = rest.find("(labels::") {
+        out.push_str(&rest[..start]);
+        let tuple = &rest[start..];
+        let value = tuple
+            .find(", \"")
+            .filter(|comma| !tuple[..*comma].contains(')'))
+            .and_then(|comma| {
+                let opened = comma + 3;
+                tuple[opened..]
+                    .find('"')
+                    .map(|closed| (opened, opened + closed))
+            });
+        match value {
+            Some((opened, closed)) => {
+                out.push_str(&tuple[..opened - 1]);
+                rest = &tuple[closed + 1..];
+            }
+            None => {
+                out.push_str("(labels::");
+                rest = &tuple["(labels::".len()..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
 
 /// The class names: they are also spelled as codes, and every use of them is a class.
 const CLASSES: [&str; 5] = [
@@ -239,8 +299,13 @@ fn test_no_registered_code_is_spelled_outside_the_registry() {
                 continue;
             }
             let shaped = CODE_SHAPES.iter().any(|shape| line.contains(shape));
-            for literal in literals(line) {
-                if !registered.contains(&literal.as_str()) || CLASSES.contains(&literal.as_str()) {
+            // Where a refusal is built with its class as an enum, a class-like literal on the same
+            // line is the code: `ApiError::new(ErrorClass::Internal, "internal", …)`.
+            let class_given = shaped && line.contains("ErrorClass::");
+            for literal in literals(&without_label_values(line)) {
+                if !registered.contains(&literal.as_str())
+                    || (CLASSES.contains(&literal.as_str()) && !class_given)
+                {
                     continue;
                 }
                 // A one-word code is also an ordinary word; it is a code where a code is built.
@@ -255,5 +320,63 @@ fn test_no_registered_code_is_spelled_outside_the_registry() {
         offences.is_empty(),
         "registered stable codes spelled outside `permguard_core::codes` (use the constant):\n{}",
         offences.join("\n")
+    );
+}
+
+/// The scanner reads past a `#[cfg(test)]` that marks one item and stops only at the test module.
+#[test]
+fn test_the_scanner_skips_a_test_item_and_stops_only_at_the_test_module() {
+    let path =
+        std::env::temp_dir().join(format!("permguard-registry-lint-{}.rs", std::process::id()));
+    fs::write(
+        &path,
+        "fn before() {}\n\
+         #[cfg(test)]\n\
+         #[allow(dead_code)]\n\
+         fn only_in_tests() {\n    let hidden = \"inside the test item\";\n}\n\
+         #[cfg(test)]\n\
+         const ALSO_TEST: &str = \"a test constant\";\n\
+         fn after() { let seen = \"production after the item\"; }\n\
+         #[cfg(test)]\n\
+         mod tests {\n    fn t() { let x = \"in the test module\"; }\n}\n",
+    )
+    .expect("the sample file is written");
+
+    let read: Vec<String> = code_lines(&path)
+        .into_iter()
+        .map(|(_, line)| line)
+        .collect();
+    let _ = fs::remove_file(&path);
+
+    assert!(
+        read.iter()
+            .any(|line| line.contains("production after the item")),
+        "{read:#?}"
+    );
+    for skipped in [
+        "inside the test item",
+        "a test constant",
+        "in the test module",
+    ] {
+        assert!(
+            !read.iter().any(|line| line.contains(skipped)),
+            "`{skipped}` was read: {read:#?}"
+        );
+    }
+}
+
+#[test]
+fn test_only_the_label_value_of_a_recording_tuple_is_excepted() {
+    assert_eq!(
+        literals(&without_label_values(
+            r#"metrics.count(&M, &[(labels::REASON, "out_of_order")]); f("stream_closed")"#
+        )),
+        vec!["stream_closed".to_owned()]
+    );
+    assert_eq!(
+        literals(&without_label_values(
+            r#"(labels::OUTCOME, "ok"), (labels::REASON, "x")"#
+        )),
+        Vec::<String>::new()
     );
 }

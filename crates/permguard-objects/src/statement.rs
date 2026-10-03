@@ -52,7 +52,7 @@ impl HeadStatement {
             (Value::Int(KEY_DIGEST), Value::Text(self.digest.to_string())),
             (Value::Int(KEY_COUNTER), Value::Int(counter)),
             (Value::Int(KEY_SIGNED_AT), Value::Int(self.signed_at)),
-        ])))
+        ]))?)
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, StatementError> {
@@ -122,9 +122,9 @@ impl SignedHead {
     where
         F: FnOnce(&[u8]) -> Result<Vec<u8>, StatementError>,
     {
-        let protected = protected_header(kid);
+        let protected = protected_header(kid)?;
         let payload = statement.encode()?;
-        let to_sign = sig_structure(&protected, &payload);
+        let to_sign = sig_structure(&protected, &payload)?;
         let signature = signer(&to_sign)?;
         Ok(SignedHead {
             protected,
@@ -155,7 +155,7 @@ impl SignedHead {
             Some((_, Value::Int(alg))) if *alg == COSE_ALG_EDDSA => {}
             _ => return Err(StatementError::Algorithm),
         }
-        let to_verify = sig_structure(&self.protected, &self.payload);
+        let to_verify = sig_structure(&self.protected, &self.payload)?;
         UnparsedPublicKey::new(&signature::ED25519, public_key)
             .verify(&to_verify, &self.signature)
             .map_err(|_| StatementError::Signature)?;
@@ -171,13 +171,13 @@ impl SignedHead {
 
     /// The wire form: canonical CBOR array
     /// `[protected: bstr, unprotected: {}, payload: bstr, signature: bstr]`.
-    pub fn encode(&self) -> Vec<u8> {
-        cbor::encode(&Value::Array(vec![
+    pub fn encode(&self) -> Result<Vec<u8>, StatementError> {
+        Ok(cbor::encode(&Value::Array(vec![
             Value::Bytes(self.protected.clone()),
             Value::Map(vec![]),
             Value::Bytes(self.payload.clone()),
             Value::Bytes(self.signature.clone()),
-        ]))
+        ]))?)
     }
 
     /// Parse the wire form.
@@ -207,21 +207,21 @@ impl SignedHead {
     }
 }
 
-fn protected_header(kid: &[u8]) -> Vec<u8> {
-    cbor::encode(&Value::Map(vec![
+fn protected_header(kid: &[u8]) -> Result<Vec<u8>, StatementError> {
+    Ok(cbor::encode(&Value::Map(vec![
         (Value::Int(COSE_HEADER_ALG), Value::Int(COSE_ALG_EDDSA)),
         (Value::Int(COSE_HEADER_KID), Value::Bytes(kid.to_vec())),
-    ]))
+    ]))?)
 }
 
 /// The COSE Sig_structure for Signature1 (RFC 9052 §4.4), external AAD empty.
-fn sig_structure(protected: &[u8], payload: &[u8]) -> Vec<u8> {
-    cbor::encode(&Value::Array(vec![
+fn sig_structure(protected: &[u8], payload: &[u8]) -> Result<Vec<u8>, StatementError> {
+    Ok(cbor::encode(&Value::Array(vec![
         Value::Text("Signature1".into()),
         Value::Bytes(protected.to_vec()),
         Value::Bytes(Vec::new()),
         Value::Bytes(payload.to_vec()),
-    ]))
+    ]))?)
 }
 
 /// The state of one key in the published ring.
@@ -366,7 +366,7 @@ mod tests {
         let key = test_key();
         let statement = sample_statement();
         let signed = SignedHead::sign(&statement, &key, b"2026-08-srv-1").unwrap();
-        let wire = signed.encode();
+        let wire = signed.encode().expect("it encodes");
         let parsed = SignedHead::decode(&wire).unwrap();
         assert_eq!(parsed.kid().unwrap(), b"2026-08-srv-1".to_vec());
         let verified = parsed.verify(key.public_key().as_ref()).unwrap();

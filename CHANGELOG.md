@@ -45,6 +45,9 @@ is cut.
 
 ### Fixed
 
+- Canonical JSON follows RFC 8785 for every finite number: fractions and exponents are accepted and written as ECMAScript writes them (`1E30` as `1e+30`, `4.50` as `4.5`), where they used to be refused.
+  An integer that does not read back as written, such as `9007199254740993`, is still refused, and integers already signed keep their bytes.
+- Building a canonical CBOR map that names one key twice is refused instead of producing bytes no reader would accept.
 - A temporal submission refused for a conflict answers gRPC `ABORTED`, as the temporal PDP contract requires, instead of `FAILED_PRECONDITION`; HTTP stays `409` and the class and code are unchanged.
 - A `401` carries the `WWW-Authenticate: Mutual-TLS realm="permguard"` challenge, and an access denial's body is serialised rather than assembled, so no message can break its JSON.
 - A gRPC call refused by a surface's peer allow list is answered in gRPC — `UNAUTHENTICATED` or `PERMISSION_DENIED`, with the code in `permguard-error-code` — rather than with an HTTP status and a JSON body.

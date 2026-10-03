@@ -185,7 +185,8 @@ pub fn from_yaml(bytes: &[u8]) -> Result<Manifest, String> {
     let file: ManifestFile =
         serde_norway::from_slice(bytes).map_err(|error| format!("does not parse: {error}"))?;
     let manifest = to_model(&file)?;
-    let decoded = Manifest::decode(&manifest.encode()).map_err(|error| error.to_string())?;
+    let encoded = manifest.encode().map_err(|error| error.to_string())?;
+    let decoded = Manifest::decode(&encoded).map_err(|error| error.to_string())?;
     crate::registry::check_manifest(&decoded).map_err(|error| error.to_string())?;
 
     Ok(decoded)

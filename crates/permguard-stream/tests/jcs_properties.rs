@@ -15,9 +15,14 @@ fn json_value() -> impl Strategy<Value = Value> {
     let leaf = prop_oneof![
         Just(Value::Null),
         any::<bool>().prop_map(Value::Bool),
-        // The profile carries integers within ±2^53; anything beyond is refused by design.
+        // Integers within ±2^53 keep their integer form; finite doubles are covered below.
         (-(jcs::MAX_INTEGER as i64)..=(jcs::MAX_INTEGER as i64))
             .prop_map(|value| Value::Number(value.into())),
+        // Finite doubles inside structures too; compared through their canonical bytes below.
+        any::<u64>()
+            .prop_map(f64::from_bits)
+            .prop_filter("finite", |number| number.is_finite())
+            .prop_map(Value::from),
         // Escapes and non-ASCII included: canonical string escaping is half of RFC 8785.
         "(?s).{0,12}".prop_map(Value::String),
     ];
@@ -36,8 +41,11 @@ proptest! {
     fn canonical_bytes_decode_back_to_the_value(value in json_value()) {
         let bytes = jcs::canonicalize(&value).unwrap();
 
-        prop_assert_eq!(jcs::decode_canonical(&bytes).unwrap(), value.clone());
-        prop_assert_eq!(jcs::parse_strict(&bytes).unwrap(), value);
+        // Compared through canonical bytes, the profile's own equality: `2.0` reads back as the
+        // integer `2`, the same number in another `Value` variant.
+        let decoded = jcs::decode_canonical(&bytes).unwrap();
+        prop_assert_eq!(jcs::canonicalize(&decoded).unwrap(), bytes.clone());
+        prop_assert_eq!(jcs::canonicalize(&jcs::parse_strict(&bytes).unwrap()).unwrap(), bytes);
     }
 
     #[test]
@@ -54,8 +62,23 @@ proptest! {
         let pretty = serde_json::to_vec_pretty(&value).unwrap();
 
         // The strict reader still accepts the pretty spelling as JSON …
-        prop_assert_eq!(jcs::parse_strict(&pretty).unwrap(), value);
+        prop_assert_eq!(
+            jcs::canonicalize(&jcs::parse_strict(&pretty).unwrap()).unwrap(),
+            canonical.clone()
+        );
         // … and the canonical decoder accepts only the canonical bytes.
         prop_assert_eq!(jcs::decode_canonical(&pretty).is_ok(), pretty == canonical);
+    }
+
+    /// Every finite double is written, read back as the same double, and passes byte identity.
+    #[test]
+    fn every_finite_double_round_trips(bits in any::<u64>()) {
+        let number = f64::from_bits(bits);
+        prop_assume!(number.is_finite());
+        let bytes = jcs::canonicalize(&Value::from(number)).unwrap();
+        let read = jcs::parse_strict(&bytes).unwrap().as_f64().unwrap();
+
+        prop_assert!(read == number, "{} read back as {read:e}", String::from_utf8_lossy(&bytes));
+        prop_assert!(jcs::decode_canonical(&bytes).is_ok());
     }
 }

@@ -12,7 +12,7 @@ fn json_value() -> impl Strategy<Value = Value> {
     let leaf = prop_oneof![
         Just(Value::Null),
         any::<bool>().prop_map(Value::Bool),
-        // The profile carries integers within ±2^53; anything beyond is refused by design.
+        // Integers within ±2^53, which keep their integer form.
         (-(jcs::MAX_INTEGER as i64)..=(jcs::MAX_INTEGER as i64))
             .prop_map(|value| Value::Number(value.into())),
         "[a-z0-9 _.-]{0,16}".prop_map(Value::String),

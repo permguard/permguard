@@ -250,7 +250,7 @@ impl Remote for HttpRemote {
     ) -> Result<NegotiatePushResponse, String> {
         let body = self.post_cbor(
             &format!("{}/notp/push/negotiate", self.ledger_base()?),
-            &request.encode(),
+            &request.encode().map_err(|error| error.to_string())?,
         )?;
         let response = NegotiatePushResponse::decode(&body).map_err(|error| error.to_string())?;
         self.remember_compression(response.compression.as_deref());
@@ -271,7 +271,7 @@ impl Remote for HttpRemote {
         };
         let body = self.post_cbor(
             &format!("{}/notp/objects", self.ledger_base()?),
-            &request.encode(),
+            &request.encode().map_err(|error| error.to_string())?,
         )?;
         UploadObjectsResponse::decode(&body).map_err(|error| error.to_string())
     }
@@ -279,7 +279,7 @@ impl Remote for HttpRemote {
     fn commit_push(&self, request: &CommitPushRequest) -> Result<CommitPushResponse, String> {
         let body = self.post_cbor(
             &format!("{}/notp/push/commit", self.ledger_base()?),
-            &request.encode(),
+            &request.encode().map_err(|error| error.to_string())?,
         )?;
         CommitPushResponse::decode(&body).map_err(|error| error.to_string())
     }
@@ -290,7 +290,7 @@ impl Remote for HttpRemote {
     ) -> Result<NegotiatePullResponse, String> {
         let body = self.post_cbor(
             &format!("{}/notp/pull/negotiate", self.ledger_base()?),
-            &request.encode(),
+            &request.encode().map_err(|error| error.to_string())?,
         )?;
         let response = NegotiatePullResponse::decode(&body).map_err(|error| error.to_string())?;
         self.remember_compression(response.compression.as_deref());
@@ -304,7 +304,7 @@ impl Remote for HttpRemote {
         };
         let body = self.post_cbor(
             &format!("{}/notp/objects/fetch", self.ledger_base()?),
-            &request.encode(),
+            &request.encode().map_err(|error| error.to_string())?,
         )?;
         let mut response =
             FetchObjectsResponse::decode(&body).map_err(|error| error.to_string())?;

@@ -107,8 +107,8 @@ pub struct Batch {
 impl Batch {
     /// Reads a batch from the wire under the canonical JSON profile.
     ///
-    /// The one way bytes become a batch at a trust boundary: a duplicated member, a fractional or
-    /// out-of-range number or a second value is refused here, before any record is digested, so
+    /// The one way bytes become a batch at a trust boundary: a duplicated member, an integer that
+    /// does not read back as written or a second value is refused here, before any record is digested, so
     /// the chain is only ever verified over bytes the producer could have written.
     pub fn decode(bytes: &[u8]) -> Result<Self, EnvelopeError> {
         let value =
@@ -297,7 +297,11 @@ mod tests {
     /// value, is refused by the canonical check before the envelope's shape is even read.
     #[test]
     fn a_payload_equal_in_value_but_not_canonical_in_bytes_is_refused() {
-        for spelling in [r#"{"first_seq":1.0}"#, r#"{"first_seq":1e0}"#, r#"{ "first_seq":1}"#] {
+        for spelling in [
+            r#"{"first_seq":1.0}"#,
+            r#"{"first_seq":1e0}"#,
+            r#"{ "first_seq":1}"#,
+        ] {
             let signed = Signed {
                 protected: String::new(),
                 payload: B64.encode(spelling),

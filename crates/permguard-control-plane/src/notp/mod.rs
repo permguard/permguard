@@ -226,7 +226,9 @@ impl NotpFacade {
             .map_err(|e| EngineError::Internal {
                 detail: e.to_string(),
             })?;
-            Ok(signed.encode())
+            signed.encode().map_err(|e| EngineError::Internal {
+                detail: e.to_string(),
+            })
         }
     }
 

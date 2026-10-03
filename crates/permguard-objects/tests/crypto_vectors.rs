@@ -142,8 +142,16 @@ fn test_the_key_set_statement_and_digest_match_the_independent_encoder() {
         )
         .unwrap();
 
-        assert_eq!(hex::encode(set.encode()), text(entry, "cbor"), "{name}");
-        assert_eq!(hex::encode(set.digest()), text(entry, "digest"), "{name}");
+        assert_eq!(
+            hex::encode(set.encode().expect("it encodes")),
+            text(entry, "cbor"),
+            "{name}"
+        );
+        assert_eq!(
+            hex::encode(set.digest().expect("it encodes")),
+            text(entry, "digest"),
+            "{name}"
+        );
         assert_eq!(
             KeySet::decode(&hex(text(entry, "cbor"))).unwrap(),
             set,
@@ -322,7 +330,11 @@ fn test_the_sealed_key_envelope_matches_the_independent_encoder() {
         );
 
         assert_eq!(
-            hex::encode(binding.content_context(seal::CONTENT_ALGORITHM, &nonce)),
+            hex::encode(
+                binding
+                    .content_context(seal::CONTENT_ALGORITHM, &nonce)
+                    .expect("it encodes")
+            ),
             text(entry, "content_context"),
             "{name}"
         );

@@ -174,7 +174,7 @@ pub(crate) fn build_snapshot(store: &dyn Store, manifest: &Manifest) -> Result<S
     // The manifest blob, at the well-known root entry.
     let manifest_blob = Blob {
         media_type: permguard_objects::manifest::MEDIA_TYPE.to_owned(),
-        data: manifest.encode(),
+        data: manifest.encode().map_err(|error| err(error.to_string()))?,
     };
     let manifest_bytes = manifest_blob
         .encode()

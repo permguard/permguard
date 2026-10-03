@@ -347,6 +347,8 @@ fn write_value(value: &Value, out: &mut Vec<u8>) -> Result<(), CanonicalError> {
     Ok(())
 }
 
+/// An integer beyond ±2⁵³ that is exactly a double is written with ECMAScript's digits for that
+/// double, as RFC 8785 requires — `2⁶³` is `9223372036854776000` — not with its own.
 fn write_number(number: &serde_json::Number, out: &mut Vec<u8>) -> Result<(), CanonicalError> {
     // Integers within ±2⁵³ are exact doubles, and ECMAScript prints them as plain integers.
     if let Some(value) = integer_in_range(number) {
@@ -478,12 +480,10 @@ fn number_tokens(bytes: &[u8]) -> Result<Vec<String>, CanonicalError> {
             let digits = token.iter().filter(|byte| byte.is_ascii_digit()).count();
             if integer && digits > 15 && token != b"-0" {
                 let text = std::str::from_utf8(token).unwrap_or_default();
-                let reads_back = text
-                    .parse::<f64>()
-                    .ok()
-                    .filter(|double| double.is_finite())
-                    .is_some_and(|double| ecmascript(double) == text);
-                if !reads_back {
+                // Not a number at all is serde_json's to refuse, as syntax.
+                if let Ok(double) = text.parse::<f64>()
+                    && !(double.is_finite() && ecmascript(double) == text)
+                {
                     return Err(CanonicalError::OutOfRange(text.to_owned()));
                 }
             }
@@ -563,6 +563,18 @@ mod tests {
             "{\"s\":\"a\\\"b\\\\c\\nd\\te\\u0001f/g\u{e9}\"}",
             "a solidus is not escaped, and non-ASCII stays literal"
         );
+    }
+
+    /// The strict reader relies on serde_json handing numbers to the visitor as numbers; the
+    /// `arbitrary_precision` feature would hand them over as maps, and nothing would notice.
+    #[test]
+    fn test_serde_json_reads_numbers_as_numbers() {
+        assert!(
+            serde_json::from_str::<Value>("1.5")
+                .expect("it parses")
+                .is_number()
+        );
+        assert_eq!(parse_strict(b"[1.5]"), Ok(json!([1.5])));
     }
 
     #[test]

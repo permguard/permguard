@@ -125,22 +125,22 @@ fn manifest() -> impl Strategy<Value = Manifest> {
 proptest! {
     #[test]
     fn canonical_cbor_is_a_fixed_point(value in cbor_value()) {
-        let encoded = cbor::encode(&value);
+        let encoded = cbor::encode(&value).expect("it encodes");
         let decoded = cbor::decode_canonical(&encoded).unwrap();
 
-        prop_assert_eq!(cbor::encode(&decoded), encoded);
+        prop_assert_eq!(cbor::encode(&decoded).expect("it encodes"), encoded);
     }
 
     #[test]
     fn arbitrary_cbor_bytes_are_either_rejected_or_canonical(data in vec(any::<u8>(), 0..128)) {
         if let Ok(value) = cbor::decode_canonical(&data) {
-            prop_assert_eq!(cbor::encode(&value), data);
+            prop_assert_eq!(cbor::encode(&value).expect("it encodes"), data);
         }
     }
 
     #[test]
     fn manifests_round_trip_through_the_normative_cbor_shape(manifest in manifest()) {
-        let encoded = manifest.encode();
+        let encoded = manifest.encode().expect("it encodes");
         let decoded = Manifest::decode(&encoded).unwrap();
 
         prop_assert_eq!(decoded, manifest);

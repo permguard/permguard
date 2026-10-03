@@ -42,6 +42,7 @@ fn error_name(error: &CborError) -> &'static str {
         CborError::Unsupported(_) => "Unsupported",
         CborError::NotShortest => "NotShortest",
         CborError::KeyOrder => "KeyOrder",
+        CborError::DuplicateKey => "DuplicateKey",
         CborError::Utf8 => "Utf8",
         CborError::NotCanonical => "NotCanonical",
         CborError::TrailingBytes => "TrailingBytes",
@@ -58,7 +59,11 @@ fn test_every_canonical_vector_decodes_and_reproduces_its_bytes() {
         let input = bytes(text(entry, "hex"));
         let value = decode_canonical(&input)
             .unwrap_or_else(|error| panic!("{name}: the bytes must decode, got {error}"));
-        assert_eq!(encode(&value), input, "{name}: encoding is a fixed point");
+        assert_eq!(
+            encode(&value).expect("a decoded value encodes"),
+            input,
+            "{name}: encoding is a fixed point"
+        );
     }
 }
 

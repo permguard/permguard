@@ -71,7 +71,7 @@ impl EngineRemote {
     {
         move |statement| {
             SignedHead::sign(statement, &self.key, b"test-key")
-                .map(|signed| signed.encode())
+                .map(|signed| signed.encode().expect("it encodes"))
                 .map_err(|error| EngineError::Internal {
                     detail: error.to_string(),
                 })
@@ -176,6 +176,7 @@ impl HostileRemote {
         SignedHead::sign(&honest, key, b"test-key")
             .expect("the forgery signs")
             .encode()
+            .expect("it encodes")
     }
 }
 

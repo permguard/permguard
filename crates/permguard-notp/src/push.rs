@@ -73,7 +73,7 @@ pub struct CommitPushResponse {
 }
 
 impl NegotiatePushRequest {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![
             (1, Value::Text(self.r#ref.clone())),
             (2, Value::Text(self.new_head.to_string())),
@@ -95,7 +95,7 @@ impl NegotiatePushRequest {
         if let Some(old) = &self.expected_old {
             pairs.push((3, Value::Text(old.to_string())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -124,7 +124,7 @@ impl NegotiatePushRequest {
 }
 
 impl NegotiatePushResponse {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![
             (1, digests(&self.missing)),
             (2, Value::Int(self.max_batch_bytes as i64)),
@@ -133,7 +133,7 @@ impl NegotiatePushResponse {
         if let Some(compression) = &self.compression {
             pairs.push((4, Value::Text(compression.clone())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -149,7 +149,7 @@ impl NegotiatePushResponse {
 }
 
 impl UploadObjectsRequest {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![(
             1,
             Value::Array(
@@ -162,7 +162,7 @@ impl UploadObjectsRequest {
         if let Some(compression) = &self.compression {
             pairs.push((2, Value::Text(compression.clone())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -176,8 +176,8 @@ impl UploadObjectsRequest {
 }
 
 impl UploadObjectsResponse {
-    pub fn encode(&self) -> Vec<u8> {
-        cbor::encode(&map(vec![(1, digests(&self.received))]))
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        Ok(cbor::encode(&map(vec![(1, digests(&self.received))]))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -190,7 +190,7 @@ impl UploadObjectsResponse {
 }
 
 impl CommitPushRequest {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![
             (1, Value::Text(self.r#ref.clone())),
             (2, Value::Text(self.new_head.to_string())),
@@ -198,7 +198,7 @@ impl CommitPushRequest {
         if let Some(old) = &self.expected_old {
             pairs.push((3, Value::Text(old.to_string())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -213,12 +213,12 @@ impl CommitPushRequest {
 }
 
 impl CommitPushResponse {
-    pub fn encode(&self) -> Vec<u8> {
-        cbor::encode(&map(vec![
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        Ok(cbor::encode(&map(vec![
             (1, Value::Text(self.head.to_string())),
             (2, Value::Int(self.counter as i64)),
             (3, Value::Bytes(self.statement.clone())),
-        ]))
+        ]))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {

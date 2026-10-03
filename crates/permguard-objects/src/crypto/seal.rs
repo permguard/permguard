@@ -119,7 +119,7 @@ impl Binding<'_> {
         &self,
         content_algorithm: &str,
         unique_nonce: &[u8; NONCE_LEN],
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, SealError> {
         let mut members = self.members();
         members.push((
             text("content_algorithm"),
@@ -127,7 +127,7 @@ impl Binding<'_> {
         ));
         members.push((text("unique_nonce"), Value::Bytes(unique_nonce.to_vec())));
 
-        cbor::encode(&Value::Map(members))
+        Ok(cbor::encode(&Value::Map(members))?)
     }
 
     /// The context the wrap provider binds the DEK to: the content facts plus the KEK metadata.
@@ -154,7 +154,7 @@ impl Binding<'_> {
         ));
         members.push((text("unique_nonce"), Value::Bytes(unique_nonce.to_vec())));
 
-        Ok(cbor::encode(&Value::Map(members)))
+        Ok(cbor::encode(&Value::Map(members))?)
     }
 }
 
@@ -359,7 +359,7 @@ impl SealedKey {
         bound_key(binding, private_key, None)?;
         let dek = Dek::generate(entropy).map_err(SealError::Entropy)?;
         let unique_nonce = random::bytes::<NONCE_LEN>(entropy).map_err(SealError::Entropy)?;
-        let content_context = binding.content_context(CONTENT_ALGORITHM, &unique_nonce);
+        let content_context = binding.content_context(CONTENT_ALGORITHM, &unique_nonce)?;
         let ciphertext =
             aes256gcm_seal(dek.expose(), &unique_nonce, &content_context, private_key)?;
         let wrap_context = binding.wrap_context(
@@ -397,7 +397,8 @@ impl SealedKey {
             &self.wrapped_dek,
             &self.wrap_context(binding)?,
         )?;
-        let content_context = binding.content_context(&self.content_algorithm, &self.unique_nonce);
+        let content_context =
+            binding.content_context(&self.content_algorithm, &self.unique_nonce)?;
         let pkcs8 = aes256gcm_open(
             dek.expose(),
             &self.unique_nonce,
@@ -503,7 +504,7 @@ impl SealedKey {
                 Value::Int(LABEL_CIPHERTEXT),
                 Value::Bytes(self.ciphertext.clone()),
             ),
-        ])))
+        ]))?)
     }
 
     /// Reads the on-disk bytes strictly: canonical CBOR, exactly the eight labels once each with
@@ -760,7 +761,9 @@ mod tests {
     fn forge(plaintext: &[u8], binding: &Binding<'_>, wrap: &dyn KeyWrap) -> SealedKey {
         let dek = Dek::generate(&SystemEntropy).unwrap();
         let nonce = [5u8; NONCE_LEN];
-        let content = binding.content_context(CONTENT_ALGORITHM, &nonce);
+        let content = binding
+            .content_context(CONTENT_ALGORITHM, &nonce)
+            .expect("it encodes");
         let wrap_context = binding
             .wrap_context(
                 wrap.kek_ref(),
@@ -874,7 +877,7 @@ mod tests {
             .find(|(key, _)| *key == text(name))
             .unwrap();
         slot.1 = value;
-        cbor::encode(&Value::Map(members))
+        cbor::encode(&Value::Map(members)).expect("it encodes")
     }
 
     #[test]
@@ -915,7 +918,9 @@ mod tests {
             );
         }
 
-        let content = bound.content_context(CONTENT_ALGORITHM, &sealed.unique_nonce);
+        let content = bound
+            .content_context(CONTENT_ALGORITHM, &sealed.unique_nonce)
+            .expect("it encodes");
         let Value::Map(content_members) = cbor::decode_canonical(&content).unwrap() else {
             panic!("a content context is a map");
         };
@@ -1125,7 +1130,7 @@ mod tests {
             if let Some(value) = value {
                 altered.push((Value::Int(label), value));
             }
-            cbor::encode(&Value::Map(altered))
+            cbor::encode(&Value::Map(altered)).expect("it encodes")
         };
         let refused = [
             ("a ninth label", with(9, Some(Value::Int(0)))),
@@ -1164,7 +1169,7 @@ mod tests {
             ("a text label", {
                 let mut altered = members.clone();
                 altered[0].0 = text("v");
-                cbor::encode(&Value::Map(altered))
+                cbor::encode(&Value::Map(altered)).expect("it encodes")
             }),
         ];
         for (name, bytes) in refused {

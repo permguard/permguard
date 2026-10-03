@@ -52,6 +52,7 @@ fn signed(statement: &HeadStatement, kid: &[u8], key: &Ed25519KeyPair) -> Vec<u8
     SignedHead::sign(statement, key, kid)
         .expect("the statement signs")
         .encode()
+        .expect("it encodes")
 }
 
 fn checkpoint(counter: u64, content: &[u8]) -> Checkpoint {

@@ -50,7 +50,7 @@ pub struct FetchObjectsResponse {
 }
 
 impl NegotiatePullRequest {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![
             (1, Value::Text(self.r#ref.clone())),
             (3, digests(&self.have)),
@@ -58,7 +58,7 @@ impl NegotiatePullRequest {
         if let Some(at) = &self.at {
             pairs.push((2, Value::Text(at.to_string())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -73,7 +73,7 @@ impl NegotiatePullRequest {
 }
 
 impl NegotiatePullResponse {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![
             (1, Value::Text(self.head.to_string())),
             (2, Value::Int(self.counter as i64)),
@@ -85,7 +85,7 @@ impl NegotiatePullResponse {
         if let Some(compression) = &self.compression {
             pairs.push((7, Value::Text(compression.clone())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -104,12 +104,12 @@ impl NegotiatePullResponse {
 }
 
 impl FetchObjectsRequest {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![(1, digests(&self.digests))];
         if let Some(accept) = &self.accept_compression {
             pairs.push((2, Value::Text(accept.clone())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {
@@ -123,7 +123,7 @@ impl FetchObjectsRequest {
 }
 
 impl FetchObjectsResponse {
-    pub fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Result<Vec<u8>> {
         let mut pairs = vec![(
             1,
             Value::Array(
@@ -136,7 +136,7 @@ impl FetchObjectsResponse {
         if let Some(compression) = &self.compression {
             pairs.push((2, Value::Text(compression.clone())));
         }
-        cbor::encode(&map(pairs))
+        Ok(cbor::encode(&map(pairs))?)
     }
 
     pub fn decode(input: &[u8]) -> Result<Self> {

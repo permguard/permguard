@@ -42,7 +42,7 @@ proptest! {
     #[test]
     fn a_signed_head_round_trips_and_verifies_as_the_statement_it_signed(statement in statement()) {
         let signed = SignedHead::sign(&statement, key(), b"control.attest:k").unwrap();
-        let decoded = SignedHead::decode(&signed.encode()).unwrap();
+        let decoded = SignedHead::decode(&signed.encode().expect("it encodes")).unwrap();
 
         prop_assert_eq!(&decoded, &signed);
         prop_assert_eq!(decoded.encode(), signed.encode());
@@ -53,7 +53,7 @@ proptest! {
 
     #[test]
     fn no_flipped_byte_yields_a_verifying_statement(statement in statement(), at in any::<prop::sample::Index>()) {
-        let mut bytes = SignedHead::sign(&statement, key(), b"control.attest:k").unwrap().encode();
+        let mut bytes = SignedHead::sign(&statement, key(), b"control.attest:k").unwrap().encode().unwrap();
         let at = at.index(bytes.len());
         bytes[at] ^= 0x01;
 

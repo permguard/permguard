@@ -241,7 +241,10 @@ fn provision(root: &Path, name: &str) -> Manifest {
             .expect("the blob is stored")
     };
 
-    let manifest_digest = put(permguard_objects::manifest::MEDIA_TYPE, &manifest.encode());
+    let manifest_digest = put(
+        permguard_objects::manifest::MEDIA_TYPE,
+        &manifest.encode().expect("it encodes"),
+    );
 
     // Driven by the manifest rather than by a list here: a partition *is* a
     // directory, and the language it runs decides what is read out of it. Splitting

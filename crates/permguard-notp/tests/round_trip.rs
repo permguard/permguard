@@ -25,7 +25,10 @@ fn the_push_messages_round_trip() {
             size: 42,
         }],
     };
-    assert_eq!(NegotiatePushRequest::decode(&req.encode()).unwrap(), req);
+    assert_eq!(
+        NegotiatePushRequest::decode(&req.encode().expect("it encodes")).unwrap(),
+        req
+    );
 
     // The creation case: no expected old head, and the optional is omitted.
     let creation = NegotiatePushRequest {
@@ -33,7 +36,7 @@ fn the_push_messages_round_trip() {
         ..req.clone()
     };
     assert_eq!(
-        NegotiatePushRequest::decode(&creation.encode()).unwrap(),
+        NegotiatePushRequest::decode(&creation.encode().expect("it encodes")).unwrap(),
         creation
     );
 
@@ -43,25 +46,37 @@ fn the_push_messages_round_trip() {
         max_batch_objects: 2,
         compression: Some("deflate".into()),
     };
-    assert_eq!(NegotiatePushResponse::decode(&resp.encode()).unwrap(), resp);
+    assert_eq!(
+        NegotiatePushResponse::decode(&resp.encode().expect("it encodes")).unwrap(),
+        resp
+    );
 
     let up = UploadObjectsRequest {
         objects: vec![vec![1, 2], vec![]],
         compression: None,
     };
-    assert_eq!(UploadObjectsRequest::decode(&up.encode()).unwrap(), up);
+    assert_eq!(
+        UploadObjectsRequest::decode(&up.encode().expect("it encodes")).unwrap(),
+        up
+    );
 
     let upr = UploadObjectsResponse {
         received: vec![d1.clone(), d2.clone()],
     };
-    assert_eq!(UploadObjectsResponse::decode(&upr.encode()).unwrap(), upr);
+    assert_eq!(
+        UploadObjectsResponse::decode(&upr.encode().expect("it encodes")).unwrap(),
+        upr
+    );
 
     let commit = CommitPushRequest {
         r#ref: "main".into(),
         new_head: d1.clone(),
         expected_old: None,
     };
-    assert_eq!(CommitPushRequest::decode(&commit.encode()).unwrap(), commit);
+    assert_eq!(
+        CommitPushRequest::decode(&commit.encode().expect("it encodes")).unwrap(),
+        commit
+    );
 
     let committed = CommitPushResponse {
         head: d1,
@@ -69,7 +84,7 @@ fn the_push_messages_round_trip() {
         statement: vec![9],
     };
     assert_eq!(
-        CommitPushResponse::decode(&committed.encode()).unwrap(),
+        CommitPushResponse::decode(&committed.encode().expect("it encodes")).unwrap(),
         committed
     );
 }
@@ -84,7 +99,10 @@ fn the_pull_messages_round_trip() {
         at: Some(d2.clone()),
         have: vec![d1.clone()],
     };
-    assert_eq!(NegotiatePullRequest::decode(&pull.encode()).unwrap(), pull);
+    assert_eq!(
+        NegotiatePullRequest::decode(&pull.encode().expect("it encodes")).unwrap(),
+        pull
+    );
 
     let answer = NegotiatePullResponse {
         head: d1.clone(),
@@ -96,7 +114,7 @@ fn the_pull_messages_round_trip() {
         compression: Some("deflate".into()),
     };
     assert_eq!(
-        NegotiatePullResponse::decode(&answer.encode()).unwrap(),
+        NegotiatePullResponse::decode(&answer.encode().expect("it encodes")).unwrap(),
         answer
     );
 
@@ -104,14 +122,17 @@ fn the_pull_messages_round_trip() {
         digests: vec![d1],
         accept_compression: Some("deflate".into()),
     };
-    assert_eq!(FetchObjectsRequest::decode(&fetch.encode()).unwrap(), fetch);
+    assert_eq!(
+        FetchObjectsRequest::decode(&fetch.encode().expect("it encodes")).unwrap(),
+        fetch
+    );
 
     let fetched = FetchObjectsResponse {
         objects: vec![vec![3, 4]],
         compression: None,
     };
     assert_eq!(
-        FetchObjectsResponse::decode(&fetched.encode()).unwrap(),
+        FetchObjectsResponse::decode(&fetched.encode().expect("it encodes")).unwrap(),
         fetched
     );
 }
@@ -130,6 +151,7 @@ fn malformed_bodies_are_refused() {
                 compression: None,
             }
             .encode()
+            .expect("it encodes")
         )
         .is_err()
     );

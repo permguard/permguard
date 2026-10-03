@@ -42,7 +42,7 @@ proptest! {
                 .collect(),
         };
 
-        prop_assert_eq!(NegotiatePushRequest::decode(&request.encode()).unwrap(), request);
+        prop_assert_eq!(NegotiatePushRequest::decode(&request.encode().expect("it encodes")).unwrap(), request);
     }
 
     #[test]
@@ -53,7 +53,7 @@ proptest! {
     ) {
         let request = NegotiatePullRequest { r#ref, at, have };
 
-        prop_assert_eq!(NegotiatePullRequest::decode(&request.encode()).unwrap(), request);
+        prop_assert_eq!(NegotiatePullRequest::decode(&request.encode().expect("it encodes")).unwrap(), request);
     }
 
     #[test]
@@ -75,9 +75,9 @@ proptest! {
             compression,
         };
 
-        prop_assert_eq!(FetchObjectsRequest::decode(&fetch.encode()).unwrap(), fetch);
-        prop_assert_eq!(UploadObjectsRequest::decode(&upload.encode()).unwrap(), upload);
-        prop_assert_eq!(FetchObjectsResponse::decode(&fetched.encode()).unwrap(), fetched);
+        prop_assert_eq!(FetchObjectsRequest::decode(&fetch.encode().expect("it encodes")).unwrap(), fetch);
+        prop_assert_eq!(UploadObjectsRequest::decode(&upload.encode().expect("it encodes")).unwrap(), upload);
+        prop_assert_eq!(FetchObjectsResponse::decode(&fetched.encode().expect("it encodes")).unwrap(), fetched);
     }
 
     #[test]
@@ -105,8 +105,8 @@ proptest! {
             compression,
         };
 
-        prop_assert_eq!(NegotiatePushResponse::decode(&push.encode()).unwrap(), push);
-        prop_assert_eq!(NegotiatePullResponse::decode(&pull.encode()).unwrap(), pull);
+        prop_assert_eq!(NegotiatePushResponse::decode(&push.encode().expect("it encodes")).unwrap(), push);
+        prop_assert_eq!(NegotiatePullResponse::decode(&pull.encode().expect("it encodes")).unwrap(), pull);
     }
 
     #[test]
@@ -128,14 +128,14 @@ proptest! {
             statement,
         };
 
-        prop_assert_eq!(CommitPushRequest::decode(&request.encode()).unwrap(), request);
-        prop_assert_eq!(CommitPushResponse::decode(&response.encode()).unwrap(), response);
+        prop_assert_eq!(CommitPushRequest::decode(&request.encode().expect("it encodes")).unwrap(), request);
+        prop_assert_eq!(CommitPushResponse::decode(&response.encode().expect("it encodes")).unwrap(), response);
     }
 
     #[test]
     fn received_response_round_trips(received in vec(digest(), 0..8)) {
         let response = UploadObjectsResponse { received };
 
-        prop_assert_eq!(UploadObjectsResponse::decode(&response.encode()).unwrap(), response);
+        prop_assert_eq!(UploadObjectsResponse::decode(&response.encode().expect("it encodes")).unwrap(), response);
     }
 }

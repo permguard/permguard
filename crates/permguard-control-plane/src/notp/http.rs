@@ -85,24 +85,38 @@ async fn get_ref(
     State(facade): State<NotpFacade>,
     Path((zone, ledger, name)): Path<(String, String, String)>,
 ) -> Response {
-    let outcome = facade.get_ref(&zone, &ledger, &name).await.map(|answered| {
-        // The advertised ref rides the same framing as everything else.
-        permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Map(vec![
-            (
-                permguard_objects::cbor::Value::Int(1),
-                permguard_objects::cbor::Value::Text(answered.head),
-            ),
-            (
-                permguard_objects::cbor::Value::Int(2),
-                permguard_objects::cbor::Value::Int(answered.counter as i64),
-            ),
-            (
-                permguard_objects::cbor::Value::Int(3),
-                permguard_objects::cbor::Value::Bytes(answered.statement),
-            ),
-        ]))
-    });
+    let outcome = facade
+        .get_ref(&zone, &ledger, &name)
+        .await
+        .and_then(|answered| {
+            // The advertised ref rides the same framing as everything else.
+            permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Map(vec![
+                (
+                    permguard_objects::cbor::Value::Int(1),
+                    permguard_objects::cbor::Value::Text(answered.head),
+                ),
+                (
+                    permguard_objects::cbor::Value::Int(2),
+                    permguard_objects::cbor::Value::Int(answered.counter as i64),
+                ),
+                (
+                    permguard_objects::cbor::Value::Int(3),
+                    permguard_objects::cbor::Value::Bytes(answered.statement),
+                ),
+            ]))
+            .map_err(unencodable)
+        });
     answer(&facade, outcome)
+}
+
+/// An answer that could not be encoded: a fault of this plane, never of the request.
+fn unencodable(error: impl std::fmt::Display) -> permguard_core::ApiError {
+    permguard_core::ApiError::new(
+        permguard_core::ErrorClass::Internal,
+        permguard_core::codes::common::INTERNAL,
+        "the answer could not be encoded",
+    )
+    .with_internal(error.to_string())
 }
 
 async fn negotiate_push(
@@ -114,7 +128,7 @@ async fn negotiate_push(
         Ok(request) => facade
             .negotiate_push(&zone, &ledger, &request)
             .await
-            .map(|response| response.encode()),
+            .and_then(|response| response.encode().map_err(unencodable)),
         Err(error) => Err(bad_body(error)),
     };
     answer(&facade, outcome)
@@ -129,7 +143,7 @@ async fn upload(
         Ok(request) => facade
             .upload(&zone, &ledger, &request)
             .await
-            .map(|response| response.encode()),
+            .and_then(|response| response.encode().map_err(unencodable)),
         Err(error) => Err(bad_body(error)),
     };
     answer(&facade, outcome)
@@ -144,7 +158,7 @@ async fn commit_push(
         Ok(request) => facade
             .commit_push(&zone, &ledger, &request)
             .await
-            .map(|response| response.encode()),
+            .and_then(|response| response.encode().map_err(unencodable)),
         Err(error) => Err(bad_body(error)),
     };
     answer(&facade, outcome)
@@ -159,7 +173,7 @@ async fn negotiate_pull(
         Ok(request) => facade
             .negotiate_pull(&zone, &ledger, &request)
             .await
-            .map(|response| response.encode()),
+            .and_then(|response| response.encode().map_err(unencodable)),
         Err(error) => Err(bad_body(error)),
     };
     answer(&facade, outcome)
@@ -174,7 +188,7 @@ async fn fetch(
         Ok(request) => facade
             .fetch(&zone, &ledger, &request)
             .await
-            .map(|response| response.encode()),
+            .and_then(|response| response.encode().map_err(unencodable)),
         Err(error) => Err(bad_body(error)),
     };
     answer(&facade, outcome)
@@ -333,7 +347,7 @@ mod tests {
         };
         let manifest_blob = Blob {
             media_type: MEDIA_TYPE_MANIFEST.into(),
-            data: manifest.encode(),
+            data: manifest.encode().expect("it encodes"),
         };
         let manifest_bytes = manifest_blob.encode().expect("a manifest encodes");
         let mut annotations = BTreeMap::new();
@@ -447,7 +461,7 @@ mod tests {
         let (status, _) = post(
             &routes,
             &format!("{base}/notp/push/negotiate"),
-            request.encode(),
+            request.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 200, "the plane stopped answering after the refusal");
@@ -476,7 +490,7 @@ mod tests {
         let (status, body) = post(
             &routes,
             &format!("{base}/notp/push/negotiate"),
-            request.encode(),
+            request.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
@@ -488,7 +502,12 @@ mod tests {
             objects: objects.clone(),
             compression: None,
         };
-        let (status, body) = post(&routes, &format!("{base}/notp/objects"), upload.encode()).await;
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
         assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
         assert_eq!(
             UploadObjectsResponse::decode(&body)
@@ -507,7 +526,7 @@ mod tests {
         let (status, body) = post(
             &routes,
             &format!("{base}/notp/push/commit"),
-            commit.encode(),
+            commit.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
@@ -534,7 +553,7 @@ mod tests {
         let (status, body) = post(
             &routes,
             &format!("{base}/notp/pull/negotiate"),
-            pull.encode(),
+            pull.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
@@ -547,7 +566,7 @@ mod tests {
         let (status, body) = post(
             &routes,
             &format!("{base}/notp/objects/fetch"),
-            fetch.encode(),
+            fetch.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 200);
@@ -585,7 +604,12 @@ mod tests {
             compression: Some("deflate".into()),
         };
 
-        let (status, body) = post(&routes, &format!("{base}/notp/objects"), bomb.encode()).await;
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            bomb.encode().expect("it encodes"),
+        )
+        .await;
         // Validation on the wire: 400, the taxonomy's own status.
         assert_eq!(status, 400, "{}", String::from_utf8_lossy(&body));
         let text = String::from_utf8_lossy(&body);
@@ -604,7 +628,7 @@ mod tests {
         let (status, body) = post(
             &routes,
             &format!("/v1/zones/{zone}/ledgers/ghost/notp/pull/negotiate"),
-            pull.encode(),
+            pull.encode().expect("it encodes"),
         )
         .await;
         assert_eq!(status, 404, "{}", String::from_utf8_lossy(&body));
