@@ -16,8 +16,8 @@
 //! # Two directions, one profile
 //!
 //! [`canonicalize`] writes a value as its canonical bytes. [`parse_strict`] reads bytes that claim
-//! to be a value and refuses everything the profile forbids: a duplicated member name, a number
-//! that is not an integer within the I-JSON range, text that is not UTF-8, anything but one value.
+//! to be a value and refuses everything the profile forbids: a duplicated member name, an integer
+//! that does not read back as written, text that is not UTF-8, anything but one value.
 //! [`decode_canonical`] does both and then requires the input to be byte-identical to the
 //! canonical form of what it decoded — the rule at every trust boundary, so that a signature or a
 //! digest is only ever checked over bytes that could have been produced by this canonicaliser.
@@ -34,18 +34,22 @@
 //!   short forms, and `\u00xx` for the remaining control characters. Nothing
 //!   else — an implementation that escapes `/` or non-ASCII produces different
 //!   bytes for the same string.
-//! - **Numbers are integers within ±2⁵³, by construction.** RFC 8785 defines number output as
-//!   ECMAScript `Number::toString`, the single hardest part of the specification to implement
-//!   identically and the classic source of interoperability failures; I-JSON additionally warns
-//!   that an integer beyond 2⁵³ is not exactly representable by every reader. No field of a
-//!   record needs a fractional value or a larger integer, so this canonicaliser **refuses** them
-//!   rather than implementing a float printer two languages might disagree about. A refusal at
-//!   write time is a bug caught in a test; a disagreement is a chain that stops verifying in
-//!   production. Caller-supplied numbers that may be fractional go through [`normalized`] first.
+//! - **Numbers are written as ECMAScript writes them.** RFC 8785 defines number output as
+//!   ECMAScript `Number.prototype.toString` over the IEEE-754 double: the shortest digits that
+//!   read back to the same double, in plain notation from 10⁻⁶ up to 10²¹ and in exponent
+//!   notation outside it — `1e+30`, `4.5`, `0.002`, `-0` as `0`. The digits come from the
+//!   standard library's shortest round-trip formatting; the notation rules are applied here. The
+//!   RFC's Appendix B and 3 366 values printed by Node are the vectors this is held to.
+//! - **An integer must read back as written.** A number with a fraction or an exponent is read
+//!   as the nearest double, as RFC 8785 does. An integer written without either, whose double
+//!   prints other digits — `9007199254740993` reads as `9007199254740992` — carries precision
+//!   beyond IEEE double, which strict I-JSON forbids, and is refused rather than silently
+//!   changed. Integers within ±2⁵³ always read back, so their bytes are what they always were.
 //!
 //! [RFC 8785]: https://www.rfc-editor.org/rfc/rfc8785
 //! [RFC 7493]: https://www.rfc-editor.org/rfc/rfc7493
 
+use std::cell::RefCell;
 use std::fmt;
 
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -57,9 +61,7 @@ pub const MAX_INTEGER: u64 = 1 << 53;
 /// Why a value could not be canonicalised, or bytes could not be read as a canonical value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CanonicalError {
-    /// A number that is not an exact integer — see the module documentation.
-    NotAnInteger(String),
-    /// An integer outside ±2⁵³, which not every reader represents exactly.
+    /// An integer that does not read back as written: precision beyond IEEE double.
     OutOfRange(String),
     /// A member name that appears twice in one object; the reader does not choose a winner.
     DuplicateName(String),
@@ -72,13 +74,9 @@ pub enum CanonicalError {
 impl fmt::Display for CanonicalError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotAnInteger(value) => write!(
-                formatter,
-                "`{value}` is not an integer: canonical records carry no fractional numbers, because their canonical form would depend on a float printer"
-            ),
             Self::OutOfRange(value) => write!(
                 formatter,
-                "`{value}` is outside ±2^53: not every reader represents it exactly"
+                "`{value}` does not read back as written: it carries precision beyond IEEE double"
             ),
             Self::DuplicateName(name) => {
                 write!(formatter, "the member `{name}` appears twice in one object")
@@ -94,22 +92,21 @@ impl fmt::Display for CanonicalError {
 
 impl std::error::Error for CanonicalError {}
 
-/// Rewrites `value` so that [`canonicalize`] is total over it.
+/// Rewrites every number outside the integers within ±2⁵³ as its decimal text.
 ///
-/// The canonicaliser refuses non-integer and out-of-range numbers — deliberately, see the
-/// module documentation — but a decision record carries **caller-supplied**
+/// The canonicaliser writes every finite number, but a decision record carries **caller-supplied**
 /// values: context members, entity attributes, the properties a deployment
 /// named in `include`. A caller who writes `{"risk": 0.7}` has written legal
 /// JSON and a legal policy input, and a log that cannot commit to it — or
 /// worse, refuses the decision over it — has let the caller steer the audit
 /// trail.
 ///
-/// So every number the profile refuses becomes a **string** carrying serde_json's
+/// Records have always committed such a number as a **string** carrying serde_json's
 /// shortest-round-trip rendering, recursively. Deterministic for a given
 /// value, so equality of commitments still means equality of inputs; explicit
 /// in the record, so a reader sees `"0.7"` and knows the number was carried as
-/// its decimal text rather than as a bit pattern two languages might print
-/// differently.
+/// its decimal text. Kept as it is so a record's committed bytes do not depend on when it was
+/// written: carrying such numbers as numbers would be a new record format version.
 pub fn normalized(value: &Value) -> Value {
     match value {
         Value::Number(number) if integer_in_range(number).is_none() => {
@@ -136,14 +133,16 @@ pub fn canonicalize(value: &Value) -> Result<Vec<u8>, CanonicalError> {
 
 /// Reads one JSON text under the profile, refusing what the profile forbids.
 ///
-/// Accepted: one value, UTF-8, integers within ±2⁵³, member names unique at every level. Refused:
-/// a second value or trailing bytes, fractional or exponent numbers, integers beyond the range,
-/// duplicated names, invalid UTF-8 or lone surrogates, nesting deeper than serde_json's bound.
+/// Accepted: one value, UTF-8, every finite number, member names unique at every level. Refused:
+/// a second value or trailing bytes, an integer that does not read back as written, a number
+/// beyond the double range, duplicated names, invalid UTF-8 or lone surrogates, nesting deeper
+/// than serde_json's bound.
 /// Whitespace and member order are accepted — this reads a value; [`decode_canonical`] is the
 /// check that the bytes were already canonical.
 pub fn parse_strict(bytes: &[u8]) -> Result<Value, CanonicalError> {
+    let numbers = RefCell::new(number_tokens(bytes)?.into_iter());
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
-    let value = StrictValue
+    let value = StrictValue { numbers: &numbers }
         .deserialize(&mut deserializer)
         .map_err(|error| classify(&error))?;
     deserializer
@@ -181,7 +180,6 @@ fn classify(error: &serde_json::Error) -> CanonicalError {
             DUPLICATE,
             CanonicalError::DuplicateName as fn(String) -> CanonicalError,
         ),
-        (FRACTION, CanonicalError::NotAnInteger),
         (RANGE, CanonicalError::OutOfRange),
     ] {
         if let Some(rest) = text.strip_prefix(marker) {
@@ -194,21 +192,54 @@ fn classify(error: &serde_json::Error) -> CanonicalError {
 }
 
 const DUPLICATE: &str = "duplicate member ";
-const FRACTION: &str = "non-integer number ";
 const RANGE: &str = "integer out of range ";
 
 /// Builds a [`Value`] while refusing what the profile forbids.
-struct StrictValue;
+///
+/// `numbers` is every number's text, in document order, which is the order serde_json visits
+/// them: a fraction or an exponent is read from its text by the standard library, which rounds
+/// to the nearest double as RFC 8785 requires, rather than by serde_json's faster reader, which
+/// may land one unit in the last place away.
+#[derive(Clone, Copy)]
+struct StrictValue<'n> {
+    numbers: &'n RefCell<std::vec::IntoIter<String>>,
+}
 
-impl<'de> DeserializeSeed<'de> for StrictValue {
-    type Value = Value;
+impl StrictValue<'_> {
+    fn next_number(&self) -> Option<String> {
+        self.numbers.borrow_mut().next()
+    }
 
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
-        deserializer.deserialize_any(StrictValue)
+    /// An integer within ±2⁵³ is kept as the integer it is. A wider one denotes, under RFC 8785,
+    /// the double its text reads as — `number_tokens` already refused one that does not read back
+    /// as written — so it is kept as that double, which is what the canonical form prints.
+    fn integer<E: de::Error>(self, value: i128, approximate: f64) -> Result<Value, E> {
+        let text = self.next_number();
+        if value.unsigned_abs() <= u128::from(MAX_INTEGER) {
+            return Ok(Value::Number(if value < 0 {
+                serde_json::Number::from(value as i64)
+            } else {
+                serde_json::Number::from(value as u64)
+            }));
+        }
+        let double = text
+            .and_then(|text| text.parse::<f64>().ok())
+            .unwrap_or(approximate);
+        serde_json::Number::from_f64(double)
+            .map(Value::Number)
+            .ok_or_else(|| E::custom(format!("{RANGE}{value}")))
     }
 }
 
-impl<'de> Visitor<'de> for StrictValue {
+impl<'de> DeserializeSeed<'de> for StrictValue<'_> {
+    type Value = Value;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+
+impl<'de> Visitor<'de> for StrictValue<'_> {
     type Value = Value;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -219,22 +250,24 @@ impl<'de> Visitor<'de> for StrictValue {
         Ok(Value::Bool(value))
     }
 
+    // An integer that does not read back as written was refused before deserialisation began,
+    // by `integers_read_back`, which sees the text serde_json does not keep.
     fn visit_i64<E: de::Error>(self, value: i64) -> Result<Value, E> {
-        if value.unsigned_abs() > MAX_INTEGER {
-            return Err(E::custom(format!("{RANGE}{value}")));
-        }
-        Ok(Value::from(value))
+        self.integer(i128::from(value), value as f64)
     }
 
     fn visit_u64<E: de::Error>(self, value: u64) -> Result<Value, E> {
-        if value > MAX_INTEGER {
-            return Err(E::custom(format!("{RANGE}{value}")));
-        }
-        Ok(Value::from(value))
+        self.integer(i128::from(value), value as f64)
     }
 
     fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
-        Err(E::custom(format!("{FRACTION}{value}")))
+        let exact = self
+            .next_number()
+            .and_then(|text| text.parse::<f64>().ok())
+            .unwrap_or(value);
+        serde_json::Number::from_f64(exact)
+            .map(Value::Number)
+            .ok_or_else(|| E::custom(format!("{RANGE}{value}")))
     }
 
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Value, E> {
@@ -255,7 +288,7 @@ impl<'de> Visitor<'de> for StrictValue {
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Value, A::Error> {
         let mut items = Vec::new();
-        while let Some(item) = sequence.next_element_seed(StrictValue)? {
+        while let Some(item) = sequence.next_element_seed(self)? {
             items.push(item);
         }
         Ok(Value::Array(items))
@@ -264,7 +297,7 @@ impl<'de> Visitor<'de> for StrictValue {
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
         let mut members = Map::new();
         while let Some(key) = map.next_key::<String>()? {
-            let member = map.next_value_seed(StrictValue)?;
+            let member = map.next_value_seed(self)?;
             if members.insert(key.clone(), member).is_some() {
                 return Err(de::Error::custom(format!("{DUPLICATE}{key}")));
             }
@@ -315,16 +348,151 @@ fn write_value(value: &Value, out: &mut Vec<u8>) -> Result<(), CanonicalError> {
 }
 
 fn write_number(number: &serde_json::Number, out: &mut Vec<u8>) -> Result<(), CanonicalError> {
-    match integer_in_range(number) {
-        Some(value) => {
-            out.extend_from_slice(value.to_string().as_bytes());
-            Ok(())
-        }
-        None if number.as_u64().is_some() || number.as_i64().is_some() => {
-            Err(CanonicalError::OutOfRange(number.to_string()))
-        }
-        None => Err(CanonicalError::NotAnInteger(number.to_string())),
+    // Integers within ±2⁵³ are exact doubles, and ECMAScript prints them as plain integers.
+    if let Some(value) = integer_in_range(number) {
+        out.extend_from_slice(value.to_string().as_bytes());
+        return Ok(());
     }
+    // A wider integer is written only when its double is exactly it: anything else would be a
+    // number silently changed on the way to its signature.
+    let integer = number
+        .as_u64()
+        .map(i128::from)
+        .or_else(|| number.as_i64().map(i128::from));
+    let double = number
+        .as_f64()
+        .filter(|double| double.is_finite())
+        .ok_or_else(|| CanonicalError::OutOfRange(number.to_string()))?;
+    if let Some(integer) = integer
+        && double as i128 != integer
+    {
+        return Err(CanonicalError::OutOfRange(number.to_string()));
+    }
+    out.extend_from_slice(ecmascript(double).as_bytes());
+
+    Ok(())
+}
+
+/// A double as ECMAScript's `Number.prototype.toString` writes it, which RFC 8785 makes canonical.
+///
+/// The shortest digits that read back to the same double come from the standard library's
+/// exponent formatting, which is shortest round-trip; what is applied here is ECMAScript's choice
+/// of notation for those digits (ECMA-262, Number::toString, steps 6 to 12).
+fn ecmascript(double: f64) -> String {
+    if double == 0.0 {
+        // Negative zero included: ECMAScript writes both as `0`.
+        return "0".to_owned();
+    }
+    let sign = if double < 0.0 { "-" } else { "" };
+    let magnitude = double.abs();
+    let shortest = format!("{magnitude:e}");
+    // The shortest round trip settles how many digits; which digits, when the double lies exactly
+    // halfway between two candidates of that length, ECMAScript settles as the even one. The
+    // fixed-precision formatting rounds the exact value half to even, so it is asked for the same
+    // number of digits and kept when it still reads back to the same double.
+    let length = shortest
+        .split_once('e')
+        .map_or(shortest.len(), |(mantissa, _)| {
+            mantissa.chars().filter(char::is_ascii_digit).count()
+        });
+    let even = format!(
+        "{magnitude:.precision$e}",
+        precision = length.saturating_sub(1)
+    );
+    let scientific = if even.parse::<f64>().ok() == Some(magnitude) {
+        even
+    } else {
+        shortest
+    };
+    let (mantissa, exponent) = scientific
+        .split_once('e')
+        .unwrap_or((scientific.as_str(), "0"));
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    // ECMAScript's `n`: where the decimal point falls relative to the digits.
+    let point = exponent + 1;
+    let count = digits.len() as i32;
+
+    let body = if count <= point && point <= 21 {
+        format!("{digits}{}", "0".repeat((point - count) as usize))
+    } else if 0 < point && point <= 21 {
+        let (whole, fraction) = digits.split_at(point as usize);
+        format!("{whole}.{fraction}")
+    } else if -6 < point && point <= 0 {
+        format!("0.{}{digits}", "0".repeat((-point) as usize))
+    } else {
+        let shown = point - 1;
+        let exponent = if shown >= 0 {
+            format!("e+{shown}")
+        } else {
+            format!("e-{}", -shown)
+        };
+        match digits.split_at(1) {
+            (first, "") => format!("{first}{exponent}"),
+            (first, rest) => format!("{first}.{rest}{exponent}"),
+        }
+    };
+
+    format!("{sign}{body}")
+}
+
+/// Every number's text, in document order — refusing an integer, a number written without
+/// fraction or exponent, that does not read back as written: its double prints other digits, so
+/// it carries precision beyond IEEE double.
+///
+/// Done on the text, before serde_json reads it, because serde_json keeps the value and not the
+/// spelling: `18446744073709551616` reaches a visitor as a double, indistinguishable from
+/// `1.8446744073709552e19`. `-0` is the one integer spelling allowed to print differently: it is
+/// zero, read as zero. Text that is not JSON is left to serde_json to refuse.
+fn number_tokens(bytes: &[u8]) -> Result<Vec<String>, CanonicalError> {
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    let mut in_string = false;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if in_string {
+            match byte {
+                b'\\' => index += 1,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            index += 1;
+            continue;
+        }
+        if byte == b'"' {
+            in_string = true;
+            index += 1;
+            continue;
+        }
+        if byte == b'-' || byte.is_ascii_digit() {
+            let start = index;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_digit() || b"+-.eE".contains(&bytes[index]))
+            {
+                index += 1;
+            }
+            let token = &bytes[start..index];
+            tokens.push(String::from_utf8_lossy(token).into_owned());
+            // Up to fifteen digits every integer is an exact double and prints as written.
+            let integer = !token.iter().any(|byte| b".eE".contains(byte));
+            let digits = token.iter().filter(|byte| byte.is_ascii_digit()).count();
+            if integer && digits > 15 && token != b"-0" {
+                let text = std::str::from_utf8(token).unwrap_or_default();
+                let reads_back = text
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|double| double.is_finite())
+                    .is_some_and(|double| ecmascript(double) == text);
+                if !reads_back {
+                    return Err(CanonicalError::OutOfRange(text.to_owned()));
+                }
+            }
+            continue;
+        }
+        index += 1;
+    }
+
+    Ok(tokens)
 }
 
 fn write_string(text: &str, out: &mut Vec<u8>) {
@@ -398,12 +566,11 @@ mod tests {
     }
 
     #[test]
-    fn test_a_fractional_number_is_refused_rather_than_printed() {
-        let value = json!({ "latency": 1.5 });
-
+    fn test_a_fraction_is_written_as_ecmascript_writes_it() {
+        assert_eq!(canonical(&json!({ "latency": 1.5 })), r#"{"latency":1.5}"#);
         assert_eq!(
-            canonicalize(&value),
-            Err(CanonicalError::NotAnInteger("1.5".to_owned()))
+            canonical(&json!([0.1, -0.0, 1e21, 1e-7, 123e-20])),
+            "[0.1,0,1e+21,1e-7,1.23e-18]"
         );
     }
 
@@ -453,18 +620,14 @@ mod tests {
 
     #[test]
     fn test_non_canonical_numbers_and_texts_are_refused_on_read() {
-        assert_eq!(
-            parse_strict(b"1.0"),
-            Err(CanonicalError::NotAnInteger("1".to_owned()))
-        );
-        assert!(matches!(
-            parse_strict(b"1e2"),
-            Err(CanonicalError::NotAnInteger(_))
-        ));
-        assert!(matches!(
-            parse_strict(b"-0"),
-            Err(CanonicalError::NotAnInteger(_))
-        ));
+        // A number spelled other than canonically reads as its value, and fails byte identity.
+        for spelling in [&b"1.0"[..], b"1e2", b"-0", b"4.50"] {
+            assert!(parse_strict(spelling).is_ok());
+            assert_eq!(
+                decode_canonical(spelling),
+                Err(CanonicalError::NotCanonical)
+            );
+        }
         assert!(matches!(
             parse_strict(b"9007199254740993"),
             Err(CanonicalError::OutOfRange(_))

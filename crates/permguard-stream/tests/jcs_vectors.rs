@@ -32,7 +32,6 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 
 fn error_name(error: &CanonicalError) -> &'static str {
     match error {
-        CanonicalError::NotAnInteger(_) => "NotAnInteger",
         CanonicalError::OutOfRange(_) => "OutOfRange",
         CanonicalError::DuplicateName(_) => "DuplicateName",
         CanonicalError::Syntax(_) => "Syntax",
