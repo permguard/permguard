@@ -75,6 +75,19 @@ pub const SETTING_PUBLIC_GRPC_ADDR: &str = "PERMGUARD_PUBLIC_GRPC_ADDR";
 pub const SETTING_PUBLIC_GRPC_ENABLED: &str = "PERMGUARD_PUBLIC_GRPC_ENABLED";
 
 /// Runtime setting key for the telemetry listen address.
+///
+/// # Access, retention and privacy
+///
+/// The listener is authenticated or network-scoped: bind it to loopback, give it TLS with
+/// `PERMGUARD_TELEMETRY_TLS_CERT` and `PERMGUARD_TELEMETRY_TLS_KEY`, or restrict who reaches it at
+/// the network (the Helm chart's `networkPolicy.telemetry.from`). A listener reachable beyond the
+/// host without TLS is reported at startup.
+///
+/// What it serves holds no tenant data by construction: metric labels come from a closed registry
+/// with no tenant, resource, principal, request, stream or policy identifier, and the series are
+/// aggregates. The process keeps current values only, in memory, and holds no history; retention
+/// is the scraper's, and a deployment sets it in its monitoring system. Logs carry zone and ledger
+/// ids, never their names, and never payloads, credentials, proofs or policy text.
 pub const SETTING_TELEMETRY_ADDR: &str = "PERMGUARD_TELEMETRY_ADDR";
 
 /// Runtime setting key for the URL the Server Host operations surface advertises.

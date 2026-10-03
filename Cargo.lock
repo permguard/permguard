@@ -2452,6 +2452,7 @@ dependencies = [
  "tonic-prost-build",
  "tower",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2617,6 +2618,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "tracing-subscriber",
  "x509-parser",
 ]
 

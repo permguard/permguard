@@ -26,6 +26,7 @@ pub mod codes;
 pub mod config;
 pub mod config_file;
 pub mod config_section;
+pub mod correlation;
 pub mod decisions;
 pub mod domains;
 pub mod error;
@@ -62,7 +63,7 @@ pub use identity::ProductIdentity;
 pub use keys::{Jwk, JwkSet, KEY_SET_MAX_AGE, KeyId, KeyManager, KeyState, Maintenance, Signature};
 pub use limits::{Limits, PeerBlock};
 pub use logging::{LogFormat, LogLevel};
-pub use metrics::{Kind, Label, Metric, Metrics, Reading, Recorder, Sample};
+pub use metrics::{Aggregate, Kind, Label, Metric, Metrics, Reading, Recorder, Sample};
 pub use peer::{AllowedPeer, PeerIdentity};
 pub use pseudonym::Pseudonymizer;
 pub use realm::{

@@ -15,7 +15,7 @@ use permguard_core::metrics::{Metric, SECONDS};
 /// Occurrences submitted, by zone, ledger and outcome: `decided`, `accepted`, `refused`.
 pub const SUBMISSIONS: Metric = Metric::counter(
     "permguard_temporal_submissions_total",
-    "Temporal event submissions, by zone, ledger and outcome.",
+    "Temporal event submissions, by outcome.",
 );
 
 /// Submissions that never reached the journal, by why.
@@ -51,7 +51,7 @@ pub const APPLY_SECONDS: Metric = Metric::histogram(
 /// Retries recognised as the occurrence already recorded, answered from what was stored.
 pub const IDEMPOTENT: Metric = Metric::counter(
     "permguard_temporal_idempotent_total",
-    "Submissions recognised as an already-recorded occurrence, by zone and ledger.",
+    "Submissions recognised as an already-recorded occurrence.",
 );
 
 /// One event id carrying two different occurrences. Never zero for long without a reason.
@@ -60,16 +60,10 @@ pub const CONFLICTS: Metric = Metric::counter(
     "Submissions whose event id was already recorded with different content.",
 );
 
-/// Where each ledger's journal stands: `durable`, `signed`, `acknowledged`, `oldest_retained`.
-pub const WATERMARK: Metric = Metric::gauge(
-    "permguard_temporal_watermark",
-    "The sequence each of a ledger's event watermarks stands at.",
-);
-
 /// How many bytes one ledger's journal holds.
 pub const JOURNAL_BYTES: Metric = Metric::gauge(
     "permguard_temporal_journal_bytes",
-    "Bytes held by a ledger's event journal.",
+    "Bytes every ledger's event journal holds, together.",
 );
 
 /// Shipping rounds, by outcome: `ok`, `out_of_order`, `deferred`, `rejected`.
@@ -85,13 +79,13 @@ pub const SHIPPED: Metric = Metric::counter(
 /// submissions start failing closed — because the alternative is discarding temporal history.
 pub const BACKLOG: Metric = Metric::gauge(
     "permguard_temporal_backlog_records",
-    "Durable event records the control plane has not yet acknowledged, by zone and ledger.",
+    "Durable event records the control plane has not yet acknowledged, across every ledger.",
 );
 
 /// When a batch last landed, as seconds since the epoch.
 pub const LAST_SHIPPED: Metric = Metric::gauge(
     "permguard_temporal_last_shipped_seconds",
-    "When an event batch last landed on the control plane, by zone and ledger.",
+    "The earliest, across ledgers, of when an event batch last landed on the control plane, in Unix seconds; 0 while no ledger has shipped.",
 );
 
 /// Import rounds, by outcome: `ok`, `quarantined`.
@@ -103,7 +97,7 @@ pub const IMPORTS: Metric = Metric::counter(
 /// Records imported from other planes, by zone and ledger.
 pub const IMPORTED: Metric = Metric::counter(
     "permguard_temporal_imported_records_total",
-    "Event records imported from other planes, by zone and ledger.",
+    "Event records imported from other planes.",
 );
 
 /// Times a subscription fell behind what the control plane still holds.
@@ -124,7 +118,7 @@ pub const IMPORT_GAPS: Metric = Metric::counter(
 /// operator needs to see the number in both modes.
 pub const IMPORT_GAPS_OPEN: Metric = Metric::gauge(
     "permguard_temporal_import_gaps_open",
-    "Unresolved holes in an imported history, by zone and ledger.",
+    "Unresolved holes across every imported history.",
 );
 
 /// How stale the imported history is, in seconds.
@@ -133,7 +127,7 @@ pub const IMPORT_GAPS_OPEN: Metric = Metric::gauge(
 /// deployment can see what it would be committing to before it commits to it.
 pub const IMPORT_STALENESS: Metric = Metric::gauge(
     "permguard_temporal_import_staleness_seconds",
-    "How long ago an import subscription last read successfully, by zone and ledger.",
+    "The longest time any import subscription has gone without a successful read.",
 );
 
 /// `fsync`s performed on the event journals, by zone and ledger.
@@ -144,7 +138,7 @@ pub const IMPORT_STALENESS: Metric = Metric::gauge(
 /// never acknowledged before the flush covering it returned.
 pub const FLUSHES: Metric = Metric::counter(
     "permguard_temporal_flushes_total",
-    "Journal flushes performed, by zone and ledger.",
+    "Journal flushes performed.",
 );
 
 /// How many records one flush covered.

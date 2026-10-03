@@ -91,9 +91,11 @@ async fn answer(
     headers: &HeaderMap,
     body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
+    // Bounded by the rule every surface applies: it is echoed and kept in the decision record.
     let request_id = headers
         .get(REQUEST_ID)
         .and_then(|value| value.to_str().ok())
+        .and_then(permguard_core::correlation::admitted)
         .map(ToOwned::to_owned);
     // The trace this request belongs to, when the caller propagated one. A
     // header, so it is read here and not in the decision path.

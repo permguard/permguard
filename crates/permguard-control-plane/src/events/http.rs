@@ -42,6 +42,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
+use permguard_core::metrics::labels;
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
 use permguard_stream::{CursorKey, Window};
 
@@ -337,17 +338,20 @@ impl EventFacade {
             Ok(Accepted::Ok { stored, .. }) => {
                 self.metrics.count(
                     &measure::BATCHES,
-                    &[("outcome", if *stored > 0 { "accepted" } else { "replayed" })],
+                    &[(
+                        labels::OUTCOME,
+                        if *stored > 0 { "accepted" } else { "replayed" },
+                    )],
                 );
                 self.metrics.add(&measure::RECORDS, &[], *stored as f64);
             }
             Ok(Accepted::OutOfOrder { .. }) => {
                 self.metrics
-                    .count(&measure::BATCHES, &[("outcome", "out_of_order")]);
+                    .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
             }
             Err(refused) => {
                 self.metrics
-                    .count(&measure::BATCHES, &[("outcome", "refused")]);
+                    .count(&measure::BATCHES, &[(labels::OUTCOME, "refused")]);
                 if matches!(refused, Refused::Fork { .. }) {
                     self.metrics.count(&measure::FORKS, &[]);
                 }
@@ -368,26 +372,32 @@ impl EventFacade {
         let answered = read::read(&self.store, scope, filters, &self.cursor_key, window);
         match &answered {
             Ok(page) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "ok")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
+                );
                 self.metrics.add(
                     &measure::EXAMINED,
-                    &[("scope", kind)],
+                    &[(labels::SCOPE, kind)],
                     page.coverage.examined as f64,
                 );
                 self.metrics.add(
                     &measure::RETURNED,
-                    &[("scope", kind)],
+                    &[(labels::SCOPE, kind)],
                     page.records.len() as f64,
                 );
             }
             Err(read::ReadError::Expired { .. }) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "expired")],
+                );
             }
             Err(_) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "refused")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
+                );
             }
         }
 

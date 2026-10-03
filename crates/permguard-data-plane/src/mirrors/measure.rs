@@ -34,41 +34,34 @@ pub const ROUND_SECONDS: Metric = Metric::histogram(
 /// `unavailable` until something changes.
 pub const WARMED: Metric = Metric::counter(
     "permguard_sync_warmed_total",
-    "Mirrors prepared for serving after a sync, by zone, ledger and outcome.",
+    "Mirrors prepared for serving after a sync, by outcome.",
 );
 
 /// Per-mirror attempts, by outcome: `ok`, `unchanged`, `failed`, `timeout`.
 pub const MIRRORS: Metric = Metric::counter(
     "permguard_sync_mirrors_total",
-    "Mirror attempts, by zone, ledger and outcome.",
+    "Mirror attempts, by outcome.",
 );
 
 /// How long one mirror took — the number that shows a slow ledger before its
 /// timeout starts firing.
 pub const MIRROR_SECONDS: Metric = Metric::histogram(
     "permguard_sync_mirror_seconds",
-    "How long one mirror took, by zone and ledger.",
+    "How long one mirror took.",
     SECONDS,
 );
 
 /// Objects fetched, and bytes as they rode the wire.
 pub const FETCHED_OBJECTS: Metric = Metric::counter(
     "permguard_sync_fetched_objects_total",
-    "Objects fetched into mirrors, by zone and ledger.",
+    "Objects fetched into mirrors.",
 );
 
-/// Where each mirror stands: the ref counter it last accepted. A gauge that
-/// stops moving while the control plane's counter climbs is the whole story.
-pub const MIRROR_COUNTER: Metric = Metric::gauge(
-    "permguard_sync_mirror_counter",
-    "The ref counter each mirror last accepted, by zone and ledger.",
-);
-
-/// How long ago a mirror last completed a round, in seconds. Freshness, as a
-/// number a page can be written against.
+/// How long ago the stalest mirror last completed a round, in seconds. Freshness, as a number a
+/// page can be written against: the worst mirror is the one a page is about.
 pub const MIRROR_AGE: Metric = Metric::gauge(
     "permguard_sync_mirror_age_seconds",
-    "Seconds since each mirror last synchronized, by zone and ledger.",
+    "Seconds since the stalest mirror last synchronized.",
 );
 
 /// How many mirrors this plane keeps, and how many zones they belong to.
@@ -79,19 +72,10 @@ pub const ZONES_HELD: Metric = Metric::gauge(
     "Zones this plane holds mirrors for.",
 );
 
-/// Ledgers per zone — what makes one zone the busy one on a dashboard.
-pub const ZONE_LEDGERS: Metric =
-    Metric::gauge("permguard_sync_zone_ledgers", "Mirrors held, by zone.");
-
-/// Bytes on the volume, per mirror and per zone: the map of who is occupying
-/// the disk, which is the question a full volume asks in retrospect.
+/// Bytes every mirror occupies on the volume, together.
 pub const MIRROR_BYTES: Metric = Metric::gauge(
     "permguard_sync_mirror_bytes",
-    "Bytes one mirror occupies on the volume, by zone and ledger.",
-);
-pub const ZONE_BYTES: Metric = Metric::gauge(
-    "permguard_sync_zone_bytes",
-    "Bytes all mirrors of a zone occupy on the volume, by zone.",
+    "Bytes every mirror occupies on the volume.",
 );
 
 /// Mirrors removed because they are no longer followed, or no longer exist.

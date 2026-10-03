@@ -57,9 +57,17 @@ impl Mirror {
             && (self.identity.ledger_name == ledger || self.identity.ledger_id == ledger)
     }
 
-    /// How this mirror reads in a log line and a metric label.
-    pub fn label(&self) -> String {
+    /// How this mirror reads to a person: by its zone and ledger names. For answers to an authorized
+    /// caller and the audit channel only — never a log line or a metric label.
+    pub fn display_name(&self) -> String {
         format!("{}/{}", self.identity.zone_name, self.identity.ledger_name)
+    }
+
+    /// The mirror as a log names it: by its zone and ledger ids, never by their names, which are
+    /// tenant identifiers P10 keeps out of logs. [`Self::display_name`] is for answers to an authorized
+    /// caller.
+    pub fn log_id(&self) -> String {
+        format!("{}/{}", self.identity.zone_id, self.identity.ledger_id)
     }
 }
 
@@ -218,7 +226,7 @@ mod tests {
             identity("acme", "main-ledger")
         );
         assert_eq!(
-            mirrors(&root)[0].label(),
+            mirrors(&root)[0].display_name(),
             "acme/main-ledger",
             "labels read as a person wrote them"
         );

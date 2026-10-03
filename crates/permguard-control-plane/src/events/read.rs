@@ -875,7 +875,12 @@ mod tests {
 
     /// A catalog holding one zone and one ledger, so a test can ask for either form.
     pub(super) fn catalog(tag: &str) -> (std::sync::Arc<dyn Catalog>, String, String) {
-        let root = std::env::temp_dir().join(format!("permguard-scope-{tag}"));
+        // The process and thread in the name: two runs of the suite at once must not share a root.
+        let root = std::env::temp_dir().join(format!(
+            "permguard-scope-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("the catalog root is created");
 

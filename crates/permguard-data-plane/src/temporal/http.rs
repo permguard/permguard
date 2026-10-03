@@ -73,9 +73,11 @@ async fn submit(
     headers: HeaderMap,
     body: Result<Json<SubmitRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
+    // Bounded by the rule every surface applies: it is echoed and kept in the decision record.
     let request_id = headers
         .get(REQUEST_ID)
         .and_then(|value| value.to_str().ok())
+        .and_then(permguard_core::correlation::admitted)
         .map(ToOwned::to_owned);
 
     let Json(request) = match body {

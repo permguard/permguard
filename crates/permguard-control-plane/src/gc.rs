@@ -63,13 +63,13 @@ const COMPONENT: &str = "control-plane";
 /// Objects removed, by zone and ledger.
 pub const REMOVED: Metric = Metric::counter(
     "permguard_gc_objects_removed_total",
-    "Objects removed because nothing referenced them, by zone and ledger.",
+    "Objects removed because nothing referenced them.",
 );
 
 /// Bytes reclaimed.
 pub const RECLAIMED: Metric = Metric::counter(
     "permguard_gc_bytes_reclaimed_total",
-    "Bytes reclaimed by removing unreferenced objects, by zone and ledger.",
+    "Bytes reclaimed by removing unreferenced objects.",
 );
 
 /// Objects that are unreachable and still inside the grace period — the ones
@@ -274,6 +274,7 @@ impl Sweep {
             }
         };
 
+        let mut listed = std::collections::BTreeSet::new();
         for zone in &zones {
             let ledgers = match self.catalog.list_ledgers(&Selector::Id(zone.id.clone())) {
                 Ok(ledgers) => ledgers,
@@ -281,7 +282,7 @@ impl Sweep {
                     warn!(
                         event.name = "gc.zone_failed",
                         component = COMPONENT,
-                        zone = zone.name.as_str(),
+                        zone = zone.id.as_str(),
                         error = %error,
                         "a zone's ledgers could not be listed"
                     );
@@ -291,9 +292,10 @@ impl Sweep {
             };
             for ledger in &ledgers {
                 outcome.ledgers += 1;
+                listed.insert(format!("{}/{}", zone.id, ledger.id));
                 let directory = self.root.join(&zone.id).join("ledgers").join(&ledger.id);
                 let store = FileObjectStore::new(&directory);
-                match self.sweep_ledger(&store, &zone.name, &ledger.name) {
+                match self.sweep_ledger(&store, &zone.id, &ledger.id) {
                     Ok(swept) => {
                         outcome.removed += swept.removed;
                         outcome.reclaimed += swept.reclaimed;
@@ -304,8 +306,8 @@ impl Sweep {
                         warn!(
                             event.name = "gc.ledger_failed",
                             component = COMPONENT,
-                            zone = zone.name.as_str(),
-                            ledger = ledger.name.as_str(),
+                            zone = zone.id.as_str(),
+                            ledger = ledger.id.as_str(),
                             error = %error,
                             "this ledger was left exactly as it was"
                         );
@@ -314,7 +316,20 @@ impl Sweep {
             }
         }
 
-        self.metrics.count(&SWEEPS, &[("outcome", outcome.label())]);
+        // A ledger the catalog no longer lists stops counting toward what is retained. Only after a
+        // listing that reached every zone: a zone that could not be listed is not evidence that its
+        // ledgers are gone.
+        if outcome.skipped == 0 {
+            self.metrics
+                .retain_aggregated(&RETAINED, permguard_core::Aggregate::Sum, |resource| {
+                    listed.contains(resource)
+                });
+        }
+
+        self.metrics.count(
+            &SWEEPS,
+            &[(permguard_core::metrics::labels::OUTCOME, outcome.label())],
+        );
         self.metrics
             .observe(&SWEEP_SECONDS, &[], started.elapsed().as_secs_f64());
 
@@ -323,14 +338,14 @@ impl Sweep {
 
     /// One ledger, with what a service adds around the sweep: labels, metrics
     /// and a line in the log.
+    /// `zone` and `ledger` are ids: they key the retained-objects aggregate and name the ledger in the
+    /// log, where a name would be a tenant identifier.
     fn sweep_ledger(&self, store: &FileObjectStore, zone: &str, ledger: &str) -> Result<Swept> {
-        let labels = [("zone", zone), ("ledger", ledger)];
         let swept = sweep_once(store, self.grace)?;
 
         if swept.removed > 0 {
-            self.metrics.add(&REMOVED, &labels, swept.removed as f64);
-            self.metrics
-                .add(&RECLAIMED, &labels, swept.reclaimed as f64);
+            self.metrics.add(&REMOVED, &[], swept.removed as f64);
+            self.metrics.add(&RECLAIMED, &[], swept.reclaimed as f64);
             info!(
                 event.name = "gc.ledger_swept",
                 component = COMPONENT,
@@ -341,7 +356,12 @@ impl Sweep {
                 "unreferenced objects were reclaimed"
             );
         }
-        self.metrics.set(&RETAINED, &labels, swept.retained as f64);
+        self.metrics.set_aggregated(
+            &RETAINED,
+            permguard_core::Aggregate::Sum,
+            &format!("{zone}/{ledger}"),
+            swept.retained as f64,
+        );
 
         Ok(swept)
     }

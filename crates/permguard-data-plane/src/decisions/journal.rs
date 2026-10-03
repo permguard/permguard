@@ -35,6 +35,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Condvar, Mutex};
 
 use permguard_core::Metrics;
+use permguard_core::metrics::labels;
 use permguard_decisions::record::{
     ActionRef, Body, Build, Commitments, DecisionBody, DiscontinuityBody, Inputs, Lost, MarkerBody,
     Party, Predecessor, Reason, Record, Sampling, StoreRef, Stream, Trace, VERSION,
@@ -522,12 +523,12 @@ impl Journal {
         let (seq, already) = self.write_decision(decided)?;
         if already {
             self.metrics
-                .count(&measure::WRITTEN, &[("kind", "decision_retry")]);
+                .count(&measure::WRITTEN, &[(labels::KIND, "decision_retry")]);
 
             return Ok(Written::AlreadyRecorded { seq });
         }
         self.metrics
-            .count(&measure::WRITTEN, &[("kind", "decision")]);
+            .count(&measure::WRITTEN, &[(labels::KIND, "decision")]);
 
         Ok(Written::Recorded { seq })
     }
@@ -766,8 +767,9 @@ impl Journal {
 
         self.metrics.count(&measure::DROPPED, &[]);
         self.metrics
-            .count(&measure::DISCONTINUITIES, &[("reason", reason)]);
-        self.metrics.count(&measure::WRITTEN, &[("kind", "marker")]);
+            .count(&measure::DISCONTINUITIES, &[(labels::REASON, reason)]);
+        self.metrics
+            .count(&measure::WRITTEN, &[(labels::KIND, "marker")]);
         self.publish();
         warn!(
             event.name = "decisions.discontinued",
@@ -792,7 +794,8 @@ impl Journal {
             self.group.settled(self.group.generation(), seq, Ok(()));
         }
         self.publish();
-        self.metrics.count(&measure::WRITTEN, &[("kind", "marker")]);
+        self.metrics
+            .count(&measure::WRITTEN, &[(labels::KIND, "marker")]);
         info!(
             event.name = "decisions.marked",
             component = COMPONENT,

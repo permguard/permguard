@@ -1,7 +1,7 @@
 {
   "uid": "permguard-data-plane",
-  "title": "Permguard \u00b7 Data plane",
-  "description": "The data plane: the decisions it answers, how fast, and out of what it holds in memory \u2014 beside the synchronization loop that keeps that memory current. Two questions on one page: is it answering, and is what it answers from current.",
+  "title": "Permguard · Data plane",
+  "description": "The data plane: the decisions it answers, how fast, and out of what it holds in memory — beside the synchronization loop that keeps that memory current. Two questions on one page: is it answering, and is what it answers from current.",
   "tags": [
     "permguard",
     "data-plane"
@@ -94,7 +94,7 @@
     {
       "type": "stat",
       "title": "Oldest mirror",
-      "description": "Seconds since the least recently synchronized mirror last completed a round \u2014 the freshness number to page on.",
+      "description": "Seconds since the least recently synchronized mirror last completed a round — the freshness number to page on.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -152,7 +152,7 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "sum(permguard_sync_zone_bytes)",
+          "expr": "permguard_sync_mirror_bytes",
           "legendFormat": "bytes",
           "refId": "A"
         }
@@ -254,7 +254,7 @@
     {
       "type": "stat",
       "title": "Rounds skipped",
-      "description": "Ticks skipped because the previous round was still working \u2014 a cadence slower than configured.",
+      "description": "Ticks skipped because the previous round was still working — a cadence slower than configured.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -385,7 +385,7 @@
     {
       "type": "timeseries",
       "title": "Round duration",
-      "description": "How long a whole round takes, discovery included \u2014 against the interval it has to fit inside.",
+      "description": "How long a whole round takes, discovery included — against the interval it has to fit inside.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -457,8 +457,8 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (zone, ledger, le) (rate(permguard_sync_mirror_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{zone}}/{{ledger}}",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(permguard_sync_mirror_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "mirror duration (p95)",
           "refId": "A"
         }
       ],
@@ -484,146 +484,9 @@
       }
     },
     {
-      "type": "bargauge",
-      "title": "Ledgers per zone",
-      "description": "Which zone carries the most ledgers on this plane.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "permguard-prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 0,
-        "y": 20
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_sync_zone_ledgers",
-          "legendFormat": "{{zone}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "displayMode": "gradient",
-        "orientation": "horizontal"
-      }
-    },
-    {
-      "type": "bargauge",
-      "title": "Disk per zone",
-      "description": "Which zone occupies the most of the volume \u2014 the question a full disk asks in retrospect.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "permguard-prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 8,
-        "y": 20
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_sync_zone_bytes",
-          "legendFormat": "{{zone}}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "displayMode": "gradient",
-        "orientation": "horizontal"
-      }
-    },
-    {
-      "type": "table",
-      "title": "Mirrors, in detail",
-      "description": "Every mirror: the counter it stands at, its age, and what it occupies.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "permguard-prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 20
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_sync_mirror_counter",
-          "legendFormat": "counter",
-          "refId": "A",
-          "format": "table",
-          "instant": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_sync_mirror_age_seconds",
-          "legendFormat": "age",
-          "refId": "B",
-          "format": "table",
-          "instant": true
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_sync_mirror_bytes",
-          "legendFormat": "bytes",
-          "refId": "C",
-          "format": "table",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
-    },
-    {
       "type": "timeseries",
       "title": "Objects fetched",
-      "description": "Objects pulled into mirrors \u2014 the shape of policy actually changing.",
+      "description": "Objects pulled into mirrors — the shape of policy actually changing.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -640,8 +503,8 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "sum by (zone, ledger) (rate(permguard_sync_fetched_objects_total[$__rate_interval]))",
-          "legendFormat": "{{zone}}/{{ledger}}",
+          "expr": "sum(rate(permguard_sync_fetched_objects_total[$__rate_interval]))",
+          "legendFormat": "objects fetched",
           "refId": "A"
         }
       ],
@@ -714,7 +577,7 @@
     },
     {
       "type": "row",
-      "title": "Decisions \u2014 the reason this plane exists",
+      "title": "Decisions — the reason this plane exists",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1128,7 +991,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Decisions per ledger",
+      "title": "Decisions",
       "description": "Which ledgers are actually asked about, and how much.",
       "datasource": {
         "type": "prometheus",
@@ -1146,9 +1009,9 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "sum by (zone, ledger) (rate(permguard_authz_decisions_total[$__rate_interval]))",
+          "expr": "sum(rate(permguard_authz_decisions_total[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "{{zone}}/{{ledger}}"
+          "legendFormat": "decisions"
         }
       ],
       "fieldConfig": {
@@ -1175,7 +1038,7 @@
     {
       "type": "timeseries",
       "title": "Refusals by reason",
-      "description": "malformed \u00b7 ledger_not_served \u00b7 ledger_empty \u00b7 ledger_incompatible \u00b7 ledger_damaged \u00b7 profile_unknown.",
+      "description": "malformed · ledger_not_served · ledger_empty · ledger_incompatible · ledger_damaged · profile_unknown.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -1220,8 +1083,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Evaluation time by partition",
-      "description": "Where the time goes inside a decision, per partition \u2014 the number that separates a large policy set from a large request.",
+      "title": "Evaluation time (p95)",
+      "description": "Where the time goes inside a decision, per partition — the number that separates a large policy set from a large request.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -1238,9 +1101,9 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, zone, ledger, partition) (rate(permguard_authz_evaluation_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(permguard_authz_evaluation_seconds_bucket[$__rate_interval])))",
           "refId": "A",
-          "legendFormat": "{{zone}}/{{ledger}} {{partition}}"
+          "legendFormat": "evaluation time (p95)"
         }
       ],
       "fieldConfig": {
@@ -1284,9 +1147,9 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "sum by (zone, ledger, partition) (rate(permguard_authz_compilations_total[$__rate_interval]))",
+          "expr": "sum(rate(permguard_authz_compilations_total[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "{{zone}}/{{ledger}} {{partition}}"
+          "legendFormat": "compilations"
         }
       ],
       "fieldConfig": {
@@ -1423,7 +1286,7 @@
     {
       "type": "table",
       "title": "Ledgers this engine may not serve",
-      "description": "The load gate refused these \u2014 a language or engine range moved, or a schema is no longer satisfied. They answer 503 until the ledger changes, and retry themselves when it does.",
+      "description": "The load gate refused these — a language or engine range moved, or a schema is no longer satisfied. They answer 503 until the ledger changes, and retry themselves when it does.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -1457,7 +1320,7 @@
     {
       "type": "timeseries",
       "title": "Mirrors prepared after a sync",
-      "description": "ready \u00b7 empty \u00b7 blocked \u00b7 damaged \u2014 what happened when a freshly mirrored ledger was read for serving.",
+      "description": "ready · empty · blocked · damaged — what happened when a freshly mirrored ledger was read for serving.",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -1525,7 +1388,7 @@
         "x": 0,
         "y": 82
       },
-      "description": "Written here and not yet acknowledged durable by the control plane. Climbing and not coming back is a shipper that is not shipping \u2014 visible long before the spool fills.",
+      "description": "Written here and not yet acknowledged durable by the control plane. Climbing and not coming back is a shipper that is not shipping — visible long before the spool fills.",
       "targets": [
         {
           "datasource": {
@@ -1681,7 +1544,7 @@
         "x": 16,
         "y": 82
       },
-      "description": "Streams this plane had to end under pressure. Each one is a signed record naming what was lost and which incarnation continues \u2014 and records that will never arrive.",
+      "description": "Streams this plane had to end under pressure. Each one is a signed record naming what was lost and which incarnation continues — and records that will never arrive.",
       "targets": [
         {
           "datasource": {

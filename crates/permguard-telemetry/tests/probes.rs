@@ -106,7 +106,11 @@ async fn test_a_scrape_publishes_what_the_rest_of_the_process_recorded() {
     );
 
     let registry = std::sync::Arc::new(permguard_std::metrics::Registry::new());
-    registry.record(&SERVED, &[("outcome", "ok")], 3.0);
+    registry.record(
+        &SERVED,
+        &[(permguard_core::metrics::labels::OUTCOME, "ok")],
+        3.0,
+    );
     registry.record(&LATENCY, &[], 0.02);
 
     let (status, body) = scraped(

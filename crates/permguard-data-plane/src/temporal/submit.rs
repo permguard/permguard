@@ -211,7 +211,6 @@ impl Submitter {
                     error.to_string(),
                 )
             })?;
-        let labels = [("zone", zone.as_str()), ("ledger", ledger.as_str())];
 
         // Answered from the journal before the profile is loaded, and deliberately in that order.
         //
@@ -235,7 +234,7 @@ impl Submitter {
         )? {
             self.metrics.count(
                 &measure::SUBMISSIONS,
-                &[("outcome", "replayed"), ("zone", zone.as_str())],
+                &[(permguard_core::metrics::labels::OUTCOME, "replayed")],
             );
 
             return Ok(settled);
@@ -263,35 +262,38 @@ impl Submitter {
         // whole process shares, outside the bound the deployment configured, and health checks and
         // unrelated ledgers go unanswered behind it. On the pool it costs one permit of a bounded
         // budget, and the ceiling refuses rather than queues.
-        let staged =
-            {
-                let this = Arc::clone(self);
-                let staging = (
-                    Loaded {
-                        mirror: loaded.mirror.clone(),
-                        head: Arc::clone(&loaded.head),
-                        partitions: loaded.partitions.clone(),
-                    },
-                    temporal_event_type(request).to_owned(),
-                    zone.clone(),
-                    ledger.clone(),
-                    profile.clone(),
-                    occurrence.clone(),
-                    occurrence_kind.clone(),
-                    event,
-                );
-                self.blocking
-                .run(&labels, move || {
+        let staged = {
+            let this = Arc::clone(self);
+            let staging = (
+                Loaded {
+                    mirror: loaded.mirror.clone(),
+                    head: Arc::clone(&loaded.head),
+                    partitions: loaded.partitions.clone(),
+                },
+                temporal_event_type(request).to_owned(),
+                zone.clone(),
+                ledger.clone(),
+                profile.clone(),
+                occurrence.clone(),
+                occurrence_kind.clone(),
+                event,
+            );
+            self.blocking
+                .run(&[], move || {
                     let (loaded, event_type, zone, ledger, profile, occurrence, kind, event) =
                         staging;
 
-                    this.stage(loaded, event_type, zone, ledger, profile, occurrence, kind, event)
+                    this.stage(
+                        loaded, event_type, zone, ledger, profile, occurrence, kind, event,
+                    )
                 })
                 .await
                 .map_err(|refused| match refused {
                     crate::blocking::Refused::AtCapacity(held) => {
-                        self.metrics
-                            .count(&measure::REFUSALS, &[("reason", "at_capacity")]);
+                        self.metrics.count(
+                            &measure::REFUSALS,
+                            &[(permguard_core::metrics::labels::REASON, "at_capacity")],
+                        );
 
                         ApiError::new(
                             ErrorClass::Unavailable,
@@ -310,7 +312,7 @@ impl Submitter {
                         format!("the occurrence could not be applied: {why}"),
                     ),
                 })??
-            };
+        };
         let Decided {
             loaded,
             occurrence,
@@ -369,7 +371,7 @@ impl Submitter {
 
         self.metrics.count(
             &measure::SUBMISSIONS,
-            &[("outcome", "decided"), ("zone", zone.as_str())],
+            &[(permguard_core::metrics::labels::OUTCOME, "decided")],
         );
 
         let response = SubmitResponse {
@@ -414,8 +416,6 @@ impl Submitter {
         occurrence_kind: String,
         event: serde_json::Value,
     ) -> Result<Staged, ApiError> {
-        let labels = [("zone", zone.as_str()), ("ledger", ledger.as_str())];
-
         let addressed = self.addressed(&loaded, &profile)?;
 
         // Every partition, before anything is written. A profile may address several with
@@ -425,14 +425,13 @@ impl Submitter {
         let mut checks: Vec<Verified<'_>> = Vec::with_capacity(addressed.len());
         for (partition, engine) in &addressed {
             let checked = engine.check(&occurrence).map_err(|refused| {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", refused.code)]);
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, refused.code)],
+                );
                 debug!(
                     event.name = "temporal.event_refused",
                     component = COMPONENT,
-                    zone = zone.as_str(),
-                    ledger = ledger.as_str(),
-                    partition = partition.name.as_str(),
                     code = refused.code,
                     "an occurrence was refused before anything was recorded"
                 );
@@ -559,8 +558,13 @@ impl Submitter {
             //
             // Asked first, the failure costs nothing: no record, no sequence, no hole.
             let sequencer = self.streams.sequencer(&zone, &ledger).map_err(|error| {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", "history_unorderable")]);
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        "history_unorderable",
+                    )],
+                );
 
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -587,10 +591,10 @@ impl Submitter {
         let (written, mut record) = appended.map_err(|failed| {
             // The turn, if one was taken, is dropped with `prepared` here — the sequence is
             // released rather than stranded.
-            self.refuse_append(failed, &labels)
+            self.refuse_append(failed, &[])
         })?;
         self.metrics
-            .observe(&measure::APPEND_SECONDS, &labels, appending.as_secs_f64());
+            .observe(&measure::APPEND_SECONDS, &[], appending.as_secs_f64());
         self.publish_watermarks(&zone, &ledger);
 
         let mut recovering = false;
@@ -607,7 +611,7 @@ impl Submitter {
                 // first reply, and refusing it leaves that client with no way to learn the verdict
                 // its own occurrence produced. So the answer given the first time is given again,
                 // from disk, with nothing re-observed.
-                self.metrics.count(&measure::IDEMPOTENT, &labels);
+                self.metrics.count(&measure::IDEMPOTENT, &[]);
                 let stored = self
                     .streams
                     .record_at(&zone, &ledger, seq)
@@ -665,16 +669,13 @@ impl Submitter {
                             info!(
                                 event.name = "temporal.idempotent",
                                 component = COMPONENT,
-                                zone = zone.as_str(),
-                                ledger = ledger.as_str(),
-                                event_id = occurrence.event_id.as_str(),
                                 sequence = seq,
                                 "a retry of an occurrence this ledger already holds, answered as \
                                  it was answered the first time"
                             );
                             self.metrics.count(
                                 &measure::SUBMISSIONS,
-                                &[("outcome", "replayed"), ("zone", zone.as_str())],
+                                &[(permguard_core::metrics::labels::OUTCOME, "replayed")],
                             );
 
                             return Ok(Staged::Answered(Box::new(response)));
@@ -694,8 +695,6 @@ impl Submitter {
                     Ok(None) => warn!(
                         event.name = "temporal.outcome_missing",
                         component = COMPONENT,
-                        zone = zone.as_str(),
-                        ledger = ledger.as_str(),
                         sequence = seq,
                         "this occurrence is recorded and no answer was kept for it"
                     ),
@@ -773,8 +772,13 @@ impl Submitter {
                     // journal — which holds the record — rather than against a prefix missing it.
                     // Without this the ledger keeps answering, and answers from the hole.
                     self.invalidate_history(&zone, &ledger, &partition_key);
-                    self.metrics
-                        .count(&measure::REFUSALS, &[("reason", "history_unorderable")]);
+                    self.metrics.count(
+                        &measure::REFUSALS,
+                        &[(
+                            permguard_core::metrics::labels::REASON,
+                            "history_unorderable",
+                        )],
+                    );
 
                     ApiError::new(
                         ErrorClass::Unavailable,
@@ -810,7 +814,7 @@ impl Submitter {
                         })?;
                     self.metrics.count(
                         &measure::SUBMISSIONS,
-                        &[("outcome", "replayed"), ("zone", zone.as_str())],
+                        &[(permguard_core::metrics::labels::OUTCOME, "replayed")],
                     );
 
                     return Ok(Staged::Answered(Box::new(response)));
@@ -892,7 +896,7 @@ impl Submitter {
         drop(turn);
         self.metrics.observe(
             &measure::APPLY_SECONDS,
-            &labels,
+            &[],
             applying.elapsed().as_secs_f64(),
         );
 
@@ -900,7 +904,10 @@ impl Submitter {
             if !complete {
                 self.metrics.count(
                     &measure::REFUSALS,
-                    &[("reason", "event_application_incomplete")],
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        "event_application_incomplete",
+                    )],
                 );
 
                 return Err(ApiError::new(
@@ -915,8 +922,10 @@ impl Submitter {
                     ),
                 ));
             }
-            self.metrics
-                .count(&measure::SUBMISSIONS, &[("outcome", "accepted")]);
+            self.metrics.count(
+                &measure::SUBMISSIONS,
+                &[(permguard_core::metrics::labels::OUTCOME, "accepted")],
+            );
 
             let response = SubmitResponse {
                 outcome: Outcome::Accepted,
@@ -1071,7 +1080,6 @@ impl Submitter {
                         component = COMPONENT,
                         zone,
                         ledger,
-                        partition = partition.name.as_str(),
                         reason = message.as_str(),
                         "a partition disagreed with its loaded event contract: failing closed"
                     );
@@ -1090,7 +1098,6 @@ impl Submitter {
                             component = COMPONENT,
                             zone,
                             ledger,
-                            partition = partition.name.as_str(),
                             reason = error,
                             "a partition could not decide a durable occurrence: failing closed"
                         );
@@ -1100,7 +1107,6 @@ impl Submitter {
                             component = COMPONENT,
                             zone,
                             ledger,
-                            partition = partition.name.as_str(),
                             "a history-only event unexpectedly produced a decision: refusing to \
                              acknowledge an inconsistent history"
                         );
@@ -1234,8 +1240,13 @@ impl Submitter {
             .get("occurred_at")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("a later instant");
-        self.metrics
-            .count(&measure::REFUSALS, &[("reason", "event_out_of_order")]);
+        self.metrics.count(
+            &measure::REFUSALS,
+            &[(
+                permguard_core::metrics::labels::REASON,
+                "event_out_of_order",
+            )],
+        );
 
         Err(ApiError::new(
             ErrorClass::Conflict,
@@ -1334,8 +1345,10 @@ impl Submitter {
             // Counted, like every other refusal. A refusal no metric records is one an operator
             // meets as an unexplained failure rate: this is the path a client reusing an
             // identifier lands on, and it has to be visible as itself.
-            self.metrics
-                .count(&measure::REFUSALS, &[("reason", "event_id_conflict")]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "event_id_conflict")],
+            );
 
             return Err(ApiError::new(
                 ErrorClass::Conflict,
@@ -1355,8 +1368,13 @@ impl Submitter {
             return Ok(None);
         };
         if was_profile != profile || was_kind != kind {
-            self.metrics
-                .count(&measure::REFUSALS, &[("reason", "event_routing_conflict")]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    "event_routing_conflict",
+                )],
+            );
 
             return Err(ApiError::new(
                 ErrorClass::Conflict,
@@ -1428,9 +1446,10 @@ impl Submitter {
             )
         })?;
         let staleness = staleness_of(&state.read_at);
-        self.metrics.set(
+        self.metrics.set_aggregated(
             &measure::IMPORT_STALENESS,
-            &[("zone", zone), ("ledger", ledger)],
+            permguard_core::Aggregate::Max,
+            &format!("{zone}/{ledger}"),
             staleness.unwrap_or_default() as f64,
         );
 
@@ -1444,8 +1463,10 @@ impl Submitter {
             let bound = self.max_staleness.as_secs();
             let held = staleness.unwrap_or(u64::MAX);
             if held > bound {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", "history_stale")]);
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, "history_stale")],
+                );
 
                 return Err(ApiError::new(
                     ErrorClass::Unavailable,
@@ -1472,21 +1493,25 @@ impl Submitter {
         // notice it: a subscription that resumed past a hole reports itself perfectly fresh while
         // deciding over fewer occurrences than actually happened.
         let gaps = state.gaps.iter().filter(|gap| !gap.resolved).count();
-        if gaps > 0 {
-            self.metrics.set(
-                &measure::IMPORT_GAPS_OPEN,
-                &[("zone", zone), ("ledger", ledger)],
-                gaps as f64,
-            );
-        }
+        self.metrics.set_aggregated(
+            &measure::IMPORT_GAPS_OPEN,
+            permguard_core::Aggregate::Sum,
+            &format!("{zone}/{ledger}"),
+            gaps as f64,
+        );
         if gaps > 0
             && matches!(
                 self.consistency,
                 permguard_core::config::Consistency::SharedBounded
             )
         {
-            self.metrics
-                .count(&measure::REFUSALS, &[("reason", "history_incomplete")]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    "history_incomplete",
+                )],
+            );
             let oldest = state
                 .gaps
                 .iter()
@@ -1672,7 +1697,6 @@ impl Submitter {
                     component = COMPONENT,
                     zone,
                     ledger,
-                    partition = partition.name.as_str(),
                     code = refused.code,
                     "a partition could not absorb the history it decides against: failing closed \
                      rather than deciding against a history nobody can reproduce"
@@ -1840,7 +1864,10 @@ impl Submitter {
     /// Reads the submission: the store it names, and the occurrence it carries.
     fn read(&self, request: &SubmitRequest) -> Result<Read, ApiError> {
         let malformed = |code: &'static str, message: String| {
-            self.metrics.count(&measure::REFUSALS, &[("reason", code)]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, code)],
+            );
 
             ApiError::new(ErrorClass::Validation, code, message)
         };
@@ -2014,8 +2041,13 @@ impl Submitter {
         let lateness = i64::try_from(self.allowed_lateness.as_secs()).unwrap_or(i64::MAX);
 
         if ahead > skew {
-            self.metrics
-                .count(&measure::REFUSALS, &[("reason", "event_ahead_of_clock")]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    "event_ahead_of_clock",
+                )],
+            );
 
             return Err(ApiError::new(
                 ErrorClass::Validation,
@@ -2029,8 +2061,10 @@ impl Submitter {
             ));
         }
         if behind > lateness {
-            self.metrics
-                .count(&measure::REFUSALS, &[("reason", "event_too_late")]);
+            self.metrics.count(
+                &measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "event_too_late")],
+            );
 
             return Err(ApiError::new(
                 ErrorClass::Validation,
@@ -2048,7 +2082,7 @@ impl Submitter {
     }
 
     /// Turns an append failure into the answer a caller can act on.
-    fn refuse_append(&self, failed: Failed, labels: &[(&str, &str)]) -> ApiError {
+    fn refuse_append(&self, failed: Failed, labels: &[permguard_core::Label<'_>]) -> ApiError {
         match failed {
             Failed::Conflict { seq, stored_digest } => {
                 self.metrics.count(&measure::CONFLICTS, labels);
@@ -2074,8 +2108,10 @@ impl Submitter {
             // No `on_full: open`. A journal that cannot accept an event fails the request closed:
             // dropping it would silently change what every later decision in this ledger means.
             Failed::Journal(permguard_events::journal::JournalError::Full) => {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", "journal_full")]);
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, "journal_full")],
+                );
 
                 ApiError::new(
                     ErrorClass::Unavailable,
@@ -2088,8 +2124,13 @@ impl Submitter {
                 )
             }
             Failed::Journal(error) => {
-                self.metrics
-                    .count(&measure::REFUSALS, &[("reason", "journal_unavailable")]);
+                self.metrics.count(
+                    &measure::REFUSALS,
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        "journal_unavailable",
+                    )],
+                );
                 warn!(
                     event.name = "temporal.journal_unavailable",
                     component = COMPONENT,
@@ -2115,25 +2156,14 @@ impl Submitter {
 
     /// Publishes where this ledger's journal stands, after each append.
     fn publish_watermarks(&self, zone: &str, ledger: &str) {
-        let Ok(state) = self.streams.state(zone, ledger) else {
-            return;
-        };
-        for (name, value) in [
-            ("durable", state.durable_through),
-            ("signed", state.signed_through),
-            ("acknowledged", state.acked_through),
-            ("oldest_retained", state.oldest_retained),
-        ] {
-            self.metrics.set(
-                &measure::WATERMARK,
-                &[("zone", zone), ("ledger", ledger), ("watermark", name)],
-                value as f64,
-            );
-        }
+        // A sequence number is a position in one ledger's stream; summed or compared across
+        // ledgers it means nothing, so the watermarks stay in the journal and the backlog, which
+        // is the difference an operator acts on, is what the shipper publishes.
         if let Ok(bytes) = self.streams.bytes(zone, ledger) {
-            self.metrics.set(
+            self.metrics.set_aggregated(
                 &measure::JOURNAL_BYTES,
-                &[("zone", zone), ("ledger", ledger)],
+                permguard_core::Aggregate::Sum,
+                &format!("{zone}/{ledger}"),
                 bytes as f64,
             );
         }

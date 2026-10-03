@@ -255,8 +255,6 @@ pub fn accept(
         warn!(
             event.name = "events.rolled_back",
             component = COMPONENT,
-            zone = envelope.stream.zone.as_str(),
-            ledger = envelope.stream.ledger.as_str(),
             instance = envelope.stream.producer.instance.as_str(),
             acked = state.acked,
             dropped,
@@ -305,8 +303,6 @@ pub fn accept(
     info!(
         event.name = "events.accepted",
         component = COMPONENT,
-        zone = envelope.stream.zone.as_str(),
-        ledger = envelope.stream.ledger.as_str(),
         producer = envelope.stream.producer.id.as_str(),
         instance = envelope.stream.producer.instance.as_str(),
         first_seq = envelope.first_seq,
@@ -533,8 +529,6 @@ fn same_or_fork(
     warn!(
         event.name = "events.forked",
         component = COMPONENT,
-        zone = envelope.stream.zone.as_str(),
-        ledger = envelope.stream.ledger.as_str(),
         instance = envelope.stream.producer.instance.as_str(),
         seq,
         "two different records claim one sequence: this stream is closed permanently"

@@ -17,6 +17,32 @@ is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for dashboards and alerts: telemetry schema 2.**
+  Metric labels now come from a closed registry, and no metric carries a zone, ledger, producer stream, instance, partition or realm as a label.
+  `permguard_telemetry_schema_info{version="2"}` says which schema a process exposes.
+  Counters and histograms keep their names and lose those labels; a label value outside its registered vocabulary is recorded as `other` and counted in `permguard_metric_label_values_refused_total`.
+  Gauges that were set per ledger now read one aggregate: `permguard_sync_mirror_age_seconds` is the stalest mirror, `permguard_authz_blocked_ledgers` the number of blocked ledgers, `permguard_temporal_backlog_records`, `permguard_temporal_journal_bytes`, `permguard_temporal_import_gaps_open` and `permguard_gc_objects_retained` are totals, `permguard_temporal_import_staleness_seconds` the longest staleness and `permguard_temporal_last_shipped_seconds` the earliest last shipment.
+  `permguard_keys_active` is labelled by `issuer` (`server` or `realm`) instead of the realm's name.
+  Removed: `permguard_ledger_bytes`, `permguard_ledger_objects`, `permguard_ledger_counter`, `permguard_zone_bytes`, `permguard_zone_ledgers`, `permguard_sync_mirror_counter`, `permguard_sync_zone_ledgers`, `permguard_sync_zone_bytes`, `permguard_decisions_stream_acked` and `permguard_temporal_watermark`; `permguard_store_objects` is new.
+  The bundled dashboards and the chart's alerts follow; a dashboard of your own that groups by `zone` or `ledger` needs the same change.
+- Log records name zones and ledgers by their ids, never by their names, and no longer carry an occurrence's `event_id`, a partition's name or the detail of a refusal, which can repeat a profile the caller sent; the caller still receives the detail in the answer.
+- Log records name a request only by an id the server drew, never by the `X-Request-Id` a client sent.
+  The client's id is still echoed in `X-Request-Id`, and every answer also carries `X-Permguard-Request-Id`, the id the logs use.
+- Log records are written by a background thread through a bounded queue: a stdout nobody drains drops records, counted in `permguard_log_lines_dropped_total`, and never delays a decision.
+  Exported trace spans go through a bounded queue of 2 048 as well; a span dropped because the collector cannot keep up, or because its export failed, is counted in `permguard_trace_spans_dropped_total`.
+
+### Security
+
+- Releases are built, packaged and attested by one reusable workflow, `.github/workflows/release-build.yml`, which is the SLSA Build L3 builder their provenance names.
+  Verify a release with `--signer-workflow permguard/permguard/.github/workflows/release-build.yml`; releases up to `0.1.6` keep `release-pipeline.yml`.
+- A release is published only after the provenance of every file has been verified against this repository, the tag, the commit and the builder; images are verified as soon as they are pushed.
+  The evidence is attached to the release as `provenance-files.txt` and `provenance-images.txt`.
+- No job that compiles holds a secret or a token that can write; the policy engines are pinned exactly, built without their default features, and checked against the features Cargo resolves.
+- Every release carries `reproducibility.txt`, the verdict of an independent rebuild of the Linux and Windows binaries compared with the published archives; a release claims to be reproducible only on `reproducible: yes`.
+- The telemetry listener reports at startup when it is reachable beyond the host without TLS, naming the two ways to scope it.
+
 ### Fixed
 
 - `checkout` towards another ledger no longer keeps the previous ledger's checkpoint. The

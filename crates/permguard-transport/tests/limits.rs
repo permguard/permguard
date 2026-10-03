@@ -371,7 +371,20 @@ async fn test_every_answer_names_the_request_it_answers() {
         "two requests were given the same name"
     );
 
-    // A name the client brought is kept, so a trace that started upstream stays one trace.
+    // With nothing sent, the echoed name and the logged name are the same drawn one.
+    let answer = exchange(
+        address,
+        b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert_eq!(
+        header(&answer, "x-request-id"),
+        header(&answer, "x-permguard-request-id"),
+        "a request the client did not name is named once"
+    );
+
+    // A name the client brought is echoed, so a trace that started upstream stays one trace; the
+    // logs name the request by a name this surface drew, never by one the client chose.
     let answer = exchange(
         address,
         b"GET / HTTP/1.1\r\nHost: localhost\r\nX-Request-Id: upstream-42\r\nConnection: close\r\n\r\n",
@@ -380,8 +393,11 @@ async fn test_every_answer_names_the_request_it_answers() {
     assert_eq!(
         header(&answer, "x-request-id"),
         Some("upstream-42"),
-        "a client-supplied name was discarded"
+        "a client-supplied name was not echoed"
     );
+    let logged = header(&answer, "x-permguard-request-id").expect("the logs' name is told");
+    assert_ne!(logged, "upstream-42", "the logs took the client's name");
+    assert_eq!(logged.len(), 16, "the logs' name was not drawn: {logged}");
 
     surface
         .stop(Duration::from_secs(5))

@@ -22,6 +22,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use permguard_core::metrics::labels;
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, KeyManager, Metrics};
 use permguard_decisions::envelope::Batch;
 use permguard_stream::Window;
@@ -192,20 +193,6 @@ impl DecisionFacade {
     /// A forged batch cannot use this to make a plane re-read the world in a
     /// loop: an unattributable batch is refused either way, and the re-read is
     /// a handful of small local files.
-    /// Where this producer stream now stands, for the gauge both surfaces feed.
-    pub(crate) fn publish_acked(&self, batch: &permguard_decisions::envelope::Batch, acked: u64) {
-        if let Ok(envelope) = batch.signature.envelope() {
-            self.metrics.set(
-                &measure::ACKED,
-                &[
-                    ("pdp", envelope.stream.id.as_str()),
-                    ("instance", envelope.stream.instance.as_str()),
-                ],
-                acked as f64,
-            );
-        }
-    }
-
     pub(crate) fn reload_producers(&self) -> Vec<ingest::ProducerTrust> {
         let mut producers = Vec::new();
         for file in &self.producer_files {
@@ -284,7 +271,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
         Err(error) => {
             facade
                 .metrics
-                .count(&measure::REFUSALS, &[("reason", "malformed")]);
+                .count(&measure::REFUSALS, &[(labels::REASON, "malformed")]);
             return refuse(
                 &facade,
                 ApiError::new(
@@ -339,24 +326,20 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
         Ok(Accepted::Ok { acked, stored }) => {
             facade.metrics.count(
                 &measure::BATCHES,
-                &[("outcome", if stored == 0 { "replay" } else { "ok" })],
+                &[(labels::OUTCOME, if stored == 0 { "replay" } else { "ok" })],
             );
             for record in &batch.records {
-                if let Some((zone, ledger)) = super::store::tenancy(record) {
-                    facade.metrics.count(
-                        &measure::RECORDS,
-                        &[("zone", zone.as_str()), ("ledger", ledger.as_str())],
-                    );
+                if super::store::tenancy(record).is_some() {
+                    facade.metrics.count(&measure::RECORDS, &[]);
                 }
             }
-            facade.publish_acked(&batch, acked);
 
             (StatusCode::OK, Json(Acknowledgement { acked, stored })).into_response()
         }
         Ok(Accepted::OutOfOrder { expected_seq }) => {
             facade
                 .metrics
-                .count(&measure::BATCHES, &[("outcome", "out_of_order")]);
+                .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
 
             // Deliberately a `409`, not a `4xx` the shipper might treat as
             // fatal: nothing is wrong with the batch, the store simply needs
@@ -373,7 +356,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
         Err(refused) => {
             facade
                 .metrics
-                .count(&measure::REFUSALS, &[("reason", reason_of(&refused))]);
+                .count(&measure::REFUSALS, &[(labels::REASON, reason_of(&refused))]);
             if matches!(refused, Refused::Conflict { .. }) {
                 facade.metrics.count(&measure::CLOSED, &[]);
             }
@@ -575,9 +558,10 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
     };
     match page {
         Ok(page) => {
-            facade
-                .metrics
-                .count(&measure::READS, &[("scope", kind), ("outcome", "ok")]);
+            facade.metrics.count(
+                &measure::READS,
+                &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
+            );
 
             (StatusCode::OK, Json(page)).into_response()
         }
@@ -588,9 +572,10 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
                 requested_sequence,
             },
         ) => {
-            facade
-                .metrics
-                .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
+            facade.metrics.count(
+                &measure::READS,
+                &[(labels::SCOPE, kind), (labels::OUTCOME, "expired")],
+            );
 
             // Expected retention behaviour rather than corruption, and the answer says so — with
             // where to resume and how large the gap is, so a consumer records a gap instead of
@@ -609,9 +594,10 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
                 .into_response()
         }
         Err(error) => {
-            facade
-                .metrics
-                .count(&measure::READS, &[("scope", kind), ("outcome", "refused")]);
+            facade.metrics.count(
+                &measure::READS,
+                &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
+            );
 
             refuse(
                 &facade,

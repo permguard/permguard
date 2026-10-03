@@ -218,6 +218,9 @@ impl App {
     /// publishes liveness and readiness alone. Which registry it is, is a decision for the
     /// composition root, exactly like the audit sink and the key ring.
     pub fn with_metrics(mut self, metrics: Metrics) -> Self {
+        // The schema version is the first series: a dashboard reads which label vocabulary it is
+        // looking at before it reads anything else.
+        metrics.publish_schema();
         self.metrics = metrics;
 
         self
@@ -594,6 +597,7 @@ impl App {
         // Held for the whole run: dropping it flushes and shuts down the
         // OTLP pipeline, when one was turned on.
         let _telemetry = logging::install(&config)?;
+        logging::count_drops_into(self.metrics.clone());
 
         let mut out = io::stdout();
 

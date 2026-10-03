@@ -44,3 +44,6 @@ tokio = { workspace = true, features = ["test-util"] }
 rustls.workspace = true
 rcgen.workspace = true
 tokio-rustls.workspace = true
+tower = { workspace = true, features = ["util"] }
+# Capturing what a request writes to the log, to prove a client's name for it never gets there.
+tracing-subscriber.workspace = true

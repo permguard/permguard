@@ -400,7 +400,7 @@ impl Streams {
             ticket
         };
 
-        self.lead(&journal, &gate, zone, ledger, ticket)
+        self.lead(&journal, &gate, ticket)
     }
 
     /// Forms one batch, writes it, flushes it once, and answers everybody in it.
@@ -408,8 +408,6 @@ impl Streams {
         &self,
         journal: &OpenJournal,
         gate: &Arc<Gate>,
-        zone: &str,
-        ledger: &str,
         ticket: u64,
     ) -> Result<Answered, Failed> {
         let taken = self.form(gate);
@@ -417,7 +415,7 @@ impl Streams {
             gate: Arc::clone(gate),
             tickets: taken.iter().map(|(ticket, _)| *ticket).collect(),
         };
-        let results = self.write(journal, zone, ledger, taken);
+        let results = self.write(journal, taken);
 
         match leadership.publish(results, ticket) {
             Some(answer) => answer,
@@ -468,11 +466,8 @@ impl Streams {
     fn write(
         &self,
         journal: &OpenJournal,
-        zone: &str,
-        ledger: &str,
         taken: Vec<Waiting>,
     ) -> Vec<(u64, Result<Answered, Failed>)> {
-        let labels = [("zone", zone), ("ledger", ledger)];
         let covered = taken.len();
         let mut results = Vec::with_capacity(taken.len());
         let mut held = match journal.lock() {
@@ -575,9 +570,9 @@ impl Streams {
 
         // One flush for the whole batch, before anybody in it is told anything.
         if wrote {
-            self.metrics.count(&super::measure::FLUSHES, &labels);
+            self.metrics.count(&super::measure::FLUSHES, &[]);
             self.metrics
-                .observe(&super::measure::BATCH_RECORDS, &labels, covered as f64);
+                .observe(&super::measure::BATCH_RECORDS, &[], covered as f64);
         }
         if wrote && let Err(error) = held.journal.sync() {
             let reason = error.to_string();

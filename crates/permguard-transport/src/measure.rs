@@ -26,7 +26,7 @@ use rustls::pki_types::CertificateDer;
 use tower_service::Service;
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use permguard_core::metrics::{Metric, SECONDS};
+use permguard_core::metrics::{Metric, SECONDS, labels};
 use permguard_core::{Metrics, TlsSettings};
 
 /// How many requests each surface has answered, and how they ended.
@@ -141,7 +141,11 @@ pub fn record_certificate_expiry(surface: &'static str, metrics: &Metrics, setti
         }
     };
 
-    metrics.set(&CERTIFICATE_EXPIRY, &[("surface", surface)], expiry as f64);
+    metrics.set(
+        &CERTIFICATE_EXPIRY,
+        &[(labels::SURFACE, surface)],
+        expiry as f64,
+    );
 
     record_crl_expiry(surface, metrics, settings);
 
@@ -213,7 +217,7 @@ fn record_crl_expiry(surface: &'static str, metrics: &Metrics, settings: &TlsSet
         return;
     };
 
-    metrics.set(&CRL_EXPIRY, &[("surface", surface)], expiry as f64);
+    metrics.set(&CRL_EXPIRY, &[(labels::SURFACE, surface)], expiry as f64);
 }
 
 fn expiry_of(chain: &[CertificateDer<'_>]) -> Option<i64> {
@@ -307,15 +311,15 @@ where
 
             metrics.observe(
                 &LATENCY,
-                &[("surface", surface), ("method", method)],
+                &[(labels::SURFACE, surface), (labels::METHOD, method)],
                 elapsed,
             );
             metrics.count(
                 &REQUESTS,
                 &[
-                    ("surface", surface),
-                    ("method", method),
-                    ("status", answered.status().as_str()),
+                    (labels::SURFACE, surface),
+                    (labels::METHOD, method),
+                    (labels::STATUS, answered.status().as_str()),
                 ],
             );
 

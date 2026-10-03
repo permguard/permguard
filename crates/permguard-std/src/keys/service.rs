@@ -18,7 +18,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use permguard_core::metrics::Metric;
+use permguard_core::metrics::{Metric, labels};
 use permguard_core::{BoxFuture, KeyManager, Metrics, ServerContext, Service, ready};
 
 /// Whether an issuer currently has a key that will sign — 1 or 0, labelled by realm and role.
@@ -30,7 +30,7 @@ use permguard_core::{BoxFuture, KeyManager, Metrics, ServerContext, Service, rea
 /// which is bounded, so this cannot grow without bound the way a path label would.
 const KEYS_ACTIVE: Metric = Metric::gauge(
     "permguard_keys_active",
-    "Whether an issuer has an active signing key (1) or not (0), by realm and role.",
+    "Whether an issuer has an active signing key (1) or not (0), by issuer (server or realm) and role.",
 );
 
 // The manager is taken from the context rather than from a constructor, because which manager
@@ -113,12 +113,18 @@ impl KeyService {
 
     /// Publishes whether a ring currently has a key that will sign, labelled by its issuer.
     fn record_active(metrics: &Metrics, ring: &Ring) {
-        let realm = ring.realm.as_deref().unwrap_or("server");
+        // The issuer's kind, not its name: a realm name is configuration, and a label whose values
+        // come from configuration has no fixed vocabulary.
+        let issuer = if ring.realm.is_some() {
+            "realm"
+        } else {
+            "server"
+        };
         let active = f64::from(u8::from(ring.keys.active_key_id().is_ok()));
 
         metrics.set(
             &KEYS_ACTIVE,
-            &[("realm", realm), ("role", ring.role)],
+            &[(labels::ISSUER, issuer), (labels::ROLE, ring.role)],
             active,
         );
     }

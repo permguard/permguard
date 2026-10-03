@@ -45,6 +45,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
+use permguard_core::metrics::labels;
 use permguard_core::{BoxFuture, ServerContext, Service, Subject, ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -170,7 +171,7 @@ impl Service for MirrorService {
                             if working.swap(true, Ordering::SeqCst) {
                                 context_for_round
                                     .metrics
-                                    .count(&measure::ROUNDS, &[("outcome", "skipped")]);
+                                    .count(&measure::ROUNDS, &[(labels::OUTCOME, "skipped")]);
                                 debug!(
                                     event.name = "sync.round_skipped",
                                     component = COMPONENT,

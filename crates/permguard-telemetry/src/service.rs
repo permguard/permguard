@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
 use axum::Router;
-use tracing::info;
+use tracing::{info, warn};
 
 use permguard_core::{BoxFuture, Config, ServerContext, Service, ready};
 use permguard_transport::Surface;
@@ -81,6 +81,18 @@ impl Service for TelemetryService {
             };
 
             let secured = context.config().telemetry_tls();
+            // P10: the telemetry listener is authenticated or network-scoped. The process cannot see
+            // a NetworkPolicy, so it says plainly when nothing it can see does either.
+            if secured.is_none() && !scoped_to_loopback(configured) {
+                warn!(
+                    event.name = "telemetry.unscoped",
+                    component = COMPONENT,
+                    address = configured,
+                    "the telemetry listener is reachable beyond this host without TLS: scope it to \
+                     the scrapers' network (the chart's `networkPolicy.telemetry.from`), or configure \
+                     PERMGUARD_TELEMETRY_TLS_CERT and PERMGUARD_TELEMETRY_TLS_KEY"
+                );
+            }
             let surface = Surface::listener(COMPONENT, configured, {
                 let mut routes = Self::routes(probes::Reported::new(
                     context.health().clone(),
@@ -153,5 +165,41 @@ impl Service for TelemetryService {
 
             Ok(())
         })
+    }
+}
+/// Whether a listen address only accepts connections from this host.
+fn scoped_to_loopback(address: &str) -> bool {
+    if let Ok(socket) = address.parse::<std::net::SocketAddr>() {
+        return socket.ip().is_loopback();
+    }
+    if let Ok(ip) = address.trim_matches(['[', ']']).parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+
+    address.rsplit_once(':').map_or(address, |(host, _)| host) == "localhost"
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_only_a_loopback_address_counts_as_scoped() {
+        for address in [
+            "127.0.0.1:5443",
+            "[::1]:5443",
+            "localhost:5443",
+            "::1",
+            "127.0.0.1",
+            "localhost",
+        ] {
+            assert!(super::scoped_to_loopback(address), "{address}");
+        }
+        for address in [
+            "0.0.0.0:5443",
+            "[::]:5443",
+            "10.0.0.7:5443",
+            "permguard:5443",
+        ] {
+            assert!(!super::scoped_to_loopback(address), "{address}");
+        }
     }
 }

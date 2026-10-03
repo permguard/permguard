@@ -106,10 +106,22 @@ impl Shipper {
     /// another's shipping, and a round that stopped at the first deferral would do exactly that.
     pub fn round(&self) -> Vec<((String, String), Round)> {
         let mut rounds = Vec::new();
+        let mut held = std::collections::BTreeSet::new();
         for (zone, ledger) in self.streams.ledgers() {
             let round = self.ship(&zone, &ledger);
             self.publish(&zone, &ledger, &round);
+            held.insert(format!("{zone}/{ledger}"));
             rounds.push(((zone, ledger), round));
+        }
+        // A journal no longer on the volume stops counting: its backlog and bytes would otherwise
+        // stay in the totals, and its last shipment would stay the earliest, until a restart.
+        for (metric, how) in [
+            (&measure::BACKLOG, permguard_core::Aggregate::Sum),
+            (&measure::LAST_SHIPPED, permguard_core::Aggregate::Min),
+            (&measure::JOURNAL_BYTES, permguard_core::Aggregate::Sum),
+        ] {
+            self.metrics
+                .retain_aggregated(metric, how, |resource| held.contains(resource));
         }
 
         rounds
@@ -239,7 +251,10 @@ impl Shipper {
                 if let Err(error) = self.streams.acknowledge(zone, ledger, acked) {
                     return Round::Deferred(error.to_string());
                 }
-                self.metrics.count(&measure::SHIPPED, &[("outcome", "ok")]);
+                self.metrics.count(
+                    &measure::SHIPPED,
+                    &[(permguard_core::metrics::labels::OUTCOME, "ok")],
+                );
                 info!(
                     event.name = "events.shipped",
                     component = COMPONENT,
@@ -258,8 +273,10 @@ impl Shipper {
             Ok(Shipped::OutOfOrder { expected_seq }) => {
                 // Nothing is lost: the store needs an earlier batch first, and the next round
                 // reads from what it acknowledged.
-                self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "out_of_order")]);
+                self.metrics.count(
+                    &measure::SHIPPED,
+                    &[(permguard_core::metrics::labels::OUTCOME, "out_of_order")],
+                );
                 warn!(
                     event.name = "events.out_of_order",
                     component = COMPONENT,
@@ -272,14 +289,18 @@ impl Shipper {
                 Round::Deferred(format!("the store expects sequence {expected_seq}"))
             }
             Err(ShipError::Unavailable(detail)) => {
-                self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "deferred")]);
+                self.metrics.count(
+                    &measure::SHIPPED,
+                    &[(permguard_core::metrics::labels::OUTCOME, "deferred")],
+                );
 
                 Round::Deferred(detail)
             }
             Err(ShipError::Rejected { code, detail }) => {
-                self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "rejected")]);
+                self.metrics.count(
+                    &measure::SHIPPED,
+                    &[(permguard_core::metrics::labels::OUTCOME, "rejected")],
+                );
                 error!(
                     event.name = "events.rejected",
                     component = COMPONENT,
@@ -399,18 +420,23 @@ impl Shipper {
         let Ok(state) = self.streams.state(zone, ledger) else {
             return;
         };
-        let labels = [("zone", zone), ("ledger", ledger)];
         // The number an operator watches: how far the control plane is behind what this plane has
         // made durable. Steadily climbing means the outage has outlasted the journal's capacity,
         // and that is when submissions start failing closed.
-        self.metrics.set(
+        let resource = format!("{zone}/{ledger}");
+        self.metrics.set_aggregated(
             &measure::BACKLOG,
-            &labels,
+            permguard_core::Aggregate::Sum,
+            &resource,
             state.durable_through.saturating_sub(state.acked_through) as f64,
         );
         if matches!(round, Round::Shipped { .. }) {
-            self.metrics
-                .set(&measure::LAST_SHIPPED, &labels, unix_seconds());
+            self.metrics.set_aggregated(
+                &measure::LAST_SHIPPED,
+                permguard_core::Aggregate::Min,
+                &resource,
+                unix_seconds(),
+            );
         }
     }
 }

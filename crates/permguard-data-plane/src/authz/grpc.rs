@@ -104,6 +104,7 @@ impl PdpApi {
             .metadata()
             .get("x-request-id")
             .and_then(|value| value.to_str().ok())
+            .and_then(permguard_core::correlation::admitted)
             .map(ToOwned::to_owned);
         // The same header, over the other transport: gRPC metadata carries
         // `traceparent` exactly as HTTP does.

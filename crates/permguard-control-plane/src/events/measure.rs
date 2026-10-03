@@ -18,7 +18,7 @@ pub const BATCHES: Metric = Metric::counter(
 /// Records made durable, by zone and ledger.
 pub const RECORDS: Metric = Metric::counter(
     "permguard_events_records_total",
-    "Event records made durable, by zone and ledger.",
+    "Event records made durable.",
 );
 
 /// Streams closed because two different records claimed one sequence.

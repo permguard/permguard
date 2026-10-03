@@ -25,7 +25,7 @@ pub const REFUSALS: Metric = Metric::counter(
 /// read files to find out.
 pub const RECORDS: Metric = Metric::counter(
     "permguard_decisions_records_total",
-    "Decision records stored, by zone and ledger.",
+    "Decision records stored.",
 );
 
 /// Streams closed permanently after a cryptographic conflict.
@@ -34,12 +34,6 @@ pub const RECORDS: Metric = Metric::counter(
 pub const CLOSED: Metric = Metric::counter(
     "permguard_decisions_streams_closed_total",
     "Decision streams closed permanently after a conflict.",
-);
-
-/// Where each producer stream stands.
-pub const ACKED: Metric = Metric::gauge(
-    "permguard_decisions_stream_acked",
-    "The highest contiguous durable sequence, by producer stream.",
 );
 
 /// How long accepting one batch took, flush included.

@@ -93,7 +93,7 @@ impl Registry {
 fn keyed(labels: &[Label<'_>]) -> Vec<(String, String)> {
     let mut owned: Vec<(String, String)> = labels
         .iter()
-        .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+        .map(|(name, value)| (name.as_str().to_owned(), (*value).to_owned()))
         .collect();
     owned.sort();
 
@@ -127,6 +127,9 @@ impl Recorder for Registry {
             Some((_, existing)) => apply(metric, existing, value),
             None => {
                 if held.len() >= SERIES_CEILING {
+                    // The lock is released before the record is written: writing a log line can
+                    // count a dropped line, which records a metric and would take this lock again.
+                    drop(held);
                     if !self.overflowed.swap(true, Ordering::SeqCst) {
                         tracing::error!(
                             event.name = "metrics.series_ceiling_reached",
@@ -239,6 +242,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use permguard_core::metrics::labels;
 
     use permguard_core::metrics::SECONDS;
 
@@ -356,8 +360,16 @@ mod tests {
         // different orders becomes two half-counted series, and neither is the truth.
         let registry = Registry::new();
 
-        registry.record(&REQUESTS, &[("method", "GET"), ("status", "200")], 1.0);
-        registry.record(&REQUESTS, &[("status", "200"), ("method", "GET")], 1.0);
+        registry.record(
+            &REQUESTS,
+            &[(labels::METHOD, "GET"), (labels::STATUS, "200")],
+            1.0,
+        );
+        registry.record(
+            &REQUESTS,
+            &[(labels::STATUS, "200"), (labels::METHOD, "GET")],
+            1.0,
+        );
 
         assert_eq!(registry.len(), 1);
         assert_eq!(
@@ -370,8 +382,8 @@ mod tests {
     fn test_different_label_values_are_different_series() {
         let registry = Registry::new();
 
-        registry.record(&REQUESTS, &[("status", "200")], 1.0);
-        registry.record(&REQUESTS, &[("status", "503")], 1.0);
+        registry.record(&REQUESTS, &[(labels::STATUS, "200")], 1.0);
+        registry.record(&REQUESTS, &[(labels::STATUS, "503")], 1.0);
 
         assert_eq!(registry.len(), 2);
     }
@@ -383,18 +395,18 @@ mod tests {
         let registry = Registry::new();
 
         for attempt in 0..(SERIES_CEILING + 500) {
-            registry.record(&REQUESTS, &[("path", &format!("/{attempt}"))], 1.0);
+            registry.record(&REQUESTS, &[(labels::OP, &format!("/{attempt}"))], 1.0);
         }
 
         assert_eq!(registry.len(), SERIES_CEILING);
 
         // And what was already there still records, so the ceiling costs the new series rather than
         // the measurements that were working.
-        registry.record(&REQUESTS, &[("path", "/0")], 1.0);
+        registry.record(&REQUESTS, &[(labels::OP, "/0")], 1.0);
         let samples = registry.snapshot();
         let first = samples
             .iter()
-            .find(|sample| sample.labels == vec![("path".to_owned(), "/0".to_owned())])
+            .find(|sample| sample.labels == vec![("op".to_owned(), "/0".to_owned())])
             .expect("the first series is still held");
         assert_eq!(first.reading, Reading::Value(2.0));
     }
@@ -431,7 +443,7 @@ mod tests {
         let registry = Registry::new();
 
         for status in ["500", "200", "404", "503"] {
-            registry.record(&REQUESTS, &[("status", status)], 1.0);
+            registry.record(&REQUESTS, &[(labels::STATUS, status)], 1.0);
         }
         registry.record(&CONNECTIONS, &[], 7.0);
 

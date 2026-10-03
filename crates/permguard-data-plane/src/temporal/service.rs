@@ -208,13 +208,11 @@ impl Service for EventService {
                                         let deferred = rounds.iter().any(|(_, round)| {
                                             matches!(round, PullRound::Deferred(_))
                                         });
-                                        for (subscription, round) in rounds {
+                                        for (_, round) in rounds {
                                             if let PullRound::Quarantined { records, reason } = round {
                                                 warn!(
                                                     event.name = "events.import_quarantined",
                                                     component = COMPONENT,
-                                                    zone = subscription.zone.as_str(),
-                                                    ledger = subscription.ledger.as_str(),
                                                     records,
                                                     reason = reason.as_str(),
                                                     "imported records were refused and not applied"
@@ -252,22 +250,18 @@ impl Service for EventService {
                                 }).await;
                                 match outcome {
                                     Ok(results) => {
-                                        for (subscription, result) in results {
+                                        for (_, result) in results {
                                             match result {
                                                 Ok(0) => {}
                                                 Ok(removed) => info!(
                                                     event.name = "events.import_evicted",
                                                     component = COMPONENT,
-                                                    zone = subscription.zone.as_str(),
-                                                    ledger = subscription.ledger.as_str(),
                                                     removed,
                                                     "imported copies no temporal policy can still read were removed"
                                                 ),
                                                 Err(error) => warn!(
                                                     event.name = "events.import_eviction_failed",
                                                     component = COMPONENT,
-                                                    zone = subscription.zone.as_str(),
-                                                    ledger = subscription.ledger.as_str(),
                                                     error = error.as_str(),
                                                     "imported history could not be compacted; keeping it is the safe direction"
                                                 ),
@@ -553,8 +547,6 @@ fn evict(streams: &Arc<super::streams::Streams>, retention: Duration) {
             Ok(removed) => info!(
                 event.name = "events.evicted",
                 component = COMPONENT,
-                zone = zone.as_str(),
-                ledger = ledger.as_str(),
                 removed,
                 through = safe,
                 "event records the control plane holds and no loaded policy can still read were \
@@ -563,8 +555,6 @@ fn evict(streams: &Arc<super::streams::Streams>, retention: Duration) {
             Err(error) => warn!(
                 event.name = "events.eviction_failed",
                 component = COMPONENT,
-                zone = zone.as_str(),
-                ledger = ledger.as_str(),
                 error = %error,
                 "event records could not be evicted: the journal keeps them, which is the safe \
                  direction"

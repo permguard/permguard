@@ -167,15 +167,16 @@ pub async fn run(context: Arc<Context>) -> Outcome {
         outcome.reaped = reap(&context, &wanted, &answered);
     }
 
-    context
-        .metrics
-        .count(&measure::ROUNDS, &[("outcome", outcome.label())]);
+    context.metrics.count(
+        &measure::ROUNDS,
+        &[(permguard_core::metrics::labels::OUTCOME, outcome.label())],
+    );
     context.metrics.observe(
         &measure::ROUND_SECONDS,
         &[],
         started.elapsed().as_secs_f64(),
     );
-    holdings(&context, &wanted);
+    holdings(&context);
 
     outcome
 }
@@ -361,10 +362,6 @@ fn contested(served: &mut Vec<Served>) -> usize {
 async fn mirror_one(context: &Context, served: &Served) -> Attempt {
     let mirror = &served.mirror;
     let server = served.server.as_str();
-    let labels = [
-        ("zone", mirror.zone_id.as_str()),
-        ("ledger", mirror.ledger_id.as_str()),
-    ];
     let started = Instant::now();
     let path = mirror.path(&context.root);
     let mirror_path = path.clone();
@@ -404,23 +401,24 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
         Ok(Ok((counter, fetched))) => {
             context.metrics.count(
                 &measure::MIRRORS,
-                &[
-                    ("zone", mirror.zone_id.as_str()),
-                    ("ledger", mirror.ledger_id.as_str()),
-                    ("outcome", if fetched > 0 { "ok" } else { "unchanged" }),
-                ],
+                &[(
+                    permguard_core::metrics::labels::OUTCOME,
+                    if fetched > 0 { "ok" } else { "unchanged" },
+                )],
             );
             context
                 .metrics
-                .add(&measure::FETCHED_OBJECTS, &labels, fetched as f64);
-            context
-                .metrics
-                .set(&measure::MIRROR_COUNTER, &labels, counter as f64);
+                .add(&measure::FETCHED_OBJECTS, &[], fetched as f64);
             crate::authz::store::touch_synced(&mirror_path);
-            context.metrics.set(&measure::MIRROR_AGE, &labels, 0.0);
+            context.metrics.set_aggregated(
+                &measure::MIRROR_AGE,
+                permguard_core::Aggregate::Max,
+                &mirror_key(mirror),
+                0.0,
+            );
             context.metrics.observe(
                 &measure::MIRROR_SECONDS,
-                &labels,
+                &[],
                 started.elapsed().as_secs_f64(),
             );
             if fetched > 0 {
@@ -446,17 +444,17 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
         Ok(Err(error)) if is_empty_ledger(&error) => {
             context.metrics.count(
                 &measure::MIRRORS,
-                &[
-                    ("zone", mirror.zone_id.as_str()),
-                    ("ledger", mirror.ledger_id.as_str()),
-                    ("outcome", "empty"),
-                ],
+                &[(permguard_core::metrics::labels::OUTCOME, "empty")],
             );
             // A verified "nothing yet" is still a confirmation: the server
             // answered, and the emptiness is its answer.
             crate::authz::store::touch_synced(&mirror_path);
-            context.metrics.set(&measure::MIRROR_COUNTER, &labels, 0.0);
-            context.metrics.set(&measure::MIRROR_AGE, &labels, 0.0);
+            context.metrics.set_aggregated(
+                &measure::MIRROR_AGE,
+                permguard_core::Aggregate::Max,
+                &mirror_key(mirror),
+                0.0,
+            );
             debug!(
                 event.name = "sync.ledger_empty",
                 component = COMPONENT,
@@ -470,11 +468,7 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
         Ok(Err(error)) => {
             context.metrics.count(
                 &measure::MIRRORS,
-                &[
-                    ("zone", mirror.zone_id.as_str()),
-                    ("ledger", mirror.ledger_id.as_str()),
-                    ("outcome", "failed"),
-                ],
+                &[(permguard_core::metrics::labels::OUTCOME, "failed")],
             );
             warn!(
                 event.name = "sync.mirror_failed",
@@ -484,18 +478,14 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 error = %error,
                 "the mirror did not advance; what it already holds is still served"
             );
-            report_age(context, &mirror_path, &labels, mirror, server);
+            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
         Err(_) => {
             context.metrics.count(
                 &measure::MIRRORS,
-                &[
-                    ("zone", mirror.zone_id.as_str()),
-                    ("ledger", mirror.ledger_id.as_str()),
-                    ("outcome", "timeout"),
-                ],
+                &[(permguard_core::metrics::labels::OUTCOME, "timeout")],
             );
             warn!(
                 event.name = "sync.mirror_timeout",
@@ -505,7 +495,7 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
                 deadline.seconds = context.deadline.as_secs(),
                 "the mirror ran out of its deadline and is abandoned for this round"
             );
-            report_age(context, &mirror_path, &labels, mirror, server);
+            report_age(context, &mirror_path, mirror, server);
 
             Attempt::Failed
         }
@@ -519,19 +509,16 @@ async fn mirror_one(context: &Context, served: &Served) -> Attempt {
 /// this is where the gauge earns its name: without it, a plane cut off from
 /// its control plane would report an age of zero forever, which is the exact
 /// number a page must never be written against.
-fn report_age(
-    context: &Context,
-    mirror_path: &std::path::Path,
-    labels: &[(&str, &str)],
-    mirror: &Mirror,
-    server: &str,
-) {
+fn report_age(context: &Context, mirror_path: &std::path::Path, mirror: &Mirror, server: &str) {
     let Some(age) = crate::authz::store::synced_age(mirror_path) else {
         return;
     };
-    context
-        .metrics
-        .set(&measure::MIRROR_AGE, labels, age.as_secs_f64());
+    context.metrics.set_aggregated(
+        &measure::MIRROR_AGE,
+        permguard_core::Aggregate::Max,
+        &mirror_key(mirror),
+        age.as_secs_f64(),
+    );
     if let Some(bound) = context.stale_after
         && age >= bound
     {
@@ -563,21 +550,13 @@ async fn warm(context: &Context, served: &Served) -> Attempt {
         path: served.mirror.path(&context.root),
         identity: served.identity.clone(),
     };
-    let labels = [
-        ("zone", served.identity.zone_name.clone()),
-        ("ledger", served.identity.ledger_name.clone()),
-    ];
     let warmed = match blocking(move || Ok(decider.warm(&held))).await {
         Ok(warmed) => warmed,
         Err(error) => crate::authz::decide::Warmed::Damaged(error),
     };
     context.metrics.count(
         &measure::WARMED,
-        &[
-            ("zone", labels[0].1.as_str()),
-            ("ledger", labels[1].1.as_str()),
-            ("outcome", warmed.label()),
-        ],
+        &[(permguard_core::metrics::labels::OUTCOME, warmed.label())],
     );
 
     match &warmed {
@@ -653,9 +632,10 @@ fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
                 // No identity file: this plane cannot attribute the mirror to
                 // any server, so it cannot know whether anybody still wants
                 // it. Reported rather than removed — the safe direction.
-                context
-                    .metrics
-                    .count(&measure::REAPED, &[("reason", "unattributable")]);
+                context.metrics.count(
+                    &measure::REAPED,
+                    &[(permguard_core::metrics::labels::REASON, "unattributable")],
+                );
                 warn!(
                     event.name = "sync.reap_unattributable",
                     component = COMPONENT,
@@ -668,9 +648,10 @@ fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
         match layout::remove(&context.root, &mirror) {
             Ok(()) => {
                 removed += 1;
-                context
-                    .metrics
-                    .count(&measure::REAPED, &[("reason", "not_followed")]);
+                context.metrics.count(
+                    &measure::REAPED,
+                    &[(permguard_core::metrics::labels::REASON, "not_followed")],
+                );
                 info!(
                     event.name = "sync.reaped",
                     component = COMPONENT,
@@ -693,45 +674,44 @@ fn reap(context: &Context, wanted: &[Mirror], answered: &[String]) -> usize {
 /// Refreshes the holdings gauges: how many mirrors, in how many zones, and
 /// what they occupy. Read from disk rather than counted along the way, so the
 /// numbers cannot drift from the volume.
-fn holdings(context: &Context, wanted: &[Mirror]) {
+fn holdings(context: &Context) {
     if !context.metrics.is_recording() {
         return;
     }
     let Ok(present) = layout::on_disk(&context.root) else {
         return;
     };
-    let _ = wanted;
+    // A mirror that is no longer on the volume stops counting: its age would otherwise hold the
+    // oldest-mirror gauge up until the process restarts, and its blocked state would stay counted.
+    let held: std::collections::BTreeSet<String> = present.iter().map(mirror_key).collect();
+    for (metric, how) in [
+        (&measure::MIRROR_AGE, permguard_core::Aggregate::Max),
+        (
+            &crate::authz::measure::BLOCKED,
+            permguard_core::Aggregate::Sum,
+        ),
+    ] {
+        context
+            .metrics
+            .retain_aggregated(metric, how, |resource| held.contains(resource));
+    }
 
-    let mut per_zone: std::collections::BTreeMap<String, (u64, u64)> =
-        std::collections::BTreeMap::new();
+    // Totals only: a mirror's own size would be a series per ledger, which P10 forbids.
+    let mut zones = std::collections::BTreeSet::new();
+    let mut total_bytes = 0u64;
     for mirror in &present {
-        let bytes = layout::size_of(&context.root, mirror);
-        context.metrics.set(
-            &measure::MIRROR_BYTES,
-            &[
-                ("zone", mirror.zone_id.as_str()),
-                ("ledger", mirror.ledger_id.as_str()),
-            ],
-            bytes as f64,
-        );
-        let entry = per_zone.entry(mirror.zone_id.clone()).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 += bytes;
+        total_bytes += layout::size_of(&context.root, mirror);
+        zones.insert(mirror.zone_id.clone());
     }
-    for (zone, (ledgers, bytes)) in &per_zone {
-        context
-            .metrics
-            .set(&measure::ZONE_LEDGERS, &[("zone", zone)], *ledgers as f64);
-        context
-            .metrics
-            .set(&measure::ZONE_BYTES, &[("zone", zone)], *bytes as f64);
-    }
+    context
+        .metrics
+        .set(&measure::MIRROR_BYTES, &[], total_bytes as f64);
     context
         .metrics
         .set(&measure::MIRRORS_HELD, &[], present.len() as f64);
     context
         .metrics
-        .set(&measure::ZONES_HELD, &[], per_zone.len() as f64);
+        .set(&measure::ZONES_HELD, &[], zones.len() as f64);
 }
 
 /// Runs blocking work on the blocking pool, flattening the join error: a
@@ -745,6 +725,11 @@ where
         Ok(outcome) => outcome,
         Err(error) => Err(format!("the task ended abnormally: {error}")),
     }
+}
+
+/// The resource a mirror's age is kept under: the oldest mirror is the series, never the mirror.
+fn mirror_key(mirror: &Mirror) -> String {
+    format!("{}/{}", mirror.zone_id, mirror.ledger_id)
 }
 
 #[cfg(test)]

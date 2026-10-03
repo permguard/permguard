@@ -1922,3 +1922,210 @@ mod parity {
         }
     }
 }
+
+/// H-13: identifiers a client chooses — tenant names, ledger names, request ids, principals —
+/// never become a metric label and never reach a log line, on an answer or on a refusal.
+mod adversarial_ids {
+    use super::*;
+
+    use std::sync::Mutex;
+
+    const ZONE: &str = "zone-spy-7f3a91";
+    const LEDGER: &str = "ledger-spy-91c2e0";
+    const REQUEST: &str = "request-spy-55aa13";
+    const SUBJECT: &str = "principal-spy-3b8d42";
+    /// The id the transport drew for the request, which the log may carry.
+    const DRAWN: &str = "5e1f0c9a7b3d2e48";
+    const UNKNOWN_ZONE: &str = "zone-spy-unknown-0d1e";
+    const UNKNOWN_LEDGER: &str = "ledger-spy-unknown-a4c7";
+    const PARTITION: &str = "partition-spy-c0ffee";
+    const PROFILE: &str = "profile-spy-unknown-6e2b";
+    const SPIES: [&str; 8] = [
+        ZONE,
+        LEDGER,
+        REQUEST,
+        SUBJECT,
+        UNKNOWN_ZONE,
+        UNKNOWN_LEDGER,
+        PARTITION,
+        PROFILE,
+    ];
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("not poisoned")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_adversarial_ids_never_become_labels_or_log_lines() {
+        let root = scratch("adversarial-ids").join("mirrors");
+        let manifest = manifest(&[(PARTITION, "cedar", false)], ">=0.0.0");
+        let mirror = provision(
+            &root,
+            "acme",
+            "main",
+            &manifest,
+            &[(PARTITION, vec![&CEDAR_READ], None)],
+        );
+        // The names a client addresses the ledger by are the spies; the ids stay unrelated.
+        permguard_data_plane::authz::store::record(
+            &mirror.path,
+            &Identity {
+                zone_id: "acme-id".to_owned(),
+                zone_name: ZONE.to_owned(),
+                ledger_id: "main-id".to_owned(),
+                ledger_name: LEDGER.to_owned(),
+                server: "http://127.0.0.1:6443".to_owned(),
+            },
+        )
+        .expect("the identity is recorded");
+
+        let registry = Arc::new(permguard_std::metrics::Registry::new());
+        // With a journal, so the line that leads from a log to the audit record is exercised too.
+        let spool = scratch("adversarial-ids-spool");
+        let journal = Journal::open(
+            &spool,
+            "plane",
+            Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            WhenFull::Open,
+            Bounds {
+                bytes: 64 * 1024 * 1024,
+                age: std::time::Duration::from_secs(3600),
+                segment_bytes: 1024 * 1024,
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            Metrics::none(),
+        )
+        .expect("the journal opens");
+        let decider = Arc::new(
+            Decider::new(
+                root.clone(),
+                Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+                Metrics::new(Arc::clone(&registry) as Arc<dyn Recorder>),
+                None,
+                256,
+            )
+            .with_journal(
+                Some(Arc::new(journal)),
+                None,
+                permguard_core::decisions::IncludeSection::default(),
+            ),
+        );
+        let logs = Captured::default();
+        let writer = logs.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(move || writer.clone())
+            .finish();
+        // Global, because the decider runs part of its work on blocking threads a thread-local
+        // subscriber would not see. No other test of this binary installs one.
+        tracing::subscriber::set_global_default(subscriber).expect("one subscriber per process");
+
+        let mut permitted = ask(ZONE, LEDGER, SUBJECT, "read");
+        permitted.request_id = Some(REQUEST.to_owned());
+        // The span the transport opens around every request, with the id it drew.
+        let answer = {
+            use tracing::Instrument as _;
+
+            decider
+                .decide(&permitted, None)
+                .instrument(tracing::info_span!("request", request.id = DRAWN))
+                .await
+                .expect("an answer")
+        };
+        assert!(answer.decision, "the spy ledger answers like any other");
+        for (zone, ledger) in [(ZONE, UNKNOWN_LEDGER), (UNKNOWN_ZONE, LEDGER)] {
+            let mut refused = ask(zone, ledger, SUBJECT, "read");
+            refused.request_id = Some(REQUEST.to_owned());
+            assert!(
+                decider.decide(&refused, None).await.is_err(),
+                "{zone}/{ledger} is refused"
+            );
+        }
+        // A profile the ledger does not declare: the refusal repeats it to the caller, and only
+        // to the caller.
+        let mut unknown_profile = ask(ZONE, LEDGER, SUBJECT, "read");
+        unknown_profile.request_id = Some(REQUEST.to_owned());
+        unknown_profile.profile = Some(PROFILE.to_owned());
+        assert!(
+            decider.decide(&unknown_profile, None).await.is_err(),
+            "an undeclared profile is refused"
+        );
+
+        let series = registry.snapshot();
+        assert!(!series.is_empty(), "the decisions were measured");
+        // Every value the decider recorded was inside its label's vocabulary: an incomplete
+        // vocabulary would otherwise hide here as `other`.
+        for refused in [
+            permguard_core::metrics::LABEL_VALUES_REFUSED.name(),
+            permguard_core::metrics::AGGREGATED_RESOURCES_REFUSED.name(),
+        ] {
+            assert!(
+                !series.iter().any(|sample| sample.metric.name() == refused),
+                "{refused} was recorded: a label value or a resource was refused"
+            );
+        }
+        for sample in &series {
+            for (name, value) in &sample.labels {
+                for spy in SPIES {
+                    assert!(
+                        !value.contains(spy) && !name.contains(spy),
+                        "`{spy}` became a label of {}: {name}={value}",
+                        sample.metric.name()
+                    );
+                }
+            }
+        }
+        let logged =
+            String::from_utf8(logs.0.lock().expect("not poisoned").clone()).expect("logs are text");
+        assert!(!logged.is_empty(), "the decisions were logged");
+        for spy in SPIES {
+            assert!(
+                !logged.contains(spy),
+                "`{spy}` reached a log line:\n{logged}"
+            );
+        }
+
+        // Correlation survives: one log line carries the request's drawn id and the id of the
+        // audit record the decision became, and that record is in the journal.
+        drop(decider);
+        let recorded: Vec<String> = std::fs::read_dir(&spool)
+            .expect("the spool can be listed")
+            .map(|entry| entry.expect("a spool entry").path())
+            .filter(|path| path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl"))
+            .flat_map(|path| {
+                std::fs::read_to_string(path)
+                    .expect("the segment can be read")
+                    .lines()
+                    .map(|line| serde_json::from_str::<Value>(line).expect("the record is JSON"))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|record| record["kind"] == json!("decision"))
+            .filter_map(|record| record["id"].as_str().map(ToOwned::to_owned))
+            .collect();
+        assert_eq!(recorded.len(), 1, "the answered decision was recorded");
+        assert!(
+            logged
+                .lines()
+                .any(|line| line.contains(DRAWN) && line.contains(&recorded[0])),
+            "no log line joins request `{DRAWN}` to decision `{}`:\n{logged}",
+            recorded[0]
+        );
+    }
+}

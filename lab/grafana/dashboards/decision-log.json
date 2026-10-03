@@ -1,6 +1,6 @@
 {
   "uid": "permguard-decision-log",
-  "title": "Permguard \u00b7 Decision log",
+  "title": "Permguard · Decision log",
   "description": "Every decision, from the plane that answered it to the store that keeps it: is the log keeping up, is anything being lost, and who is producing it. The decision path itself is on the data-plane dashboard; this one is about the record of it.",
   "tags": [
     "permguard",
@@ -197,7 +197,7 @@
         "colorMode": "background",
         "graphMode": "none"
       },
-      "description": "A batch the control plane refused on its merits \u2014 a signature that does not verify, a chain that does not hold, a stream it has closed. Above zero is an incident, not a trend: no amount of retrying changes those answers."
+      "description": "A batch the control plane refused on its merits — a signature that does not verify, a chain that does not hold, a stream it has closed. Above zero is an incident, not a trend: no amount of retrying changes those answers."
     },
     {
       "type": "stat",
@@ -250,7 +250,7 @@
         "colorMode": "background",
         "graphMode": "none"
       },
-      "description": "Records discarded because a spool reached a bound. Above zero means a stream ended and a new incarnation began \u2014 the log says so with a signed discontinuity, but the records themselves are gone."
+      "description": "Records discarded because a spool reached a bound. Above zero means a stream ended and a new incarnation began — the log says so with a signed discontinuity, but the records themselves are gone."
     },
     {
       "type": "stat",
@@ -396,7 +396,7 @@
             "uid": "permguard-prometheus"
           },
           "expr": "permguard_decisions_sequence - permguard_decisions_acked_sequence",
-          "legendFormat": "written \u2212 acked",
+          "legendFormat": "written − acked",
           "refId": "B"
         }
       ],
@@ -417,7 +417,7 @@
           "placement": "bottom"
         }
       },
-      "description": "Two views of the same gap, from the producer's own counters. A control plane that is down costs spool, not availability \u2014 this is the spool being spent."
+      "description": "Two views of the same gap, from the producer's own counters. A control plane that is down costs spool, not availability — this is the spool being spent."
     },
     {
       "type": "row",
@@ -472,7 +472,7 @@
           "placement": "bottom"
         }
       },
-      "description": "`deferred` is retryable \u2014 the store could not take it right now and the records are still on the producer's disk. `out_of_order` is not a loss either: the store needs an earlier batch first. `rejected` is the one that stops the shipper."
+      "description": "`deferred` is retryable — the store could not take it right now and the records are still on the producer's disk. `out_of_order` is not a loss either: the store needs an earlier batch first. `rejected` is the one that stops the shipper."
     },
     {
       "type": "timeseries",
@@ -515,7 +515,7 @@
           "placement": "bottom"
         }
       },
-      "description": "`unattributable`: no published key signed it. `unverifiable`: the records are not what the envelope attests. `conflict`: two records at one sequence \u2014 terminal. `unavailable`: the store's own fault, and the shipper retries."
+      "description": "`unattributable`: no published key signed it. `unverifiable`: the records are not what the envelope attests. `conflict`: two records at one sequence — terminal. `unavailable`: the store's own fault, and the shipper retries."
     },
     {
       "type": "timeseries",
@@ -636,7 +636,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Records stored, per tenant",
+      "title": "Records stored",
       "datasource": {
         "type": "prometheus",
         "uid": "permguard-prometheus"
@@ -653,8 +653,8 @@
             "type": "prometheus",
             "uid": "permguard-prometheus"
           },
-          "expr": "sum by (zone, ledger) (rate(permguard_decisions_records_total[5m]))",
-          "legendFormat": "{{zone}}/{{ledger}}",
+          "expr": "sum(rate(permguard_decisions_records_total[5m]))",
+          "legendFormat": "records stored",
           "refId": "A"
         }
       ],
@@ -720,41 +720,7 @@
           "placement": "bottom"
         }
       },
-      "description": "`tenant` against `stream` scope, and `expired` \u2014 a consumer that fell off retention and was told where the remaining records begin."
-    },
-    {
-      "type": "table",
-      "title": "Producer streams",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "permguard-prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 39
-      },
-      "description": "Every producer stream this control plane holds, and the highest CONTIGUOUS DURABLE sequence for each. A row that stops advancing while its plane keeps deciding is the same story as the unshipped gauge, from the other end.",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "permguard-prometheus"
-          },
-          "expr": "permguard_decisions_stream_acked",
-          "format": "table",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
+      "description": "`tenant` against `stream` scope, and `expired` — a consumer that fell off retention and was told where the remaining records begin."
     }
   ],
   "schemaVersion": 39,

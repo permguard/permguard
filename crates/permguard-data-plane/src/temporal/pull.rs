@@ -191,10 +191,6 @@ impl Puller {
 
     /// One subscription's round.
     pub fn pull(&self, subscription: &Subscription) -> Round {
-        let labels = [
-            ("zone", subscription.zone.as_str()),
-            ("ledger", subscription.ledger.as_str()),
-        ];
         // A type this build cannot validate is refused here rather than imported and discovered at
         // evaluation: the cursor must not advance over records nothing checked.
         if let Some(unknown) = subscription
@@ -257,14 +253,12 @@ impl Puller {
                 warn!(
                     event.name = "events.import_gap",
                     component = COMPONENT,
-                    zone = subscription.zone.as_str(),
-                    ledger = subscription.ledger.as_str(),
                     oldest_sequence,
                     requested_sequence,
                     "the control plane no longer holds where this plane stood: resuming from the \
                      oldest available, with a gap"
                 );
-                self.metrics.count(&measure::IMPORT_GAPS, &labels);
+                self.metrics.count(&measure::IMPORT_GAPS, &[]);
                 // Recorded and advanced as one step. Advancing alone is what made a history with a
                 // hole in it look exactly like one without: the subscription would resume, catch
                 // up, and report itself fresh, while every decision after it ranged over fewer
@@ -316,13 +310,13 @@ impl Puller {
                 warn!(
                     event.name = "events.import_refused",
                     component = COMPONENT,
-                    zone = subscription.zone.as_str(),
-                    ledger = subscription.ledger.as_str(),
                     reason = reason.as_str(),
                     "an imported record could not be verified: quarantined rather than applied"
                 );
-                self.metrics
-                    .count(&measure::IMPORTS, &[("outcome", "quarantined")]);
+                self.metrics.count(
+                    &measure::IMPORTS,
+                    &[(permguard_core::metrics::labels::OUTCOME, "quarantined")],
+                );
 
                 return Round::Quarantined {
                     records: page.records.len().saturating_sub(index),
@@ -353,21 +347,21 @@ impl Puller {
             return Round::Deferred(error.to_string());
         }
 
-        self.metrics
-            .add(&measure::IMPORTED, &labels, imported as f64);
+        self.metrics.add(&measure::IMPORTED, &[], imported as f64);
         if imported == 0 && duplicates == 0 {
             return Round::Idle;
         }
         info!(
             event.name = "events.imported",
             component = COMPONENT,
-            zone = subscription.zone.as_str(),
-            ledger = subscription.ledger.as_str(),
             imported,
             duplicates,
             "history other planes recorded was verified and imported"
         );
-        self.metrics.count(&measure::IMPORTS, &[("outcome", "ok")]);
+        self.metrics.count(
+            &measure::IMPORTS,
+            &[(permguard_core::metrics::labels::OUTCOME, "ok")],
+        );
 
         Round::Imported {
             records: imported,

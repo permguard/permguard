@@ -9,6 +9,8 @@
 //! | [`fault`]              | how a test asks for an fsync failure, a full disk or a clock jump              |
 //! | [`boundaries`]         | every untrusted decoder is registered, bounded and fuzzed, and nothing registered is dangling |
 //! | `tests/crash.rs`       | a spool and a journal killed with `SIGKILL` at random points reopen to a valid chain and `STATE` |
+//! | `tests/log_fields.rs`  | no log field carries a payload, credential, principal or tenant name (P10 classification) |
+//! | `tests/release_scripts.rs` | the release's provenance verification, archive extraction and rebuild comparison behave as the release builder relies on |
 //!
 //! The crate is a test dependency only. Nothing shipped links it, so it may start servers, spawn
 //! processes and inject faults freely.

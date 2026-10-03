@@ -984,6 +984,155 @@
         "sortOrder": "Descending",
         "enableLogDetails": true
       }
+    },
+    {
+      "type": "stat",
+      "title": "Telemetry schema",
+      "description": "permguard_telemetry_schema_info: the label schema this build exposes. Dashboards and alerts written for another schema read the wrong series.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(permguard_telemetry_schema_info{component=~\"$component\"}) by (version)",
+          "legendFormat": "{{version}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {},
+          "thresholds": {
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ],
+            "mode": "absolute"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Telemetry dropped per second",
+      "description": "Log lines and trace spans dropped because their sink could not keep up, label values recorded as `other`, and per-resource values left out of an aggregate. Nothing waits for telemetry, so a full queue shows here, never as latency.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 34
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(permguard_log_lines_dropped_total{component=~\"$component\"}[$__rate_interval]))",
+          "legendFormat": "log lines",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(permguard_trace_spans_dropped_total{component=~\"$component\"}[$__rate_interval]))",
+          "legendFormat": "trace spans",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(permguard_metric_label_values_refused_total{component=~\"$component\"}[$__rate_interval]))",
+          "legendFormat": "label values",
+          "range": true,
+          "instant": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(permguard_metric_aggregated_resources_refused_total{component=~\"$component\"}[$__rate_interval]))",
+          "legendFormat": "aggregated resources",
+          "range": true,
+          "instant": false,
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     }
   ]
 }

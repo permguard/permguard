@@ -20,6 +20,7 @@
 //! carrying this product's class and code in its metadata, so a gRPC caller
 //! and an HTTP caller branch on the same vocabulary.
 
+use permguard_core::metrics::labels;
 use permguard_core::{ApiError, ErrorClass, codes};
 use permguard_decisions::envelope::Batch;
 use serde_json::Value;
@@ -40,7 +41,7 @@ impl DecisionLog for DecisionFacade {
         let started = std::time::Instant::now();
         let batch: Batch = Batch::decode(&request.into_inner().batch).map_err(|error| {
             self.metrics
-                .count(&measure::REFUSALS, &[("reason", "malformed")]);
+                .count(&measure::REFUSALS, &[(labels::REASON, "malformed")]);
 
             api_status(
                 &ApiError::new(
@@ -90,10 +91,9 @@ impl DecisionLog for DecisionFacade {
             Ok(Accepted::Ok { acked, stored }) => {
                 self.metrics.count(
                     &measure::BATCHES,
-                    &[("outcome", if stored == 0 { "replay" } else { "ok" })],
+                    &[(labels::OUTCOME, if stored == 0 { "replay" } else { "ok" })],
                 );
                 self.count_records(&batch.records);
-                self.publish_acked(&batch, acked);
 
                 Ok(Response::new(ShipResponse {
                     acked,
@@ -104,7 +104,7 @@ impl DecisionLog for DecisionFacade {
             }
             Ok(Accepted::OutOfOrder { expected_seq }) => {
                 self.metrics
-                    .count(&measure::BATCHES, &[("outcome", "out_of_order")]);
+                    .count(&measure::BATCHES, &[(labels::OUTCOME, "out_of_order")]);
 
                 Ok(Response::new(ShipResponse {
                     acked: 0,
@@ -115,7 +115,7 @@ impl DecisionLog for DecisionFacade {
             }
             Err(refused) => {
                 self.metrics
-                    .count(&measure::REFUSALS, &[("reason", reason_of(&refused))]);
+                    .count(&measure::REFUSALS, &[(labels::REASON, reason_of(&refused))]);
                 if matches!(refused, Refused::Conflict { .. }) {
                     self.metrics.count(&measure::CLOSED, &[]);
                 }
@@ -238,8 +238,10 @@ impl DecisionLog for DecisionFacade {
         };
         match page {
             Ok(page) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "ok")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "ok")],
+                );
 
                 Ok(Response::new(ReadResponse {
                     records: page.records.iter().map(render).collect(),
@@ -263,8 +265,10 @@ impl DecisionLog for DecisionFacade {
                     requested_sequence,
                 },
             ) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "expired")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "expired")],
+                );
 
                 // The oldest offset and the size of the gap travel in the metadata, so a consumer
                 // learns where to resume and how much it lost from the refusal itself — the same
@@ -291,8 +295,10 @@ impl DecisionLog for DecisionFacade {
                 Err(status)
             }
             Err(error) => {
-                self.metrics
-                    .count(&measure::READS, &[("scope", kind), ("outcome", "refused")]);
+                self.metrics.count(
+                    &measure::READS,
+                    &[(labels::SCOPE, kind), (labels::OUTCOME, "refused")],
+                );
 
                 Err(api_status(
                     &ApiError::new(
@@ -310,11 +316,8 @@ impl DecisionLog for DecisionFacade {
 impl DecisionFacade {
     fn count_records(&self, records: &[Value]) {
         for record in records {
-            if let Some((zone, ledger)) = super::store::tenancy(record) {
-                self.metrics.count(
-                    &measure::RECORDS,
-                    &[("zone", zone.as_str()), ("ledger", ledger.as_str())],
-                );
+            if super::store::tenancy(record).is_some() {
+                self.metrics.count(&measure::RECORDS, &[]);
             }
         }
     }

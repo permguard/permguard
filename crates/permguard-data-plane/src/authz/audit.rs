@@ -12,6 +12,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Result;
+use permguard_core::metrics::labels;
 use permguard_core::{
     AuditError, AuditRecorder, BoxFuture, Metrics, ServerContext, Service, Subject, ready,
 };
@@ -68,12 +69,12 @@ impl DecisionAudit {
         match self.sender.try_send(Entry { subject, target }) {
             Ok(()) => {
                 self.metrics
-                    .count(&measure::AUDIT_RECORDS, &[("outcome", "queued")]);
+                    .count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "queued")]);
                 self.publish_depth();
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.metrics
-                    .count(&measure::AUDIT_RECORDS, &[("outcome", "dropped")]);
+                    .count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "dropped")]);
                 self.publish_depth();
                 warn!(
                     event.name = "authz.audit_dropped",
@@ -84,7 +85,7 @@ impl DecisionAudit {
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 self.metrics
-                    .count(&measure::AUDIT_RECORDS, &[("outcome", "dropped")]);
+                    .count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "dropped")]);
                 self.publish_depth();
                 warn!(
                     event.name = "authz.audit_dropped",
@@ -258,7 +259,7 @@ async fn record_one(recorder: AuditRecorder, entry: Entry, metrics: &Metrics) {
 
     match outcome {
         Ok(Ok(())) => {
-            metrics.count(&measure::AUDIT_RECORDS, &[("outcome", "written")]);
+            metrics.count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "written")]);
         }
         Ok(Err(error)) => report_failure(error, metrics),
         Err(error) => report_failure(
@@ -269,7 +270,7 @@ async fn record_one(recorder: AuditRecorder, entry: Entry, metrics: &Metrics) {
 }
 
 fn report_failure(error: AuditError, metrics: &Metrics) {
-    metrics.count(&measure::AUDIT_RECORDS, &[("outcome", "failed")]);
+    metrics.count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "failed")]);
     warn!(
         event.name = "authz.audit_failed",
         component = COMPONENT,

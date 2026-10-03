@@ -19,7 +19,7 @@ use permguard_core::metrics::{Metric, SECONDS};
 /// `refused` (the request could not be evaluated at all).
 pub const DECISIONS: Metric = Metric::counter(
     "permguard_authz_decisions_total",
-    "Authorization decisions, by zone, ledger and outcome.",
+    "Authorization decisions, by outcome.",
 );
 
 /// Requests that never reached a decision, by why: `malformed`,
@@ -41,27 +41,27 @@ pub const REQUEST_SECONDS: Metric = Metric::histogram(
 /// "the policy set is large" from "the request is large".
 pub const EVALUATION_SECONDS: Metric = Metric::histogram(
     "permguard_authz_evaluation_seconds",
-    "How long one evaluation took, by zone, ledger and partition.",
+    "How long one evaluation took.",
     SECONDS,
 );
 
 /// Evaluations answered, counting a boxcarred batch as what it is: many.
 pub const EVALUATIONS: Metric = Metric::counter(
     "permguard_authz_evaluations_total",
-    "Evaluations answered, by zone, ledger and outcome.",
+    "Evaluations answered, by outcome.",
 );
 
 /// Partitions compiled: the expensive path, and the one the cache exists to
 /// keep off the hot path.
 pub const COMPILATIONS: Metric = Metric::counter(
     "permguard_authz_compilations_total",
-    "Partitions compiled from the volume, by zone, ledger and partition.",
+    "Partitions compiled from the volume.",
 );
 
 /// How long compiling one partition took.
 pub const COMPILE_SECONDS: Metric = Metric::histogram(
     "permguard_authz_compile_seconds",
-    "How long compiling one partition took, by zone and ledger.",
+    "How long compiling one partition took.",
     SECONDS,
 );
 
@@ -95,7 +95,7 @@ pub const CACHE_BYTES: Metric = Metric::gauge(
 /// upgrade waiting to happen.
 pub const BLOCKED: Metric = Metric::gauge(
     "permguard_authz_blocked_ledgers",
-    "Mirrors this engine cannot serve, by zone and ledger.",
+    "Ledgers this engine cannot serve.",
 );
 
 /// Decision audit records handled by the asynchronous audit worker.

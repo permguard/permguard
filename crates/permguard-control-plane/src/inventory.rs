@@ -1,8 +1,7 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! What this control plane holds, as numbers an operator can page on: zones,
-//! ledgers, objects, and bytes — per ledger, per zone, and in total.
+//! What this control plane holds, as numbers an operator can page on: objects and bytes, in total.
 //!
 //! # Why a loop rather than a counter
 //!
@@ -20,19 +19,16 @@
 //!
 //! # What it answers
 //!
-//! | Question | Metric |
-//! | --- | --- |
-//! | how much disk is this deployment using | `permguard_store_bytes` |
-//! | which zone is growing | `permguard_zone_bytes{zone}` |
-//! | which ledger inside it | `permguard_ledger_bytes{zone,ledger}` |
-//! | how many objects, where | `permguard_ledger_objects{zone,ledger}` |
-//! | how far each ledger has advanced | `permguard_ledger_counter{zone,ledger}` |
-//! | how many ledgers a zone holds | `permguard_zone_ledgers{zone}` |
+//! | Question                               | Metric                    |
+//! | -------------------------------------- | ------------------------- |
+//! | how much disk is this deployment using | `permguard_store_bytes`   |
+//! | how many objects it holds              | `permguard_store_objects` |
 //!
-//! Labels are **names**, because the question is asked by a person looking at
-//! a dashboard, and the set is bounded by what the deployment actually holds.
+//! Totals only, with no label. Which zone or ledger is growing is a question for the catalog,
+//! asked by an authorized caller: a series per zone or per ledger would be a tenant identifier
+//! in the telemetry, which P10 forbids.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -51,33 +47,13 @@ const COMPONENT: &str = "control-plane";
 /// should have to reason about.
 const EVERY: Duration = Duration::from_secs(60);
 
-/// Bytes one ledger's store occupies on disk, compressed as it is at rest.
-pub const LEDGER_BYTES: Metric = Metric::gauge(
-    "permguard_ledger_bytes",
-    "Bytes one ledger's object store occupies on disk, by zone and ledger.",
+/// Objects every ledger of this control plane holds. Totals only: a ledger's or a zone's own
+/// size would be a series per tenant, which P10 forbids; per-ledger figures are an authorized
+/// question for the catalog, not a label.
+pub const STORE_OBJECTS: Metric = Metric::gauge(
+    "permguard_store_objects",
+    "Objects every ledger of this control plane holds.",
 );
-
-/// Objects one ledger holds.
-pub const LEDGER_OBJECTS: Metric = Metric::gauge(
-    "permguard_ledger_objects",
-    "Objects one ledger holds, by zone and ledger.",
-);
-
-/// The counter its default ref stands at — how far it has advanced.
-pub const LEDGER_COUNTER: Metric = Metric::gauge(
-    "permguard_ledger_counter",
-    "The counter each ledger's ref stands at, by zone and ledger.",
-);
-
-/// Bytes one zone occupies, across its ledgers.
-pub const ZONE_BYTES: Metric = Metric::gauge(
-    "permguard_zone_bytes",
-    "Bytes one zone occupies on disk, across its ledgers.",
-);
-
-/// Ledgers one zone holds — which zone carries the most.
-pub const ZONE_LEDGERS: Metric =
-    Metric::gauge("permguard_zone_ledgers", "Ledgers one zone holds, by zone.");
 
 /// The whole deployment, in bytes.
 pub const STORE_BYTES: Metric = Metric::gauge(
@@ -218,6 +194,7 @@ fn measure(catalog: &Arc<dyn Catalog>, root: &Path, metrics: &Metrics) {
     };
 
     let mut total = 0u64;
+    let mut objects = 0u64;
     for zone in &zones {
         let ledgers = match catalog.list_ledgers(&Selector::Id(zone.id.clone())) {
             Ok(ledgers) => ledgers,
@@ -225,7 +202,7 @@ fn measure(catalog: &Arc<dyn Catalog>, root: &Path, metrics: &Metrics) {
                 warn!(
                     event.name = "inventory.zone_failed",
                     component = COMPONENT,
-                    zone = zone.name.as_str(),
+                    zone = zone.id.as_str(),
                     error = %error,
                     "a zone's ledgers could not be listed"
                 );
@@ -236,29 +213,14 @@ fn measure(catalog: &Arc<dyn Catalog>, root: &Path, metrics: &Metrics) {
         for ledger in &ledgers {
             let directory = root.join(&zone.id).join("ledgers").join(&ledger.id);
             let held = held_by(&directory);
-            let labels = [
-                ("zone", zone.name.as_str()),
-                ("ledger", ledger.name.as_str()),
-            ];
-            metrics.set(&LEDGER_BYTES, &labels, held.bytes as f64);
-            metrics.set(&LEDGER_OBJECTS, &labels, held.objects as f64);
-            metrics.set(&LEDGER_COUNTER, &labels, counter_of(&directory) as f64);
             zone_bytes += held.bytes;
+            objects += held.objects;
         }
-        metrics.set(
-            &ZONE_BYTES,
-            &[("zone", zone.name.as_str())],
-            zone_bytes as f64,
-        );
-        metrics.set(
-            &ZONE_LEDGERS,
-            &[("zone", zone.name.as_str())],
-            ledgers.len() as f64,
-        );
         total += zone_bytes;
     }
 
     metrics.set(&STORE_BYTES, &[], total as f64);
+    metrics.set(&STORE_OBJECTS, &[], objects as f64);
     metrics.observe(&WALK_SECONDS, &[], started.elapsed().as_secs_f64());
     debug!(
         event.name = "inventory.measured",
@@ -301,27 +263,12 @@ fn held_by(ledger: &Path) -> Held {
     held
 }
 
-/// The counter of the ledger's default ref, or zero when it has no history.
-fn counter_of(ledger: &Path) -> u64 {
-    let path: PathBuf = ledger.join("refs").join("main");
-    let Ok(bytes) = std::fs::read(path) else {
-        return 0;
-    };
-    #[derive(serde::Deserialize)]
-    struct Ref {
-        counter: u64,
-    }
-
-    serde_json::from_slice::<Ref>(&bytes)
-        .map(|state| state.counter)
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use std::path::PathBuf;
 
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -338,7 +285,6 @@ mod tests {
     #[test]
     fn a_ledger_that_is_not_there_holds_nothing() {
         assert_eq!(held_by(Path::new("/nonexistent/ledger")), Held::default());
-        assert_eq!(counter_of(Path::new("/nonexistent/ledger")), 0);
     }
 
     #[test]
@@ -357,23 +303,6 @@ mod tests {
                 bytes: 16,
                 objects: 2
             }
-        );
-    }
-
-    #[test]
-    fn the_counter_comes_from_the_ref_and_a_broken_one_reads_as_zero() {
-        let ledger = scratch("counter");
-        let refs = ledger.join("refs");
-        std::fs::create_dir_all(&refs).expect("the refs directory exists");
-        std::fs::write(refs.join("main"), br#"{"head":"sha256:aa","counter":9}"#)
-            .expect("the ref is written");
-        assert_eq!(counter_of(&ledger), 9);
-
-        std::fs::write(refs.join("main"), b"not json").expect("the ref is written");
-        assert_eq!(
-            counter_of(&ledger),
-            0,
-            "unreadable is reported as nothing, never as a guess"
         );
     }
 }

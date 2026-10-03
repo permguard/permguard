@@ -1229,3 +1229,18 @@ mod idempotency_tests {
         let _ = fs::remove_dir_all(&directory);
     }
 }
+
+#[cfg(test)]
+mod pressure_tests {
+    /// The pressure a spool reports ends a stream and is counted as the discontinuity's `reason`:
+    /// a word outside that label's vocabulary would be recorded as `other`.
+    #[test]
+    fn test_every_pressure_is_a_registered_reason() {
+        for pressure in ["spool_full", "age_expiry"] {
+            assert!(
+                permguard_core::metrics::labels::REASON.admits(pressure),
+                "{pressure}"
+            );
+        }
+    }
+}

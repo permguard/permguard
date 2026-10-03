@@ -52,6 +52,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::{Instant, Sleep};
 
+use permguard_core::metrics::labels;
 use permguard_core::{Limits, Metrics};
 
 use crate::measure::{ACCEPTED, CONNECTIONS, REFUSED};
@@ -190,8 +191,10 @@ where
             Err(_) => {
                 // Counted every time, unlike the log record: the whole point of the number is that a
                 // refusal rate is visible, and one warning per episode cannot express a rate.
-                self.metrics
-                    .count(&REFUSED, &[("surface", self.surface), ("scope", "pool")]);
+                self.metrics.count(
+                    &REFUSED,
+                    &[(labels::SURFACE, self.surface), (labels::SCOPE, "pool")],
+                );
 
                 if !self.saturated.swap(true, Ordering::SeqCst) {
                     tracing::warn!(
@@ -216,8 +219,10 @@ where
         let peer = match self.admit_peer(stream.peer_ip()) {
             Ok(peer) => peer,
             Err(()) => {
-                self.metrics
-                    .count(&REFUSED, &[("surface", self.surface), ("scope", "peer")]);
+                self.metrics.count(
+                    &REFUSED,
+                    &[(labels::SURFACE, self.surface), (labels::SCOPE, "peer")],
+                );
 
                 drop(permit);
 
@@ -232,10 +237,14 @@ where
 
         self.saturated.store(false, Ordering::SeqCst);
 
-        self.metrics.count(&ACCEPTED, &[("surface", self.surface)]);
-        let held = self.held.fetch_add(1, Ordering::SeqCst) + 1;
         self.metrics
-            .set(&CONNECTIONS, &[("surface", self.surface)], held as f64);
+            .count(&ACCEPTED, &[(labels::SURFACE, self.surface)]);
+        let held = self.held.fetch_add(1, Ordering::SeqCst) + 1;
+        self.metrics.set(
+            &CONNECTIONS,
+            &[(labels::SURFACE, self.surface)],
+            held as f64,
+        );
 
         let accepting = self.inner.accept(stream, service);
         let released = Released {
@@ -335,8 +344,11 @@ struct Released {
 impl Drop for Released {
     fn drop(&mut self) {
         let held = self.held.fetch_sub(1, Ordering::SeqCst) - 1;
-        self.metrics
-            .set(&CONNECTIONS, &[("surface", self.surface)], held as f64);
+        self.metrics.set(
+            &CONNECTIONS,
+            &[(labels::SURFACE, self.surface)],
+            held as f64,
+        );
     }
 }
 

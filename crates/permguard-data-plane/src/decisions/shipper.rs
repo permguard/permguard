@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use permguard_control_client::decisions::{DecisionLog, ShipError, Shipped};
+use permguard_core::metrics::labels;
 use permguard_core::{KeyManager, Metrics};
 use permguard_decisions::envelope::{Batch, Envelope, Signed};
 use permguard_decisions::record::Sampling;
@@ -192,7 +193,8 @@ impl Shipper {
                 if let Err(error) = self.journal.acknowledge(acked, &head) {
                     return Round::Deferred(error.to_string());
                 }
-                self.metrics.count(&measure::SHIPPED, &[("outcome", "ok")]);
+                self.metrics
+                    .count(&measure::SHIPPED, &[(labels::OUTCOME, "ok")]);
                 info!(
                     event.name = "decisions.shipped",
                     component = COMPONENT,
@@ -210,7 +212,7 @@ impl Shipper {
                 // Nothing is lost: the store needs an earlier batch first, and
                 // the next round reads from what it acknowledged.
                 self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "out_of_order")]);
+                    .count(&measure::SHIPPED, &[(labels::OUTCOME, "out_of_order")]);
                 warn!(
                     event.name = "decisions.out_of_order",
                     component = COMPONENT,
@@ -222,13 +224,13 @@ impl Shipper {
             }
             Err(ShipError::Unavailable(detail)) => {
                 self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "deferred")]);
+                    .count(&measure::SHIPPED, &[(labels::OUTCOME, "deferred")]);
 
                 Round::Deferred(detail)
             }
             Err(ShipError::Rejected { code, detail }) => {
                 self.metrics
-                    .count(&measure::SHIPPED, &[("outcome", "rejected")]);
+                    .count(&measure::SHIPPED, &[(labels::OUTCOME, "rejected")]);
                 error!(
                     event.name = "decisions.rejected",
                     component = COMPONENT,

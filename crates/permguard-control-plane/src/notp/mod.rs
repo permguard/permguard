@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use permguard_core::catalog::{Catalog, Selector};
 use permguard_core::keys::KeyManager;
+use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics, SECONDS};
 use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject};
 
@@ -128,10 +129,10 @@ impl NotpFacade {
             Err(error) => error.class().as_str(),
         };
         self.metrics
-            .count(&OPERATIONS, &[("op", op), ("outcome", outcome)]);
+            .count(&OPERATIONS, &[(labels::OP, op), (labels::OUTCOME, outcome)]);
         self.metrics.observe(
             &OPERATION_SECONDS,
-            &[("op", op)],
+            &[(labels::OP, op)],
             started.elapsed().as_secs_f64(),
         );
         result
@@ -141,10 +142,10 @@ impl NotpFacade {
     /// they actually rode the wire.
     fn observed_batch(&self, op: &'static str, objects: usize, wire_bytes: u64, encoding: &str) {
         self.metrics
-            .observe(&BATCH_OBJECTS, &[("op", op)], objects as f64);
+            .observe(&BATCH_OBJECTS, &[(labels::OP, op)], objects as f64);
         self.metrics.add(
             &WIRE_BYTES,
-            &[("op", op), ("encoding", encoding)],
+            &[(labels::OP, op), (labels::ENCODING, encoding)],
             wire_bytes as f64,
         );
     }

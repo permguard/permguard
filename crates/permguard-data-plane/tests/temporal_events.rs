@@ -307,6 +307,11 @@ fn plane_with(tag: &str, blocking: Blocking) -> Plane {
 
 /// The same plane, against a manifest the test chooses.
 fn plane_of(tag: &str, manifest: &Manifest, blocking: Blocking) -> Plane {
+    plane_measured(tag, manifest, blocking, Metrics::none())
+}
+
+/// The same plane, recording into `metrics`.
+fn plane_measured(tag: &str, manifest: &Manifest, blocking: Blocking, metrics: Metrics) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
@@ -315,7 +320,7 @@ fn plane_of(tag: &str, manifest: &Manifest, blocking: Blocking) -> Plane {
     let decider = Arc::new(Decider::new(
         mirrors.clone(),
         Arc::new(Cache::new(64, 32 * 1024 * 1024)),
-        Metrics::none(),
+        metrics.clone(),
         None,
         256,
     ));
@@ -329,18 +334,16 @@ fn plane_of(tag: &str, manifest: &Manifest, blocking: Blocking) -> Plane {
         clock_skew: std::time::Duration::from_secs(u32::MAX.into()),
         ..Bounds::default()
     };
-    let streams = Arc::new(Streams::new(
-        events.clone(),
-        "test-plane".to_owned(),
-        bounds,
-    ));
+    let streams = Arc::new(
+        Streams::new(events.clone(), "test-plane".to_owned(), bounds).with_metrics(metrics.clone()),
+    );
 
     Plane {
         submitter: Arc::new(Submitter::new(
             decider,
             Arc::clone(&streams),
             blocking,
-            Metrics::none(),
+            metrics,
         )),
         events,
         streams,
@@ -2156,4 +2159,162 @@ async fn a_stale_partition_is_rebuilt_even_after_a_sibling_profile_was() {
         "the temporal partition stayed stale until it was itself rebuilt — a note kept per \
          history would have skipped this rebuild and denied: {body}"
     );
+}
+
+/// H-13 over the temporal interface: identifiers a caller controls — the zone and ledger names it
+/// addresses, an occurrence id, a principal, an undeclared profile, a ledger nobody holds, its own
+/// request id — never become a metric label and never reach a log line.
+mod adversarial_ids {
+    use super::*;
+
+    use std::sync::Mutex;
+
+    use permguard_core::metrics::Recorder as _;
+
+    const ZONE_SPY: &str = "zone-spy-41d7c2";
+    const LEDGER_SPY: &str = "ledger-spy-8e03fa";
+    const EVENT_SPY: &str = "event-spy-6b19d0";
+    const PRINCIPAL_SPY: &str = "principal-spy-f2a7c4";
+    const PROFILE_SPY: &str = "profile-spy-unknown-93be";
+    const UNKNOWN_LEDGER: &str = "ledger-spy-unknown-0c5d";
+    const REQUEST_SPY: &str = "request-spy-d41c77";
+    const SPIES: [&str; 7] = [
+        ZONE_SPY,
+        LEDGER_SPY,
+        EVENT_SPY,
+        PRINCIPAL_SPY,
+        PROFILE_SPY,
+        UNKNOWN_LEDGER,
+        REQUEST_SPY,
+    ];
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("not poisoned")
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    async fn submit(router: &axum::Router, body: Value) -> StatusCode {
+        let request = Request::builder()
+            .method("POST")
+            .uri(permguard_languages::temporal::SUBMISSION_PATH)
+            .header("content-type", "application/json")
+            .header("x-request-id", REQUEST_SPY)
+            .body(Body::from(body.to_string()))
+            .expect("the request builds");
+
+        router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("the surface answers")
+            .status()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_adversarial_ids_never_become_labels_or_log_lines() {
+        let registry = Arc::new(permguard_std::metrics::Registry::new());
+        let plane = plane_measured(
+            "adversarial-ids",
+            &manifest(),
+            blocking(),
+            Metrics::new(Arc::clone(&registry) as Arc<dyn permguard_core::metrics::Recorder>),
+        );
+        // The names a caller addresses the ledger by are the spies; the ids storage is keyed by
+        // stay the plane's own.
+        permguard_data_plane::authz::store::record(
+            &plane.mirrors.join(ZONE_ID).join(LEDGER_ID),
+            &Identity {
+                zone_id: ZONE_ID.to_owned(),
+                zone_name: ZONE_SPY.to_owned(),
+                ledger_id: LEDGER_ID.to_owned(),
+                ledger_name: LEDGER_SPY.to_owned(),
+                server: "http://127.0.0.1:6443".to_owned(),
+            },
+        )
+        .expect("the identity is recorded");
+
+        let logs = Captured::default();
+        let writer = logs.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(move || writer.clone())
+            .finish();
+        // Global, because submission runs on blocking threads a thread-local subscriber would not
+        // see. No other test of this binary installs one.
+        tracing::subscriber::set_global_default(subscriber).expect("one subscriber per process");
+
+        let router = surface(&plane);
+        let addressed = |profile: &str, ledger: &str| {
+            let mut body = submission_to(
+                profile,
+                0,
+                "Drupe::Action::Login",
+                "request",
+                PRINCIPAL_SPY,
+                json!({"user": PRINCIPAL_SPY, "server": "s1"}),
+            );
+            body["store"]["zone"] = json!(ZONE_SPY);
+            body["store"]["ledger"] = json!(ledger);
+            body["event"]["data"]["event_id"] = json!(EVENT_SPY);
+            body
+        };
+
+        let accepted = submit(&router, addressed(PROFILE, LEDGER_SPY)).await;
+        assert!(accepted.is_success(), "the spy ledger answers: {accepted}");
+        assert!(
+            !submit(&router, addressed(PROFILE_SPY, LEDGER_SPY))
+                .await
+                .is_success(),
+            "an undeclared profile is refused"
+        );
+        assert!(
+            !submit(&router, addressed(PROFILE, UNKNOWN_LEDGER))
+                .await
+                .is_success(),
+            "a ledger nobody holds is refused"
+        );
+
+        let series = registry.snapshot();
+        assert!(!series.is_empty(), "the submissions were measured");
+        for refused in [
+            permguard_core::metrics::LABEL_VALUES_REFUSED.name(),
+            permguard_core::metrics::AGGREGATED_RESOURCES_REFUSED.name(),
+        ] {
+            assert!(
+                !series.iter().any(|sample| sample.metric.name() == refused),
+                "{refused} was recorded: a label value or a resource was refused"
+            );
+        }
+        for sample in &series {
+            for (name, value) in &sample.labels {
+                for spy in SPIES {
+                    assert!(
+                        !value.contains(spy) && !name.contains(spy),
+                        "`{spy}` became a label of {}: {name}={value}",
+                        sample.metric.name()
+                    );
+                }
+            }
+        }
+        let logged =
+            String::from_utf8(logs.0.lock().expect("not poisoned").clone()).expect("logs are text");
+        assert!(!logged.is_empty(), "the submissions were logged");
+        for spy in SPIES {
+            assert!(
+                !logged.contains(spy),
+                "`{spy}` reached a log line:\n{logged}"
+            );
+        }
+    }
 }

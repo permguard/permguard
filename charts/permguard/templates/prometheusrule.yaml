@@ -58,12 +58,12 @@ spec:
     - name: permguard.mirrors
       rules:
         - alert: PermguardMirrorStale
-          expr: max by (component, zone, ledger) (permguard_sync_mirror_age_seconds) > {{ int $rules.mirror.staleSeconds }}
+          expr: max by (component) (permguard_sync_mirror_age_seconds) > {{ int $rules.mirror.staleSeconds }}
           for: {{ $rules.mirror.staleFor }}
           labels:
             severity: warning
           annotations:
-            summary: "{{`{{ $labels.zone }}`}}/{{`{{ $labels.ledger }}`}} mirror is stale"
+            summary: "{{`{{ $labels.component }}`}}: its stalest mirror has not synchronized within the bound"
             runbook_url: "https://docs.permguard.com/data-plane-mirrors#freshness"
         - alert: PermguardMirrorSyncFailing
           expr: increase(permguard_sync_mirrors_total{outcome=~"failed|timeout"}[10m]) > 0
@@ -71,7 +71,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "{{`{{ $labels.zone }}`}}/{{`{{ $labels.ledger }}`}} mirror sync is failing"
+            summary: "{{`{{ $labels.component }}`}}: mirror synchronization is failing"
             runbook_url: "https://docs.permguard.com/data-plane-mirrors#observability"
         - alert: PermguardMirrorRoundPartial
           expr: increase(permguard_sync_rounds_total{outcome="partial"}[10m]) > 0

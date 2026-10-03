@@ -119,6 +119,7 @@ pub(crate) mod zones;
 use std::sync::Arc;
 
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
+use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics};
 use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject};
 
@@ -186,8 +187,10 @@ impl CatalogFacade {
         // A refusal put on the trail (`audit.refusals`) arrives here too,
         // already counted by `refused` — skip it or it counts twice.
         if !action.ends_with(".refused") {
-            self.metrics
-                .count(&OPERATIONS, &[("action", action), ("outcome", "ok")]);
+            self.metrics.count(
+                &OPERATIONS,
+                &[(labels::ACTION, action), (labels::OUTCOME, "ok")],
+            );
             self.refresh_holdings();
         }
 
@@ -220,7 +223,7 @@ impl CatalogFacade {
     pub(crate) async fn refused(&self, operation: &'static str, error: CatalogError) -> ApiError {
         self.metrics.count(
             &OPERATIONS,
-            &[("action", operation), ("outcome", "refused")],
+            &[(labels::ACTION, operation), (labels::OUTCOME, "refused")],
         );
         let error = api_error(error);
 

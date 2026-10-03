@@ -106,18 +106,14 @@ impl Loading {
         ledger: &str,
         profile: &str,
     ) -> Result<Loaded, ApiError> {
-        let labels = [("zone", zone), ("ledger", ledger)];
-
         let mirror = store::find(root, zone, ledger).ok_or_else(|| {
             self.metrics.count(
                 &super::measure::REFUSALS,
-                &[("reason", "ledger_not_served")],
+                &[(permguard_core::metrics::labels::REASON, "ledger_not_served")],
             );
             debug!(
                 event.name = "authz.ledger_not_served",
                 component = COMPONENT,
-                zone = zone,
-                ledger = ledger,
                 "a request named a ledger this plane does not mirror"
             );
 
@@ -136,12 +132,14 @@ impl Loading {
             && let Some(age) = store::synced_age(&mirror.path)
             && age >= bound
         {
-            self.metrics
-                .count(&super::measure::REFUSALS, &[("reason", "ledger_expired")]);
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "ledger_expired")],
+            );
             warn!(
                 event.name = "authz.ledger_expired",
                 component = COMPONENT,
-                ledger = mirror.label().as_str(),
+                ledger = mirror.log_id().as_str(),
                 age.seconds = age.as_secs(),
                 bound.seconds = bound.as_secs(),
                 "this mirror is older than the deployment's expiry bound: refusing rather than \
@@ -154,14 +152,14 @@ impl Loading {
                 format!(
                     "`{}` was last confirmed {}s ago, which is past this deployment's expiry \
                      bound of {}s: refusing to decide on a state this old",
-                    mirror.label(),
+                    mirror.display_name(),
                     age.as_secs(),
                     bound.as_secs()
                 ),
             ));
         }
 
-        let head = self.head(&mirror, &labels)?;
+        let head = self.head(&mirror)?;
 
         // A commit this engine already refused is refused again without
         // reading a single policy — and it clears itself the moment the
@@ -169,7 +167,10 @@ impl Loading {
         if let Some(blocked) = block::blocks(&mirror.path, &head.commit) {
             self.metrics.count(
                 &super::measure::REFUSALS,
-                &[("reason", "ledger_incompatible")],
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    "ledger_incompatible",
+                )],
             );
 
             return Err(ApiError::new(
@@ -177,14 +178,14 @@ impl Loading {
                 "ledger_incompatible",
                 format!(
                     "this plane cannot serve `{}` at its current commit: {}",
-                    mirror.label(),
+                    mirror.display_name(),
                     blocked.reason
                 ),
             ));
         }
         block::clear_if_present(&mirror.path);
 
-        let partitions = self.partitions(&mirror, &head, zone, ledger, profile)?;
+        let partitions = self.partitions(&mirror, &head, profile)?;
 
         Ok(Loaded {
             mirror,
@@ -202,10 +203,10 @@ impl Loading {
     /// a cache happens to notice. Everything after it — the commit object, the manifest, decoding
     /// it and running the load gate over it — depends only on *which* commit that ref names, and
     /// so is cached by it and computed once per commit rather than once per request.
-    fn head(&self, mirror: &store::Mirror, labels: &[(&str, &str)]) -> Result<Arc<Head>, ApiError> {
+    fn head(&self, mirror: &store::Mirror) -> Result<Arc<Head>, ApiError> {
         let checkpoint = match snapshot::checkpoint_of(&mirror.path) {
             Ok(checkpoint) => checkpoint,
-            Err(refusal) => return Err(self.refuse(mirror, &refusal, labels)),
+            Err(refusal) => return Err(self.refuse(mirror, &refusal)),
         };
         let key = Cache::head_key(
             &mirror.identity.zone_id,
@@ -228,7 +229,7 @@ impl Loading {
 
         let head = match snapshot::head_at(&mirror.path, &checkpoint, &self.enabled) {
             Ok(head) => Arc::new(head),
-            Err(refusal) => return Err(self.refuse(mirror, &refusal, labels)),
+            Err(refusal) => return Err(self.refuse(mirror, &refusal)),
         };
         self.cache.keep_head(key, Arc::clone(&head));
 
@@ -241,14 +242,11 @@ impl Loading {
         &self,
         mirror: &store::Mirror,
         head: &Arc<Head>,
-        zone: &str,
-        ledger: &str,
         profile: &str,
     ) -> Result<Vec<Arc<Partition>>, ApiError> {
-        let labels = [("zone", zone), ("ledger", ledger)];
         let names = head
             .partitions_of(profile)
-            .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
+            .map_err(|refusal| self.refuse(mirror, &refusal))?;
 
         let mut compiled = Vec::new();
         for name in names {
@@ -259,13 +257,17 @@ impl Loading {
                 &name,
             );
             if let Some(held) = self.cache.partition(&key) {
-                self.metrics
-                    .count(&super::measure::CACHE_LOOKUPS, &[("result", "hit")]);
+                self.metrics.count(
+                    &super::measure::CACHE_LOOKUPS,
+                    &[(permguard_core::metrics::labels::RESULT, "hit")],
+                );
                 compiled.push(held);
                 continue;
             }
-            self.metrics
-                .count(&super::measure::CACHE_LOOKUPS, &[("result", "miss")]);
+            self.metrics.count(
+                &super::measure::CACHE_LOOKUPS,
+                &[(permguard_core::metrics::labels::RESULT, "miss")],
+            );
 
             // One compiler per partition per commit. Compiling is idempotent and expensive, so
             // without this every request that arrives while the first is compiling does the same
@@ -284,25 +286,17 @@ impl Loading {
 
             let started = Instant::now();
             let partition = snapshot::compile(&mirror.path, head, &name)
-                .map_err(|refusal| self.refuse(mirror, &refusal, &labels))?;
+                .map_err(|refusal| self.refuse(mirror, &refusal))?;
             self.metrics.observe(
                 &super::measure::COMPILE_SECONDS,
-                &labels,
+                &[],
                 started.elapsed().as_secs_f64(),
             );
-            self.metrics.count(
-                &super::measure::COMPILATIONS,
-                &[
-                    ("zone", zone),
-                    ("ledger", ledger),
-                    ("partition", name.as_str()),
-                ],
-            );
+            self.metrics.count(&super::measure::COMPILATIONS, &[]);
             info!(
                 event.name = "authz.partition_compiled",
                 component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                partition = name.as_str(),
+                ledger = mirror.log_id().as_str(),
                 language = partition.language.as_str(),
                 policies = partition.policies,
                 bytes = partition.footprint,
@@ -317,12 +311,7 @@ impl Loading {
 
     /// Turns a load refusal into the answer a PEP can act on, and remembers
     /// the ones that will not fix themselves.
-    fn refuse(
-        &self,
-        mirror: &store::Mirror,
-        refusal: &Refusal,
-        labels: &[(&str, &str)],
-    ) -> ApiError {
+    fn refuse(&self, mirror: &store::Mirror, refusal: &Refusal) -> ApiError {
         let (code, class, reason) = match refusal {
             Refusal::Empty => ("ledger_empty", ErrorClass::Unavailable, "ledger_empty"),
             Refusal::Incompatible(_) => (
@@ -333,33 +322,45 @@ impl Loading {
             Refusal::Damaged(_) => ("ledger_damaged", ErrorClass::Unavailable, "ledger_damaged"),
             Refusal::Unknown(_) => ("profile_unknown", ErrorClass::Validation, "profile_unknown"),
         };
-        self.metrics
-            .count(&super::measure::REFUSALS, &[("reason", reason)]);
+        self.metrics.count(
+            &super::measure::REFUSALS,
+            &[(permguard_core::metrics::labels::REASON, reason)],
+        );
 
+        // The log carries the code, never the detail: the detail names partitions and languages the
+        // tenant wrote, and repeats a profile the caller sent. It reaches the caller in the answer
+        // and the operator in the block file on the volume.
         if let Refusal::Incompatible(detail) = refusal {
             // Written down, so the next round does not rediscover it — and so
             // an operator can see it on the volume.
             block::write(&mirror.path, &current_commit(&mirror.path), detail);
-            self.metrics.set(&super::measure::BLOCKED, labels, 1.0);
+            self.metrics.set_aggregated(
+                &super::measure::BLOCKED,
+                permguard_core::Aggregate::Sum,
+                &blocked_key(mirror),
+                1.0,
+            );
             warn!(
                 event.name = "authz.ledger_blocked",
                 component = COMPONENT,
-                ledger = mirror.label().as_str(),
-                reason = detail.as_str(),
+                ledger = mirror.log_id().as_str(),
                 "this engine cannot serve this ledger: refusing until it changes"
             );
         } else {
             debug!(
                 event.name = "authz.ledger_unavailable",
                 component = COMPONENT,
-                ledger = mirror.label().as_str(),
+                ledger = mirror.log_id().as_str(),
                 code = code,
-                reason = %refusal,
                 "a request could not be evaluated"
             );
         }
 
-        ApiError::new(class, code, format!("`{}`: {refusal}", mirror.label()))
+        ApiError::new(
+            class,
+            code,
+            format!("`{}`: {refusal}", mirror.display_name()),
+        )
     }
 }
 
@@ -622,12 +623,10 @@ impl Decider {
             return Warmed::Empty;
         }
         if let Some(blocked) = block::blocks(&mirror.path, &commit) {
-            self.metrics.set(
+            self.metrics.set_aggregated(
                 &super::measure::BLOCKED,
-                &[
-                    ("zone", mirror.identity.zone_name.as_str()),
-                    ("ledger", mirror.identity.ledger_name.as_str()),
-                ],
+                permguard_core::Aggregate::Sum,
+                &blocked_key(mirror),
                 1.0,
             );
 
@@ -639,20 +638,17 @@ impl Decider {
             Err(Refusal::Empty) => return Warmed::Empty,
             Err(Refusal::Incompatible(detail)) => {
                 block::write(&mirror.path, &commit, &detail);
-                self.metrics.set(
+                self.metrics.set_aggregated(
                     &super::measure::BLOCKED,
-                    &[
-                        ("zone", mirror.identity.zone_name.as_str()),
-                        ("ledger", mirror.identity.ledger_name.as_str()),
-                    ],
+                    permguard_core::Aggregate::Sum,
+                    &blocked_key(mirror),
                     1.0,
                 );
                 warn!(
                     event.name = "authz.ledger_blocked",
                     component = COMPONENT,
-                    ledger = mirror.label().as_str(),
+                    ledger = mirror.log_id().as_str(),
                     commit = commit.as_str(),
-                    reason = detail.as_str(),
                     "this engine cannot serve this ledger: refusing until it changes"
                 );
 
@@ -681,20 +677,16 @@ impl Decider {
                 }
                 Err(Refusal::Incompatible(detail)) => {
                     block::write(&mirror.path, &head.commit, &detail);
-                    self.metrics.set(
+                    self.metrics.set_aggregated(
                         &super::measure::BLOCKED,
-                        &[
-                            ("zone", mirror.identity.zone_name.as_str()),
-                            ("ledger", mirror.identity.ledger_name.as_str()),
-                        ],
+                        permguard_core::Aggregate::Sum,
+                        &blocked_key(mirror),
                         1.0,
                     );
                     warn!(
                         event.name = "authz.ledger_blocked",
                         component = COMPONENT,
-                        ledger = mirror.label().as_str(),
-                        partition = name.as_str(),
-                        reason = detail.as_str(),
+                        ledger = mirror.log_id().as_str(),
                         "a partition of this ledger cannot be compiled: refusing until it changes"
                     );
 
@@ -705,19 +697,17 @@ impl Decider {
         }
 
         block::clear_if_present(&mirror.path);
-        self.metrics.set(
+        self.metrics.set_aggregated(
             &super::measure::BLOCKED,
-            &[
-                ("zone", mirror.identity.zone_name.as_str()),
-                ("ledger", mirror.identity.ledger_name.as_str()),
-            ],
+            permguard_core::Aggregate::Sum,
+            &blocked_key(mirror),
             0.0,
         );
         self.publish_cache_gauges();
         debug!(
             event.name = "authz.ledger_warm",
             component = COMPONENT,
-            ledger = mirror.label().as_str(),
+            ledger = mirror.log_id().as_str(),
             commit = head.commit.as_str(),
             compiled,
             "this ledger is compiled and ready to answer"
@@ -761,8 +751,10 @@ impl Decider {
         // outlive this frame; cloning it copied every evaluation's subject, resource and context
         // a second time, on top of the entity stores the contract already shares.
         let resolved = Arc::new(request.resolve(self.max_evaluations).map_err(|malformed| {
-            self.metrics
-                .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "malformed")],
+            );
             // The profile's own status: a payload that is not a request is a
             // bad request, not a decision.
             ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
@@ -796,8 +788,10 @@ impl Decider {
         // for another.
         let probe = match self.quarantine.admits(&guarded) {
             super::quarantine::Admits::No { overruns, retry_in } => {
-                self.metrics
-                    .count(&super::measure::REFUSALS, &[("reason", "quarantined")]);
+                self.metrics.count(
+                    &super::measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, "quarantined")],
+                );
 
                 return Err(ApiError::new(
                     ErrorClass::Unavailable,
@@ -872,8 +866,10 @@ impl Decider {
             .await
             .map_err(|refused| match refused {
                 crate::blocking::Refused::AtCapacity(held) => {
-                    self.metrics
-                        .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+                    self.metrics.count(
+                        &super::measure::REFUSALS,
+                        &[(permguard_core::metrics::labels::REASON, "at_capacity")],
+                    );
 
                     ApiError::new(
                         ErrorClass::Unavailable,
@@ -904,20 +900,18 @@ impl Decider {
         for decision in &decisions {
             self.metrics.count(
                 &super::measure::EVALUATIONS,
-                &[
-                    ("zone", resolved.zone.as_str()),
-                    ("ledger", resolved.ledger.as_str()),
-                    ("outcome", if decision.decision { "permit" } else { "deny" }),
-                ],
+                &[(
+                    permguard_core::metrics::labels::OUTCOME,
+                    if decision.decision { "permit" } else { "deny" },
+                )],
             );
         }
         self.metrics.count(
             &super::measure::DECISIONS,
-            &[
-                ("zone", resolved.zone.as_str()),
-                ("ledger", resolved.ledger.as_str()),
-                ("outcome", if overall { "permit" } else { "deny" }),
-            ],
+            &[(
+                permguard_core::metrics::labels::OUTCOME,
+                if overall { "permit" } else { "deny" },
+            )],
         );
 
         // The whole request's context. A plain request has one decision, and that is its
@@ -1064,7 +1058,7 @@ impl Decider {
                 .unwrap_or_default();
             let target = format!(
                 "{} {} on {}:{} for a {} at {} ({}) decision={}",
-                mirror.label(),
+                mirror.display_name(),
                 query.action.name,
                 query.resource.kind,
                 query.resource.id,
@@ -1346,6 +1340,9 @@ impl Decider {
         decided: OwnedDecided,
     ) -> Result<(), ApiError> {
         let refuses_unrecorded = journal.refuses_unrecorded();
+        // The record's own id, drawn by this plane: written beside the request's id — the span every
+        // record of this request runs in — it is how a log line leads to the audit record, and back.
+        let decision_id = decided.id.clone();
         // Through the same bound as everything else that waits on a disk. A decision record is a
         // durable write with a flush behind it, and an unbounded `spawn_blocking` here would be the
         // queue the pool exists to refuse — reached from the ordinary decision path, which is the
@@ -1357,10 +1354,12 @@ impl Decider {
         let written = match written {
             Ok(written) => Ok(written),
             Err(crate::blocking::Refused::AtCapacity(held)) => {
-                self.metrics
-                    .count(&super::measure::REFUSALS, &[("reason", "at_capacity")]);
+                self.metrics.count(
+                    &super::measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, "at_capacity")],
+                );
 
-                return self.journal_error(refuses_unrecorded, held.to_string());
+                return self.journal_error(refuses_unrecorded, &decision_id, held.to_string());
             }
             Err(crate::blocking::Refused::Failed(why)) => Err(why),
         };
@@ -1370,6 +1369,7 @@ impl Decider {
                 warn!(
                     event.name = "authz.unrecordable",
                     component = COMPONENT,
+                    decision.id = decision_id.as_str(),
                     reason = reason.as_str(),
                     "this plane cannot record decisions and is configured not to answer unrecorded \
                      ones: refusing"
@@ -1377,20 +1377,38 @@ impl Decider {
 
                 Err(self.unrecordable(reason.as_str()))
             }
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(error)) => self.journal_error(refuses_unrecorded, error.to_string()),
+            Ok(Ok(_)) => {
+                debug!(
+                    event.name = "authz.decision_recorded",
+                    component = COMPONENT,
+                    decision.id = decision_id.as_str(),
+                    "a decision was recorded"
+                );
+
+                Ok(())
+            }
+            Ok(Err(error)) => {
+                self.journal_error(refuses_unrecorded, &decision_id, error.to_string())
+            }
             Err(why) => self.journal_error(
                 refuses_unrecorded,
+                &decision_id,
                 format!("the journal writer failed: {why}"),
             ),
         }
     }
 
-    fn journal_error(&self, refuses_unrecorded: bool, reason: String) -> Result<(), ApiError> {
+    fn journal_error(
+        &self,
+        refuses_unrecorded: bool,
+        decision_id: &str,
+        reason: String,
+    ) -> Result<(), ApiError> {
         if refuses_unrecorded {
             warn!(
                 event.name = "authz.unrecordable",
                 component = COMPONENT,
+                decision.id = decision_id,
                 reason = reason.as_str(),
                 "this plane cannot record decisions and is configured not to answer unrecorded \
                  ones: refusing"
@@ -1402,6 +1420,7 @@ impl Decider {
         warn!(
             event.name = "authz.journal_failed",
             component = COMPONENT,
+            decision.id = decision_id,
             error = reason.as_str(),
             "a decision was answered and its log record was not written"
         );
@@ -1410,8 +1429,10 @@ impl Decider {
     }
 
     fn unrecordable(&self, reason: &str) -> ApiError {
-        self.metrics
-            .count(&super::measure::REFUSALS, &[("reason", "unrecordable")]);
+        self.metrics.count(
+            &super::measure::REFUSALS,
+            &[(permguard_core::metrics::labels::REASON, "unrecordable")],
+        );
         ApiError::new(
             ErrorClass::Unavailable,
             "decision_unrecordable",
@@ -1506,8 +1527,10 @@ impl Plan {
                 ..asking.clone()
             };
             let queries = asking.route(&targets).map_err(|malformed| {
-                self.metrics
-                    .count(&super::measure::REFUSALS, &[("reason", "malformed")]);
+                self.metrics.count(
+                    &super::measure::REFUSALS,
+                    &[(permguard_core::metrics::labels::REASON, "malformed")],
+                );
 
                 ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
             })?;
@@ -1550,14 +1573,10 @@ impl Plan {
         // Recorded here, on one thread and in the profile's order, from what each partition
         // reported: a metric written from inside a worker would be a metric whose order depended
         // on a race.
-        for (partition, answer) in self.partitions.iter().zip(&answered) {
+        for answer in &answered {
             self.metrics.observe(
                 &super::measure::EVALUATION_SECONDS,
-                &[
-                    ("zone", self.resolved.zone.as_str()),
-                    ("ledger", self.resolved.ledger.as_str()),
-                    ("partition", partition.name.as_str()),
-                ],
+                &[],
                 answer.elapsed.as_secs_f64(),
             );
         }
@@ -1770,6 +1789,12 @@ fn current_commit(mirror: &std::path::Path) -> String {
         .flatten()
         .map(|checkpoint| checkpoint.head)
         .unwrap_or_default()
+}
+
+/// The resource a ledger's blocked state is kept under: the number of blocked ledgers is the
+/// series, never the ledger itself.
+fn blocked_key(mirror: &store::Mirror) -> String {
+    format!("{}/{}", mirror.identity.zone_id, mirror.identity.ledger_id)
 }
 
 #[cfg(test)]
