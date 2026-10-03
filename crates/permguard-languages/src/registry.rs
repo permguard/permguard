@@ -27,6 +27,44 @@ pub const MEDIA_TYPE_MANIFEST: &str = permguard_objects::manifest::MEDIA_TYPE;
 pub const ENGINE_NAME: &str = "permguard";
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The Cargo features each built-in engine is compiled with, sorted.
+///
+/// Part of what a language descriptor promises: an engine evaluates what its features let it, so a
+/// feature added in `Cargo.toml` is a capability added to every policy of that language. The lists
+/// equal the dependency declarations exactly, and what Cargo resolves for the whole workspace is
+/// exactly what they turn on — `tests/engine_features.rs` fails otherwise — so a feature cannot
+/// change, here or through another crate, without this file changing with it.
+pub mod engine_features {
+    /// `cedar-policy`: its upstream default set.
+    pub const CEDAR: &[&str] = &["datetime", "decimal", "ipaddr"];
+    /// `regorus`: its upstream default set, spelled out.
+    pub const REGO: &[&str] = &[
+        "arc",
+        "base64",
+        "base64url",
+        "cache",
+        "coverage",
+        "glob",
+        "graph",
+        "hex",
+        "http",
+        "jsonpatch",
+        "jsonschema",
+        "net",
+        "opa-runtime",
+        "regex",
+        "rvm",
+        "semver",
+        "std",
+        "time",
+        "urlquery",
+        "uuid",
+        "yaml",
+    ];
+    /// `amzn-dogwood-language`: none; `corpus` and `net` stay off.
+    pub const DOGWOOD: &[&str] = &[];
+}
+
 /// Why a blob was refused: a stable code plus the sentence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlobRejected {

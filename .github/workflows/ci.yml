@@ -14,6 +14,10 @@ on:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   pull_request:
 
+# Read-only: nothing here publishes, and a job that compiles must not hold a token that could.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   # build.rs validates these and fails the build when they are missing.

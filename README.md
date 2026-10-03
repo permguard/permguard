@@ -160,6 +160,34 @@ Needs Rust `1.97`+, `cargo`, and `task` or `make`. Docker Compose for the observ
 
 </details>
 
+<details>
+<summary>Verify a release before running it</summary>
+
+Every archive, package and image of a release carries SLSA Build L3 provenance from one builder, the reusable workflow `.github/workflows/release-build.yml`.
+A release is published only after the provenance of every file names that builder and the tagged commit as the source; images are verified the same way as soon as they are pushed.
+Check a download against the same policy, naming the commit the tag pointed at when it was released (`provenance-files.txt` in the release names it): a tag can be moved, a commit digest cannot.
+
+```sh
+gh attestation verify permguard_cli_Linux_x86_64.tar.gz \
+  --repo permguard/permguard \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
+  --source-ref refs/tags/v<version> \
+  --source-digest <commit> \
+  --deny-self-hosted-runners
+gh attestation verify oci://ghcr.io/permguard/permguard/data-plane:<version> \
+  --repo permguard/permguard \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
+  --source-ref refs/tags/v<version> \
+  --source-digest <commit> \
+  --deny-self-hosted-runners
+```
+
+Releases up to `0.1.6` were attested by `release-pipeline.yml`; name that file as `--signer-workflow` to verify them.
+`provenance-files.txt` and `provenance-images.txt` in the release list the builder and source of every artifact.
+`reproducibility.txt` holds the verdict of an independent rebuild of the Linux and Windows binaries; a release claims to be reproducible only when it ends with `reproducible: yes`.
+
+</details>
+
 ## Ask a server what it hosts
 
 Start with what the Server Host and its planes say about themselves, because it is the shape of

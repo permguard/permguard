@@ -24,8 +24,9 @@ on:
         type: boolean
         default: false
 
+# Read only: the push in the last step uses the personal token, never this job's own.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   prepare:
@@ -35,10 +36,13 @@ jobs:
       # `GH_TOKEN` rather than the job's own: a tag pushed with the default `GITHUB_TOKEN` does not
       # trigger other workflows, so the release pipeline would never see it and the release would
       # silently never happen. The same token the release already uses to publish.
+      # No token is left in `.git/config`: this job compiles and runs the test suite, and every
+      # dependency's build script would be able to read it. The push token enters only the last
+      # step, after everything that compiles has finished.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: false
 
       # The toolchain the release is built with, because this runs the same checks the release
       # pipeline will run, against the same lockfile.
@@ -51,14 +55,20 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The requested version reaches every script through the environment, never spliced into its
+      # text: an input is data, and interpolated into `run:` it would be shell.
       - name: Move the chart
-        run: ./scripts/prepare-release.sh "${{ inputs.version }}"
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./scripts/prepare-release.sh "${VERSION}"
 
       # Everything the release pipeline's `verify` job would refuse the tag for, refused here
       # instead — while the tag is still hypothetical and costs nothing to not create.
       - name: The chart would name this version
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          expected="${{ inputs.version }}"
+          expected="${VERSION}"
           expected="${expected#v}"
           if ! grep -qx "version: ${expected}" charts/permguard/Chart.yaml ||
              ! grep -qx "appVersion: \"${expected}\"" charts/permguard/Chart.yaml; then
@@ -85,9 +95,11 @@ jobs:
       # with the version stamped in — and then asked what they are, because a stamp that never
       # reaches rustc is exactly the failure this whole scheme could have.
       - name: Every binary reports the requested version
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          expected="${{ inputs.version }}"
+          expected="${VERSION}"
           expected="${expected#v}"
           export PERMGUARD_BUILD_VERSION="${expected}"
           export PERMGUARD_BUILD_COMMIT="${GITHUB_SHA}"
@@ -111,10 +123,16 @@ jobs:
 
       - name: Commit and tag
         if: ${{ !inputs.dry_run }}
+        # A personal token, not GITHUB_TOKEN: a tag pushed with GITHUB_TOKEN does not start the
+        # release pipeline.
+        env:
+          PUSH_TOKEN: ${{ secrets.GH_TOKEN }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="${{ inputs.version }}"
+          version="${VERSION}"
           version="${version#v}"
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.name "Permguard Team"
           git config user.email "opensource@permguard.com"
           git add charts/permguard/Chart.yaml CHANGELOG.md
@@ -130,6 +148,8 @@ jobs:
 
       - name: Nothing was pushed
         if: ${{ inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          echo "dry run: the working tree holds ${{ inputs.version }} and every check passed,"
+          echo "dry run: the working tree holds ${VERSION} and every check passed,"
           echo "but no commit and no tag left this runner."

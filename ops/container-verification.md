@@ -8,6 +8,9 @@ The release workflow records their digests in a cryptographically signed GitHub 
 Attestation. Verification proves that the selected registry object is the object produced by the
 Permguard release workflow for the expected Git tag.
 
+The signing workflow is `release-build.yml`, the reusable workflow that builds and attests every release after `0.1.6`.
+Releases up to and including `0.1.6` were attested by `release-pipeline.yml`: verify those with `--signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml`.
+
 ## Published images
 
 | Component | GHCR | Docker Hub |
@@ -47,7 +50,7 @@ VERSION=0.1.2
 gh attestation verify \
   "oci://docker.io/permguard/all-in-one:${VERSION}" \
   --repo permguard/permguard \
-  --signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
   --source-ref "refs/tags/v${VERSION}"
 ```
 
@@ -63,7 +66,7 @@ VERSION=0.1.2
 gh attestation verify \
   "oci://ghcr.io/permguard/permguard/all-in-one:${VERSION}" \
   --repo permguard/permguard \
-  --signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
   --source-ref "refs/tags/v${VERSION}"
 ```
 
@@ -81,7 +84,7 @@ DIGEST_REF="$(docker image inspect "${IMAGE}" --format '{{index .RepoDigests 0}}
 gh attestation verify \
   "oci://${DIGEST_REF}" \
   --repo permguard/permguard \
-  --signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
   --source-ref refs/tags/v0.1.2
 ```
 
@@ -96,7 +99,7 @@ the same command can gate a deployment:
 gh attestation verify \
   "oci://docker.io/permguard/all-in-one:${VERSION}" \
   --repo permguard/permguard \
-  --signer-workflow permguard/permguard/.github/workflows/release-pipeline.yml \
+  --signer-workflow permguard/permguard/.github/workflows/release-build.yml \
   --source-ref "refs/tags/v${VERSION}" \
   >/dev/null
 ```
@@ -108,7 +111,7 @@ OCI registry before running the check.
 
 ### No attestations found
 
-Confirm that the release pipeline completed its `Attest container images` step and that `--repo`
+Confirm that the release builder completed its `Attest the container images` step and that `--repo`
 names `permguard/permguard`. A tag pushed before the release completed may exist before its
 attestation does.
 

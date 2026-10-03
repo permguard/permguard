@@ -1,0 +1,310 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+# The release builder: builds every binary, packages, attests, verifies and publishes.
+#
+# A reusable workflow on purpose. Its provenance is signed by this file, not by the workflow that
+# calls it: the calling workflow's own jobs never hold the token that signs, and the certificate
+# names this path as the builder. That is the arrangement GitHub documents for SLSA Build L3, and
+# `.github/workflows/release-build.yml` is the builder every release artifact's provenance must name
+# (`scripts/verify-provenance.sh`, and the README's verification command).
+#
+# What it does not isolate: it is called by path from the same repository, so it runs at the tagged
+# commit, and whoever can push that commit can change this file too. The provenance pins the path
+# and the commit; it is the review of that commit, not the builder, that vouches for its content.
+#
+# Inside it, secrets and write permissions stay where nothing compiles: the jobs that build hold a
+# read-only token and no secret, and only `publish`, which compiles nothing, may write a release,
+# push an image or mint the token that signs an attestation.
+
+name: Release Build
+
+on:
+  workflow_call:
+    secrets:
+      GH_TOKEN:
+        required: true
+      GORELEASER_KEY:
+        required: true
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_PASSWORD:
+        required: true
+      # macOS signing and notarisation run only when these are present.
+      MACOS_SIGN_P12:
+        required: false
+      MACOS_SIGN_PASSWORD:
+        required: false
+      MACOS_NOTARY_ISSUER_ID:
+        required: false
+      MACOS_NOTARY_KEY_ID:
+        required: false
+      MACOS_NOTARY_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  PERMGUARD_COPYRIGHT_YEAR: "2022"
+  PERMGUARD_COPYRIGHT_HOLDER: "Nitro Agility S.r.l."
+
+jobs:
+  # The Apple binaries, built on Apple hardware.
+  #
+  # Everything else cross-compiles from Linux with Zig, which carries a linker and a libc for four
+  # targets. What it cannot carry is Apple's SDK: `Security.framework` and `CoreFoundation.framework`
+  # are not redistributable, and `rustls-native-certs` needs them to read the macOS keychain. Giving
+  # that up would take the corporate root out of the trust path on exactly the machines that have
+  # one — so this runs where the SDK already is, and GoReleaser imports the result.
+  macos-binaries:
+    name: Build the macOS binaries
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The same toolchain the tests ran against, for the same reason.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Laid out the way `builds[].prebuilt.path` expects — `prebuilt/{os}_{arch}/<binary>` — so the
+      # two halves of the release meet on a path and nothing has to translate names twice.
+      - name: Build
+        env:
+          PERMGUARD_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Without the `v`, the way GoReleaser's `{{ .Version }}` reaches the Linux builds — the
+          # two halves of this release must report the same string.
+          export PERMGUARD_BUILD_VERSION="${GITHUB_REF_NAME#v}"
+          for target in x86_64-apple-darwin aarch64-apple-darwin; do
+            cargo build --release --locked --target "${target}" \
+              --package permguard-cli \
+              --package permguard-all-in-one \
+              --package permguard-control-plane \
+              --package permguard-data-plane
+          done
+          mkdir -p prebuilt/darwin_amd64 prebuilt/darwin_arm64
+          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+            cp "target/x86_64-apple-darwin/release/${binary}"  "prebuilt/darwin_amd64/${binary}"
+            cp "target/aarch64-apple-darwin/release/${binary}" "prebuilt/darwin_arm64/${binary}"
+          done
+          # Set here for anyone who downloads this artifact by hand. It does *not* survive the
+          # upload — a zip carries no POSIX mode — so the consuming job sets it again.
+          chmod +x prebuilt/darwin_*/*
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-binaries
+          path: prebuilt/
+          retention-days: 1
+          if-no-files-found: error
+
+  # The Linux and Windows binaries, built where no secret is: `publish` imports them as prebuilt and
+  # compiles nothing itself.
+  cross-binaries:
+    name: Build the Linux and Windows binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
+        with:
+          toolchain: "1.97"
+          targets: >-
+            x86_64-unknown-linux-musl,
+            aarch64-unknown-linux-musl,
+            x86_64-pc-windows-gnu,
+            aarch64-pc-windows-gnullvm
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+
+      - name: Install cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild --version 0.23.4
+
+      - name: Build
+        run: ./scripts/build-cross.sh prebuilt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-binaries
+          path: prebuilt/
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Package, attest, verify and publish
+    needs: [macos-binaries, cross-binaries]
+    runs-on: ubuntu-latest
+    # The only job that writes. It compiles nothing: every binary arrives prebuilt from a job that
+    # held no secret, so no build script runs beside the signing and registry credentials.
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      # Full history for GoReleaser's changelog; no credentials left in `.git/config`, since every
+      # tool here reads its token from the environment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # No Rust toolchain and no build cache: nothing is compiled here, and a toolchain this job does
+      # not need is surface beside the credentials it holds.
+
+      # Built on macOS by the job above, imported by `builds[].builder: prebuilt`.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-binaries
+          path: prebuilt/
+
+      # Built by `cross-binaries`, imported the same way.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cross-binaries
+          path: prebuilt/
+
+      - name: Every prebuilt binary is here and executable
+        run: |
+          set -euo pipefail
+          # `upload-artifact` zips what it is handed, and a zip carries no POSIX mode: the
+          # executable bit does not survive the round trip, whatever the uploading job set. Restored
+          # here rather than assumed — a binary archived without it is a release that fails at the
+          # first run, on the user's machine, long after anyone could have noticed.
+          chmod +x prebuilt/*/*
+          incomplete=0
+          for platform in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64 windows_amd64 windows_arm64; do
+            for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
+              path="prebuilt/${platform}/${binary}"
+              if [ ! -s "${path}" ] || [ ! -x "${path}" ]; then
+                echo "missing, empty or not executable: ${path}" >&2
+                incomplete=1
+              fi
+            done
+          done
+          if [ "${incomplete}" -ne 0 ]; then
+            echo "what actually arrived:" >&2
+            find prebuilt -type f -printf '%M %10s %p\n' | sort >&2
+            exit 1
+          fi
+          echo "ok: 24 binaries for six platforms"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+
+      # Prepared, not published: archives, packages, checksums, SBOMs and the checksums signature are
+      # written to `dist/`, and nothing leaves this runner — no release, no image, no cask.
+      - name: Prepare the release
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser-pro
+          # Major-pinned: `latest` made every release a different toolchain.
+          # A v3 arrives as a deliberate bump here, not as a surprise.
+          version: "~> v2"
+          args: release --clean --prepare --config ./.goreleaser-pro.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+      # With subjects and no predicate, `actions/attest` v4 generates SLSA build provenance — the
+      # predicate `gh attestation verify` checks by default. This is GoReleaser's documented pairing
+      # for `checksums.txt` and `digests.txt`. Signed here, inside this reusable workflow, so the
+      # provenance names it as the builder.
+      - name: Attest the release files
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ./dist/checksums.txt
+
+      # The provenance policy: every file's attestation must name this repository as its source, this
+      # tag and commit as the ref and digest it was built from, and this builder on a GitHub-hosted
+      # runner. A mismatch fails here, before anything is published: no release, no cask and no image
+      # exists for a build whose provenance does not say where it came from.
+      - name: Verify the provenance of every file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/verify-provenance.sh files dist
+
+      # Only now: the release with its files, the Homebrew cask, and the images. `publish` takes the
+      # prepared state from `dist/` — the configuration `--prepare` resolved, Pro sections included
+      # — so it is given no `--config`, and the command accepts none. Images are built and pushed in
+      # this step: a broken image surfaces after the release and cask exist, as a failed run whose
+      # release is complete except for that image, and is fixed by a new tag.
+      - name: Publish the verified release
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+      # An image has a digest to attest only once it is in its registry, so images are attested and
+      # verified right after the push. A failure here fails the release run and names the image.
+      - name: Attest the container images
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ./dist/digests.txt
+
+      - name: Verify the provenance of every image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/verify-provenance.sh images dist
+
+      - name: Attach the provenance evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/provenance-files.json dist/provenance-files.txt \
+            dist/provenance-images.json dist/provenance-images.txt --clobber

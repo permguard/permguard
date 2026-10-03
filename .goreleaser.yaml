@@ -3,15 +3,15 @@
 
 # .goreleaser.yaml
 #
-# The release, described once: four binaries, six targets each, cross-compiled
-# with cargo-zigbuild (the toolchain the pipeline installs). Archives, deb/rpm/apk
-# packages, checksums and container images all come from these builds — the same
-# structure the Go repository releases with, so one team runs one process.
+# The release, described once: four binaries, six targets each, built by the release workflow's
+# jobs that hold no secret and imported here as prebuilt. Archives, deb/rpm/apk packages,
+# checksums and container images all come from these builds — the same structure the Go
+# repository releases with, so one team runs one process.
 #
-# The version of a release is its tag, and this is where it enters the binaries:
-# every build stamps PERMGUARD_BUILD_VERSION={{ .Version }}, which permguard-core's
-# `build::VERSION` reads. Cargo.toml never moves — a build nobody stamped reports
-# the workspace version, which is exactly what a working-tree build is.
+# The version of a release is its tag, and the building jobs stamp it into the binaries:
+# PERMGUARD_BUILD_VERSION is the tag without its `v`, which permguard-core's `build::VERSION`
+# reads. Cargo.toml never moves — a build nobody stamped reports the workspace version, which is
+# exactly what a working-tree build is.
 
 version: 2
 
@@ -21,64 +21,53 @@ env:
   - ORG=permguard
   - REPO=permguard
 
-before:
-  hooks:
-    - cargo fetch --locked
-
 builds:
+  # Nothing is compiled here. Every binary is built by a job of the release workflow that holds no
+  # secret — `cross-binaries` for Linux and Windows, `macos-binaries` for macOS — and imported as
+  # `prebuilt`. The job that runs this file holds the signing, notarisation and registry
+  # credentials, and a dependency's build script compiled in that job could read every one of them;
+  # so that job builds nothing.
+  #
+  # Linux is static musl and Windows is GNU, cross-compiled with `cargo zigbuild` on one Linux
+  # runner. A Windows binary is staged without its extension and GoReleaser adds `.exe` when it
+  # names it in the archive.
   - id: permguard_cli
-    builder: rust
+    builder: prebuilt
     binary: permguard
-    tool: cargo
-    command: zigbuild
-    flags: ["--release", "--locked", "--package=permguard-cli"]
-    targets: &targets
-      - x86_64-unknown-linux-musl
-      - aarch64-unknown-linux-musl
-      - x86_64-pc-windows-gnu
-      - aarch64-pc-windows-gnullvm
-    env:
-      - PERMGUARD_BUILD_VERSION={{ .Version }}
-      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+    goos: &cross_goos [linux, windows]
+    goarch: &cross_goarch [amd64, arm64]
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard
 
   - id: permguard_all_in_one
-    builder: rust
+    builder: prebuilt
     binary: permguard-all-in-one
-    tool: cargo
-    command: zigbuild
-    flags: ["--release", "--locked", "--package=permguard-all-in-one"]
-    targets: *targets
-    env:
-      - PERMGUARD_BUILD_VERSION={{ .Version }}
-      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+    goos: *cross_goos
+    goarch: *cross_goarch
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-all-in-one
 
   - id: permguard_control_plane
-    builder: rust
+    builder: prebuilt
     binary: permguard-control-plane
-    tool: cargo
-    command: zigbuild
-    flags: ["--release", "--locked", "--package=permguard-control-plane"]
-    targets: *targets
-    env:
-      - PERMGUARD_BUILD_VERSION={{ .Version }}
-      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+    goos: *cross_goos
+    goarch: *cross_goarch
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-control-plane
 
   - id: permguard_data_plane
-    builder: rust
+    builder: prebuilt
     binary: permguard-data-plane
-    tool: cargo
-    command: zigbuild
-    flags: ["--release", "--locked", "--package=permguard-data-plane"]
-    targets: *targets
-    env:
-      - PERMGUARD_BUILD_VERSION={{ .Version }}
-      - PERMGUARD_BUILD_COMMIT={{ .FullCommit }}
+    goos: *cross_goos
+    goarch: *cross_goarch
+    prebuilt:
+      path: prebuilt/{{ .Os }}_{{ .Arch }}/permguard-data-plane
 
   # The Apple binaries are not cross-compiled: they are built on macOS, by the `macos-binaries` job,
   # and imported here.
   #
   # Zig gives this repository a linker and a libc for four targets from one Linux runner, which is
-  # why everything above is a `zigbuild`. What it cannot give is Apple's SDK — `Security.framework`
+  # why the Linux and Windows binaries are `zigbuild`s. What it cannot give is Apple's SDK — `Security.framework`
   # and `CoreFoundation.framework` are not redistributable, and `rustls-native-certs` needs them to
   # read the macOS keychain. The alternative was to stop reading the keychain, which would silently
   # take the corporate root out of the trust path on exactly the machines that have one. So macOS is
@@ -190,6 +179,9 @@ changelog:
       - "^chore:"
 
 release:
+  # Published only by `goreleaser publish`, which the release builder runs after `release --prepare`
+  # and after the provenance of every file has been verified: a build whose provenance does not name
+  # this repository, this commit and the builder never becomes a release.
   footer: >-
     ---
     Released by the Permguard Team using [GoReleaser](https://github.com/goreleaser/goreleaser).

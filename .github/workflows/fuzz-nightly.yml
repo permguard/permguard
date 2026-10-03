@@ -15,6 +15,10 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# Read-only: nothing here publishes, and a job that compiles must not hold a token that could.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   PERMGUARD_COPYRIGHT_YEAR: "2022"

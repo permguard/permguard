@@ -8,12 +8,13 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
+# Read-only by default. Building, packaging, attestation and publication run in the reusable
+# workflow `release-build.yml`, the release's SLSA Build L3 builder; inside it, only the job that
+# compiles nothing may write a release, push an image or mint the OIDC token that signs an
+# attestation: a job that compiles runs every dependency's build script, and one holding
+# `id-token: write` would let that script sign provenance in this repository's name.
 permissions:
-  contents: write
-  id-token: write
-  packages: write
-  attestations: write
-  artifact-metadata: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -29,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The binaries take their version from this tag, so there is nothing in Cargo.toml to agree
       # with. The chart is the exception: its appVersion is the image tag it deploys, and Helm
@@ -72,178 +75,146 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check advisories licenses bans sources
 
-  # The Apple binaries, built on Apple hardware.
-  #
-  # Everything else cross-compiles from Linux with Zig, which carries a linker and a libc for four
-  # targets. What it cannot carry is Apple's SDK: `Security.framework` and `CoreFoundation.framework`
-  # are not redistributable, and `rustls-native-certs` needs them to read the macOS keychain. Giving
-  # that up would take the corporate root out of the trust path on exactly the machines that have
-  # one — so this runs where the SDK already is, and GoReleaser imports the result.
-  macos-binaries:
-    name: Build the macOS binaries
+  # The builder: every binary, every package and image, their provenance, its verification, and the
+  # release. A reusable workflow, so the provenance names it rather than this file (see its header).
+  # The permissions are the most it may use; inside, only the job that compiles nothing uses them.
+  build:
+    name: Build and publish
     needs: [verify, supply-chain]
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/release-build.yml
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+      MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+      MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
-      # The same toolchain the tests ran against, for the same reason.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
-        with:
-          toolchain: "1.97"
-          targets: x86_64-apple-darwin,aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Laid out the way `builds[].prebuilt.path` expects — `prebuilt/{os}_{arch}/<binary>` — so the
-      # two halves of the release meet on a path and nothing has to translate names twice.
-      - name: Build
-        env:
-          PERMGUARD_BUILD_COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          # Without the `v`, the way GoReleaser's `{{ .Version }}` reaches the Linux builds — the
-          # two halves of this release must report the same string.
-          export PERMGUARD_BUILD_VERSION="${GITHUB_REF_NAME#v}"
-          for target in x86_64-apple-darwin aarch64-apple-darwin; do
-            cargo build --release --locked --target "${target}" \
-              --package permguard-cli \
-              --package permguard-all-in-one \
-              --package permguard-control-plane \
-              --package permguard-data-plane
-          done
-          mkdir -p prebuilt/darwin_amd64 prebuilt/darwin_arm64
-          for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
-            cp "target/x86_64-apple-darwin/release/${binary}"  "prebuilt/darwin_amd64/${binary}"
-            cp "target/aarch64-apple-darwin/release/${binary}" "prebuilt/darwin_arm64/${binary}"
-          done
-          # Set here for anyone who downloads this artifact by hand. It does *not* survive the
-          # upload — a zip carries no POSIX mode — so the consuming job sets it again.
-          chmod +x prebuilt/darwin_*/*
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: macos-binaries
-          path: prebuilt/
-          retention-days: 1
-          if-no-files-found: error
-
-  publish:
-    name: Build artifacts and publish release
-    needs: [verify, supply-chain, macos-binaries]
+  # An independent rebuild, compared byte for byte with what was published. Never blocking:
+  # provenance says where an artifact came from, reproducibility says anyone can get the same bytes,
+  # and only the second claim depends on this job. It runs on a fresh runner without the build cache,
+  # so nothing of the shipped build is reused, and it compares against the release's own archives —
+  # what a third party would download — rather than an intermediate artifact. It holds a read-only
+  # token and leaves none in `.git/config`: it compiles, and the release is already public.
+  reproducible-rebuild:
+    name: Rebuild independently and compare (non-blocking)
+    needs: [build]
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      # The same version the tests ran against, so the released binary is the one that was tested.
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master 2026-08
         with:
           toolchain: "1.97"
           targets: >-
             x86_64-unknown-linux-musl,
             aarch64-unknown-linux-musl,
-            x86_64-apple-darwin,
-            aarch64-apple-darwin,
             x86_64-pc-windows-gnu,
             aarch64-pc-windows-gnullvm
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-
       - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Built on macOS by the job above, imported by `builds[].builder: prebuilt`.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: macos-binaries
-          path: prebuilt/
-
-      - name: The macOS binaries are here and executable
-        run: |
-          set -euo pipefail
-          # `upload-artifact` zips what it is handed, and a zip carries no POSIX mode: the
-          # executable bit does not survive the round trip, whatever the uploading job set. Restored
-          # here rather than assumed — a binary archived without it is a release that fails at the
-          # first run, on the user's machine, long after anyone could have noticed.
-          chmod +x prebuilt/darwin_amd64/* prebuilt/darwin_arm64/*
-          incomplete=0
-          for arch in amd64 arm64; do
-            for binary in permguard permguard-all-in-one permguard-control-plane permguard-data-plane; do
-              path="prebuilt/darwin_${arch}/${binary}"
-              if [ ! -s "${path}" ] || [ ! -x "${path}" ]; then
-                echo "missing, empty or not executable: ${path}" >&2
-                incomplete=1
-              fi
-            done
-          done
-          if [ "${incomplete}" -ne 0 ]; then
-            echo "what actually arrived:" >&2
-            find prebuilt -type f -printf '%M %10s %p\n' | sort >&2
-            exit 1
-          fi
-          echo "ok: 8 macOS binaries"
-
       - name: Set up Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-
       - name: Install cargo-zigbuild
-        run: cargo install --locked cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild --version 0.23.4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      # Either half failing is a verdict too: the comparison below then says the rebuild did not
+      # complete, and the release does not claim to be reproducible.
+      - name: Rebuild
+        id: rebuild
+        continue-on-error: true
+        run: ./scripts/build-cross.sh rebuilt
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
-
-      - name: GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser-pro
-          # Major-pinned: `latest` made every release a different toolchain.
-          # A v3 arrives as a deliberate bump here, not as a surprise.
-          version: "~> v2"
-          args: release --clean --config ./.goreleaser-pro.yaml
+      - name: Download what was published
+        id: download
+        continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
-          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
-          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
-          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${GITHUB_REF_NAME}" --dir published \
+            --pattern 'permguard_*_Linux_*.tar.gz' --pattern 'permguard_*_Windows_*.zip'
+          ./scripts/extract-shipped.sh published shipped
 
-      - name: Attest release artifacts
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-checksums: ./dist/checksums.txt
+      - name: Compare
+        if: always()
+        env:
+          REBUILT: ${{ steps.rebuild.outcome }}
+          DOWNLOADED: ${{ steps.download.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "${REBUILT}" != success ] || [ "${DOWNLOADED}" != success ]; then
+            {
+              printf 'independent rebuild of the Linux and Windows binaries, compared with what shipped\n'
+              printf 'commit %s, tag %s\n\n' "${GITHUB_SHA}" "${GITHUB_REF_NAME}"
+              printf 'the comparison did not run: rebuild %s, download of the published archives %s\n' \
+                "${REBUILT}" "${DOWNLOADED}"
+              printf 'reproducible: no — this release does not claim to be reproducible\n'
+            } > reproducibility.txt
+            echo 4 > reproducibility.status
+            exit 0
+          fi
+          status=0
+          ./scripts/compare-rebuild.sh shipped rebuilt reproducibility.txt || status=$?
+          echo "${status}" > reproducibility.status
 
-      - name: Attest container images
-        if: hashFiles('dist/digests.txt') != ''
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          subject-checksums: ./dist/digests.txt
+          name: reproducibility
+          path: |
+            reproducibility.txt
+            reproducibility.status
+          retention-days: 1
+          if-no-files-found: error
+
+  # Publishes the verdict. Separate from the rebuild because writing to the release needs a token
+  # that may write, and a job that compiles must not hold one.
+  publish-reproducibility:
+    name: Publish the reproducibility verdict
+    needs: [reproducible-rebuild]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: reproducibility
+
+      - name: Attach the verdict to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" reproducibility.txt --clobber
+          {
+            echo "## Reproducibility"
+            echo
+            echo '```'
+            cat reproducibility.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          # A mismatch is reported, never fatal: the release is published and its provenance holds.
+          if [ "$(cat reproducibility.status)" != "0" ]; then
+            echo "::warning title=Not reproducible::the independent rebuild did not confirm the published binaries; see reproducibility.txt on the release"
+          fi

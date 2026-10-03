@@ -26,8 +26,36 @@ permguard-events.workspace = true
 # dependency of `amzn-dogwood-language`, pins `cedar-policy-core = "=4.11.0"` exactly. Cedar's
 # core cannot be two versions in one build, so 4.11 is the only line where Permguard's own Cedar
 # engine and Dogwood's can coexist. Revisit when that generator relaxes its pin.
-cedar-policy = "4.11"
-regorus = "0.12"
+#
+# Exact versions, no defaults, every feature named: a feature change is a descriptor change, so each
+# list here equals its constant in `registry::engine_features`, which `tests/engine_features.rs`
+# enforces. Cedar's list is its upstream default set. Regorus's is its default set spelled out
+# (`full-opa`, `arc`, `rvm`); its `http` feature only registers an `http.send` that answers
+# `undefined`, and its `net` only parses addresses, so neither reaches the network.
+cedar-policy = { version = "=4.11.0", default-features = false, features = ["datetime", "decimal", "ipaddr"] }
+regorus = { version = "=0.12.0", default-features = false, features = [
+    "arc",
+    "base64",
+    "base64url",
+    "cache",
+    "coverage",
+    "glob",
+    "graph",
+    "hex",
+    "http",
+    "jsonpatch",
+    "jsonschema",
+    "net",
+    "opa-runtime",
+    "regex",
+    "rvm",
+    "semver",
+    "std",
+    "time",
+    "urlquery",
+    "uuid",
+    "yaml",
+] }
 # Stack headroom for the engines, not a new capability: Cedar's evaluator refuses to interpret an
 # expression when `stacker::remaining_stack()` reports less than a megabyte left, and answers
 # "recursion limit reached" however shallow the policy is. Already in this graph — cedar-policy
