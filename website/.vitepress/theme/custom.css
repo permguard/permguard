@@ -34,14 +34,14 @@
 .pg-docs-label {
   display: inline-flex;
   align-items: center;
-  margin-left: 0.5rem;
-  padding-left: 0.5rem;
-  border-left: 1px solid var(--vp-c-divider);
+  margin-left: 0.3rem;
   color: var(--vp-c-text-2);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  font-style: italic;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.01em;
+  transform: translateY(-0.05rem);
 }
 
 .pg-home {
