@@ -48,7 +48,34 @@ export default defineConfig({
     // `Home` is listed first, and the home page hides it (see `pg-page-home` in custom.css).
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'How it works', link: '/how-it-works' },
+      {
+        text: 'How it works',
+        activeMatch: '^/how-it-works',
+        items: [
+          {
+            text: 'Start',
+            items: [
+              { text: 'Overview', link: '/how-it-works' },
+              { text: 'Install', link: '/how-it-works/install' },
+              { text: 'Container Images', link: '/how-it-works/container-images' },
+              { text: 'Getting Started', link: '/how-it-works/getting-started' }
+            ]
+          },
+          {
+            text: 'Concepts',
+            items: [
+              { text: 'Server, Host & Planes', link: '/how-it-works/architecture' },
+              { text: 'Git-like Policy Storage', link: '/how-it-works/policy-storage' },
+              { text: 'Bring Your Own Data Plane', link: '/how-it-works/bring-your-own-data-plane' },
+              { text: 'Policy Lifecycle', link: '/how-it-works/policy-lifecycle' },
+              { text: 'Decision Lifecycle', link: '/how-it-works/decision-lifecycle' },
+              { text: 'Evidence & Verification', link: '/how-it-works/evidence' },
+              { text: 'Temporal Authorization', link: '/how-it-works/temporal-authorization' },
+              { text: 'Policy Languages', link: '/how-it-works/policy-languages' }
+            ]
+          }
+        ]
+      },
       { text: 'Command Line', link: '/command-line' },
       { text: 'Control Plane', link: '/control-plane' },
       { text: 'Data Plane', link: '/data-plane' },
@@ -62,6 +89,13 @@ export default defineConfig({
       }
     ],
     socialLinks: [
+      {
+        icon: {
+          svg: '<svg viewBox="0 0 24 24" style="fill:none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" style="fill:none"/><path d="M3 12h18M12 3c2.25 2.47 3.4 5.47 3.4 9S14.25 18.53 12 21c-2.25-2.47-3.4-5.47-3.4-9S9.75 5.47 12 3Z" style="fill:none"/></svg>'
+        },
+        link: 'https://www.permguard.com/',
+        ariaLabel: 'Permguard website'
+      },
       { icon: 'x', link: 'https://x.com/permguard', ariaLabel: 'Permguard on X' },
       { icon: 'linkedin', link: 'https://www.linkedin.com/showcase/permguard/', ariaLabel: 'Permguard on LinkedIn' },
       { icon: 'github', link: 'https://github.com/permguard/permguard' }

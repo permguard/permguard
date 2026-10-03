@@ -10,7 +10,9 @@
   --vp-c-brand-2: var(--brand);
   --vp-c-brand-3: var(--brand);
   --vp-c-brand-soft: rgba(217, 70, 239, 0.14);
+  --vp-nav-height: 5rem;
   --vp-nav-logo-height: 2.75rem;
+  --pg-shell-gutter: clamp(1.5rem, 5.55vw, 5rem);
 }
 
 .dark {
@@ -42,12 +44,62 @@
   );
 }
 
+/* Match the public website shell: an 80px, full-width bar with content aligned to an 80px
+   desktop gutter. Documentation content keeps its own readable measure below it. */
+.VPNavBar {
+  --vp-nav-col-offset: 0px !important;
+}
+
+.VPNavBar .wrapper {
+  padding-right: var(--pg-shell-gutter) !important;
+  padding-left: var(--pg-shell-gutter) !important;
+}
+
+.VPNavBar .container {
+  max-width: none !important;
+}
+
+@media (min-width: 60rem) {
+  .VPNavBar:not(.home) .title {
+    min-width: 0 !important;
+  }
+
+  .VPNavBar.has-sidebar .title {
+    max-width: none !important;
+  }
+}
+
+/* VitePress' priority overflow can briefly leave its menu wider than the available
+   row. Collapse to the complete navigation screen before the brand and links can
+   overlap; all items, appearance controls and social links remain reachable. */
+@media (min-width: 48rem) and (max-width: 79.999rem) {
+  .VPNavBar .VPNavBarMenu,
+  .VPNavBar .VPNavTranslations,
+  .VPNavBar .VPNavBarAppearance,
+  .VPNavBar .VPNavBarSocialLinks,
+  .VPNavBar .VPNavBarExtra {
+    display: none !important;
+  }
+
+  .VPNavBar .VPNavBarHamburger {
+    display: flex !important;
+  }
+
+  .VPNavScreen {
+    display: block !important;
+  }
+}
+
 .VPNavBarTitle .logo {
   margin-right: 0;
+  width: 170px;
+  height: 44px;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .VPNavBarTitle .logo.light {
-  height: 3.75rem;
+  height: 44px;
 }
 
 .pg-docs-label {
@@ -274,11 +326,18 @@
 }
 
 .pg-footer {
-  padding: 40px 0 34px;
+  padding: 64px 0;
   background-color: #141517;
   background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 1px, transparent 1px 7px);
   color: #9a9ca1;
   font-size: 14px;
+}
+
+.pg-footer > .pg-section-inner {
+  width: 100%;
+  max-width: none;
+  padding-right: var(--pg-shell-gutter);
+  padding-left: var(--pg-shell-gutter);
 }
 
 .pg-footer p {
@@ -349,6 +408,11 @@
   width: 24px;
   height: 24px;
   fill: currentColor;
+}
+
+.pg-footer__social .pg-footer__icon--outline {
+  fill: none;
+  stroke: currentColor;
 }
 
 .pg-footer__links {
@@ -435,9 +499,9 @@
 }
 
 @media (max-width: 560px) {
-  .pg-section-inner,
-  .pg-hero {
-    width: min(100% - 30px, 1180px);
+  .pg-home .pg-section-inner,
+  .pg-home .pg-hero {
+    width: min(100% - 48px, 1280px);
   }
 
   .pg-hero h1 {
@@ -451,6 +515,20 @@
   .pg-footer__links {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 36px;
+  }
+}
+
+@media (min-width: 40rem) {
+  .pg-home .pg-section-inner,
+  .pg-home .pg-hero {
+    width: min(100% - 80px, 1280px);
+  }
+}
+
+@media (min-width: 48rem) {
+  .pg-home .pg-section-inner,
+  .pg-home .pg-hero {
+    width: min(100% - 160px, 1280px);
   }
 }
 

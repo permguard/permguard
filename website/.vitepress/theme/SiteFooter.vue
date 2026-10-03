@@ -18,13 +18,20 @@ const year = new Date().getFullYear()
           </a>
 
           <a class="pg-footer__email" href="mailto:opensource@permguard.com">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M3 5.25A2.25 2.25 0 0 0 .75 7.5v9A2.25 2.25 0 0 0 3 18.75h18a2.25 2.25 0 0 0 2.25-2.25v-9A2.25 2.25 0 0 0 21 5.25H3Zm.72 1.5h16.56L12 12.27 3.72 6.75Zm-.72 10.5a.75.75 0 0 1-.75-.75V7.96l9.33 6.22a.75.75 0 0 0 .84 0l9.33-6.22v8.54a.75.75 0 0 1-.75.75H3Z" />
+            <svg aria-hidden="true" viewBox="0 0 20 20">
+              <path d="M3 4a2 2 0 0 0-2 2v1.161l8.441 4.221a1.25 1.25 0 0 0 1.118 0L19 7.162V6a2 2 0 0 0-2-2H3Z" />
+              <path d="m19 8.839-7.77 3.885a2.75 2.75 0 0 1-2.46 0L1 8.839V14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.839Z" />
             </svg>
             <span>opensource@permguard.com</span>
           </a>
 
           <div class="pg-footer__social" aria-label="Permguard social links">
+            <a href="https://www.permguard.com/" target="_blank" rel="noopener noreferrer" aria-label="Permguard website">
+              <svg class="pg-footer__icon--outline" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3c2.25 2.47 3.4 5.47 3.4 9S14.25 18.53 12 21c-2.25-2.47-3.4-5.47-3.4-9S9.75 5.47 12 3Z" />
+              </svg>
+            </a>
             <a href="https://x.com/permguard" target="_blank" rel="noopener noreferrer" aria-label="Permguard on X">
               <svg aria-hidden="true" viewBox="0 0 16 16"><path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865z" /></svg>
             </a>

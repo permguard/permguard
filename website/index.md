@@ -58,7 +58,7 @@ const { theme } = useData()
     <div class="pg-hero__copy">
       <div class="pg-kicker">Documentation · {{ theme.docsVersion === 'latest' ? 'latest' : `version ${theme.docsVersion}` }}</div>
       <h1>Permguard <span class="pg-badge">Docs</span></h1>
-      <p>This is the documentation of <a href="https://permguard.com" target="_blank" rel="noopener noreferrer">Permguard</a>, authorization and trust for the agentic era. Learn how it works, and how to run the Command Line, the Control Plane, the Data Plane and the Trust Plane.</p>
+      <p>This is the documentation of <a href="https://permguard.com" target="_blank" rel="noopener noreferrer">Permguard</a>, authorization and trust for the agentic era. Start from the model, then install the CLI and run each plane.</p>
       <div class="pg-actions">
         <a class="pg-btn pg-btn--primary" :href="withBase('/how-it-works')">Read the docs</a>
         <a class="pg-btn pg-btn--ghost" href="https://github.com/permguard/permguard" target="_blank" rel="noopener noreferrer">View on GitHub</a>
@@ -77,10 +77,11 @@ const { theme } = useData()
       </div>
       <div class="pg-docs-grid">
         <a class="pg-doc" :href="withBase('/how-it-works')"><h3>How it works</h3><p>The concepts behind Permguard.</p><span aria-hidden="true">→</span></a>
+        <a class="pg-doc" :href="withBase('/how-it-works/install')"><h3>Install</h3><p>CLI, native packages and verified releases.</p><span aria-hidden="true">→</span></a>
         <a class="pg-doc" :href="withBase('/command-line')"><h3>Command Line</h3><p>Integrate and manage Permguard from your terminal.</p><span aria-hidden="true">→</span></a>
-        <a class="pg-doc" :href="withBase('/control-plane')"><h3>Control Plane</h3><p>Configure governance models, policies and authority continuity.</p><span aria-hidden="true">→</span></a>
-        <a class="pg-doc" :href="withBase('/data-plane')"><h3>Data Plane</h3><p>Evaluate policies and govern decisions at runtime.</p><span aria-hidden="true">→</span></a>
-        <a class="pg-doc" :href="withBase('/trust-plane')"><h3>Trust Plane</h3><p>Enforce authority continuity across execution chains.</p><span aria-hidden="true">→</span></a>
+        <a class="pg-doc" :href="withBase('/control-plane')"><h3>Control Plane</h3><p>Publish and distribute immutable policy history.</p><span aria-hidden="true">→</span></a>
+        <a class="pg-doc" :href="withBase('/data-plane')"><h3>Data Plane</h3><p>Decide embedded, as a sidecar, remotely or at your own edge.</p><span aria-hidden="true">→</span></a>
+        <a class="pg-doc" :href="withBase('/trust-plane')"><h3>Trust Plane</h3><p>Authority continuity, clearly marked in development.</p><span aria-hidden="true">→</span></a>
       </div>
     </div>
   </section>
