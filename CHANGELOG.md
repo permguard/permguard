@@ -45,6 +45,9 @@ is cut.
 
 ### Fixed
 
+- A temporal submission refused for a conflict answers gRPC `ABORTED`, as the temporal PDP contract requires, instead of `FAILED_PRECONDITION`; HTTP stays `409` and the class and code are unchanged.
+- A `401` carries the `WWW-Authenticate: Mutual-TLS realm="permguard"` challenge, and an access denial's body is serialised rather than assembled, so no message can break its JSON.
+- A gRPC call refused by a surface's peer allow list is answered in gRPC — `UNAUTHENTICATED` or `PERMISSION_DENIED`, with the code in `permguard-error-code` — rather than with an HTTP status and a JSON body.
 - `checkout` towards another ledger no longer keeps the previous ledger's checkpoint. The
   checkpoint is kept per ref, and every ledger's default ref is `main`, so two ledgers checked out
   in turn shared one file: `status` reported the old counter, `plan` saw no changes, and a no-op

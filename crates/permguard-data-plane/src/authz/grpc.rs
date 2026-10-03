@@ -25,7 +25,7 @@
 
 use tonic::{Request, Response, Status};
 
-use permguard_core::{ApiError, Disclosure, ErrorClass, GrpcCode};
+use permguard_core::{ApiError, Disclosure, ErrorClass, StatusTable};
 
 use super::configuration;
 use super::decide::Decider;
@@ -133,17 +133,20 @@ impl PdpApi {
 
 /// Turns a refusal into the gRPC answer: the taxonomy's status, class and code as metadata.
 pub(crate) fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
-    let message = failed.disclosed_message(disclosure);
-    let mut status = match failed.grpc_code() {
-        GrpcCode::InvalidArgument => Status::invalid_argument(message),
-        GrpcCode::NotFound => Status::not_found(message),
-        GrpcCode::AlreadyExists => Status::already_exists(message),
-        GrpcCode::PermissionDenied => Status::permission_denied(message),
-        GrpcCode::FailedPrecondition => Status::failed_precondition(message),
-        GrpcCode::Internal => Status::internal(message),
-        GrpcCode::Unavailable => Status::unavailable(message),
-        GrpcCode::Unauthenticated => Status::unauthenticated(message),
-    };
+    status_under(failed, disclosure, StatusTable::Common)
+}
+
+/// The same, under the status table of the contract that answers: the status is the shared
+/// mapping's, by number, never a choice made here.
+pub(crate) fn status_under(
+    failed: &ApiError,
+    disclosure: Disclosure,
+    table: StatusTable,
+) -> Status {
+    let mut status = Status::new(
+        tonic::Code::from(failed.grpc_code_under(table).number()),
+        failed.disclosed_message(disclosure),
+    );
     let metadata = status.metadata_mut();
     if let Ok(class) = tonic::metadata::MetadataValue::try_from(failed.class().as_str()) {
         metadata.insert(GRPC_ERROR_CLASS, class);

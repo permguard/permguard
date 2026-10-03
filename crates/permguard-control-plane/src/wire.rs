@@ -65,18 +65,9 @@ pub fn http_error(error: &ApiError, disclosure: Disclosure) -> Response {
     (http_status(error), Json(error.on_the_wire(disclosure))).into_response()
 }
 
-/// A gRPC status of the given code carrying `message`.
+/// A gRPC status of the given code carrying `message`: the shared mapping's number, unchanged.
 pub fn grpc_status(code: GrpcCode, message: String) -> Status {
-    match code {
-        GrpcCode::InvalidArgument => Status::invalid_argument(message),
-        GrpcCode::NotFound => Status::not_found(message),
-        GrpcCode::AlreadyExists => Status::already_exists(message),
-        GrpcCode::PermissionDenied => Status::permission_denied(message),
-        GrpcCode::FailedPrecondition => Status::failed_precondition(message),
-        GrpcCode::Internal => Status::internal(message),
-        GrpcCode::Unavailable => Status::unavailable(message),
-        GrpcCode::Unauthenticated => Status::unauthenticated(message),
-    }
+    Status::new(tonic::Code::from(code.number()), message)
 }
 
 /// Attaches the class and the code as metadata, so both transports say one thing.

@@ -641,7 +641,7 @@ impl Submitter {
                 {
                     return Err(ApiError::new(
                         ErrorClass::Conflict,
-                        "event_id_conflict",
+                        permguard_core::codes::pdp_temporal::EVENT_ID_CONFLICT,
                         format!(
                             "`{}` names a different durable occurrence at sequence {seq}",
                             occurrence.event_id
@@ -651,7 +651,7 @@ impl Submitter {
                 if stored.profile != profile || stored.event_type != record.event_type {
                     return Err(ApiError::new(
                         ErrorClass::Conflict,
-                        "event_routing_conflict",
+                        permguard_core::codes::pdp_temporal::EVENT_ROUTING_CONFLICT,
                         format!(
                             "`{}` was first submitted as type `{}` to profile `{}`, and a retry \
                              cannot route the same occurrence through type `{}` and profile \
@@ -1250,7 +1250,7 @@ impl Submitter {
 
         Err(ApiError::new(
             ErrorClass::Conflict,
-            "event_out_of_order",
+            permguard_core::codes::pdp_temporal::EVENT_OUT_OF_ORDER,
             format!(
                 "`{}` occurred at {} and this history already holds an occurrence at {at} that \
                  sorts after it. A temporal engine is fed in its documented order — event time, \
@@ -1352,7 +1352,7 @@ impl Submitter {
 
             return Err(ApiError::new(
                 ErrorClass::Conflict,
-                "event_id_conflict",
+                permguard_core::codes::pdp_temporal::EVENT_ID_CONFLICT,
                 format!(
                     "`{event_id}` is already recorded in `{zone}/{ledger}` over different \
                      content. An identifier names one occurrence: reusing it for another is \
@@ -1378,7 +1378,7 @@ impl Submitter {
 
             return Err(ApiError::new(
                 ErrorClass::Conflict,
-                "event_routing_conflict",
+                permguard_core::codes::pdp_temporal::EVENT_ROUTING_CONFLICT,
                 format!(
                     "`{event_id}` was answered under profile `{was_profile}` as `{was_kind}`, \
                      and this retry states profile `{profile}` as `{kind}`. The same identifier \
@@ -2096,7 +2096,7 @@ impl Submitter {
 
                 ApiError::new(
                     ErrorClass::Conflict,
-                    "event_id_conflict",
+                    permguard_core::codes::pdp_temporal::EVENT_ID_CONFLICT,
                     format!(
                         "this event id is already recorded at sequence {seq} carrying a different \
                          occurrence. An id says two submissions are the same occurrence; two \

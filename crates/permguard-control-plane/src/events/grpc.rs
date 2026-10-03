@@ -76,7 +76,8 @@ impl EventLog for EventFacade {
         request: Request<ListRecordsRequest>,
     ) -> Result<Response<ListRecordsResponse>, Status> {
         let asked = request.into_inner();
-        let (scope, kind) = scope_of(&asked)?;
+        let (scope, kind) =
+            scope_of(&asked).map_err(|refused| status_of(&refused, self.disclosure))?;
         // Same resolution as the HTTP list, so the two transports narrow to the same records.
         let scope = match read::canonical(self.catalog.as_ref(), scope) {
             Ok(scope) => scope,
@@ -215,7 +216,17 @@ impl EventLog for EventFacade {
             facade.signers_of(&zone, &ledger, asked.from_seq, asked.until_seq, &wanted)
         })
         .await
-        .map_err(|error| Status::unavailable(error.to_string()))?
+        .map_err(|error| {
+            status_of(
+                &ApiError::new(
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::stream::EVENT_STORE_UNAVAILABLE,
+                    "the event store could not be read",
+                )
+                .with_internal(error.to_string()),
+                disclosure,
+            )
+        })?
         .map_err(|error| status_of(&error, disclosure))?;
 
         let truncated = document.truncated;
@@ -293,11 +304,14 @@ impl EventLog for EventFacade {
     }
 }
 
-/// Which records a request is asking for.
-fn scope_of(asked: &ListRecordsRequest) -> Result<(Scope, &'static str), Status> {
+/// Which records a request is asking for. A refusal is a typed one, so it reaches the caller with
+/// the class and code the REST list answers with.
+fn scope_of(asked: &ListRecordsRequest) -> Result<(Scope, &'static str), ApiError> {
     if !asked.producer.is_empty() && !asked.instance.is_empty() {
         if asked.zone.is_empty() || asked.ledger.is_empty() {
-            return Err(Status::invalid_argument(
+            return Err(ApiError::new(
+                ErrorClass::Validation,
+                permguard_core::codes::stream::STREAM_REQUIRED,
                 "a producer stream is named inside one ledger: state `zone` and `ledger` too",
             ));
         }
@@ -317,7 +331,9 @@ fn scope_of(asked: &ListRecordsRequest) -> Result<(Scope, &'static str), Status>
         ));
     }
     if asked.zone.is_empty() || asked.ledger.is_empty() {
-        return Err(Status::invalid_argument(
+        return Err(ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::stream::SCOPE_REQUIRED,
             "name a zone and a ledger, or one producer stream with `producer` and `instance`",
         ));
     }
@@ -432,4 +448,45 @@ fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
 /// One value as the bytes the wire carries it as.
 fn render(value: &serde_json::Value) -> Vec<u8> {
     serde_json::to_vec(value).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A list that names no scope, or a stream outside a ledger, is a typed `validation` refusal:
+    /// the class and code reach the gRPC caller as metadata, as the REST list sends them.
+    #[test]
+    fn test_a_list_without_a_scope_is_a_typed_validation_refusal() {
+        let stream_without_ledger = ListRecordsRequest {
+            producer: "plane-a".to_owned(),
+            instance: "i-1".to_owned(),
+            ..ListRecordsRequest::default()
+        };
+        let nothing = ListRecordsRequest::default();
+
+        for (asked, code) in [
+            (
+                stream_without_ledger,
+                permguard_core::codes::stream::STREAM_REQUIRED,
+            ),
+            (nothing, permguard_core::codes::stream::SCOPE_REQUIRED),
+        ] {
+            let Err(refused) = scope_of(&asked) else {
+                panic!("`{code}` was not refused");
+            };
+            assert_eq!(refused.class(), ErrorClass::Validation);
+            assert_eq!(refused.code(), code);
+
+            let status = status_of(&refused, Disclosure::Minimal);
+            assert_eq!(status.code(), tonic::Code::InvalidArgument);
+            assert_eq!(
+                status
+                    .metadata()
+                    .get(permguard_core::GRPC_ERROR_CODE)
+                    .and_then(|value| value.to_str().ok()),
+                Some(code)
+            );
+        }
+    }
 }

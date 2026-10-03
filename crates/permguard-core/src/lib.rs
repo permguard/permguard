@@ -50,7 +50,7 @@ pub mod tls;
 
 pub use api::{
     AccessDenial, ApiError, Disclosure, ErrorClass, GRPC_ERROR_CLASS, GRPC_ERROR_CODE, GrpcCode,
-    WireDenial, WireError,
+    MUTUAL_TLS_CHALLENGE, StatusTable, WireDenial, WireError,
 };
 pub use audit::{AuditDestination, AuditEvent, AuditSink, Sensitivity, Subject};
 pub use catalog::{Catalog, CatalogError, Ledger, Selector, Zone};

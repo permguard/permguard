@@ -53,12 +53,13 @@ pub const GRPC_ERROR_CODE: &str = "permguard-error-code";
 /// | class | HTTP | gRPC |
 /// | --- | --- | --- |
 /// | `validation` | 400 | `INVALID_ARGUMENT` |
-/// | `conflict` | 409 | `FAILED_PRECONDITION`, or `ALREADY_EXISTS` for `name_taken`¹ |
+/// | `conflict` | 409 | `FAILED_PRECONDITION`, `ALREADY_EXISTS` for `name_taken`, `ABORTED` on the temporal PDP¹ |
 /// | `not_found` | 404 | `NOT_FOUND` |
 /// | `unavailable` | 503 | `UNAVAILABLE` |
 /// | `internal` | 500 | `INTERNAL` |
 ///
-/// ¹ gRPC distinguishes two conflicts HTTP folds into one 409; [`ApiError::grpc_code`] reads the code.
+/// ¹ gRPC distinguishes conflicts HTTP folds into one 409; [`ApiError::grpc_code_under`] reads the
+/// code and the contract's [`StatusTable`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorClass {
@@ -139,6 +140,7 @@ pub enum GrpcCode {
     AlreadyExists,
     PermissionDenied,
     FailedPrecondition,
+    Aborted,
     Internal,
     Unavailable,
     Unauthenticated,
@@ -153,6 +155,7 @@ impl GrpcCode {
             Self::AlreadyExists => 6,
             Self::PermissionDenied => 7,
             Self::FailedPrecondition => 9,
+            Self::Aborted => 10,
             Self::Internal => 13,
             Self::Unavailable => 14,
             Self::Unauthenticated => 16,
@@ -167,6 +170,7 @@ impl GrpcCode {
             Self::AlreadyExists => "ALREADY_EXISTS",
             Self::PermissionDenied => "PERMISSION_DENIED",
             Self::FailedPrecondition => "FAILED_PRECONDITION",
+            Self::Aborted => "ABORTED",
             Self::Internal => "INTERNAL",
             Self::Unavailable => "UNAVAILABLE",
             Self::Unauthenticated => "UNAUTHENTICATED",
@@ -255,14 +259,25 @@ impl ApiError {
         self.class.http_status()
     }
 
-    /// The gRPC status of this refusal.
+    /// The gRPC status of this refusal under the common table.
     ///
     /// gRPC tells apart the two conflicts HTTP folds into 409: a name that exists already, and a
     /// precondition — an occupied zone, a closed stream — that the caller has to clear first.
     pub fn grpc_code(&self) -> GrpcCode {
-        match (self.class, self.code) {
-            (ErrorClass::Conflict, codes::catalog::NAME_TAKEN) => GrpcCode::AlreadyExists,
-            (class, _) => class.grpc_code(),
+        self.grpc_code_under(StatusTable::Common)
+    }
+
+    /// The gRPC status of this refusal under the table of the contract that answers it.
+    ///
+    /// The one mapping every adapter goes through: an adapter names its contract and never chooses a
+    /// status itself.
+    pub fn grpc_code_under(&self, table: StatusTable) -> GrpcCode {
+        match (table, self.class, self.code) {
+            (StatusTable::TemporalPdp, ErrorClass::Conflict, _) => GrpcCode::Aborted,
+            (StatusTable::Common, ErrorClass::Conflict, codes::catalog::NAME_TAKEN) => {
+                GrpcCode::AlreadyExists
+            }
+            (_, class, _) => class.grpc_code(),
         }
     }
 
@@ -314,6 +329,23 @@ pub struct WireError {
     /// One sentence for a person.
     pub message: String,
 }
+
+/// Which contract's status table a refusal is answered under.
+///
+/// The catalog/discovery contract gives the common table: `conflict` is `ALREADY_EXISTS` for a
+/// taken name and `FAILED_PRECONDITION` otherwise. An interface contract may assign its own
+/// conflicts another status; the temporal PDP answers every conflict `ABORTED`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusTable {
+    /// The catalog/discovery table, for every surface without a table of its own.
+    Common,
+    /// The temporal PDP's table.
+    TemporalPdp,
+}
+
+/// The challenge a `401` carries on a surface that authenticates callers by TLS client
+/// certificate: the catalog/discovery contract's `Mutual-TLS` scheme.
+pub const MUTUAL_TLS_CHALLENGE: &str = "Mutual-TLS realm=\"permguard\"";
 
 /// A caller turned away before any domain question was asked.
 ///
@@ -370,6 +402,15 @@ impl AccessDenial {
         match self {
             Self::Unauthenticated { .. } => GrpcCode::Unauthenticated,
             Self::Forbidden { .. } => GrpcCode::PermissionDenied,
+        }
+    }
+
+    /// The `WWW-Authenticate` challenge this denial carries over HTTP: the `Mutual-TLS` scheme for a
+    /// caller that showed no certificate, none for a known caller without standing.
+    pub fn challenge(&self) -> Option<&'static str> {
+        match self {
+            Self::Unauthenticated { .. } => Some(MUTUAL_TLS_CHALLENGE),
+            Self::Forbidden { .. } => None,
         }
     }
 
@@ -460,6 +501,98 @@ mod tests {
         assert_eq!(taken.grpc_code(), GrpcCode::AlreadyExists);
         assert_eq!(occupied.grpc_code(), GrpcCode::FailedPrecondition);
         assert_eq!(taken.http_status(), occupied.http_status());
+    }
+
+    /// The status tables as the contracts write them, in literal numbers rather than through the
+    /// mapping under test: catalog/discovery for the common table, the temporal PDP for its own.
+    #[test]
+    fn test_every_class_answers_the_statuses_its_contract_assigns() {
+        let rows: [(StatusTable, ErrorClass, &'static str, u16, i32); 9] = [
+            (
+                StatusTable::Common,
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                400,
+                3,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::Conflict,
+                codes::catalog::NAME_TAKEN,
+                409,
+                6,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::Conflict,
+                codes::catalog::NOT_EMPTY,
+                409,
+                9,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::Conflict,
+                codes::common::CONFLICT,
+                409,
+                9,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::NotFound,
+                codes::common::NOT_FOUND,
+                404,
+                5,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::Unavailable,
+                codes::common::UNAVAILABLE,
+                503,
+                14,
+            ),
+            (
+                StatusTable::Common,
+                ErrorClass::Internal,
+                codes::common::INTERNAL,
+                500,
+                13,
+            ),
+            (
+                StatusTable::TemporalPdp,
+                ErrorClass::Conflict,
+                codes::pdp_temporal::EVENT_ID_CONFLICT,
+                409,
+                10,
+            ),
+            (
+                StatusTable::TemporalPdp,
+                ErrorClass::Conflict,
+                codes::common::CONFLICT,
+                409,
+                10,
+            ),
+        ];
+        for (table, class, code, http, grpc) in rows {
+            let refusal = ApiError::new(class, code, "");
+            assert_eq!(
+                (
+                    refusal.http_status(),
+                    refusal.grpc_code_under(table).number()
+                ),
+                (http, grpc),
+                "{table:?} {class:?}/{code}"
+            );
+        }
+        assert_eq!(GrpcCode::Aborted.as_str(), "ABORTED");
+    }
+
+    #[test]
+    fn test_only_a_missing_credential_is_challenged() {
+        assert_eq!(
+            AccessDenial::unauthenticated("show a certificate").challenge(),
+            Some("Mutual-TLS realm=\"permguard\"")
+        );
+        assert_eq!(AccessDenial::forbidden("not for you").challenge(), None);
     }
 
     #[test]

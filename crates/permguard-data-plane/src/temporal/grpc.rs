@@ -277,7 +277,8 @@ fn some(value: String) -> Option<String> {
     Some(value)
 }
 
-/// Turns a refusal into the gRPC answer: the taxonomy's status, class and code as metadata.
+/// Turns a refusal into the gRPC answer under the temporal contract's own table: a conflict is
+/// `ABORTED`.
 fn status_of(failed: &ApiError, disclosure: Disclosure) -> Status {
-    crate::authz::grpc::status_of(failed, disclosure)
+    crate::authz::grpc::status_under(failed, disclosure, permguard_core::StatusTable::TemporalPdp)
 }

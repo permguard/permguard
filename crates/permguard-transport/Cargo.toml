@@ -25,6 +25,8 @@ permguard-core.workspace = true
 # Naming each request. The same generator `rustls` already links, rather than a second one.
 ring.workspace = true
 rustls.workspace = true
+# Serialising an access denial's closed body: a message is data, never spliced into JSON text.
+serde_json.workspace = true
 sha2.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-rustls.workspace = true
@@ -45,5 +47,7 @@ rustls.workspace = true
 rcgen.workspace = true
 tokio-rustls.workspace = true
 tower = { workspace = true, features = ["util"] }
+# Reading a refusal's body back.
+http-body-util.workspace = true
 # Capturing what a request writes to the log, to prove a client's name for it never gets there.
 tracing-subscriber.workspace = true

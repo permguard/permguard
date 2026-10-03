@@ -815,6 +815,73 @@ async fn one_event_id_with_different_content_is_a_conflict_resolved_by_neither()
     assert_eq!(answered["code"], "event_id_conflict", "{answered}");
 }
 
+/// The temporal contract's status table: a conflict is `409` over HTTP and `ABORTED` over gRPC,
+/// with the same class and code on both — not the `FAILED_PRECONDITION` other interfaces use.
+#[tokio::test]
+async fn an_event_id_conflict_is_409_over_http_and_aborted_over_grpc() {
+    use permguard_data_plane::temporal::grpc;
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    let plane = plane("conflict-parity");
+    let router = surface(&plane);
+    let api = grpc::TemporalPdpApi {
+        submitter: Arc::clone(&plane.submitter),
+        disclosure: Disclosure::Full,
+        base_url: "http://plane.test".to_owned(),
+        pdp: "test-plane".to_owned(),
+    };
+    let occurrence = |server: &str| {
+        submission(
+            0,
+            "Drupe::Action::Login",
+            "response",
+            "alice",
+            json!({"user": "alice", "server": server}),
+        )
+    };
+
+    let (first, _) = post(&router, occurrence("s1")).await;
+    assert_eq!(first, StatusCode::OK);
+    let (over_http, answered) = post(&router, occurrence("s2")).await;
+    assert_eq!(over_http, StatusCode::CONFLICT, "{answered}");
+    assert_eq!(answered["class"], "conflict", "{answered}");
+    assert_eq!(answered["code"], "event_id_conflict", "{answered}");
+
+    let body = occurrence("s3");
+    let proto = permguard_data_plane::v1::SubmitEventRequest {
+        store: Some(permguard_data_plane::v1::EventStore {
+            zone: ZONE.to_owned(),
+            ledger: LEDGER.to_owned(),
+            profile: PROFILE.to_owned(),
+        }),
+        event: Some(permguard_data_plane::v1::TypedEvent {
+            r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+            data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                body["event"]["data"].as_object().expect("an object"),
+            )),
+        }),
+    };
+    let over_grpc = api
+        .submit_event(tonic::Request::new(proto))
+        .await
+        .expect_err("a conflicting occurrence is refused");
+    assert_eq!(over_grpc.code(), tonic::Code::Aborted, "{over_grpc:?}");
+    assert_eq!(
+        over_grpc
+            .metadata()
+            .get("permguard-error-class")
+            .and_then(|value| value.to_str().ok()),
+        Some("conflict")
+    );
+    assert_eq!(
+        over_grpc
+            .metadata()
+            .get("permguard-error-code")
+            .and_then(|value| value.to_str().ok()),
+        Some("event_id_conflict")
+    );
+}
+
 /// A caller may not choose its own history, its own producer, or its own position.
 #[tokio::test]
 async fn a_caller_cannot_state_what_the_server_binds() {
