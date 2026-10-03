@@ -100,6 +100,9 @@ fn body(seq: u64) -> Body {
         principal: None,
         inputs: Inputs::default(),
         decision: seq == 2,
+        // Written before `outcome` existed: the legacy bytes carry no such member.
+        outcome: None,
+        causes: None,
         policies: vec!["policy-1".to_owned()],
         reason: Reason {
             code: if seq == 2 { "200" } else { "403" }.to_owned(),

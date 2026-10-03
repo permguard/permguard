@@ -68,6 +68,19 @@ pub mod pdp_native {
     pub const FIELD_REMOVED: &str = "field_removed";
     pub const FIELD_RESERVED: &str = "field_reserved";
     pub const TOO_MANY_EVALUATIONS: &str = "too_many_evaluations";
+    /// The profile's result is `indeterminate`: a partition result `E` and no explicit deny. The
+    /// refusal a PDP answers with, in place of a decision.
+    pub const EVALUATION_INDETERMINATE: &str = "evaluation_indeterminate";
+    /// A partition result `E`: the decision's deadline passed before or while the partition ran.
+    pub const EVALUATION_DEADLINE_EXCEEDED: &str = "evaluation_deadline_exceeded";
+    /// A partition result `E`: the engine panicked, or its job was lost by the evaluation pool.
+    pub const EVALUATION_PANICKED: &str = "evaluation_panicked";
+    /// A partition result `E`: the engine reported errors — a diagnostic beside an `Allow`, an
+    /// interpreter error, a non-boolean rule, a conflict.
+    pub const EVALUATION_FAILED: &str = "evaluation_failed";
+    /// A partition result `E`: the engine could not represent the request — an entity, a context
+    /// or an interface its runtime does not take.
+    pub const EVALUATION_INPUT_REJECTED: &str = "evaluation_input_rejected";
 }
 
 /// `permguard.api.pdp.temporal.v1alpha1`.
@@ -167,8 +180,6 @@ pub mod notp {
     pub const SCHEMA_MISSING: &str = "schema_missing";
     pub const SCHEMA_UNSATISFIED: &str = "schema_unsatisfied";
     pub const VALUE_UNREPRESENTABLE: &str = "value_unrepresentable";
-    pub const PARTITION_FAILED: &str = "partition_failed";
-    pub const PARTITION_EVALUATION_FAILED: &str = "partition_evaluation_failed";
 }
 
 /// Codes the command line and the client answer for their own failures.
@@ -256,6 +267,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_native::FIELD_REMOVED,
         pdp_native::FIELD_RESERVED,
         pdp_native::TOO_MANY_EVALUATIONS,
+        pdp_native::EVALUATION_INDETERMINATE,
+        pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+        pdp_native::EVALUATION_PANICKED,
+        pdp_native::EVALUATION_FAILED,
+        pdp_native::EVALUATION_INPUT_REJECTED,
         pdp_temporal::EVENT_REQUIRED,
         pdp_temporal::EVENT_MALFORMED,
         pdp_temporal::EVENT_NOT_CANONICAL,
@@ -342,8 +358,6 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         notp::SCHEMA_MISSING,
         notp::SCHEMA_UNSATISFIED,
         notp::VALUE_UNREPRESENTABLE,
-        notp::PARTITION_FAILED,
-        notp::PARTITION_EVALUATION_FAILED,
         client::USAGE,
         client::TRANSPORT_FAILED,
         client::CONNECT_FAILED,

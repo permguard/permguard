@@ -33,9 +33,9 @@
 //! replaced commit is never served.
 //!
 //! **Fail-closed, everywhere.** A deny is an answer (`200`, `decision: false`).
-//! An error is a deny that says why. A ledger this engine may not serve is
-//! `unavailable` — never a quiet deny, because a PEP has to tell "no" from
-//! "ask somebody else".
+//! An evaluation that failed is not one: it is refused as `indeterminate`, and
+//! so is a ledger this engine may not serve — never a quiet deny, because a
+//! PEP has to tell "no" from "ask somebody else".
 
 pub mod audit;
 pub mod block;

@@ -57,7 +57,10 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
         })?;
 
         match self.submitter.submit(&wire).await {
-            Ok(answered) => Ok(Response::new(to_proto(answered))),
+            Ok(answered) => Ok(Response::new(to_proto(super::submit::disclosed(
+                answered,
+                self.disclosure,
+            )))),
             Err(failed) => Err(status_of(&failed, self.disclosure)),
         }
     }
@@ -227,6 +230,7 @@ pub fn to_proto(response: SubmitResponse) -> SubmitEventResponse {
         outcome: match response.outcome {
             Outcome::Decided => SubmitOutcome::Decided as i32,
             Outcome::Accepted => SubmitOutcome::Accepted as i32,
+            Outcome::Indeterminate => SubmitOutcome::Indeterminate as i32,
         },
         event_id: response.event_id,
         watermark: Some(EventWatermark {

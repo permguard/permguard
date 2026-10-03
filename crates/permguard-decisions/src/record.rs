@@ -225,6 +225,41 @@ impl Body {
     }
 }
 
+/// The profile's result under the common algebra, as the record spells it.
+///
+/// `decision` is `true` exactly for [`Outcome::Permit`]; the other three are told apart here. An
+/// [`Outcome::Indeterminate`] record is an evaluation that failed, which fails closed and is not
+/// a policy deny — the distinction the record exists to keep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    /// A policy permitted it and nothing objected.
+    Permit,
+    /// A policy denied it.
+    Deny,
+    /// Nothing permitted it, and nothing objected or failed.
+    DenyByDefault,
+    /// A partition could not evaluate it, and no policy denied it.
+    Indeterminate,
+}
+
+impl Outcome {
+    /// The spelling the record and the metrics use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Permit => "permit",
+            Self::Deny => "deny",
+            Self::DenyByDefault => "deny_by_default",
+            Self::Indeterminate => "indeterminate",
+        }
+    }
+
+    /// Whether this is the one outcome `decision` is `true` for.
+    pub fn permitted(self) -> bool {
+        matches!(self, Self::Permit)
+    }
+}
+
 /// One decision, and what it was decided from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecisionBody {
@@ -247,6 +282,19 @@ pub struct DecisionBody {
     pub inputs: Inputs,
     /// The answer.
     pub decision: bool,
+    /// The profile's result under the common algebra: which of the four it was.
+    ///
+    /// Added to version 1 as a member. A reader digests a record as the value it received and
+    /// never drops a member it does not know, so a record without it was written before the
+    /// member existed and its `decision` is its outcome.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub outcome: Option<Outcome>,
+    /// The `evaluation_*` codes of the partitions that could not evaluate, sorted and distinct:
+    /// present exactly when `outcome` is `indeterminate`. Codes only, never an engine's text.
+    ///
+    /// Added to version 1 as a member, like `outcome`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub causes: Option<Vec<String>>,
     /// Which policies decided — identities that survive renames.
     #[serde(default)]
     pub policies: Vec<String>,

@@ -182,6 +182,24 @@ fn manifest_two_profiles() -> Manifest {
 
 /// Writes a mirror the way a synchronization round leaves one.
 fn provision(root: &Path, manifest: &Manifest) -> Mirror {
+    provision_with(
+        root,
+        manifest,
+        ("01a0-read-login-not-logout", POLICY),
+        &[
+            (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+            (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+        ],
+    )
+}
+
+/// The same mirror, holding the policy and the artifacts a test chooses.
+fn provision_with(
+    root: &Path,
+    manifest: &Manifest,
+    (policy_id, policy): (&str, &str),
+    artifacts: &[(&str, &str)],
+) -> Mirror {
     let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
@@ -204,13 +222,10 @@ fn provision(root: &Path, manifest: &Manifest) -> Mirror {
     let mut entries = Vec::new();
     let digest = put_blob(
         permguard_languages::MEDIA_TYPE_POLICY_DOGWOOD,
-        POLICY.as_bytes(),
+        policy.as_bytes(),
     );
     let mut annotations = BTreeMap::new();
-    annotations.insert(
-        ANNOTATION_POLICY_ID.to_owned(),
-        "01a0-read-login-not-logout".to_owned(),
-    );
+    annotations.insert(ANNOTATION_POLICY_ID.to_owned(), policy_id.to_owned());
     annotations.insert(ANNOTATION_POLICY_KIND.to_owned(), "policy".to_owned());
     entries.push(TreeEntry {
         kind: Kind::Blob,
@@ -218,10 +233,7 @@ fn provision(root: &Path, manifest: &Manifest) -> Mirror {
         name: "policy.dw".to_owned(),
         annotations,
     });
-    for (type_name, source) in [
-        (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
-        (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
-    ] {
+    for (type_name, source) in artifacts.iter().copied() {
         let artifact = permguard_languages::artifact::artifact_type(type_name).expect("registered");
         let digest = put_blob(artifact.media_type(), source.as_bytes());
         entries.push(TreeEntry {
@@ -297,6 +309,8 @@ struct Plane {
     streams: Arc<Streams>,
     /// The policy state the decider reads, so a test can take it away.
     mirrors: PathBuf,
+    /// Where the decision journal writes, for a plane built with one.
+    decisions: PathBuf,
 }
 
 fn plane(tag: &str) -> Plane {
@@ -315,18 +329,61 @@ fn plane_of(tag: &str, manifest: &Manifest, blocking: Blocking) -> Plane {
 
 /// The same plane, recording into `metrics`.
 fn plane_measured(tag: &str, manifest: &Manifest, blocking: Blocking, metrics: Metrics) -> Plane {
+    plane_built(tag, blocking, metrics, false, |mirrors| {
+        provision(mirrors, manifest);
+    })
+}
+
+/// The same plane, over the ledger `build` provisions under the mirrors root, recording its
+/// decisions when `journalled`.
+fn plane_built(
+    tag: &str,
+    blocking: Blocking,
+    metrics: Metrics,
+    journalled: bool,
+    build: impl FnOnce(&Path),
+) -> Plane {
     let root = scratch(tag);
     let mirrors = root.join("mirrors");
     std::fs::create_dir_all(&mirrors).expect("the mirrors root is created");
-    provision(&mirrors, manifest);
+    build(&mirrors);
 
-    let decider = Arc::new(Decider::new(
+    let decisions = root.join("decisions");
+    let decider = Decider::new(
         mirrors.clone(),
         Arc::new(Cache::new(64, 32 * 1024 * 1024)),
         metrics.clone(),
         None,
         256,
-    ));
+    );
+    let decider = Arc::new(if journalled {
+        let journal = permguard_data_plane::decisions::journal::Journal::open(
+            &decisions,
+            "plane",
+            permguard_data_plane::decisions::journal::Epoch {
+                version: "0.1.0".to_owned(),
+                build: None,
+                engines: BTreeMap::new(),
+                sampling: "1.0".to_owned(),
+            },
+            permguard_data_plane::decisions::journal::WhenFull::Open,
+            permguard_decisions::spool::Bounds {
+                bytes: 64 * 1024 * 1024,
+                age: std::time::Duration::from_secs(3600),
+                segment_bytes: 1024 * 1024,
+            },
+            permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+            Metrics::none(),
+        )
+        .expect("the journal opens");
+        decider.with_journal(
+            Some(Arc::new(journal)),
+            None,
+            permguard_core::decisions::IncludeSection::default(),
+        )
+    } else {
+        decider
+    });
     let events = root.join("events");
     // The clock bounds are widened for the tests only, and deliberately: upstream's trace is dated
     // at the epoch, and what these tests are about is the temporal semantics rather than the skew
@@ -351,6 +408,7 @@ fn plane_measured(tag: &str, manifest: &Manifest, blocking: Blocking, metrics: M
         events,
         streams,
         mirrors,
+        decisions,
     }
 }
 
@@ -649,6 +707,7 @@ async fn a_recorded_gap_stops_a_bounded_plane_from_deciding_until_it_is_accepted
         ),
         events: root.join("events"),
         streams,
+        decisions: PathBuf::new(),
     };
     let router = surface(&plane);
     let body = || {
@@ -1260,6 +1319,7 @@ mod shipped_example {
             events: events.to_path_buf(),
             streams,
             mirrors: mirrors.clone(),
+            decisions: PathBuf::new(),
         }
     }
 
@@ -1303,6 +1363,7 @@ mod shipped_example {
             events,
             streams,
             mirrors: mirrors.clone(),
+            decisions: PathBuf::new(),
         }
     }
 
@@ -2389,5 +2450,349 @@ mod adversarial_ids {
                 "`{spy}` reached a log line:\n{logged}"
             );
         }
+    }
+}
+
+/// TL-1 on the temporal interface: a partition that could not evaluate the occurrence answers
+/// `outcome: indeterminate` — the occurrence is durable and receipted, no deny is fabricated — on
+/// both transports, with the failed partition carrying the native contract's code of its cause.
+mod indeterminate {
+    use super::*;
+
+    use permguard_data_plane::temporal::{grpc, submit};
+    use permguard_data_plane::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPoint as _;
+
+    /// A policy whose only condition calls a provider that throws: upstream reports the error in
+    /// its diagnostics beside a fail-closed decision, which the adapter reports as `E`.
+    const BOOM_POLICY: &str = r#"@id("boom")
+permit (
+    principal,
+    action == Drupe::Action::"Read",
+    resource
+)
+when { Boom::Fail(context.input.document).ok == true };
+"#;
+    const BOOM_PROVIDERS: &str = r#"{
+  "availableProviders": {
+    "Boom::Fail": {
+      "argumentTypes": [{"paramType": "string"}],
+      "outputType": {
+        "paramType": "record",
+        "fields": {"ok": {"paramType": "bool"}},
+        "required": ["ok"]
+      },
+      "implementation": {"kind": "rhai", "script": "fn evaluate(text) { throw \"the provider exploded\" }"}
+    }
+  }
+}"#;
+
+    fn manifest_with_providers() -> Manifest {
+        let mut manifest = manifest();
+        manifest
+            .partitions
+            .get_mut("governance")
+            .expect("the base manifest declares governance")
+            .artifacts
+            .push(ArtifactContract {
+                r#type: dogwood_artifacts::PROVIDERS.to_owned(),
+                required: false,
+            });
+
+        manifest
+    }
+
+    fn plane_failing(tag: &str) -> Plane {
+        plane_built(tag, blocking(), Metrics::none(), true, |mirrors| {
+            provision_with(
+                mirrors,
+                &manifest_with_providers(),
+                ("01a0-boom", BOOM_POLICY),
+                &[
+                    (dogwood_artifacts::ACTION_SCHEMA, ACTION_SCHEMA),
+                    (dogwood_artifacts::EVENT_SCHEMA, EVENT_SCHEMA),
+                    (dogwood_artifacts::PROVIDERS, BOOM_PROVIDERS),
+                ],
+            );
+        })
+    }
+
+    fn read(at: i64) -> Value {
+        submission(
+            at,
+            "Drupe::Action::Read",
+            "request",
+            "alice",
+            json!({"user": "alice", "document": format!("doc{at}")}),
+        )
+    }
+
+    #[tokio::test]
+    async fn an_evaluation_failure_is_answered_indeterminate_not_denied() {
+        let plane = plane_failing("temporal-indeterminate");
+        let router = surface(&plane);
+
+        let (status, answered) = post(&router, read(100)).await;
+
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["outcome"], json!("indeterminate"), "{answered}");
+        assert!(
+            answered.get("decision").is_none(),
+            "no verdict is fabricated: {answered}"
+        );
+        assert!(
+            answered["decision_id"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty()),
+            "recorded, so it names its record: {answered}"
+        );
+        assert!(
+            answered["watermark"]["sequence"].as_u64().is_some(),
+            "the occurrence is durable and receipted: {answered}"
+        );
+        assert_eq!(
+            answered["reason"]["code"],
+            json!(permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE),
+            "{answered}"
+        );
+        // Empty, and so omitted from the body: nothing decided it.
+        assert!(
+            answered
+                .get("policies")
+                .is_none_or(|policies| policies.as_array().is_some_and(Vec::is_empty)),
+            "nothing decided it: {answered}"
+        );
+        let partitions = answered["evaluations"]
+            .as_array()
+            .expect("one per partition");
+        assert_eq!(partitions.len(), 1, "{answered}");
+        assert_eq!(
+            partitions[0]["reason"]["code"],
+            json!(permguard_core::codes::pdp_native::EVALUATION_FAILED),
+            "the failed partition carries the code of its cause: {answered}"
+        );
+        assert!(
+            partitions[0]["reason"]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("exploded")),
+            "{answered}"
+        );
+    }
+
+    /// Recorded as what it is: `indeterminate`, its cause by code, linked to its occurrence.
+    #[tokio::test]
+    async fn an_evaluation_failure_is_recorded_indeterminate_with_its_causes() {
+        let plane = plane_failing("temporal-indeterminate-record");
+        let router = surface(&plane);
+
+        let (status, answered) = post(&router, read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+
+        let mut segments: Vec<PathBuf> = std::fs::read_dir(&plane.decisions)
+            .expect("the decision spool can be listed")
+            .map(|entry| entry.expect("a spool entry").path())
+            .filter(|path| path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl"))
+            .collect();
+        segments.sort();
+        let records: Vec<Value> = segments
+            .into_iter()
+            .flat_map(|path| {
+                std::fs::read_to_string(path)
+                    .expect("the segment can be read")
+                    .lines()
+                    .map(|line| serde_json::from_str::<Value>(line).expect("the record is JSON"))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|record| record["kind"] == json!("decision"))
+            .collect();
+
+        assert_eq!(records.len(), 1, "{records:?}");
+        let record = &records[0];
+        assert_eq!(record["id"], answered["decision_id"], "{record}");
+        assert_eq!(record["outcome"], json!("indeterminate"), "{record}");
+        assert_eq!(record["decision"], json!(false), "{record}");
+        assert_eq!(
+            record["causes"],
+            json!([permguard_core::codes::pdp_native::EVALUATION_FAILED]),
+            "{record}"
+        );
+        assert!(
+            record["event"]["event_id"].is_string(),
+            "linked to the occurrence it was made about: {record}"
+        );
+    }
+
+    /// Under minimal disclosure the engines' own words stay inside: every reason keeps its code
+    /// and gets a fixed sentence, over both transports.
+    #[tokio::test]
+    async fn under_minimal_disclosure_an_engines_words_never_reach_the_caller() {
+        let plane = plane_failing("temporal-indeterminate-minimal");
+        let router = http::routes(http::Surface {
+            submitter: Arc::clone(&plane.submitter),
+            disclosure: Disclosure::Minimal,
+            base_url: "http://plane.test".to_owned(),
+            pdp: "test-plane".to_owned(),
+        });
+
+        let (status, answered) = post(&router, read(100)).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        assert_eq!(answered["outcome"], json!("indeterminate"), "{answered}");
+        assert!(
+            !answered.to_string().contains("exploded"),
+            "the provider's error stays inside: {answered}"
+        );
+        assert_eq!(
+            answered["reason"]["code"],
+            json!(permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE)
+        );
+        assert_eq!(
+            answered["evaluations"][0]["reason"]["code"],
+            json!(permguard_core::codes::pdp_native::EVALUATION_FAILED),
+            "the code still says which cause: {answered}"
+        );
+
+        let api = grpc::TemporalPdpApi {
+            submitter: Arc::clone(&plane.submitter),
+            disclosure: Disclosure::Minimal,
+            base_url: "http://plane.test".to_owned(),
+            pdp: "test-plane".to_owned(),
+        };
+        let body = read(200);
+        let proto = permguard_data_plane::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane::v1::EventStore {
+                zone: ZONE.to_owned(),
+                ledger: LEDGER.to_owned(),
+                profile: PROFILE.to_owned(),
+            }),
+            event: Some(permguard_data_plane::v1::TypedEvent {
+                r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                )),
+            }),
+        };
+        let answered = api
+            .submit_event(tonic::Request::new(proto))
+            .await
+            .expect("the gRPC surface answers")
+            .into_inner();
+        let reasons: Vec<String> = answered
+            .reason
+            .iter()
+            .chain(
+                answered
+                    .evaluations
+                    .iter()
+                    .filter_map(|held| held.reason.as_ref()),
+            )
+            .map(|reason| reason.message.clone())
+            .collect();
+        assert_eq!(reasons.len(), 2, "{reasons:?}");
+        assert!(
+            reasons.iter().all(|message| !message.contains("exploded")),
+            "{reasons:?}"
+        );
+    }
+
+    /// A replayed answer an earlier release stored, under its own codes, is held to the same rule:
+    /// a failure's words stay inside under minimal disclosure, a decided outcome's fixed sentence
+    /// is kept, and full disclosure changes nothing.
+    #[test]
+    fn a_replayed_answer_of_an_earlier_release_is_held_to_the_same_disclosure() {
+        let stored: permguard_languages::temporal::SubmitResponse = serde_json::from_value(json!({
+            "outcome": "decided",
+            "event_id": "e-1",
+            "watermark": {"instance": "i-1", "sequence": 1},
+            "decision": false,
+            "decision_id": "d-1",
+            "evaluations": [
+                {"partition": "app", "decision": false,
+                 "reason": {"code": "partition_evaluation_failed", "message": "provider `Secret::Leak` exploded"}},
+                {"partition": "other", "decision": false}
+            ],
+            "reason": {"code": "partition_failed", "message": "provider `Secret::Leak` exploded"},
+            "history": {"mode": "local"}
+        }))
+        .expect("an earlier release's answer reads");
+
+        let full = submit::disclosed(stored.clone(), Disclosure::Full);
+        assert_eq!(full, stored, "full disclosure shows it as written");
+
+        let minimal = serde_json::to_value(submit::disclosed(stored, Disclosure::Minimal))
+            .expect("it serializes");
+        assert!(!minimal.to_string().contains("exploded"), "{minimal}");
+        assert_eq!(
+            minimal["reason"]["code"],
+            json!("partition_failed"),
+            "{minimal}"
+        );
+        assert_eq!(
+            minimal["evaluations"][0]["reason"]["code"],
+            json!("partition_evaluation_failed"),
+            "{minimal}"
+        );
+
+        let decided: permguard_languages::temporal::SubmitResponse = serde_json::from_value(json!({
+            "outcome": "decided",
+            "event_id": "e-2",
+            "watermark": {"instance": "i-1", "sequence": 2},
+            "decision": false,
+            "decision_id": "d-2",
+            "reason": {"code": "denied", "message": "a policy refused it against this partition's history"},
+            "history": {"mode": "local"}
+        }))
+        .expect("a decided answer reads");
+        assert_eq!(
+            submit::disclosed(decided.clone(), Disclosure::Minimal),
+            decided,
+            "a decided outcome's sentence is already caller-safe"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_evaluation_failure_is_indeterminate_over_grpc_too() {
+        let plane = plane_failing("temporal-indeterminate-grpc");
+        let api = grpc::TemporalPdpApi {
+            submitter: Arc::clone(&plane.submitter),
+            disclosure: Disclosure::Full,
+            base_url: "http://plane.test".to_owned(),
+            pdp: "test-plane".to_owned(),
+        };
+        let body = read(200);
+        let proto = permguard_data_plane::v1::SubmitEventRequest {
+            store: Some(permguard_data_plane::v1::EventStore {
+                zone: ZONE.to_owned(),
+                ledger: LEDGER.to_owned(),
+                profile: PROFILE.to_owned(),
+            }),
+            event: Some(permguard_data_plane::v1::TypedEvent {
+                r#type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                data: Some(permguard_data_plane::authz::translate::struct_from_map(
+                    body["event"]["data"].as_object().expect("an object"),
+                )),
+            }),
+        };
+
+        let answered = api
+            .submit_event(tonic::Request::new(proto))
+            .await
+            .expect("the gRPC surface answers: the occurrence is durable")
+            .into_inner();
+
+        assert_eq!(
+            answered.outcome,
+            permguard_data_plane::v1::SubmitOutcome::Indeterminate as i32
+        );
+        assert_eq!(answered.decision, None, "no verdict is fabricated");
+        assert!(
+            !answered.decision_id.is_empty(),
+            "recorded, so it names its record"
+        );
+        assert_eq!(
+            answered.evaluations[0]
+                .reason
+                .as_ref()
+                .map(|reason| reason.code.as_str()),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
+        );
     }
 }

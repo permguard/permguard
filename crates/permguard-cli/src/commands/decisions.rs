@@ -28,7 +28,7 @@ use permguard_decisions::envelope::Signed;
 use permguard_decisions::{chain, merkle, record};
 use serde_json::Value;
 
-use crate::args::{Decision, DecisionsAction, DecisionsQuery, Globals};
+use crate::args::{DecisionsAction, DecisionsQuery, Globals};
 use crate::decision_out::{
     DecisionLine, DecisionReport, DecisionSignersReport, DecisionsReport, EventLine, Verified,
 };
@@ -413,8 +413,9 @@ fn report(
             .get("decision")
             .and_then(Value::as_bool)
             .unwrap_or_default();
+        let outcome = crate::decision_out::outcome_of(&record);
         if let Some(wanted) = query.decision
-            && permit != matches!(wanted, Decision::Permit)
+            && !wanted.admits(&outcome)
         {
             continue;
         }
@@ -423,6 +424,7 @@ fn report(
             seq,
             at,
             decision: permit,
+            outcome,
             subject: party(&record, "subject"),
             action: record
                 .get("action")

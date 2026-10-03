@@ -647,12 +647,7 @@ pub fn run(compiled: &Compiled, store: &dyn Store, located: &Located) -> Result<
                 .into_iter()
                 .map(|answered| answered.verdict),
         );
-        let decided = Decided {
-            request_id: request_id.clone(),
-            permitted: outcome.permitted,
-            policies: outcome.determining().to_vec(),
-            error: outcome.errors.first().cloned(),
-        };
+        let decided = Decided::from_outcome(&outcome, request_id.clone());
 
         // The batch stops where the caller's semantic says it stops, so that a case
         // sees the same evaluations a plane would have run — and no more.
@@ -682,6 +677,40 @@ pub struct Decided {
     pub policies: Vec<String>,
     /// The refusal, when this evaluation could not be performed.
     pub error: Option<String>,
+}
+
+impl Decided {
+    /// What a resolved evaluation decided, as a case judges it.
+    ///
+    /// An error only when the result is indeterminate: a failure beside a deny that stood is a
+    /// deny, as the plane answers it. The error leads with the code the plane refuses it with —
+    /// `evaluation_input_rejected` when an engine could not represent the request, else
+    /// `evaluation_indeterminate` — then names every cause, so a case expecting either the
+    /// plane's code or a cause's reads the same under `permguard test` and `test --remote`. (A
+    /// plane under minimal disclosure states only its own code.)
+    fn from_outcome(outcome: &languages::Outcome, request_id: Option<String>) -> Self {
+        let error = outcome.indeterminate().then(|| {
+            use permguard_core::codes::pdp_native;
+
+            let refused = if outcome
+                .causes()
+                .contains(&pdp_native::EVALUATION_INPUT_REJECTED)
+            {
+                pdp_native::EVALUATION_INPUT_REJECTED
+            } else {
+                pdp_native::EVALUATION_INDETERMINATE
+            };
+            let causes: Vec<String> = outcome.errors.iter().map(ToString::to_string).collect();
+            format!("{refused}: {}", causes.join("; "))
+        });
+
+        Self {
+            request_id,
+            permitted: outcome.permitted(),
+            policies: outcome.determining().to_vec(),
+            error,
+        }
+    }
 }
 
 /// What a decision said, whoever decided it: this workspace, or a plane.
@@ -1104,12 +1133,7 @@ fn run_temporal(
     }
 
     let outcome = resolve(verdicts);
-    let decided = Decided {
-        request_id: None,
-        permitted: outcome.permitted,
-        policies: outcome.determining().to_vec(),
-        error: outcome.errors.first().cloned(),
-    };
+    let decided = Decided::from_outcome(&outcome, None);
 
     Ok(judge(
         located,
@@ -1149,6 +1173,49 @@ fn history_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failure_beside_a_deny_is_a_deny_and_only_an_indeterminate_result_is_an_error() {
+        use permguard_languages::Verdict;
+
+        let beside = resolve([
+            Verdict::permit(vec!["p1".to_owned()]),
+            Verdict::deny_despite_failure(vec!["f1".to_owned()], "an attribute is missing"),
+        ]);
+        let decided = Decided::from_outcome(&beside, None);
+        assert!(!decided.permitted);
+        assert_eq!(decided.policies, ["f1".to_owned()]);
+        assert_eq!(decided.error, None, "a deny, as the plane answers it");
+
+        let failed = resolve([
+            Verdict::permit(vec!["p1".to_owned()]),
+            Verdict::engine_failed("an attribute is missing"),
+        ]);
+        let decided = Decided::from_outcome(&failed, Some("r1".to_owned()));
+        assert!(!decided.permitted);
+        assert!(decided.policies.is_empty());
+        assert!(
+            decided.error.as_deref().is_some_and(|error| {
+                error.starts_with("evaluation_indeterminate: ")
+                    && error.contains("evaluation_failed: an attribute is missing")
+            }),
+            "the plane's code, then the cause: {decided:?}"
+        );
+
+        // An input an engine rejected is refused with that code by the plane, and here.
+        let rejected = resolve([
+            Verdict::engine_failed("an attribute is missing"),
+            Verdict::input_rejected("an action the schema does not declare"),
+        ]);
+        let decided = Decided::from_outcome(&rejected, None);
+        assert!(
+            decided
+                .error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("evaluation_input_rejected: ")),
+            "{decided:?}"
+        );
+    }
 
     #[test]
     fn a_request_path_is_read_relative_to_its_case_file() {

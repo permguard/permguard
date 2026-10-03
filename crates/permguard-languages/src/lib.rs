@@ -50,7 +50,8 @@ pub use dogwood::occurrence::{
 };
 pub use dogwood::{NAME as DOGWOOD, POLICY_MEDIA_TYPE as MEDIA_TYPE_POLICY_DOGWOOD};
 pub use evaluate::{
-    Action, Entity, Evaluating, Evaluator, Outcome, Query, StoredPolicy, Verdict, resolve,
+    Action, Entity, Evaluating, EvaluationError, Evaluator, Outcome, Query, Resolution,
+    StoredPolicy, Verdict, resolve,
 };
 pub use input::{PartitionData, PartitionInputBody, input_type, input_types};
 pub use lookup::{language, language_for_media_type, languages};

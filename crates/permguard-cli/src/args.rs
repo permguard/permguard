@@ -724,14 +724,28 @@ pub struct EventsQuery {
 /// Which way a decision went, as `--decision` spells it.
 ///
 /// An enumeration rather than a free string, so that a misspelling is refused at the command line
-/// instead of quietly filtering to the other answer, and so that the help lists the two values the
-/// way `--output` lists its own.
+/// instead of quietly filtering to another answer, and so that the help lists the values the way
+/// `--output` lists its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Decision {
     /// Only the requests that were allowed.
     Permit,
-    /// Only the requests that were refused.
+    /// Only the requests a policy refused or nothing permitted.
     Deny,
+    /// Only the requests that could not be evaluated: refused, and not by a policy.
+    Indeterminate,
+}
+
+impl Decision {
+    /// Whether a record of this outcome — `permit`, `deny`, `deny_by_default` or
+    /// `indeterminate` — is one this filter keeps.
+    pub fn admits(self, outcome: &str) -> bool {
+        match self {
+            Self::Permit => outcome == "permit",
+            Self::Deny => outcome == "deny" || outcome == "deny_by_default",
+            Self::Indeterminate => outcome == "indeterminate",
+        }
+    }
 }
 
 /// Which decisions, and how they are checked.

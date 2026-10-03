@@ -1432,9 +1432,11 @@ fn named(ids: &[String], aliases: &std::collections::BTreeMap<String, String>) -
 /// The operator's half of the reason, and — when its code says the request was never evaluated —
 /// the error it is.
 ///
-/// The plane answers an evaluation it could not perform as a deny whose `reason_admin` carries
-/// code `500`, the same thing the local run calls a refusal. The code used to be dropped here,
-/// which left a deny nothing permitted and a deny nothing evaluated printing the same way.
+/// A plane of an earlier release answered an evaluation it could not perform as a deny whose
+/// `reason_admin` carries code `500`, the same thing the local run calls a refusal; a plane of
+/// this release refuses it instead, so no decision of its carries the code. The code used to be
+/// dropped here, which left a deny nothing permitted and a deny nothing evaluated printing the
+/// same way.
 fn reasons(context: Option<&serde_json::Value>) -> (Option<String>, Option<String>) {
     let Some(reason) = context.and_then(|context| context.get("reason_admin")) else {
         return (None, None);

@@ -51,7 +51,7 @@ const COMPONENT: &str = "data-plane";
 
 /// What one decision has to say about itself, in the vocabulary of the
 /// decision path rather than of the record.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Decided<'a> {
     /// The handle the caller was given back.
     pub id: &'a str,
@@ -89,6 +89,12 @@ pub struct Decided<'a> {
     pub absent_inputs: Vec<String>,
     /// The answer.
     pub permit: bool,
+    /// Which of the algebra's four results it was: the record keeps an evaluation that failed
+    /// apart from a policy deny.
+    pub outcome: permguard_decisions::record::Outcome,
+    /// The `evaluation_*` codes behind an indeterminate outcome, sorted and distinct; empty for
+    /// the other three.
+    pub causes: Vec<&'static str>,
     /// Which policies decided.
     pub policies: Vec<String>,
     /// The class of the outcome.
@@ -886,6 +892,9 @@ impl Journal {
                     external: Vec::new(),
                 },
                 decision: decided.permit,
+                outcome: Some(decided.outcome),
+                causes: (!decided.causes.is_empty())
+                    .then(|| decided.causes.iter().map(|&code| code.to_owned()).collect()),
                 policies: decided.policies.clone(),
                 reason: Reason {
                     code: decided.reason.clone(),

@@ -374,13 +374,14 @@ pub struct EventBody {
 /// fabricated permit from a decided one.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct SubmitResponse {
-    /// `decided` or `accepted`.
+    /// `decided`, `accepted` or `indeterminate`.
     pub outcome: Outcome,
     /// The occurrence's identifier, as the caller stated it.
     pub event_id: String,
     /// Where this occurrence sits in this plane's stream for the ledger.
     pub watermark: Watermark,
-    /// Present exactly when `outcome` is `decided`.
+    /// Present exactly when `outcome` is `decided`: absent for a history-only receipt and for an
+    /// indeterminate result alike, so neither can be read as a decided deny.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision: Option<bool>,
     /// The decision's own identifier, matching its audit record. Present with `decision`.
@@ -530,6 +531,10 @@ pub enum Outcome {
     Decided,
     /// A history-only kind: durably recorded and observed, and there is no verdict.
     Accepted,
+    /// A decision kind whose profile result is `indeterminate`: a partition could not evaluate the
+    /// occurrence and no policy denied it. The occurrence is durable and receipted; `decision` is
+    /// absent, because the verdict it did not get is never fabricated as a deny.
+    Indeterminate,
 }
 
 /// Where an occurrence sits in this plane's stream.

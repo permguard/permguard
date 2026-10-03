@@ -275,6 +275,24 @@ pub(crate) fn validated(answer: Value) -> Result<Value, Failure> {
                 ));
             }
         }
+        // Indeterminate: recorded, so it names its decision id, and it states no verdict — a
+        // `decision` beside it would be the fabricated deny the outcome exists to rule out.
+        Outcome::Indeterminate => {
+            if held.decision.is_some() {
+                return Err(refused(
+                    "the temporal answer says the result is indeterminate and still states a \
+                     decision"
+                        .to_owned(),
+                ));
+            }
+            if held.decision_id.as_ref().is_none_or(|id| id.is_empty()) {
+                return Err(refused(
+                    "the temporal answer says the result is indeterminate and names no decision \
+                     id: an audit record nobody can be pointed at is not a result"
+                        .to_owned(),
+                ));
+            }
+        }
     }
 
     Ok(answer)
@@ -290,6 +308,7 @@ fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
     let outcome = match proto::SubmitOutcome::try_from(answer.outcome).ok() {
         Some(proto::SubmitOutcome::Decided) => Outcome::Decided,
         Some(proto::SubmitOutcome::Accepted) => Outcome::Accepted,
+        Some(proto::SubmitOutcome::Indeterminate) => Outcome::Indeterminate,
         _ => {
             return Err(internal(
                 "the temporal answer carries no outcome".to_owned(),
@@ -437,6 +456,19 @@ mod tests {
         assert_eq!(answer["history"]["staleness_seconds"], 0);
     }
 
+    /// The proto's `SUBMIT_OUTCOME_INDETERMINATE` reads as `indeterminate`, with no verdict.
+    #[test]
+    fn grpc_reads_an_indeterminate_outcome_without_a_verdict() {
+        let mut held = accepted(None);
+        held.outcome = proto::SubmitOutcome::Indeterminate as i32;
+        held.decision_id = "d-1".to_owned();
+        let answer = from_proto(held).expect("the answer converts");
+
+        assert_eq!(answer["outcome"], "indeterminate");
+        assert!(answer.get("decision").is_none(), "{answer}");
+        assert_eq!(answer["decision_id"], "d-1");
+    }
+
     #[test]
     fn grpc_preserves_an_absent_staleness_value() {
         let answer = from_proto(accepted(None)).expect("the answer converts");
@@ -508,6 +540,27 @@ mod contract_tests {
                 "accepted while carrying a decision",
                 answer("accepted", json!({"decision": true})),
                 Some("has no verdict to state"),
+            ),
+            (
+                "an indeterminate answer that names its decision id and states no verdict",
+                answer(
+                    "indeterminate",
+                    json!({"decision_id": "d-1", "reason": {"code": "evaluation_indeterminate", "message": "m"}}),
+                ),
+                None,
+            ),
+            (
+                "indeterminate while stating a decision",
+                answer(
+                    "indeterminate",
+                    json!({"decision": false, "decision_id": "d-1"}),
+                ),
+                Some("still states a decision"),
+            ),
+            (
+                "indeterminate with no decision id",
+                answer("indeterminate", json!({})),
+                Some("names no decision id"),
             ),
             (
                 "a watermark with no instance",

@@ -1,0 +1,23 @@
+{
+  "profile": "typed decision algebra: any D -> deny; else any E -> indeterminate; else any P -> permit; else deny_by_default",
+  "cases": [
+    { "name": "nothing answered", "verdicts": [], "resolution": "deny_by_default", "determining": [] },
+    { "name": "one abstain", "verdicts": ["A"], "resolution": "deny_by_default", "determining": [] },
+    { "name": "one permit", "verdicts": ["P:p1"], "resolution": "permit", "determining": ["p1"] },
+    { "name": "one deny", "verdicts": ["D:d1"], "resolution": "deny", "determining": ["d1"] },
+    { "name": "one error", "verdicts": ["E"], "resolution": "indeterminate", "determining": [] },
+    { "name": "permit beside an abstain", "verdicts": ["P:p1", "A"], "resolution": "permit", "determining": ["p1"] },
+    { "name": "permit beside a deny", "verdicts": ["P:p1", "D:d1"], "resolution": "deny", "determining": ["d1"] },
+    { "name": "permit beside an error", "verdicts": ["P:p1", "E"], "resolution": "indeterminate", "determining": [] },
+    { "name": "deny beside an error", "verdicts": ["D:d1", "E"], "resolution": "deny", "determining": ["d1"] },
+    { "name": "a deny beside its own partition's failure", "verdicts": ["DE:d1"], "resolution": "deny", "determining": ["d1"], "failures": 1 },
+    { "name": "a permit and a deny beside its own partition's failure", "verdicts": ["P:p1", "DE:d1"], "resolution": "deny", "determining": ["d1"], "failures": 1 },
+    { "name": "an engine's fail-closed deny", "verdicts": ["DE"], "resolution": "indeterminate", "determining": [], "failures": 1 },
+    { "name": "a permit beside an engine's fail-closed deny", "verdicts": ["P:p1", "DE"], "resolution": "indeterminate", "determining": [], "failures": 1 },
+    { "name": "error beside an abstain", "verdicts": ["E", "A"], "resolution": "indeterminate", "determining": [] },
+    { "name": "every kind at once", "verdicts": ["A", "E", "P:p1", "D:d1"], "resolution": "deny", "determining": ["d1"] },
+    { "name": "two permits", "verdicts": ["P:p1", "P:p2"], "resolution": "permit", "determining": ["p1", "p2"] },
+    { "name": "two denies and a permit", "verdicts": ["D:d1", "P:p1", "D:d2"], "resolution": "deny", "determining": ["d1", "d2"] },
+    { "name": "two errors", "verdicts": ["E", "E"], "resolution": "indeterminate", "determining": [] }
+  ]
+}

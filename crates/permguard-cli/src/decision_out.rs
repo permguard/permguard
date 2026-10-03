@@ -48,6 +48,9 @@ pub struct DecisionLine {
     pub at: String,
     /// The answer.
     pub decision: bool,
+    /// Which of the algebra's results it was: `permit`, `deny`, `deny_by_default` or
+    /// `indeterminate` — an evaluation that failed, which is not a deny.
+    pub outcome: String,
     /// Who asked, as recorded — pseudonymised at the source.
     pub subject: String,
     /// What was asked for.
@@ -67,6 +70,23 @@ pub struct DecisionLine {
     pub id: String,
     /// How long the plane took.
     pub latency_us: u64,
+}
+
+/// The `outcome` of an indeterminate decision.
+const INDETERMINATE: &str = "indeterminate";
+
+/// Which of the algebra's results a decision record holds: its `outcome`, or — for a record
+/// written before the member existed — what its `decision` says, `permit` or `deny`.
+pub fn outcome_of(record: &Value) -> String {
+    if let Some(outcome) = record.get("outcome").and_then(Value::as_str) {
+        return outcome.to_owned();
+    }
+    let permit = record
+        .get("decision")
+        .and_then(Value::as_bool)
+        .unwrap_or_default();
+
+    if permit { "permit" } else { "deny" }.to_owned()
 }
 
 /// A record that is not a decision: an epoch, or an ending.
@@ -138,6 +158,8 @@ impl Report for DecisionsReport {
         for line in &self.decisions {
             let symbol = if line.decision {
                 style::create("+")
+            } else if line.outcome == INDETERMINATE {
+                style::modify("!")
             } else {
                 style::delete("-")
             };
@@ -211,11 +233,16 @@ impl Report for DecisionsReport {
         }
 
         writeln!(out)?;
+        let indeterminate = self
+            .decisions
+            .iter()
+            .filter(|line| line.outcome == INDETERMINATE)
+            .count();
+        let permitted = self.decisions.iter().filter(|line| line.decision).count();
         let counts = format!(
-            "{} decision(s), {} permitted, {} denied.",
+            "{} decision(s), {permitted} permitted, {} denied, {indeterminate} indeterminate.",
             self.decisions.len(),
-            self.decisions.iter().filter(|line| line.decision).count(),
-            self.decisions.iter().filter(|line| !line.decision).count(),
+            self.decisions.len() - permitted - indeterminate,
         );
         writeln!(out, "{}", style::bold(&counts))?;
         if self.more {
@@ -303,19 +330,20 @@ impl Report for DecisionReport {
                 .unwrap_or_default()
                 .to_owned()
         };
-        let permit = self
-            .record
-            .get("decision")
-            .and_then(Value::as_bool)
-            .unwrap_or_default();
-        let verdict = if permit {
-            style::create("PERMIT")
-        } else {
-            style::delete("DENY")
+        let outcome = outcome_of(&self.record);
+        let verdict = match outcome.as_str() {
+            "permit" => style::create("PERMIT"),
+            INDETERMINATE => style::modify("INDETERMINATE"),
+            _ => style::delete("DENY"),
         };
 
         writeln!(out)?;
         writeln!(out, "  {} {verdict}", style::dim("decision"))?;
+        // What made it indeterminate, by code: never a policy, so never a deny.
+        if let Some(causes) = self.record.get("causes").and_then(Value::as_array) {
+            let causes: Vec<&str> = causes.iter().filter_map(Value::as_str).collect();
+            writeln!(out, "  {} {}", style::dim("causes  "), causes.join(", "))?;
+        }
         writeln!(
             out,
             "  {} {}",
@@ -396,7 +424,11 @@ impl Report for DecisionReport {
         writeln!(
             out,
             "{}",
-            style::bold(if permit { "Permitted." } else { "Denied." })
+            style::bold(match outcome.as_str() {
+                "permit" => "Permitted.",
+                INDETERMINATE => "Not evaluated: refused, and not by a policy.",
+                _ => "Denied.",
+            })
         )?;
 
         Ok(())
@@ -409,4 +441,127 @@ fn short(digest: &str) -> &str {
     let end = digest.len().min(19);
 
     &digest[..end]
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use serde_json::json;
+
+    /// The report as plain text, ANSI sequences stripped: the wording, never the paint.
+    fn terminal<R: Report>(report: &R) -> String {
+        let mut out = Vec::new();
+        report
+            .render_terminal(&mut out)
+            .expect("the report renders");
+        let rendered = String::from_utf8(out).expect("the rendering is UTF-8");
+
+        let mut plain = String::with_capacity(rendered.len());
+        let mut characters = rendered.chars();
+        while let Some(character) = characters.next() {
+            if character == '\u{1b}' {
+                for inner in characters.by_ref() {
+                    if inner.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                plain.push(character);
+            }
+        }
+        plain
+    }
+
+    fn line(seq: u64, decision: bool, outcome: &str) -> DecisionLine {
+        DecisionLine {
+            seq,
+            at: "2026-10-03T10:00:00Z".to_owned(),
+            decision,
+            outcome: outcome.to_owned(),
+            subject: "User::pseudo".to_owned(),
+            action: "read".to_owned(),
+            resource: "Document::budget".to_owned(),
+            commit: "sha256:ec1773bf".to_owned(),
+            policies: Vec::new(),
+            absent_inputs: Vec::new(),
+            id: format!("id-{seq}"),
+            latency_us: 1,
+        }
+    }
+
+    /// A record's outcome is its `outcome`, and a record written before the member existed reads
+    /// as its `decision` says.
+    #[test]
+    fn the_outcome_is_the_member_or_the_decision_of_a_record_before_it() {
+        assert_eq!(
+            outcome_of(&json!({"decision": false, "outcome": "indeterminate"})),
+            "indeterminate"
+        );
+        assert_eq!(outcome_of(&json!({"decision": true})), "permit");
+        assert_eq!(outcome_of(&json!({"decision": false})), "deny");
+    }
+
+    /// `--decision deny` keeps what a policy refused or nothing permitted, never an evaluation
+    /// that failed; `--decision indeterminate` keeps exactly that.
+    #[test]
+    fn the_filter_never_counts_an_indeterminate_decision_as_a_deny() {
+        use crate::args::Decision;
+
+        for (outcome, permit, deny, indeterminate) in [
+            ("permit", true, false, false),
+            ("deny", false, true, false),
+            ("deny_by_default", false, true, false),
+            ("indeterminate", false, false, true),
+        ] {
+            assert_eq!(Decision::Permit.admits(outcome), permit, "{outcome}");
+            assert_eq!(Decision::Deny.admits(outcome), deny, "{outcome}");
+            assert_eq!(
+                Decision::Indeterminate.admits(outcome),
+                indeterminate,
+                "{outcome}"
+            );
+        }
+    }
+
+    /// An indeterminate record is shown and counted as what it is, not as a deny.
+    #[test]
+    fn an_indeterminate_decision_is_shown_and_counted_apart_from_a_deny() {
+        let listed = terminal(&DecisionsReport {
+            scope: "acme/main-ledger".to_owned(),
+            decisions: vec![
+                line(1, true, "permit"),
+                line(2, false, "deny"),
+                line(3, false, "indeterminate"),
+            ],
+            events: Vec::new(),
+            next: "3".to_owned(),
+            more: false,
+            verified: None,
+        });
+        assert!(
+            listed.contains("3 decision(s), 1 permitted, 1 denied, 1 indeterminate."),
+            "{listed}"
+        );
+        assert!(
+            listed.contains("  ! "),
+            "the indeterminate line is marked apart: {listed}"
+        );
+
+        let shown = terminal(&DecisionReport {
+            record: json!({
+                "decision": false,
+                "outcome": "indeterminate",
+                "causes": ["evaluation_deadline_exceeded", "evaluation_failed"],
+                "reason": {"code": "evaluation_indeterminate"},
+            }),
+        });
+        assert!(shown.contains("INDETERMINATE"), "{shown}");
+        assert!(!shown.contains("DENY"), "{shown}");
+        assert!(
+            shown.contains("evaluation_deadline_exceeded, evaluation_failed"),
+            "the causes, by code: {shown}"
+        );
+    }
 }

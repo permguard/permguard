@@ -182,10 +182,10 @@ pub mod labels {
         /// How an operation ended. Words, never a message or anything a client wrote.
         OUTCOME, "outcome", [
             "accepted", "blocked", "conflict", "damaged", "decided", "deferred", "deny",
-            "dropped", "empty", "expired", "failed", "internal", "not_found", "ok",
-            "out_of_order", "partial", "permit", "quarantined", "queued", "ready", "refused",
-            "rejected", "replay", "replayed", "served", "skipped", "timeout", "unavailable",
-            "unchanged", "validation", "written",
+            "deny_by_default", "dropped", "empty", "expired", "failed", "indeterminate",
+            "internal", "not_found", "ok", "out_of_order", "partial", "permit", "quarantined",
+            "queued", "ready", "refused", "rejected", "replay", "replayed", "served", "skipped",
+            "timeout", "unavailable", "unchanged", "validation", "written",
         ]
     );
     label!(

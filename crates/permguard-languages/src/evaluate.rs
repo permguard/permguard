@@ -17,12 +17,18 @@
 //! when it loads it and then answers requests out of memory; nothing on the
 //! decision path re-parses a policy.
 //!
-//! # Fail-closed, by construction
+//! # The typed algebra
 //!
-//! [`Evaluator::evaluate`] cannot return "I do not know": a request the
-//! language refuses is a [`Verdict`] that denies and carries the reason. The
-//! caller reports it; it never turns into a permit, and it never turns into a
-//! transport error either — a deny is an answer.
+//! A partition answers one of four things, and a boolean cannot hold them: a
+//! policy permitted (`P`), a policy denied (`D`), nothing matched (`A`), or
+//! the partition could not evaluate at all (`E`). [`Verdict`] is that result,
+//! and [`resolve`] combines a profile's verdicts exactly as the languages
+//! model states — an explicit deny wins; otherwise any failure makes the
+//! result *indeterminate*; otherwise a permit permits; otherwise the request
+//! is denied by default. An evaluation failure is therefore never a policy
+//! deny and never a permit: it fails closed at enforcement and stays
+//! distinguishable everywhere it is reported, which is what lets an operator
+//! tell a policy saying no from an engine that could not say anything.
 
 use std::collections::BTreeMap;
 
@@ -108,44 +114,200 @@ pub struct StoredPolicy {
     pub source: Vec<u8>,
 }
 
-/// What one evaluation concluded.
+/// One partition's answer: the typed algebra of the languages model.
+///
+/// `P` and `D` name the policies that decided them; `A` and `E` name none. `E` carries a stable
+/// error code — one of the four `evaluation_*` codes of the native PDP contract — and a message
+/// for the operator, and never a policy identity: a partition that did not evaluate has nothing
+/// to cite.
+///
+/// Build one with the constructors rather than the variants: they are where the algebra's rules
+/// about empty lists live, and [`resolve`] reads a variant built around them the same way.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Verdict {
-    /// `true` permit, `false` deny. Nothing in between.
-    pub permitted: bool,
-    /// The identities of the policies that decided it — what the reason
-    /// cites, so the audit trail stays whole across renames.
-    pub determining: Vec<String>,
-    /// Present when the request could not be evaluated. The verdict then
-    /// denies: fail-closed is the contract, and this is the reason why.
-    pub error: Option<String>,
+pub enum Verdict {
+    /// `P`: a policy permitted it.
+    Permit { determining: Vec<String> },
+    /// `D`: a policy denied it. `beside` is a failure of another of the partition's policies:
+    /// the deny still stands, because nothing the failed policy could return turns it into a
+    /// permit, and the failure is still reported.
+    Deny {
+        determining: Vec<String>,
+        beside: Option<EvaluationError>,
+    },
+    /// `A`: no rule matched; the partition has no opinion. The default: a partition that has
+    /// said nothing.
+    #[default]
+    Abstain,
+    /// `E`: the partition could not evaluate the request.
+    Error { code: &'static str, message: String },
 }
 
 impl Verdict {
     /// A permit, decided by these policies.
     pub fn permit(determining: Vec<String>) -> Self {
-        Self {
-            permitted: true,
-            determining,
-            error: None,
-        }
+        Self::Permit { determining }
     }
 
     /// A deny, decided by these policies.
+    ///
+    /// A deny nothing decided is not a deny: a policy saying no and no policy saying yes are the
+    /// two things the algebra exists to tell apart, so an empty list is an [`Verdict::Abstain`].
     pub fn deny(determining: Vec<String>) -> Self {
-        Self {
-            permitted: false,
+        if determining.is_empty() {
+            return Self::Abstain;
+        }
+
+        Self::Deny {
             determining,
-            error: None,
+            beside: None,
         }
     }
 
-    /// A deny because the request could not be evaluated at all.
-    pub fn refused(reason: impl Into<String>) -> Self {
-        Self {
-            permitted: false,
-            determining: Vec::new(),
-            error: Some(reason.into()),
+    /// The answer of a partition whose engine reported errors beside the policies that denied.
+    ///
+    /// A deny rule that determined the answer dominates the failure inside the partition exactly
+    /// as an explicit deny dominates a failed partition: `D`, with the failure kept beside it. A
+    /// deny no rule determined is only the engine failing closed, so it is the failure: `E`.
+    pub fn deny_despite_failure(determining: Vec<String>, message: impl Into<String>) -> Self {
+        Self::deny(determining).despite(Self::engine_failed(message))
+    }
+
+    /// This answer, once `failure` — an `E` — happened in the same partition.
+    ///
+    /// A deny a rule determined stands, with the failure kept beside it: nothing the failure
+    /// could have produced turns it into a permit. Every other answer gives way to the failure —
+    /// a permit beside one is not defensible, and silence beside one is not an answer.
+    pub fn despite(self, failure: Self) -> Self {
+        match (self, failure.error()) {
+            (
+                Self::Deny {
+                    determining,
+                    beside,
+                },
+                Some(failed),
+            ) => Self::Deny {
+                determining,
+                beside: beside.or(Some(failed)),
+            },
+            _ => failure,
+        }
+    }
+
+    /// No rule matched.
+    pub fn abstain() -> Self {
+        Self::Abstain
+    }
+
+    /// `E` with the code of its cause: one of the four below, and no other.
+    fn failed(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Error {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// `E`: the decision's deadline passed before or while this partition ran.
+    pub fn deadline_exceeded(message: impl Into<String>) -> Self {
+        Self::failed(
+            permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+            message,
+        )
+    }
+
+    /// `E`: the engine panicked, or the pool lost its job.
+    pub fn panicked(message: impl Into<String>) -> Self {
+        Self::failed(
+            permguard_core::codes::pdp_native::EVALUATION_PANICKED,
+            message,
+        )
+    }
+
+    /// `E`: the engine reported errors.
+    pub fn engine_failed(message: impl Into<String>) -> Self {
+        Self::failed(
+            permguard_core::codes::pdp_native::EVALUATION_FAILED,
+            message,
+        )
+    }
+
+    /// `E`: the engine could not represent the request.
+    pub fn input_rejected(message: impl Into<String>) -> Self {
+        Self::failed(
+            permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED,
+            message,
+        )
+    }
+
+    /// Whether this is a `P`.
+    pub fn permitted(&self) -> bool {
+        matches!(self, Self::Permit { .. })
+    }
+
+    /// The policies that decided a `P` or a `D`; none for `A` and `E`.
+    pub fn determining(&self) -> &[String] {
+        match self {
+            Self::Permit { determining } | Self::Deny { determining, .. } => determining,
+            Self::Abstain | Self::Error { .. } => &[],
+        }
+    }
+
+    /// What failed in this partition: the cause of an `E`, or the failure beside a `D`.
+    pub fn failure(&self) -> Option<EvaluationError> {
+        match self {
+            Self::Deny {
+                beside: Some(failure),
+                ..
+            } => Some(failure.clone()),
+            other => other.error(),
+        }
+    }
+
+    /// The failure, when this is an `E`.
+    pub fn error(&self) -> Option<EvaluationError> {
+        match self {
+            Self::Error { code, message } => Some(EvaluationError {
+                code,
+                message: message.clone(),
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// One partition's failure: the stable code of its cause, and the sentence for an operator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvaluationError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for EvaluationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+/// What a profile's verdicts resolve to: the four results of the algebra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resolution {
+    /// A policy denied it.
+    Deny,
+    /// A partition could not evaluate it, and no policy denied it.
+    Indeterminate,
+    /// A policy permitted it and nothing objected or failed.
+    Permit,
+    /// Nothing permitted it, and nothing objected or failed.
+    DenyByDefault,
+}
+
+impl Resolution {
+    /// The spelling the record and the metrics use.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Deny => "deny",
+            Self::Indeterminate => "indeterminate",
+            Self::Permit => "permit",
+            Self::DenyByDefault => "deny_by_default",
         }
     }
 }
@@ -155,37 +317,75 @@ impl Verdict {
 /// The three lists are kept apart because a reason has to tell them apart: a
 /// request that nothing permitted and a request a policy refused are both a
 /// deny, and only the second has something to name.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outcome {
-    /// The answer. `false` unless something permitted and nothing objected.
-    pub permitted: bool,
+    /// Which of the four results the profile reached.
+    pub resolution: Resolution,
     /// What permitted it, across every partition.
     pub permits: Vec<String>,
     /// What refused it — policies that said no, not partitions that said
     /// nothing.
     pub denials: Vec<String>,
-    /// Partitions that could not evaluate the request at all.
-    pub errors: Vec<String>,
+    /// Every failure behind it, with the code of each cause: the partitions that could not
+    /// evaluate the request, and the failures beside a deny that stood anyway. Only the first
+    /// make a result indeterminate.
+    pub errors: Vec<EvaluationError>,
+}
+
+impl Default for Outcome {
+    fn default() -> Self {
+        Self {
+            resolution: Resolution::DenyByDefault,
+            permits: Vec::new(),
+            denials: Vec::new(),
+            errors: Vec::new(),
+        }
+    }
 }
 
 impl Outcome {
-    /// The policies a decision cites: what permitted it, or what refused it.
+    /// Whether the profile permitted: the one result enforcement may allow.
+    pub fn permitted(&self) -> bool {
+        self.resolution == Resolution::Permit
+    }
+
+    /// Whether the profile could not decide: fail-closed, and not a policy deny.
+    pub fn indeterminate(&self) -> bool {
+        self.resolution == Resolution::Indeterminate
+    }
+
+    /// What made it indeterminate: the codes of its failures, sorted and distinct. None for the
+    /// other three results — a failure beside a deny that stood did not decide anything.
+    pub fn causes(&self) -> Vec<&'static str> {
+        if !self.indeterminate() {
+            return Vec::new();
+        }
+        let mut codes: Vec<&'static str> = self.errors.iter().map(|error| error.code).collect();
+        codes.sort_unstable();
+        codes.dedup();
+        codes
+    }
+
+    /// The policies a decision cites: what permitted it, or what refused it. An indeterminate or
+    /// default result cites nothing — no policy made it.
     pub fn determining(&self) -> &[String] {
-        if self.permitted {
-            &self.permits
-        } else {
-            &self.denials
+        match self.resolution {
+            Resolution::Permit => &self.permits,
+            Resolution::Deny => &self.denials,
+            Resolution::Indeterminate | Resolution::DenyByDefault => &[],
         }
     }
 }
 
 /// Combines what every partition of a profile answered into one decision.
 ///
-/// The resolution, in one line: **an explicit deny wins, and silence is not a
-/// deny.** A partition that permits nothing has said nothing; a partition that
-/// names a policy refusing the request has objected, and one objection is
-/// enough. A partition that could not evaluate at all is an objection too —
-/// fail-closed is the only resolution an authorization system can defend.
+/// The resolution, exactly as the languages model states it: **any `D` is a
+/// deny; else any `E` is indeterminate; else any `P` is a permit; else the
+/// request is denied by default.** An explicit deny dominates a failure because
+/// nothing the failed partition could have answered would turn deny-overrides
+/// into a permit; a permit beside a failure is indeterminate, because releasing
+/// a permit after a policy failed to evaluate is not defensible; and silence is
+/// not a deny, only the absence of a permit.
 ///
 /// It lives here, beside [`Verdict`], rather than in whoever asks: the data
 /// plane serving a PDP and the CLI testing a workspace before it is pushed have
@@ -195,22 +395,44 @@ pub fn resolve(verdicts: impl IntoIterator<Item = Verdict>) -> Outcome {
     let mut outcome = Outcome::default();
 
     for verdict in verdicts {
-        if let Some(error) = verdict.error {
-            outcome.errors.push(error);
-
-            continue;
-        }
-        if verdict.permitted {
-            outcome.permits.extend(verdict.determining);
-        } else {
-            // A deny with nothing determining it is "no policy said yes", which
-            // is not the same as a policy saying no — only the latter overrides.
-            outcome.denials.extend(verdict.determining);
+        match verdict {
+            // A permit or a deny that cites nothing was built around the constructors. Read the
+            // way they would have built it: a deny nothing decided is silence, and a permit
+            // nothing decided is an attribution the engine lost — not something to release.
+            Verdict::Permit { determining } if determining.is_empty() => {
+                outcome.errors.push(EvaluationError {
+                    code: permguard_core::codes::pdp_native::EVALUATION_FAILED,
+                    message: "the partition permitted and named no policy that did".to_owned(),
+                });
+            }
+            Verdict::Permit { determining } => outcome.permits.extend(determining),
+            Verdict::Deny {
+                determining,
+                beside,
+            } if determining.is_empty() => outcome.errors.extend(beside),
+            Verdict::Deny {
+                determining,
+                beside,
+            } => {
+                outcome.denials.extend(determining);
+                outcome.errors.extend(beside);
+            }
+            Verdict::Abstain => {}
+            Verdict::Error { code, message } => {
+                outcome.errors.push(EvaluationError { code, message });
+            }
         }
     }
 
-    outcome.permitted =
-        outcome.errors.is_empty() && outcome.denials.is_empty() && !outcome.permits.is_empty();
+    outcome.resolution = if !outcome.denials.is_empty() {
+        Resolution::Deny
+    } else if !outcome.errors.is_empty() {
+        Resolution::Indeterminate
+    } else if !outcome.permits.is_empty() {
+        Resolution::Permit
+    } else {
+        Resolution::DenyByDefault
+    };
 
     outcome
 }
@@ -236,8 +458,8 @@ pub struct Answered {
 ///
 /// The answers come back in the order the partitions were given, whatever order they finished in,
 /// and [`resolve`] then combines them exactly as it did when they were asked one at a time. Deny
-/// still overrides, silence is still not a deny, and a partition that could not answer at all is
-/// still an objection.
+/// still overrides, silence is still not a deny, and a partition that could not answer at all
+/// still makes the result indeterminate.
 pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<Answered> {
     let count = work.len();
     let jobs: Vec<Box<dyn FnOnce() -> Answered + Send + 'static>> = work
@@ -249,9 +471,8 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
                 // dispatching: a job may sit briefly behind others, and the answer to "is this
                 // still worth doing" is only true at the moment of doing it.
                 let verdict = if query.expired() {
-                    Verdict::refused(
-                        "the decision ran out of time before this partition was evaluated"
-                            .to_owned(),
+                    Verdict::deadline_exceeded(
+                        "the decision ran out of time before this partition was evaluated",
                     )
                 } else {
                     // Entered with room to recurse in, whatever thread this is: an engine
@@ -264,10 +485,12 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
                     // caller's decision budget is a result Permguard must never
                     // release. Check the same absolute deadline on the way out
                     // and replace every late answer with a fail-closed refusal.
+                    // A deny a rule determined still stands — the deadline cannot turn it into a
+                    // permit — with the lateness kept beside it.
                     match query.expired() {
-                        true => Verdict::refused(
-                            "the partition answered after the decision deadline".to_owned(),
-                        ),
+                        true => verdict.despite(Verdict::deadline_exceeded(
+                            "the partition answered after the decision deadline",
+                        )),
                         false => verdict,
                     }
                 };
@@ -283,11 +506,11 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
     match crate::fanout::Fanout::shared().run(jobs) {
         Ok(answered) => answered,
         // An answer short of a partition is not this request's answer. Every partition is reported
-        // as unable to evaluate, which denies — the same fail-closed rule as any other engine
-        // fault, applied to the one fault that has no engine to blame.
+        // as unable to evaluate — `E`, which resolves to indeterminate — the same fail-closed rule
+        // as any other engine fault, applied to the one fault that has no engine to blame.
         Err(lost) => (0..count)
             .map(|_| Answered {
-                verdict: Verdict::refused(lost.to_string()),
+                verdict: Verdict::panicked(lost.to_string()),
                 elapsed: std::time::Duration::ZERO,
             })
             .collect(),
@@ -300,7 +523,7 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
 /// happened in [`Evaluating::compile`].
 pub trait Evaluator: Send + Sync {
     /// Answers one request. Never errors: a request that cannot be evaluated
-    /// is a [`Verdict::refused`], which denies.
+    /// is a [`Verdict::Error`], which the profile resolves to indeterminate.
     fn evaluate(&self, query: &Query) -> Verdict;
 
     /// Checks a materialised input against this partition's compiled schema.
@@ -388,7 +611,7 @@ mod tests {
             Verdict::deny(Vec::new()),
         ]);
 
-        assert!(outcome.permitted, "silence is not a refusal");
+        assert!(outcome.permitted(), "silence is not a refusal");
         assert_eq!(outcome.determining(), ["p1".to_owned()]);
 
         let outcome = resolve([
@@ -396,7 +619,7 @@ mod tests {
             Verdict::deny(vec!["f1".to_owned()]),
         ]);
 
-        assert!(!outcome.permitted, "a policy saying no is");
+        assert!(!outcome.permitted(), "a policy saying no is");
         assert_eq!(outcome.determining(), ["f1".to_owned()]);
     }
 
@@ -404,7 +627,7 @@ mod tests {
     fn nothing_permitting_is_a_deny_with_nothing_to_cite() {
         let outcome = resolve([Verdict::deny(Vec::new()), Verdict::deny(Vec::new())]);
 
-        assert!(!outcome.permitted);
+        assert!(!outcome.permitted());
         assert!(outcome.determining().is_empty());
     }
 
@@ -412,11 +635,26 @@ mod tests {
     fn a_partition_that_could_not_evaluate_never_becomes_a_permit() {
         let outcome = resolve([
             Verdict::permit(vec!["p1".to_owned()]),
-            Verdict::refused("the entity graph is not legal"),
+            Verdict::engine_failed("the entity graph is not legal"),
         ]);
 
-        assert!(!outcome.permitted, "fail-closed, whatever else permitted");
+        assert!(!outcome.permitted(), "fail-closed, whatever else permitted");
+        assert_eq!(
+            outcome.resolution,
+            Resolution::Indeterminate,
+            "and not a deny"
+        );
+        assert!(outcome.determining().is_empty(), "no policy made it");
         assert_eq!(outcome.errors.len(), 1);
+
+        // An explicit deny dominates: nothing the failed partition could have said would have
+        // turned deny-overrides into a permit.
+        let denied = resolve([
+            Verdict::deny(vec!["d1".to_owned()]),
+            Verdict::engine_failed("the entity graph is not legal"),
+        ]);
+        assert_eq!(denied.resolution, Resolution::Deny);
+        assert_eq!(denied.determining(), ["d1".to_owned()]);
     }
 
     use super::*;
@@ -458,11 +696,11 @@ mod tests {
         let answered = evaluate_all(work);
         assert_eq!(answered.len(), 2);
         // And in the order they were given, not the order they finished.
-        assert_eq!(answered[0].verdict.determining, ["first".to_owned()]);
-        assert_eq!(answered[1].verdict.determining, ["second".to_owned()]);
+        assert_eq!(answered[0].verdict.determining(), ["first".to_owned()]);
+        assert_eq!(answered[1].verdict.determining(), ["second".to_owned()]);
         // The combination is the same one a sequential run reached: both permitted, nothing
         // objected, so the profile permits.
-        assert!(resolve(answered.into_iter().map(|held| held.verdict)).permitted);
+        assert!(resolve(answered.into_iter().map(|held| held.verdict)).permitted());
     }
 
     /// A decision past its deadline refuses its partitions instead of evaluating them.
@@ -502,7 +740,7 @@ mod tests {
             !ran.load(std::sync::atomic::Ordering::SeqCst),
             "the evaluator was called for a decision nobody is waiting for"
         );
-        assert!(!outcome.permitted, "and it fails closed");
+        assert!(!outcome.permitted(), "and it fails closed");
         assert_eq!(outcome.errors.len(), 1, "saying why");
 
         // And with time left, the very same partition is evaluated.
@@ -515,7 +753,7 @@ mod tests {
             std::sync::Arc::new(MustNotRun(std::sync::Arc::clone(&ran))),
             in_time,
         )];
-        assert!(resolve(evaluate_all(work).into_iter().map(|held| held.verdict)).permitted);
+        assert!(resolve(evaluate_all(work).into_iter().map(|held| held.verdict)).permitted());
         assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
@@ -547,14 +785,19 @@ mod tests {
                 .map(|held| held.verdict),
         );
 
-        assert!(!outcome.permitted, "a late permit is never released");
+        assert!(!outcome.permitted(), "a late permit is never released");
         assert_eq!(outcome.errors.len(), 1);
-        assert!(outcome.errors[0].contains("after the decision deadline"));
+        assert!(
+            outcome.errors[0]
+                .message
+                .contains("after the decision deadline")
+        );
     }
 
-    /// A partition that comes apart mid-evaluation is a deny, not a short answer.
+    /// A partition that comes apart mid-evaluation is `E`, not a short answer: the request is
+    /// indeterminate, whatever else permitted.
     #[test]
-    fn a_partition_that_panics_denies_the_whole_request() {
+    fn a_partition_that_panics_makes_the_whole_request_indeterminate() {
         struct Fine;
         struct Broken;
         impl Evaluator for Fine {
@@ -586,19 +829,166 @@ mod tests {
         ];
         let outcome = resolve(evaluate_all(work).into_iter().map(|held| held.verdict));
 
-        assert!(!outcome.permitted, "fail-closed, whatever else permitted");
-        assert!(
-            !outcome.errors.is_empty(),
-            "and it says an answer is missing"
+        assert!(!outcome.permitted(), "fail-closed, whatever else permitted");
+        assert_eq!(outcome.resolution, Resolution::Indeterminate);
+        assert_eq!(
+            outcome.errors.first().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED),
+            "and it says an answer is missing, and why"
         );
     }
 
+    /// `E` carries the code of its cause and the sentence, never a policy: a partition that did
+    /// not evaluate has nothing to cite. Every code is one of the native contract's.
     #[test]
-    fn a_refused_request_denies_and_says_why() {
-        let refused = Verdict::refused("the action is empty");
+    fn an_error_carries_a_registered_code_and_no_policy() {
+        let registered: Vec<&str> = permguard_core::codes::all()
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect();
+        for (verdict, code) in [
+            (
+                Verdict::deadline_exceeded("too late"),
+                permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+            ),
+            (
+                Verdict::panicked("an engine came apart"),
+                permguard_core::codes::pdp_native::EVALUATION_PANICKED,
+            ),
+            (
+                Verdict::engine_failed("cedar: an attribute does not exist"),
+                permguard_core::codes::pdp_native::EVALUATION_FAILED,
+            ),
+            (
+                Verdict::input_rejected("the entity graph is not legal"),
+                permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED,
+            ),
+        ] {
+            assert!(!verdict.permitted(), "fail-closed");
+            assert!(verdict.determining().is_empty(), "nothing to cite");
+            let error = verdict.error().expect("an `E` says why");
+            assert_eq!(error.code, code);
+            assert!(registered.contains(&code), "`{code}` is registered");
+            assert_eq!(
+                resolve([verdict]).resolution,
+                Resolution::Indeterminate,
+                "alone, it is indeterminate"
+            );
+        }
+    }
 
-        assert!(!refused.permitted, "fail-closed");
-        assert_eq!(refused.error.as_deref(), Some("the action is empty"));
+    /// A deny nothing decided is an abstain: the two things the algebra exists to tell apart
+    /// cannot be conflated by a caller handing an empty list to the wrong constructor.
+    #[test]
+    fn a_deny_with_no_policy_is_an_abstain() {
+        assert_eq!(Verdict::deny(Vec::new()), Verdict::Abstain);
+        assert_eq!(
+            resolve([Verdict::deny(Vec::new())]).resolution,
+            Resolution::DenyByDefault
+        );
+    }
+
+    /// A deny rule that determined a partition's answer dominates a failure inside it, exactly
+    /// as an explicit deny dominates a failed partition; the failure is kept, not dropped. A deny
+    /// no rule determined is the engine failing closed: that is the failure itself.
+    #[test]
+    fn a_deny_beside_a_failure_stands_and_keeps_the_failure() {
+        let verdict =
+            Verdict::deny_despite_failure(vec!["f1".to_owned()], "an attribute is missing");
+        assert_eq!(verdict.determining(), ["f1".to_owned()]);
+        assert!(verdict.error().is_none(), "a `D`, not an `E`");
+        let failure = verdict.failure().expect("the failure is kept beside it");
+        assert_eq!(
+            failure.code,
+            permguard_core::codes::pdp_native::EVALUATION_FAILED
+        );
+
+        let outcome = resolve([Verdict::permit(vec!["p1".to_owned()]), verdict]);
+        assert_eq!(outcome.resolution, Resolution::Deny);
+        assert_eq!(outcome.determining(), ["f1".to_owned()]);
+        assert_eq!(outcome.errors.len(), 1, "counted, never dropped");
+
+        let failed_closed = Verdict::deny_despite_failure(Vec::new(), "a provider could not run");
+        assert_eq!(
+            failed_closed.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
+        );
+        assert_eq!(
+            resolve([Verdict::permit(vec!["p1".to_owned()]), failed_closed]).resolution,
+            Resolution::Indeterminate,
+            "a deny nothing decided does not outrank a permit's failure"
+        );
+    }
+
+    /// A late or failed partition gives way to its failure unless a deny rule determined its
+    /// answer: that deny stands, the failure beside it — the deadline included.
+    #[test]
+    fn only_a_determined_deny_survives_a_failure_beside_it() {
+        let late = || Verdict::deadline_exceeded("too late");
+        let kept = Verdict::deny(vec!["f1".to_owned()]).despite(late());
+        assert_eq!(kept.determining(), ["f1".to_owned()]);
+        assert_eq!(
+            kept.failure().map(|failure| failure.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED)
+        );
+        for gives_way in [
+            Verdict::permit(vec!["p1".to_owned()]),
+            Verdict::abstain(),
+            Verdict::engine_failed("an earlier failure"),
+        ] {
+            assert_eq!(gives_way.despite(late()), late());
+        }
+    }
+
+    /// The causes of an indeterminate result are its failures' codes, sorted and distinct; a
+    /// result a deny decided has none, whatever failed beside it.
+    #[test]
+    fn the_causes_are_sorted_distinct_and_only_for_an_indeterminate_result() {
+        let outcome = resolve([
+            Verdict::engine_failed("one"),
+            Verdict::deadline_exceeded("two"),
+            Verdict::engine_failed("three"),
+        ]);
+        assert_eq!(
+            outcome.causes(),
+            [
+                permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+                permguard_core::codes::pdp_native::EVALUATION_FAILED,
+            ]
+        );
+
+        let denied = resolve([
+            Verdict::deny_despite_failure(vec!["f1".to_owned()], "beside"),
+            Verdict::engine_failed("elsewhere"),
+        ]);
+        assert_eq!(denied.resolution, Resolution::Deny);
+        assert_eq!(denied.errors.len(), 2, "both failures are kept");
+        assert!(
+            denied.causes().is_empty(),
+            "and neither is a cause of a deny"
+        );
+    }
+
+    /// A variant built around the constructors reads as the constructors would have built it: a
+    /// deny citing nothing is silence, a permit citing nothing is a lost attribution and never
+    /// released.
+    #[test]
+    fn variants_built_around_the_constructors_resolve_safely() {
+        let silent = Verdict::Deny {
+            determining: Vec::new(),
+            beside: None,
+        };
+        assert_eq!(resolve([silent]).resolution, Resolution::DenyByDefault);
+
+        let unattributed = Verdict::Permit {
+            determining: Vec::new(),
+        };
+        let outcome = resolve([unattributed]);
+        assert_eq!(outcome.resolution, Resolution::Indeterminate);
+        assert_eq!(
+            outcome.errors.first().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
+        );
     }
 
     #[test]

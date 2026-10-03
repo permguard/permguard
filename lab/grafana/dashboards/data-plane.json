@@ -677,6 +677,63 @@
     },
     {
       "type": "stat",
+      "title": "Indeterminate rate",
+      "description": "Share of requests the plane could not evaluate and answered with the typed refusal `evaluation_indeterminate` instead of a decision. The evaluation-failure SLO: a PEP fails closed on it, and it is never a deny — never add it to one.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "permguard-prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 41
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "permguard-prometheus"
+          },
+          "expr": "sum(rate(permguard_authz_decisions_total{outcome=\"indeterminate\"}[$__rate_interval])) / clamp_min(sum(rate(permguard_authz_decisions_total[$__rate_interval])), 0.001)",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "background"
+      }
+    },
+    {
+      "type": "stat",
       "title": "p99 decision",
       "description": "What a caller feels, worst case in a hundred.",
       "datasource": {

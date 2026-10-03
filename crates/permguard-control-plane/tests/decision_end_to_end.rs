@@ -227,6 +227,12 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         partition_inputs: Some(json!({})),
         absent_inputs: Vec::new(),
         permit,
+        outcome: if permit {
+            permguard_decisions::record::Outcome::Permit
+        } else {
+            permguard_decisions::record::Outcome::Deny
+        },
+        causes: Vec::new(),
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),
         trace: None,

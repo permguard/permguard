@@ -647,6 +647,21 @@ struct CompiledDogwood {
     footprint: usize,
 }
 
+/// The refusal of a history whose lock an earlier evaluation left poisoned: a panic's aftermath.
+const POISONED: &str = "partition_poisoned";
+
+/// The `E` of a history this partition could not hold.
+///
+/// A map an earlier evaluation left poisoned is a panic's aftermath, and says so; any other
+/// refusal is the engine failing to stand the history up.
+fn unheld(refused: Refused) -> Verdict {
+    if refused.code == POISONED {
+        Verdict::panicked(refused.message)
+    } else {
+        Verdict::engine_failed(refused.message)
+    }
+}
+
 impl CompiledDogwood {
     /// The engine for one history, building an empty one if this partition holds none.
     ///
@@ -658,7 +673,7 @@ impl CompiledDogwood {
         {
             let mut histories = self.histories.lock().map_err(|_| {
                 Refused::new(
-                    "partition_poisoned",
+                    POISONED,
                     "this partition's history is not in a state it can decide against, because an \
                      earlier evaluation of it panicked",
                 )
@@ -681,7 +696,7 @@ impl CompiledDogwood {
 
         let mut histories = self.histories.lock().map_err(|_| {
             Refused::new(
-                "partition_poisoned",
+                POISONED,
                 "this partition's history is not in a state it can decide against, because an \
                  earlier evaluation of it panicked",
             )
@@ -698,17 +713,17 @@ impl CompiledDogwood {
 }
 
 impl Evaluator for CompiledDogwood {
-    /// Refuses, which denies.
+    /// Refuses: `E`, which the profile resolves to indeterminate.
     ///
     /// Not an omission: the stateless PDP asks whether a subject may act on a resource *now*, and
     /// a Dogwood policy's answer depends on what has already happened. Answering the stateless
     /// question against an empty history would return a verdict the partition does not hold — and
     /// it would return it as an ordinary permit or deny, indistinguishable from one the policies
-    /// meant.
+    /// meant. The request is one this runtime cannot take on this interface.
     fn evaluate(&self, query: &Query) -> Verdict {
         let _ = query;
 
-        Verdict::refused(
+        Verdict::input_rejected(
             "this is a Dogwood partition, and a Dogwood policy decides against history. Submit \
              the request as an event to the temporal interface \
              (`permguard.api.pdp.temporal.v1alpha1`); the stateless interface has no history to \
@@ -852,7 +867,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
         let engine = self.engine(history)?;
         let mut held = engine.authorizer.lock().map_err(|_| {
             Refused::new(
-                "partition_poisoned",
+                POISONED,
                 "this partition's history is not in a state it can be rebuilt from, because an \
                  earlier evaluation of it panicked",
             )
@@ -886,10 +901,10 @@ impl crate::temporal::Temporal for CompiledDogwood {
         let event = match occurrence.to_event() {
             Ok(event) => event,
             // Checked before it was journalled, so this is not a caller's mistake reaching here
-            // late — it is this build disagreeing with itself, and a deny is the only answer that
-            // does not depend on which of the two was right.
+            // late — it is this build disagreeing with itself: the engine failing, `E`, and never
+            // a deny, which would depend on which of the two was right.
             Err(malformed) => {
-                return Applied::Decided(Verdict::refused(malformed.to_string()));
+                return Applied::Decided(Verdict::engine_failed(malformed.to_string()));
             }
         };
 
@@ -898,7 +913,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
         // are not in the same one — not because a policy checks.
         let engine = match self.engine(history) {
             Ok(engine) => engine,
-            Err(refused) => return Applied::Decided(Verdict::refused(refused.message)),
+            Err(refused) => return Applied::Decided(unheld(refused)),
         };
 
         // The lock is held across the whole call because that is what makes this history ordered:
@@ -921,10 +936,9 @@ impl crate::temporal::Temporal for CompiledDogwood {
             // A history whose lock a panicking thread left poisoned is one nobody can vouch for.
             // Fail closed rather than reach past the poison for the state.
             Err(_) => {
-                return Applied::Decided(Verdict::refused(
+                return Applied::Decided(Verdict::panicked(
                     "this Dogwood partition's history is not in a state it can decide against, \
-                     because an earlier evaluation of it panicked"
-                        .to_owned(),
+                     because an earlier evaluation of it panicked",
                 ));
             }
         };
@@ -937,25 +951,45 @@ impl crate::temporal::Temporal for CompiledDogwood {
         if !checked.decides {
             // The contract said this kind does not decide and the runtime decided it. Two answers
             // about what an event *is* is not a thing to reconcile at request time.
-            return Applied::Decided(Verdict::refused(format!(
+            return Applied::Decided(Verdict::engine_failed(format!(
                 "the kind `{}` is not a decision kind in this partition's schema, and the runtime \
                  returned a verdict for it",
                 occurrence.kind
             )));
         }
 
-        let determining: Vec<String> = response
+        let rules: Vec<usize> = response
             .diagnostics()
             .reason()
-            .filter_map(|rule| self.owners.get(rule.rule_index).cloned())
+            .map(|rule| rule.rule_index)
             .collect();
+        let determining: Vec<String> = rules
+            .iter()
+            .filter_map(|&index| self.owners.get(index).cloned())
+            .collect();
+        // Every determining rule has an owner, or the decision cannot say who decided it: an
+        // attribution lost is not one to guess at, and a permit nobody can be cited for is not
+        // released.
+        if determining.len() != rules.len() {
+            return Applied::Decided(Verdict::engine_failed(format!(
+                "the runtime cited rules {rules:?} and this partition owns only {} of them",
+                determining.len()
+            )));
+        }
         let errors: Vec<&str> = response.diagnostics().errors().collect();
         if !errors.is_empty() {
             // Upstream degrades rather than aborting: a provider that could not run or an
-            // unresolvable attribute is reported beside a fail-closed deny. Permguard reports it
-            // as what it is — a partition that could not evaluate — so the deny is not mistaken
-            // for one a policy expressed.
-            return Applied::Decided(Verdict::refused(errors.join("; ")));
+            // unresolvable attribute is reported beside a fail-closed deny with no determining
+            // rule. Permguard reports that as what it is — `E`, a partition that could not
+            // evaluate — so it is never mistaken for a deny a policy expressed. A forbid rule that
+            // did determine the deny stands beside the failure: `D`, the failure kept. A permit
+            // beside a failure is `E`.
+            let message = errors.join("; ");
+            return Applied::Decided(if response.allowed() {
+                Verdict::engine_failed(message)
+            } else {
+                Verdict::deny_despite_failure(determining, message)
+            });
         }
 
         Applied::Decided(if response.allowed() {
@@ -1420,8 +1454,8 @@ mod tests {
             match temporal.apply(&history(&checked), &event, &checked) {
                 Applied::Observed => assert!(!checked.decides, "@{at} decided nothing"),
                 Applied::Decided(verdict) => {
-                    assert!(verdict.error.is_none(), "@{at}: {verdict:?}");
-                    verdicts.push((at, verdict.permitted));
+                    assert!(verdict.error().is_none(), "@{at}: {verdict:?}");
+                    verdicts.push((at, verdict.permitted()));
                 }
             }
         }
@@ -1457,8 +1491,8 @@ mod tests {
             let checked = temporal.check(&event).expect("well formed");
             if let Applied::Decided(verdict) = temporal.apply(&history(&checked), &event, &checked)
             {
-                assert!(verdict.permitted, "the login is inside the window");
-                assert_eq!(verdict.determining, ["01a0-read-login-not-logout"]);
+                assert!(verdict.permitted(), "the login is inside the window");
+                assert_eq!(verdict.determining(), ["01a0-read-login-not-logout"]);
             }
         }
     }
@@ -1697,13 +1731,35 @@ mod tests {
         assert_eq!(refused.code, "event_entities_rejected");
     }
 
+    /// A history whose map a panic poisoned is `evaluation_panicked`; one the engine could not
+    /// rebuild is `evaluation_failed`.
+    #[test]
+    fn a_history_that_cannot_be_held_names_its_cause() {
+        let poisoned = super::unheld(Refused::new(super::POISONED, "poisoned"));
+        assert_eq!(
+            poisoned.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED)
+        );
+        let unbuilt = super::unheld(Refused::new("partition_not_rebuildable", "no"));
+        assert_eq!(
+            unbuilt.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED)
+        );
+    }
+
     /// The stateless PDP has no history to decide a Dogwood policy against, and says so.
     #[test]
     fn the_stateless_interface_refuses_rather_than_deciding_without_the_history() {
         let verdict = example().evaluate(&Query::default());
 
-        assert!(!verdict.permitted);
-        let reason = verdict.error.expect("a refusal says why");
+        assert!(!verdict.permitted());
+        let error = verdict.error().expect("a refusal says why");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED,
+            "a request this interface cannot take is `E`, not a deny"
+        );
+        let reason = error.message;
         assert!(
             reason.contains("permguard.api.pdp.temporal.v1alpha1"),
             "{reason}"
@@ -2051,7 +2107,7 @@ mod tests {
         let checked = temporal.check(&read).expect("well formed");
         match temporal.apply(&history(&checked), &read, &checked) {
             Applied::Decided(verdict) => assert!(
-                verdict.permitted,
+                verdict.permitted(),
                 "the rebuilt history contains the login: {verdict:?}"
             ),
             other => panic!("a decision kind decided nothing: {other:?}"),
@@ -2102,7 +2158,7 @@ mod tests {
             "the same caller, the same history"
         );
         match temporal.apply(&alice, &read, &checked) {
-            Applied::Decided(verdict) => assert!(verdict.permitted, "{verdict:?}"),
+            Applied::Decided(verdict) => assert!(verdict.permitted(), "{verdict:?}"),
             other => panic!("{other:?}"),
         }
 
@@ -2124,7 +2180,7 @@ mod tests {
         );
         match temporal.apply(&bob, &read, &checked) {
             Applied::Decided(verdict) => assert!(
-                !verdict.permitted,
+                !verdict.permitted(),
                 "alice's login is not in bob's history: {verdict:?}"
             ),
             other => panic!("{other:?}"),
@@ -2198,7 +2254,7 @@ mod tests {
         let checked = temporal.check(&read).expect("well formed");
         match temporal.apply(&first, &read, &checked) {
             Applied::Decided(verdict) => assert!(
-                verdict.permitted,
+                verdict.permitted(),
                 "eviction changed a verdict, which is the one thing it may not do: {verdict:?}"
             ),
             other => panic!("{other:?}"),
@@ -2245,7 +2301,7 @@ mod tests {
         );
         let checked = temporal.check(&read).expect("well formed");
         match temporal.apply(&history(&checked), &read, &checked) {
-            Applied::Decided(verdict) => assert!(verdict.permitted, "{verdict:?}"),
+            Applied::Decided(verdict) => assert!(verdict.permitted(), "{verdict:?}"),
             other => panic!("{other:?}"),
         }
     }

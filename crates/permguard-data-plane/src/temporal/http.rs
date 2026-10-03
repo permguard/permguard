@@ -98,7 +98,11 @@ async fn submit(
     };
 
     let response = match surface.submitter.submit(&request).await {
-        Ok(answered) => (StatusCode::OK, Json(answered)).into_response(),
+        Ok(answered) => (
+            StatusCode::OK,
+            Json(super::submit::disclosed(answered, surface.disclosure)),
+        )
+            .into_response(),
         Err(failed) => error(&failed, surface.disclosure),
     };
 

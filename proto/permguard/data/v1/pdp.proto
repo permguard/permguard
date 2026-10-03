@@ -292,6 +292,10 @@ enum SubmitOutcome {
   SUBMIT_OUTCOME_DECIDED = 1;
   // A history-only kind: durably recorded and observed, and there is no verdict.
   SUBMIT_OUTCOME_ACCEPTED = 2;
+  // A decision kind whose profile result is indeterminate: a partition could
+  // not evaluate the occurrence and no policy denied it. The occurrence is
+  // durable and receipted; `decision` is absent.
+  SUBMIT_OUTCOME_INDETERMINATE = 3;
 }
 
 // Where an occurrence sits in this plane's stream.

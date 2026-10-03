@@ -125,6 +125,26 @@ impl Plane {
                     &self.aliases,
                 ));
             }
+            // An indeterminate result: the plane evaluated and a partition failed. That is the
+            // error a case may expect — the same thing the local run calls one — and it is judged
+            // rather than counted as the plane being down. (One an engine could not represent is
+            // a `400`, judged above with the other usage refusals.)
+            Err(failure)
+                if failure.reason
+                    == permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE =>
+            {
+                return Ok(cases::judge(
+                    located,
+                    &profile,
+                    cases::Answered {
+                        permitted: false,
+                        policies: Vec::new(),
+                        error: Some(format!("{}: {}", failure.reason, failure.detail)),
+                        evaluations: Vec::new(),
+                    },
+                    &self.aliases,
+                ));
+            }
             // A plane that is down, or broken, is not an answer about the policies at all.
             Err(failure) => {
                 return Ok(cases::failed(
@@ -269,8 +289,9 @@ fn read_decision(
             policies: context
                 .map(|context| context.policies.clone())
                 .unwrap_or_default(),
-            // The plane reports an evaluation it could not perform as a `500` reason, which is the
-            // same thing the local run calls a refusal, and is carried across as one so that
+            // A plane of this release refuses an indeterminate evaluation before it is a
+            // decision (above); a plane of an earlier one reported it as a `500` reason inside a
+            // deny. Both are what the local run calls a refusal, carried across so that
             // `expect: { error: … }` means one thing in both modes.
             error: reason
                 .filter(|reason| reason.code == "500")

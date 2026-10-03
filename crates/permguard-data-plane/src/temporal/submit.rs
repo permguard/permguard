@@ -352,7 +352,8 @@ impl Submitter {
                 ),
                 action: occurrence.action.as_str(),
                 context: serde_json::to_value(&record.event).ok(),
-                permit: outcome.permitted,
+                outcome: crate::authz::decide::recorded_outcome(outcome.resolution),
+                causes: &outcome.causes(),
                 policies: outcome.determining(),
                 reason: &reason.code,
                 request_id: None,
@@ -369,16 +370,30 @@ impl Submitter {
             })
             .await?;
 
+        // An indeterminate result is answered as what it is — the occurrence is durable and
+        // receipted, the verdict it did not get is never fabricated as a deny — and counted apart.
+        let indeterminate = outcome.indeterminate();
         self.metrics.count(
             &measure::SUBMISSIONS,
-            &[(permguard_core::metrics::labels::OUTCOME, "decided")],
+            &[(
+                permguard_core::metrics::labels::OUTCOME,
+                if indeterminate {
+                    "indeterminate"
+                } else {
+                    "decided"
+                },
+            )],
         );
 
         let response = SubmitResponse {
-            outcome: Outcome::Decided,
+            outcome: if indeterminate {
+                Outcome::Indeterminate
+            } else {
+                Outcome::Decided
+            },
             event_id: occurrence.event_id,
             watermark,
-            decision: Some(outcome.permitted),
+            decision: (!indeterminate).then_some(outcome.permitted()),
             decision_id: Some(decision_id),
             policies: outcome.determining().to_vec(),
             evaluations,
@@ -960,15 +975,15 @@ impl Submitter {
             .map(
                 |(partition, verdict)| permguard_languages::temporal::PartitionEvaluation {
                     partition: partition.clone(),
-                    decision: verdict.permitted,
-                    policies: verdict.determining.clone(),
-                    reason: verdict.error.as_ref().map(|message| {
-                        permguard_languages::temporal::Reason {
-                            code: permguard_core::codes::notp::PARTITION_EVALUATION_FAILED
-                                .to_owned(),
-                            message: message.clone(),
-                        }
-                    }),
+                    decision: verdict.permitted(),
+                    policies: verdict.determining().to_vec(),
+                    // A partition result `E` carries the native contract's code of its cause.
+                    reason: verdict
+                        .error()
+                        .map(|error| permguard_languages::temporal::Reason {
+                            code: error.code.to_owned(),
+                            message: error.message,
+                        }),
                 },
             )
             .collect();
@@ -1076,31 +1091,45 @@ impl Submitter {
                          producing a decision",
                         occurrence.kind
                     );
+                    self.metrics.count(
+                        &crate::authz::measure::PARTITION_FAILURES,
+                        &[(
+                            permguard_core::metrics::labels::REASON,
+                            permguard_core::codes::pdp_native::EVALUATION_FAILED,
+                        )],
+                    );
                     warn!(
                         event.name = "temporal.partition_failed",
                         component = COMPONENT,
                         zone,
                         ledger,
-                        reason = message.as_str(),
+                        code = permguard_core::codes::pdp_native::EVALUATION_FAILED,
                         "a partition disagreed with its loaded event contract: failing closed"
                     );
                     verdicts.push((
                         partition.name.clone(),
-                        permguard_languages::evaluate::Verdict::refused(message),
+                        permguard_languages::evaluate::Verdict::engine_failed(message),
                     ));
                 }
                 Applied::Decided(verdict) => {
-                    if !checked.decides || verdict.error.is_some() {
+                    if !checked.decides || verdict.error().is_some() {
                         complete = false;
                     }
-                    if let Some(error) = verdict.error.as_deref() {
+                    // Every failure by its code — an `E`'s, and one beside a deny that stood —
+                    // and never the engine's text, which can carry tenant data.
+                    if let Some(failure) = verdict.failure() {
+                        self.metrics.count(
+                            &crate::authz::measure::PARTITION_FAILURES,
+                            &[(permguard_core::metrics::labels::REASON, failure.code)],
+                        );
                         warn!(
                             event.name = "temporal.partition_failed",
                             component = COMPONENT,
                             zone,
                             ledger,
-                            reason = error,
-                            "a partition could not decide a durable occurrence: failing closed"
+                            code = failure.code,
+                            denied = verdict.error().is_none(),
+                            "a partition could not evaluate a durable occurrence"
                         );
                     } else if !checked.decides {
                         warn!(
@@ -2261,15 +2290,60 @@ fn history_digest(pins: &[String], values: &[String]) -> Result<String, ApiError
     })
 }
 
+/// A response as this deployment may show it.
+///
+/// A failure's reason carries the engines' own words — what failed, against which attribute —
+/// and those can carry tenant data. They are internal detail: under minimal disclosure each such
+/// reason keeps its code and gets a fixed sentence, exactly as a refusal's message does; under
+/// full disclosure they travel as written. Applied by both transports, to a first answer and to a
+/// replayed one alike — one stored by an earlier release, under its codes, included: a partition
+/// reason is only ever written for a failure, and the top-level reason keeps its words only when
+/// it is one of the fixed sentences of a decided outcome.
+pub fn disclosed(
+    mut response: temporal::SubmitResponse,
+    disclosure: permguard_core::Disclosure,
+) -> temporal::SubmitResponse {
+    use permguard_core::codes::{legacy, pdp_native};
+
+    if disclosure == permguard_core::Disclosure::Full {
+        return response;
+    }
+    if let Some(reason) = response.reason.as_mut() {
+        let decided = [legacy::PERMITTED, legacy::DENIED, legacy::NOT_PERMITTED];
+        if reason.code == pdp_native::EVALUATION_INDETERMINATE {
+            reason.message =
+                "the occurrence is recorded and could not be evaluated; this is not a deny"
+                    .to_owned();
+        } else if !decided.contains(&reason.code.as_str()) {
+            reason.message = format!("the occurrence could not be decided: {}", reason.code);
+        }
+    }
+    for evaluation in &mut response.evaluations {
+        if let Some(reason) = evaluation.reason.as_mut() {
+            reason.message = format!(
+                "this partition could not evaluate the occurrence: {}",
+                reason.code
+            );
+        }
+    }
+
+    response
+}
+
 /// The two audiences of one temporal decision's reason.
 fn reason_of(outcome: &permguard_languages::evaluate::Outcome) -> temporal::Reason {
-    if !outcome.errors.is_empty() {
+    if outcome.indeterminate() {
         return temporal::Reason {
-            code: permguard_core::codes::notp::PARTITION_FAILED.to_owned(),
-            message: outcome.errors.join("; "),
+            code: permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE.to_owned(),
+            message: outcome
+                .errors
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; "),
         };
     }
-    if outcome.permitted {
+    if outcome.permitted() {
         return temporal::Reason {
             code: permguard_core::codes::legacy::PERMITTED.to_owned(),
             message: "a policy permitted it against this partition's history".to_owned(),

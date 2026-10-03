@@ -80,6 +80,12 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         partition_inputs: Some(json!({})),
         absent_inputs: Vec::new(),
         permit,
+        outcome: if permit {
+            permguard_decisions::record::Outcome::Permit
+        } else {
+            permguard_decisions::record::Outcome::Deny
+        },
+        causes: Vec::new(),
         policies: vec!["af4c4260".to_owned()],
         reason: "200".to_owned(),
         trace: None,
@@ -174,6 +180,84 @@ fn the_caller_s_inputs_are_committed_to_and_not_kept() {
             .expect("it renders")
             .contains("10.0.0.1"),
         "the address the decision saw is committed to, never recorded"
+    );
+}
+
+/// The four results of the algebra, as the record keeps them apart: `decision` is `true` for a
+/// permit alone, `outcome` names each, an indeterminate record carries the native contract's
+/// refusal code and cites no policy — and sampling touches permits only, so a failed evaluation
+/// is never dropped from the trail.
+#[test]
+fn every_outcome_of_the_algebra_is_recorded_distinctly_and_only_a_permit_is_sampled() {
+    use permguard_decisions::record::Outcome;
+
+    let journal = journal("outcomes", "0.0", WhenFull::Open, bounds());
+    for (index, outcome) in [
+        Outcome::Permit,
+        Outcome::Deny,
+        Outcome::DenyByDefault,
+        Outcome::Indeterminate,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = format!("id-{index}");
+        let mut asked = decided(&id, outcome.permitted());
+        asked.outcome = outcome;
+        if outcome == Outcome::Indeterminate {
+            asked.policies = Vec::new();
+            asked.reason = permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE.to_owned();
+            asked.causes = vec![
+                permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED,
+                permguard_core::codes::pdp_native::EVALUATION_FAILED,
+            ];
+        }
+        let written = journal.record(&asked).expect("it records");
+        assert_eq!(
+            matches!(written, Written::SampledOut),
+            outcome == Outcome::Permit,
+            "{outcome:?}: at a rate of zero a permit is sampled out, and nothing else ever is"
+        );
+    }
+
+    let written: Vec<Value> = everything(&journal)
+        .into_iter()
+        .filter(|record| record["kind"] == json!("decision"))
+        .collect();
+    assert_eq!(
+        written
+            .iter()
+            .map(|record| record["outcome"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["deny", "deny_by_default", "indeterminate"]
+    );
+    assert!(
+        written
+            .iter()
+            .all(|record| record["decision"] == json!(false)),
+        "`decision` is true for a permit alone"
+    );
+    let indeterminate = &written[2];
+    assert_eq!(
+        indeterminate["reason"]["code"],
+        json!(permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE)
+    );
+    assert!(
+        indeterminate["policies"]
+            .as_array()
+            .is_some_and(Vec::is_empty),
+        "an evaluation that failed cites no policy"
+    );
+    assert_eq!(
+        indeterminate["causes"],
+        json!(["evaluation_deadline_exceeded", "evaluation_failed"]),
+        "an indeterminate record names its causes, by code"
+    );
+    assert!(
+        written[..2]
+            .iter()
+            .all(|record| record.get("causes").is_none()),
+        "and no other record carries the member"
     );
 }
 

@@ -104,16 +104,20 @@ impl Evaluator for CedarEvaluator {
         // is worth checking is whether to start at all: a partition reached after the decision ran
         // out of time answers nothing anybody is still waiting for.
         if query.expired() {
-            return Verdict::refused("the decision ran out of time before this partition");
+            return Verdict::deadline_exceeded(
+                "the decision ran out of time before this partition",
+            );
         }
 
+        // A request or an entity store this partition cannot represent is not a question its
+        // policies can answer: `E`, not a deny they never expressed.
         let request = match self.request(query) {
             Ok(request) => request,
-            Err(error) => return Verdict::refused(error),
+            Err(error) => return Verdict::input_rejected(error),
         };
         let entities = match self.entities(query) {
             Ok(entities) => entities,
-            Err(error) => return Verdict::refused(error),
+            Err(error) => return Verdict::input_rejected(error),
         };
 
         let response = Authorizer::new().is_authorized(&request, &self.set, &entities);
@@ -122,22 +126,29 @@ impl Evaluator for CedarEvaluator {
             .reason()
             .map(ToString::to_string)
             .collect();
-        // An evaluation error is not a permit and not a fault: it is a deny
-        // that says what happened.
+        // The diagnostics before any permit is read. Cedar answers `Allow` when one policy
+        // permits and another failed to evaluate — a permit released after a policy failed is not
+        // defensible, so an error beside an `Allow` is `E`. A `forbid` that fired is different:
+        // nothing the failed policy could return turns it into a permit, so it is `D`, with the
+        // failure kept beside it. A deny no `forbid` decided is the failure: `E`.
         let errors: Vec<String> = response
             .diagnostics()
             .errors()
             .map(ToString::to_string)
             .collect();
+        if !errors.is_empty() {
+            let message = format!("cedar: {}", errors.join("; "));
+            return match response.decision() {
+                Decision::Allow => Verdict::engine_failed(message),
+                Decision::Deny => Verdict::deny_despite_failure(determining, message),
+            };
+        }
 
         match response.decision() {
             Decision::Allow => Verdict::permit(determining),
-            Decision::Deny if errors.is_empty() => Verdict::deny(determining),
-            Decision::Deny => Verdict {
-                permitted: false,
-                determining,
-                error: Some(format!("cedar: {}", errors.join("; "))),
-            },
+            // A `forbid` that fired is a deny; a deny nothing fired is Cedar's default, which the
+            // algebra calls an abstain. `Verdict::deny` tells the two apart by the list.
+            Decision::Deny => Verdict::deny(determining),
         }
     }
 
@@ -251,7 +262,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::evaluate::{Action, Entity};
+    use crate::evaluate::{Action, Entity, Resolution, resolve};
     use serde_json::Map;
 
     fn stored(id: &str, source: &str) -> StoredPolicy {
@@ -301,13 +312,102 @@ mod tests {
             .expect("the policies compile");
 
         let verdict = compiled.evaluate(&query("alice", "read", "budget"));
-        assert!(verdict.permitted);
-        assert_eq!(verdict.determining, vec!["01a0-read".to_owned()]);
+        assert!(verdict.permitted());
+        assert_eq!(verdict.determining(), vec!["01a0-read".to_owned()]);
 
-        // Nothing permits `delete`, and a Cedar deny is silent about policies.
+        // Nothing permits `delete`, and a Cedar deny nothing fired is an abstain: not an error,
+        // and not a policy saying no.
         let denied = compiled.evaluate(&query("alice", "delete", "budget"));
-        assert!(!denied.permitted);
-        assert!(denied.error.is_none(), "a deny is an answer, not an error");
+        assert_eq!(denied, Verdict::Abstain);
+    }
+
+    /// Cedar answers `Allow` when one policy permits and another could not be evaluated. The
+    /// languages model calls that `E`: releasing a permit after any policy failed is not
+    /// defensible, so the diagnostics are read before the decision and the decision is not.
+    #[test]
+    fn an_allow_beside_a_diagnostic_error_is_an_evaluation_failure() {
+        let compiled = Cedar
+            .compile(
+                &[
+                    stored(
+                        "01a0-read",
+                        r#"permit (principal, action == Action::"read", resource);"#,
+                    ),
+                    // `principal` has no `clearance`, so this policy errors rather than matching.
+                    stored(
+                        "01a0-cleared",
+                        r#"permit (principal, action, resource) when { principal.clearance == "top" };"#,
+                    ),
+                ],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+
+        let verdict = compiled.evaluate(&query("alice", "read", "budget"));
+
+        let error = verdict.error().expect("an allow beside an error is `E`");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_FAILED
+        );
+        assert!(error.message.contains("clearance"), "{error}");
+        assert!(verdict.determining().is_empty(), "`E` cites no policy");
+        assert_eq!(
+            resolve([verdict]).resolution,
+            Resolution::Indeterminate,
+            "the profile is indeterminate, not a permit and not a deny"
+        );
+    }
+
+    /// A `forbid` that fired dominates a failure of another policy in the same partition: the
+    /// deny stands and cites it, and the failure is kept beside it. Without the `forbid`, the
+    /// same failure is `E`.
+    #[test]
+    fn a_forbid_beside_a_diagnostic_error_is_a_deny_that_keeps_the_error() {
+        let compiled = Cedar
+            .compile(
+                &[
+                    stored(
+                        "01a0-read",
+                        r#"permit (principal, action == Action::"read", resource);"#,
+                    ),
+                    stored(
+                        "01a0-budget",
+                        r#"forbid (principal, action, resource == Document::"budget");"#,
+                    ),
+                    // `principal` has no `clearance`, so this policy errors rather than matching.
+                    stored(
+                        "01a0-cleared",
+                        r#"permit (principal, action, resource) when { principal.clearance == "top" };"#,
+                    ),
+                ],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+
+        let verdict = compiled.evaluate(&query("alice", "read", "budget"));
+        assert_eq!(
+            verdict.determining(),
+            ["01a0-budget".to_owned()],
+            "{verdict:?}"
+        );
+        assert!(verdict.error().is_none(), "a `D`, not an `E`: {verdict:?}");
+        let failure = verdict
+            .failure()
+            .expect("the error is kept beside the deny");
+        assert_eq!(
+            failure.code,
+            permguard_core::codes::pdp_native::EVALUATION_FAILED
+        );
+        assert!(failure.message.contains("clearance"), "{failure}");
+        assert_eq!(resolve([verdict]).resolution, Resolution::Deny);
+
+        let elsewhere = compiled.evaluate(&query("alice", "write", "plan"));
+        assert_eq!(
+            elsewhere.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED),
+            "no forbid fired: the failure is the answer"
+        );
     }
 
     #[test]
@@ -329,8 +429,8 @@ mod tests {
             .expect("the policies compile");
 
         let verdict = compiled.evaluate(&query("bob", "read", "budget"));
-        assert!(!verdict.permitted);
-        assert_eq!(verdict.determining, vec!["01a0-not-bob".to_owned()]);
+        assert!(!verdict.permitted());
+        assert_eq!(verdict.determining(), vec!["01a0-not-bob".to_owned()]);
     }
 
     #[test]
@@ -354,7 +454,7 @@ mod tests {
         asked
             .context
             .insert("tenant".to_owned(), Value::from("acme"));
-        assert!(compiled.evaluate(&asked).permitted);
+        assert!(compiled.evaluate(&asked).permitted());
 
         // Same policy, a resource that is not open: a deny, not an error.
         let mut closed = query("alice", "read", "budget");
@@ -365,7 +465,7 @@ mod tests {
         closed
             .context
             .insert("tenant".to_owned(), Value::from("acme"));
-        assert!(!compiled.evaluate(&closed).permitted);
+        assert!(!compiled.evaluate(&closed).permitted());
     }
 
     #[test]
@@ -388,7 +488,7 @@ mod tests {
         ]);
 
         assert!(
-            compiled.evaluate(&asked).permitted,
+            compiled.evaluate(&asked).permitted(),
             "the caller's own entity wins over the synthesized one"
         );
     }
@@ -437,18 +537,18 @@ action read appliesTo { principal: [User], resource: [Document] };
         assert!(
             compiled
                 .evaluate(&query("alice", "read", "budget"))
-                .permitted
+                .permitted()
         );
 
         // An action the schema never declared cannot be evaluated: a deny
         // that says so, rather than a silent false.
         let refused = compiled.evaluate(&query("alice", "teleport", "budget"));
-        assert!(!refused.permitted);
-        assert!(refused.error.is_some(), "the reason is carried");
+        assert!(!refused.permitted());
+        assert!(refused.error().is_some(), "the reason is carried");
     }
 
     #[test]
-    fn a_request_missing_its_parts_is_a_deny_with_a_reason() {
+    fn a_request_missing_its_parts_is_an_input_the_engine_rejects() {
         let compiled = Cedar
             .compile(
                 &[stored(
@@ -462,9 +562,14 @@ action read appliesTo { principal: [User], resource: [Document] };
         let mut asked = query("alice", "read", "budget");
         asked.subject.id = String::new();
         let verdict = compiled.evaluate(&asked);
-        assert!(!verdict.permitted);
+        assert!(!verdict.permitted());
+        let error = verdict.error().expect("`E`, not a deny");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED
+        );
         assert!(
-            verdict.error.expect("a reason").contains("subject"),
+            error.message.contains("subject"),
             "the reason names what was missing"
         );
     }
@@ -484,7 +589,7 @@ action read appliesTo { principal: [User], resource: [Document] };
         assert!(
             compiled
                 .evaluate(&query("alice", "acme::Action::read", "budget"))
-                .permitted
+                .permitted()
         );
     }
 }

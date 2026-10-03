@@ -25,17 +25,17 @@
 //! A profile may name several partitions, in different languages. The
 //! resolution across them is the one an authorization system can defend:
 //!
-//! | Any partition | Result |
-//! | --- | --- |
-//! | denies **explicitly** (a `forbid` matched, a `deny` rule held) | **deny**, citing it |
-//! | permits, and none denied explicitly | **permit**, citing what permitted |
-//! | nothing permitted | **deny** — absent means no |
-//! | could not be evaluated | **deny**, with the reason in `reason_admin` |
+//! | Any partition                                                   | Result                                         |
+//! | --------------------------------------------------------------- | ---------------------------------------------- |
+//! | denies **explicitly** (a `forbid` matched, a `deny` rule held)  | **deny**, citing it, whatever else failed      |
+//! | could not be evaluated, and none denied explicitly              | **indeterminate**: a typed refusal, not a deny |
+//! | permits, and none denied explicitly or failed                   | **permit**, citing what permitted              |
+//! | nothing permitted                                               | **deny** by default — absent means no          |
 //!
-//! Fail-closed throughout: an error is a deny that says why, never a permit
-//! and never a transport fault. A transport error means the request could not
-//! be evaluated *at all* — that is a different sentence, and a PEP needs to
-//! tell them apart.
+//! Fail-closed throughout, and never ambiguous: an indeterminate result is refused `503
+//! evaluation_indeterminate` (`400 evaluation_input_rejected` when an engine could not represent
+//! the request), recorded as `indeterminate`, and never answered as a deny a policy expressed. A
+//! PEP tells a policy saying no from an engine that could not say anything.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -381,7 +381,9 @@ pub struct TemporalDecision<'a> {
     pub action: &'a str,
     /// The occurrence's request context, for the commitment.
     pub context: Option<serde_json::Value>,
-    pub permit: bool,
+    pub outcome: permguard_decisions::record::Outcome,
+    /// The codes that made it indeterminate, sorted and distinct; empty otherwise.
+    pub causes: &'a [&'static str],
     pub policies: &'a [String],
     pub reason: &'a str,
     pub request_id: Option<&'a str>,
@@ -840,7 +842,7 @@ impl Decider {
             deadline,
             tokio::runtime::Handle::current(),
         );
-        let decisions = self
+        let evaluated = self
             .blocking
             .run(&[], move || {
                 let (quarantine, guarded, deadline, runtime) = watching;
@@ -896,24 +898,134 @@ impl Decider {
         // to check that an answer of ours is coherent.
         let overall = resolved
             .semantic
-            .combine(decisions.iter().map(|decision| decision.decision));
-        for decision in &decisions {
+            .combine(evaluated.iter().map(|held| held.decision.decision));
+        // An evaluation nothing could decide: the request is answered with a typed refusal
+        // below, after every decided evaluation has been recorded — never as a deny.
+        let indeterminate: Vec<(usize, &Evaluated)> = evaluated
+            .iter()
+            .enumerate()
+            .filter(|(_, held)| held.resolution == permguard_languages::Resolution::Indeterminate)
+            .collect();
+        for held in &evaluated {
             self.metrics.count(
                 &super::measure::EVALUATIONS,
                 &[(
                     permguard_core::metrics::labels::OUTCOME,
-                    if decision.decision { "permit" } else { "deny" },
+                    held.resolution.as_str(),
                 )],
             );
+            for error in &held.errors {
+                self.metrics.count(
+                    &super::measure::PARTITION_FAILURES,
+                    &[(permguard_core::metrics::labels::REASON, error.code)],
+                );
+            }
+            // Every failure reaches the log by its code — an indeterminate evaluation's, and one
+            // beside a deny that stood — so an operator reading a spike of `indeterminate` finds
+            // which causes. Codes only: an engine's text can carry tenant data.
+            if !held.errors.is_empty() {
+                let mut codes: Vec<&str> = held.errors.iter().map(|error| error.code).collect();
+                codes.sort_unstable();
+                codes.dedup();
+                warn!(
+                    event.name = "authz.evaluation_failed",
+                    component = COMPONENT,
+                    ledger = mirror.log_id().as_str(),
+                    decision.id = held
+                        .decision
+                        .context
+                        .as_ref()
+                        .and_then(|context| context.id.as_deref())
+                        .unwrap_or_default(),
+                    outcome = held.resolution.as_str(),
+                    causes = codes.join(",").as_str(),
+                    "a partition could not evaluate this request"
+                );
+            }
         }
+        // The request's result: for a plain request, its one evaluation's result of the algebra;
+        // for a batch, `indeterminate` when it is refused, else the verdict its semantic gave —
+        // a batch is not one of the algebra's results, so it is `permit` or `deny`.
+        let result = if !indeterminate.is_empty() {
+            "indeterminate"
+        } else if let ([held], false) = (evaluated.as_slice(), resolved.boxcarred) {
+            held.resolution.as_str()
+        } else if overall {
+            "permit"
+        } else {
+            "deny"
+        };
         self.metrics.count(
             &super::measure::DECISIONS,
-            &[(
-                permguard_core::metrics::labels::OUTCOME,
-                if overall { "permit" } else { "deny" },
-            )],
+            &[(permguard_core::metrics::labels::OUTCOME, result)],
         );
 
+        // Before the answer leaves: a plane told to refuse rather than decide
+        // unrecorded must refuse *here*, where the answer has not gone out yet.
+        self.journal(
+            &resolved,
+            &mirror,
+            &head,
+            &evaluated,
+            trace.as_ref(),
+            started,
+        )
+        .await?;
+        self.record(&resolved, &mirror, &head, &evaluated).await;
+
+        // Recorded, and only now refused: the native contract answers an indeterminate result
+        // as `503 unavailable evaluation_indeterminate`, and a batch with one whole — or as
+        // `400 validation evaluation_input_rejected` when an engine could not represent the
+        // request, which sending again cannot help. The partition failures travel in the message
+        // only where the deployment discloses detail.
+        if !indeterminate.is_empty() {
+            let named: Vec<String> = indeterminate
+                .iter()
+                .map(|(index, held)| match held.decision.request_id.as_deref() {
+                    Some(id) => format!("`{id}`"),
+                    None => format!("#{index}"),
+                })
+                .collect();
+            let causes: Vec<String> = indeterminate
+                .iter()
+                .flat_map(|(_, held)| held.errors.iter().map(ToString::to_string))
+                .collect();
+            let rejected = indeterminate.iter().any(|(_, held)| {
+                held.causes
+                    .contains(&permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED)
+            });
+            let what = if rejected {
+                "could not be represented by the engine that evaluates it"
+            } else {
+                "could not be evaluated"
+            };
+            let message = if resolved.boxcarred {
+                format!(
+                    "the batch is not decided: evaluation(s) {} {what}",
+                    named.join(", ")
+                )
+            } else {
+                format!(
+                    "the request {what}: {} partition evaluation(s) failed; this is not a deny",
+                    causes.len()
+                )
+            };
+            let (class, code) = if rejected {
+                (
+                    ErrorClass::Validation,
+                    permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED,
+                )
+            } else {
+                (
+                    ErrorClass::Unavailable,
+                    permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE,
+                )
+            };
+
+            return Err(ApiError::new(class, code, message).with_internal(causes.join("; ")));
+        }
+
+        let decisions: Vec<Decision> = evaluated.into_iter().map(|held| held.decision).collect();
         // The whole request's context. A plain request has one decision, and that is its
         // context. A batch has several, and its context is derived from the verdict its semantic
         // produced — never copied from one of them.
@@ -925,18 +1037,6 @@ impl Decider {
                 .and_then(|first| first.context.clone())
                 .unwrap_or_default()
         };
-        // Before the answer leaves: a plane told to refuse rather than decide
-        // unrecorded must refuse *here*, where the answer has not gone out yet.
-        self.journal(
-            &resolved,
-            &mirror,
-            &head,
-            &decisions,
-            trace.as_ref(),
-            started,
-        )
-        .await?;
-        self.record(&resolved, &mirror, &head, &decisions).await;
 
         Ok(CheckResponse {
             decision: overall,
@@ -1036,7 +1136,7 @@ impl Decider {
         resolved: &Resolved,
         mirror: &store::Mirror,
         head: &Head,
-        decisions: &[Decision],
+        evaluated: &[Evaluated],
     ) {
         // When this plane keeps a decision log, the journal IS the decision
         // trail — every decision, hash-chained, signed and shipped. An audit
@@ -1050,7 +1150,8 @@ impl Decider {
         let Some(audit) = &self.audit else {
             return;
         };
-        for (index, decision) in decisions.iter().enumerate() {
+        for (index, held) in evaluated.iter().enumerate() {
+            let decision = &held.decision;
             let query = resolved
                 .queries
                 .get(index)
@@ -1069,7 +1170,7 @@ impl Decider {
                     .as_ref()
                     .and_then(|context| context.id.clone())
                     .unwrap_or_default(),
-                if decision.decision { "permit" } else { "deny" },
+                held.resolution.as_str(),
             );
             let subject = resolved
                 .principal
@@ -1121,6 +1222,8 @@ struct OwnedDecided {
     /// The partitions that declare an input and were addressed with none.
     absent_inputs: Vec<String>,
     permit: bool,
+    outcome: permguard_decisions::record::Outcome,
+    causes: Vec<&'static str>,
     policies: Vec<String>,
     reason: String,
     trace: Option<(String, String)>,
@@ -1128,6 +1231,47 @@ struct OwnedDecided {
     latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     event: Option<permguard_decisions::record::EventRef>,
+}
+
+/// The record's spelling of a resolution.
+pub(crate) fn recorded_outcome(
+    resolution: permguard_languages::Resolution,
+) -> permguard_decisions::record::Outcome {
+    use permguard_decisions::record::Outcome;
+    use permguard_languages::Resolution;
+
+    match resolution {
+        Resolution::Permit => Outcome::Permit,
+        Resolution::Deny => Outcome::Deny,
+        Resolution::DenyByDefault => Outcome::DenyByDefault,
+        Resolution::Indeterminate => Outcome::Indeterminate,
+    }
+}
+
+/// The record's `reason.code` for a stateless decision: the codes the record has always carried
+/// for a permit and a deny, and the native contract's for an indeterminate result.
+fn recorded_reason(resolution: permguard_languages::Resolution) -> String {
+    use permguard_languages::Resolution;
+
+    match resolution {
+        Resolution::Permit => "200".to_owned(),
+        Resolution::Deny | Resolution::DenyByDefault => "403".to_owned(),
+        Resolution::Indeterminate => {
+            permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE.to_owned()
+        }
+    }
+}
+
+/// One evaluation's answer: what the wire carries, and the resolution it cannot.
+///
+/// `Decision` is a boolean because the native contract's is; the algebra's four results live
+/// beside it so the record, the metrics and the refusal of an indeterminate result read them.
+pub(crate) struct Evaluated {
+    pub(crate) decision: Decision,
+    pub(crate) resolution: permguard_languages::Resolution,
+    pub(crate) errors: Vec<permguard_languages::EvaluationError>,
+    /// The codes that made it indeterminate, sorted and distinct; empty otherwise.
+    pub(crate) causes: Vec<&'static str>,
 }
 
 impl OwnedDecided {
@@ -1151,6 +1295,8 @@ impl OwnedDecided {
             partition_inputs: self.partition_inputs.clone(),
             absent_inputs: self.absent_inputs.clone(),
             permit: self.permit,
+            outcome: self.outcome,
+            causes: self.causes.clone(),
             policies: self.policies.clone(),
             reason: self.reason.clone(),
             trace: self.trace.clone(),
@@ -1182,7 +1328,7 @@ impl Decider {
         resolved: &Resolved,
         mirror: &store::Mirror,
         head: &Head,
-        decisions: &[Decision],
+        evaluated: &[Evaluated],
         trace: Option<&TraceContext>,
         started: Instant,
     ) -> Result<(), ApiError> {
@@ -1205,7 +1351,8 @@ impl Decider {
         // request's own verdict — the conjunction — is not recorded as a
         // decision, because it is not one: it is an answer *about* decisions,
         // and a reader computes it from them.
-        for (index, decision) in decisions.iter().enumerate() {
+        for (index, held) in evaluated.iter().enumerate() {
+            let decision = &held.decision;
             let query = resolved
                 .queries
                 .get(index)
@@ -1250,13 +1397,16 @@ impl Decider {
                     .map(|context| context.absent_inputs.clone())
                     .unwrap_or_default(),
                 permit: decision.decision,
+                outcome: recorded_outcome(held.resolution),
+                causes: held.causes.clone(),
                 policies: context
                     .map(|context| context.policies.clone())
                     .unwrap_or_default(),
-                reason: context
-                    .and_then(|context| context.reason_user.as_ref())
-                    .map(|reason| reason.code.clone())
-                    .unwrap_or_else(|| if decision.decision { "200" } else { "403" }.to_owned()),
+                // Which of the four results it was, in the record's own codes: a permit and a
+                // deny as they have always been written, an indeterminate result as the native
+                // contract's refusal code — never `403`, which would make a failure read as a
+                // policy deny.
+                reason: recorded_reason(held.resolution),
                 trace: trace.map(|trace| (trace.trace_id.clone(), trace.span_id.clone())),
                 // The caller's own handle for *this* evaluation, when it
                 // boxcarred: `request_id` per evaluation is how a PEP joins one
@@ -1318,7 +1468,9 @@ impl Decider {
             context: at.context.clone(),
             partition_inputs: None,
             absent_inputs: Vec::new(),
-            permit: at.permit,
+            permit: at.outcome.permitted(),
+            outcome: at.outcome,
+            causes: at.causes.to_vec(),
             policies: at.policies.to_vec(),
             reason: at.reason.to_owned(),
             trace: None,
@@ -1495,7 +1647,7 @@ struct Plan {
 
 impl Plan {
     /// Every evaluation of the batch, in order, stopping where the semantic says to stop.
-    fn run(self) -> Result<Vec<Decision>, ApiError> {
+    fn run(self) -> Result<Vec<Evaluated>, ApiError> {
         // What each partition of this profile is given. Routed by `Asking::route` — the same
         // function `permguard test` calls — because an input belongs to the partition it names
         // and a Cedar policy reads an action's properties somewhere a Rego module does not. A
@@ -1518,7 +1670,7 @@ impl Plan {
             })
             .collect();
 
-        let mut decisions = Vec::with_capacity(self.resolved.queries.len());
+        let mut decisions: Vec<Evaluated> = Vec::with_capacity(self.resolved.queries.len());
         for (asking, request_id) in &self.resolved.queries {
             // The batch shares one deadline: 256 boxcarred evaluations that each got the full
             // budget would be 256 times the bound the deployment asked for.
@@ -1537,9 +1689,11 @@ impl Plan {
             // Which declared inputs this evaluation left out — decided against the type's empty
             // input, legally, and said so beside the answer and in its record.
             let absent_inputs = asking.absent_inputs(&targets);
-            let decision = self.evaluate(queries, request_id.clone(), absent_inputs);
-            let stop = self.resolved.semantic.stops(decision.decision);
-            decisions.push(decision);
+            let evaluated = self.evaluate(queries, request_id.clone(), absent_inputs);
+            // An indeterminate evaluation reads as "not permitted" to the operator: `&&` stops
+            // there, which is fail-closed and spares work on a batch that will be refused whole.
+            let stop = self.resolved.semantic.stops(evaluated.decision.decision);
+            decisions.push(evaluated);
             if stop {
                 break;
             }
@@ -1560,7 +1714,7 @@ impl Plan {
         queries: Vec<Query>,
         request_id: Option<String>,
         absent_inputs: Vec<String>,
-    ) -> Decision {
+    ) -> Evaluated {
         let work: Vec<(Arc<dyn permguard_languages::Evaluator>, Query)> = self
             .partitions
             .iter()
@@ -1585,23 +1739,23 @@ impl Plan {
         // own: `permguard test` decides a workspace before it is ever pushed here, and the two
         // must not be able to disagree about what a set of verdicts means.
         let outcome = resolve(answered.into_iter().map(|answer| answer.verdict));
-        let permit = outcome.permitted;
+        let permit = outcome.permitted();
 
-        Decision {
-            decision: permit,
-            request_id,
-            context: Some(DecisionContext {
-                id: Some(permguard_decisions::instance::mint()),
-                reason_admin: Some(reason_admin(
-                    permit,
-                    &outcome.permits,
-                    &outcome.denials,
-                    &outcome.errors,
-                )),
-                reason_user: Some(reason_user(permit)),
-                policies: outcome.determining().to_vec(),
-                absent_inputs,
-            }),
+        Evaluated {
+            decision: Decision {
+                decision: permit,
+                request_id,
+                context: Some(DecisionContext {
+                    id: Some(permguard_decisions::instance::mint()),
+                    reason_admin: Some(reason_admin(&outcome)),
+                    reason_user: Some(reason_user(permit)),
+                    policies: outcome.determining().to_vec(),
+                    absent_inputs,
+                }),
+            },
+            resolution: outcome.resolution,
+            causes: outcome.causes(),
+            errors: outcome.errors,
         }
     }
 }
@@ -1610,37 +1764,36 @@ impl Plan {
 ///
 /// A free function rather than a method, because two callers need it and neither owns the other:
 /// the decider that answers a request, and the plan that evaluates one on a blocking thread.
-fn reason_admin(
-    permit: bool,
-    permitted: &[String],
-    denied: &[String],
-    errors: &[String],
-) -> Reason {
-    if !errors.is_empty() {
-        return Reason {
-            code: "500".to_owned(),
+fn reason_admin(outcome: &permguard_languages::Outcome) -> Reason {
+    use permguard_languages::Resolution;
+
+    match outcome.resolution {
+        // Never sent as a decision — an indeterminate result is refused — but recorded, and read
+        // by the batch context: the native contract's code, and every cause by its own.
+        Resolution::Indeterminate => Reason {
+            code: permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE.to_owned(),
             message: format!(
-                "the request could not be evaluated, so it is denied: {}",
-                errors.join("; ")
+                "the request could not be evaluated: {}",
+                outcome
+                    .errors
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
             ),
-        };
-    }
-    if permit {
-        return Reason {
+        },
+        Resolution::Permit => Reason {
             code: "200".to_owned(),
-            message: format!("permitted by {}", permitted.join(", ")),
-        };
-    }
-    if denied.is_empty() {
-        return Reason {
+            message: format!("permitted by {}", outcome.permits.join(", ")),
+        },
+        Resolution::DenyByDefault => Reason {
             code: "403".to_owned(),
             message: "no policy permits this request".to_owned(),
-        };
-    }
-
-    Reason {
-        code: "403".to_owned(),
-        message: format!("denied by {}", denied.join(", ")),
+        },
+        Resolution::Deny => Reason {
+            code: "403".to_owned(),
+            message: format!("denied by {}", outcome.denials.join(", ")),
+        },
     }
 }
 
@@ -1678,16 +1831,6 @@ fn batch_context(
             .clone()
             .unwrap_or_else(|| format!("#{index}"))
     };
-    let code_of = |decision: &Decision| {
-        decision
-            .context
-            .as_ref()
-            .and_then(|context| context.reason_admin.as_ref())
-            .map(|reason| reason.code.as_str())
-            .unwrap_or_default()
-            .to_owned()
-    };
-
     // The evaluations whose answer *is* the verdict: under `&&` the denies of a deny and every
     // permit of a permit; under `||` the permit of a permit and every deny of a deny.
     let deciding: Vec<(usize, &Decision)> = decisions
@@ -1728,22 +1871,11 @@ fn batch_context(
         .iter()
         .map(|(index, decision)| format!("`{}`", name(*index, decision)))
         .collect();
-    let errored: Vec<String> = deciding
-        .iter()
-        .filter(|(_, decision)| code_of(decision) == "500")
-        .map(|(index, decision)| format!("`{}`", name(*index, decision)))
-        .collect();
+    // No evaluation here is indeterminate: a batch with one is refused whole before it has a
+    // context, so its verdict is a permit or a deny.
     let operator = semantic_named(semantic);
 
-    let reason_admin = if !overall && !errored.is_empty() {
-        Reason {
-            code: "500".to_owned(),
-            message: format!(
-                "the batch is denied under `{operator}`: evaluation(s) {} could not be evaluated",
-                errored.join(", ")
-            ),
-        }
-    } else if overall {
+    let reason_admin = if overall {
         Reason {
             code: "200".to_owned(),
             message: format!(
@@ -1813,7 +1945,7 @@ mod tests {
             Verdict::deny(vec!["f1".to_owned()]),
         ]);
 
-        assert!(!outcome.permitted, "an explicit deny still decides");
+        assert!(!outcome.permitted(), "an explicit deny still decides");
         assert_eq!(
             outcome.determining(),
             ["f1".to_owned()],
@@ -1871,10 +2003,5 @@ mod tests {
         );
         assert_eq!(context.reason_admin.expect("a reason").code, "200");
         assert_eq!(context.policies, vec!["p1".to_owned()]);
-
-        // An evaluation that could not be performed keeps its `500`, batch or not.
-        let errored = vec![decided(false, "read", &[], "500")];
-        let context = batch_context(permguard_languages::Semantic::ExecuteAll, false, &errored);
-        assert_eq!(context.reason_admin.expect("a reason").code, "500");
     }
 }

@@ -19,6 +19,18 @@ is cut.
 
 ### Changed
 
+- **Breaking for PEPs: an evaluation the plane could not perform is no longer a deny.**
+  The native PDP answers it with the typed refusal `503`/`UNAVAILABLE`, class `unavailable`, code `evaluation_indeterminate`; a policy deny stays `200 {"decision": false}`.
+  When an engine could not represent the request (a context, action or subject outside the partition's schema), the refusal is `400`/`INVALID_ARGUMENT`, class `validation`, code `evaluation_input_rejected` instead: sending it again cannot help.
+  A batch with an indeterminate evaluation is refused whole, naming the evaluations that could not be evaluated; every evaluation it reached is still recorded.
+  A deny that a `forbid` or a Rego `deny` rule determined stands beside another policy's failure in the same partition: `200 {"decision": false}` citing it, with the failure counted.
+  The temporal PDP answers it `200` with `outcome: "indeterminate"`, no `decision`, `reason.code` `evaluation_indeterminate` and, per failed partition, one of `evaluation_deadline_exceeded`, `evaluation_panicked`, `evaluation_failed` or `evaluation_input_rejected` in place of the former `partition_failed` codes.
+  Under minimal disclosure a temporal reason of an indeterminate result keeps its code and carries a fixed sentence instead of the engine's text.
+  Decision records gain `outcome` (`permit`, `deny`, `deny_by_default`, `indeterminate`) beside `decision`, and an indeterminate record gains `causes`, the `evaluation_*` codes behind it; a record without them predates the members.
+  `permguard_authz_decisions_total{outcome}` and `permguard_authz_evaluations_total{outcome}` gain the values `indeterminate` and `deny_by_default`, and `permguard_authz_partition_failures_total{reason}` counts failed partitions by cause, on the stateless and the temporal path.
+  Every partition failure is logged as `authz.evaluation_failed` or `temporal.partition_failed` with its code, never the engine's text.
+  `permguard test --remote` reads the refusal as the error a case may expect, and `permguard test` no longer reports a deny beside a failure as an error, so the two agree.
+  `permguard decisions` shows and counts an indeterminate record apart from a deny, and `--decision indeterminate` selects it; `--decision deny` no longer includes it.
 - **Breaking for dashboards and alerts: telemetry schema 2.**
   Metric labels now come from a closed registry, and no metric carries a zone, ledger, producer stream, instance, partition or realm as a label.
   `permguard_telemetry_schema_info{version="2"}` says which schema a process exposes.

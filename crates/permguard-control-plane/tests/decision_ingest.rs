@@ -152,6 +152,8 @@ fn stream(instance: &str, count: u64) -> Vec<Value> {
                 principal: None,
                 inputs: Inputs::default(),
                 decision: true,
+                outcome: Some(permguard_decisions::record::Outcome::Permit),
+                causes: None,
                 policies: vec!["af4c4260".to_owned()],
                 reason: Reason {
                     code: "200".to_owned(),

@@ -192,7 +192,7 @@ impl Evaluator for RegoEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
         let input = match value_of(&input_document(query)) {
             Ok(input) => input,
-            Err(error) => return Verdict::refused(error),
+            Err(error) => return Verdict::input_rejected(error),
         };
         // One prepared engine, cloned per request: the modules are already parsed, and an
         // evaluation must never mutate what the next one reads. Nothing is added to `data` here —
@@ -213,9 +213,15 @@ impl Evaluator for RegoEvaluator {
         }
         engine.set_input(input);
 
+        // Every module is evaluated, both rules, in order: what a rule answers is independent of
+        // the others, and a failure anywhere is reported whatever else held. An interpreter
+        // error, a conflict or a rule that is not a boolean is a failure; undefined and `false`
+        // are an answer: no. Only the deadline ends the asking early — past it, nothing a rule
+        // could still answer is wanted, and the failure that stopped is the lateness.
         let mut permitted = Vec::new();
         let mut denied = Vec::new();
-        for module in &self.modules {
+        let mut failure: Option<Verdict> = None;
+        'modules: for module in &self.modules {
             for (rule, answers) in [
                 (module.deny.as_deref(), &mut denied),
                 (module.allow.as_deref(), &mut permitted),
@@ -224,21 +230,32 @@ impl Evaluator for RegoEvaluator {
                 match asked(&mut engine, rule) {
                     Ok(true) => answers.push(module.id.clone()),
                     Ok(false) => {}
-                    Err(error) => return Verdict::refused(error),
+                    Err(error) if query.expired() => {
+                        failure.get_or_insert(Verdict::deadline_exceeded(error));
+                        break 'modules;
+                    }
+                    Err(error) => {
+                        failure.get_or_insert(Verdict::engine_failed(error));
+                    }
                 }
             }
         }
 
-        // Deny overrides, and absent means no: the only resolution an
-        // authorization system can defend.
-        if !denied.is_empty() {
-            return Verdict::deny(denied);
+        // Deny overrides; absent means no rule matched: an abstain, which the profile resolves
+        // to a deny by default unless another partition permits.
+        let answered = if !denied.is_empty() {
+            Verdict::deny(denied)
+        } else if !permitted.is_empty() {
+            Verdict::permit(permitted)
+        } else {
+            Verdict::abstain()
+        };
+        // A deny a rule determined stands beside a failure, the failure kept; a permit or
+        // silence beside one is the failure: `E`.
+        match failure {
+            Some(failure) => answered.despite(failure),
+            None => answered,
         }
-        if permitted.is_empty() {
-            return Verdict::deny(Vec::new());
-        }
-
-        Verdict::permit(permitted)
     }
 
     /// `input.partition` against this partition's own JSON Schema, before any rule runs.
@@ -457,8 +474,8 @@ allow if {
         let verdict = compiled.evaluate(&asked);
         let spent = started.elapsed();
 
-        assert!(!verdict.permitted, "it fails closed");
-        assert!(verdict.error.is_some(), "and says why");
+        assert!(!verdict.permitted(), "it fails closed");
+        assert!(verdict.error().is_some(), "and says why");
         assert!(
             spent < RULE_BUDGET,
             "the decision's deadline bounded it, not the per-rule budget: {spent:?}"
@@ -466,7 +483,7 @@ allow if {
     }
 
     #[test]
-    fn a_hostile_rule_is_stopped_by_the_execution_budget_and_denies() {
+    fn a_hostile_rule_is_stopped_by_the_execution_budget_and_is_an_evaluation_failure() {
         // Gated on the input so the compile-time probe — which runs with no
         // input — fails fast, and only a real request pays: the shape an
         // attacker who can author policy would pick.
@@ -496,9 +513,9 @@ allow if {
             started.elapsed() < Duration::from_secs(30),
             "the worker came back: a hostile rule may not stall the decision path"
         );
-        assert!(!verdict.permitted, "and the answer fails closed");
+        assert!(!verdict.permitted(), "and the answer fails closed");
         assert!(
-            verdict.error.is_some(),
+            verdict.error().is_some(),
             "as an evaluation fault that says why, not as a silent deny"
         );
     }
@@ -513,8 +530,8 @@ allow if {
             .expect("the module compiles");
 
         let verdict = compiled.evaluate(&query("alice", "read", "open"));
-        assert!(verdict.permitted);
-        assert_eq!(verdict.determining, vec!["01a0-readers".to_owned()]);
+        assert!(verdict.permitted());
+        assert_eq!(verdict.determining(), vec!["01a0-readers".to_owned()]);
     }
 
     #[test]
@@ -530,13 +547,13 @@ allow if {
         assert!(
             !compiled
                 .evaluate(&query("alice", "delete", "open"))
-                .permitted
+                .permitted()
         );
         // Nor is the resource in the state it requires.
         assert!(
             !compiled
                 .evaluate(&query("alice", "read", "closed"))
-                .permitted
+                .permitted()
         );
     }
 
@@ -553,9 +570,13 @@ allow if {
             .expect("the modules compile");
 
         let verdict = compiled.evaluate(&query("bob", "read", "open"));
-        assert!(!verdict.permitted);
-        assert_eq!(verdict.determining, vec!["01a0-guards".to_owned()]);
-        assert!(compiled.evaluate(&query("alice", "read", "open")).permitted);
+        assert!(!verdict.permitted());
+        assert_eq!(verdict.determining(), vec!["01a0-guards".to_owned()]);
+        assert!(
+            compiled
+                .evaluate(&query("alice", "read", "open"))
+                .permitted()
+        );
     }
 
     #[test]
@@ -571,8 +592,11 @@ allow if {
             .expect("the module compiles");
 
         let verdict = compiled.evaluate(&query("alice", "read", "open"));
-        assert!(!verdict.permitted, "nothing allowed, so no");
-        assert!(verdict.error.is_none(), "and that is not an error");
+        assert_eq!(
+            verdict,
+            Verdict::Abstain,
+            "nothing allowed and nothing denied: the partition abstains, which is not an error"
+        );
     }
 
     #[test]
@@ -598,11 +622,11 @@ allow if {
 
         let mut asked = query("alice", "read", "open");
         asked.input = document(json!({"entities": [{"id": "alice", "role": "reader"}]}));
-        assert!(compiled.evaluate(&asked).permitted);
+        assert!(compiled.evaluate(&asked).permitted());
 
         let mut other = query("alice", "read", "open");
         other.input = document(json!({"entities": [{"id": "alice", "role": "auditor"}]}));
-        assert!(!compiled.evaluate(&other).permitted);
+        assert!(!compiled.evaluate(&other).permitted());
     }
 
     #[test]
@@ -682,15 +706,21 @@ deny if input.resource.id in input.partition.frozen_services
         let mut asked = query("alice", "read", "open");
         asked.resource.id = "payments-api".to_owned();
         asked.input = document(json!({"frozen_services": ["payments-api"]}));
-        assert!(!compiled.evaluate(&asked).permitted, "the guardrail fires");
+        assert!(
+            !compiled.evaluate(&asked).permitted(),
+            "the guardrail fires"
+        );
 
         // Nothing addressed to this partition: an empty document, and a rule that reads a path
         // through it answers no rather than erroring.
         let mut nothing = query("alice", "read", "open");
         nothing.resource.id = "payments-api".to_owned();
         let verdict = compiled.evaluate(&nothing);
-        assert!(verdict.error.is_none(), "{:?}", verdict.error);
-        assert!(verdict.determining.is_empty(), "nothing denied it");
+        assert_eq!(
+            verdict,
+            Verdict::Abstain,
+            "nothing denied it, and nothing failed"
+        );
     }
 
     #[test]
@@ -704,10 +734,84 @@ deny if input.resource.id in input.partition.frozen_services
             .expect("the module compiles");
 
         let verdict = compiled.evaluate(&query("alice", "read", "open"));
-        assert!(!verdict.permitted);
+        let error = verdict
+            .error()
+            .expect("a non-boolean rule is `E`, not a deny");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_FAILED,
+            "the engine reported the failure"
+        );
         assert!(
-            verdict.error.expect("a reason").contains("boolean"),
+            error.message.contains("boolean"),
             "the reason says what was wrong"
+        );
+    }
+
+    /// A deny rule that is true decides the partition beside another rule's failure: `D`, citing
+    /// it, with the failure kept. The same failure beside a permit, with no deny rule true, is
+    /// `E`: a permit released after a rule failed is not defensible.
+    #[test]
+    fn a_true_deny_rule_beside_a_failing_rule_is_a_deny_that_keeps_the_failure() {
+        let odd_deny = "package odd\n\nimport rego.v1\n\ndeny := \"yes\"\n";
+        let compiled = Rego
+            .compile(
+                &[
+                    stored("01a0-readers", READERS),
+                    stored("01a0-guards", NEVER_BOB),
+                    stored("01a0-odd", odd_deny),
+                ],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the modules compile");
+
+        let verdict = compiled.evaluate(&query("bob", "read", "open"));
+        assert_eq!(
+            verdict.determining(),
+            vec!["01a0-guards".to_owned()],
+            "{verdict:?}"
+        );
+        assert!(verdict.error().is_none(), "a `D`, not an `E`: {verdict:?}");
+        let failure = verdict
+            .failure()
+            .expect("the failure is kept beside the deny");
+        assert_eq!(
+            failure.code,
+            permguard_core::codes::pdp_native::EVALUATION_FAILED
+        );
+        assert!(failure.message.contains("boolean"), "{failure}");
+
+        // An `allow` that fails beside a true `deny` is asked and kept too: every module is
+        // evaluated, so the failure is reported whatever else held.
+        let odd_allow = "package oddallow\n\nimport rego.v1\n\nallow := \"yes\"\n";
+        let allow_fails = Rego
+            .compile(
+                &[
+                    stored("01a0-guards", NEVER_BOB),
+                    stored("01a0-oddallow", odd_allow),
+                ],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the modules compile");
+        let verdict = allow_fails.evaluate(&query("bob", "read", "open"));
+        assert_eq!(
+            verdict.determining(),
+            vec!["01a0-guards".to_owned()],
+            "{verdict:?}"
+        );
+        assert!(
+            verdict
+                .failure()
+                .is_some_and(|failure| failure.message.contains("boolean")),
+            "{verdict:?}"
+        );
+
+        let beside_a_permit = compiled.evaluate(&query("alice", "read", "open"));
+        assert!(!beside_a_permit.permitted(), "{beside_a_permit:?}");
+        assert_eq!(
+            beside_a_permit.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_FAILED),
+            "no deny rule is true: the failure is the answer"
         );
     }
 

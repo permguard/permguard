@@ -15,11 +15,30 @@
 
 use permguard_core::metrics::{Metric, SECONDS};
 
-/// Decisions answered, by zone, ledger and outcome: `permit`, `deny`,
-/// `refused` (the request could not be evaluated at all).
+/// Decisions answered, by outcome — the four results of the algebra: `permit`, `deny` (a policy
+/// said no), `deny_by_default` (nothing permitted) and `indeterminate` (a partition could not
+/// evaluate, and no policy denied). A batch is not one of the algebra's results: it counts
+/// `indeterminate` when it is refused, and otherwise the `permit` or `deny` its semantic gave.
+///
+/// # Reading it as an SLO
+///
+/// `indeterminate` is the evaluation-failure rate: requests the plane answered with a typed
+/// refusal instead of a decision, which a PEP fails closed on. It is not a deny rate, and it is
+/// never folded into one; a dashboard that counts `deny + indeterminate` as "denied" would hide a
+/// broken partition behind policy. The partition failures behind it are counted by cause in
+/// [`PARTITION_FAILURES`].
 pub const DECISIONS: Metric = Metric::counter(
     "permguard_authz_decisions_total",
     "Authorization decisions, by outcome.",
+);
+
+/// Partition evaluations that failed, by the stable code of the cause:
+/// `evaluation_deadline_exceeded`, `evaluation_panicked`, `evaluation_failed`,
+/// `evaluation_input_rejected`. Every one makes its request indeterminate unless a policy denied it
+/// — a failure beside a deny that stood is counted too. Stateless and temporal decisions alike.
+pub const PARTITION_FAILURES: Metric = Metric::counter(
+    "permguard_authz_partition_failures_total",
+    "Partition evaluations that failed, by cause.",
 );
 
 /// Requests that never reached a decision, by why: `malformed`,

@@ -596,13 +596,49 @@ fn test_remote_refuses_an_answer_that_is_not_a_decision() {
 
 /// `expect: { error: … }` means the same thing in both modes.
 ///
-/// A plane reports an evaluation it could not perform as `context.reason_admin` with code `500`,
-/// and refuses a request that is missing a field with a `4xx` naming the field. Both are "the
-/// request could not be evaluated", which is what a case expecting an error is asking about.
+/// A plane answers an evaluation it could not perform with the typed refusal
+/// `503 evaluation_indeterminate`, and refuses a request that is missing a field with a `4xx`
+/// naming the field. Both are "the request could not be evaluated", which is what a case expecting
+/// an error is asking about. A plane of an earlier release reported the first as a deny whose
+/// `reason_admin` carried code `500`, and that is still read as the error it was.
 #[test]
 fn test_remote_carries_the_planes_refusals_into_the_expectation() {
-    // An evaluation the plane could not perform.
+    // An evaluation the plane could not perform: indeterminate, refused, not a deny.
     let dir = scratch("remote-error");
+    remote_workspace(&dir, "expect: { error: clearance }");
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            503,
+            r#"{"class":"unavailable","code":"evaluation_indeterminate",
+                "message":"the request could not be evaluated: 1 partition evaluation(s) failed; this is not a deny: cedar: `clearance` does not exist"}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let output = run(
+        &dir,
+        &[
+            "test",
+            "--remote",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--data-endpoint",
+            &format!("http://{}", stub.address),
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "an indeterminate evaluation is the refusal the case expected: {}",
+        stdout(&output)
+    );
+
+    // The same, from a plane of an earlier release: a deny whose reason says it never evaluated.
+    let dir = scratch("remote-error-legacy");
     remote_workspace(&dir, "expect: { error: schema }");
 
     let mut routes = HashMap::new();
@@ -665,6 +701,81 @@ fn test_remote_carries_the_planes_refusals_into_the_expectation() {
     assert!(
         output.status.success(),
         "a refusal of what was asked is an answer a case may expect: {}",
+        stdout(&output)
+    );
+}
+
+/// `permguard check` against a plane that could not evaluate: the refusal, by its code, and never
+/// a deny — and an input the engine rejects is the `400` the plane answers, judged by `test
+/// --remote` as the error a case may expect, as the local run calls it.
+#[test]
+fn test_check_reports_an_indeterminate_result_as_a_refusal_not_a_deny() {
+    let dir = scratch("check-indeterminate");
+    remote_workspace(&dir, "expect: { error: evaluation_input_rejected }");
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            503,
+            r#"{"class":"unavailable","code":"evaluation_indeterminate",
+                "message":"the request could not be evaluated: 1 partition evaluation(s) failed; this is not a deny"}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let output = run(
+        &dir,
+        &[
+            "check",
+            "-f",
+            "requests/read.json",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--data-endpoint",
+            &format!("http://{}", stub.address),
+        ],
+    );
+    let said = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        !output.status.success(),
+        "a refusal is not an answer: {said}"
+    );
+    assert!(said.contains("evaluation_indeterminate"), "{said}");
+    assert!(
+        !said.contains("DENY") && !said.contains("Denied"),
+        "never shown as a deny: {said}"
+    );
+
+    let mut routes = HashMap::new();
+    routes.insert(
+        ("POST".to_owned(), "/access/v1/evaluation".to_owned()),
+        (
+            400,
+            r#"{"class":"validation","code":"evaluation_input_rejected",
+                "message":"the request could not be represented by the engine that evaluates it: 1 partition evaluation(s) failed; this is not a deny"}"#
+                .to_owned(),
+        ),
+    );
+    let stub = serve_owned(routes);
+    let output = run(
+        &dir,
+        &[
+            "test",
+            "--remote",
+            "--zone",
+            "z",
+            "--ledger",
+            "l",
+            "--data-endpoint",
+            &format!("http://{}", stub.address),
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "an input the engine rejects is the refusal the case expected: {}",
         stdout(&output)
     );
 }
