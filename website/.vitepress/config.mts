@@ -31,7 +31,7 @@ export default defineConfig({
   title: 'Permguard Docs',
   description: 'The documentation of Permguard: authorization and trust for the agentic era.',
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}permguard/symbol.svg` }]
+    ['link', { rel: 'icon', type: 'image/x-icon', href: `${base}permguard/favicon.ico` }]
   ],
   cleanUrls: true,
   // Dark by default, like permguard.com; the toggle still offers light.
