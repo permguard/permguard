@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2025 Nitro Agility S.r.l.
@@ -155,9 +157,8 @@ archPretty() {
 # ----- release tag -----
 if [ -z "$REQUESTED_TAG" ]; then
   log "resolving latest release tag…"
-  latest_json="$(curl -fsSL -H "Accept: application/json" "https://github.com/${OWNER}/${REPO}/releases/latest" 2>/dev/null || true)"
-  [ -n "$latest_json" ] || latest_json="$(http_get "https://github.com/${OWNER}/${REPO}/releases/latest")"
-  TAG="$(printf '%s' "$latest_json" | tr -s '\n' ' ' | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')"
+  latest_json="$(http_get "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest")"
+  TAG="$(printf '%s' "$latest_json" | tr -s '\n' ' ' | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p')"
   [ -n "${TAG:-}" ] || die "cannot determine latest tag"
 else
   case "$REQUESTED_TAG" in
@@ -166,7 +167,6 @@ else
     *)  TAG="v$REQUESTED_TAG" ;;
   esac
 fi
-VER_NO_V="${TAG#v}"
 log "using tag: $TAG"
 
 BASE="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}"
@@ -220,6 +220,17 @@ http_download "$SUMFILE" "${BASE}/${CHECKSUM}"
 # Trust roots: the certificate must be issued by the public Sigstore Fulcio via
 # GitHub Actions OIDC, for a workflow of this repository.
 verify_signature() {
+  bundlefile="${tmp}/${CHECKSUM}.sigstore.json"
+  if http_download "$bundlefile" "${BASE}/${CHECKSUM}.sigstore.json"; then
+    cosign verify-blob \
+      --bundle "$bundlefile" \
+      --certificate-identity-regexp "^https://github.com/${OWNER}/${REPO}/" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      "$SUMFILE" >/dev/null 2>&1
+    return
+  fi
+
+  # Releases created before the Sigstore bundle migration used split files.
   sigfile="${tmp}/${CHECKSUM}.sig"
   certfile="${tmp}/${CHECKSUM}.pem"
   http_download "$sigfile" "${BASE}/${CHECKSUM}.sig" || return 1

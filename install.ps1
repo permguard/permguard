@@ -34,6 +34,8 @@ if (-not $Version) {
   $latest = Invoke-RestMethod "https://api.github.com/repos/$Owner/$Repo/releases/latest"
   $Version = $latest.tag_name
   if (-not $Version) { throw "Cannot determine latest tag" }
+} elseif (-not $Version.StartsWith("v")) {
+  $Version = "v$Version"
 }
 Write-Host "[permguard-install] Using tag: $Version" -ForegroundColor Cyan
 
@@ -59,16 +61,33 @@ Invoke-WebRequest -Uri $sumUrl -UseBasicParsing -OutFile $sumFile
 $cosign = Get-Command cosign -ErrorAction SilentlyContinue
 if ($cosign) {
   Write-Host "[permguard-install] Verifying release signature (cosign)…" -ForegroundColor Cyan
-  $sigFile  = Join-Path $tmp.FullName "checksums.txt.sig"
-  $certFile = Join-Path $tmp.FullName "checksums.txt.pem"
-  Invoke-WebRequest -Uri "$sumUrl.sig" -UseBasicParsing -OutFile $sigFile
-  Invoke-WebRequest -Uri "$sumUrl.pem" -UseBasicParsing -OutFile $certFile
-  & cosign verify-blob `
-    --certificate $certFile `
-    --signature $sigFile `
-    --certificate-identity-regexp "^https://github.com/$Owner/$Repo/" `
-    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
-    $sumFile | Out-Null
+  $bundleFile = Join-Path $tmp.FullName "checksums.txt.sigstore.json"
+  $hasBundle = $true
+  try {
+    Invoke-WebRequest -Uri "$sumUrl.sigstore.json" -UseBasicParsing -OutFile $bundleFile
+  } catch {
+    $hasBundle = $false
+  }
+
+  if ($hasBundle) {
+    & cosign verify-blob `
+      --bundle $bundleFile `
+      --certificate-identity-regexp "^https://github.com/$Owner/$Repo/" `
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
+      $sumFile | Out-Null
+  } else {
+    # Releases created before the Sigstore bundle migration used split files.
+    $sigFile  = Join-Path $tmp.FullName "checksums.txt.sig"
+    $certFile = Join-Path $tmp.FullName "checksums.txt.pem"
+    Invoke-WebRequest -Uri "$sumUrl.sig" -UseBasicParsing -OutFile $sigFile
+    Invoke-WebRequest -Uri "$sumUrl.pem" -UseBasicParsing -OutFile $certFile
+    & cosign verify-blob `
+      --certificate $certFile `
+      --signature $sigFile `
+      --certificate-identity-regexp "^https://github.com/$Owner/$Repo/" `
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
+      $sumFile | Out-Null
+  }
   if ($LASTEXITCODE -ne 0) { throw "The release signature on checksums.txt does not verify: refusing to install" }
   Write-Host "[permguard-install] Release signature ok" -ForegroundColor Green
 } elseif ($env:PERMGUARD_VERIFY -eq "signature") {
