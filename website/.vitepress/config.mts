@@ -40,7 +40,7 @@ export default defineConfig({
     // Read by the home page to say which version it documents.
     docsVersion: version,
     logo: {
-      light: '/permguard/logo-dark-txt.png',
+      light: '/permguard/nav-wordmark-dark.svg',
       dark: '/permguard/nav-wordmark-white.svg',
       alt: 'Permguard'
     },
