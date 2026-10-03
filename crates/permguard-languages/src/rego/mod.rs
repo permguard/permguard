@@ -37,6 +37,30 @@ impl Language for Rego {
         "1.0.0"
     }
 
+    fn engine(&self) -> crate::descriptor::Engine {
+        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+
+        Engine {
+            locked: locked::REGO,
+            capabilities: Capabilities {
+                features: crate::registry::engine_features::REGO,
+                extensions: &[],
+                // `time` gives `time.now_ns`; `std` gives `rand.intn` and `uuid` gives
+                // `uuid.rfc4122`. Neither `http` nor `opa-runtime` reaches the network or the
+                // environment in this build.
+                clock: true,
+                randomness: true,
+                io: false,
+            },
+            limits: &["rego_request_timer"],
+            isolation: Isolation {
+                mode: IsolationMode::InProcess,
+                reason: "a cooperative timer bounds each request's work; memory is not bounded \
+                         in-process (LANG-04), and adopting the supervised worker is TL-4",
+            },
+        }
+    }
+
     fn policy_media_type(&self) -> &'static str {
         permguard_core::domains::media::POLICY_REGO
     }

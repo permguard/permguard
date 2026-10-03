@@ -467,33 +467,18 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
         .map(|(evaluator, query)| {
             Box::new(move || {
                 let started = std::time::Instant::now();
-                // Checked here, on the thread that is about to do the work, rather than before
-                // dispatching: a job may sit briefly behind others, and the answer to "is this
-                // still worth doing" is only true at the moment of doing it.
-                let verdict = if query.expired() {
-                    Verdict::deadline_exceeded(
-                        "the decision ran out of time before this partition was evaluated",
-                    )
-                } else {
-                    // Entered with room to recurse in, whatever thread this is: an engine
-                    // handed a stack it cannot measure declines rather than answers. See
-                    // `crate::headroom`.
-                    let verdict = crate::headroom::with(|| evaluator.evaluate(&query));
-                    // A synchronous provider cannot be interrupted once it has
-                    // entered upstream's engine. That does not make its late
-                    // answer valid: in particular, a permit produced after the
-                    // caller's decision budget is a result Permguard must never
-                    // release. Check the same absolute deadline on the way out
-                    // and replace every late answer with a fail-closed refusal.
-                    // A deny a rule determined still stands — the deadline cannot turn it into a
-                    // permit — with the lateness kept beside it.
-                    match query.expired() {
-                        true => verdict.despite(Verdict::deadline_exceeded(
-                            "the partition answered after the decision deadline",
-                        )),
-                        false => verdict,
-                    }
-                };
+                // The panic boundary is the job's own, so it is the same wherever the job runs: on
+                // a pool worker, on the calling thread as the first job, on the calling thread
+                // because the queue was full, or on a pool with no workers at all. Only the
+                // partition that came apart is `E`; a `D` beside it still stands.
+                let verdict = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    evaluate_one(evaluator.as_ref(), &query)
+                }))
+                // The panic's own words stay out: an engine's message can carry policy text or
+                // tenant data, and this one travels into a decision's reason.
+                .unwrap_or_else(|_| {
+                    Verdict::panicked("the partition's engine came apart during evaluation")
+                });
 
                 Answered {
                     verdict,
@@ -505,9 +490,10 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
 
     match crate::fanout::Fanout::shared().run(jobs) {
         Ok(answered) => answered,
-        // An answer short of a partition is not this request's answer. Every partition is reported
-        // as unable to evaluate — `E`, which resolves to indeterminate — the same fail-closed rule
-        // as any other engine fault, applied to the one fault that has no engine to blame.
+        // Every job catches its own panic, so a hole means the pool itself lost a job it had
+        // accepted. An answer short of a partition is not this request's answer: every partition
+        // is reported as unable to evaluate — `E`, which resolves to indeterminate — the same
+        // fail-closed rule as any other fault, applied to the one fault that has no engine to blame.
         Err(lost) => (0..count)
             .map(|_| Answered {
                 verdict: Verdict::panicked(lost.to_string()),
@@ -515,6 +501,33 @@ pub fn evaluate_all(work: Vec<(std::sync::Arc<dyn Evaluator>, Query)>) -> Vec<An
             })
             .collect(),
     }
+}
+
+/// One partition's evaluation, inside the deadline.
+fn evaluate_one(evaluator: &dyn Evaluator, query: &Query) -> Verdict {
+    // Checked here, on the thread that is about to do the work, rather than before dispatching: a
+    // job may sit briefly behind others, and the answer to "is this still worth doing" is only
+    // true at the moment of doing it.
+    if query.expired() {
+        return Verdict::deadline_exceeded(
+            "the decision ran out of time before this partition was evaluated",
+        );
+    }
+    // Entered with room to recurse in, whatever thread this is: an engine handed a stack it cannot
+    // measure declines rather than answers. See `crate::headroom`.
+    let verdict = crate::headroom::with(|| evaluator.evaluate(query));
+    // A synchronous provider cannot be interrupted once it has entered upstream's engine. That does
+    // not make its late answer valid: in particular, a permit produced after the caller's decision
+    // budget is a result Permguard must never release. Checked against the same absolute deadline
+    // on the way out: a late answer gives way to the lateness, except a deny a rule determined,
+    // which the deadline cannot turn into a permit and which stands with the lateness beside it.
+    if query.expired() {
+        return verdict.despite(Verdict::deadline_exceeded(
+            "the partition answered after the decision deadline",
+        ));
+    }
+
+    verdict
 }
 
 /// A compiled, immutable set of policies, ready to answer requests.
@@ -541,9 +554,26 @@ pub trait Evaluator: Send + Sync {
         Ok(())
     }
 
-    /// Roughly how much memory this compiled program holds, for the cache
-    /// that decides what to keep. An estimate — the sources it was built
-    /// from plus what the engine keeps beside them.
+    /// The same check, by `deadline`, telling an input refused from a check that could not run.
+    ///
+    /// `Ok(Ok(()))` admits the input and `Ok(Err(why))` refuses it — the caller's mistake, a
+    /// `400`. `Err(why)` is a check that could not run at all — the partition failing, which a
+    /// plane answers as `evaluation_indeterminate`. The default runs [`Evaluator::check_input`] in
+    /// process, where it always runs; a partition evaluated in a supervised worker overrides it.
+    fn check_input_by(
+        &self,
+        input: &crate::input::PartitionData,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Result<(), String>, String> {
+        let _ = deadline;
+
+        Ok(self.check_input(input))
+    }
+
+    /// How much memory this compiled program holds, for the cache that decides what to keep: a
+    /// conservative estimate of what the engine keeps, never below it (LANG-07,
+    /// `tests/footprint.rs`). Not the size of the sources, which undercounts by an order of
+    /// magnitude.
     fn footprint(&self) -> usize;
 
     /// The policies it was compiled from, by identity, for a report that has
@@ -835,6 +865,105 @@ mod tests {
             outcome.errors.first().map(|error| error.code),
             Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED),
             "and it says an answer is missing, and why"
+        );
+    }
+
+    /// An evaluator that answers what it was built with, after an optional pause, or panics.
+    struct Scripted {
+        answer: Option<Verdict>,
+        pause: std::time::Duration,
+        ran_on: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl Evaluator for Scripted {
+        fn evaluate(&self, _query: &Query) -> Verdict {
+            std::thread::sleep(self.pause);
+            if let Ok(mut ran_on) = self.ran_on.lock() {
+                ran_on.push(std::thread::current().name().unwrap_or_default().to_owned());
+            }
+            match &self.answer {
+                Some(verdict) => verdict.clone(),
+                None => panic!("an engine came apart"),
+            }
+        }
+        fn footprint(&self) -> usize {
+            0
+        }
+        fn policies(&self) -> Vec<String> {
+            Vec::new()
+        }
+    }
+
+    fn scripted(
+        answer: Option<Verdict>,
+        pause_ms: u64,
+        ran_on: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> (std::sync::Arc<dyn Evaluator>, Query) {
+        (
+            std::sync::Arc::new(Scripted {
+                answer,
+                pause: std::time::Duration::from_millis(pause_ms),
+                ran_on: std::sync::Arc::clone(ran_on),
+            }),
+            Query::default(),
+        )
+    }
+
+    /// LANG-05: the first partition runs on the calling thread, outside any pool worker, and its
+    /// panic is still `E` `evaluation_panicked` rather than a panic of the caller.
+    #[test]
+    fn a_panic_in_the_one_partition_the_caller_runs_is_an_evaluation_failure() {
+        let ran_on = std::sync::Arc::default();
+        let answered = evaluate_all(vec![scripted(None, 0, &ran_on)]);
+
+        assert_eq!(answered.len(), 1);
+        assert_eq!(
+            answered[0].verdict.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED)
+        );
+    }
+
+    /// Only the partition that came apart is `E`: a deny a policy decided beside it stands.
+    #[test]
+    fn a_panic_beside_a_deny_does_not_take_the_deny_with_it() {
+        let ran_on = std::sync::Arc::default();
+        let answered = evaluate_all(vec![
+            scripted(Some(Verdict::deny(vec!["d1".to_owned()])), 0, &ran_on),
+            scripted(None, 0, &ran_on),
+        ]);
+
+        assert_eq!(answered[0].verdict.determining(), ["d1".to_owned()]);
+        assert_eq!(
+            answered[1].verdict.error().map(|error| error.code),
+            Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED)
+        );
+        let outcome = resolve(answered.into_iter().map(|held| held.verdict));
+        assert_eq!(outcome.resolution, Resolution::Deny);
+    }
+
+    /// With the queue full, the caller runs the overflow itself — and every one of those jobs has
+    /// the same boundary as a worker's: each panic is that partition's `E`, none is lost.
+    #[test]
+    fn panics_on_workers_and_on_the_overflowing_caller_are_each_their_partitions_failure() {
+        let ran_on = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let count = 64;
+        let work = (0..count).map(|_| scripted(None, 10, &ran_on)).collect();
+
+        let answered = evaluate_all(work);
+
+        assert_eq!(answered.len(), count, "no partition is lost");
+        assert!(answered.iter().all(|held| {
+            held.verdict.error().map(|error| error.code)
+                == Some(permguard_core::codes::pdp_native::EVALUATION_PANICKED)
+        }));
+        let ran_on = ran_on.lock().expect("not poisoned");
+        let on_the_caller = ran_on
+            .iter()
+            .filter(|name| name.as_str() != "permguard-evaluate")
+            .count();
+        assert!(
+            on_the_caller > 1,
+            "the caller ran its own job and the overflow: {on_the_caller} of {count}"
         );
     }
 

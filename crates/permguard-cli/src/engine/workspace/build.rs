@@ -399,7 +399,8 @@ fn build_directory(
             .ok_or_else(|| err(format!("{child_fs} vanished mid-read")))?;
 
         if let Some(artifact) = artifact {
-            if let Err(error) = artifact.validate(&source) {
+            if let Err(error) = permguard_languages::registry::validate_artifact(artifact, &source)
+            {
                 context.problems.push(format!("{child_fs}: {error}"));
                 continue;
             }

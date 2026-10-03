@@ -250,12 +250,7 @@ impl Loading {
 
         let mut compiled = Vec::new();
         for name in names {
-            let key = Cache::partition_key(
-                &mirror.identity.zone_id,
-                &mirror.identity.ledger_id,
-                &head.commit,
-                &name,
-            );
+            let key = partition_key(mirror, head, &name);
             if let Some(held) = self.cache.partition(&key) {
                 self.metrics.count(
                     &super::measure::CACHE_LOOKUPS,
@@ -302,7 +297,8 @@ impl Loading {
                 bytes = partition.footprint,
                 "a partition was compiled and kept in memory"
             );
-            self.cache.keep_partition(key, Arc::clone(&partition));
+            self.cache
+                .keep_partition(key, &mirror.identity.zone_id, Arc::clone(&partition));
             compiled.push(partition);
         }
 
@@ -663,18 +659,14 @@ impl Decider {
         // whatever a caller asks for should already be in memory.
         let mut compiled = 0;
         for name in head.manifest.partitions.keys() {
-            let key = Cache::partition_key(
-                &mirror.identity.zone_id,
-                &mirror.identity.ledger_id,
-                &head.commit,
-                name,
-            );
+            let key = partition_key(mirror, &head, name);
             if self.cache.partition(&key).is_some() {
                 continue;
             }
             match snapshot::compile(&mirror.path, &head, name) {
                 Ok(partition) => {
-                    self.cache.keep_partition(key, partition);
+                    self.cache
+                        .keep_partition(key, &mirror.identity.zone_id, partition);
                     compiled += 1;
                 }
                 Err(Refusal::Incompatible(detail)) => {
@@ -884,11 +876,14 @@ impl Decider {
                         ),
                     )
                 }
+                // The worker's own account — a panic's message among it — is internal detail: an
+                // engine's words can carry policy text or tenant data.
                 crate::blocking::Refused::Failed(why) => ApiError::new(
                     ErrorClass::Internal,
                     "decision_failed",
-                    format!("the evaluation did not complete: {why}"),
-                ),
+                    "the evaluation did not complete",
+                )
+                .with_internal(why),
             })??;
 
         // The whole request's verdict: for a plain request it is the one decision; for a
@@ -1231,6 +1226,30 @@ struct OwnedDecided {
     latency_us: u64,
     /// The occurrence this decision was made about, for a temporal one.
     event: Option<permguard_decisions::record::EventRef>,
+}
+
+/// The compiled-cache key of one partition: its ledger, its commit, its name, and the descriptor
+/// digest of the runtime that compiles it. An engine upgrade, a feature or a limit is a new key, so
+/// a program compiled by another build is never served. A partition whose runtime this build does
+/// not carry gets a key nothing is ever kept under: compiling it is refused.
+fn partition_key(mirror: &store::Mirror, head: &Head, partition: &str) -> String {
+    let descriptor = head
+        .manifest
+        .partitions
+        .get(partition)
+        .and_then(|declared| head.manifest.runtimes.get(&declared.runtime))
+        .and_then(|runtime| {
+            permguard_languages::descriptor::descriptor_digest(&runtime.language.name)
+        })
+        .unwrap_or("not-carried");
+
+    Cache::partition_key(
+        &mirror.identity.zone_id,
+        &mirror.identity.ledger_id,
+        &head.commit,
+        partition,
+        descriptor,
+    )
 }
 
 /// The record's spelling of a resolution.
@@ -1667,6 +1686,7 @@ impl Plan {
                             .and_then(|declared| declared.input.as_ref()),
                     )
                     .evaluated_by(partition.evaluator())
+                    .until(self.deadline)
             })
             .collect();
 
@@ -1684,7 +1704,16 @@ impl Plan {
                     &[(permguard_core::metrics::labels::REASON, "malformed")],
                 );
 
-                ApiError::new(ErrorClass::Validation, malformed.code, malformed.message)
+                // A partition whose input check came apart could not evaluate the request: that is
+                // the plane's failure, answered as an indeterminate result, not the caller's.
+                let class = if malformed.code
+                    == permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE
+                {
+                    ErrorClass::Unavailable
+                } else {
+                    ErrorClass::Validation
+                };
+                ApiError::new(class, malformed.code, malformed.message)
             })?;
             // Which declared inputs this evaluation left out — decided against the type's empty
             // input, legally, and said so beside the answer and in its record.

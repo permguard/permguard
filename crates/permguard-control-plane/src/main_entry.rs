@@ -12,6 +12,10 @@ const PRODUCT_ABOUT: &str = "Permguard control plane";
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // The control plane validates pushed policies with the engines' own parsers: a panic among
+    // them is reported by where it happened, never by its words.
+    permguard_languages::guard::report_panics_without_their_words();
+
     let identity = ProductIdentity::new(
         BINARY_NAME,
         PRODUCT_NAME,

@@ -439,7 +439,10 @@ impl Submitter {
         // the same events.
         let mut checks: Vec<Verified<'_>> = Vec::with_capacity(addressed.len());
         for (partition, engine) in &addressed {
-            let checked = engine.check(&occurrence).map_err(|refused| {
+            let checked = contained(permguard_core::codes::common::INTERNAL, || {
+                engine.check(&occurrence)
+            })
+            .map_err(|refused| {
                 self.metrics.count(
                     &measure::REFUSALS,
                     &[(permguard_core::metrics::labels::REASON, refused.code)],
@@ -451,8 +454,15 @@ impl Submitter {
                     "an occurrence was refused before anything was recorded"
                 );
 
+                // An engine that came apart checking it refused nothing about the occurrence: that
+                // is this plane's failure, not the caller's.
+                let class = if refused.code == permguard_core::codes::common::INTERNAL {
+                    ErrorClass::Internal
+                } else {
+                    ErrorClass::Validation
+                };
                 ApiError::new(
-                    ErrorClass::Validation,
+                    class,
                     refused.code,
                     format!("the partition `{}`: {}", partition.name, refused.message),
                 )
@@ -1082,7 +1092,17 @@ impl Submitter {
         let mut verdicts = Vec::with_capacity(checks.len());
         let mut complete = true;
         for (partition, engine, checked) in checks {
-            match engine.apply(history, occurrence, checked) {
+            // Inside the panic boundary: an engine that came apart applying a durable occurrence is
+            // that partition's `E`, never a lost submission.
+            let applied = permguard_languages::guard::contained(|| {
+                engine.apply(history, occurrence, checked)
+            })
+            .unwrap_or_else(|_| {
+                Applied::Decided(permguard_languages::evaluate::Verdict::panicked(
+                    "the partition's engine came apart applying the occurrence",
+                ))
+            });
+            match applied {
                 Applied::Observed if !checked.decides => {}
                 Applied::Observed => {
                     complete = false;
@@ -1655,7 +1675,11 @@ impl Submitter {
             checks
                 .iter()
                 .filter(|(partition, engine, _)| {
-                    engine.observed(history) == 0
+                    // Inside the panic boundary, under this lock: a panic here would poison it and
+                    // refuse every submission until a restart. One that came apart reads as a
+                    // history never observed, which rebuilds it.
+                    permguard_languages::guard::contained(|| engine.observed(history)).unwrap_or(0)
+                        == 0
                         || applied.get(&key_of(&partition.name)) != Some(&watermark)
                 })
                 .map(|(partition, _, _)| partition.name.clone())
@@ -1694,7 +1718,17 @@ impl Submitter {
                 {
                     continue;
                 }
-                let checked = engine.check(&stored.occurrence).map_err(|refused| {
+                let checked = contained(permguard_core::codes::common::UNAVAILABLE, || {
+                    engine.check(&stored.occurrence)
+                })
+                .map_err(|refused| {
+                    if refused.code == permguard_core::codes::common::UNAVAILABLE {
+                        return ApiError::new(
+                            ErrorClass::Unavailable,
+                            refused.code,
+                            refused.message,
+                        );
+                    }
                     ApiError::new(
                         ErrorClass::Unavailable,
                         "history_contract_incompatible",
@@ -1724,7 +1758,10 @@ impl Submitter {
                 }
                 occurrences.push(stored.occurrence.clone());
             }
-            engine.rebuild(history, &occurrences).map_err(|refused| {
+            contained(permguard_core::codes::common::UNAVAILABLE, || {
+                engine.rebuild(history, &occurrences)
+            })
+            .map_err(|refused| {
                 warn!(
                     event.name = "temporal.rebuild_failed",
                     component = COMPONENT,
@@ -2287,6 +2324,20 @@ fn history_digest(pins: &[String], values: &[String]) -> Result<String, ApiError
             "history_key_not_canonical",
             format!("the history key could not be canonicalized: {error}"),
         )
+    })
+}
+
+/// A temporal engine entry inside the panic boundary: a panic is refused under `code`, and its
+/// own words — an engine's, which can carry policy text or tenant data — stay out of the refusal.
+fn contained<T>(
+    code: &'static str,
+    work: impl FnOnce() -> Result<T, temporal::Refused>,
+) -> Result<T, temporal::Refused> {
+    permguard_languages::guard::contained(work).unwrap_or_else(|_| {
+        Err(temporal::Refused::new(
+            code,
+            "the partition's engine came apart; nothing was decided",
+        ))
     })
 }
 

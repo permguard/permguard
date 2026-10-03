@@ -1,0 +1,182 @@
+{
+  "domain": "permguard.language.descriptor.v1\n",
+  "languages": [
+    {
+      "descriptor": {
+        "name": "cedar",
+        "language_version": "4.11.0",
+        "engine_name": "cedar-policy",
+        "engine_version": "4.11.0",
+        "engine_build": "sha256:a4c818cbfab25183d5765e897e5d1c00c6237d474a0bbef34311c0d50f3fe6e7",
+        "experimental": false,
+        "evaluation_interfaces": [
+          {
+            "id": "permguard.api.pdp.native.v1",
+            "role": "evaluator"
+          }
+        ],
+        "media_types": [
+          "application/vnd.permguard.policy.cedar",
+          "application/vnd.permguard.schema.cedar"
+        ],
+        "artifacts": [
+          "permguard.cedar.schema.v1"
+        ],
+        "inputs": [
+          "permguard.cedar.entities.v1"
+        ],
+        "capabilities": {
+          "features": [
+            "datetime",
+            "decimal",
+            "ipaddr"
+          ],
+          "extensions": [
+            "datetime",
+            "decimal",
+            "ipaddr"
+          ],
+          "clock": false,
+          "randomness": false,
+          "io": false
+        },
+        "limits": [
+          "deadline_after_evaluation",
+          "deadline_before_evaluation",
+          "panic_boundary",
+          "stack_headroom"
+        ],
+        "isolation": {
+          "mode": "in_process",
+          "reason": "Cedar evaluation terminates by construction and holds no state between requests"
+        }
+      },
+      "digest": "sha256:9912067a5cc4eb96bd06f910db6a339e4dcb71cce041b2c7bc46a768e152804c"
+    },
+    {
+      "descriptor": {
+        "name": "dogwood",
+        "language_version": "1.0.0",
+        "engine_name": "amzn-dogwood-language",
+        "engine_version": "1.0.0",
+        "engine_build": "sha256:084e7dcdb33b5c35a957b4ef36cdaa2a7fbb24462cc0c25f5291a5b01af02f35",
+        "experimental": true,
+        "evaluation_interfaces": [
+          {
+            "id": "permguard.api.pdp.temporal.v1alpha1",
+            "role": "temporal"
+          }
+        ],
+        "media_types": [
+          "application/vnd.permguard.dogwood.action-schema",
+          "application/vnd.permguard.dogwood.event-schema",
+          "application/vnd.permguard.dogwood.macros",
+          "application/vnd.permguard.dogwood.provider.rhai",
+          "application/vnd.permguard.dogwood.providers",
+          "application/vnd.permguard.policy.dogwood"
+        ],
+        "artifacts": [
+          "permguard.dogwood.action-schema.v1",
+          "permguard.dogwood.event-schema.v1",
+          "permguard.dogwood.macros.v1",
+          "permguard.dogwood.provider.rhai.v1",
+          "permguard.dogwood.providers.v1"
+        ],
+        "inputs": [
+          "permguard.dogwood.event.v1"
+        ],
+        "capabilities": {
+          "features": [],
+          "extensions": [
+            "datetime",
+            "decimal",
+            "ipaddr",
+            "rhai_providers"
+          ],
+          "clock": false,
+          "randomness": false,
+          "io": false
+        },
+        "limits": [
+          "panic_boundary",
+          "provider_call_levels",
+          "provider_data_size",
+          "provider_operations",
+          "stack_headroom"
+        ],
+        "isolation": {
+          "mode": "in_process",
+          "reason": "provider work is bounded by operation and data-size limits but not by wall clock (LANG-08), and adopting the supervised worker is TL-5"
+        }
+      },
+      "digest": "sha256:bd6dfcfdfc9a1cc12d2a022b32f13ad758d3b09de0c9550ab0a680eb897b323f"
+    },
+    {
+      "descriptor": {
+        "name": "rego",
+        "language_version": "1.0.0",
+        "engine_name": "regorus",
+        "engine_version": "0.12.0",
+        "engine_build": "sha256:845bc0a884dd07d51d08eedddb17485d83c880906a7372625f75ae47230ce9dd",
+        "experimental": false,
+        "evaluation_interfaces": [
+          {
+            "id": "permguard.api.pdp.native.v1",
+            "role": "evaluator"
+          }
+        ],
+        "media_types": [
+          "application/vnd.permguard.policy.rego",
+          "application/vnd.permguard.schema.rego+json"
+        ],
+        "artifacts": [
+          "permguard.rego.schema.v1"
+        ],
+        "inputs": [
+          "permguard.rego.data.v1"
+        ],
+        "capabilities": {
+          "features": [
+            "arc",
+            "base64",
+            "base64url",
+            "cache",
+            "coverage",
+            "glob",
+            "graph",
+            "hex",
+            "http",
+            "jsonpatch",
+            "jsonschema",
+            "net",
+            "opa-runtime",
+            "regex",
+            "rvm",
+            "semver",
+            "std",
+            "time",
+            "urlquery",
+            "uuid",
+            "yaml"
+          ],
+          "extensions": [],
+          "clock": true,
+          "randomness": true,
+          "io": false
+        },
+        "limits": [
+          "deadline_after_evaluation",
+          "deadline_before_evaluation",
+          "panic_boundary",
+          "rego_request_timer",
+          "stack_headroom"
+        ],
+        "isolation": {
+          "mode": "in_process",
+          "reason": "a cooperative timer bounds each request's work; memory is not bounded in-process (LANG-04), and adopting the supervised worker is TL-4"
+        }
+      },
+      "digest": "sha256:369c4f0587893d81b6221460f4ec62b64c0e42f84828f84346787d165fdb79ad"
+    }
+  ]
+}

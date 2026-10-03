@@ -72,6 +72,9 @@ pub use crate::failure::{
 };
 
 fn main() -> ExitCode {
+    // A process started as a supervised evaluation worker answers frames and exits.
+    permguard_languages::worker::serve_if_worker();
+
     // Claimed once, for the whole command: a policy engine guards its own recursion by asking how
     // much stack is left, and on a musl build — which every Linux release is — the answer for the
     // process's first thread is the pages that happen to be mapped rather than the stack it has.
@@ -117,6 +120,16 @@ fn run_command() -> ExitCode {
     };
 
     let format = cli.globals.output;
+
+    // The catalogue of languages this binary carries, checked before any command reads policy: a
+    // build whose registries collide would classify a workspace's files by whichever language a
+    // lookup happened to reach first (LANG-12).
+    if let Err(collision) = permguard_languages::registry::check_registry() {
+        return Failure::internal(format!(
+            "this build's language catalogue is inconsistent: {collision}"
+        ))
+        .report(format);
+    }
 
     match run(cli) {
         Ok(code) => code,

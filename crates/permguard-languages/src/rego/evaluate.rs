@@ -115,13 +115,9 @@ impl Evaluating for Rego {
         let schema = artifacts.bytes(crate::rego::SCHEMA_ARTIFACT);
         let validator = schema.map(compile_schema).transpose()?;
 
-        let mut engine = Engine::new();
-        engine.set_execution_timer_config(ExecutionTimerConfig {
-            limit: RULE_BUDGET,
-            check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL).unwrap_or(NonZeroU32::MIN),
-        });
+        let mut engine = prepared_engine();
         let mut modules = Vec::new();
-        let mut footprint = 0;
+        let mut policy_bytes = 0;
         // Which policy claimed each package. A package is Rego's unit of aggregation, and this is
         // what makes "one package, one citable policy" checkable rather than assumed.
         let mut claimed: std::collections::BTreeMap<String, String> =
@@ -141,14 +137,17 @@ impl Evaluating for Rego {
                 allow: defined(&mut engine, &format!("{package}.allow")),
                 deny: defined(&mut engine, &format!("{package}.deny")),
             });
-            footprint += stored.source.len();
+            policy_bytes += stored.source.len();
         }
+
+        // Whatever the compile-time probes printed is not carried into every request's clone.
+        let _ = engine.take_prints();
 
         Ok(Box::new(RegoEvaluator {
             engine,
             modules,
             validator,
-            footprint: footprint + schema.map_or(0, <[u8]>::len),
+            footprint: footprint(policy_bytes, schema.map_or(0, <[u8]>::len)),
         }))
     }
 }
@@ -186,6 +185,39 @@ struct RegoEvaluator {
     /// The partition's compiled JSON Schema, when it declares one.
     validator: Option<jsonschema::Validator>,
     footprint: usize,
+}
+
+/// An engine as every partition of this adapter starts: the per-rule budget, and `print` gathered
+/// rather than written.
+///
+/// Regorus writes a policy's `print(...)` to the process's standard error unless told to gather it.
+/// A policy that printed `input.subject.id` would put tenant data into the container's logs, past
+/// the log field classification — so it is gathered into the per-request clone of the engine, and
+/// dropped with it.
+fn prepared_engine() -> Engine {
+    let mut engine = Engine::new();
+    engine.set_execution_timer_config(ExecutionTimerConfig {
+        limit: RULE_BUDGET,
+        check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL).unwrap_or(NonZeroU32::MIN),
+    });
+    engine.set_gather_prints(true);
+    engine
+}
+
+/// What a compiled Rego partition keeps, conservatively (LANG-07).
+///
+/// Regorus's prepared engine — parsed modules, the analysed rule graph — and a compiled JSON
+/// Schema, regular expressions included, weigh far more than their text: measured, about 80 times
+/// the module bytes and over 100 times a pattern-heavy schema's, plus a fixed overhead. The
+/// estimate is roughly twice that; `tests/footprint.rs` proves it is never below what the engine
+/// retains. An estimate, not a hard bound: that is a supervised worker's `RLIMIT_AS` (LANG-04).
+fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
+    const BASE: usize = 64 * 1024;
+    const PER_POLICY_BYTE: usize = 160;
+    const PER_SCHEMA_BYTE: usize = 256;
+
+    BASE.saturating_add(policy_bytes.saturating_mul(PER_POLICY_BYTE))
+        .saturating_add(schema_bytes.saturating_mul(PER_SCHEMA_BYTE))
 }
 
 impl Evaluator for RegoEvaluator {
@@ -813,6 +845,31 @@ deny if input.resource.id in input.partition.frozen_services
             Some(permguard_core::codes::pdp_native::EVALUATION_FAILED),
             "no deny rule is true: the failure is the answer"
         );
+    }
+
+    /// A policy's `print` never reaches the process's standard error: the adapter's engines gather
+    /// it, and the per-request clone that gathered it is dropped.
+    #[test]
+    fn a_policys_print_is_gathered_and_never_written() {
+        let mut engine = super::prepared_engine();
+        engine
+            .add_policy(
+                "printing.rego".to_owned(),
+                "package printing\n\nimport rego.v1\n\nallow if {\n    print(\"subject\", input.subject.id)\n}\n"
+                    .to_owned(),
+            )
+            .expect("the module parses");
+        engine.set_input(
+            regorus::Value::from_json_str(r#"{"subject": {"id": "alice"}}"#).expect("input"),
+        );
+
+        let answer = engine
+            .eval_rule("data.printing.allow".to_owned())
+            .expect("it evaluates");
+        assert_eq!(answer, regorus::Value::Bool(true));
+        let printed = engine.take_prints().expect("the prints are held");
+        assert_eq!(printed.len(), 1, "gathered, not written: {printed:?}");
+        assert!(printed[0].contains("alice"));
     }
 
     /// Two files in one package are one rule set, and a decision must not claim otherwise.

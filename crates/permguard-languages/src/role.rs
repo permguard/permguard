@@ -36,6 +36,11 @@ pub trait Language: Send + Sync {
     /// The language version this plugin implements, for the manifest gate.
     fn language_version(&self) -> &'static str;
 
+    /// The engine behind this language: its locked identity, what its build can reach, the limits
+    /// it enforces and where it runs. Required, because a language that cannot say which engine
+    /// evaluates its policies has no descriptor ([`crate::descriptor::Descriptor`]).
+    fn engine(&self) -> crate::descriptor::Engine;
+
     /// Whether this runtime's contracts are still provisional.
     ///
     /// A language answers for itself, and the gate asks rather than consulting a list. The list was
@@ -155,6 +160,13 @@ pub trait Language: Send + Sync {
     /// anything is compiled: a manifest names profiles and partitions, and whether the two agree
     /// about which interface they are for has to be answerable at the load gate.
     fn is_temporal(&self) -> bool {
+        false
+    }
+
+    /// Whether every engine entry of this language is inside the panic boundary
+    /// ([`crate::guard::Guarded`]); what the registry hands out always is.
+    #[doc(hidden)]
+    fn guarded(&self) -> bool {
         false
     }
 

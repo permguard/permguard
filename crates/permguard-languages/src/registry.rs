@@ -331,6 +331,239 @@ pub fn check_profile_runtimes(
     Ok(())
 }
 
+/// Refuses a catalogue that cannot be served unambiguously: the startup check of LANG-12.
+///
+/// Run by every process that reads policy — both planes at startup, the CLI before it touches a
+/// workspace — so a build whose registries collide never starts rather than answering for
+/// whichever language a lookup happened to reach first. Tests prove the built-ins pass; this is
+/// what proves it at runtime, for the binary actually running.
+pub fn check_registry() -> Result<(), String> {
+    check_catalogue(
+        crate::lookup::languages(),
+        &crate::artifact::artifact_types(),
+        crate::input::input_types(),
+    )
+}
+
+/// The same check, over a catalogue a caller assembles.
+///
+/// Refuses a duplicate language name; a media type owned twice (a language's legacy schema media
+/// type and its own schema artifact's are one ownership, not two); a duplicate artifact or input
+/// name, or one owned by a language the catalogue does not hold; and, inside one language, any
+/// file-classification rule that cannot decide: two artifacts sharing an extension where neither
+/// reserves a file name, two reserving the same file name, or a policy or schema extension that a
+/// non-policy artifact without a reserved file name also claims.
+pub fn check_catalogue(
+    languages: &[&dyn Language],
+    artifacts: &[&dyn crate::artifact::ArtifactType],
+    inputs: &[&dyn crate::input::InputType],
+) -> Result<(), String> {
+    use std::collections::BTreeMap;
+
+    let mut names = std::collections::BTreeSet::new();
+    for language in languages {
+        if language.name().is_empty() || !names.insert(language.name()) {
+            return Err(format!(
+                "the language name `{}` is registered more than once, or is empty",
+                language.name()
+            ));
+        }
+    }
+
+    // Every media type, with the language that owns it.
+    let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+    owners.insert(MEDIA_TYPE_MANIFEST, "the object model");
+    let own = |media_type: &'static str, owner: &'static str, owners: &mut BTreeMap<&str, &str>| {
+        match owners.insert(media_type, owner) {
+            Some(previous) if previous != owner => Err(format!(
+                "the media type `{media_type}` is owned by both `{previous}` and `{owner}`"
+            )),
+            _ => Ok(()),
+        }
+    };
+    for language in languages {
+        own(language.policy_media_type(), language.name(), &mut owners)?;
+        if let Some(schema) = language.schema_media_type() {
+            own(schema, language.name(), &mut owners)?;
+        }
+    }
+    let mut artifact_names = std::collections::BTreeSet::new();
+    let mut artifact_media = std::collections::BTreeSet::new();
+    for artifact in artifacts {
+        if !names.contains(artifact.runtime()) {
+            return Err(format!(
+                "the artifact `{}` names the runtime `{}`, which this build does not carry",
+                artifact.name(),
+                artifact.runtime()
+            ));
+        }
+        if !artifact_names.insert(artifact.name()) {
+            return Err(format!(
+                "the artifact name `{}` is registered more than once",
+                artifact.name()
+            ));
+        }
+        if !artifact_media.insert(artifact.media_type()) {
+            return Err(format!(
+                "the media type `{}` names two artifacts",
+                artifact.media_type()
+            ));
+        }
+        own(artifact.media_type(), artifact.runtime(), &mut owners)?;
+    }
+    let mut input_names = std::collections::BTreeSet::new();
+    for input in inputs {
+        if !names.contains(input.runtime()) {
+            return Err(format!(
+                "the input type `{}` names the runtime `{}`, which this build does not carry",
+                input.name(),
+                input.runtime()
+            ));
+        }
+        if !input_names.insert(input.name()) {
+            return Err(format!(
+                "the input type `{}` is registered more than once",
+                input.name()
+            ));
+        }
+    }
+
+    for language in languages {
+        check_own_types(*language)?;
+        check_classification(*language)?;
+        crate::descriptor::Descriptor::of(*language)
+            .canonical()
+            .map_err(|why| {
+                format!(
+                    "`{}`'s descriptor has no canonical form: {why}",
+                    language.name()
+                )
+            })?;
+    }
+
+    Ok(())
+}
+
+/// Inside one language, the one media type two of its own things may share is its legacy schema
+/// media type and its own schema artifact's — the same schema under two contracts. A policy media
+/// type an artifact of its also claims would make its policies read as that artifact. And every
+/// artifact a language lists is that language's.
+fn check_own_types(language: &dyn Language) -> Result<(), String> {
+    use crate::artifact::ArtifactRole;
+
+    for artifact in language.artifacts() {
+        if artifact.runtime() != language.name() {
+            return Err(format!(
+                "`{}` lists the artifact `{}`, which names the runtime `{}`",
+                language.name(),
+                artifact.name(),
+                artifact.runtime()
+            ));
+        }
+        if artifact.media_type() == language.policy_media_type() {
+            return Err(format!(
+                "`{}`'s artifact `{}` claims the language's own policy media type `{}`",
+                language.name(),
+                artifact.name(),
+                artifact.media_type()
+            ));
+        }
+        if language.schema_media_type() == Some(artifact.media_type())
+            && artifact.role() != ArtifactRole::Schema
+        {
+            return Err(format!(
+                "`{}`'s artifact `{}` claims the language's schema media type `{}` and is not its \
+                 schema",
+                language.name(),
+                artifact.name(),
+                artifact.media_type()
+            ));
+        }
+    }
+    if language.schema_media_type() == Some(language.policy_media_type()) {
+        return Err(format!(
+            "`{}` uses one media type for its policies and its schema",
+            language.name()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Whether one language's authored files can always be told apart.
+fn check_classification(language: &dyn Language) -> Result<(), String> {
+    use crate::artifact::ArtifactRole;
+
+    let owned = language.artifacts();
+    let unreserved =
+        |held: &&dyn crate::artifact::ArtifactType| held.canonical_filename().is_none();
+    for (at, artifact) in owned.iter().enumerate() {
+        for other in owned.iter().skip(at + 1) {
+            let shared = artifact
+                .extensions()
+                .iter()
+                .find(|extension| other.extensions().contains(extension));
+            if let Some(extension) = shared
+                && unreserved(artifact)
+                && unreserved(other)
+            {
+                return Err(format!(
+                    "`{}`'s artifacts `{}` and `{}` share the extension `.{extension}` and neither \
+                     reserves a file name, so a file of that extension cannot be classified",
+                    language.name(),
+                    artifact.name(),
+                    other.name()
+                ));
+            }
+            if artifact.canonical_filename().is_some()
+                && artifact.canonical_filename() == other.canonical_filename()
+            {
+                return Err(format!(
+                    "`{}`'s artifacts `{}` and `{}` reserve the same file name",
+                    language.name(),
+                    artifact.name(),
+                    other.name()
+                ));
+            }
+        }
+    }
+    let Some(authoring) = language.authoring() else {
+        return Ok(());
+    };
+    for extension in authoring
+        .file_extensions()
+        .iter()
+        .chain(authoring.schema_file_extensions())
+    {
+        let claimed = owned.iter().find(|held| {
+            held.role() != ArtifactRole::Policy
+                && unreserved(held)
+                && held.extensions().contains(extension)
+                && !authoring.schema_file_extensions().contains(extension)
+        });
+        if let Some(held) = claimed {
+            return Err(format!(
+                "`{}` authors `.{extension}` files and its artifact `{}` claims the same extension \
+                 without reserving a file name, so those files cannot be classified",
+                language.name(),
+                held.name()
+            ));
+        }
+    }
+    if let Some(extension) = authoring
+        .file_extensions()
+        .iter()
+        .find(|extension| authoring.schema_file_extensions().contains(extension))
+    {
+        return Err(format!(
+            "`{}` authors `.{extension}` files as both policies and schemas",
+            language.name()
+        ));
+    }
+
+    Ok(())
+}
+
 /// Validates one blob against its registered media type — the ingest rule,
 /// run by the server on what arrives and by the client on what it builds.
 /// An unregistered media type is rejected, fail-closed, never stored as
@@ -368,14 +601,29 @@ pub fn validate_blob(media_type: &str, data: &[u8]) -> Result<(), BlobRejected> 
     // would hand an action schema to the policy parser and report the refusal as a broken policy —
     // an error about the wrong file, for a bundle that is in fact well formed.
     if let Some((_, artifact)) = crate::lookup::artifact_for_media_type(media_type) {
-        return artifact
-            .validate(data)
-            .map_err(|e| rejected("blob_rejected", e));
+        return validate_artifact(artifact, data).map_err(|e| rejected("blob_rejected", e));
     }
 
     language
         .validate_policy(data)
         .map_err(|e| rejected("blob_rejected", e))
+}
+
+/// One artifact against its registered type, inside the panic boundary: an artifact's validator
+/// is an engine entry like a policy's — Dogwood's parse the action and event schemas, the macro
+/// library and the provider declarations with upstream's own parsers.
+pub fn validate_artifact(
+    artifact: &dyn crate::artifact::ArtifactType,
+    data: &[u8],
+) -> Result<(), String> {
+    crate::guard::contained(|| artifact.validate(data)).unwrap_or_else(|_| {
+        Err(format!(
+            "the `{}` engine came apart validating a `{}` artifact; nothing it was given was \
+             accepted",
+            artifact.runtime(),
+            artifact.name()
+        ))
+    })
 }
 
 /// The alias a policy source declares, read by its own language — the
@@ -567,6 +815,216 @@ mod tests {
             assert!(enabled.allows(name));
             assert!(!Enabled::stable_only().allows(name));
         }
+    }
+
+    /// A language that only exists to collide: it borrows whatever it is told to.
+    struct Impostor {
+        name: &'static str,
+        policy: &'static str,
+        artifacts: &'static [&'static dyn crate::artifact::ArtifactType],
+    }
+
+    impl Language for Impostor {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn language_version(&self) -> &'static str {
+            "1.0.0"
+        }
+        fn engine(&self) -> crate::descriptor::Engine {
+            crate::lookup::language("cedar").expect("carried").engine()
+        }
+        fn policy_media_type(&self) -> &'static str {
+            self.policy
+        }
+        fn schema_media_type(&self) -> Option<&'static str> {
+            None
+        }
+        fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
+            self.artifacts
+        }
+        fn validate_policy(&self, _bytes: &[u8]) -> Result<(), String> {
+            Ok(())
+        }
+        fn declared_alias(&self, _source: &[u8]) -> Option<String> {
+            None
+        }
+    }
+
+    /// An artifact of the impostor's, with a name, a media type and an extension.
+    struct Thing(&'static str, &'static str, &'static [&'static str]);
+
+    impl crate::artifact::ArtifactType for Thing {
+        fn name(&self) -> &'static str {
+            self.0
+        }
+        fn media_type(&self) -> &'static str {
+            self.1
+        }
+        fn runtime(&self) -> &'static str {
+            "impostor"
+        }
+        fn role(&self) -> crate::artifact::ArtifactRole {
+            crate::artifact::ArtifactRole::Schema
+        }
+        fn semantic_role(&self) -> &'static str {
+            "a thing"
+        }
+        fn extensions(&self) -> &'static [&'static str] {
+            self.2
+        }
+        fn cardinality(&self) -> crate::artifact::Cardinality {
+            crate::artifact::Cardinality::ZeroOrOne
+        }
+        fn validate(&self, _bytes: &[u8]) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn with(extra: &'static dyn Language) -> Vec<&'static dyn Language> {
+        crate::lookup::languages()
+            .iter()
+            .copied()
+            .chain(std::iter::once(extra))
+            .collect()
+    }
+
+    fn artifacts_of(
+        languages: &[&'static dyn Language],
+    ) -> Vec<&'static dyn crate::artifact::ArtifactType> {
+        languages
+            .iter()
+            .flat_map(|language| language.artifacts().iter().copied())
+            .collect()
+    }
+
+    /// LANG-12: the catalogue this build carries passes the startup check.
+    #[test]
+    fn the_built_in_catalogue_passes_the_startup_check() {
+        check_registry().expect("the built-ins do not collide");
+    }
+
+    /// LANG-12: every collision is a startup error, not a test assertion.
+    #[test]
+    fn every_collision_in_the_catalogue_is_a_startup_error() {
+        let inputs = crate::input::input_types();
+
+        static BORROWS_CEDAR: Impostor = Impostor {
+            name: "impostor",
+            policy: crate::cedar::POLICY_MEDIA_TYPE,
+            artifacts: &[],
+        };
+        let languages = with(&BORROWS_CEDAR);
+        let refused = check_catalogue(&languages, &artifacts_of(&languages), inputs)
+            .expect_err("a media type owned twice");
+        assert!(refused.contains("owned by both"), "{refused}");
+
+        static NAMED_CEDAR: Impostor = Impostor {
+            name: "cedar",
+            policy: "application/vnd.permguard.policy.impostor",
+            artifacts: &[],
+        };
+        let languages = with(&NAMED_CEDAR);
+        let refused = check_catalogue(&languages, &artifacts_of(&languages), inputs)
+            .expect_err("a language name registered twice");
+        assert!(refused.contains("more than once"), "{refused}");
+
+        let languages: Vec<&dyn Language> = crate::lookup::languages().to_vec();
+        let doubled: Vec<&dyn crate::input::InputType> =
+            inputs.iter().chain(inputs.iter()).copied().collect();
+        let refused = check_catalogue(&languages, &artifacts_of(&languages), &doubled)
+            .expect_err("an input name registered twice");
+        assert!(refused.contains("more than once"), "{refused}");
+
+        let artifacts = artifacts_of(&languages);
+        let doubled: Vec<_> = artifacts.iter().chain(artifacts.iter()).copied().collect();
+        let refused = check_catalogue(&languages, &doubled, inputs)
+            .expect_err("an artifact name registered twice");
+        assert!(refused.contains("more than once"), "{refused}");
+
+        static FIRST: Thing = Thing(
+            "impostor.first.v1",
+            "application/vnd.impostor.first",
+            &["json"],
+        );
+        static SECOND: Thing = Thing(
+            "impostor.second.v1",
+            "application/vnd.impostor.second",
+            &["json"],
+        );
+        static AMBIGUOUS: Impostor = Impostor {
+            name: "impostor",
+            policy: "application/vnd.permguard.policy.impostor",
+            artifacts: &[&FIRST, &SECOND],
+        };
+        let languages = with(&AMBIGUOUS);
+        let refused = check_catalogue(&languages, &artifacts_of(&languages), inputs)
+            .expect_err("two artifacts no file name tells apart");
+        assert!(refused.contains("cannot be classified"), "{refused}");
+
+        // A language whose artifact claims its own policy media type.
+        static SHADOWING: Thing = Thing(
+            "impostor.shadow.v1",
+            "application/vnd.permguard.policy.impostor",
+            &["shadow"],
+        );
+        static SHADOWED: Impostor = Impostor {
+            name: "impostor",
+            policy: "application/vnd.permguard.policy.impostor",
+            artifacts: &[&SHADOWING],
+        };
+        let languages = with(&SHADOWED);
+        let refused = check_catalogue(&languages, &artifacts_of(&languages), inputs)
+            .expect_err("an artifact under the policy media type");
+        assert!(refused.contains("own policy media type"), "{refused}");
+
+        // A language listing an artifact that names another runtime.
+        static STRAY: Impostor = Impostor {
+            name: "stray",
+            policy: "application/vnd.permguard.policy.stray",
+            artifacts: &[&FIRST],
+        };
+        let languages = with(&STRAY);
+        let refused =
+            check_catalogue(&languages, &[], inputs).expect_err("an artifact another runtime owns");
+        assert!(refused.contains("names the runtime"), "{refused}");
+    }
+
+    /// An artifact validator that comes apart is that artifact's refusal, never a panic of the
+    /// ingest path, and the panic's words stay out of it.
+    #[test]
+    fn an_artifact_validator_that_panics_refuses_the_artifact() {
+        struct Exploding;
+        impl crate::artifact::ArtifactType for Exploding {
+            fn name(&self) -> &'static str {
+                "impostor.exploding.v1"
+            }
+            fn media_type(&self) -> &'static str {
+                "application/vnd.impostor.exploding"
+            }
+            fn runtime(&self) -> &'static str {
+                "impostor"
+            }
+            fn role(&self) -> crate::artifact::ArtifactRole {
+                crate::artifact::ArtifactRole::Schema
+            }
+            fn semantic_role(&self) -> &'static str {
+                "a schema"
+            }
+            fn extensions(&self) -> &'static [&'static str] {
+                &["boom"]
+            }
+            fn cardinality(&self) -> crate::artifact::Cardinality {
+                crate::artifact::Cardinality::ZeroOrOne
+            }
+            fn validate(&self, _bytes: &[u8]) -> Result<(), String> {
+                panic!("the upstream parser came apart over secret schema text")
+            }
+        }
+
+        let refused = validate_artifact(&Exploding, b"x").expect_err("refused");
+        assert!(refused.contains("came apart validating"), "{refused}");
+        assert!(!refused.contains("secret"), "{refused}");
     }
 
     /// An opt-in naming a runtime this build does not gate is a typo, and typos are reported.

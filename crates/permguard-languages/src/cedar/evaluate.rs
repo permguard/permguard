@@ -58,9 +58,7 @@ impl Evaluating for Cedar {
         let schema = schema.map(super::parse_schema).transpose()?;
 
         let mut set = PolicySet::new();
-        // What the cache accounts for: the bytes this program was compiled
-        // from, which is the part that grows with the ledger.
-        let mut footprint = schema_bytes;
+        let mut policy_bytes = 0;
         for stored in policies {
             let text = std::str::from_utf8(&stored.source)
                 .map_err(|_| format!("cedar: policy {} is not valid UTF-8", stored.id))?;
@@ -70,7 +68,7 @@ impl Evaluating for Cedar {
                 .map_err(|error| format!("cedar: policy id {}: {error}", stored.id))?;
             set.add(policy.new_id(id))
                 .map_err(|error| format!("cedar: policy {}: {error}", stored.id))?;
-            footprint += stored.source.len();
+            policy_bytes += stored.source.len();
         }
 
         // The schema is a contract, so it is enforced where enforcing it is
@@ -83,7 +81,7 @@ impl Evaluating for Cedar {
         Ok(Box::new(CedarEvaluator {
             set,
             schema,
-            footprint,
+            footprint: footprint(policy_bytes, schema_bytes),
             identities: policies.iter().map(|p| p.id.clone()).collect(),
         }))
     }
@@ -95,6 +93,22 @@ struct CedarEvaluator {
     schema: Option<Schema>,
     footprint: usize,
     identities: Vec<String>,
+}
+
+/// What a compiled Cedar partition keeps, conservatively (LANG-07, CEDAR-06).
+///
+/// Cedar's parsed policy set and its schema's indexes weigh far more than the text they came
+/// from: measured, about 25 times the policy bytes and 13 times the schema bytes, plus a fixed
+/// overhead. The estimate is roughly twice that, so the cache's byte bound holds for real;
+/// `tests/footprint.rs` proves it is never below what the engine retains. An estimate, not a hard
+/// bound: the hard bound on an engine's memory is a supervised worker's `RLIMIT_AS`.
+fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
+    const BASE: usize = 64 * 1024;
+    const PER_POLICY_BYTE: usize = 64;
+    const PER_SCHEMA_BYTE: usize = 32;
+
+    BASE.saturating_add(policy_bytes.saturating_mul(PER_POLICY_BYTE))
+        .saturating_add(schema_bytes.saturating_mul(PER_SCHEMA_BYTE))
 }
 
 impl Evaluator for CedarEvaluator {

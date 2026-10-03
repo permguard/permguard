@@ -371,6 +371,17 @@ pub const SETTING_AUTHZ_CACHE_PARTITIONS: &str = "PERMGUARD_AUTHZ_CACHE_PARTITIO
 /// keeps a PDP inside its container limit instead of discovering it at the OOM killer.
 pub const SETTING_AUTHZ_CACHE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_BYTES";
 
+/// How many compiled partitions one zone may keep, of the whole cache's.
+///
+/// The cache's tenant is the zone: a zone over this bound evicts its own least recently used
+/// partitions first and never another zone's, so one zone with a large or churning policy set
+/// cannot empty the cache for every other. Defaults to a quarter of the whole cache's bound.
+pub const SETTING_AUTHZ_CACHE_ZONE_PARTITIONS: &str = "PERMGUARD_AUTHZ_CACHE_ZONE_PARTITIONS";
+
+/// How many bytes of compiled partitions one zone may hold, of the whole cache's. Sizes accept
+/// `k`/`M`/`G`; defaults to a quarter of the whole cache's bound.
+pub const SETTING_AUTHZ_CACHE_ZONE_BYTES: &str = "PERMGUARD_AUTHZ_CACHE_ZONE_BYTES";
+
 /// The most evaluations one boxcarred request may carry.
 ///
 /// A caller who asks for ten thousand decisions in one payload is either confused or hostile, and
@@ -1034,6 +1045,8 @@ pub struct Config {
     gc_grace: Duration,
     authz_cache_partitions: usize,
     authz_cache_bytes: u64,
+    authz_cache_zone_partitions: Option<usize>,
+    authz_cache_zone_bytes: Option<u64>,
     authz_max_evaluations: usize,
     max_blocking: usize,
     log_enabled: bool,
@@ -1169,6 +1182,8 @@ impl Default for Config {
             gc_grace: DEFAULT_GC_GRACE,
             authz_cache_partitions: DEFAULT_AUTHZ_CACHE_PARTITIONS,
             authz_cache_bytes: DEFAULT_AUTHZ_CACHE_BYTES,
+            authz_cache_zone_partitions: None,
+            authz_cache_zone_bytes: None,
             authz_max_evaluations: DEFAULT_AUTHZ_MAX_EVALUATIONS,
             max_blocking: DEFAULT_MAX_BLOCKING,
             log_enabled: false,
@@ -1292,8 +1307,26 @@ impl Config {
         config.apply_pairs(layers.file)?;
         config.apply_pairs(layers.environment)?;
         config.apply_pairs(layers.command_line)?;
+        config.check_cache_bounds()?;
 
         Ok(config)
+    }
+
+    /// The zone's cache bounds against the whole cache's, once every layer has applied: a file may
+    /// set a small cache that the command line then raises, and only the result is the bound.
+    fn check_cache_bounds(&self) -> anyhow::Result<()> {
+        if self.authz_cache_zone_partitions() > self.authz_cache_partitions
+            || self.authz_cache_zone_bytes() > self.authz_cache_bytes
+        {
+            anyhow::bail!(
+                "a zone's cache bound ({SETTING_AUTHZ_CACHE_ZONE_PARTITIONS}, \
+                 {SETTING_AUTHZ_CACHE_ZONE_BYTES}) is larger than the whole cache's \
+                 ({SETTING_AUTHZ_CACHE_PARTITIONS}, {SETTING_AUTHZ_CACHE_BYTES}): one zone could \
+                 never reach it, and the setting would bound nothing"
+            );
+        }
+
+        Ok(())
     }
 
     /// Attaches the servers this plane mirrors, as the configuration file declared them.
@@ -2747,6 +2780,24 @@ produce: use `EdDSA` or `ES256`"
         self.authz_cache_bytes
     }
 
+    /// How many compiled partitions one zone may keep: as configured, or a quarter of the whole
+    /// cache's bound — never below 4 unless the whole cache holds fewer, so a deployment with one
+    /// zone and a small cache does not evict its own partitions on every request.
+    pub fn authz_cache_zone_partitions(&self) -> usize {
+        self.authz_cache_zone_partitions.unwrap_or_else(|| {
+            (self.authz_cache_partitions / 4).max(self.authz_cache_partitions.min(4))
+        })
+    }
+
+    /// How many bytes of compiled partitions one zone may hold: as configured, or a quarter of the
+    /// whole cache's bound — never below 64 MiB unless the whole cache holds less.
+    pub fn authz_cache_zone_bytes(&self) -> u64 {
+        const FLOOR: u64 = 64 * 1024 * 1024;
+
+        self.authz_cache_zone_bytes
+            .unwrap_or_else(|| (self.authz_cache_bytes / 4).max(self.authz_cache_bytes.min(FLOOR)))
+    }
+
     /// The most evaluations one boxcarred request may carry.
     pub fn authz_max_evaluations(&self) -> usize {
         self.authz_max_evaluations
@@ -3658,6 +3709,28 @@ produce: use `EdDSA` or `ES256`"
                     "reading {SETTING_AUTHZ_CACHE_BYTES}: a cache of no bytes holds nothing"
                 );
             }
+        }
+        if let Some(value) = settings.get(SETTING_AUTHZ_CACHE_ZONE_PARTITIONS) {
+            let zone: usize = value
+                .parse()
+                .with_context(|| format!("reading {SETTING_AUTHZ_CACHE_ZONE_PARTITIONS}"))?;
+            if zone == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_AUTHZ_CACHE_ZONE_PARTITIONS}: a zone that may keep nothing \
+                     would compile its partitions on every request"
+                );
+            }
+            self.authz_cache_zone_partitions = Some(zone);
+        }
+        if let Some(value) = settings.get(SETTING_AUTHZ_CACHE_ZONE_BYTES) {
+            let zone = parse_bytes(value)
+                .with_context(|| format!("reading {SETTING_AUTHZ_CACHE_ZONE_BYTES}"))?;
+            if zone == 0 {
+                anyhow::bail!(
+                    "reading {SETTING_AUTHZ_CACHE_ZONE_BYTES}: a zone of no bytes holds nothing"
+                );
+            }
+            self.authz_cache_zone_bytes = Some(zone);
         }
         if let Some(value) = settings.get(SETTING_MAX_BLOCKING) {
             self.max_blocking = value

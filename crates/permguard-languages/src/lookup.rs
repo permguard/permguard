@@ -8,6 +8,7 @@
 //! and shipped. The concrete languages are private to the crate — they are
 //! reached through the roles, never by name.
 
+use crate::guard::Guarded;
 use crate::role::Language;
 use crate::{cedar, dogwood, rego};
 
@@ -16,10 +17,14 @@ use crate::{cedar, dogwood, rego};
 /// Dogwood is compiled in like the others. Whether a *ledger* may use it is a separate question,
 /// answered at runtime by `experimental.dogwood.enabled`: a language is a build, and gating the
 /// build would mean two binaries where the feature flag is supposed to be one setting.
+///
+/// Each one is reached through [`crate::guard::Guarded`], so every caller — a plane loading a
+/// ledger, the control plane validating a push, the CLI building a workspace — enters its engine
+/// inside the panic boundary.
 pub fn languages() -> &'static [&'static dyn Language] {
-    static CEDAR: cedar::Cedar = cedar::Cedar;
-    static DOGWOOD: dogwood::Dogwood = dogwood::Dogwood;
-    static REGO: rego::Rego = rego::Rego;
+    static CEDAR: Guarded<cedar::Cedar> = Guarded(cedar::Cedar);
+    static DOGWOOD: Guarded<dogwood::Dogwood> = Guarded(dogwood::Dogwood);
+    static REGO: Guarded<rego::Rego> = Guarded(rego::Rego);
     static ALL: [&'static dyn Language; 3] = [&CEDAR, &DOGWOOD, &REGO];
     &ALL
 }

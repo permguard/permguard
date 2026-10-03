@@ -48,7 +48,9 @@
 //!
 //! A job that panics does not take a worker with it and does not silently shorten the answer:
 //! [`Fanout::run`] reports that a result is missing, and an authorization path turns a missing
-//! verdict into a deny. Nothing here can turn into a permit.
+//! verdict into an indeterminate result. Nothing here can turn into a permit. The evaluation path
+//! does not rely on this: each of its jobs carries its own panic boundary, so only the partition
+//! that came apart is lost (`crate::evaluate::evaluate_all`).
 
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};

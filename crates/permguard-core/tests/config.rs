@@ -1540,3 +1540,93 @@ fn the_event_producers_are_named_in_their_own_right() {
     let neither = config(&[], &[], &[]);
     assert!(neither.event_producer_keys().is_empty());
 }
+
+/// The cache's tenant is the zone: without a setting a zone may hold a quarter of the cache;
+/// stated, it holds what was stated; zero, or more than the whole cache, is refused.
+#[test]
+fn test_a_zone_holds_a_quarter_of_the_cache_unless_told_otherwise() {
+    use permguard_core::config::{
+        SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
+        SETTING_AUTHZ_CACHE_ZONE_PARTITIONS,
+    };
+
+    let defaulted = config(
+        &[
+            (SETTING_AUTHZ_CACHE_PARTITIONS, "64"),
+            (SETTING_AUTHZ_CACHE_BYTES, "256M"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(defaulted.authz_cache_zone_partitions(), 16);
+    assert_eq!(defaulted.authz_cache_zone_bytes(), 64 * 1024 * 1024);
+
+    // A small cache keeps a floor of 4 partitions and 64 MiB per zone, or the whole cache when it
+    // is smaller than that.
+    let small = config(
+        &[
+            (SETTING_AUTHZ_CACHE_PARTITIONS, "8"),
+            (SETTING_AUTHZ_CACHE_BYTES, "128M"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(small.authz_cache_zone_partitions(), 4);
+    assert_eq!(small.authz_cache_zone_bytes(), 64 * 1024 * 1024);
+    let tiny = config(
+        &[
+            (SETTING_AUTHZ_CACHE_PARTITIONS, "2"),
+            (SETTING_AUTHZ_CACHE_BYTES, "16M"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(tiny.authz_cache_zone_partitions(), 2);
+    assert_eq!(tiny.authz_cache_zone_bytes(), 16 * 1024 * 1024);
+
+    let stated = config(
+        &[
+            (SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, "8"),
+            (SETTING_AUTHZ_CACHE_ZONE_BYTES, "32M"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(stated.authz_cache_zone_partitions(), 8);
+    assert_eq!(stated.authz_cache_zone_bytes(), 32 * 1024 * 1024);
+
+    // Layers combine before the bound is judged: the file's small cache, raised on the command
+    // line, admits the zone the environment asked for.
+    let layered = config(
+        &[(SETTING_AUTHZ_CACHE_PARTITIONS, "50")],
+        &[(SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, "100")],
+        &[(SETTING_AUTHZ_CACHE_PARTITIONS, "500")],
+    );
+    assert_eq!(layered.authz_cache_zone_partitions(), 100);
+
+    for (setting, value, said) in [
+        (SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, "0", "keep nothing"),
+        (SETTING_AUTHZ_CACHE_ZONE_BYTES, "0", "zero"),
+        (
+            SETTING_AUTHZ_CACHE_ZONE_PARTITIONS,
+            "65",
+            "larger than the whole cache",
+        ),
+        (
+            SETTING_AUTHZ_CACHE_ZONE_BYTES,
+            "1G",
+            "larger than the whole cache",
+        ),
+    ] {
+        let refused = Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[(setting, value)])),
+        )
+        .expect_err("a zone bound that bounds nothing is refused");
+        assert!(
+            format!("{refused:#}").contains(said),
+            "{setting}={value}: {refused:#}"
+        );
+    }
+}

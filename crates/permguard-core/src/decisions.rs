@@ -41,11 +41,12 @@
 use serde::Deserialize;
 
 use crate::config::{
-    SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS,
-    SETTING_LOG_BATCH_BYTES, SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF,
-    SETTING_LOG_COMMITMENT_KEY_VERSION, SETTING_LOG_ENABLED, SETTING_LOG_ON_FULL,
-    SETTING_LOG_PDP_ID, SETTING_LOG_SAMPLE_PERMITS, SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES,
-    SETTING_LOG_SPOOL_DIRECTORY, SETTING_MAX_BLOCKING,
+    SETTING_AUTHZ_CACHE_BYTES, SETTING_AUTHZ_CACHE_PARTITIONS, SETTING_AUTHZ_CACHE_ZONE_BYTES,
+    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS, SETTING_AUTHZ_MAX_EVALUATIONS, SETTING_LOG_BATCH_BYTES,
+    SETTING_LOG_BATCH_INTERVAL, SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_COMMITMENT_KEY_VERSION,
+    SETTING_LOG_ENABLED, SETTING_LOG_ON_FULL, SETTING_LOG_PDP_ID, SETTING_LOG_SAMPLE_PERMITS,
+    SETTING_LOG_SPOOL_AGE, SETTING_LOG_SPOOL_BYTES, SETTING_LOG_SPOOL_DIRECTORY,
+    SETTING_MAX_BLOCKING,
 };
 use crate::config::{
     SETTING_DECISION_STORE_DIRECTORY, SETTING_DECISION_STORE_ENABLED,
@@ -98,6 +99,12 @@ pub struct CacheSection {
     /// How many bytes those partitions may occupy. Accepts `k`/`M`/`G`.
     #[serde(default)]
     bytes: Option<String>,
+    /// How many of those partitions one zone may keep; a quarter of `partitions` when absent.
+    #[serde(default)]
+    zone_partitions: Option<String>,
+    /// How many of those bytes one zone may hold; a quarter of `bytes` when absent.
+    #[serde(default)]
+    zone_bytes: Option<String>,
 }
 
 /// The decision log, as the file declares it.
@@ -315,6 +322,14 @@ impl DecisionsSection {
                 self.cache.partitions.as_ref(),
             ),
             (SETTING_AUTHZ_CACHE_BYTES, self.cache.bytes.as_ref()),
+            (
+                SETTING_AUTHZ_CACHE_ZONE_PARTITIONS,
+                self.cache.zone_partitions.as_ref(),
+            ),
+            (
+                SETTING_AUTHZ_CACHE_ZONE_BYTES,
+                self.cache.zone_bytes.as_ref(),
+            ),
             (SETTING_AUTHZ_MAX_EVALUATIONS, self.max_evaluations.as_ref()),
             (SETTING_MAX_BLOCKING, self.max_blocking.as_ref()),
             (SETTING_LOG_ENABLED, self.log.enabled.as_ref()),
@@ -626,7 +641,7 @@ mod tests {
     #[test]
     fn the_block_becomes_the_settings_the_plane_reads() {
         let section: DecisionsSection = serde_norway::from_str(
-            "cache:\n  partitions: \"32\"\n  bytes: 128M\nmax_evaluations: \"64\"\n",
+            "cache:\n  partitions: \"32\"\n  bytes: 128M\n  zone_partitions: \"8\"\n  zone_bytes: 32M\nmax_evaluations: \"64\"\n",
         )
         .expect("the section parses");
 
@@ -635,6 +650,11 @@ mod tests {
             vec![
                 (SETTING_AUTHZ_CACHE_PARTITIONS.to_owned(), "32".to_owned()),
                 (SETTING_AUTHZ_CACHE_BYTES.to_owned(), "128M".to_owned()),
+                (
+                    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS.to_owned(),
+                    "8".to_owned()
+                ),
+                (SETTING_AUTHZ_CACHE_ZONE_BYTES.to_owned(), "32M".to_owned()),
                 (SETTING_AUTHZ_MAX_EVALUATIONS.to_owned(), "64".to_owned()),
             ]
         );

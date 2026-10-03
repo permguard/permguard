@@ -369,11 +369,14 @@ pub fn warnings(snapshot: &Snapshot, manifest: &Manifest) -> Result<Vec<String>>
         // sees it: one that refuses it turns every such request into `partition_input_schema` —
         // fail-closed, under the wrong name.
         if let Some(kind) = languages::input_type(&input.r#type)
-            && let Err(why) = languages::headroom::with(|| {
-                built
-                    .evaluator
-                    .check_input(&languages::input::InputType::empty(kind))
+            && let Err(why) = languages::guard::contained(|| {
+                languages::headroom::with(|| {
+                    built
+                        .evaluator
+                        .check_input(&languages::input::InputType::empty(kind))
+                })
             })
+            .unwrap_or_else(|_| Err("its engine came apart checking the empty input".to_owned()))
         {
             warnings.push(format!(
                 "partition `{}`: its input is optional and its schema refuses the empty input a \
@@ -1058,7 +1061,15 @@ fn run_temporal(
         // uses, so a case cannot pass on an occurrence one partition would have refused.
         let mut checked = Vec::with_capacity(engines.len());
         for (name, engine) in &engines {
-            match engine.check(&occurrence) {
+            // Inside the panic boundary, as a plane enters it.
+            let checked_here = languages::guard::contained(|| engine.check(&occurrence))
+                .unwrap_or_else(|_| {
+                    Err(permguard_languages::temporal::Refused::new(
+                        permguard_core::codes::common::INTERNAL,
+                        "the partition's engine came apart",
+                    ))
+                });
+            match checked_here {
                 Ok(held) => checked.push(held),
                 Err(refusal) => {
                     return refused(format!(
@@ -1090,7 +1101,14 @@ fn run_temporal(
     touched.dedup();
     for history in &touched {
         for (name, engine) in &engines {
-            if let Err(refusal) = engine.rebuild(history, &[]) {
+            let reset = languages::guard::contained(|| engine.rebuild(history, &[]))
+                .unwrap_or_else(|_| {
+                    Err(permguard_languages::temporal::Refused::new(
+                        permguard_core::codes::common::INTERNAL,
+                        "the partition's engine came apart",
+                    ))
+                });
+            if let Err(refusal) = reset {
                 return Ok(failed(
                     located,
                     profile,
@@ -1107,7 +1125,15 @@ fn run_temporal(
     for (position, (occurrence, checked, history)) in prepared.iter().enumerate() {
         let last = position + 1 == prepared.len();
         for ((_, engine), held) in engines.iter().zip(checked) {
-            match engine.apply(history, occurrence, held) {
+            let applied = languages::guard::contained(|| engine.apply(history, occurrence, held))
+                .unwrap_or_else(|_| {
+                    permguard_languages::temporal::Applied::Decided(
+                        permguard_languages::evaluate::Verdict::panicked(
+                            "the partition's engine came apart applying the occurrence",
+                        ),
+                    )
+                });
+            match applied {
                 permguard_languages::temporal::Applied::Observed => {}
                 permguard_languages::temporal::Applied::Decided(verdict) => {
                     // Only the last one's verdict is judged: the earlier occurrences are the

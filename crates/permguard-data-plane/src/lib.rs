@@ -16,4 +16,10 @@ pub mod temporal;
 /// would prove only that the stand-in works.
 pub mod v1;
 
+/// Reports a panic by where it happened, never by what it said: the first call of every binary that
+/// hosts this plane, after [`serve_if_worker`].
+pub use permguard_languages::guard::report_panics_without_their_words;
+/// Serves as a supervised evaluation worker, and exits, when this process was started as one: the
+/// first call of every binary that hosts this plane.
+pub use permguard_languages::worker::serve_if_worker;
 pub use service::{DataPlaneModule, module};

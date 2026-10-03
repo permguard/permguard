@@ -241,6 +241,10 @@ impl PlaneModule for ControlPlaneModule {
     }
 
     fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
+        // The languages this binary carries, before anything is ingested against them (LANG-12).
+        permguard_languages::registry::check_registry().map_err(|collision| {
+            anyhow::anyhow!("this build's language catalogue is inconsistent: {collision}")
+        })?;
         events_startup_check(config)?;
         decisions_startup_check(config)
     }

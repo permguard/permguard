@@ -10,8 +10,17 @@ const BINARY_NAME: &str = "permguard-data-plane";
 const PRODUCT_NAME: &str = "Permguard Data Plane";
 const PRODUCT_ABOUT: &str = "Permguard data plane";
 
+fn main() -> ExitCode {
+    // A process started as a supervised evaluation worker answers frames and exits — before a
+    // runtime starts a thread per core it would never use, each charged to its address-space limit.
+    permguard_data_plane::serve_if_worker();
+    permguard_data_plane::report_panics_without_their_words();
+
+    serve()
+}
+
 #[tokio::main]
-async fn main() -> ExitCode {
+async fn serve() -> ExitCode {
     let identity = ProductIdentity::new(
         BINARY_NAME,
         PRODUCT_NAME,

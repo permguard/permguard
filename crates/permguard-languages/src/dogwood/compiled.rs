@@ -109,7 +109,12 @@ impl Evaluating for super::Dogwood {
         // late — Cedar reads an entity it does not recognise as having no attributes, so a
         // mistyped store weakens a policy rather than failing it.
         let cedar_schema = lowered.cedar_schema().clone();
-        let footprint = source.len() + artifacts.footprint();
+        // What the compiled set keeps, conservatively (LANG-07, DOGWOOD-08 for the set): measured,
+        // the lowered policy set, schemas and contract weigh a fixed ~70 KiB plus under 3 bytes per
+        // authored byte; the estimate is 128 KiB plus 8 times, which `tests/footprint.rs` proves is
+        // never below what the engine retains. Each history's warm authorizer is DOGWOOD-02, not this.
+        let footprint = (128 * 1024_usize)
+            .saturating_add((source.len() + artifacts.footprint()).saturating_mul(8));
         let identities: Vec<String> = policies.iter().map(|stored| stored.id.clone()).collect();
 
         // Partitioned temporal evaluation whenever the schema declares a universal symmetric pin.

@@ -170,6 +170,8 @@ pub struct PartitionTarget<'a> {
     /// is consulted. Absent where there is nothing compiled yet — a routing test, a plane that
     /// refuses the request before it reaches a ledger.
     pub evaluator: Option<&'a dyn Evaluator>,
+    /// When the decision stops being worth making, for an input check that runs out of process.
+    pub deadline: Option<std::time::Instant>,
 }
 
 impl<'a> PartitionTarget<'a> {
@@ -180,7 +182,16 @@ impl<'a> PartitionTarget<'a> {
             language,
             input: None,
             evaluator: None,
+            deadline: None,
         }
+    }
+
+    /// The decision's deadline, which an input check run out of process keeps to.
+    #[must_use]
+    pub fn until(mut self, deadline: Option<std::time::Instant>) -> Self {
+        self.deadline = deadline;
+
+        self
     }
 
     /// The input contract this partition's manifest declares.
@@ -413,7 +424,10 @@ impl Asking {
             // guardrail whose list is missing must not read as a guardrail that did not object.
             let empty = registered.empty();
             if let Some(evaluator) = target.evaluator {
-                crate::headroom::with(|| evaluator.check_input(&empty)).map_err(|why| {
+                checked(target.name, || {
+                    crate::headroom::with(|| evaluator.check_input_by(&empty, target.deadline))
+                })?
+                .map_err(|why| {
                     malformed(
                         permguard_core::codes::pdp_native::PARTITION_INPUT_SCHEMA,
                         format!(
@@ -463,7 +477,10 @@ impl Asking {
             // Entered with room to recurse in: checking an entity store means deserializing it
             // in the engine, which recurses over the graph and is guarded by the engine's own
             // stack check. See `crate::headroom`.
-            crate::headroom::with(|| evaluator.check_input(&normalized)).map_err(|why| {
+            checked(target.name, || {
+                crate::headroom::with(|| evaluator.check_input_by(&normalized, target.deadline))
+            })?
+            .map_err(|why| {
                 malformed(
                     permguard_core::codes::pdp_native::PARTITION_INPUT_SCHEMA,
                     format!("`partition_inputs.{}`: {why}", target.name),
@@ -771,6 +788,23 @@ impl std::fmt::Display for Malformed {
 }
 
 impl std::error::Error for Malformed {}
+
+/// A partition's input check, inside the panic boundary. A check that came apart, or could not
+/// run, is not the caller's mistake: it is refused as `evaluation_indeterminate` — the partition
+/// could not evaluate — which the native interface answers `503`, never as a `400` about the
+/// input. What is left is the check's own verdict on the input.
+fn checked(
+    partition: &str,
+    check: impl FnOnce() -> Result<Result<(), String>, String>,
+) -> Result<Result<(), String>, Malformed> {
+    match crate::guard::contained(check) {
+        Ok(Ok(verdict)) => Ok(verdict),
+        Ok(Err(_)) | Err(_) => Err(malformed(
+            permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE,
+            format!("the partition `{partition}` could not check its input; this is not a deny"),
+        )),
+    }
+}
 
 fn malformed(code: &'static str, message: impl Into<String>) -> Malformed {
     Malformed {
@@ -1702,6 +1736,44 @@ mod routing_tests {
             .expect_err("the schema refuses it");
 
         assert_eq!(refused.code, "partition_input_schema");
+    }
+
+    /// An input check that comes apart is not the caller's mistake: it is refused as
+    /// `evaluation_indeterminate`, and the engine's own words stay out of the refusal.
+    #[test]
+    fn an_input_check_that_panics_is_indeterminate_not_a_bad_request() {
+        struct Exploding;
+        impl crate::evaluate::Evaluator for Exploding {
+            fn evaluate(&self, _query: &Query) -> crate::evaluate::Verdict {
+                unreachable!("routing refuses before anything is evaluated")
+            }
+            fn check_input(&self, _input: &PartitionData) -> Result<(), String> {
+                panic!("the schema engine came apart over secret input")
+            }
+            fn footprint(&self) -> usize {
+                0
+            }
+            fn policies(&self) -> Vec<String> {
+                Vec::new()
+            }
+        }
+
+        let input = contract(CEDAR_ENTITIES_V1, false);
+        let exploding = Exploding;
+        let mut payload = plain();
+        payload["partition_inputs"] = json!({"p": {"type": CEDAR_ENTITIES_V1, "data": []}});
+        let refused = asking(payload)
+            .expect("it is well formed")
+            .route(&[PartitionTarget::new("p", "cedar")
+                .accepting(Some(&input))
+                .evaluated_by(&exploding)])
+            .expect_err("the check could not run");
+
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::pdp_native::EVALUATION_INDETERMINATE
+        );
+        assert!(!refused.message.contains("secret"), "{}", refused.message);
     }
 
     /// The empty input a request gets by omission is the same input it could have stated, and the

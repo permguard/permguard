@@ -20,6 +20,8 @@ permguard-objects.workspace = true
 # The canonical instant parsing an occurrence is validated against: one definition of what a
 # Dogwood timestamp is, shared with the journal that stores it.
 permguard-events.workspace = true
+permguard-stream.workspace = true
+sha2.workspace = true
 # The official engines, pinned: what evaluates policy is exactly what was
 # reviewed and shipped — plugins are a build, not a deployment action.
 # Held at 4.11 by Dogwood, not by choice: `cedar-policy-mcp-schema-generator`, a transitive
@@ -95,3 +97,17 @@ tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
+
+# `build.rs` digests each engine's locked dependency closure.
+[build-dependencies]
+sha2.workspace = true
+
+# `setrlimit` and the protocol descriptor for the supervised worker (`worker.rs`).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Its own worker: started with the worker argument it serves frames, started plainly it supervises
+# itself — which the test harness, parsing every argument as a filter, cannot allow.
+[[test]]
+name = "worker"
+harness = false

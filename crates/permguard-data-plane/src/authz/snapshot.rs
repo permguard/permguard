@@ -93,6 +93,16 @@ pub struct Head {
 }
 
 impl Head {
+    /// A head with an empty manifest, for a test about the cache rather than about the ledger.
+    #[cfg(test)]
+    pub fn for_test() -> Self {
+        Self {
+            commit: "sha256:test".to_owned(),
+            counter: 0,
+            manifest: Manifest::default(),
+        }
+    }
+
     /// The partitions a profile is built from, or a refusal naming what is
     /// missing.
     pub fn partitions_of(&self, profile: &str) -> Result<Vec<String>, Refusal> {
@@ -294,7 +304,6 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
         permguard_languages::partition::Collecting::Incompatible(why) => Refusal::Incompatible(why),
     })?;
 
-    let footprint = collected.footprint();
     let policies = collected.policies.len();
     let evaluator: Arc<dyn Evaluator> = permguard_languages::headroom::with(|| {
         engine.compile(&collected.policies, &collected.artifacts)
@@ -314,6 +323,10 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
         )
         .map_err(Refusal::Incompatible)?;
     }
+
+    // What the cache charges: the runtime's own conservative estimate of what its engine keeps, not
+    // the bytes it was compiled from, which undercount it by an order of magnitude (LANG-07).
+    let footprint = evaluator.footprint();
 
     Ok(Arc::new(Partition {
         name: partition.to_owned(),

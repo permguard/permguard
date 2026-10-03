@@ -44,6 +44,16 @@ is cut.
   The client's id is still echoed in `X-Request-Id`, and every answer also carries `X-Permguard-Request-Id`, the id the logs use.
 - Log records are written by a background thread through a bounded queue: a stdout nobody drains drops records, counted in `permguard_log_lines_dropped_total`, and never delays a decision.
   Exported trace spans go through a bounded queue of 2 048 as well; a span dropped because the collector cannot keep up, or because its export failed, is counted in `permguard_trace_spans_dropped_total`.
+- **Breaking for manifests that require Cedar `>=4.12.0`: Cedar's language version is now `4.11.0`, the version of the `cedar-policy` engine this build links.**
+  It advertised `4.12.0`, a version its engine never implemented; every language now reads its engine's version and build from `Cargo.lock` at build time, so the two cannot drift.
+  A manifest with a range such as `>=4.0.0` loads unchanged; decision-log epoch markers written from now on name Cedar `4.11.0`.
+- Every language has a descriptor — its engine, what that engine can reach, the limits it enforces and where it runs — and a digest of it; a compiled partition is cached under its runtime's descriptor digest, so a build with another engine never serves a program compiled by a different one.
+- **Operational: a compiled partition's cache footprint is now an estimate of what its engine keeps, not the size of its sources.**
+  It is an order of magnitude larger for the same ledger, so the same `dataPlane.decisions.cache.bytes` holds fewer partitions; review the bound and the `permguard_authz_cache_bytes` gauge after upgrading.
+- **Operational: the decision cache bounds each zone as well as the whole.**
+  `dataPlane.decisions.cache.zone_partitions` and `zone_bytes` (`PERMGUARD_AUTHZ_CACHE_ZONE_PARTITIONS`, `PERMGUARD_AUTHZ_CACHE_ZONE_BYTES`) default to a quarter of the whole cache's bounds, but never below 4 partitions and 64 MiB unless the whole cache is smaller; a ledger's head is not counted against its zone.
+  A deployment with a single zone therefore holds a quarter of the cache's partitions, not all of them: set the two keys to the whole cache's values to keep the previous behaviour.
+  A zone over its bound evicts only its own entries, so one zone cannot empty the cache for the others; a bound larger than the whole cache is refused at startup.
 
 ### Security
 
@@ -54,6 +64,12 @@ is cut.
 - No job that compiles holds a secret or a token that can write; the policy engines are pinned exactly, built without their default features, and checked against the features Cargo resolves.
 - Every release carries `reproducibility.txt`, the verdict of an independent rebuild of the Linux and Windows binaries compared with the published archives; a release claims to be reproducible only on `reproducible: yes`.
 - The telemetry listener reports at startup when it is reachable beyond the host without TLS, naming the two ways to scope it.
+- A panic in a policy engine is refused as the operation it came apart in, never as a crash or a `500` carrying the engine's own words: an evaluation is that partition's `evaluation_panicked` — wherever it ran, the first partition and the full queue's overflow on the calling thread included — an input check is `503 evaluation_indeterminate`, a compile or a validation of a policy or an artifact is refused at load or at push, and a temporal occurrence is that partition's failure.
+- A Rego policy's `print(...)` no longer reaches the process's standard error: it could carry request data into logs past their field classification.
+- Both planes and the CLI refuse to start when the languages this build carries collide: a duplicate language name, media type, artifact or input type, or a file-classification rule that cannot decide.
+- A runtime can be evaluated in a supervised local worker — the same binary, started with a cleared environment under OS address-space, CPU and core-file limits, and killed at the decision's deadline — for engines whose work cannot be bounded in-process.
+  The mechanism is in place; no runtime uses it yet.
+- The server binaries report a panic by where it happened and withhold its message, which can carry policy text or tenant data.
 
 ### Fixed
 

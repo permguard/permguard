@@ -73,6 +73,35 @@ impl Language for Dogwood {
         "1.0.0"
     }
 
+    fn engine(&self) -> crate::descriptor::Engine {
+        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+
+        Engine {
+            locked: locked::DOGWOOD,
+            capabilities: Capabilities {
+                features: crate::registry::engine_features::DOGWOOD,
+                // Policies are lowered to Cedar with every Cedar extension available, so they reach
+                // `datetime`, `decimal` and `ipaddr` (pure: none reads the clock). Information
+                // providers are Rhai scripts on an engine upstream builds without its time package,
+                // with no random source, pure regex helpers and — `net` off — no network function.
+                extensions: &["datetime", "decimal", "ipaddr", "rhai_providers"],
+                clock: false,
+                randomness: false,
+                io: false,
+            },
+            limits: &[
+                "provider_call_levels",
+                "provider_data_size",
+                "provider_operations",
+            ],
+            isolation: Isolation {
+                mode: IsolationMode::InProcess,
+                reason: "provider work is bounded by operation and data-size limits but not by \
+                         wall clock (LANG-08), and adopting the supervised worker is TL-5",
+            },
+        }
+    }
+
     /// Dogwood's wire and replication contracts are `v1alpha1`.
     fn experimental(&self) -> bool {
         true

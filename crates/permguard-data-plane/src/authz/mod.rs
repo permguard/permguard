@@ -85,10 +85,13 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
     Arc::clone(DECIDER.get_or_init(|| {
         let config = context.config();
         let root: PathBuf = config.mirrors_directory();
-        let cache = Arc::new(Cache::new(
-            config.authz_cache_partitions(),
-            config.authz_cache_bytes(),
-        ));
+        let cache = Arc::new(
+            Cache::new(config.authz_cache_partitions(), config.authz_cache_bytes())
+                .with_zone_bounds(
+                    config.authz_cache_zone_partitions(),
+                    config.authz_cache_zone_bytes(),
+                ),
+        );
 
         Arc::new(
             Decider::new(

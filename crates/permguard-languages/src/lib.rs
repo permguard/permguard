@@ -32,8 +32,10 @@ mod dogwood;
 mod rego;
 
 pub mod artifact;
+pub mod descriptor;
 pub mod evaluate;
 pub mod fanout;
+pub mod guard;
 pub mod headroom;
 pub mod input;
 pub mod lookup;
@@ -43,6 +45,7 @@ pub mod registry;
 pub mod request;
 pub mod role;
 pub mod temporal;
+pub mod worker;
 
 pub use dogwood::artifacts as dogwood_artifacts;
 pub use dogwood::occurrence::{

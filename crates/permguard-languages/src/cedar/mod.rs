@@ -33,8 +33,31 @@ impl Language for Cedar {
     }
 
     fn language_version(&self) -> &'static str {
-        // The language version the linked cedar-policy crate implements.
-        "4.12.0"
+        // Cedar's language is versioned by its engine's releases: the version is the locked
+        // `cedar-policy`'s, read from `Cargo.lock` at build time and never written by hand.
+        crate::descriptor::locked::CEDAR.version
+    }
+
+    fn engine(&self) -> crate::descriptor::Engine {
+        use crate::descriptor::{Capabilities, Engine, Isolation, IsolationMode, locked};
+
+        Engine {
+            locked: locked::CEDAR,
+            capabilities: Capabilities {
+                features: crate::registry::engine_features::CEDAR,
+                // The extension types those features add; none reads the clock or draws a value.
+                extensions: &["datetime", "decimal", "ipaddr"],
+                clock: false,
+                randomness: false,
+                io: false,
+            },
+            limits: &[],
+            isolation: Isolation {
+                mode: IsolationMode::InProcess,
+                reason: "Cedar evaluation terminates by construction and holds no state between \
+                         requests",
+            },
+        }
     }
 
     fn policy_media_type(&self) -> &'static str {

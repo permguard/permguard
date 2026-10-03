@@ -59,6 +59,8 @@ pub mod digest {
     pub const STREAM_FILTERS: &str = "permguard.stream.filters.v1\n";
     /// A NOTP ref-state digest.
     pub const NOTP_REF_STATE: &str = "permguard.notp.ref-state.v1\n";
+    /// A language descriptor, over its RFC 8785 canonical JSON.
+    pub const LANGUAGE_DESCRIPTOR: &str = "permguard.language.descriptor.v1\n";
     /// Content-derived policy identity. No terminal byte: the input is authored bytes of fixed length.
     pub const POLICY_ID: &str = "permguard.policy.id.v1";
 }
@@ -221,6 +223,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.STREAM_CURSOR_V2", digest::STREAM_CURSOR_V2),
         ("digest.STREAM_FILTERS", digest::STREAM_FILTERS),
         ("digest.NOTP_REF_STATE", digest::NOTP_REF_STATE),
+        ("digest.LANGUAGE_DESCRIPTOR", digest::LANGUAGE_DESCRIPTOR),
         ("digest.POLICY_ID", digest::POLICY_ID),
         ("protected.HOST_IDENTITY", protected::HOST_IDENTITY),
         ("protected.HOST_PROOF", protected::HOST_PROOF),

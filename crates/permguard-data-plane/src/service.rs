@@ -262,6 +262,10 @@ impl PlaneModule for DataPlaneModule {
     }
 
     fn startup_check(&self, config: &permguard_core::Config) -> anyhow::Result<()> {
+        // The languages this binary carries, before any ledger is loaded against them (LANG-12).
+        permguard_languages::registry::check_registry().map_err(|collision| {
+            anyhow::anyhow!("this build's language catalogue is inconsistent: {collision}")
+        })?;
         temporal::startup_check(config)
     }
 
