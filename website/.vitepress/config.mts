@@ -62,6 +62,8 @@ export default defineConfig({
       }
     ],
     socialLinks: [
+      { icon: 'x', link: 'https://x.com/permguard', ariaLabel: 'Permguard on X' },
+      { icon: 'linkedin', link: 'https://www.linkedin.com/showcase/permguard/', ariaLabel: 'Permguard on LinkedIn' },
       { icon: 'github', link: 'https://github.com/permguard/permguard' }
     ]
   }
