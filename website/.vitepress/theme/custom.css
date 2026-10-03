@@ -10,7 +10,7 @@
   --vp-c-brand-2: var(--brand);
   --vp-c-brand-3: var(--brand);
   --vp-c-brand-soft: rgba(217, 70, 239, 0.14);
-  --vp-nav-logo-height: 2.5rem;
+  --vp-nav-logo-height: 2.75rem;
 }
 
 .dark {
@@ -21,6 +21,27 @@
   --vp-c-bg-alt: #1d1e23;
   --vp-c-bg-elv: #1d1e23;
   --vp-c-bg-soft: #1d1e23;
+}
+
+.VPNavBarTitle .logo {
+  margin-right: 0;
+}
+
+.VPNavBarTitle .logo.light {
+  height: 3.75rem;
+}
+
+.pg-docs-label {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 .pg-home {

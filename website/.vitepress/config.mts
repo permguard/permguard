@@ -39,8 +39,12 @@ export default defineConfig({
   themeConfig: {
     // Read by the home page to say which version it documents.
     docsVersion: version,
-    logo: '/permguard/symbol.svg',
-    siteTitle: 'Permguard Docs',
+    logo: {
+      light: '/permguard/logo-dark-txt.png',
+      dark: '/permguard/nav-wordmark-white.svg',
+      alt: 'Permguard'
+    },
+    siteTitle: '<span class="pg-docs-label">Docs</span>',
     // `Home` is listed first, and the home page hides it (see `pg-page-home` in custom.css).
     nav: [
       { text: 'Home', link: '/' },
