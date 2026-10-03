@@ -80,7 +80,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             return Err(status_of(
                 &ApiError::new(
                     ErrorClass::NotFound,
-                    "store_unknown",
+                    permguard_core::codes::stream::STORE_UNKNOWN,
                     format!(
                         "this plane keeps no journal for `{}/{}`",
                         asked.zone, asked.ledger
@@ -94,7 +94,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             status_of(
                 &ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     error.to_string(),
                 ),
                 self.disclosure,
@@ -106,7 +106,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
                 status_of(
                     &ApiError::new(
                         ErrorClass::Unavailable,
-                        "store_unavailable",
+                        permguard_core::codes::stream::STORE_UNAVAILABLE,
                         error.to_string(),
                     ),
                     self.disclosure,
@@ -132,7 +132,7 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
                         status_of(
                             &ApiError::new(
                                 ErrorClass::Internal,
-                                "signer_malformed",
+                                permguard_core::codes::stream::SIGNER_MALFORMED,
                                 error.to_string(),
                             ),
                             self.disclosure,

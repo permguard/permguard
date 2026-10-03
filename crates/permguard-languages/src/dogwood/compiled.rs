@@ -759,7 +759,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
             if !matches!(value, DogwoodValue::Object(_)) && !injectable(std::slice::from_ref(group))
             {
                 return Err(Refused::new(
-                    "event_field_not_carriable",
+                    permguard_core::codes::pdp_temporal::EVENT_FIELD_NOT_CARRIABLE,
                     format!(
                         "`logged.{group}` is a top-level field, and this build writes a logged \
                          field only as `{}` / `{}` or inside a group. It would be dropped rather \
@@ -798,7 +798,7 @@ impl crate::temporal::Temporal for CompiledDogwood {
                 && !sent.dom_eq(&value)
             {
                 return Err(Refused::new(
-                    "event_pin_contradicted",
+                    permguard_core::codes::pdp_temporal::EVENT_PIN_CONTRADICTED,
                     format!(
                         "`logged.{}` was sent as {} and this partition's schema pins it to {}, \
                          which is {}. A pin decides which history the event belongs to, so it is \
@@ -976,7 +976,7 @@ impl CompiledDogwood {
     fn check_scope(&self, occurrence: &Occurrence) -> Result<(), Refused> {
         let action = EntityUid::from_str(&action_uid(&occurrence.action)).map_err(|error| {
             Refused::new(
-                "event_action_malformed",
+                permguard_core::codes::pdp_temporal::EVENT_ACTION_MALFORMED,
                 format!(
                     "`{}` is not an action reference: {error}",
                     occurrence.action
@@ -985,7 +985,7 @@ impl CompiledDogwood {
         })?;
         let Some(principals) = self.cedar_schema.principals_for_action(&action) else {
             return Err(Refused::new(
-                "event_action_undeclared",
+                permguard_core::codes::pdp_temporal::EVENT_ACTION_UNDECLARED,
                 format!(
                     "this partition's action schema declares no action `{}`",
                     occurrence.action
@@ -995,7 +995,7 @@ impl CompiledDogwood {
         let admitted: Vec<String> = principals.map(ToString::to_string).collect();
         if !admitted.contains(&occurrence.principal.kind) {
             return Err(Refused::new(
-                "event_principal_not_admitted",
+                permguard_core::codes::pdp_temporal::EVENT_PRINCIPAL_NOT_ADMITTED,
                 format!(
                     "`{}` does not act on `{}` in this partition's action schema; it admits {}",
                     occurrence.principal.kind,
@@ -1011,7 +1011,7 @@ impl CompiledDogwood {
             .unwrap_or_default();
         if !admitted.contains(&occurrence.resource.kind) {
             return Err(Refused::new(
-                "event_resource_not_admitted",
+                permguard_core::codes::pdp_temporal::EVENT_RESOURCE_NOT_ADMITTED,
                 format!(
                     "`{}` is not a resource of `{}` in this partition's action schema; it admits \
                      {}",
@@ -1062,7 +1062,7 @@ impl CompiledDogwood {
                 .map(|_| ())
                 .map_err(|error| {
                     Refused::new(
-                        "event_entities_rejected",
+                        permguard_core::codes::pdp_temporal::EVENT_ENTITIES_REJECTED,
                         format!(
                             "the attributed entity store does not conform to this partition's \
                              action schema: {error}"
@@ -1084,7 +1084,7 @@ fn unknown_event(contract: &Contract, occurrence: &Occurrence) -> Refused {
 
     if kinds_for_action.is_empty() {
         return Refused::new(
-            "event_action_undeclared",
+            permguard_core::codes::pdp_temporal::EVENT_ACTION_UNDECLARED,
             format!(
                 "this partition's schema declares no action `{}`",
                 occurrence.action
@@ -1093,7 +1093,7 @@ fn unknown_event(contract: &Contract, occurrence: &Occurrence) -> Refused {
     }
 
     Refused::new(
-        "event_kind_undeclared",
+        permguard_core::codes::pdp_temporal::EVENT_KIND_UNDECLARED,
         format!(
             "this partition's schema declares no `{}` event of `{}`; it declares {}",
             occurrence.kind,
@@ -1123,7 +1123,7 @@ fn check_leaf(
             // reported as wrong — `compatible` answers `true` for those. What reaches here is a
             // leaf whose declared type is one of the shapes it does read, carrying something else.
             false => Err(Refused::new(
-                "event_field_mistyped",
+                permguard_core::codes::pdp_temporal::EVENT_FIELD_MISTYPED,
                 format!(
                     "`{bag}.{}` is declared `{}` on a `{}` event of `{}`, and carries {}",
                     path.join("."),
@@ -1153,7 +1153,7 @@ fn check_leaf(
     }
 
     Err(Refused::new(
-        "event_field_undeclared",
+        permguard_core::codes::pdp_temporal::EVENT_FIELD_UNDECLARED,
         format!(
             "`{bag}.{}` is not a field this partition's schema declares on a `{}` event of `{}`",
             path.join("."),
@@ -1238,7 +1238,7 @@ fn pin_value(occurrence: &Occurrence, pin: &Pin) -> Result<DogwoodValue, Refused
             .cloned()
             .ok_or_else(|| {
                 Refused::new(
-                    "event_pin_source_absent",
+                    permguard_core::codes::pdp_temporal::EVENT_PIN_SOURCE_ABSENT,
                     format!(
                         "this partition's schema pins `{}` to `{}`, and the request carries no \
                          such value. A pin decides which history the event belongs to, so it is \

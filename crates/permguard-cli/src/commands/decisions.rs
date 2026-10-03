@@ -222,7 +222,10 @@ fn get(globals: &Globals, query: &DecisionsQuery, id: &str) -> Result<ExitCode, 
          the control plane in batches, so a decision made moments ago may not have arrived yet: \
          retry in a few seconds before concluding it does not exist"
     ))
-    .named("not_found", "decision_not_found"))
+    .named(
+        "not_found",
+        permguard_core::codes::stream::DECISION_NOT_FOUND,
+    ))
 }
 
 /// The reader, and what it is reading.
@@ -732,10 +735,11 @@ fn read_failure(error: ReadError) -> Failure {
              broken",
             oldest_sequence.saturating_sub(requested_sequence)
         ))
-        .named("not_found", "offset_expired"),
+        .named("not_found", permguard_core::codes::stream::OFFSET_EXPIRED),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
-        ReadError::Unavailable(detail) => {
-            Failure::unavailable(detail).named("unavailable", "decision_log_unreachable")
-        }
+        ReadError::Unavailable(detail) => Failure::unavailable(detail).named(
+            "unavailable",
+            permguard_core::codes::client::DECISION_LOG_UNREACHABLE,
+        ),
     }
 }

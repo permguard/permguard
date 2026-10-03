@@ -39,6 +39,10 @@ pub mod digest {
     pub const AUDIT_PSEUDONYM: &str = "permguard.audit.pseudonym.v1\n";
     /// A decision record.
     pub const DECISION_RECORD: &str = "permguard.decision.v1\n";
+    /// A normalized evaluation request, as a signed decision response cites it.
+    pub const DECISION_REQUEST: &str = "permguard.decision.request.v1\n";
+    /// An unsigned decision-response body, as a signed decision response cites it.
+    pub const DECISION_RESPONSE_BODY: &str = "permguard.decision.response-body.v1\n";
     /// An event record.
     pub const EVENT_RECORD: &str = "permguard.event.record.v1\n";
     /// The caller's occurrence, before stream fields are added.
@@ -204,6 +208,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
+        ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),
+        (
+            "digest.DECISION_RESPONSE_BODY",
+            digest::DECISION_RESPONSE_BODY,
+        ),
         ("digest.EVENT_RECORD", digest::EVENT_RECORD),
         ("digest.EVENT_OCCURRENCE", digest::EVENT_OCCURRENCE),
         ("digest.EVENT_HISTORY", digest::EVENT_HISTORY),

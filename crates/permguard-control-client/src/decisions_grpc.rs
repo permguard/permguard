@@ -205,7 +205,9 @@ impl DecisionReader for GrpcSink {
                     })
                     .unwrap_or_default(),
             }),
-            Err(status) if Self::code_of(&status) == "offset_expired" => {
+            Err(status)
+                if Self::code_of(&status) == permguard_core::codes::stream::OFFSET_EXPIRED =>
+            {
                 // The same three facts the HTTP body carries, from the metadata this transport
                 // carries them in — so a consumer records the same gap whichever way it asked.
                 let metadata = |name: &str| {

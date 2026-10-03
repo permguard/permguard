@@ -42,7 +42,7 @@ impl EventLog for EventFacade {
             status_of(
                 &ApiError::new(
                     ErrorClass::Validation,
-                    "payload_malformed",
+                    permguard_core::codes::notp::PAYLOAD_MALFORMED,
                     format!("the request is not a signed batch: {error}"),
                 ),
                 self.disclosure,
@@ -128,7 +128,7 @@ impl EventLog for EventFacade {
             return Err(status_of(
                 &ApiError::new(
                     ErrorClass::Validation,
-                    "store_required",
+                    permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                     "one occurrence is read inside one ledger: name `zone` and `ledger`",
                 ),
                 self.disclosure,
@@ -163,7 +163,7 @@ impl EventLog for EventFacade {
             Ok(None) => Err(status_of(
                 &ApiError::new(
                     ErrorClass::NotFound,
-                    "event_not_found",
+                    permguard_core::codes::stream::EVENT_NOT_FOUND,
                     "no event in this ledger carries that identifier",
                 ),
                 self.disclosure,
@@ -250,7 +250,7 @@ impl EventLog for EventFacade {
                                 status_of(
                                     &ApiError::new(
                                         ErrorClass::Internal,
-                                        "signer_malformed",
+                                        permguard_core::codes::stream::SIGNER_MALFORMED,
                                         error.to_string(),
                                     ),
                                     self.disclosure,
@@ -390,7 +390,11 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
             requested_sequence,
         } => {
             let mut status = status_of(
-                &ApiError::new(ErrorClass::NotFound, "offset_expired", expired.to_string()),
+                &ApiError::new(
+                    ErrorClass::NotFound,
+                    permguard_core::codes::stream::OFFSET_EXPIRED,
+                    expired.to_string(),
+                ),
                 disclosure,
             );
             // The same three facts the HTTP body carries, so a consumer records the same gap
@@ -414,17 +418,25 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
         read::ReadError::Offset(refused) => status_of(
             &ApiError::new(
                 ErrorClass::Validation,
-                "offset_invalid",
+                permguard_core::codes::stream::OFFSET_INVALID,
                 refused.to_string(),
             ),
             disclosure,
         ),
         read::ReadError::Unknown(detail) => status_of(
-            &ApiError::new(ErrorClass::NotFound, "ledger_not_held", detail),
+            &ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::LEDGER_NOT_HELD,
+                detail,
+            ),
             disclosure,
         ),
         read::ReadError::Unavailable(detail) => status_of(
-            &ApiError::new(ErrorClass::Unavailable, "event_store_unavailable", detail),
+            &ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::stream::EVENT_STORE_UNAVAILABLE,
+                detail,
+            ),
             disclosure,
         ),
         // Not `not_found`: the search stopped at a bound this store chose, so whether the record
@@ -433,7 +445,7 @@ fn read_status(error: read::ReadError, disclosure: Disclosure) -> Status {
         ref exhausted @ read::ReadError::SearchExhausted { .. } => status_of(
             &ApiError::new(
                 ErrorClass::Unavailable,
-                "search_exhausted",
+                permguard_core::codes::stream::SEARCH_EXHAUSTED,
                 exhausted.to_string(),
             ),
             disclosure,

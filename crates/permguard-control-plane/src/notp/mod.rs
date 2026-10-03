@@ -405,8 +405,13 @@ impl NotpFacade {
         &self,
         request: &UploadObjectsRequest,
     ) -> Result<UploadObjectsRequest, ApiError> {
-        let rejected =
-            |message: String| ApiError::new(ErrorClass::Validation, "batch_rejected", message);
+        let rejected = |message: String| {
+            ApiError::new(
+                ErrorClass::Validation,
+                permguard_core::codes::stream::BATCH_REJECTED,
+                message,
+            )
+        };
         match request.compression.as_deref() {
             None => Ok(request.clone()),
             Some(compress::DEFLATE) => {
@@ -526,9 +531,11 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
             "not_found",
             format!("nothing answers to {what}"),
         ),
-        EngineError::Unavailable { message } => {
-            ApiError::new(ErrorClass::Unavailable, "quota_exhausted", message)
-        }
+        EngineError::Unavailable { message } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::stream::QUOTA_EXHAUSTED,
+            message,
+        ),
         EngineError::Internal { detail } => ApiError::new(
             ErrorClass::Internal,
             "notp_failed",

@@ -124,7 +124,7 @@ impl EventSink for HttpEventSink {
         };
         // Not an error: the store needs an earlier batch, and the next round reads from what it
         // acknowledged. Retrying this one unchanged would be refused again for ever.
-        if field("code") == "out_of_order"
+        if field("code") == permguard_core::codes::stream::OUT_OF_ORDER
             && let Ok(ahead) = serde_json::from_str::<Ahead>(&response.body)
         {
             return Ok(Shipped::OutOfOrder {
@@ -454,7 +454,8 @@ impl EventReader for HttpEventSink {
         let refused = read_refusal(&response.body, response.status);
         // Absence is an answer, not a failure: a caller asking whether an identifier is here
         // should be able to hear "no" without treating it as an outage.
-        if matches!(&refused, ReadError::Refused { code, .. } if code == "event_not_found") {
+        if matches!(&refused, ReadError::Refused { code, .. } if code == permguard_core::codes::stream::EVENT_NOT_FOUND)
+        {
             return Ok(None);
         }
 
@@ -474,7 +475,7 @@ fn read_refusal(body: &str, status: u16) -> ReadError {
     };
     let number = |name: &str| parsed.get(name).and_then(Value::as_u64).unwrap_or_default();
 
-    if field("code") == "offset_expired" {
+    if field("code") == permguard_core::codes::stream::OFFSET_EXPIRED {
         return ReadError::Expired {
             oldest: field("oldest_available"),
             oldest_sequence: number("oldest_sequence"),

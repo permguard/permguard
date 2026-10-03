@@ -281,7 +281,7 @@ impl Asking {
     fn check_addressing(&self, partitions: &[PartitionTarget<'_>]) -> Result<(), Malformed> {
         if self.partition_inputs.len() > crate::input::MAX_PARTITION_INPUTS {
             return Err(malformed(
-                "partition_input_too_large",
+                permguard_core::codes::pdp_native::PARTITION_INPUT_TOO_LARGE,
                 format!(
                     "the request addresses {} partitions and this plane accepts {}",
                     self.partition_inputs.len(),
@@ -293,7 +293,7 @@ impl Asking {
         for (name, body) in self.partition_inputs.iter() {
             let Some(target) = partitions.iter().find(|held| held.name == name) else {
                 return Err(malformed(
-                    "partition_unknown",
+                    permguard_core::codes::pdp_native::PARTITION_UNKNOWN,
                     format!(
                         "`partition_inputs` names `{name}`, which this profile does not hold (it \
                          holds: {}). An input supplies data to a partition the profile already \
@@ -304,7 +304,7 @@ impl Asking {
             };
             let Some(contract) = target.input else {
                 return Err(malformed(
-                    "partition_input_unsupported",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_UNSUPPORTED,
                     format!(
                         "the partition `{name}` declares no input, and this request addresses it: \
                          what a partition reads is the ledger's decision, and a partition that \
@@ -314,7 +314,7 @@ impl Asking {
             };
             let Some(kind) = named(&body.kind) else {
                 return Err(malformed(
-                    "partition_input_type_required",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_TYPE_REQUIRED,
                     format!(
                         "`partition_inputs.{name}.type` is required: it states what this data is, \
                          and is checked against the `{}` the ledger declares",
@@ -324,7 +324,7 @@ impl Asking {
             };
             let Some(registered) = crate::input::input_type(&kind) else {
                 return Err(malformed(
-                    "partition_input_type_unknown",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_TYPE_UNKNOWN,
                     format!(
                         "`{kind}` is not an input type this build implements (it implements: {}). \
                          An input type is a contract Permguard implements, not a name a caller \
@@ -335,7 +335,7 @@ impl Asking {
             };
             if kind != contract.r#type {
                 return Err(malformed(
-                    "partition_input_type_mismatch",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_TYPE_MISMATCH,
                     format!(
                         "the partition `{name}` accepts `{}` and this request states `{kind}`: the \
                          type says what the data is, and it is checked, never obeyed",
@@ -345,7 +345,7 @@ impl Asking {
             }
             if registered.runtime() != target.language {
                 return Err(malformed(
-                    "partition_input_type_incompatible",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_TYPE_INCOMPATIBLE,
                     format!(
                         "`{kind}` is read by `{}` and the partition `{name}` runs `{}`: an input \
                          is written for one runtime, and no other can read it",
@@ -384,7 +384,7 @@ impl Asking {
         };
         let registered = crate::input::input_type(&contract.r#type).ok_or_else(|| {
             malformed(
-                "partition_input_type_unknown",
+                permguard_core::codes::pdp_native::PARTITION_INPUT_TYPE_UNKNOWN,
                 format!(
                     "the partition `{}` declares the input type `{}`, which this build does not \
                      implement",
@@ -396,7 +396,7 @@ impl Asking {
         let Some(body) = self.partition_inputs.get(target.name) else {
             if contract.required {
                 return Err(malformed(
-                    "partition_input_required",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_REQUIRED,
                     format!(
                         "the partition `{}` requires an input of type `{}` and this request \
                          addresses it with none: its policies read that data, and deciding \
@@ -415,7 +415,7 @@ impl Asking {
             if let Some(evaluator) = target.evaluator {
                 crate::headroom::with(|| evaluator.check_input(&empty)).map_err(|why| {
                     malformed(
-                        "partition_input_schema",
+                        permguard_core::codes::pdp_native::PARTITION_INPUT_SCHEMA,
                         format!(
                             "the partition `{}` was addressed with no input, and the empty input \
                              its rules would read does not satisfy its schema: {why}. State the \
@@ -434,7 +434,7 @@ impl Asking {
             Some(data) if !data.is_null() => data,
             _ => {
                 return Err(malformed(
-                    "partition_input_malformed",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_MALFORMED,
                     format!(
                         "`partition_inputs.{}.data` is required: state the data, or address the \
                          partition with nothing at all",
@@ -449,13 +449,13 @@ impl Asking {
         // how a process ends without ever reaching a policy.
         crate::input::within_limits(data).map_err(|why| {
             malformed(
-                "partition_input_too_large",
+                permguard_core::codes::pdp_native::PARTITION_INPUT_TOO_LARGE,
                 format!("`partition_inputs.{}`: {why}", target.name),
             )
         })?;
         let normalized = registered.normalize(data).map_err(|why| {
             malformed(
-                "partition_input_malformed",
+                permguard_core::codes::pdp_native::PARTITION_INPUT_MALFORMED,
                 format!("`partition_inputs.{}.data`: {why}", target.name),
             )
         })?;
@@ -465,7 +465,7 @@ impl Asking {
             // stack check. See `crate::headroom`.
             crate::headroom::with(|| evaluator.check_input(&normalized)).map_err(|why| {
                 malformed(
-                    "partition_input_schema",
+                    permguard_core::codes::pdp_native::PARTITION_INPUT_SCHEMA,
                     format!("`partition_inputs.{}`: {why}", target.name),
                 )
             })?;
@@ -790,14 +790,14 @@ impl CheckRequest {
     pub fn resolve(&self, max_evaluations: usize) -> Result<Resolved, Malformed> {
         let zone = named(&self.zone).ok_or_else(|| {
             malformed(
-                "zone_required",
+                permguard_core::codes::pdp_native::ZONE_REQUIRED,
                 "the request names no zone: `zone` and `ledger` say which policy store to decide \
                  against, and there is no default",
             )
         })?;
         let ledger = named(&self.ledger).ok_or_else(|| {
             malformed(
-                "ledger_required",
+                permguard_core::codes::pdp_native::LEDGER_REQUIRED,
                 "the request names no ledger: `zone` and `ledger` say which policy store to \
                  decide against, and there is no default",
             )
@@ -843,7 +843,7 @@ impl CheckRequest {
                 .is_some_and(|properties| !properties.is_empty())
             {
                 return Err(malformed(
-                    "field_unsupported",
+                    permguard_core::codes::pdp_native::FIELD_UNSUPPORTED,
                     "`principal.properties` is not read by anything: `principal` names the caller \
                      for the audit record, not the subject a policy decides about. State the \
                      attributes a policy needs on `subject`",
@@ -857,7 +857,7 @@ impl CheckRequest {
             for (field, value) in [("type", &principal.kind), ("id", &principal.id)] {
                 if named(value).is_none() {
                     return Err(malformed(
-                        "field_required",
+                        permguard_core::codes::pdp_native::FIELD_REQUIRED,
                         format!(
                             "`principal.{field}` is required when `principal` is stated: it names \
                              the caller in the audit record, and half a name records nobody"
@@ -874,7 +874,7 @@ impl CheckRequest {
 
         if self.evaluations.len() > max_evaluations {
             return Err(malformed(
-                "too_many_evaluations",
+                permguard_core::codes::pdp_native::TOO_MANY_EVALUATIONS,
                 format!(
                     "the request carries {} evaluations and this plane accepts {max_evaluations}",
                     self.evaluations.len()
@@ -898,7 +898,7 @@ impl CheckRequest {
                 };
                 if named_once.contains(&request_id.as_str()) {
                     return Err(malformed(
-                        "request_id_repeated",
+                        permguard_core::codes::pdp_native::REQUEST_ID_REPEATED,
                         format!(
                             "two evaluations are named `{request_id}`: a `request_id` is how an \
                              answer is joined back to the question, so it has to name one"
@@ -955,7 +955,7 @@ impl CheckRequest {
         {
             if held.is_some() {
                 return Err(malformed(
-                    "field_removed",
+                    permguard_core::codes::pdp_native::FIELD_REMOVED,
                     format!(
                         "`entities` is no longer accepted ({where_it_is} carries one): address \
                          runtime-specific data through `partition_inputs`, by the name of the \
@@ -1005,7 +1005,7 @@ impl CheckRequest {
         // shape with the profile would not be a contract.
         if context.contains_key(RESERVED_CONTEXT_ACTION) {
             return Err(malformed(
-                "field_reserved",
+                permguard_core::codes::pdp_native::FIELD_RESERVED,
                 format!(
                     "`context.{RESERVED_CONTEXT_ACTION}` is populated from `action.properties` and \
                      may not be sent: state the properties on the action, where every runtime can \
@@ -1054,7 +1054,7 @@ fn entity(body: Option<&EntityBody>, what: &str, index: usize) -> Result<Entity,
 
 fn missing(what: &str, index: usize) -> Malformed {
     malformed(
-        "field_required",
+        permguard_core::codes::pdp_native::FIELD_REQUIRED,
         format!(
             "`{what}` is required: state it at the top level or in evaluation {index} — top-level \
              values are the defaults each evaluation inherits"

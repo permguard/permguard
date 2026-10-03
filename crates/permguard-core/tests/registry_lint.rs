@@ -5,7 +5,9 @@
 //!
 //! A domain string is part of what a signature means and a code is what a client branches on, so
 //! both are contracts, and a contract spelled twice is two chances to drift. These tests walk every
-//! crate's non-test sources and fail on a literal that the registries do not own.
+//! crate's non-test sources and fail both ways: on a literal the registries do not own, and on a
+//! registered value spelled as a literal instead of through its constant. The exceptions are listed
+//! in `SPELLING_EXCEPTIONS`, each one narrow and explained.
 //!
 //! Test code is skipped on purpose: a test that pins the exact bytes of a wire format *should*
 //! spell them, so that a change to a registry constant fails a test somewhere.
@@ -185,6 +187,73 @@ fn test_every_stable_code_is_registered() {
     assert!(
         offences.is_empty(),
         "stable codes spelled outside `permguard_core::codes`:\n{}",
+        offences.join("\n")
+    );
+}
+
+/// Where a registered code's spelling may appear outside `permguard_core::codes`, and why. Every
+/// entry is narrow: a pattern a line must contain, never a whole file.
+const SPELLING_EXCEPTIONS: [(&str, &str); 2] = [
+    // The metric label vocabularies are a registry of their own: a label value that is spelled
+    // like a code is a word of that registry, declared there.
+    ("permguard-core/src/metrics.rs", "label!("),
+    // A metric label value at a recording site, `(labels::NAME, "value")`: a word of the label
+    // registry, not a stable code on a wire.
+    ("", "(labels::"),
+];
+
+/// The class names: they are also spelled as codes, and every use of them is a class.
+const CLASSES: [&str; 5] = [
+    "validation",
+    "conflict",
+    "not_found",
+    "unavailable",
+    "internal",
+];
+
+/// Whether the line at `position` sits inside a `label!( … )` vocabulary of `metrics.rs`.
+fn inside_label_vocabulary(lines: &[(usize, String)], position: usize) -> bool {
+    lines[..=position]
+        .iter()
+        .rev()
+        .map(|(_, line)| line.trim())
+        .find(|line| line.starts_with("label!(") || line.starts_with(");"))
+        .is_some_and(|line| line.starts_with("label!("))
+}
+
+#[test]
+fn test_no_registered_code_is_spelled_outside_the_registry() {
+    let registered: Vec<&str> = codes::all().into_iter().map(|(_, value)| value).collect();
+    let mut offences = Vec::new();
+
+    for path in sources() {
+        let shown = path.display().to_string();
+        let lines = code_lines(&path);
+        for (position, (number, line)) in lines.iter().enumerate() {
+            let excepted = SPELLING_EXCEPTIONS.iter().any(|(file, pattern)| {
+                shown.ends_with(file)
+                    && (line.contains(pattern)
+                        || (*pattern == "label!(" && inside_label_vocabulary(&lines, position)))
+            });
+            if excepted {
+                continue;
+            }
+            let shaped = CODE_SHAPES.iter().any(|shape| line.contains(shape));
+            for literal in literals(line) {
+                if !registered.contains(&literal.as_str()) || CLASSES.contains(&literal.as_str()) {
+                    continue;
+                }
+                // A one-word code is also an ordinary word; it is a code where a code is built.
+                if literal.contains('_') || shaped {
+                    offences.push(format!("{shown}:{number}: {literal:?}"));
+                }
+            }
+        }
+    }
+
+    assert!(
+        offences.is_empty(),
+        "registered stable codes spelled outside `permguard_core::codes` (use the constant):\n{}",
         offences.join("\n")
     );
 }

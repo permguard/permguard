@@ -212,8 +212,11 @@ fn refusal(status: &tonic::Status) -> String {
 /// The class and code a gRPC status means, when the server named neither.
 fn classify(code: tonic::Code) -> (&'static str, &'static str) {
     match code {
-        tonic::Code::InvalidArgument => ("validation", "invalid_argument"),
-        tonic::Code::AlreadyExists => ("conflict", "name_taken"),
+        tonic::Code::InvalidArgument => (
+            "validation",
+            permguard_core::codes::common::INVALID_ARGUMENT,
+        ),
+        tonic::Code::AlreadyExists => ("conflict", permguard_core::codes::catalog::NAME_TAKEN),
         tonic::Code::Aborted | tonic::Code::FailedPrecondition => ("conflict", "conflict"),
         tonic::Code::NotFound => ("not_found", "not_found"),
         tonic::Code::Unavailable => ("unavailable", "unavailable"),
@@ -918,7 +921,7 @@ fn request_of(
 ) -> Result<pdp::EvaluateRequest, permguard_languages::Malformed> {
     let request: permguard_languages::CheckRequest = serde_json::from_value(payload.clone())
         .map_err(|error| permguard_languages::Malformed {
-            code: "payload_malformed",
+            code: permguard_core::codes::notp::PAYLOAD_MALFORMED,
             message: error.to_string(),
         })?;
     // Carried with its own code, not flattened into one. A caller that switches on `field_removed`
@@ -927,7 +930,7 @@ fn request_of(
     request.removed()?;
 
     to_proto(&request).map_err(|message| permguard_languages::Malformed {
-        code: "payload_malformed",
+        code: permguard_core::codes::notp::PAYLOAD_MALFORMED,
         message,
     })
 }

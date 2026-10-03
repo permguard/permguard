@@ -218,12 +218,14 @@ impl EventFacade {
             },
         )
         .map_err(|error| match error {
-            super::read::ReadError::Unknown(detail) => {
-                ApiError::new(ErrorClass::NotFound, "scope_unknown", detail)
-            }
+            super::read::ReadError::Unknown(detail) => ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::SCOPE_UNKNOWN,
+                detail,
+            ),
             other => ApiError::new(
                 ErrorClass::Unavailable,
-                "store_unavailable",
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
                 other.to_string(),
             ),
         })?;
@@ -252,7 +254,7 @@ impl EventFacade {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     error.to_string(),
                 )
             })?;
@@ -262,14 +264,14 @@ impl EventFacade {
             let state = self.store.stream_state(&stream).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     error.to_string(),
                 )
             })?;
             let signers = self.store.signers(&stream).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     error.to_string(),
                 )
             })?;
@@ -543,7 +545,7 @@ async fn signers(
         .unwrap_or_else(|error| {
             Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "store_unavailable",
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
             ))
         })
@@ -574,7 +576,7 @@ async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> 
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    "payload_malformed",
+                    permguard_core::codes::notp::PAYLOAD_MALFORMED,
                     format!("the request body is not a signed batch: {rejection}"),
                 ),
             );
@@ -600,7 +602,7 @@ async fn batches(State(facade): State<EventFacade>, body: axum::body::Bytes) -> 
             StatusCode::CONFLICT,
             Json(serde_json::json!({
                 "class": "conflict",
-                "code": "out_of_order",
+                "code": permguard_core::codes::stream::OUT_OF_ORDER,
                 "message": format!(
                     "this store holds through {} and this batch begins later: resend from {expected_seq}",
                     expected_seq.saturating_sub(1)
@@ -732,7 +734,7 @@ async fn records(State(facade): State<EventFacade>, RawQuery(query): RawQuery) -
             &facade,
             ApiError::new(
                 ErrorClass::Validation,
-                "stream_required",
+                permguard_core::codes::stream::STREAM_REQUIRED,
                 "a deployment-wide read names one producer stream: \
                  `?zone=&ledger=&producer_class=&producer=&instance=`",
             ),
@@ -775,7 +777,7 @@ async fn record(
             &facade,
             ApiError::new(
                 ErrorClass::Validation,
-                "store_required",
+                permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                 "one occurrence is read inside one ledger: `?zone=&ledger=`",
             ),
         );
@@ -803,7 +805,7 @@ async fn record(
             &facade,
             ApiError::new(
                 ErrorClass::NotFound,
-                "event_not_found",
+                permguard_core::codes::stream::EVENT_NOT_FOUND,
                 "no event in this ledger carries that identifier",
             ),
         ),
@@ -841,7 +843,7 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
             StatusCode::GONE,
             Json(serde_json::json!({
                 "class": "not_found",
-                "code": "offset_expired",
+                "code": permguard_core::codes::stream::OFFSET_EXPIRED,
                 "message": expired.to_string(),
                 "oldest_available": oldest,
                 "oldest_sequence": oldest_sequence,
@@ -853,7 +855,7 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
             facade,
             ApiError::new(
                 ErrorClass::Validation,
-                "offset_invalid",
+                permguard_core::codes::stream::OFFSET_INVALID,
                 refused.to_string(),
             ),
         ),
@@ -861,11 +863,19 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
         // script, and only one of them means the ledger is empty.
         read::ReadError::Unknown(detail) => refuse(
             facade,
-            ApiError::new(ErrorClass::NotFound, "ledger_not_held", detail),
+            ApiError::new(
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::LEDGER_NOT_HELD,
+                detail,
+            ),
         ),
         read::ReadError::Unavailable(detail) => refuse(
             facade,
-            ApiError::new(ErrorClass::Unavailable, "event_store_unavailable", detail),
+            ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::stream::EVENT_STORE_UNAVAILABLE,
+                detail,
+            ),
         ),
         // Not a `404`: the search stopped at a bound this store chose, so whether the record is
         // here was never established. A `404` would be this store inventing an absence.
@@ -873,7 +883,7 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
             facade,
             ApiError::new(
                 ErrorClass::Unavailable,
-                "search_exhausted",
+                permguard_core::codes::stream::SEARCH_EXHAUSTED,
                 exhausted.to_string(),
             ),
         ),

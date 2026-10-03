@@ -148,7 +148,10 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
             "this export stopped after {pages} pages and the snapshot is not finished: what was \
              read is above, and `--from {resume}` continues it"
         ))
-        .named("validation", "export_truncated"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EXPORT_TRUNCATED,
+        ));
     }
 
     Ok(ExitCode::from(EXIT_READY))
@@ -207,7 +210,7 @@ fn get(globals: &Globals, query: &EventsQuery, event_id: &str) -> Result<ExitCod
         None => Err(Failure::usage(format!(
             "no event in `{zone}/{ledger}` carries the identifier `{event_id}`"
         ))
-        .named("not_found", "event_not_found")),
+        .named("not_found", permguard_core::codes::stream::EVENT_NOT_FOUND)),
     }
 }
 
@@ -299,7 +302,10 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
             "this verification stopped after {MAX_PAGES} pages and did not reach the end of the \
              snapshot: what was checked is above, and `--from {resume}` continues it"
         ))
-        .named("validation", "export_truncated"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EXPORT_TRUNCATED,
+        ));
     }
 
     // A verification that failed is a failed command: a script that ran this and looked only at
@@ -309,7 +315,10 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
             "this store cannot account for every record it returned: see the report above"
                 .to_owned(),
         )
-        .named("validation", "events_unverified"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENTS_UNVERIFIED,
+        ));
     }
 
     Ok(ExitCode::from(EXIT_READY))
@@ -324,8 +333,10 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
         named.display()
     ));
     let text = std::fs::read_to_string(&named).map_err(|error| {
-        Failure::usage(format!("reading {}: {error}", named.display()))
-            .named("validation", "event_export_unreadable")
+        Failure::usage(format!("reading {}: {error}", named.display())).named(
+            "validation",
+            permguard_core::codes::client::EVENT_EXPORT_UNREADABLE,
+        )
     })?;
     let archive: EventArchive = serde_json::from_str(&text)
         .or_else(|_| serde_norway::from_str(&text))
@@ -334,7 +345,10 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
                 "{} is not a Permguard event export: {error}",
                 named.display()
             ))
-            .named("validation", "event_export_malformed")
+            .named(
+                "validation",
+                permguard_core::codes::client::EVENT_EXPORT_MALFORMED,
+            )
         })?;
     if archive.format != permguard_core::domains::interface::EVENTS_EXPORT_V1ALPHA1 {
         return Err(Failure::usage(format!(
@@ -343,7 +357,10 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
             named.display(),
             archive.format
         ))
-        .named("validation", "event_export_type_unsupported"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENT_EXPORT_TYPE_UNSUPPORTED,
+        ));
     }
     let scope = read_scope(&archive.scope_binding);
     let keys = verification_keys(globals, query)?;
@@ -368,13 +385,19 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
         return Err(Failure::usage(
             "the file is a truncated export, so it cannot establish a complete snapshot",
         )
-        .named("validation", "event_export_truncated"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENT_EXPORT_TRUNCATED,
+        ));
     }
     if !holds {
         return Err(Failure::usage(
             "this export cannot account for every record it contains: see the report above",
         )
-        .named("validation", "events_unverified"));
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENTS_UNVERIFIED,
+        ));
     }
 
     Ok(ExitCode::from(EXIT_READY))
@@ -544,14 +567,14 @@ fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<Vec<Jwk>>, F
     let named = crate::session::rooted(globals, path);
     let text = std::fs::read_to_string(&named).map_err(|error| {
         Failure::usage(format!("reading {}: {error}", named.display()))
-            .named("validation", "keys_unreadable")
+            .named("validation", permguard_core::codes::client::KEYS_UNREADABLE)
     })?;
     let parsed: Value = serde_json::from_str(&text).map_err(|error| {
         Failure::usage(format!(
             "{} is not a JWKS document: {error}",
             named.display()
         ))
-        .named("validation", "keys_malformed")
+        .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
     })?;
     let values = parsed
         .get("keys")
@@ -562,7 +585,7 @@ fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<Vec<Jwk>>, F
                 "{} is a JWKS document with no `keys` array",
                 named.display()
             ))
-            .named("validation", "keys_malformed")
+            .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
         })?;
     let keys: Vec<Jwk> = values
         .into_iter()
@@ -573,7 +596,7 @@ fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<Vec<Jwk>>, F
                     "{} has a malformed key at index {index}: {error}",
                     named.display()
                 ))
-                .named("validation", "keys_malformed")
+                .named("validation", permguard_core::codes::client::KEYS_MALFORMED)
             })
         })
         .collect::<Result<_, _>>()?;
@@ -582,7 +605,7 @@ fn key_set(globals: &Globals, query: &EventsQuery) -> Result<Option<Vec<Jwk>>, F
             "{} publishes no verification keys",
             named.display()
         ))
-        .named("validation", "keys_empty"));
+        .named("validation", permguard_core::codes::client::KEYS_EMPTY));
     }
 
     Ok(Some(keys))
@@ -595,7 +618,10 @@ fn verification_keys(globals: &Globals, query: &EventsQuery) -> Result<Vec<Jwk>,
             "independent event verification requires the producer's JWKS: pass `--keys <FILE>`"
                 .to_owned(),
         )
-        .named("validation", "event_keys_required")
+        .named(
+            "validation",
+            permguard_core::codes::client::EVENT_KEYS_REQUIRED,
+        )
     })
 }
 
@@ -879,7 +905,7 @@ fn read_failure(error: ReadError) -> Failure {
              broken",
             oldest_sequence.saturating_sub(requested_sequence)
         ))
-        .named("not_found", "offset_expired"),
+        .named("not_found", permguard_core::codes::stream::OFFSET_EXPIRED),
         // The path is not served at all — not a refusal of what was asked, but a plane that has
         // no event store to ask. Two things look exactly like this from here, and the message
         // names both: the deployment did not opt in, or the plane predates the API.
@@ -891,8 +917,9 @@ fn read_failure(error: ReadError) -> Failure {
         ))
         .named("not_found", code),
         ReadError::Refused { code, detail } => Failure::usage(detail).named("validation", code),
-        ReadError::Unavailable(detail) => {
-            Failure::unavailable(detail).named("unavailable", "event_store_unreachable")
-        }
+        ReadError::Unavailable(detail) => Failure::unavailable(detail).named(
+            "unavailable",
+            permguard_core::codes::client::EVENT_STORE_UNREACHABLE,
+        ),
     }
 }

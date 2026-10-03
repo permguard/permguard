@@ -116,12 +116,12 @@ impl std::fmt::Display for Refused {
 impl Refused {
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Unattributable(_) => "batch_unattributable",
-            Self::Unverifiable(_) => "batch_unverifiable",
-            Self::Unregistered(_) => "batch_unregistered",
-            Self::Fork { .. } => "stream_forked",
-            Self::Closed(_) => "stream_closed",
-            Self::Unavailable(_) => "store_unavailable",
+            Self::Unattributable(_) => permguard_core::codes::stream::BATCH_UNATTRIBUTABLE,
+            Self::Unverifiable(_) => permguard_core::codes::stream::BATCH_UNVERIFIABLE,
+            Self::Unregistered(_) => permguard_core::codes::stream::BATCH_UNREGISTERED,
+            Self::Fork { .. } => permguard_core::codes::stream::STREAM_FORKED,
+            Self::Closed(_) => permguard_core::codes::stream::STREAM_CLOSED,
+            Self::Unavailable(_) => permguard_core::codes::stream::STORE_UNAVAILABLE,
         }
     }
 }

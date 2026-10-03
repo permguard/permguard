@@ -255,12 +255,14 @@ impl Error {
     /// The stable code for this failure.
     pub fn reason(&self) -> &'static str {
         match self {
-            Self::Material { .. } => "tls_material_unreadable",
-            Self::NoRoots { .. } => "tls_no_trust_anchors",
-            Self::ClientAuth { .. } => "tls_client_identity_rejected",
-            Self::Incomplete { .. } => "tls_client_identity_incomplete",
-            Self::ServerName { .. } => "tls_server_name_invalid",
-            Self::Config { .. } => "tls_unsupported",
+            Self::Material { .. } => permguard_core::codes::client::TLS_MATERIAL_UNREADABLE,
+            Self::NoRoots { .. } => permguard_core::codes::client::TLS_NO_TRUST_ANCHORS,
+            Self::ClientAuth { .. } => permguard_core::codes::client::TLS_CLIENT_IDENTITY_REJECTED,
+            Self::Incomplete { .. } => {
+                permguard_core::codes::client::TLS_CLIENT_IDENTITY_INCOMPLETE
+            }
+            Self::ServerName { .. } => permguard_core::codes::client::TLS_SERVER_NAME_INVALID,
+            Self::Config { .. } => permguard_core::codes::client::TLS_UNSUPPORTED,
         }
     }
 }

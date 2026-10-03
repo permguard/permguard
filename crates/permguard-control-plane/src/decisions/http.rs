@@ -106,7 +106,7 @@ impl DecisionFacade {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     error.to_string(),
                 )
             })?;
@@ -122,14 +122,14 @@ impl DecisionFacade {
         let state = self.store.stream_state(pdp_id, instance).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
-                "store_unavailable",
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
             )
         })?;
         let signers = self.store.signers(pdp_id, instance).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
-                "store_unavailable",
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
             )
         })?;
@@ -276,7 +276,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    "malformed_batch",
+                    permguard_core::codes::stream::MALFORMED_BATCH,
                     format!("this is not a decision batch: {error}"),
                 ),
             );
@@ -290,7 +290,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
                 &facade,
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "keys_unavailable",
+                    permguard_core::codes::stream::KEYS_UNAVAILABLE,
                     format!("this plane cannot verify signatures right now: {error}"),
                 ),
             );
@@ -347,7 +347,7 @@ async fn ship(State(facade): State<DecisionFacade>, body: axum::body::Bytes) -> 
             (
                 StatusCode::CONFLICT,
                 Json(OutOfOrder {
-                    status: "out_of_order",
+                    status: permguard_core::codes::stream::OUT_OF_ORDER,
                     expected_seq,
                 }),
             )
@@ -462,7 +462,7 @@ async fn records(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
             &facade,
             ApiError::new(
                 ErrorClass::Validation,
-                "stream_required",
+                permguard_core::codes::stream::STREAM_REQUIRED,
                 "a deployment-wide read names one producer stream: `?pdp=<id>&instance=<id>`",
             ),
         );
@@ -486,7 +486,7 @@ async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
             &facade,
             ApiError::new(
                 ErrorClass::Validation,
-                "stream_required",
+                permguard_core::codes::stream::STREAM_REQUIRED,
                 "a signer manifest belongs to one producer stream: `?pdp=<id>&instance=<id>`",
             ),
         );
@@ -520,7 +520,7 @@ async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
         .unwrap_or_else(|error| {
             Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "store_unavailable",
+                permguard_core::codes::stream::STORE_UNAVAILABLE,
                 error.to_string(),
             ))
         })
@@ -584,7 +584,7 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
                 StatusCode::GONE,
                 Json(serde_json::json!({
                     "class": "not_found",
-                    "code": "offset_expired",
+                    "code": permguard_core::codes::stream::OFFSET_EXPIRED,
                     "message": expired.to_string(),
                     "oldest_available": oldest,
                     "oldest_sequence": oldest_sequence,
@@ -601,7 +601,11 @@ async fn serve(facade: DecisionFacade, scope: Scope, asked: Asked, kind: &'stati
 
             refuse(
                 &facade,
-                ApiError::new(ErrorClass::Validation, "offset_invalid", error.to_string()),
+                ApiError::new(
+                    ErrorClass::Validation,
+                    permguard_core::codes::stream::OFFSET_INVALID,
+                    error.to_string(),
+                ),
             )
         }
     }
@@ -627,21 +631,29 @@ fn api_error(refused: &Refused) -> ApiError {
         // both "the request is malformed": the producer must not retry either.
         Refused::Unattributable(detail) => ApiError::new(
             ErrorClass::Validation,
-            "batch_unattributable",
+            permguard_core::codes::stream::BATCH_UNATTRIBUTABLE,
             detail.clone(),
         ),
-        Refused::Unverifiable(detail) => {
-            ApiError::new(ErrorClass::Validation, "batch_unverifiable", detail.clone())
-        }
-        Refused::Conflict { .. } => {
-            ApiError::new(ErrorClass::Conflict, "stream_conflict", refused.to_string())
-        }
-        Refused::Closed(_) => {
-            ApiError::new(ErrorClass::Conflict, "stream_closed", refused.to_string())
-        }
+        Refused::Unverifiable(detail) => ApiError::new(
+            ErrorClass::Validation,
+            permguard_core::codes::stream::BATCH_UNVERIFIABLE,
+            detail.clone(),
+        ),
+        Refused::Conflict { .. } => ApiError::new(
+            ErrorClass::Conflict,
+            permguard_core::codes::stream::STREAM_CONFLICT,
+            refused.to_string(),
+        ),
+        Refused::Closed(_) => ApiError::new(
+            ErrorClass::Conflict,
+            permguard_core::codes::stream::STREAM_CLOSED,
+            refused.to_string(),
+        ),
         // The one a shipper must treat as *retry*, never as *drop*.
-        Refused::Unavailable(detail) => {
-            ApiError::new(ErrorClass::Unavailable, "store_unavailable", detail.clone())
-        }
+        Refused::Unavailable(detail) => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::stream::STORE_UNAVAILABLE,
+            detail.clone(),
+        ),
     }
 }

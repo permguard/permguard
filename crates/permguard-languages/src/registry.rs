@@ -343,14 +343,19 @@ pub fn validate_blob(media_type: &str, data: &[u8]) -> Result<(), BlobRejected> 
         // says whether it is one it can serve at all, input contracts included. A manifest
         // declaring an input type nobody implements is refused where it is pushed, not discovered
         // by the first caller who addresses that partition.
-        let manifest =
-            Manifest::decode(data).map_err(|e| rejected("manifest_rejected", e.to_string()))?;
+        let manifest = Manifest::decode(data).map_err(|e| {
+            rejected(
+                permguard_core::codes::notp::MANIFEST_REJECTED,
+                e.to_string(),
+            )
+        })?;
 
-        return check_manifest(&manifest).map_err(|e| rejected("manifest_rejected", e.detail));
+        return check_manifest(&manifest)
+            .map_err(|e| rejected(permguard_core::codes::notp::MANIFEST_REJECTED, e.detail));
     }
     let Some(language) = language_for_media_type(media_type) else {
         return Err(rejected(
-            "media_type_unregistered",
+            permguard_core::codes::notp::MEDIA_TYPE_UNREGISTERED,
             format!("`{media_type}` is not a registered media type"),
         ));
     };

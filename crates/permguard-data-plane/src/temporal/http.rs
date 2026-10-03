@@ -87,7 +87,7 @@ async fn submit(
                 error(
                     &ApiError::new(
                         ErrorClass::Validation,
-                        "payload_malformed",
+                        permguard_core::codes::notp::PAYLOAD_MALFORMED,
                         format!("the request body is not a valid submission: {rejection}"),
                     ),
                     surface.disclosure,
@@ -130,7 +130,7 @@ async fn signers(
         return error(
             &ApiError::new(
                 ErrorClass::Validation,
-                "store_required",
+                permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                 "a journal is named by its ledger: `?zone=&ledger=`",
             ),
             surface.disclosure,
@@ -169,7 +169,7 @@ async fn signers(
         return error(
             &ApiError::new(
                 ErrorClass::NotFound,
-                "store_unknown",
+                permguard_core::codes::stream::STORE_UNKNOWN,
                 format!("this plane keeps no journal for `{zone}/{ledger}`"),
             ),
             surface.disclosure,
@@ -179,7 +179,11 @@ async fn signers(
         Ok(state) => state,
         Err(refused) => {
             return error(
-                &ApiError::new(ErrorClass::NotFound, "store_unknown", refused.to_string()),
+                &ApiError::new(
+                    ErrorClass::NotFound,
+                    permguard_core::codes::stream::STORE_UNKNOWN,
+                    refused.to_string(),
+                ),
                 surface.disclosure,
             );
         }
@@ -190,7 +194,7 @@ async fn signers(
             return error(
                 &ApiError::new(
                     ErrorClass::Unavailable,
-                    "store_unavailable",
+                    permguard_core::codes::stream::STORE_UNAVAILABLE,
                     refused.to_string(),
                 ),
                 surface.disclosure,

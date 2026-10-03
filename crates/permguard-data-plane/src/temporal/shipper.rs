@@ -179,7 +179,7 @@ impl Shipper {
                 );
 
                 return Round::Stopped {
-                    code: "unshippable".to_owned(),
+                    code: permguard_core::codes::stream::UNSHIPPABLE.to_owned(),
                     detail,
                 };
             }
@@ -236,7 +236,7 @@ impl Shipper {
                     );
 
                     return Round::Stopped {
-                        code: "ack_ahead".to_owned(),
+                        code: permguard_core::codes::stream::ACK_AHEAD.to_owned(),
                         detail: format!(
                             "the store acknowledged sequence {acked}, and this plane is durable \
                              only through {}: the journal and the store disagree about the same \
@@ -275,7 +275,10 @@ impl Shipper {
                 // reads from what it acknowledged.
                 self.metrics.count(
                     &measure::SHIPPED,
-                    &[(permguard_core::metrics::labels::OUTCOME, "out_of_order")],
+                    &[(
+                        permguard_core::metrics::labels::OUTCOME,
+                        permguard_core::codes::stream::OUT_OF_ORDER,
+                    )],
                 );
                 warn!(
                     event.name = "events.out_of_order",

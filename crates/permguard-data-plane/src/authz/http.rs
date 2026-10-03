@@ -113,7 +113,7 @@ async fn answer(
                 error(
                     &ApiError::new(
                         ErrorClass::Validation,
-                        "payload_malformed",
+                        permguard_core::codes::notp::PAYLOAD_MALFORMED,
                         format!("the request body is not a valid payload: {rejection}"),
                     ),
                     surface.disclosure,

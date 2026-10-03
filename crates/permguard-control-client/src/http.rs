@@ -80,15 +80,17 @@ impl Error {
     pub fn reason(&self) -> &'static str {
         match self {
             Self::Tls { source } => source.reason(),
-            Self::Handshake { .. } => "tls_handshake_failed",
-            Self::ClientCertificateRequired { .. } => "tls_client_certificate_required",
-            Self::Resolve { .. } => "resolve_failed",
-            Self::Refused { .. } => "connection_refused",
+            Self::Handshake { .. } => permguard_core::codes::client::TLS_HANDSHAKE_FAILED,
+            Self::ClientCertificateRequired { .. } => {
+                permguard_core::codes::client::TLS_CLIENT_CERTIFICATE_REQUIRED
+            }
+            Self::Resolve { .. } => permguard_core::codes::client::RESOLVE_FAILED,
+            Self::Refused { .. } => permguard_core::codes::client::CONNECTION_REFUSED,
             Self::Timeout { .. } => "timeout",
-            Self::Connect { .. } => "connect_failed",
-            Self::Transport { .. } => "transport_failed",
-            Self::PlaintextToTls { .. } => "tls_expected",
-            Self::Malformed { .. } => "malformed_response",
+            Self::Connect { .. } => permguard_core::codes::client::CONNECT_FAILED,
+            Self::Transport { .. } => permguard_core::codes::client::TRANSPORT_FAILED,
+            Self::PlaintextToTls { .. } => permguard_core::codes::client::TLS_EXPECTED,
+            Self::Malformed { .. } => permguard_core::codes::client::MALFORMED_RESPONSE,
         }
     }
 

@@ -60,6 +60,8 @@ pub mod pdp_native {
     pub const PARTITION_INPUT_TOO_LARGE: &str = "partition_input_too_large";
     pub const PARTITION_INPUT_UNSUPPORTED: &str = "partition_input_unsupported";
     pub const REQUEST_ID_REPEATED: &str = "request_id_repeated";
+    /// A `request_nonce` asked for a signed response and no permitted signer is available.
+    pub const RESPONSE_SIGNING_UNAVAILABLE: &str = "response_signing_unavailable";
     pub const EVALUATIONS_SEMANTIC: &str = "evaluations_semantic";
     pub const FIELD_REQUIRED: &str = "field_required";
     pub const FIELD_UNSUPPORTED: &str = "field_unsupported";
@@ -139,6 +141,8 @@ pub mod stream {
     pub const DECISION_NOT_FOUND: &str = "decision_not_found";
     pub const EVENT_NOT_FOUND: &str = "event_not_found";
     pub const QUOTA_EXHAUSTED: &str = "quota_exhausted";
+    /// The acknowledgement for a batch ahead of the store: resend from `expected_seq`.
+    pub const OUT_OF_ORDER: &str = "out_of_order";
 }
 
 /// Ledger objects and NOTP.
@@ -245,6 +249,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_native::PARTITION_INPUT_TOO_LARGE,
         pdp_native::PARTITION_INPUT_UNSUPPORTED,
         pdp_native::REQUEST_ID_REPEATED,
+        pdp_native::RESPONSE_SIGNING_UNAVAILABLE,
         pdp_native::EVALUATIONS_SEMANTIC,
         pdp_native::FIELD_REQUIRED,
         pdp_native::FIELD_UNSUPPORTED,
@@ -316,6 +321,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::DECISION_NOT_FOUND,
         stream::EVENT_NOT_FOUND,
         stream::QUOTA_EXHAUSTED,
+        stream::OUT_OF_ORDER,
         notp::NOT_FAST_FORWARD,
         notp::NOT_A_ROOT,
         notp::NOT_REACHABLE,

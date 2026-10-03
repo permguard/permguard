@@ -297,7 +297,7 @@ impl Submitter {
 
                         ApiError::new(
                             ErrorClass::Unavailable,
-                            "event_submission_at_capacity",
+                            permguard_core::codes::pdp_temporal::EVENT_SUBMISSION_AT_CAPACITY,
                             format!(
                                 "{held}. A submission holds one of them from the durable append \
                                  through the evaluation that follows it, so this plane bounds how \
@@ -308,7 +308,7 @@ impl Submitter {
                     }
                     crate::blocking::Refused::Failed(why) => ApiError::new(
                         ErrorClass::Unavailable,
-                        "event_not_durable",
+                        permguard_core::codes::pdp_temporal::EVENT_NOT_DURABLE,
                         format!("the occurrence could not be applied: {why}"),
                     ),
                 })??
@@ -462,7 +462,7 @@ impl Submitter {
 
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "event_kind_disagrees",
+                permguard_core::codes::pdp_temporal::EVENT_KIND_DISAGREES,
                 format!(
                     "the partitions of `{profile}` disagree about whether a `{}` event decides: \
                      `{}` says {}. One occurrence has one answer, and returning a verdict some \
@@ -504,7 +504,7 @@ impl Submitter {
             occurrence_digest: occurrence_digest_of(&event).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Validation,
-                    "event_not_canonical",
+                    permguard_core::codes::pdp_temporal::EVENT_NOT_CANONICAL,
                     format!("the occurrence cannot be canonicalized: {error}"),
                 )
             })?,
@@ -906,13 +906,13 @@ impl Submitter {
                     &measure::REFUSALS,
                     &[(
                         permguard_core::metrics::labels::REASON,
-                        "event_application_incomplete",
+                        permguard_core::codes::pdp_temporal::EVENT_APPLICATION_INCOMPLETE,
                     )],
                 );
 
                 return Err(ApiError::new(
                     ErrorClass::Unavailable,
-                    "event_application_incomplete",
+                    permguard_core::codes::pdp_temporal::EVENT_APPLICATION_INCOMPLETE,
                     format!(
                         "the occurrence `{}` is durable in `{zone}/{ledger}`, but not every \
                          partition of `{profile}` advanced. No accepted receipt was issued; the \
@@ -964,7 +964,8 @@ impl Submitter {
                     policies: verdict.determining.clone(),
                     reason: verdict.error.as_ref().map(|message| {
                         permguard_languages::temporal::Reason {
-                            code: "partition_evaluation_failed".to_owned(),
+                            code: permguard_core::codes::notp::PARTITION_EVALUATION_FAILED
+                                .to_owned(),
                             message: message.clone(),
                         }
                     }),
@@ -1041,7 +1042,7 @@ impl Submitter {
                 );
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "event_outcome_not_durable",
+                    permguard_core::codes::pdp_temporal::EVENT_OUTCOME_NOT_DURABLE,
                     format!(
                         "the occurrence `{event_id}` is durable in `{zone}/{ledger}`, but its \
                          retry answer could not be made durable: {error}"
@@ -1173,7 +1174,7 @@ impl Submitter {
         let this = record.to_value().map_err(|error| {
             ApiError::new(
                 ErrorClass::Internal,
-                "event_not_canonical",
+                permguard_core::codes::pdp_temporal::EVENT_NOT_CANONICAL,
                 format!("the durable record cannot be canonicalized: {error}"),
             )
         })?;
@@ -1182,7 +1183,7 @@ impl Submitter {
             .ok_or_else(|| {
                 ApiError::new(
                     ErrorClass::Internal,
-                    "event_not_canonical",
+                    permguard_core::codes::pdp_temporal::EVENT_NOT_CANONICAL,
                     "the durable record's instant is not a canonical one".to_owned(),
                 )
             })?;
@@ -1244,7 +1245,7 @@ impl Submitter {
             &measure::REFUSALS,
             &[(
                 permguard_core::metrics::labels::REASON,
-                "event_out_of_order",
+                permguard_core::codes::pdp_temporal::EVENT_OUT_OF_ORDER,
             )],
         );
 
@@ -1337,7 +1338,7 @@ impl Submitter {
         let digest = occurrence_digest_of(event).map_err(|error| {
             ApiError::new(
                 ErrorClass::Validation,
-                "event_not_canonical",
+                permguard_core::codes::pdp_temporal::EVENT_NOT_CANONICAL,
                 format!("the occurrence `{event_id}` cannot be digested: {error}"),
             )
         })?;
@@ -1347,7 +1348,10 @@ impl Submitter {
             // identifier lands on, and it has to be visible as itself.
             self.metrics.count(
                 &measure::REFUSALS,
-                &[(permguard_core::metrics::labels::REASON, "event_id_conflict")],
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    permguard_core::codes::pdp_temporal::EVENT_ID_CONFLICT,
+                )],
             );
 
             return Err(ApiError::new(
@@ -1372,7 +1376,7 @@ impl Submitter {
                 &measure::REFUSALS,
                 &[(
                     permguard_core::metrics::labels::REASON,
-                    "event_routing_conflict",
+                    permguard_core::codes::pdp_temporal::EVENT_ROUTING_CONFLICT,
                 )],
             );
 
@@ -1842,7 +1846,7 @@ impl Submitter {
                 Some(held) => {
                     return Err(ApiError::new(
                         ErrorClass::Validation,
-                        "event_history_disagrees",
+                        permguard_core::codes::pdp_temporal::EVENT_HISTORY_DISAGREES,
                         format!(
                             "the partitions of `{zone}/{ledger}` derive different history keys \
                              for this occurrence: `{}` derives {:?} and an earlier one derived \
@@ -1874,7 +1878,7 @@ impl Submitter {
 
         let store = request.store.as_ref().ok_or_else(|| {
             malformed(
-                "store_required",
+                permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                 "a submission names its store: `store.zone` and `store.ledger`".to_owned(),
             )
         })?;
@@ -1886,7 +1890,7 @@ impl Submitter {
                 .map(ToOwned::to_owned)
                 .ok_or_else(|| {
                     malformed(
-                        "store_required",
+                        permguard_core::codes::pdp_temporal::STORE_REQUIRED,
                         format!("`store.{field}` is required: there is no default store"),
                     )
                 })
@@ -1903,7 +1907,7 @@ impl Submitter {
 
         let body = request.event.as_ref().ok_or_else(|| {
             malformed(
-                "event_required",
+                permguard_core::codes::pdp_temporal::EVENT_REQUIRED,
                 "a submission carries an event: `event.type` and `event.data`".to_owned(),
             )
         })?;
@@ -1912,20 +1916,22 @@ impl Submitter {
         // second one is a registry entry with its own validator, not a branch here.
         if declared != permguard_languages::event::EVENT_TYPE {
             return Err(malformed(
-                "event_type_unsupported",
+                permguard_core::codes::pdp_temporal::EVENT_TYPE_UNSUPPORTED,
                 format!(
                     "`{declared}` is not an event type this plane accepts; it accepts `{}`",
                     permguard_languages::event::EVENT_TYPE
                 ),
             ));
         }
-        let data = body
-            .data
-            .clone()
-            .ok_or_else(|| malformed("event_required", "`event.data` is required".to_owned()))?;
+        let data = body.data.clone().ok_or_else(|| {
+            malformed(
+                permguard_core::codes::pdp_temporal::EVENT_REQUIRED,
+                "`event.data` is required".to_owned(),
+            )
+        })?;
         let parsed: OccurrenceBody = serde_json::from_value(data.clone()).map_err(|error| {
             malformed(
-                "event_malformed",
+                permguard_core::codes::pdp_temporal::EVENT_MALFORMED,
                 format!(
                     "`event.data` is not a `{}`: {error}",
                     permguard_languages::event::EVENT_TYPE
@@ -2045,13 +2051,13 @@ impl Submitter {
                 &measure::REFUSALS,
                 &[(
                     permguard_core::metrics::labels::REASON,
-                    "event_ahead_of_clock",
+                    permguard_core::codes::pdp_temporal::EVENT_AHEAD_OF_CLOCK,
                 )],
             );
 
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "event_ahead_of_clock",
+                permguard_core::codes::pdp_temporal::EVENT_AHEAD_OF_CLOCK,
                 format!(
                     "`{}` is {ahead}s ahead of this plane's clock, and it accepts at most {skew}s \
                      of skew. An event placed in the future sits outside every window a policy \
@@ -2063,12 +2069,15 @@ impl Submitter {
         if behind > lateness {
             self.metrics.count(
                 &measure::REFUSALS,
-                &[(permguard_core::metrics::labels::REASON, "event_too_late")],
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    permguard_core::codes::pdp_temporal::EVENT_TOO_LATE,
+                )],
             );
 
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "event_too_late",
+                permguard_core::codes::pdp_temporal::EVENT_TOO_LATE,
                 format!(
                     "`{}` is {behind}s old, and this plane accepts events up to {lateness}s late. \
                      Recording it now would put it inside windows that have already decided \
@@ -2256,25 +2265,25 @@ fn history_digest(pins: &[String], values: &[String]) -> Result<String, ApiError
 fn reason_of(outcome: &permguard_languages::evaluate::Outcome) -> temporal::Reason {
     if !outcome.errors.is_empty() {
         return temporal::Reason {
-            code: "partition_failed".to_owned(),
+            code: permguard_core::codes::notp::PARTITION_FAILED.to_owned(),
             message: outcome.errors.join("; "),
         };
     }
     if outcome.permitted {
         return temporal::Reason {
-            code: "permitted".to_owned(),
+            code: permguard_core::codes::legacy::PERMITTED.to_owned(),
             message: "a policy permitted it against this partition's history".to_owned(),
         };
     }
     if outcome.denials.is_empty() {
         return temporal::Reason {
-            code: "not_permitted".to_owned(),
+            code: permguard_core::codes::legacy::NOT_PERMITTED.to_owned(),
             message: "no policy permitted it against this partition's history".to_owned(),
         };
     }
 
     temporal::Reason {
-        code: "denied".to_owned(),
+        code: permguard_core::codes::legacy::DENIED.to_owned(),
         message: "a policy refused it against this partition's history".to_owned(),
     }
 }

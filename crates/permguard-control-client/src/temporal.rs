@@ -86,7 +86,7 @@ impl TemporalPdp for HttpTemporal {
         // bytes unchanged; this check prevents the gRPC branch from becoming the stricter client.
         serde_json::from_value::<SubmitRequest>(payload.clone()).map_err(|error| Failure {
             class: "validation".to_owned(),
-            reason: "payload_malformed".to_owned(),
+            reason: permguard_core::codes::notp::PAYLOAD_MALFORMED.to_owned(),
             detail: error.to_string(),
             usage: true,
         })?;
@@ -135,7 +135,7 @@ impl TemporalPdp for GrpcTemporal {
         let request: SubmitRequest =
             serde_json::from_value(payload.clone()).map_err(|error| Failure {
                 class: "validation".to_owned(),
-                reason: "payload_malformed".to_owned(),
+                reason: permguard_core::codes::notp::PAYLOAD_MALFORMED.to_owned(),
                 detail: error.to_string(),
                 usage: true,
             })?;
@@ -180,7 +180,7 @@ impl TemporalPdp for GrpcTemporal {
 fn to_proto(request: SubmitRequest) -> Result<proto::SubmitEventRequest, Failure> {
     let malformed = |detail: String| Failure {
         class: "validation".to_owned(),
-        reason: "payload_malformed".to_owned(),
+        reason: permguard_core::codes::notp::PAYLOAD_MALFORMED.to_owned(),
         detail,
         usage: true,
     };
@@ -380,7 +380,11 @@ fn grpc_refusal(status: tonic::Status) -> Failure {
             .map(ToOwned::to_owned)
     };
     let (class, reason, usage) = match status.code() {
-        tonic::Code::InvalidArgument => ("validation", "invalid_argument", true),
+        tonic::Code::InvalidArgument => (
+            "validation",
+            permguard_core::codes::common::INVALID_ARGUMENT,
+            true,
+        ),
         tonic::Code::NotFound => ("not_found", "not_found", true),
         tonic::Code::AlreadyExists | tonic::Code::Aborted | tonic::Code::FailedPrecondition => {
             ("conflict", "conflict", true)

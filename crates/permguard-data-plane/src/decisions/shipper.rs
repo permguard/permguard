@@ -130,7 +130,7 @@ impl Shipper {
                 );
 
                 return Round::Stopped {
-                    code: "unshippable".to_owned(),
+                    code: permguard_core::codes::stream::UNSHIPPABLE.to_owned(),
                     detail,
                 };
             }
@@ -139,7 +139,7 @@ impl Shipper {
             Ok(body) => body,
             Err(error) => {
                 return Round::Stopped {
-                    code: "unshippable".to_owned(),
+                    code: permguard_core::codes::stream::UNSHIPPABLE.to_owned(),
                     detail: error.to_string(),
                 };
             }
@@ -183,7 +183,7 @@ impl Shipper {
                     );
 
                     return Round::Stopped {
-                        code: "ack_ahead".to_owned(),
+                        code: permguard_core::codes::stream::ACK_AHEAD.to_owned(),
                         detail: format!(
                             "the store acknowledged sequence {acked}, which this plane does not \
                              hold: the spool and the store disagree about the same stream"

@@ -270,7 +270,11 @@ impl EventReader for GrpcEventSink {
                     ))
                 }),
             // Absence is an answer, not a failure.
-            Err(status) if Self::code_of(&status) == "event_not_found" => Ok(None),
+            Err(status)
+                if Self::code_of(&status) == permguard_core::codes::stream::EVENT_NOT_FOUND =>
+            {
+                Ok(None)
+            }
             Err(status) => Err(read_error(&status)),
         }
     }
@@ -286,7 +290,7 @@ fn read_error(status: &tonic::Status) -> ReadError {
             .unwrap_or_default()
             .to_owned()
     };
-    if GrpcEventSink::code_of(status) == "offset_expired" {
+    if GrpcEventSink::code_of(status) == permguard_core::codes::stream::OFFSET_EXPIRED {
         return ReadError::Expired {
             oldest: metadata("permguard-oldest-offset"),
             oldest_sequence: metadata("permguard-oldest-sequence").parse().unwrap_or(0),

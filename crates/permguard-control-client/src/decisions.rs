@@ -488,7 +488,7 @@ impl DecisionReader for HttpSink {
                 .unwrap_or_default()
                 .to_owned()
         };
-        if field("code") == "offset_expired" {
+        if field("code") == permguard_core::codes::stream::OFFSET_EXPIRED {
             let number = |name: &str| parsed.get(name).and_then(Value::as_u64).unwrap_or_default();
 
             return Err(ReadError::Expired {

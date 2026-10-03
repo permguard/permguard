@@ -41,7 +41,7 @@ impl Failure {
     pub fn usage(message: impl std::fmt::Display) -> Self {
         Self {
             class: "validation".to_owned(),
-            code: "usage".to_owned(),
+            code: permguard_core::codes::client::USAGE.to_owned(),
             message: message.to_string(),
             status: EXIT_USAGE,
         }

@@ -195,7 +195,7 @@ impl OccurrenceBody {
         // production concern; refusing the unqualified form is how it stops being one.
         if !action.contains("::") {
             return Err(Malformed::new(
-                "event_action_unqualified",
+                permguard_core::codes::pdp_temporal::EVENT_ACTION_UNQUALIFIED,
                 format!(
                     "`{action}` is not a qualified action. Policies name actions as \
                      `Namespace::Action::Name`, and a bare name matches no temporal predicate \
@@ -220,7 +220,7 @@ impl OccurrenceBody {
         let occurred_at_epoch =
             permguard_events::index::epoch_seconds(&occurred_at).ok_or_else(|| {
                 Malformed::new(
-                    "event_time_not_canonical",
+                    permguard_core::codes::pdp_temporal::EVENT_TIME_NOT_CANONICAL,
                     format!(
                         "`{occurred_at}` is not a canonical UTC instant at whole-second \
                          precision. Dogwood's windows are closed intervals over signed epoch \
@@ -265,7 +265,7 @@ impl EntityUidBody {
             Self::Structured(reference) => {
                 if reference.kind.trim().is_empty() || reference.id.is_empty() {
                     return Err(Malformed::new(
-                        "field_required",
+                        permguard_core::codes::pdp_native::FIELD_REQUIRED,
                         format!("`event.data.{what}` states a non-empty `type` and `id`"),
                     ));
                 }
@@ -274,7 +274,7 @@ impl EntityUidBody {
             }
             Self::Literal(literal) => decode_literal(literal).ok_or_else(|| {
                 Malformed::new(
-                    "event_entity_malformed",
+                    permguard_core::codes::pdp_temporal::EVENT_ENTITY_MALFORMED,
                     format!(
                         "`{literal}` is not a Cedar entity reference. Write it as \
                          `Namespace::Type::\"id\"`, or — for an id holding a quote, a backslash \
@@ -313,7 +313,7 @@ impl EntityBody {
         for (name, held) in &self.attrs {
             let value = value::from_json(held).map_err(|error| {
                 Malformed::new(
-                    "event_value_unrepresentable",
+                    permguard_core::codes::pdp_temporal::EVENT_VALUE_UNREPRESENTABLE,
                     format!(
                         "`entities[{}::\"{}\"].attrs.{name}`: {}",
                         uid.kind, uid.id, error.message
@@ -417,7 +417,7 @@ fn grouped<'a>(
     match value {
         DogwoodValue::Object(fields) => Ok(fields),
         _ => Err(Malformed::new(
-            "event_bag_not_grouped",
+            permguard_core::codes::pdp_temporal::EVENT_BAG_NOT_GROUPED,
             format!(
                 "`{bag}.{group}` is not an object. A bag holds named groups of fields, as the \
                  event schema declares them"
@@ -437,7 +437,7 @@ fn required(value: &Option<String>, field: &'static str) -> Result<String, Malfo
 
 fn missing(field: &str) -> Malformed {
     Malformed::new(
-        "field_required",
+        permguard_core::codes::pdp_native::FIELD_REQUIRED,
         format!("`event.data.{field}` is required"),
     )
 }
@@ -451,7 +451,7 @@ fn bag(
     for (group, value) in fields {
         let held = value::from_json(value).map_err(|error| {
             Malformed::new(
-                "event_value_unrepresentable",
+                permguard_core::codes::pdp_temporal::EVENT_VALUE_UNREPRESENTABLE,
                 format!("`{what}.{group}`: {}", error.message),
             )
         })?;
@@ -501,7 +501,7 @@ fn divergence(group: &str, name: &str) -> Malformed {
     };
 
     Malformed::new(
-        "event_bags_disagree",
+        permguard_core::codes::pdp_temporal::EVENT_BAGS_DISAGREE,
         format!(
             "`logged.{field}` and `request_context.{field}` carry different values. A field a \
              temporal predicate correlates on and a Cedar condition reads must be the same value \
@@ -516,13 +516,13 @@ fn split_action(action: &str) -> Result<(Vec<String>, String), Malformed> {
     let mut parts: Vec<String> = action.split("::").map(ToOwned::to_owned).collect();
     let Some(id) = parts.pop().filter(|id| !id.is_empty()) else {
         return Err(Malformed::new(
-            "event_action_unqualified",
+            permguard_core::codes::pdp_temporal::EVENT_ACTION_UNQUALIFIED,
             format!("`{action}` ends in nothing: an action is `Namespace::Action::Name`"),
         ));
     };
     if parts.iter().any(String::is_empty) {
         return Err(Malformed::new(
-            "event_action_unqualified",
+            permguard_core::codes::pdp_temporal::EVENT_ACTION_UNQUALIFIED,
             format!("`{action}` has an empty namespace segment"),
         ));
     }

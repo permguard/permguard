@@ -166,7 +166,7 @@ fn semantic_from_proto(semantic: i32) -> Result<Option<Semantic>, Malformed> {
         // A number nobody defined. Not the default: the caller asked for something, and this build
         // does not know what.
         Err(_) => Err(Malformed {
-            code: "field_unknown",
+            code: permguard_core::codes::notp::FIELD_UNKNOWN,
             message: format!(
                 "`evaluations_semantic` is {semantic}, which is not a semantic this build defines \
                  (execute_all, deny_on_first_deny, permit_on_first_permit)"
@@ -255,7 +255,7 @@ fn json_from_proto(value: ProtoValue) -> Result<Value, Malformed> {
         // world that the caller never sent.
         None => {
             return Err(Malformed {
-                code: "value_unrepresentable",
+                code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
                 message: "a value with no kind is not `null`: `null` is spelled `NullValue`, and \
                           a value that says nothing is one this build cannot read"
                     .to_owned(),
@@ -289,7 +289,7 @@ fn json_from_proto(value: ProtoValue) -> Result<Value, Malformed> {
 /// not happen — a policy reading an absent attribute decides, and decides wrongly.
 fn number_from_proto(value: f64) -> Result<serde_json::Number, Malformed> {
     let refuse = |what: &str| Malformed {
-        code: "value_unrepresentable",
+        code: permguard_core::codes::notp::VALUE_UNREPRESENTABLE,
         message: format!(
             "{what} is not a number JSON can carry, so it cannot reach a policy unchanged. \
              Numbers travel on both transports only inside ±2^53, which is what an IEEE-754 \

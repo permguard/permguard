@@ -92,11 +92,11 @@ impl From<StoreError> for EngineError {
         match error {
             StoreError::Conflict { current } => EngineError::Conflict { current },
             StoreError::Object(e) => EngineError::Validation {
-                code: "object_rejected",
+                code: permguard_core::codes::notp::OBJECT_REJECTED,
                 message: e.to_string(),
             },
             StoreError::Grammar(e) => EngineError::Validation {
-                code: "grammar",
+                code: permguard_core::codes::notp::GRAMMAR,
                 message: e.to_string(),
             },
             StoreError::Corrupt { digest } => EngineError::Internal {
@@ -207,14 +207,14 @@ impl Engine<'_> {
     pub fn upload(&self, request: &UploadObjectsRequest) -> Result<UploadObjectsResponse> {
         if request.objects.len() as u64 > self.limits.max_batch_objects {
             return Err(invalid(
-                "batch_rejected",
+                permguard_core::codes::stream::BATCH_REJECTED,
                 "more objects than the advertised batch limit",
             ));
         }
         let batch_bytes: u64 = request.objects.iter().map(|o| o.len() as u64).sum();
         if batch_bytes > self.limits.max_batch_bytes {
             return Err(invalid(
-                "batch_rejected",
+                permguard_core::codes::stream::BATCH_REJECTED,
                 "more bytes than the advertised batch limit",
             ));
         }
@@ -309,7 +309,7 @@ impl Engine<'_> {
             Some(at) => {
                 if !head_reachable.contains(at) {
                     return Err(invalid(
-                        "not_reachable",
+                        permguard_core::codes::notp::NOT_REACHABLE,
                         format!("`{at}` is not reachable from `{}`", request.r#ref),
                     ));
                 }
@@ -346,7 +346,7 @@ impl Engine<'_> {
     pub fn fetch(&self, request: &FetchObjectsRequest) -> Result<FetchObjectsResponse> {
         if request.digests.len() as u64 > self.limits.max_batch_objects {
             return Err(invalid(
-                "batch_rejected",
+                permguard_core::codes::stream::BATCH_REJECTED,
                 "more objects than the advertised batch limit",
             ));
         }
@@ -402,8 +402,12 @@ impl Engine<'_> {
                     what: format!("object {digest}"),
                 })?;
             total_bytes += bytes.len() as u64;
-            let object = object::decode(&bytes)
-                .map_err(|e| invalid("object_rejected", format!("{digest}: {e}")))?;
+            let object = object::decode(&bytes).map_err(|e| {
+                invalid(
+                    permguard_core::codes::notp::OBJECT_REJECTED,
+                    format!("{digest}: {e}"),
+                )
+            })?;
             decoded.insert(digest.clone(), object);
         }
 
@@ -418,7 +422,12 @@ impl Engine<'_> {
 
         let head_commit = match decoded.get(new_head) {
             Some(Object::Commit(commit)) => commit.clone(),
-            Some(_) => return Err(invalid("commit_rejected", "the new head is not a commit")),
+            Some(_) => {
+                return Err(invalid(
+                    permguard_core::codes::notp::COMMIT_REJECTED,
+                    "the new head is not a commit",
+                ));
+            }
             None => {
                 return Err(EngineError::NotFound {
                     what: format!("commit {new_head}"),
@@ -432,7 +441,7 @@ impl Engine<'_> {
             Some(old) => {
                 if !self.is_ancestor(old, new_head)? {
                     return Err(invalid(
-                        "not_fast_forward",
+                        permguard_core::codes::notp::NOT_FAST_FORWARD,
                         format!("`{old}` is not an ancestor of `{new_head}`"),
                     ));
                 }
@@ -440,7 +449,7 @@ impl Engine<'_> {
             None => {
                 if !head_commit.predecessors.is_empty() {
                     return Err(invalid(
-                        "not_a_root",
+                        permguard_core::codes::notp::NOT_A_ROOT,
                         "a push creating a ref must carry a history root or branch an existing commit",
                     ));
                 }
@@ -454,7 +463,7 @@ impl Engine<'_> {
                     let actual = self.kind_of(&entry.digest, &decoded)?;
                     if actual != entry.kind {
                         return Err(invalid(
-                            "kind_mismatch",
+                            permguard_core::codes::notp::KIND_MISMATCH,
                             format!(
                                 "entry `{}` of tree {digest} declares the wrong kind",
                                 entry.name
@@ -485,7 +494,12 @@ impl Engine<'_> {
             .entries
             .iter()
             .find(|entry| entry.name == MANIFEST_ENTRY && entry.kind == Kind::Blob)
-            .ok_or_else(|| invalid("manifest_missing", "the root tree has no `manifest` entry"))?;
+            .ok_or_else(|| {
+                invalid(
+                    permguard_core::codes::notp::MANIFEST_MISSING,
+                    "the root tree has no `manifest` entry",
+                )
+            })?;
         if manifest_entry.digest != head.manifest {
             return Err(invalid(
                 "manifest_mismatch",
@@ -495,12 +509,17 @@ impl Engine<'_> {
         let manifest_blob = self.load_blob(&head.manifest)?;
         if manifest_blob.media_type != MEDIA_TYPE_MANIFEST {
             return Err(invalid(
-                "manifest_rejected",
+                permguard_core::codes::notp::MANIFEST_REJECTED,
                 "the manifest entry is not a manifest blob",
             ));
         }
-        let manifest = permguard_objects::manifest::Manifest::decode(&manifest_blob.data)
-            .map_err(|e| invalid("manifest_rejected", e.to_string()))?;
+        let manifest =
+            permguard_objects::manifest::Manifest::decode(&manifest_blob.data).map_err(|e| {
+                invalid(
+                    permguard_core::codes::notp::MANIFEST_REJECTED,
+                    e.to_string(),
+                )
+            })?;
 
         // The whole manifest gate, server side, and the same call the CLI makes at validate and
         // every data plane makes at load: the runtime gate, the input contracts, the artifact
@@ -509,7 +528,7 @@ impl Engine<'_> {
         // reject ones it accepts — three call sites asking the question in their own words is
         // exactly the drift `check_manifest_with` exists to prevent.
         permguard_languages::registry::check_manifest_with(&manifest, &self.enabled)
-            .map_err(|e| invalid("runtime_gate", e.to_string()))?;
+            .map_err(|e| invalid(permguard_core::codes::notp::RUNTIME_GATE, e.to_string()))?;
 
         // Kind discipline: a policy ledger allows only media types owned by
         // its partitions' language plugins — one kind per ledger, never
@@ -518,14 +537,14 @@ impl Engine<'_> {
         for (name, partition) in &manifest.partitions {
             let runtime = manifest.runtimes.get(&partition.runtime).ok_or_else(|| {
                 invalid(
-                    "manifest_rejected",
+                    permguard_core::codes::notp::MANIFEST_REJECTED,
                     format!("partition `{name}` names an undeclared runtime"),
                 )
             })?;
             let plugin =
                 permguard_languages::language(&runtime.language.name).ok_or_else(|| {
                     invalid(
-                        "runtime_gate",
+                        permguard_core::codes::notp::RUNTIME_GATE,
                         format!(
                             "no built-in plugin for the language `{}`",
                             runtime.language.name
@@ -534,7 +553,7 @@ impl Engine<'_> {
                 })?;
             if partition.schema && plugin.schema_media_type().is_none() {
                 return Err(invalid(
-                    "manifest_rejected",
+                    permguard_core::codes::notp::MANIFEST_REJECTED,
                     format!(
                         "partition `{name}` declares schema: true, but the language `{}` has no schema",
                         runtime.language.name
@@ -564,7 +583,7 @@ impl Engine<'_> {
                 }
                 if is_schema && !partition.schema {
                     return Err(invalid(
-                        "manifest_rejected",
+                        permguard_core::codes::notp::MANIFEST_REJECTED,
                         format!(
                             "partition `{name}` allows a schema media type but declares schema: false"
                         ),
@@ -639,14 +658,14 @@ impl Engine<'_> {
                     // owns, so it cannot be handed them afterwards.
                     let runtime = manifest.runtimes.get(&declared.runtime).ok_or_else(|| {
                         invalid(
-                            "manifest_rejected",
+                            permguard_core::codes::notp::MANIFEST_REJECTED,
                             format!("partition `{}` names an undeclared runtime", entry.name),
                         )
                     })?;
                     let plugin =
                         permguard_languages::language(&runtime.language.name).ok_or_else(|| {
                             invalid(
-                                "runtime_gate",
+                                permguard_core::codes::notp::RUNTIME_GATE,
                                 format!(
                                     "no built-in plugin for the language `{}`",
                                     runtime.language.name
@@ -713,7 +732,7 @@ impl Engine<'_> {
                     // gate — fail-closed, but the error belongs to the push.
                     if declared.schema && sources.schemas.is_empty() {
                         return Err(invalid(
-                            "schema_missing",
+                            permguard_core::codes::notp::SCHEMA_MISSING,
                             format!(
                                 "the partition `{}` declares a schema and the commit carries none",
                                 entry.name
@@ -787,15 +806,27 @@ impl Engine<'_> {
                         .collect();
                     plugin
                         .validate_bundle(&entry.name, &named, &bundle, declared)
-                        .map_err(|error| invalid("schema_unsatisfied", error))?;
+                        .map_err(|error| {
+                            invalid(permguard_core::codes::notp::SCHEMA_UNSATISFIED, error)
+                        })?;
                 }
                 Kind::Commit => unreachable!("entries never reference commits: enforced at decode"),
             }
         }
-        policy_id::check_uniqueness(all_policy_ids.iter().map(String::as_str))
-            .map_err(|e| invalid("policy_id_rejected", e.to_string()))?;
-        policy_id::check_alias_uniqueness(all_policy_aliases.iter().map(String::as_str))
-            .map_err(|e| invalid("policy_alias_rejected", e.to_string()))?;
+        policy_id::check_uniqueness(all_policy_ids.iter().map(String::as_str)).map_err(|e| {
+            invalid(
+                permguard_core::codes::notp::POLICY_ID_REJECTED,
+                e.to_string(),
+            )
+        })?;
+        policy_id::check_alias_uniqueness(all_policy_aliases.iter().map(String::as_str)).map_err(
+            |e| {
+                invalid(
+                    permguard_core::codes::notp::POLICY_ALIAS_REJECTED,
+                    e.to_string(),
+                )
+            },
+        )?;
         Ok(())
     }
 
@@ -1011,12 +1042,18 @@ impl Engine<'_> {
         let previous_by_alias: Vec<&str> = alias_ids.iter().map(String::as_str).collect();
 
         let resolved: ResolvedId =
-            policy_id::resolve_id(path, &previous_by_path, &previous_by_alias, source)
-                .map_err(|e| invalid("policy_id_rejected", e.to_string()))?;
+            policy_id::resolve_id(path, &previous_by_path, &previous_by_alias, source).map_err(
+                |e| {
+                    invalid(
+                        permguard_core::codes::notp::POLICY_ID_REJECTED,
+                        e.to_string(),
+                    )
+                },
+            )?;
 
         if resolved.id() != annotated {
             return Err(invalid(
-                "policy_id_mismatch",
+                permguard_core::codes::notp::POLICY_ID_MISMATCH,
                 format!(
                     "the policy `{path}` annotates id `{annotated}` but the cascade resolves `{}`",
                     resolved.id()
@@ -1052,8 +1089,12 @@ impl Engine<'_> {
                 region.insert(digest);
                 continue;
             };
-            let object = object::decode(&bytes)
-                .map_err(|e| invalid("object_rejected", format!("{digest}: {e}")))?;
+            let object = object::decode(&bytes).map_err(|e| {
+                invalid(
+                    permguard_core::codes::notp::OBJECT_REJECTED,
+                    format!("{digest}: {e}"),
+                )
+            })?;
             region.insert(digest);
             match object {
                 Object::Commit(commit) => {
@@ -1113,8 +1154,12 @@ impl Engine<'_> {
             .ok_or_else(|| EngineError::NotFound {
                 what: format!("object {digest}"),
             })?;
-        let object = object::decode(&bytes)
-            .map_err(|e| invalid("object_rejected", format!("{digest}: {e}")))?;
+        let object = object::decode(&bytes).map_err(|e| {
+            invalid(
+                permguard_core::codes::notp::OBJECT_REJECTED,
+                format!("{digest}: {e}"),
+            )
+        })?;
         Ok(object.kind())
     }
 
@@ -1122,7 +1167,7 @@ impl Engine<'_> {
         match self.load_object(digest)? {
             Object::Commit(commit) => Ok(commit),
             _ => Err(invalid(
-                "kind_mismatch",
+                permguard_core::codes::notp::KIND_MISMATCH,
                 format!("{digest} is not a commit"),
             )),
         }
@@ -1131,14 +1176,20 @@ impl Engine<'_> {
     fn load_tree(&self, digest: &Digest) -> Result<Tree> {
         match self.load_object(digest)? {
             Object::Tree(tree) => Ok(tree),
-            _ => Err(invalid("kind_mismatch", format!("{digest} is not a tree"))),
+            _ => Err(invalid(
+                permguard_core::codes::notp::KIND_MISMATCH,
+                format!("{digest} is not a tree"),
+            )),
         }
     }
 
     fn load_blob(&self, digest: &Digest) -> Result<object::Blob> {
         match self.load_object(digest)? {
             Object::Blob(blob) => Ok(blob),
-            _ => Err(invalid("kind_mismatch", format!("{digest} is not a blob"))),
+            _ => Err(invalid(
+                permguard_core::codes::notp::KIND_MISMATCH,
+                format!("{digest} is not a blob"),
+            )),
         }
     }
 
@@ -1149,7 +1200,12 @@ impl Engine<'_> {
             .ok_or_else(|| EngineError::NotFound {
                 what: format!("object {digest}"),
             })?;
-        object::decode(&bytes).map_err(|e| invalid("object_rejected", format!("{digest}: {e}")))
+        object::decode(&bytes).map_err(|e| {
+            invalid(
+                permguard_core::codes::notp::OBJECT_REJECTED,
+                format!("{digest}: {e}"),
+            )
+        })
     }
 
     // ---- statements ----

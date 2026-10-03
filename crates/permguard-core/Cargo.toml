@@ -25,4 +25,6 @@ zeroize.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
+# Reading the checked registry fixture.
+serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
