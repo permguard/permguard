@@ -442,6 +442,38 @@ mod tests {
         );
     }
 
+    /// The signed payload must be byte-for-byte canonical: the same envelope with a number spelled
+    /// otherwise — equal as a value — is refused before anything reads it.
+    #[test]
+    fn a_payload_equal_in_value_but_not_canonical_in_bytes_is_refused() {
+        let canonical = String::from_utf8(envelope().signed_bytes().expect("it canonicalizes"))
+            .expect("canonical JSON is UTF-8");
+        let signed = |payload: &str| Signed {
+            protected: String::new(),
+            payload: B64.encode(payload),
+            signature: String::new(),
+        };
+
+        assert_eq!(
+            signed(&canonical).envelope().expect("canonical bytes decode"),
+            envelope()
+        );
+        for spelling in [
+            canonical.replace("\"count\":3", "\"count\":3.0"),
+            canonical.replace("\"first_seq\":1", "\"first_seq\":1e0"),
+            canonical.replace("\"last_seq\":3", "\"last_seq\": 3"),
+        ] {
+            assert_ne!(spelling, canonical, "the respelling took place");
+            let refused = signed(&spelling)
+                .envelope()
+                .expect_err("a non-canonical payload is refused");
+            assert!(
+                refused.to_string().contains("not the canonical encoding"),
+                "{spelling}: {refused}"
+            );
+        }
+    }
+
     #[test]
     fn the_protected_header_declares_the_event_batch_type() {
         // Built by hand rather than signed, so the assertion is about the constant and not about a

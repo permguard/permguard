@@ -288,3 +288,28 @@ impl fmt::Display for EnvelopeError {
 }
 
 impl std::error::Error for EnvelopeError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The signed payload must be byte-for-byte canonical: a number spelled otherwise, equal as a
+    /// value, is refused by the canonical check before the envelope's shape is even read.
+    #[test]
+    fn a_payload_equal_in_value_but_not_canonical_in_bytes_is_refused() {
+        for spelling in [r#"{"first_seq":1.0}"#, r#"{"first_seq":1e0}"#, r#"{ "first_seq":1}"#] {
+            let signed = Signed {
+                protected: String::new(),
+                payload: B64.encode(spelling),
+                signature: String::new(),
+            };
+            let Err(refused) = signed.envelope() else {
+                panic!("{spelling} was accepted");
+            };
+            assert!(
+                refused.to_string().contains("not the canonical encoding"),
+                "{spelling}: {refused}"
+            );
+        }
+    }
+}
