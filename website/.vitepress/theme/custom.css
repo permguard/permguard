@@ -23,6 +23,25 @@
   --vp-c-bg-soft: #1d1e23;
 }
 
+.VPNavBar .divider {
+  padding-left: 0;
+}
+
+.VPNavBar.has-sidebar .divider::before {
+  display: none;
+}
+
+.VPNavBar .divider-line {
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgba(240, 92, 128, 0.7) 30%,
+    rgba(204, 52, 223, 0.7) 70%,
+    transparent
+  );
+}
+
 .VPNavBarTitle .logo {
   margin-right: 0;
 }
