@@ -40,6 +40,10 @@ pub const POINTS: &[&str] = &[
     "tombstone.unlinked",
     "tombstone.parent_flushed",
     "tombstone.removed",
+    "failure.recorded",
+    "failure.cut_segments_removed",
+    "failure.cut_flushed",
+    "failure.record_removed",
 ];
 
 /// The crash point `name`: aborts here when this process was told to.

@@ -341,6 +341,31 @@ mod tests {
         }
     }
 
+    /// A failed directory flush after the link is answered as an error, never retried within the
+    /// call; a later publish of the same content flushes the entry again and succeeds (decided for
+    /// WP-1.2: the bytes were flushed before the link).
+    #[test]
+    fn a_failed_entry_flush_is_an_error_and_a_later_publish_flushes_it_again() {
+        let dir = scratch("entry-flush");
+        {
+            // One failure only: a retry within the call would succeed, and the call must not.
+            let _guard = permguard_core::fault::inject_exact(
+                dir.path(),
+                permguard_core::fault::Fault::FsyncTimes { remaining: 1 },
+            );
+            let refused = publish_immutable(&dir, "obj", b"x", &exact(b"x"), &exact(b"x"))
+                .expect_err("the entry's flush failed");
+            assert!(
+                matches!(refused, StorageError::Durability { .. }),
+                "{refused}"
+            );
+        }
+        assert_eq!(
+            publish_immutable(&dir, "obj", b"x", &exact(b"x"), &exact(b"x")).expect("flushed now"),
+            Published::AlreadyThere
+        );
+    }
+
     /// An injected flush failure is final: the publish fails, nothing is published and nothing is
     /// retried.
     #[test]

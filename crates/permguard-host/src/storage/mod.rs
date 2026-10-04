@@ -22,8 +22,11 @@
 //!
 //! A failed `fsync` or `fdatasync` is final for the data it covered: the kernel may have dropped the
 //! dirty pages, and a later successful call proves nothing about them. Every operation here reports
-//! it as [`StorageError::Durability`] and never retries; a [`journal::Journal`] that saw one refuses
-//! every later append. What recovery does with the frame that preceded it is WP-1.2's.
+//! it as [`StorageError::Durability`] and never retries. A [`journal::Journal`] that saw one
+//! refuses every later append, turns not ready and records the failure, so the frame whose flush
+//! failed is cut when the journal is opened again (WP-1.2). An object's or a ref's bytes are
+//! flushed before its name is linked or renamed, so a failed directory flush leaves only the entry
+//! unflushed, and a later idempotent answer flushes it again before it succeeds.
 
 pub mod authority;
 pub mod crash;
@@ -63,6 +66,9 @@ pub enum StorageError {
     TooLarge(String),
     /// A journal that saw a failed flush, which refuses every later append.
     Poisoned,
+    /// A journal this process does not open again: a failed write or flush could not be recorded,
+    /// or a repair made while opening it could not be flushed.
+    NotRecoverable(String),
 }
 
 impl std::fmt::Display for StorageError {
@@ -79,6 +85,7 @@ impl std::fmt::Display for StorageError {
             Self::Poisoned => f.write_str(
                 "this journal saw a failed flush and accepts nothing more until it is recovered",
             ),
+            Self::NotRecoverable(what) => write!(f, "not recoverable in this process: {what}"),
         }
     }
 }

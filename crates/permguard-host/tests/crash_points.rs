@@ -111,8 +111,32 @@ fn child_journal() {
 
 #[test]
 #[ignore = "started by its parent, with a crash point"]
+fn child_failed_flush() {
+    let (mut journal, _) = Journal::open(directory(), Options::default()).expect("opened");
+    journal.append(1, &[7u8; 40]).expect("appended");
+    let segment = directory().child_path(&journal.segments()[0]);
+    let _guard = permguard_core::fault::inject_exact(segment, permguard_core::fault::Fault::Fsync);
+    let _ = journal.append(1, &[8u8; 40]);
+}
+
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_recovery() {
+    drop(Journal::open(directory(), failure_options()).expect("opened"));
+}
+
+#[test]
+#[ignore = "started by its parent, with a crash point"]
 fn child_tombstone() {
     tombstone::delete(&directory(), "obj").expect("deleted");
+}
+
+/// Two 20-byte frames per segment.
+fn failure_options() -> Options {
+    Options {
+        max_frame: 64,
+        segment_bytes: 120,
+    }
 }
 
 fn points(prefix: &str) -> Vec<&'static str> {
@@ -221,6 +245,70 @@ fn every_crash_point_of_a_journal_append_and_roll_recovers() {
     }
 }
 
+/// A failed flush (WP-1.2): after a crash once the failure is recorded, the frame that failed is
+/// cut when the journal opens and appends continue at its index.
+#[test]
+fn a_crash_after_a_failure_is_recorded_recovers_without_the_failed_frame() {
+    let path = scratch("failure.recorded");
+    drop(Journal::open(Dir::open(&path).expect("opened"), Options::default()).expect("created"));
+    assert!(
+        crash("child_failed_flush", "failure.recorded", &path),
+        "the child aborted"
+    );
+
+    let (mut journal, recovery) =
+        Journal::open(Dir::open(&path).expect("opened"), Options::default())
+            .expect("the journal opens after the crash");
+    assert_eq!(recovery.cut_from, Some(1));
+    let frames = journal.frames().expect("read");
+    assert_eq!(frames.len(), 1, "only the acknowledged frame");
+    assert_eq!(frames[0].payload, [7u8; 40]);
+    assert_eq!(journal.append(2, b"after").expect("appends continue"), 1);
+}
+
+/// Recovery from a failure record: after a crash at any step of the cut, the journal opens with
+/// exactly the acknowledged frames, no gap and no record.
+#[test]
+fn every_crash_point_of_a_cut_recovers() {
+    for point in [
+        "failure.cut_segments_removed",
+        "failure.cut_flushed",
+        "failure.record_removed",
+    ] {
+        let path = scratch(point);
+        let (mut journal, _) =
+            Journal::open(Dir::open(&path).expect("opened"), failure_options()).expect("created");
+        for index in 0..6u8 {
+            journal.append(1, &[index; 20]).expect("appended");
+        }
+        drop(journal);
+        replace_view(
+            &Dir::open(&path).expect("opened"),
+            "FAILED",
+            format::VIEW,
+            &3u64.to_be_bytes(),
+        )
+        .expect("a record");
+        assert!(
+            crash("child_recovery", point, &path),
+            "the child aborted at {point}"
+        );
+
+        let (journal, _) = Journal::open(Dir::open(&path).expect("opened"), failure_options())
+            .expect("the journal opens after the crash");
+        let frames = journal.frames().expect("read");
+        assert_eq!(
+            frames
+                .iter()
+                .map(|frame| frame.payload[0])
+                .collect::<Vec<_>>(),
+            [0, 1, 2],
+            "{point}"
+        );
+        assert!(!path.join("FAILED").exists(), "{point}");
+    }
+}
+
 /// Deletion: after a crash at any step, completing the deletions leaves the file gone whenever the
 /// tombstone became durable, and no tombstone behind.
 #[test]
@@ -251,7 +339,7 @@ fn every_crash_point_of_a_deletion_recovers() {
 /// there proves its point was reached, by requiring the child to die of the abort at it.
 #[test]
 fn every_named_crash_point_belongs_to_a_tested_protocol() {
-    let visited: Vec<&str> = ["immutable.", "view.", "journal.", "tombstone."]
+    let visited: Vec<&str> = ["immutable.", "view.", "journal.", "tombstone.", "failure."]
         .iter()
         .flat_map(|prefix| points(prefix))
         .collect();

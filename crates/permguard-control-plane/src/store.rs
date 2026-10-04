@@ -877,8 +877,11 @@ mod tests {
             store.root().join("refs"),
             store.root().join("refs").join("main"),
         ] {
-            let _guard =
-                permguard_core::fault::inject_exact(&path, permguard_core::fault::Fault::Fsync);
+            // One failure only: a retry within the call would succeed, and the call must not.
+            let _guard = permguard_core::fault::inject_exact(
+                &path,
+                permguard_core::fault::Fault::FsyncTimes { remaining: 1 },
+            );
             assert!(
                 store.update_ref("main", None, &digest).is_err(),
                 "{}",

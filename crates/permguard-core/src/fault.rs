@@ -19,6 +19,8 @@
 //! | Fault                   | What the store sees                                                      |
 //! | ----------------------- | ------------------------------------------------------------------------ |
 //! | [`Fault::Fsync`]        | every flush under the scope fails with an I/O error; the bytes written stay where they are |
+//! | [`Fault::FsyncTimes`]   | the next flushes under the scope, as many as it says, fail; later ones succeed |
+//! | [`Fault::WriteFails`]   | every write under the scope fails with an I/O error, writing nothing |
 //! | [`Fault::DiskFull`]     | writes under the scope succeed until the quota is spent, then fail with `StorageFull`, writing nothing |
 //!
 //! A fault is scoped to a directory and every path below it — or, with [`inject_exact`], to one
@@ -37,8 +39,15 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 pub enum Fault {
     /// Every flush fails.
     Fsync,
+    /// The next `remaining` flushes fail, and the ones after them succeed: how a test proves that a
+    /// failed flush is not retried within one call. Every flush the rule covers counts against it,
+    /// whatever other rules cover the same path, and a flush fails when any rule covering it fails
+    /// it, so the outcome does not depend on the order faults were armed in.
+    FsyncTimes { remaining: u64 },
     /// Writes succeed until this many bytes have been written, then fail without writing.
     DiskFull { remaining_bytes: u64 },
+    /// Every write fails with an I/O error, writing nothing.
+    WriteFails,
 }
 
 struct Rule {
@@ -107,22 +116,33 @@ fn arm(scope: &Path, fault: Fault, exact: bool) -> Injected {
     Injected { id }
 }
 
-/// Runs `write`, which writes `len` bytes to a file at or below `path`, unless a disk-full fault
-/// for that path has no room left for them.
+/// Runs `write`, which writes `len` bytes to a file at or below `path`, unless a write fault covers
+/// that path or a disk-full fault for it has no room left for them. Whether the write fails is
+/// decided over every rule before any quota is charged, so the order faults were armed in does
+/// not matter and a failed write costs no quota.
 pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     if ARMED.load(Ordering::Acquire) > 0 {
         let mut rules = RULES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let len = len as u64;
+        if rules
+            .iter()
+            .any(|rule| rule.covers(path) && rule.fault == Fault::WriteFails)
+        {
+            return Err(io::Error::other("injected fault: the write failed"));
+        }
+        if rules.iter().any(|rule| {
+            rule.covers(path)
+                && matches!(rule.fault, Fault::DiskFull { remaining_bytes } if len > remaining_bytes)
+        }) {
+            return Err(io::Error::new(
+                io::ErrorKind::StorageFull,
+                "injected fault: no space left on device",
+            ));
+        }
         for rule in rules.iter_mut().filter(|rule| rule.covers(path)) {
             if let Fault::DiskFull { remaining_bytes } = &mut rule.fault {
-                let len = len as u64;
-                if len > *remaining_bytes {
-                    return Err(io::Error::new(
-                        io::ErrorKind::StorageFull,
-                        "injected fault: no space left on device",
-                    ));
-                }
                 *remaining_bytes -= len;
             }
         }
@@ -135,13 +155,21 @@ pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) ->
 /// armed for that path.
 pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
     if ARMED.load(Ordering::Acquire) > 0 {
-        let rules = RULES
+        let mut rules = RULES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if rules
-            .iter()
-            .any(|rule| rule.fault == Fault::Fsync && rule.covers(path))
-        {
+        let mut fails = false;
+        for rule in rules.iter_mut().filter(|rule| rule.covers(path)) {
+            match &mut rule.fault {
+                Fault::Fsync => fails = true,
+                Fault::FsyncTimes { remaining } if *remaining > 0 => {
+                    *remaining -= 1;
+                    fails = true;
+                }
+                _ => {}
+            }
+        }
+        if fails {
             return Err(io::Error::other("injected fault: fsync failed"));
         }
     }
@@ -179,9 +207,30 @@ mod tests {
                 "and nothing below it"
             );
         }
+        {
+            let _once = inject_exact(&outside, Fault::FsyncTimes { remaining: 1 });
+            let _always = inject_exact(&outside, Fault::Fsync);
+            assert!(sync(&outside, ok).is_err(), "the first flush fails");
+            drop(_always);
+            assert!(
+                sync(&outside, ok).is_ok(),
+                "the once-only rule counted the flush another rule also failed"
+            );
+        }
         assert!(write(&inside, 10, ok).is_ok(), "writes are untouched");
         drop(guard);
         assert!(sync(&inside, ok).is_ok(), "lifted with its guard");
+        {
+            let _full = inject(&volume, Fault::DiskFull { remaining_bytes: 5 });
+            let fails = inject(&volume, Fault::WriteFails);
+            assert!(write(&inside, 1, ok).is_err(), "a write fault fails writes");
+            assert!(sync(&inside, ok).is_ok(), "and not flushes");
+            drop(fails);
+            assert!(
+                write(&inside, 5, ok).is_ok(),
+                "the failed write charged no quota, whatever the order"
+            );
+        }
     }
 
     #[test]

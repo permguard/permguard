@@ -1330,8 +1330,11 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
     let signer = fixture.signer();
     let refs = fixture.store.root().join("refs");
     for path in [refs.clone(), refs.join("main")] {
-        let _guard =
-            permguard_core::fault::inject_exact(&path, permguard_core::fault::Fault::Fsync);
+        // One failure only: a retry within the call would succeed, and the call must not.
+        let _guard = permguard_core::fault::inject_exact(
+            &path,
+            permguard_core::fault::Fault::FsyncTimes { remaining: 1 },
+        );
         assert!(
             fixture
                 .engine()
@@ -1348,4 +1351,16 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
             path.display()
         );
     }
+    let retried = fixture
+        .engine()
+        .commit_push(
+            &CommitPushRequest {
+                r#ref: "main".into(),
+                new_head: head.clone(),
+                expected_old: None,
+            },
+            &signer,
+        )
+        .expect("answered once the flush succeeds");
+    assert_eq!((retried.head, retried.counter), (head, 1));
 }

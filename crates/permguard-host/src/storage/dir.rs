@@ -147,6 +147,12 @@ impl Dir {
         Ok(root)
     }
 
+    /// What this directory is, whatever path it was opened by: its device and inode on Unix, its
+    /// path elsewhere.
+    pub fn identity(&self) -> Result<String> {
+        self.identity_raw()
+    }
+
     /// Flushes the file `name` below this directory.
     pub fn sync_file(&self, name: &str) -> Result<()> {
         let path = self.child_path(name);
@@ -480,6 +486,15 @@ mod platform {
             Ok(names)
         }
 
+        pub(super) fn identity_raw(&self) -> Result<String> {
+            rustix::fs::fstat(&self.fd)
+                .map(|stat| format!("{}:{}", stat.st_dev, stat.st_ino))
+                .map_err(|error| StorageError::Io {
+                    what: format!("reading {}", self.path.display()),
+                    source: os(error),
+                })
+        }
+
         /// A read handle is enough to flush a file on Unix.
         pub(super) fn open_flushable(&self, name: &str) -> Result<File> {
             let name = component(name)?;
@@ -639,6 +654,13 @@ mod platform {
             }
             names.sort();
             Ok(names)
+        }
+
+        /// The canonical path, so two spellings of one directory are one identity.
+        pub(super) fn identity_raw(&self) -> Result<String> {
+            std::fs::canonicalize(&self.path)
+                .map(|path| path.display().to_string())
+                .map_err(io(format!("resolving {}", self.path.display())))
         }
 
         /// Windows flushes a file only through a handle that may write.
