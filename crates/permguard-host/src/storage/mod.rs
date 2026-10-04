@@ -66,7 +66,8 @@ pub enum StorageError {
     Unsupported(String),
     /// A frame over the journal's bound.
     TooLarge(String),
-    /// A journal that saw a failed flush, which refuses every later append.
+    /// A journal handle given up after a failed write or flush: it refuses every later append and
+    /// read for good, and the journal is recovered by opening it again, as a new handle.
     Poisoned,
     /// A journal this process does not open again: a failed write or flush could not be recorded,
     /// or a repair made while opening it could not be flushed.
@@ -85,7 +86,8 @@ impl std::fmt::Display for StorageError {
             Self::Unsupported(what) => write!(f, "unsupported format: {what}"),
             Self::TooLarge(what) => write!(f, "too large: {what}"),
             Self::Poisoned => f.write_str(
-                "this journal saw a failed flush and accepts nothing more until it is recovered",
+                "this journal handle saw a failed write or flush and accepts nothing more; open the \
+                 journal again to recover it",
             ),
             Self::NotRecoverable(what) => write!(f, "not recoverable in this process: {what}"),
         }

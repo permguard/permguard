@@ -119,6 +119,18 @@ fn child_failed_flush() {
     let _ = journal.append(1, &[8u8; 40]);
 }
 
+/// A failed flush whose record cannot be written either: the whole directory's flushes fail. The
+/// process then ends, as a restart would end it.
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_unrecorded_failure() {
+    let (mut journal, _) = Journal::open(directory(), Options::default()).expect("opened");
+    journal.append(1, &[7u8; 40]).expect("appended");
+    let _guard =
+        permguard_core::fault::inject(directory().path(), permguard_core::fault::Fault::Fsync);
+    assert!(journal.append(1, &[8u8; 40]).is_err(), "the flush failed");
+}
+
 #[test]
 #[ignore = "started by its parent, with a crash point"]
 fn child_recovery() {
@@ -264,6 +276,44 @@ fn a_crash_after_a_failure_is_recorded_recovers_without_the_failed_frame() {
     assert_eq!(frames.len(), 1, "only the acknowledged frame");
     assert_eq!(frames[0].payload, [7u8; 40]);
     assert_eq!(journal.append(2, b"after").expect("appends continue"), 1);
+}
+
+/// The residual rule of WP-1.2, pinned: after a restart without a failure record, a frame whose
+/// flush failed cannot be told from a write that crashed before its acknowledgement, and is kept
+/// as one. Its writer was answered an error, never a success.
+#[test]
+fn after_a_restart_without_a_record_a_failed_frame_is_kept_like_an_unacknowledged_write() {
+    let path = scratch("unrecorded");
+    let status = Command::new(std::env::current_exe().expect("this binary names itself"))
+        .args([
+            "--ignored",
+            "--exact",
+            "child_unrecorded_failure",
+            "--test-threads",
+            "1",
+        ])
+        .env(DIRECTORY, &path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("the child runs");
+    assert!(status.success(), "the child saw its append fail and ended");
+    assert!(!path.join("FAILED").exists(), "no record could be written");
+
+    let (journal, recovery) = Journal::open(Dir::open(&path).expect("opened"), Options::default())
+        .expect("a new process opens it");
+    assert_eq!(recovery.cut_from, None, "nothing says the frame failed");
+    let payloads: Vec<u8> = journal
+        .frames()
+        .expect("read")
+        .iter()
+        .map(|frame| frame.payload[0])
+        .collect();
+    assert_eq!(
+        payloads,
+        [7, 8],
+        "the failed frame is kept, like an unacknowledged write"
+    );
 }
 
 /// Recovery from a failure record: after a crash at any step of the cut, the journal opens with

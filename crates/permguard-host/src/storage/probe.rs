@@ -28,7 +28,8 @@
 //! The probe observes the API's behaviour on this mount. It cannot prove that a flush survives a
 //! power loss, that a controller cache honours it, that pages persist in order, or that another
 //! machine is fenced off the volume. Those are proven by the qualification evidence of the volume's
-//! storage class, driver, filesystem and version (H-04), which [`super::qualify`] checks.
+//! storage class, driver, filesystem and version (H-04); [`super::qualify`] checks that the tuple is
+//! listed with a reference to that evidence, not the evidence itself.
 
 use std::hash::{BuildHasher as _, Hasher as _};
 use std::io::Write as _;
