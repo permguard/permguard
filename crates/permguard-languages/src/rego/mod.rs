@@ -116,9 +116,8 @@ impl Language for Rego {
         Ok(())
     }
 
-    fn declared_alias(&self, source: &[u8]) -> Option<String> {
-        let text = std::str::from_utf8(source).ok()?;
-        alias_of(text)
+    fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String> {
+        Ok(std::str::from_utf8(source).ok().and_then(alias_of))
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {

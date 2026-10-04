@@ -630,14 +630,47 @@ pub fn validate_artifact(
 /// The alias a policy source declares, read by its own language — the
 /// author's optional handle, which carries identity across renames and
 /// never *is* the identity. The ingest path checks the annotation mirrors it.
-pub fn declared_alias(media_type: &str, source: &[u8]) -> Option<String> {
-    language_for_media_type(media_type)?.declared_alias(source)
+pub fn declared_alias(media_type: &str, source: &[u8]) -> Result<Option<String>, String> {
+    match language_for_media_type(media_type) {
+        Some(language) => language.declared_alias(source),
+        None => Ok(None),
+    }
 }
 
 /// The language a media type belongs to, for callers that need the language
 /// itself rather than an answer about one blob.
 pub fn language_of(media_type: &str) -> Option<&'static dyn Language> {
     language_for_media_type(media_type)
+}
+
+/// Refuses a partition that carries no schema where its language requires one at `profile`.
+///
+/// The load gate's half of the assurance floor (CEDAR-05): a manifest cannot lower it, so it is
+/// checked against what the partition actually carries, not against what it declares.
+pub fn check_schema_floor(
+    language_name: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+    artifacts: &crate::artifact::Artifacts,
+) -> Result<(), String> {
+    let Some(language) = crate::lookup::language(language_name) else {
+        return Ok(());
+    };
+    if !language.schema_required(profile) {
+        return Ok(());
+    }
+    let carried = language.artifacts().iter().any(|artifact| {
+        artifact.role() == crate::artifact::ArtifactRole::Schema
+            && artifacts.bytes(artifact.name()).is_some()
+    });
+    if carried {
+        return Ok(());
+    }
+
+    Err(format!(
+        "a `{language_name}` partition carries no schema, which the `{}` assurance profile \
+         requires; schema-less `{language_name}` serves only under `development`",
+        profile.as_str()
+    ))
 }
 
 /// The evaluating half of a language named by the manifest, when this build
@@ -847,8 +880,8 @@ mod tests {
         fn validate_policy(&self, _bytes: &[u8]) -> Result<(), String> {
             Ok(())
         }
-        fn declared_alias(&self, _source: &[u8]) -> Option<String> {
-            None
+        fn declared_alias(&self, _source: &[u8]) -> Result<Option<String>, String> {
+            Ok(None)
         }
     }
 

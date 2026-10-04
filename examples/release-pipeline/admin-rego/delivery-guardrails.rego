@@ -11,10 +11,12 @@ import rego.v1
 default deny := false
 
 # Separation of duties. Whoever created a release cannot be the one to approve
-# it — the single control that makes an approval mean anything.
+# it — the single control that makes an approval mean anything. The release's
+# attributes are stated once, in the request's properties, where Cedar reads
+# them too: `created_by` is an entity reference, so its id is the user.
 deny if {
 	input.action.name == "release:signoff"
-	input.subject.id == input.resource.properties.created_by
+	input.subject.id == input.resource.properties.created_by.__entity.id
 }
 
 # A release whose tests did not pass is not approvable.

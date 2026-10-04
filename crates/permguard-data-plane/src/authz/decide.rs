@@ -286,7 +286,7 @@ impl Loading {
             }
 
             let started = Instant::now();
-            let partition = snapshot::compile(&mirror.path, head, &name)
+            let partition = snapshot::compile(&mirror.path, head, &name, self.profile)
                 .map_err(|refusal| self.refuse(mirror, &refusal))?;
             self.metrics.observe(
                 &super::measure::COMPILE_SECONDS,
@@ -320,7 +320,7 @@ impl Loading {
                 ErrorClass::Unavailable,
                 permguard_core::codes::pdp_native::LEDGER_EMPTY,
             ),
-            Refusal::Incompatible(_) => (
+            Refusal::Incompatible(_) | Refusal::BelowFloor(_) => (
                 permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
                 ErrorClass::Unavailable,
                 permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
@@ -416,6 +416,7 @@ struct Loading {
     metrics: Metrics,
     expire_after: Option<std::time::Duration>,
     enabled: permguard_languages::registry::Enabled,
+    profile: permguard_core::assurance::AssuranceProfile,
     single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
 }
 
@@ -455,6 +456,8 @@ pub struct Decider {
     budget: Option<std::time::Duration>,
     /// What this deployment has opted into, among the contracts whose shapes are not yet stable.
     enabled: permguard_languages::registry::Enabled,
+    /// The operator's serving floor: a partition that does not meet it is refused at load.
+    profile: permguard_core::assurance::AssuranceProfile,
     /// One gate per `(zone, ledger, commit[, partition])` being read or compiled.
     ///
     /// # Why a plane needs this
@@ -506,6 +509,9 @@ impl Decider {
             // Everything this build carries, unless a deployment says otherwise. A decider built
             // by a test is about something else, and should see what was compiled in.
             enabled: permguard_languages::registry::Enabled::everything(),
+            // `development` until the Host configuration carries the profile (WP-2.8): the floor
+            // that refuses nothing a deployment served before.
+            profile: permguard_core::assurance::AssuranceProfile::Development,
             single_flight: Arc::new(Mutex::new(std::collections::HashMap::new())),
             // A bound on how much blocking work exists at once, defaulted rather than optional:
             // an unbounded `spawn_blocking` is what lets a plane accumulate instead of refusing,
@@ -517,6 +523,14 @@ impl Decider {
             ),
             quarantine: Arc::new(super::quarantine::Quarantine::new()),
         }
+    }
+
+    /// The operator's assurance profile: the floor every partition must meet to be loaded, a
+    /// schema for Cedar from `production` upward among it. A constructor parameter until the Host
+    /// configuration carries the profile (WP-2.8).
+    pub fn with_profile(mut self, profile: permguard_core::assurance::AssuranceProfile) -> Self {
+        self.profile = profile;
+        self
     }
 
     /// The bound on concurrent blocking work this decider uses.
@@ -539,6 +553,7 @@ impl Decider {
             metrics: self.metrics.clone(),
             expire_after: self.expire_after,
             enabled: self.enabled.clone(),
+            profile: self.profile,
             single_flight: Arc::clone(&self.single_flight),
         }
     }
@@ -681,7 +696,7 @@ impl Decider {
             if self.cache.partition(&key).is_some() {
                 continue;
             }
-            match snapshot::compile(&mirror.path, &head, name) {
+            match snapshot::compile(&mirror.path, &head, name, self.profile) {
                 Ok(partition) => {
                     self.cache
                         .keep_partition(key, &mirror.identity.zone_id, partition);
@@ -702,6 +717,10 @@ impl Decider {
                         "a partition of this ledger cannot be compiled: refusing until it changes"
                     );
 
+                    return Warmed::Blocked(detail);
+                }
+                // Below the assurance floor: refused, never written down (see `BelowFloor`).
+                Err(Refusal::BelowFloor(detail)) => {
                     return Warmed::Blocked(detail);
                 }
                 Err(other) => return Warmed::Damaged(other.to_string()),

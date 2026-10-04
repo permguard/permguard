@@ -69,13 +69,21 @@ pub enum Refusal {
     /// The request named a profile or a partition the manifest does not
     /// declare.
     Unknown(String),
+    /// The partition does not meet the operator's assurance floor — a Cedar partition without a
+    /// schema under `production`, say. Answered like an incompatible ledger, and never written down
+    /// as a block: the block is keyed on the commit alone, and lowering the floor must take effect
+    /// without waiting for the ledger to change.
+    BelowFloor(String),
 }
 
 impl std::fmt::Display for Refusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Empty => write!(f, "the ledger has no history yet"),
-            Self::Incompatible(detail) | Self::Damaged(detail) | Self::Unknown(detail) => {
+            Self::Incompatible(detail)
+            | Self::Damaged(detail)
+            | Self::Unknown(detail)
+            | Self::BelowFloor(detail) => {
                 write!(f, "{detail}")
             }
         }
@@ -253,7 +261,12 @@ pub fn head_at(
 ///
 /// The expensive half, and the one the cache exists for: every policy parsed,
 /// the engine's program built, the schema enforced.
-pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partition>, Refusal> {
+pub fn compile(
+    mirror: &Path,
+    head: &Head,
+    partition: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+) -> Result<Arc<Partition>, Refusal> {
     let declared = head.manifest.partitions.get(partition).ok_or_else(|| {
         Refusal::Unknown(format!("this ledger declares no partition `{partition}`"))
     })?;
@@ -303,6 +316,12 @@ pub fn compile(mirror: &Path, head: &Head, partition: &str) -> Result<Arc<Partit
         permguard_languages::partition::Collecting::Damaged(why) => Refusal::Damaged(why),
         permguard_languages::partition::Collecting::Incompatible(why) => Refusal::Incompatible(why),
     })?;
+
+    // The operator's assurance floor, against what the partition actually carries: a manifest
+    // cannot lower it, so a schema-less partition of a language that needs one at this profile is
+    // refused before anything is compiled (CEDAR-05).
+    registry::check_schema_floor(&language_name, profile, &collected.artifacts)
+        .map_err(Refusal::BelowFloor)?;
 
     let policies = collected.policies.len();
     let evaluator: Arc<dyn Evaluator> = permguard_languages::headroom::with(|| {

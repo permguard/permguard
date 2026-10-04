@@ -76,6 +76,11 @@ impl<L: Language + 'static> Language for Guarded<L> {
         self.0.language_version()
     }
 
+    fn schema_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
+        // A floor that came apart is no floor at all: refuse to serve rather than drop it.
+        contained(|| self.0.schema_required(profile)).unwrap_or(true)
+    }
+
     fn engine(&self) -> crate::descriptor::Engine {
         self.0.engine()
     }
@@ -129,10 +134,11 @@ impl<L: Language + 'static> Language for Guarded<L> {
         .unwrap_or_else(|_| Err(self.came_apart("validating a partition")))
     }
 
-    /// A source whose alias could not be read declares none, which the ingest path then refuses
-    /// as an annotation that does not mirror its source.
-    fn declared_alias(&self, source: &[u8]) -> Option<String> {
-        contained(|| self.0.declared_alias(source)).ok().flatten()
+    /// A source whose alias reading came apart is refused, never read as declaring none: an alias
+    /// is identity, and "could not read it" is not "there is none".
+    fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String> {
+        contained(|| self.0.declared_alias(source))
+            .unwrap_or_else(|_| Err(self.came_apart("reading an alias")))
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
@@ -216,7 +222,7 @@ mod tests {
         fn validate_policy(&self, _bytes: &[u8]) -> Result<(), String> {
             panic!("the parser came apart over policy text")
         }
-        fn declared_alias(&self, _source: &[u8]) -> Option<String> {
+        fn declared_alias(&self, _source: &[u8]) -> Result<Option<String>, String> {
             panic!("the alias reader came apart")
         }
         fn authoring(&self) -> Option<&dyn Authoring> {
@@ -261,7 +267,9 @@ mod tests {
             !refused.contains("policy text"),
             "the panic's words stay out: {refused}"
         );
-        assert_eq!(guarded.declared_alias(b"x"), None);
+        // A reader that came apart refuses the alias: never read as declaring none.
+        let refused = guarded.declared_alias(b"x").expect_err("refused");
+        assert!(refused.contains("came apart reading an alias"), "{refused}");
         let authoring = guarded.authoring().expect("it authors");
         assert!(authoring.extract(b"x").is_err());
         let evaluating = guarded.evaluating().expect("it evaluates");

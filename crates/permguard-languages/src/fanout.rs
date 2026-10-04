@@ -432,14 +432,19 @@ mod tests {
         let pool = Fanout::with_workers(1);
         let held = Arc::new(Barrier::new(2));
         let blocker = Arc::clone(&held);
+        let (started, running) = std::sync::mpsc::channel();
 
-        // Occupy the only worker.
+        // Occupy the only worker, and wait until it has taken the job: a job still queued when
+        // the queue is filled would be dequeued afterwards and free the very slot the test needs
+        // to stay full.
         assert!(
             pool.submit(Box::new(move || {
+                let _ = started.send(());
                 blocker.wait();
             }))
             .is_ok()
         );
+        running.recv().expect("the worker takes the job");
 
         // Fill the queue to its bound.
         for _ in 0..(pool.workers() * QUEUE_PER_WORKER) {

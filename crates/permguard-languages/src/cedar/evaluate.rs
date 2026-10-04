@@ -22,13 +22,16 @@
 //! | `resource {type,id}` | the resource `type::"id"` |
 //! | `action {name}` | `Action::"name"`, or `T::"name"` when the name is qualified `T::name` |
 //! | `context {…}` | the request context record |
-//! | `subject.properties`, `resource.properties` | attributes of the two entities, synthesized unless the store already carries that uid |
+//! | `subject.properties`, `resource.properties` | attributes of the two entities, synthesized unless the store already carries that uid, which must then hold exactly the same attributes |
 //! | `permguard.cedar.entities.v1` | the entity store verbatim, in Cedar's own JSON shape |
 //!
 //! Synthesizing the two named entities is what lets a policy read
 //! `resource.status` without the caller restating the resource inside the
-//! store — and checking first for the uid is what lets a caller who *does*
-//! state it (with parents, say) win.
+//! store. A caller who states the uid in the store (with parents, say) and
+//! also gives it properties must give the same attributes in both places:
+//! one value has one authority (CEDAR-04), and a store that silently won
+//! would let two callers' views of one entity disagree with nobody told.
+//! Parents come only from the store.
 //!
 //! The store is addressed to **this partition by name**. Two Cedar partitions
 //! with different schemas are two different worlds: an entity legal in one is
@@ -38,8 +41,7 @@
 use std::str::FromStr as _;
 
 use cedar_policy::{
-    Authorizer, Context, Decision, Entities, EntityUid, Policy, PolicyId, PolicySet, Request,
-    Schema,
+    Authorizer, Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema,
 };
 use serde_json::{Value, json};
 
@@ -62,7 +64,7 @@ impl Evaluating for Cedar {
         for stored in policies {
             let text = std::str::from_utf8(&stored.source)
                 .map_err(|_| format!("cedar: policy {} is not valid UTF-8", stored.id))?;
-            let policy = Policy::from_str(text)
+            let policy = super::parse_policy(text)
                 .map_err(|error| format!("cedar: policy {} does not parse: {error}", stored.id))?;
             let id = PolicyId::from_str(&stored.id)
                 .map_err(|error| format!("cedar: policy id {}: {error}", stored.id))?;
@@ -172,12 +174,9 @@ impl Evaluator for CedarEvaluator {
     /// matters to whoever has to fix it: `deny` sends them reading policies, and this sends them
     /// to the entity they mistyped.
     fn check_input(&self, input: &crate::input::PartitionData) -> Result<(), String> {
-        Entities::from_json_value(
-            Value::Array(input.cedar_entities().to_vec()),
-            self.schema.as_ref(),
-        )
-        .map(|_| ())
-        .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
+        build_entities(input.cedar_entities().to_vec(), self.schema.as_ref())
+            .map(|_| ())
+            .map_err(|error| format!("cedar: the entity store is not legal here: {error}"))
     }
 
     fn footprint(&self) -> usize {
@@ -218,30 +217,124 @@ impl CedarEvaluator {
                 &query.resource.properties,
             ),
         ] {
-            if !states_uid(&items, kind, id) {
-                items.push(json!({
+            match stated_attrs(&items, kind, id) {
+                None => items.push(json!({
                     "uid": {"type": kind, "id": id},
                     "attrs": Value::Object(properties.clone()),
                     "parents": [],
-                }));
+                })),
+                // Stated in the store and not restated here: the store is the one authority.
+                Some(_) if properties.is_empty() => {}
+                Some(stated) if stated == Value::Object(properties.clone()) => {}
+                Some(_) => {
+                    return Err(format!(
+                        "cedar: `{kind}::{id}` appears in the entity store and in the request's \
+                         properties with different attributes; one value has one authority"
+                    ));
+                }
             }
         }
 
-        Entities::from_json_value(Value::Array(items), self.schema.as_ref())
+        build_entities(items, self.schema.as_ref())
             .map_err(|error| format!("cedar: the entity graph is not legal: {error}"))
     }
 }
 
-/// Whether the caller already stated this uid, in which case theirs wins:
-/// a caller who wrote out the resource with its parents means it.
-fn states_uid(items: &[Value], kind: &str, id: &str) -> bool {
-    items.iter().any(|item| {
-        item.get("uid").and_then(|uid| {
-            let stated_kind = uid.get("type").and_then(Value::as_str)?;
-            let stated_id = uid.get("id").and_then(Value::as_str)?;
-            Some(stated_kind == kind && stated_id == id)
-        }) == Some(true)
+/// A uid as Cedar reads it: `{"type", "id"}`, or the same inside the explicit escape
+/// `{"__entity": {"type", "id"}}`, which Cedar accepts for a uid and for a parent alike.
+fn unescaped(uid: &Value) -> &Value {
+    uid.get("__entity").unwrap_or(uid)
+}
+
+/// How deep a request's entity hierarchy may be: the longest chain of `parents`.
+///
+/// Cedar computes the hierarchy's transitive closure when it builds the graph, with stack and
+/// time that grow with the depth: two thousand levels overflow an evaluating thread and cost
+/// seconds. The bound is checked on the JSON, before Cedar sees it, so a request cannot spend
+/// either; a real hierarchy — user, groups, units — is a handful of levels.
+pub const MAX_HIERARCHY_DEPTH: usize = 64;
+
+/// The entity graph of a request: the hierarchy bound first, then Cedar's own construction on a
+/// stack segment of its own.
+fn build_entities(items: Vec<Value>, schema: Option<&Schema>) -> Result<Entities, String> {
+    check_hierarchy(&items)?;
+    crate::headroom::ample(|| {
+        Entities::from_json_value(Value::Array(items), schema).map_err(|error| error.to_string())
     })
+}
+
+/// Refuses a hierarchy deeper than [`MAX_HIERARCHY_DEPTH`], or one with a cycle, which has no
+/// depth at all.
+///
+/// Iterative, so the check itself has no depth: each round lengthens every entity's known chain by
+/// at most one level, and a chain still growing after the bound has been passed is too deep, or a
+/// cycle.
+fn check_hierarchy(items: &[Value]) -> Result<(), String> {
+    let key = |uid: &Value| -> Option<(String, String)> {
+        let uid = unescaped(uid);
+        Some((
+            uid.get("type")?.as_str()?.to_owned(),
+            uid.get("id")?.as_str()?.to_owned(),
+        ))
+    };
+    let mut parents: std::collections::HashMap<(String, String), Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    for item in items {
+        let Some(uid) = item.get("uid").and_then(key) else {
+            continue;
+        };
+        let stated: Vec<(String, String)> = item
+            .get("parents")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(key).collect())
+            .unwrap_or_default();
+        parents.entry(uid).or_default().extend(stated);
+    }
+    let mut depth: std::collections::HashMap<&(String, String), usize> =
+        parents.keys().map(|uid| (uid, 0)).collect();
+    for _ in 0..=MAX_HIERARCHY_DEPTH {
+        let mut changed = false;
+        for (uid, above) in &parents {
+            let longest = above
+                .iter()
+                .map(|parent| depth.get(parent).map_or(1, |held| held + 1))
+                .max()
+                .unwrap_or(0);
+            if longest > depth[uid] {
+                depth.insert(uid, longest);
+                changed = true;
+            }
+        }
+        if !changed {
+            return Ok(());
+        }
+        if depth.values().any(|held| *held > MAX_HIERARCHY_DEPTH) {
+            break;
+        }
+    }
+
+    Err(format!(
+        "the entity hierarchy is deeper than {MAX_HIERARCHY_DEPTH} levels, or a cycle"
+    ))
+}
+
+/// The attributes the entity store states for this uid, when it states the uid at all; an entity
+/// stated without `attrs` states none.
+fn stated_attrs(items: &[Value], kind: &str, id: &str) -> Option<Value> {
+    items
+        .iter()
+        .find(|item| {
+            item.get("uid").map(unescaped).and_then(|uid| {
+                let stated_kind = uid.get("type").and_then(Value::as_str)?;
+                let stated_id = uid.get("id").and_then(Value::as_str)?;
+                Some(stated_kind == kind && stated_id == id)
+            }) == Some(true)
+        })
+        .map(|item| {
+            item.get("attrs")
+                .cloned()
+                .unwrap_or_else(|| Value::Object(serde_json::Map::new()))
+        })
 }
 
 fn uid(kind: &str, id: &str, what: &str) -> Result<EntityUid, String> {
@@ -505,6 +598,302 @@ mod tests {
             compiled.evaluate(&asked).permitted(),
             "the caller's own entity wins over the synthesized one"
         );
+    }
+
+    /// CEDAR-04: a uid stated both in the entity store and in the request's properties needs the
+    /// same attributes in both, or the request is refused as an input the engine rejects; a uid
+    /// stated only in the store keeps the store as its one authority, parents included.
+    #[test]
+    fn one_value_has_one_authority_between_the_store_and_the_properties() {
+        let compiled = Cedar
+            .compile(
+                &[stored(
+                    "01a0-open",
+                    r#"permit (principal, action, resource) when { resource.status == "open" };"#,
+                )],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+        let stated = |status: &str| {
+            store(vec![json!({"uid": {"type": "Document", "id": "budget"},
+                              "attrs": {"status": status}, "parents": []})])
+        };
+        let mut asked = query("alice", "read", "budget");
+        asked.resource.kind = "Document".to_owned();
+
+        // Stated in the store only: the store answers.
+        asked.input = stated("open");
+        assert!(compiled.evaluate(&asked).permitted());
+
+        // Stated in both, equal: one value.
+        asked
+            .resource
+            .properties
+            .insert("status".to_owned(), Value::from("open"));
+        assert!(compiled.evaluate(&asked).permitted());
+
+        // Stated in both, different: refused, never silently resolved either way.
+        asked.input = stated("closed");
+        let verdict = compiled.evaluate(&asked);
+        assert!(!verdict.permitted());
+        let error = verdict.error().expect("`E`, not a deny");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED
+        );
+        assert!(error.message.contains("one authority"), "{}", error.message);
+    }
+
+    /// Required cases: a long conjunction, a deep nesting, a large set and a large entity graph
+    /// are answered inside the limits. What is too deep for the engine is refused as an error,
+    /// never a crash of the process.
+    #[test]
+    fn deep_expressions_large_sets_and_large_graphs_stay_inside_limits() {
+        let artifacts = crate::artifact::Artifacts::default();
+        let compile = |id: &str, source: String| {
+            crate::headroom::with(|| Cedar.compile(&[stored(id, &source)], &artifacts))
+        };
+        let ask = |query: &Query, evaluator: &dyn Evaluator| {
+            crate::headroom::with(|| evaluator.evaluate(query))
+        };
+
+        let chain = vec!["true"; 2_000].join(" && ");
+        let long = compile(
+            "01a0-chain",
+            format!("permit (principal, action, resource) when {{ {chain} }};"),
+        )
+        .expect("a long conjunction compiles");
+        assert!(ask(&query("alice", "read", "budget"), long.as_ref()).permitted());
+
+        // Nesting is bounded before the parser runs: the bound itself compiles, one level more is
+        // refused, and a nesting deep enough to exhaust any stack is refused the same way rather
+        // than taking the process down.
+        let nested = |levels: usize| {
+            let deep = format!("{}true{}", "(".repeat(levels), ")".repeat(levels));
+            // One brace of the `when` block is a level too.
+            compile(
+                "01a0-deep",
+                format!("permit (principal, action, resource) when {{ {deep} }};"),
+            )
+        };
+        let at_bound = nested(crate::cedar::MAX_NESTING - 1).expect("the bound compiles");
+        assert!(ask(&query("alice", "read", "budget"), at_bound.as_ref()).permitted());
+        for refused in [crate::cedar::MAX_NESTING, 5_000] {
+            let Err(error) = nested(refused) else {
+                panic!("{refused} levels compiled");
+            };
+            assert!(error.contains("levels deep"), "{error}");
+        }
+        // Cedar nests without brackets too: every `if` is a level, and a schema's `Set<…>` is.
+        let ifs = |levels: usize| {
+            let mut expression = "true".to_owned();
+            for _ in 0..levels {
+                expression = format!("if false then false else {expression}");
+            }
+            format!("permit (principal, action, resource) when {{ {expression} }};")
+        };
+        assert!(compile("01a0-ifs", ifs(crate::cedar::MAX_NESTING - 1)).is_ok());
+        for levels in [crate::cedar::MAX_NESTING, 5_000] {
+            let Err(error) = compile("01a0-ifs", ifs(levels)) else {
+                panic!("{levels} nested ifs compiled");
+            };
+            assert!(error.contains("levels deep"), "{error}");
+        }
+        // A member chain and a `has` path nest one level per link.
+        let member = |links: usize| {
+            format!(
+                "permit (principal, action, resource) when {{ context{} == 1 }};",
+                ".a".repeat(links)
+            )
+        };
+        let path = |links: usize| {
+            format!(
+                "permit (principal, action, resource) when {{ context has {} }};",
+                vec!["a"; links].join(".")
+            )
+        };
+        assert!(compile("01a0-member", member(8)).is_ok());
+        assert!(compile("01a0-path", path(8)).is_ok());
+        for links in [crate::cedar::MAX_NESTING + 1, 100_000] {
+            for (name, source) in [("member", member(links)), ("path", path(links))] {
+                let Err(error) = compile("01a0-chain-link", source) else {
+                    panic!("a {name} chain of {links} links compiled");
+                };
+                assert!(error.contains("levels deep"), "{error}");
+            }
+        }
+        let sets = format!(
+            "entity User {{ tags: {}Long{} }};",
+            "Set<".repeat(5_000),
+            ">".repeat(5_000)
+        );
+        assert!(
+            crate::role::Language::validate_schema(&Cedar, sets.as_bytes()).is_err(),
+            "a schema nesting `Set<…>` past the bound is refused before the parser"
+        );
+        assert!(
+            crate::role::Language::validate_policy(
+                &Cedar,
+                format!(
+                    "permit (principal, action, resource) when {{ {}true{} }};",
+                    "[".repeat(200),
+                    "]".repeat(200)
+                )
+                .as_bytes()
+            )
+            .is_err(),
+            "the push path refuses it too"
+        );
+        let mut nested_context = Value::from(1);
+        for _ in 0..100 {
+            nested_context = json!({ "a": nested_context });
+        }
+        let mut deep_context = query("alice", "read", "budget");
+        deep_context
+            .context
+            .insert("deep".to_owned(), nested_context);
+        let _ = ask(&deep_context, long.as_ref());
+
+        let members: Vec<String> = (0..10_000).map(|i| format!("\"v{i}\"")).collect();
+        let large = compile(
+            "01a0-set",
+            format!(
+                "permit (principal, action, resource) when {{ [{}].contains(resource.tag) }};",
+                members.join(",")
+            ),
+        )
+        .expect("a large set compiles");
+        let mut tagged = query("alice", "read", "budget");
+        tagged
+            .resource
+            .properties
+            .insert("tag".to_owned(), Value::from("v9999"));
+        assert!(ask(&tagged, large.as_ref()).permitted());
+
+        let grouped = compile(
+            "01a0-graph",
+            r#"permit (principal in Group::"g0", action, resource);"#.to_owned(),
+        )
+        .expect("compiles");
+        // A chain of `levels` groups under `g0`, `alice` in the last: `alice` is `levels` deep.
+        let chained = |levels: usize| {
+            let mut items: Vec<Value> = (0..levels)
+                .map(|i| {
+                    let parents = if i == 0 {
+                        json!([])
+                    } else {
+                        json!([{"type": "Group", "id": format!("g{}", i - 1)}])
+                    };
+                    json!({"uid": {"type": "Group", "id": format!("g{i}")}, "attrs": {},
+                           "parents": parents})
+                })
+                .collect();
+            items.push(json!({"uid": {"type": "User", "id": "alice"}, "attrs": {},
+                              "parents": [{"type": "Group", "id": format!("g{}", levels - 1)}]}));
+            let mut asked = query("alice", "read", "budget");
+            asked.input = store(items);
+            asked
+        };
+        assert!(ask(&chained(MAX_HIERARCHY_DEPTH), grouped.as_ref()).permitted());
+        // One level more, two thousand (enough to overflow an evaluating thread), and a cycle are
+        // each refused as an input the engine rejects, before Cedar builds anything.
+        let mut cycle = query("alice", "read", "budget");
+        cycle.input = store(vec![
+            json!({"uid": {"type": "Group", "id": "a"}, "attrs": {}, "parents": [{"type": "Group", "id": "b"}]}),
+            json!({"uid": {"type": "Group", "id": "b"}, "attrs": {}, "parents": [{"type": "Group", "id": "a"}]}),
+        ]);
+        // The same chain written with Cedar's explicit escape, `{"__entity": {…}}`, is the same
+        // hierarchy and is refused the same way.
+        let escaped_chain = {
+            let items: Vec<Value> = (0..2_000)
+                .map(|i| {
+                    let parents = if i == 0 {
+                        json!([])
+                    } else {
+                        json!([{"__entity": {"type": "Group", "id": format!("g{}", i - 1)}}])
+                    };
+                    json!({"uid": {"__entity": {"type": "Group", "id": format!("g{i}")}},
+                           "attrs": {}, "parents": parents})
+                })
+                .collect();
+            let mut asked = query("alice", "read", "budget");
+            asked.input = store(items);
+            asked
+        };
+        for refused in [
+            chained(MAX_HIERARCHY_DEPTH + 1),
+            chained(2_000),
+            cycle,
+            escaped_chain,
+        ] {
+            let verdict = ask(&refused, grouped.as_ref());
+            let error = verdict.error().expect("`E`, not a deny");
+            assert_eq!(
+                error.code,
+                permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED
+            );
+            assert!(error.message.contains("hierarchy"), "{}", error.message);
+        }
+    }
+
+    /// Golden results: the same partition compiled twice, as after a restart, answers every case
+    /// the same, and as stated; the same table runs on every supported platform.
+    #[test]
+    fn golden_results_hold_across_a_recompile() {
+        let policies = [
+            stored(
+                "01a0-read",
+                r#"permit (principal, action == Action::"read", resource);"#,
+            ),
+            stored(
+                "01a0-not-bob",
+                r#"forbid (principal == User::"bob", action, resource);"#,
+            ),
+            stored(
+                "01a0-broken",
+                r#"permit (principal, action == Action::"audit", resource) when { resource.clearance > 3 };"#,
+            ),
+        ];
+        let cases = [
+            ("alice", "read", "P"),
+            ("bob", "read", "D"),
+            ("alice", "write", "A"),
+            ("alice", "audit", "E"),
+        ];
+        let compile = || {
+            Cedar
+                .compile(&policies, &crate::artifact::Artifacts::default())
+                .expect("the policies compile")
+        };
+        let symbol = |verdict: &Verdict| match verdict {
+            Verdict::Permit { .. } => "P",
+            Verdict::Deny { .. } => "D",
+            Verdict::Abstain => "A",
+            Verdict::Error { .. } => "E",
+        };
+        let (first, second) = (compile(), compile());
+        for (subject, action, expected) in cases {
+            let asked = query(subject, action, "budget");
+            let (one, two) = (first.evaluate(&asked), second.evaluate(&asked));
+            assert_eq!(symbol(&one), expected, "{subject} {action}");
+            assert_eq!(format!("{one:?}"), format!("{two:?}"), "{subject} {action}");
+        }
+    }
+
+    /// Default deny: no policy matched is an abstain, `A`, not a deny a forbid decided.
+    #[test]
+    fn nothing_matched_is_an_abstain() {
+        let compiled = Cedar
+            .compile(
+                &[stored(
+                    "01a0-list",
+                    r#"permit (principal, action == Action::"list", resource);"#,
+                )],
+                &crate::artifact::Artifacts::default(),
+            )
+            .expect("the policies compile");
+        let verdict = compiled.evaluate(&query("alice", "read", "budget"));
+        assert!(matches!(verdict, Verdict::Abstain), "{verdict:?}");
     }
 
     #[test]

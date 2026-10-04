@@ -146,7 +146,20 @@ pub trait Language: Send + Sync {
     /// The alias this source declares through the language's own marker —
     /// Cedar's `@alias("…")`, Rego's `# METADATA custom.alias`. The ingest
     /// path needs it too: it checks that the annotation mirrors the source.
-    fn declared_alias(&self, source: &[u8]) -> Option<String>;
+    ///
+    /// `Err` when the source declares one the language refuses: two of them, or one outside the
+    /// common identity grammar. An alias is identity, so a malformed one is refused before
+    /// identity resolution rather than read as "no alias".
+    fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String>;
+
+    /// Whether a partition of this language must carry a schema to serve under `profile`.
+    ///
+    /// The assurance profile is the operator's serving floor, never something a manifest can
+    /// lower; a language whose policies only mean what they read when typed against a schema
+    /// raises the floor from the profile it names (CEDAR-05). Most require nothing.
+    fn schema_required(&self, _profile: permguard_core::assurance::AssuranceProfile) -> bool {
+        false
+    }
 
     /// The authoring half, when this build carries it.
     fn authoring(&self) -> Option<&dyn Authoring> {
@@ -202,4 +215,18 @@ pub trait Authoring: Send + Sync {
     /// Splits a source file into its policies, each with verbatim bytes and
     /// its declared alias. A language whose unit is the file returns one.
     fn extract(&self, source: &[u8]) -> Result<Vec<ExtractedPolicy>, String>;
+}
+
+/// Checks a declared alias against the common identity grammar: the ledger's tree-entry name
+/// grammar, `a-z 0-9 . - _`, 1 to 128 bytes, alphanumeric at both ends, never `.` or `..`.
+///
+/// An alias names a policy in trees, on the command line and in evidence, so it is held to the
+/// grammar those already obey rather than to a second one.
+pub fn identity_alias(alias: &str) -> Result<(), String> {
+    permguard_objects::grammar::validate_entry_name(alias).map_err(|_| {
+        format!(
+            "the alias `{alias}` is not an identity: use a-z, 0-9, `.`, `-` and `_`, 1 to 128 \
+             bytes, starting and ending with a letter or a digit"
+        )
+    })
 }

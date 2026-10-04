@@ -111,6 +111,34 @@ impl From<StoreError> for EngineError {
     }
 }
 
+/// The alias annotation must mirror the source: both present and equal, or both absent — the tree
+/// never says something the file does not. A source whose alias the language refuses, two of them
+/// or one outside the identity grammar, is refused first, before identity resolution reads it.
+/// Answers the declared alias.
+fn alias_mirrors(
+    path: &str,
+    media_type: &str,
+    source: &[u8],
+    annotated: Option<&String>,
+) -> Result<Option<String>> {
+    let declared = declared_alias(media_type, source).map_err(|why| {
+        invalid(
+            permguard_core::codes::notp::POLICY_ALIAS_REJECTED,
+            format!("the policy `{path}` declares an alias this ledger refuses: {why}"),
+        )
+    })?;
+    match (&declared, annotated) {
+        (Some(held), Some(alias)) if held == alias => Ok(declared),
+        (None, None) => Ok(None),
+        _ => Err(invalid(
+            permguard_core::codes::notp::POLICY_ALIAS_MISMATCH,
+            format!(
+                "the policy `{path}` annotates an alias that does not mirror the source's @alias"
+            ),
+        )),
+    }
+}
+
 fn invalid(code: &'static str, message: impl Into<String>) -> EngineError {
     EngineError::Validation {
         code,
@@ -130,7 +158,10 @@ pub fn validate_blob(media_type: &str, data: &[u8]) -> Result<()> {
 }
 
 /// The alias a policy source declares — see [`registry::declared_alias`].
-pub fn declared_alias(media_type: &str, source: &[u8]) -> Option<String> {
+pub fn declared_alias(
+    media_type: &str,
+    source: &[u8],
+) -> std::result::Result<Option<String>, String> {
     registry::declared_alias(media_type, source)
 }
 
@@ -1017,23 +1048,12 @@ impl Engine<'_> {
             ));
         }
 
-        // The alias annotation must mirror the source: both present and
-        // equal, or both absent — the tree never says something the file
-        // does not.
-        let declared = declared_alias(media_type, source);
-        let annotated_alias = entry.annotations.get(ANNOTATION_POLICY_ALIAS);
-        match (&declared, annotated_alias) {
-            (Some(declared), Some(alias)) if declared == alias => {}
-            (None, None) => {}
-            _ => {
-                return Err(invalid(
-                    permguard_core::codes::notp::POLICY_ALIAS_MISMATCH,
-                    format!(
-                        "the policy `{path}` annotates an alias that does not mirror the source's @alias"
-                    ),
-                ));
-            }
-        }
+        let declared = alias_mirrors(
+            path,
+            media_type,
+            source,
+            entry.annotations.get(ANNOTATION_POLICY_ALIAS),
+        )?;
 
         // Rule 1 hook: the same logical path in the parent tree(s).
         let previous_ids: Vec<String> = previous_trees
@@ -1326,4 +1346,49 @@ fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CEDAR: &str = permguard_core::domains::media::POLICY_CEDAR;
+
+    fn code(outcome: Result<Option<String>>) -> &'static str {
+        match outcome {
+            Err(EngineError::Validation { code, .. }) => code,
+            other => panic!("expected a validation refusal, got {other:?}"),
+        }
+    }
+
+    /// A pushed Cedar policy whose alias is outside the identity grammar, or declared twice, is
+    /// refused as `policy_alias_rejected` before identity resolution; one that the annotation does
+    /// not mirror is `policy_alias_mismatch`; a mirrored alias passes.
+    #[test]
+    fn test_a_pushed_alias_is_held_to_the_identity_grammar_and_must_mirror_its_source() {
+        let annotated = |alias: &str| Some(alias.to_owned());
+        let good = b"@alias(\"billing-ro\")\npermit (principal, action, resource);";
+        assert!(alias_mirrors("p", CEDAR, good, annotated("billing-ro").as_ref()).is_ok());
+        assert_eq!(
+            code(alias_mirrors("p", CEDAR, good, annotated("other").as_ref())),
+            codes::notp::POLICY_ALIAS_MISMATCH
+        );
+        let outside = b"@alias(\"Billing RO\")\npermit (principal, action, resource);";
+        assert_eq!(
+            code(alias_mirrors(
+                "p",
+                CEDAR,
+                outside,
+                annotated("Billing RO").as_ref()
+            )),
+            codes::notp::POLICY_ALIAS_REJECTED
+        );
+        let twice = b"@alias(\"a\")\n@alias(\"b\")\npermit (principal, action, resource);";
+        assert_eq!(
+            code(alias_mirrors("p", CEDAR, twice, annotated("a").as_ref())),
+            codes::notp::POLICY_ALIAS_REJECTED
+        );
+        let commented = b"// @alias(\"decoy\")\npermit (principal, action, resource);";
+        assert!(alias_mirrors("p", CEDAR, commented, None).is_ok());
+    }
 }

@@ -14,7 +14,18 @@
     "type": "Release",
     "id": "v2.4.0",
     "properties": {
-      "created_by": "alice"
+      "service": {
+        "__entity": {
+          "type": "Service",
+          "id": "payments-api"
+        }
+      },
+      "created_by": {
+        "__entity": {
+          "type": "User",
+          "id": "alice"
+        }
+      }
     }
   },
   "context": {
@@ -96,27 +107,6 @@
               "__entity": {
                 "type": "Team",
                 "id": "platform"
-              }
-            }
-          },
-          "parents": []
-        },
-        {
-          "uid": {
-            "type": "Release",
-            "id": "v2.4.0"
-          },
-          "attrs": {
-            "service": {
-              "__entity": {
-                "type": "Service",
-                "id": "payments-api"
-              }
-            },
-            "created_by": {
-              "__entity": {
-                "type": "User",
-                "id": "alice"
               }
             }
           },

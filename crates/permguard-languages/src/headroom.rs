@@ -56,6 +56,16 @@ pub fn with<T>(work: impl FnOnce() -> T) -> T {
     stacker::maybe_grow(RED_ZONE, GROW_TO, work)
 }
 
+/// Runs `work` on a fresh stack segment of [`GROW_TO`] bytes, whatever the current thread has left.
+///
+/// For a parser whose depth follows its input: [`with`] grows only below the red zone, and a
+/// thread with a little more than the red zone left can still be too small for a text parsed at
+/// the depth its language bound allows. A parse is not a hot path, so it pays for a segment of its
+/// own and the bound is what the stack must hold, on every thread.
+pub fn ample<T>(work: impl FnOnce() -> T) -> T {
+    stacker::grow(GROW_TO, work)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{GROW_TO, RED_ZONE};

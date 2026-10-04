@@ -713,6 +713,82 @@ async fn a_schema_is_enforced_at_load_and_a_request_outside_it_is_refused() {
     );
 }
 
+/// CEDAR-05: from `production` upward a Cedar partition carries a schema. The same schema-less
+/// ledger serves under `development`, is refused as `ledger_incompatible` under `production` and
+/// `regulated` and leaves no block behind, so lowering the floor takes effect at once; a Cedar
+/// partition that carries its schema serves under `production`.
+#[tokio::test]
+async fn a_schema_less_cedar_partition_serves_only_below_production() {
+    use permguard_core::assurance::AssuranceProfile;
+
+    let root = scratch("floor").join("mirrors");
+    let schemaless = manifest(&[("app", "cedar", false)], ">=0.0.0");
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &schemaless,
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let under = |profile| {
+        Arc::new(
+            Decider::new(
+                root.clone(),
+                Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+                Metrics::none(),
+                None,
+                256,
+            )
+            .with_profile(profile),
+        )
+    };
+
+    for profile in [AssuranceProfile::Production, AssuranceProfile::Regulated] {
+        let refused = under(profile)
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect_err("a schema-less Cedar partition is below the floor");
+        assert_eq!(refused.code(), "ledger_incompatible", "{profile}");
+        assert!(
+            block::read(&mirror.path).is_none(),
+            "a floor refusal is never written down"
+        );
+    }
+    assert!(
+        under(AssuranceProfile::Development)
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect("development serves it")
+            .decision
+    );
+
+    let typed_root = scratch("floor-typed").join("mirrors");
+    let typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
+    let schema = "entity user;\nentity document;\naction read appliesTo { principal: [user], resource: [document] };\n";
+    provision(
+        &typed_root,
+        "acme",
+        "main-ledger",
+        &typed,
+        &[("app", vec![&CEDAR_READ], Some(schema))],
+    );
+    let production = Decider::new(
+        typed_root,
+        Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+        Metrics::none(),
+        None,
+        256,
+    )
+    .with_profile(AssuranceProfile::Production);
+    assert!(
+        production
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect("a typed Cedar partition serves under production")
+            .decision
+    );
+}
+
 #[tokio::test]
 async fn an_engine_outside_the_manifests_range_refuses_and_stays_refused() {
     let root = scratch("gate").join("mirrors");
