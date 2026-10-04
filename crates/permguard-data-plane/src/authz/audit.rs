@@ -79,7 +79,7 @@ impl DecisionAudit {
                 warn!(
                     event.name = "authz.audit_dropped",
                     component = COMPONENT,
-                    reason = "queue_full",
+                    reason = permguard_core::codes::stream::QUEUE_FULL,
                     "a decision was answered and its audit queue was full"
                 );
             }
@@ -90,7 +90,7 @@ impl DecisionAudit {
                 warn!(
                     event.name = "authz.audit_dropped",
                     component = COMPONENT,
-                    reason = "worker_stopped",
+                    reason = permguard_core::codes::stream::WORKER_STOPPED,
                     "a decision was answered after the audit worker stopped"
                 );
             }

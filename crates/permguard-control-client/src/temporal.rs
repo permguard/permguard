@@ -68,7 +68,7 @@ impl HttpTemporal {
             })?;
         let parsed: Value = serde_json::from_str(&response.body).map_err(|error| Failure {
             class: "internal".to_owned(),
-            reason: "decode_failed".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
             detail: format!("the answer to {method} {path} was unreadable: {error}"),
             usage: false,
         })?;
@@ -230,7 +230,7 @@ fn to_proto(request: SubmitRequest) -> Result<proto::SubmitEventRequest, Failure
 pub(crate) fn validated(answer: Value) -> Result<Value, Failure> {
     let refused = |detail: String| Failure {
         class: "internal".to_owned(),
-        reason: "answer_malformed".to_owned(),
+        reason: permguard_core::codes::client::ANSWER_MALFORMED.to_owned(),
         detail,
         usage: false,
     };
@@ -301,7 +301,7 @@ pub(crate) fn validated(answer: Value) -> Result<Value, Failure> {
 fn from_proto(answer: proto::SubmitEventResponse) -> Result<Value, Failure> {
     let internal = |detail: String| Failure {
         class: "internal".to_owned(),
-        reason: "decode_failed".to_owned(),
+        reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
         detail,
         usage: false,
     };
@@ -379,11 +379,13 @@ fn http_refusal(parsed: &Value, status: u16) -> Failure {
             held => held.to_owned(),
         },
         reason: match field("code").as_str() {
-            "" => format!("http_{status}"),
+            "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
             held => held.to_owned(),
         },
         detail: match field("message") {
             held if held.is_empty() => format!("the endpoint refused status {status}"),
+            // No Permguard refusal: the status is the only fact, and `http_status` promises it.
+            held if field("code").is_empty() => format!("status {status}: {held}"),
             held => held,
         },
         usage: (400..500).contains(&status),
@@ -425,6 +427,17 @@ fn grpc_refusal(status: tonic::Status) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An answer that is no Permguard refusal is the one code `http_status`, and its message
+    /// always carries the status, even when a proxy sent a bare `{message}`.
+    #[test]
+    fn an_answer_without_a_permguard_code_is_http_status_with_the_status() {
+        for body in [Value::Null, serde_json::json!({ "message": "Bad gateway" })] {
+            let failure = http_refusal(&body, 502);
+            assert_eq!(failure.reason, permguard_core::codes::client::HTTP_STATUS);
+            assert!(failure.detail.contains("502"), "{}", failure.detail);
+        }
+    }
 
     fn accepted(staleness_seconds: Option<u64>) -> proto::SubmitEventResponse {
         proto::SubmitEventResponse {

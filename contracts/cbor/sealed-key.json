@@ -1,0 +1,51 @@
+{
+  "artifact": "Sealed private key at rest and its two sealing contexts",
+  "authority": "1-architecture/4-architecture-server-host-keys.md#envelope-encryption-of-file-provider-keys; crates/permguard-objects/src/crypto/seal.rs (LABEL_* constants, Binding::content_context, Binding::wrap_context)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "sealed_key": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "v", "type": "const:1", "occurs": "required" },
+        { "label": 2, "name": "kek_ref", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "kek_version", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "wrap_algorithm", "type": "text", "occurs": "required", "note": "must match the configured provider" },
+        { "label": 5, "name": "wrapped_dek", "type": "bytes", "occurs": "required", "note": "the provider's own layout" },
+        { "label": 6, "name": "content_algorithm", "type": "const:\"AES-256-GCM\"", "occurs": "required" },
+        { "label": 7, "name": "unique_nonce", "type": "bytes", "occurs": "required", "note": "exactly 12 bytes" },
+        { "label": 8, "name": "ciphertext", "type": "bytes", "occurs": "required", "note": "the PKCS#8 document followed by the 16-byte tag" }
+      ]
+    },
+    "content_context": {
+      "keys": "text",
+      "fields": [
+        { "label": "format", "name": "format", "type": "const:\"permguard.sealed-key.v1\"", "occurs": "required" },
+        { "label": "v", "name": "v", "type": "const:1", "occurs": "required" },
+        { "label": "host_id", "name": "host_id", "type": "bytes", "occurs": "required", "note": "the 16 UUID bytes" },
+        { "label": "ring", "name": "ring", "type": "text", "occurs": "required" },
+        { "label": "kid", "name": "kid", "type": "text", "occurs": "required" },
+        { "label": "suite", "name": "suite", "type": "text", "occurs": "required" },
+        { "label": "content_algorithm", "name": "content_algorithm", "type": "text", "occurs": "required" },
+        { "label": "unique_nonce", "name": "unique_nonce", "type": "bytes", "occurs": "required", "note": "exactly 12 bytes" }
+      ]
+    },
+    "wrap_context": {
+      "keys": "text",
+      "fields": [
+        { "label": "format", "name": "format", "type": "const:\"permguard.sealed-key.v1\"", "occurs": "required" },
+        { "label": "v", "name": "v", "type": "const:1", "occurs": "required" },
+        { "label": "host_id", "name": "host_id", "type": "bytes", "occurs": "required", "note": "the 16 UUID bytes" },
+        { "label": "ring", "name": "ring", "type": "text", "occurs": "required" },
+        { "label": "kid", "name": "kid", "type": "text", "occurs": "required" },
+        { "label": "suite", "name": "suite", "type": "text", "occurs": "required" },
+        { "label": "kek_ref", "name": "kek_ref", "type": "text", "occurs": "required" },
+        { "label": "kek_version", "name": "kek_version", "type": "uint", "occurs": "required" },
+        { "label": "wrap_algorithm", "name": "wrap_algorithm", "type": "text", "occurs": "required" },
+        { "label": "content_algorithm", "name": "content_algorithm", "type": "text", "occurs": "required" },
+        { "label": "unique_nonce", "name": "unique_nonce", "type": "bytes", "occurs": "required", "note": "exactly 12 bytes" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["sealed_key", "content_context", "wrap_context"]
+}

@@ -3,7 +3,7 @@
 
 //! The gRPC transport against a fake plane on a real socket.
 //!
-//! Both halves are generated from the same `proto/`, so what this proves is
+//! Both halves are generated from the same `contracts/proto/`, so what this proves is
 //! what a wire test can prove and a mock cannot: the client encodes what the
 //! contract says, the compression it negotiated is applied and undone, and a
 //! `Status` becomes the same refusal vocabulary the HTTP surface produces.

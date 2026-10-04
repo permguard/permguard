@@ -1,0 +1,651 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard NOTP over REST",
+    "version": "1",
+    "description": "The ledger content protocol on the control plane. Bodies are `application/vnd.permguard.notp.v1+cbor` (canonical CBOR with integer keys), which JSON Schema cannot describe; refusals are JSON."
+  },
+  "paths": {
+    "/v1/zones/{zone}/ledgers/{ledger}/refs/{name}": {
+      "get": {
+        "operationId": "getRef",
+        "summary": "Read a ref",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "description": "The ref name; may contain slashes (the route is a wildcard).",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ref"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The advertised ref: a CBOR map of head, counter and statement.",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "RefAdvertisement: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ref name is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The ledger or the ref is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/GetRef"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/notp/push/negotiate": {
+      "post": {
+        "operationId": "negotiatePush",
+        "summary": "Negotiate a push",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.permguard.notp.v1+cbor": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "NegotiatePushRequest: canonical CBOR, labels in contracts/cbor/notp.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "NegotiatePushResponse",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "NegotiatePushResponse: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a valid NOTP message, or the content was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or object is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/NegotiatePush",
+        "x-cbor-request": "negotiate_push_request"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/notp/objects": {
+      "post": {
+        "operationId": "uploadObjects",
+        "summary": "Upload objects",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.permguard.notp.v1+cbor": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "UploadObjectsRequest: canonical CBOR, labels in contracts/cbor/notp.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "UploadObjectsResponse",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "UploadObjectsResponse: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a valid NOTP message, or the content was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or object is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/UploadObjects",
+        "x-cbor-request": "upload_objects_request"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/notp/push/commit": {
+      "post": {
+        "operationId": "commitPush",
+        "summary": "Commit a push",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.permguard.notp.v1+cbor": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "CommitPushRequest: canonical CBOR, labels in contracts/cbor/notp.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "CommitPushResponse",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "CommitPushResponse: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a valid NOTP message, or the content was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or object is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/CommitPush",
+        "x-cbor-request": "commit_push_request"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate": {
+      "post": {
+        "operationId": "negotiatePull",
+        "summary": "Negotiate a pull",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.permguard.notp.v1+cbor": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "NegotiatePullRequest: canonical CBOR, labels in contracts/cbor/notp.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "NegotiatePullResponse",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "NegotiatePullResponse: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a valid NOTP message, or the content was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or object is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/NegotiatePull",
+        "x-cbor-request": "negotiate_pull_request"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch": {
+      "post": {
+        "operationId": "fetchObjects",
+        "summary": "Fetch objects",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.permguard.notp.v1+cbor": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "description": "FetchObjectsRequest: canonical CBOR, labels in contracts/cbor/notp.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "FetchObjectsResponse",
+            "content": {
+              "application/vnd.permguard.notp.v1+cbor": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "FetchObjectsResponse: canonical CBOR, labels in contracts/cbor/notp.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a valid NOTP message, or the content was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or object is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A conflict: not a fast-forward, or the ref moved since negotiation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An answer this plane could not encode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/FetchObjects",
+        "x-cbor-request": "fetch_objects_request"
+      }
+    }
+  },
+  "components": {
+    "schemas": {}
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.control.v1.GetKeyRingRequest",
+      "note": "an empty request: `GetKeyRing` has no REST route here; the key set is `/control-plane/keys` in `health.json`",
+      "fields": []
+    },
+    {
+      "message": "permguard.control.v1.GetKeyRingResponse",
+      "note": "`jwks` holds the JSON bytes of the key set that REST answers as `common.json` `JwkSet`",
+      "fields": [
+        "jwks"
+      ]
+    }
+  ]
+}

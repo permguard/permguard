@@ -1,0 +1,135 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard common wire types",
+    "version": "1",
+    "description": "Components shared by every Permguard REST surface: the refusal body, the access gate's denial body and the JWKS served at the key-set endpoints."
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "WireError": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": [
+              "validation",
+              "conflict",
+              "not_found",
+              "unavailable",
+              "internal"
+            ],
+            "description": "Which kind of thing went wrong; fixes the HTTP status: 400, 409, 404, 503, 500."
+          },
+          "code": {
+            "type": "string",
+            "description": "The stable name of the exact condition."
+          },
+          "message": {
+            "type": "string",
+            "description": "One sentence for a person."
+          }
+        },
+        "required": [
+          "class",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "A domain refusal, the same three fields on every wire (`permguard_core::WireError`).",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC answers a domain refusal with a status whose metadata carries `permguard-error-class` and `permguard-error-code` (permguard-control-plane wire.rs, permguard-core api.rs); the status message is not the refusal's `message`, and no proto message carries the three fields."
+      },
+      "WireDenial": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "unauthenticated",
+              "forbidden"
+            ],
+            "description": "`unauthenticated` answers 401, `forbidden` answers 403."
+          },
+          "message": {
+            "type": "string",
+            "description": "One sentence for a person, identical for existing and non-existing out-of-scope resources."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "The access gate's 401 or 403 body: it has no `class`, because the request was never considered.",
+        "x-grpc-message": null,
+        "x-grpc-note": "The access gate runs on the HTTP listener only; it has no gRPC body."
+      },
+      "Jwk": {
+        "type": "object",
+        "properties": {
+          "kid": {
+            "type": "string",
+            "description": "Which key this is, matching the `kid` a signature names."
+          },
+          "kty": {
+            "type": "string",
+            "description": "The key type: `OKP` for the Edwards curves, `EC` for the NIST ones."
+          },
+          "crv": {
+            "type": "string",
+            "description": "The curve, when the key type has one."
+          },
+          "x": {
+            "type": "string",
+            "description": "The public key itself, base64url without padding."
+          },
+          "y": {
+            "type": "string",
+            "description": "The second coordinate, for the key types that have one."
+          },
+          "alg": {
+            "type": "string",
+            "description": "The algorithm this key is used with."
+          },
+          "use": {
+            "type": "string",
+            "description": "What the key is for; always `sig`."
+          }
+        },
+        "required": [
+          "kid",
+          "kty",
+          "x",
+          "alg",
+          "use"
+        ],
+        "additionalProperties": false,
+        "description": "One public key as RFC 7517 defines it; the private half is never expressed.",
+        "x-grpc-message": null,
+        "x-grpc-note": "Carried inside the JSON bytes of `permguard.control.v1.GetKeyRingResponse.jwks`; no proto message models one key."
+      },
+      "JwkSet": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Jwk"
+            },
+            "description": "Every key a client may need, in no particular order."
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "additionalProperties": false,
+        "description": "The document served at a key-set endpoint.",
+        "x-grpc-message": null,
+        "x-grpc-note": "Carried as JSON bytes: `permguard.control.v1.GetKeyRingResponse.jwks` holds the same JWKS document the HTTP endpoint serves; the response message is a bytes wrapper, not a structured JwkSet."
+      }
+    }
+  }
+}

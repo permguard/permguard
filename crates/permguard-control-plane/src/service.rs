@@ -1297,4 +1297,211 @@ mod tests {
             "an enabled capability cannot disappear behind a clean health answer"
         );
     }
+
+    /// `contracts/openapi/discovery.json`: every schema of the document, from the real writers.
+    ///
+    /// The control plane's document is written by `control_configuration_document`, the one
+    /// hand-built `format!`; the data plane's, the registry's and the streams' types are public in
+    /// `permguard-server` and `permguard-stream`, so this is the one place that sees all five
+    /// schemas and holds the document's one `assert_covered`.
+    #[test]
+    fn test_the_discovery_documents_match_openapi_discovery() {
+        use permguard_conformance::schema::Document;
+        use permguard_server::plane::discovery::{PlaneLink, ServerConfiguration};
+        use permguard_server::plane::{InterfaceLink, PlaneConfiguration};
+        use permguard_stream::{Role, StreamDescriptor, StreamIdentity};
+
+        let doc = Document::load("discovery.json");
+        let config = receiving("openapi-discovery");
+        let storage = MemoryStorage::new();
+        let audit = RecordingAuditSink::new();
+        let context = ServerContext::new(identity(), &config, &storage, &audit);
+
+        // With and without the optional `interfaces` member.
+        for events_composed in [false, true] {
+            let text = control_configuration_document(&context, events_composed);
+            let json: serde_json::Value =
+                serde_json::from_str(&text).expect("the control plane's document is JSON");
+            assert_eq!(json.get("interfaces").is_some(), events_composed);
+            doc.check_json("ControlPlaneConfiguration", &json);
+        }
+
+        let mut data = PlaneConfiguration {
+            plane: "data-plane".to_owned(),
+            jwks_uri: "http://127.0.0.1:7443/data-plane/keys".to_owned(),
+            streams_endpoint: None,
+            interfaces: std::collections::BTreeMap::new(),
+        };
+        doc.check("DataPlaneConfiguration", &data);
+        data.streams_endpoint = Some("http://127.0.0.1:7443/v1/streams".to_owned());
+        data.interfaces.insert(
+            "permguard.api.pdp.native.v1".to_owned(),
+            InterfaceLink {
+                configuration: "http://127.0.0.1:7443/.well-known/x-configuration".to_owned(),
+            },
+        );
+        doc.check("DataPlaneConfiguration", &data);
+        doc.check(
+            "InterfaceLink",
+            &data.interfaces["permguard.api.pdp.native.v1"],
+        );
+        assert!(!doc.accepts_json(
+            "DataPlaneConfiguration",
+            &serde_json::json!({"plane": "data-plane", "jwks_uri": "u", "extra": 1})
+        ));
+
+        // The registry the telemetry listener serves: an HTTP plane, a gRPC-only plane, and the
+        // Host's keys; and the real writer's own text.
+        let mut planes = std::collections::BTreeMap::new();
+        planes.insert(
+            "control-plane".to_owned(),
+            PlaneLink {
+                server_configuration: Some("http://a/.well-known/server-configuration".to_owned()),
+                grpc_endpoint: None,
+            },
+        );
+        planes.insert(
+            "data-plane".to_owned(),
+            PlaneLink {
+                server_configuration: None,
+                grpc_endpoint: Some("127.0.0.1:7444".to_owned()),
+            },
+        );
+        doc.check(
+            "ServerConfiguration",
+            &ServerConfiguration {
+                planes,
+                jwks_uri: Some("http://a/server-host/keys".to_owned()),
+            },
+        );
+        let written: serde_json::Value = serde_json::from_str(
+            &permguard_server::plane::server_configuration_document(&config),
+        )
+        .expect("the registry is JSON");
+        doc.check_json("ServerConfiguration", &written);
+        doc.check(
+            "ServerConfiguration",
+            &ServerConfiguration {
+                planes: std::collections::BTreeMap::new(),
+                jwks_uri: None,
+            },
+        );
+
+        // `streams_route` (permguard-server discovery.rs) wraps `public_view` in `{"streams": []}`.
+        let streams: Vec<serde_json::Value> = [
+            ("data-plane", "decisions", Role::Producer, true),
+            ("control-plane", "events", Role::Consumer, false),
+        ]
+        .into_iter()
+        .map(|(plane, stream_type, role, enabled)| {
+            let descriptor = StreamDescriptor {
+                identity: StreamIdentity::new(plane, stream_type).expect("a stream name"),
+                role,
+                record_type: "permguard.event.record.v1".to_owned(),
+                directory: std::path::PathBuf::from("streams/never-published"),
+                legacy: false,
+                enabled,
+            };
+            let view = descriptor.public_view();
+            doc.check_json("StreamView", &view);
+            view
+        })
+        .collect();
+        doc.check_json(
+            "StreamsDocument",
+            &serde_json::json!({ "streams": streams }),
+        );
+        doc.check_json("StreamsDocument", &serde_json::json!({ "streams": [] }));
+
+        doc.assert_covered();
+    }
+
+    /// `contracts/openapi/health.json`: every schema of the document.
+    ///
+    /// The control plane's `InfoBody`, `HealthBody` and `Degraded` are private to this file and are
+    /// built here. The data plane's two bodies (`permguard-data-plane` service.rs) and the telemetry
+    /// listener's `VersionBody` (`permguard-telemetry` host.rs) are private to crates that cannot
+    /// reach this document's coverage, so they are the same JSON built by hand here, and the data
+    /// plane's own tests check its real types against the same schemas. This is the document's one
+    /// `assert_covered`.
+    #[test]
+    fn test_the_health_bodies_match_openapi_health() {
+        use permguard_conformance::schema::Document;
+
+        let doc = Document::load("health.json");
+
+        doc.check(
+            "InfoBody",
+            &InfoBody {
+                plane: PLANE,
+                product: "Permguard".to_owned(),
+                version: "1.2.3".to_owned(),
+                commit: "abc1234".to_owned(),
+            },
+        );
+        // Builds are not disclosed: empty strings, never absent members.
+        doc.check(
+            "InfoBody",
+            &InfoBody {
+                plane: PLANE,
+                product: "Permguard".to_owned(),
+                version: String::new(),
+                commit: String::new(),
+            },
+        );
+        doc.check(
+            "ControlHealthBody",
+            &HealthBody {
+                live: true,
+                ready: true,
+                degraded: Vec::new(),
+            },
+        );
+        let degraded = vec![
+            Degraded {
+                capability: "events",
+                reason: "no producer key set has loaded",
+            },
+            Degraded {
+                capability: "decisions",
+                reason: "the decision store did not compose",
+            },
+        ];
+        doc.check("Degraded", &degraded[0]);
+        doc.check(
+            "ControlHealthBody",
+            &HealthBody {
+                live: true,
+                ready: false,
+                degraded,
+            },
+        );
+
+        // permguard-data-plane service.rs `HealthBody`: the two booleans and nothing else.
+        doc.check_json(
+            "DataHealthBody",
+            &serde_json::json!({"live": true, "ready": false}),
+        );
+        // permguard-telemetry host.rs `VersionBody`: `component` where a plane says `plane`.
+        doc.check_json(
+            "VersionBody",
+            &serde_json::json!({
+                "component": "server-host",
+                "product": "Permguard",
+                "version": "1.2.3",
+                "commit": "abc1234",
+            }),
+        );
+
+        assert!(!doc.accepts_json(
+            "DataHealthBody",
+            &serde_json::json!({"live": true, "ready": true, "degraded": []})
+        ));
+        assert!(!doc.accepts_json(
+            "InfoBody",
+            &serde_json::json!({"plane": "control-plane", "product": "p", "version": "", "commit": ""})
+        ));
+
+        doc.assert_covered();
+    }
 }

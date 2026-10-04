@@ -1,0 +1,332 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard stream common",
+    "version": "1",
+    "description": "Components shared by the decision and event evidence surfaces: the stream block, its coverage, signer spans, Merkle inclusion paths and the retention refusal. Declares no paths."
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "Coverage": {
+        "type": "object",
+        "description": "What a block proves about what it covers: a filtered view cannot claim chain completeness.",
+        "properties": {
+          "contiguous": {
+            "type": "boolean",
+            "description": "Whether the returned records are a contiguous run of one producer's stream, so the chain links across them."
+          },
+          "examined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many positions this read examined to produce the block."
+          },
+          "scan_bounded": {
+            "type": "boolean",
+            "description": "Whether the scan bound stopped the block before its record or byte bound did; the block may be short or empty and `next` has still advanced."
+          }
+        },
+        "required": [
+          "contiguous",
+          "examined",
+          "scan_bounded"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Shared by two identical protos: permguard.control.v1.ReadCoverage (decisions) and permguard.control.v1.EventCoverage (events), each with contiguous, examined, scan_bounded; each evidence document maps its own `coverage` member to its message."
+      },
+      "Step": {
+        "type": "object",
+        "description": "One step of a Merkle inclusion path: a sibling, and which side it is on.",
+        "properties": {
+          "sibling": {
+            "type": "string",
+            "description": "The sibling hash, `sha256:`-prefixed."
+          },
+          "left": {
+            "type": "boolean",
+            "description": "Whether the sibling sits on the left of the node being carried up."
+          }
+        },
+        "required": [
+          "sibling",
+          "left"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "One sibling of an inclusion path, carried inside the JSON bytes of an element of `inclusion` (permguard.control.v1.ReadResponse, permguard.control.v1.ListRecordsResponse)."
+      },
+      "Inclusion": {
+        "type": "object",
+        "description": "One record's place in the Merkle tree its batch was signed with.",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Which record this proves."
+          },
+          "leaf": {
+            "type": "string",
+            "description": "The digest of the record, which is the leaf."
+          },
+          "root": {
+            "type": "string",
+            "description": "The root the path reaches: the one the signed envelope attests."
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "description": "The siblings, from the leaf upwards."
+          }
+        },
+        "required": [
+          "seq",
+          "leaf",
+          "root",
+          "path"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Carried as JSON bytes: one element of `repeated bytes inclusion` in permguard.control.v1.ReadResponse and permguard.control.v1.ListRecordsResponse."
+      },
+      "SignerSpan": {
+        "type": "object",
+        "description": "One stretch of a stream and the key that signed it: it covers `[from, next span's from)`.",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first offset this key signed."
+          },
+          "kid": {
+            "type": "string",
+            "description": "The name the batch signatures carry."
+          },
+          "jwk": {
+            "$ref": "common.json#/components/schemas/Jwk",
+            "description": "the public key, closed: a member a public JWK does not carry, a private `d` included, is refused"
+          }
+        },
+        "required": [
+          "from",
+          "kid",
+          "jwk"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Shared by three similar protos (permguard.control.v1.DecisionSignerSpan, permguard.control.v1.SignerSpan, permguard.data.v1.TemporalSignerSpan) that differ from this schema: REST names the first offset `from`, gRPC `from_seq`, and REST carries `jwk` as a JSON object while gRPC carries it as `bytes` holding the JWK's JSON text."
+      },
+      "Signers": {
+        "type": "object",
+        "description": "The signer manifest of one stream, as kept in `signers.json`: every signing-key change in offset order.",
+        "properties": {
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignerSpan"
+            }
+          }
+        },
+        "required": [
+          "spans"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The on-disk `signers.json` manifest of one stream; no gRPC message carries it as such (the signer RPCs answer with typed spans plus the acked frontier)."
+      },
+      "Frontier": {
+        "type": "object",
+        "description": "How far a read observed, across whatever contributes to its scope. Carried base64url-encoded in `high_watermark` and `until`, not as a JSON member of a response.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The frontier format version."
+          },
+          "covered": {
+            "type": "object",
+            "description": "The exclusive covered position of each contributing producer, by stream key.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "required": [
+          "v",
+          "covered"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the opaque, authenticated offset: gRPC carries the offset as the string fields `from`/`next`/`until`, never as a structure."
+      },
+      "Position": {
+        "type": "object",
+        "description": "Where a consumer stands inside one segmented stream. Lives only inside an authenticated offset token.",
+        "properties": {
+          "segment": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence of the segment being read."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many records of that segment have been returned."
+          }
+        },
+        "required": [
+          "segment",
+          "offset"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the opaque, authenticated offset: gRPC carries the offset as the string fields `from`/`next`/`until`, never as a structure."
+      },
+      "Cursor": {
+        "type": "object",
+        "description": "What an offset token stands for before it is MAC-signed. The token (`next`, `from`) is opaque to a client; this schema documents what the server seals into it.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The cursor format version."
+          },
+          "api": {
+            "type": "string",
+            "description": "Which API family issued it."
+          },
+          "scope": {
+            "type": "string",
+            "description": "The scope it was issued for."
+          },
+          "filters": {
+            "type": "string",
+            "description": "The digest of the normalized filter set it was issued under."
+          },
+          "until": {
+            "$ref": "#/components/schemas/Frontier"
+          },
+          "positions": {
+            "type": "object",
+            "description": "Where in each contributing stream the next page begins.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Position"
+            }
+          },
+          "frontier": {
+            "$ref": "#/components/schemas/Frontier"
+          }
+        },
+        "required": [
+          "v",
+          "api",
+          "scope",
+          "filters",
+          "positions",
+          "frontier"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The decoded content of the opaque offset: gRPC carries the offset as the string fields `from`/`next`/`until` (ReadRequest, ReadResponse, ListRecordsRequest, ListRecordsResponse) and never as a structure."
+      },
+      "Block": {
+        "type": "object",
+        "description": "One block of an evidence stream. `records`, `proof` and `inclusion` are open values here; each evidence document restates the block with typed records.",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {},
+            "description": "The records, in the scope's deterministic order."
+          },
+          "next": {
+            "type": "string",
+            "description": "The offset to present for the following block: opaque and authenticated, never absent."
+          },
+          "oldest_available": {
+            "type": "string",
+            "description": "The oldest offset this scope still holds."
+          },
+          "high_watermark": {
+            "type": "string",
+            "description": "The exclusive end this read observed, as the opaque token a client echoes as `until`."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Whether there is more, relative to the request's `until` when it has one and to `high_watermark` otherwise."
+          },
+          "proof": {
+            "type": "array",
+            "items": {},
+            "description": "The signed envelopes covering these records, when the reader asked."
+          },
+          "inclusion": {
+            "type": "array",
+            "items": {},
+            "description": "One inclusion path per record, when the reader asked."
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          }
+        },
+        "required": [
+          "records",
+          "next",
+          "oldest_available",
+          "high_watermark",
+          "more",
+          "coverage"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The shared shape of two identical responses, permguard.control.v1.ReadResponse (decisions) and permguard.control.v1.ListRecordsResponse (events); each evidence document restates it (DecisionBlock, EventBlock) and maps its own."
+      },
+      "OffsetExpired": {
+        "type": "object",
+        "description": "The 410 body of a consumer that fell behind retention: expected behaviour, not corruption. The refusal envelope plus where to resume.",
+        "properties": {
+          "class": {
+            "const": "not_found",
+            "type": "string"
+          },
+          "code": {
+            "const": "offset_expired",
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "One sentence for a person."
+          },
+          "oldest_available": {
+            "type": "string",
+            "description": "The oldest offset still held, to resume from deliberately."
+          },
+          "oldest_sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence still held."
+          },
+          "requested_sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The sequence the consumer stood at."
+          }
+        },
+        "required": [
+          "class",
+          "code",
+          "message",
+          "oldest_available",
+          "oldest_sequence",
+          "requested_sequence"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST 410 body. gRPC answers an expired offset with a status and metadata (class, code) and no message; `oldest_available`, `oldest_sequence` and `requested_sequence` have no gRPC field."
+      }
+    }
+  }
+}

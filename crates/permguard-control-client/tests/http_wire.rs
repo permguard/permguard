@@ -202,6 +202,36 @@ fn an_advertised_ref_is_read_and_an_absent_one_is_not_an_error() {
     assert!(remote.get_ref("feature/none").expect("answers").is_none());
 }
 
+/// The ref answer is a closed message: a label this client does not know is refused, never
+/// skipped, so a field a later server adds cannot be silently dropped.
+#[test]
+fn a_ref_answer_with_an_unknown_label_is_refused() {
+    let head = Digest::compute(b"head");
+    let mut answer = vec![
+        (cbor::Value::Int(1), cbor::Value::Text(head.to_string())),
+        (cbor::Value::Int(2), cbor::Value::Int(4)),
+        (
+            cbor::Value::Int(3),
+            cbor::Value::Bytes(b"envelope".to_vec()),
+        ),
+    ];
+    answer.push((cbor::Value::Int(99), cbor::Value::Int(1)));
+    let mut routes = HashMap::new();
+    route(
+        &mut routes,
+        "GET",
+        &format!("{}/refs/main", base()),
+        200,
+        cbor::encode(&cbor::Value::Map(answer)).expect("it encodes"),
+    );
+    let stub = serve(routes);
+
+    let refused = connected(&stub)
+        .get_ref("main")
+        .expect_err("an unknown label is refused");
+    assert!(refused.to_string().contains("unknown field"), "{refused}");
+}
+
 #[test]
 fn a_push_rides_cbor_and_honours_the_advertised_compression() {
     let d1 = Digest::compute(b"1");

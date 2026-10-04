@@ -1,0 +1,1313 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard decision evidence",
+    "version": "1",
+    "description": "The decision log on the control plane: shipping signed batches, reading blocks of records, and the signer manifest."
+  },
+  "paths": {
+    "/decisions/v1/batches": {
+      "post": {
+        "operationId": "shipDecisionBatch",
+        "summary": "Ship a signed decision batch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Batch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch is stored, or was already held.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledgement"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a decision batch, or unattributable or unverifiable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Out of order (`OutOfOrder`), or the stream forked or is closed (WireError).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OutOfOrder"
+                    },
+                    {
+                      "$ref": "common.json#/components/schemas/WireError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store or the producer keys are unavailable; the shipper retries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/Ship",
+        "x-grpc-body": {
+          "batch": "$"
+        }
+      }
+    },
+    "/decisions/v1/records": {
+      "get": {
+        "operationId": "readDecisionStream",
+        "summary": "Read one producer stream, deployment-wide",
+        "parameters": [
+          {
+            "name": "pdp",
+            "in": "query",
+            "required": true,
+            "description": "The producer's `pdp_id`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "pdp"
+          },
+          {
+            "name": "instance",
+            "in": "query",
+            "required": true,
+            "description": "The producer incarnation.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "instance"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Authenticated offset from a previous page's `next`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "The `high_watermark` of an export's first page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Legacy alias of `limit_records`; `limit_records` wins where both are given.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit"
+          },
+          {
+            "name": "limit_records",
+            "in": "query",
+            "required": false,
+            "description": "Record bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_records"
+          },
+          {
+            "name": "limit_bytes",
+            "in": "query",
+            "required": false,
+            "description": "Byte bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_bytes"
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "description": "Include the signed envelopes and inclusion paths (`true`, `1` or `yes`).",
+            "schema": {
+              "type": "boolean"
+            },
+            "x-grpc-field": "proof"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One block of decision records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed, foreign or tampered offset, or a missing stream selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The offset fell behind retention.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/Read",
+        "x-grpc-only": [
+          "zone",
+          "ledger"
+        ],
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `zone`, `ledger`."
+      }
+    },
+    "/zones/{zone}/ledgers/{ledger}/decisions/v1/records": {
+      "get": {
+        "operationId": "readDecisionTenant",
+        "summary": "Read one tenant's decisions",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Authenticated offset from a previous page's `next`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "The `high_watermark` of an export's first page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Legacy alias of `limit_records`; `limit_records` wins where both are given.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit"
+          },
+          {
+            "name": "limit_records",
+            "in": "query",
+            "required": false,
+            "description": "Record bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_records"
+          },
+          {
+            "name": "limit_bytes",
+            "in": "query",
+            "required": false,
+            "description": "Byte bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_bytes"
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "description": "Include the signed envelopes and inclusion paths (`true`, `1` or `yes`).",
+            "schema": {
+              "type": "boolean"
+            },
+            "x-grpc-field": "proof"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One block of decision records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed, foreign or tampered offset, or a missing stream selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The offset fell behind retention.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/Read",
+        "x-grpc-only": [
+          "pdp",
+          "instance"
+        ],
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ReadRequest`: `pdp`, `instance`."
+      }
+    },
+    "/decisions/v1/signers": {
+      "get": {
+        "operationId": "getDecisionSigners",
+        "summary": "Which key signed which stretch of one producer stream",
+        "parameters": [
+          {
+            "name": "pdp",
+            "in": "query",
+            "required": true,
+            "description": "The producer's `pdp_id`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "pdp"
+          },
+          {
+            "name": "instance",
+            "in": "query",
+            "required": true,
+            "description": "The producer incarnation.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "instance"
+          },
+          {
+            "name": "from_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower sequence bound; zero or absent for the whole history.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "from_seq"
+          },
+          {
+            "name": "until_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive upper sequence bound; zero or absent for onward.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "until_seq"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The signer spans covering the range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamSignersView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A missing selector, a malformed bound, or a range crossing too many spans.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The store never held this stream.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.DecisionLog/GetSigners"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Stream": {
+        "type": "object",
+        "description": "Which producer, and which continuous incarnation of it.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The deployment's name for this plane, stable across restarts."
+          },
+          "instance": {
+            "type": "string",
+            "description": "One continuous incarnation."
+          }
+        },
+        "required": [
+          "id",
+          "instance"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "StoreRef": {
+        "type": "object",
+        "description": "Which policy state produced an answer.",
+        "properties": {
+          "zone": {
+            "type": "string"
+          },
+          "ledger": {
+            "type": "string"
+          },
+          "commit": {
+            "type": "string",
+            "description": "The exact commit, content-addressed."
+          },
+          "counter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where that commit stood in the ledger's history."
+          },
+          "profile": {
+            "type": "string",
+            "description": "Which profile of the manifest was asked for."
+          }
+        },
+        "required": [
+          "zone",
+          "ledger",
+          "commit",
+          "counter",
+          "profile"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Party": {
+        "type": "object",
+        "description": "One party of a decision, as recorded. Identifiers are pseudonymised before they leave the plane.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The entity type, as the request named it."
+          },
+          "id": {
+            "type": "string",
+            "description": "The identifier."
+          },
+          "properties": {
+            "type": "object",
+            "description": "The attributes the deployment named in `include`, in clear.",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Inputs": {
+        "type": "object",
+        "description": "What the decision saw, without keeping it.",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "A keyed commitment over the caller's context."
+          },
+          "partition_inputs": {
+            "type": "string",
+            "description": "A keyed commitment over the inputs addressed to the profile's partitions."
+          },
+          "absent": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The partitions that declare an input and were addressed with none."
+          },
+          "external": {
+            "type": "array",
+            "items": {},
+            "description": "Anything fetched at decision time. Empty until a PIP exists."
+          }
+        },
+        "required": [
+          "external"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Reason": {
+        "type": "object",
+        "description": "Why an answer came out the way it did: the class, not the sentence.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The code, which is an interface."
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Trace": {
+        "type": "object",
+        "description": "W3C Trace Context, when the caller sent one.",
+        "properties": {
+          "trace_id": {
+            "type": "string"
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "span_id"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Build": {
+        "type": "object",
+        "description": "The build that decided, and under which evaluation semantics.",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "The plane's released version."
+          },
+          "build": {
+            "type": "string",
+            "description": "The digest of the binary, where attested."
+          },
+          "engines": {
+            "type": "object",
+            "description": "Engine versions, by language.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Sampling": {
+        "type": "object",
+        "description": "What a stream claims to be complete about.",
+        "properties": {
+          "permits": {
+            "type": "string",
+            "description": "The rate at which permits are recorded; denies and errors are never sampled."
+          }
+        },
+        "required": [
+          "permits"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Commitments": {
+        "type": "object",
+        "description": "How input commitments were computed.",
+        "properties": {
+          "alg": {
+            "type": "string",
+            "description": "The algorithm, `HMAC-SHA256`."
+          },
+          "key_version": {
+            "type": "string",
+            "description": "Which version of the commitment key."
+          }
+        },
+        "required": [
+          "alg",
+          "key_version"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Lost": {
+        "type": "object",
+        "description": "What a discontinuity discards.",
+        "properties": {
+          "from_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence that will never be shipped."
+          },
+          "count_estimate": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many written records are being discarded."
+          }
+        },
+        "required": [
+          "from_seq",
+          "count_estimate"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Predecessor": {
+        "type": "object",
+        "description": "The stream a marker's stream continues.",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "description": "The incarnation that ended."
+          },
+          "last_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Its last sequence."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it ended: `spool_full`, `age_expiry` or `closed_by_server`."
+          }
+        },
+        "required": [
+          "instance",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Outcome": {
+        "type": "string",
+        "description": "The profile's result under the common algebra.",
+        "enum": [
+          "permit",
+          "deny",
+          "deny_by_default",
+          "indeterminate"
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "ActionRef": {
+        "type": "object",
+        "description": "What was asked for.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The action's name."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "EventRef": {
+        "type": "object",
+        "description": "The occurrence a temporal decision was made about, and where it sits.",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The caller's identifier for the occurrence."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "The registered contract the occurrence was."
+          },
+          "instance": {
+            "type": "string",
+            "description": "The producer instance whose stream holds it."
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Its position in that stream."
+          },
+          "history": {
+            "type": "string",
+            "description": "The history key's digest."
+          },
+          "consistency": {
+            "type": "string",
+            "description": "`local`, `shared-eventual` or `shared-bounded`."
+          },
+          "watermark": {
+            "type": "string",
+            "description": "The opaque import watermark the decision saw."
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "instance",
+          "sequence"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "DecisionBody": {
+        "type": "object",
+        "description": "A decision record: one answer, and what it was answered from (`kind` is `decision`). Open: a reader digests and keeps a member it does not know, so a newer producer may add members.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "The record schema version."
+          },
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where in that incarnation."
+          },
+          "prev": {
+            "type": "string",
+            "description": "The digest of `seq - 1`, or the genesis."
+          },
+          "at": {
+            "type": "string",
+            "description": "When, informational."
+          },
+          "kind": {
+            "type": "string",
+            "const": "decision"
+          },
+          "id": {
+            "type": "string",
+            "description": "Joins this record to the response the caller received."
+          },
+          "pdp": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "store": {
+            "$ref": "#/components/schemas/StoreRef"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/Party"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Party"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ActionRef"
+          },
+          "principal": {
+            "$ref": "#/components/schemas/Party"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/Inputs"
+          },
+          "decision": {
+            "type": "boolean",
+            "description": "`true` exactly for `permit`."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "causes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Present exactly when `outcome` is `indeterminate`: sorted, distinct `evaluation_*` codes."
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Which policies decided."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "The caller's own correlation handle."
+          },
+          "context": {
+            "type": "object",
+            "description": "The context members the deployment named in `include`.",
+            "additionalProperties": {}
+          },
+          "latency_us": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long it took."
+          },
+          "event": {
+            "$ref": "#/components/schemas/EventRef"
+          }
+        },
+        "required": [
+          "v",
+          "stream",
+          "seq",
+          "prev",
+          "at",
+          "kind",
+          "id",
+          "pdp",
+          "store",
+          "subject",
+          "resource",
+          "action",
+          "inputs",
+          "decision",
+          "policies",
+          "reason",
+          "latency_us"
+        ],
+        "additionalProperties": {},
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "MarkerBody": {
+        "type": "object",
+        "description": "A marker record: an epoch governing the records that follow (`kind` is `marker`). Open: a reader digests and keeps a member it does not know, so a newer producer may add members.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "The record schema version."
+          },
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where in that incarnation."
+          },
+          "prev": {
+            "type": "string",
+            "description": "The digest of `seq - 1`, or the genesis."
+          },
+          "at": {
+            "type": "string",
+            "description": "When, informational."
+          },
+          "kind": {
+            "type": "string",
+            "const": "marker"
+          },
+          "predecessor": {
+            "$ref": "#/components/schemas/Predecessor"
+          },
+          "pdp": {
+            "$ref": "#/components/schemas/Build"
+          },
+          "sampling": {
+            "$ref": "#/components/schemas/Sampling"
+          },
+          "commitments": {
+            "$ref": "#/components/schemas/Commitments"
+          }
+        },
+        "required": [
+          "v",
+          "stream",
+          "seq",
+          "prev",
+          "at",
+          "kind",
+          "pdp",
+          "sampling",
+          "commitments"
+        ],
+        "additionalProperties": {},
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "DiscontinuityBody": {
+        "type": "object",
+        "description": "A discontinuity record: the last record of a stream (`kind` is `discontinuity`). Open: a reader digests and keeps a member it does not know, so a newer producer may add members.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1,
+            "description": "The record schema version."
+          },
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where in that incarnation."
+          },
+          "prev": {
+            "type": "string",
+            "description": "The digest of `seq - 1`, or the genesis."
+          },
+          "at": {
+            "type": "string",
+            "description": "When, informational."
+          },
+          "kind": {
+            "type": "string",
+            "const": "discontinuity"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the stream ended."
+          },
+          "lost": {
+            "$ref": "#/components/schemas/Lost"
+          },
+          "successor": {
+            "type": "string",
+            "description": "The incarnation that continues."
+          }
+        },
+        "required": [
+          "v",
+          "stream",
+          "seq",
+          "prev",
+          "at",
+          "kind",
+          "reason",
+          "lost",
+          "successor"
+        ],
+        "additionalProperties": {},
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Record": {
+        "description": "A decision-log record, switched on `kind`. Digested and stored verbatim.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DecisionBody"
+          },
+          {
+            "$ref": "#/components/schemas/MarkerBody"
+          },
+          {
+            "$ref": "#/components/schemas/DiscontinuityBody"
+          }
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the decision record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.ReadResponse and of the batch in permguard.control.v1.ShipRequest.batch."
+      },
+      "Envelope": {
+        "type": "object",
+        "description": "What a batch attests to. Not a JSON member of the request: it is the canonical JSON inside `signature.payload` (base64url).",
+        "properties": {
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "first_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence in the batch."
+          },
+          "last_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The last sequence in the batch."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many records it carries: `last_seq - first_seq + 1`."
+          },
+          "previous_head": {
+            "type": "string",
+            "description": "The head of the previous batch, or the genesis."
+          },
+          "head": {
+            "type": "string",
+            "description": "The digest of the record at `last_seq`."
+          },
+          "merkle_root": {
+            "type": "string",
+            "description": "The Merkle root over the digests of the records."
+          },
+          "sampling": {
+            "$ref": "#/components/schemas/Sampling"
+          },
+          "at": {
+            "type": "string",
+            "description": "When it was assembled, informational."
+          }
+        },
+        "required": [
+          "stream",
+          "first_seq",
+          "last_seq",
+          "count",
+          "previous_head",
+          "head",
+          "merkle_root",
+          "sampling",
+          "at"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The signed envelope payload, carried as JSON bytes inside the `batch` field of permguard.control.v1.ShipRequest (`{signature, records}`) and in an element of `proof` of permguard.control.v1.ReadResponse; never a protobuf message."
+      },
+      "Protected": {
+        "type": "object",
+        "description": "The protected header of a batch signature. Not a JSON member of the request: it is the JSON inside `signature.protected` (base64url).",
+        "properties": {
+          "alg": {
+            "type": "string",
+            "const": "EdDSA"
+          },
+          "kid": {
+            "type": "string",
+            "description": "Which key, in the producer's published set."
+          }
+        },
+        "required": [
+          "alg",
+          "kid"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The protected header of the signature, carried as JSON bytes within `batch` of permguard.control.v1.ShipRequest and within `proof` of permguard.control.v1.ReadResponse."
+      },
+      "Signed": {
+        "type": "object",
+        "description": "A JWS in its flattened JSON serialisation.",
+        "properties": {
+          "protected": {
+            "type": "string",
+            "description": "The protected header, base64url."
+          },
+          "payload": {
+            "type": "string",
+            "description": "The payload, base64url: the canonical envelope bytes."
+          },
+          "signature": {
+            "type": "string",
+            "description": "The signature over `protected || \".\" || payload`, base64url."
+          }
+        },
+        "required": [
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The signed envelope, carried as JSON bytes: the `signature` member of the batch in `batch` of permguard.control.v1.ShipRequest, and an element of `proof` of permguard.control.v1.ReadResponse."
+      },
+      "Batch": {
+        "type": "object",
+        "description": "A batch: the signed envelope and the records verbatim.",
+        "properties": {
+          "signature": {
+            "$ref": "#/components/schemas/Signed"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Record"
+            },
+            "description": "The records, exactly as the producer wrote them.",
+            "minItems": 1
+          }
+        },
+        "required": [
+          "signature",
+          "records"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The whole batch `{signature, records}` is the JSON content of the single `batch` bytes field of permguard.control.v1.ShipRequest; there is no per-member field (unlike the events ShipRequest-equivalent, IngestBatchRequest)."
+      },
+      "Acknowledgement": {
+        "type": "object",
+        "description": "What a producer is told about its batch (200).",
+        "properties": {
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The highest contiguous durable sequence. The producer truncates by this.",
+            "x-grpc-field": "acked"
+          },
+          "stored": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many records this call added.",
+            "x-grpc-field": "stored"
+          }
+        },
+        "required": [
+          "acked",
+          "stored"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.ShipResponse",
+        "x-grpc-only": [
+          "out_of_order",
+          "expected_seq"
+        ],
+        "x-grpc-note": "The 200 answer. gRPC answers a replay or a run-ahead with the same message and an OK status; the out-of-order members have no member here because REST answers them with a 409 (OutOfOrder)."
+      },
+      "OutOfOrder": {
+        "type": "object",
+        "description": "What a producer that ran ahead is told (409). Not the shared refusal envelope: it has `status`, not `class`/`code`.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "out_of_order",
+            "x-grpc-field": "out_of_order",
+            "x-grpc-note": "REST: the string constant `out_of_order`; gRPC: the boolean `out_of_order` set true."
+          },
+          "expected_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where to resume from.",
+            "x-grpc-field": "expected_seq"
+          }
+        },
+        "required": [
+          "status",
+          "expected_seq"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.ShipResponse",
+        "x-grpc-only": [
+          "acked",
+          "stored"
+        ],
+        "x-grpc-note": "The REST 409 body. gRPC answers the run-ahead with an OK status and ShipResponse{out_of_order: true, expected_seq}; `acked` and `stored` exist only on that gRPC answer (the REST 409 carries neither)."
+      },
+      "DecisionBlock": {
+        "type": "object",
+        "description": "One page of decision records: the common stream block with typed records.",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Record"
+            },
+            "x-grpc-field": "records"
+          },
+          "next": {
+            "type": "string",
+            "description": "Opaque authenticated offset for the following block.",
+            "x-grpc-field": "next"
+          },
+          "oldest_available": {
+            "type": "string",
+            "x-grpc-field": "oldest_available"
+          },
+          "high_watermark": {
+            "type": "string",
+            "description": "The exclusive end this read observed, echoed as `until`.",
+            "x-grpc-field": "high_watermark"
+          },
+          "more": {
+            "type": "boolean",
+            "x-grpc-field": "more"
+          },
+          "proof": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Signed"
+            },
+            "description": "The signed envelopes covering these records, when `proof` was asked.",
+            "x-grpc-field": "proof"
+          },
+          "inclusion": {
+            "type": "array",
+            "items": {
+              "$ref": "stream-common.json#/components/schemas/Inclusion"
+            },
+            "description": "One inclusion path per record, when `proof` was asked.",
+            "x-grpc-field": "inclusion"
+          },
+          "coverage": {
+            "$ref": "stream-common.json#/components/schemas/Coverage",
+            "x-grpc-field": "coverage"
+          }
+        },
+        "required": [
+          "records",
+          "next",
+          "oldest_available",
+          "high_watermark",
+          "more",
+          "coverage"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.ReadResponse",
+        "x-grpc-note": "`records`, `proof` and `inclusion` are JSON objects here and elements of `repeated bytes` (each the JSON text) on gRPC."
+      },
+      "StreamSignersView": {
+        "type": "object",
+        "description": "One producer stream's signer history with the receiver's durable frontier.",
+        "properties": {
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Everything through this sequence is durable here.",
+            "x-grpc-field": "acked"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "stream-common.json#/components/schemas/SignerSpan"
+            },
+            "x-grpc-field": "spans"
+          }
+        },
+        "required": [
+          "acked",
+          "spans"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.GetDecisionSignersResponse"
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.control.v1.ReadCoverage",
+      "note": "the same three members as `stream-common.json` `Coverage`, which two messages share",
+      "fields": [
+        "contiguous",
+        "examined",
+        "scan_bounded"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.DecisionSignerSpan",
+      "note": "`from_seq`, `kid` and `jwk` (JSON bytes) of `stream-common.json` `SignerSpan`, whose REST name for the first is `from`",
+      "fields": [
+        "from_seq",
+        "kid",
+        "jwk"
+      ]
+    }
+  ]
+}

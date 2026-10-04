@@ -545,12 +545,12 @@ impl Spool {
     /// Whether the spool has reached a bound and its stream must end.
     pub fn pressure(&self) -> Result<Option<&'static str>, SpoolError> {
         if self.bytes()? >= self.bounds.bytes {
-            return Ok(Some("spool_full"));
+            return Ok(Some(permguard_core::codes::stream::SPOOL_FULL));
         }
         if let Some(oldest) = self.oldest_modified()?
             && oldest.elapsed().unwrap_or_default() >= self.bounds.age
         {
-            return Ok(Some("age_expiry"));
+            return Ok(Some(permguard_core::codes::stream::AGE_EXPIRY));
         }
 
         Ok(None)

@@ -139,6 +139,19 @@ mod tests {
         .expect("the test config assembles")
     }
 
+    /// `/version` answers what `health.json` describes, disclosed or not.
+    #[test]
+    fn the_version_body_matches_openapi_health() {
+        let doc = permguard_conformance::schema::Document::load("health.json");
+        let identity = ProductIdentity::new("permguard", "Permguard", "", "", "");
+        for disclosing in [true, false] {
+            doc.check(
+                "VersionBody",
+                &version_body("server-host", &identity, &config_disclosing(disclosing)),
+            );
+        }
+    }
+
     #[test]
     fn the_version_body_discloses_only_when_told_to() {
         let identity = ProductIdentity::new("permguard", "Permguard", "", "", "");

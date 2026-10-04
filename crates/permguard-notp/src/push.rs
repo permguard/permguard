@@ -100,12 +100,12 @@ impl NegotiatePushRequest {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3, 4])?;
         let closure = match need(pairs, 4)? {
             Value::Array(items) => items
                 .iter()
                 .map(|item| {
-                    let entry = as_pairs(item)?;
+                    let entry = closed(item, &[1, 2])?;
                     Ok(ObjectClaim {
                         digest: digest(need(entry, 1)?)?,
                         size: uint(need(entry, 2)?)?,
@@ -138,7 +138,7 @@ impl NegotiatePushResponse {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3, 4])?;
         Ok(Self {
             missing: digest_list(need(pairs, 1)?)?,
             max_batch_bytes: uint(need(pairs, 2)?)?,
@@ -167,7 +167,7 @@ impl UploadObjectsRequest {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2])?;
         Ok(Self {
             objects: bytes_list(need(pairs, 1)?)?,
             compression: opt_text(pairs, 2)?,
@@ -182,7 +182,7 @@ impl UploadObjectsResponse {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1])?;
         Ok(Self {
             received: digest_list(need(pairs, 1)?)?,
         })
@@ -203,7 +203,7 @@ impl CommitPushRequest {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3])?;
         Ok(Self {
             r#ref: text(need(pairs, 1)?)?,
             new_head: digest(need(pairs, 2)?)?,
@@ -223,7 +223,7 @@ impl CommitPushResponse {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3])?;
         Ok(Self {
             head: digest(need(pairs, 1)?)?,
             counter: uint(need(pairs, 2)?)?,

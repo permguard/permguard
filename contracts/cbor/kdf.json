@@ -1,0 +1,31 @@
+{
+  "artifact": "HKDF info tuples",
+  "authority": "1-architecture/4-architecture-server-host-keys.md (host_local_key, zone_root, distributed_key); crates/permguard-objects/src/crypto/kdf.rs (Info::encode, Info::decode) and permguard_core::domains::kdf",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {},
+  "arrays": {
+    "host_local_info": [
+      { "position": 0, "name": "label", "type": "const:\"permguard.kdf.v1\"" },
+      { "position": 1, "name": "kind", "type": "const:\"host-local\"" },
+      { "position": 2, "name": "purpose", "type": "text" },
+      { "position": 3, "name": "authority_host_id", "type": "bytes", "note": "the 16 UUID bytes" },
+      { "position": 4, "name": "resource", "type": "text", "note": "the canonical resource text" },
+      { "position": 5, "name": "key_version", "type": "uint" }
+    ],
+    "zone_root_info": [
+      { "position": 0, "name": "label", "type": "const:\"permguard.kdf.v1\"" },
+      { "position": 1, "name": "kind", "type": "const:\"zone-root\"" },
+      { "position": 2, "name": "zone_id", "type": "bytes", "note": "the 16 UUID bytes" },
+      { "position": 3, "name": "version", "type": "uint" }
+    ],
+    "zone_use_info": [
+      { "position": 0, "name": "label", "type": "const:\"permguard.kdf.v1\"" },
+      { "position": 1, "name": "kind", "type": "const:\"zone-use\"" },
+      { "position": 2, "name": "purpose", "type": "text" },
+      { "position": 3, "name": "zone_id", "type": "bytes", "note": "the 16 UUID bytes" },
+      { "position": 4, "name": "scope", "type": "bytes", "note": "the 16 UUID bytes" },
+      { "position": 5, "name": "version", "type": "uint" }
+    ]
+  },
+  "root": ["host_local_info", "zone_root_info", "zone_use_info"]
+}

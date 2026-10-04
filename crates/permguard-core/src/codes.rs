@@ -35,12 +35,15 @@ pub mod common {
     pub const FORBIDDEN: &str = "forbidden";
     /// A cursor that was edited or issued under another key.
     pub const FORGED: &str = "forged";
+    /// A path no route of the plane serves.
+    pub const ROUTE_UNKNOWN: &str = "route_unknown";
 }
 
 /// The catalog of zones and ledgers.
 pub mod catalog {
     pub const NAME_TAKEN: &str = "name_taken";
-    pub const NOT_EMPTY: &str = "not_empty";
+    /// A zone that still holds ledgers cannot be deleted.
+    pub const ZONE_NOT_EMPTY: &str = "zone_not_empty";
     pub const INVALID_NAME: &str = "invalid_name";
     pub const CATALOG_FAILED: &str = "catalog_failed";
 }
@@ -81,6 +84,20 @@ pub mod pdp_native {
     /// A partition result `E`: the engine could not represent the request — an entity, a context
     /// or an interface its runtime does not take.
     pub const EVALUATION_INPUT_REJECTED: &str = "evaluation_input_rejected";
+    pub const LEDGER_EMPTY: &str = "ledger_empty";
+    pub const LEDGER_DAMAGED: &str = "ledger_damaged";
+    pub const PROFILE_UNKNOWN: &str = "profile_unknown";
+    /// A cold load found the loading pool full.
+    pub const LOAD_AT_CAPACITY: &str = "load_at_capacity";
+    /// A cold load of the ledger failed.
+    pub const LOAD_FAILED: &str = "load_failed";
+    pub const DECISION_FAILED: &str = "decision_failed";
+    pub const DECISION_UNRECORDABLE: &str = "decision_unrecordable";
+    pub const EVALUATION_AT_CAPACITY: &str = "evaluation_at_capacity";
+    pub const EVALUATION_QUARANTINED: &str = "evaluation_quarantined";
+    pub const LEDGER_EXPIRED: &str = "ledger_expired";
+    pub const LEDGER_INCOMPATIBLE: &str = "ledger_incompatible";
+    pub const LEDGER_NOT_SERVED: &str = "ledger_not_served";
 }
 
 /// `permguard.api.pdp.temporal.v1alpha1`.
@@ -118,6 +135,43 @@ pub mod pdp_temporal {
     pub const EVENT_APPLICATION_INCOMPLETE: &str = "event_application_incomplete";
     pub const EVENT_OUT_OF_ORDER: &str = "event_out_of_order";
     pub const STORE_REQUIRED: &str = "store_required";
+    /// Outcome reasons of a temporal response: a policy permitted the occurrence.
+    pub const PERMITTED: &str = "permitted";
+    /// A policy refused the occurrence.
+    pub const DENIED: &str = "denied";
+    /// No policy permitted the occurrence.
+    pub const NOT_PERMITTED: &str = "not_permitted";
+    /// A partition whose compiled history cannot be rebuilt from its retained events.
+    pub const PARTITION_NOT_REBUILDABLE: &str = "partition_not_rebuildable";
+    /// Retained history a partition cannot replay.
+    pub const HISTORY_NOT_REPLAYABLE: &str = "history_not_replayable";
+    /// A partition whose in-memory history was poisoned by a panic; it is rebuilt before it answers again.
+    pub const PARTITION_POISONED: &str = "partition_poisoned";
+    pub const CLOCK_UNUSABLE: &str = "clock_unusable";
+    pub const DECISION_ID_NOT_DURABLE: &str = "decision_id_not_durable";
+    pub const EVENT_JOURNAL_AMBIGUOUS: &str = "event_journal_ambiguous";
+    pub const EVENT_OUTCOME_UNREADABLE: &str = "event_outcome_unreadable";
+    pub const EVENT_OUTCOME_UNRENDERABLE: &str = "event_outcome_unrenderable";
+    pub const EVENT_RECORD_INVALID: &str = "event_record_invalid";
+    pub const EVENT_RECORD_UNREADABLE: &str = "event_record_unreadable";
+    pub const EVENT_RECOVERY_COMMIT_UNAVAILABLE: &str = "event_recovery_commit_unavailable";
+    pub const HISTORY_CONTRACT_INCOMPATIBLE: &str = "history_contract_incompatible";
+    pub const HISTORY_INCOMPLETE: &str = "history_incomplete";
+    pub const HISTORY_KEY_NOT_CANONICAL: &str = "history_key_not_canonical";
+    pub const HISTORY_LOCK_POISONED: &str = "history_lock_poisoned";
+    pub const HISTORY_RETENTION_INSUFFICIENT: &str = "history_retention_insufficient";
+    pub const HISTORY_STALE: &str = "history_stale";
+    pub const HISTORY_UNORDERABLE: &str = "history_unorderable";
+    pub const HISTORY_UNREADABLE: &str = "history_unreadable";
+    pub const HISTORY_WINDOW_INVALID: &str = "history_window_invalid";
+    pub const IMPORTED_HISTORY_UNREADABLE: &str = "imported_history_unreadable";
+    pub const JOURNAL_FULL: &str = "journal_full";
+    pub const JOURNAL_UNAVAILABLE: &str = "journal_unavailable";
+    pub const PARTITION_NOT_TEMPORAL: &str = "partition_not_temporal";
+    pub const PROFILE_EMPTY: &str = "profile_empty";
+    pub const PROFILE_NOT_TEMPORAL: &str = "profile_not_temporal";
+    pub const PROFILE_VANISHED: &str = "profile_vanished";
+    pub const RECORD_NOT_CANONICAL: &str = "record_not_canonical";
 }
 
 /// Evidence streams: shipping, ingest and reads.
@@ -150,12 +204,25 @@ pub mod stream {
     pub const CLOSED: &str = "closed";
     pub const ACK_AHEAD: &str = "ack_ahead";
     pub const UNSHIPPABLE: &str = "unshippable";
-    pub const READ_REFUSED: &str = "read_refused";
     pub const DECISION_NOT_FOUND: &str = "decision_not_found";
     pub const EVENT_NOT_FOUND: &str = "event_not_found";
     pub const QUOTA_EXHAUSTED: &str = "quota_exhausted";
     /// The acknowledgement for a batch ahead of the store: resend from `expected_seq`.
     pub const OUT_OF_ORDER: &str = "out_of_order";
+    /// A decision stream ended because its spool reached its byte bound: a discontinuity reason.
+    pub const SPOOL_FULL: &str = "spool_full";
+    /// A decision stream ended because its oldest record outlived the age bound: a discontinuity reason.
+    pub const AGE_EXPIRY: &str = "age_expiry";
+    /// A decision answered while its audit queue was full: the audit record is dropped and logged.
+    pub const QUEUE_FULL: &str = "queue_full";
+    /// A decision answered after the audit worker stopped: the audit record is dropped and logged.
+    pub const WORKER_STOPPED: &str = "worker_stopped";
+    pub const BOUND_MALFORMED: &str = "bound_malformed";
+    pub const CURSOR_MALFORMED: &str = "cursor_malformed";
+    pub const SCOPE_MISMATCH: &str = "scope_mismatch";
+    pub const SIGNER_RANGE_TOO_WIDE: &str = "signer_range_too_wide";
+    pub const STREAM_MALFORMED: &str = "stream_malformed";
+    pub const STREAM_UNKNOWN: &str = "stream_unknown";
 }
 
 /// Ledger objects and NOTP.
@@ -180,6 +247,24 @@ pub mod notp {
     pub const SCHEMA_MISSING: &str = "schema_missing";
     pub const SCHEMA_UNSATISFIED: &str = "schema_unsatisfied";
     pub const VALUE_UNREPRESENTABLE: &str = "value_unrepresentable";
+    /// The ref moved between negotiation and commit: negotiate again from the current head.
+    pub const REF_CONFLICT: &str = "ref_conflict";
+    /// The manifest a commit names is not the one its root tree carries.
+    pub const MANIFEST_MISMATCH: &str = "manifest_mismatch";
+    /// A blob its registered media type or artifact validation refuses.
+    pub const BLOB_REJECTED: &str = "blob_rejected";
+    pub const ARTIFACT_AMBIGUOUS: &str = "artifact_ambiguous";
+    pub const ARTIFACT_MISSING: &str = "artifact_missing";
+    pub const BODY_REJECTED: &str = "body_rejected";
+    pub const MEDIA_TYPE_NOT_ALLOWED: &str = "media_type_not_allowed";
+    pub const NOTP_FAILED: &str = "notp_failed";
+    pub const PARTITION_MISSING: &str = "partition_missing";
+    pub const PARTITION_REJECTED: &str = "partition_rejected";
+    pub const PARTITION_UNDECLARED: &str = "partition_undeclared";
+    pub const POLICY_ALIAS_MISMATCH: &str = "policy_alias_mismatch";
+    pub const POLICY_ID_MISSING: &str = "policy_id_missing";
+    pub const POLICY_KIND_MISSING: &str = "policy_kind_missing";
+    pub const SCHEMA_AMBIGUOUS: &str = "schema_ambiguous";
 }
 
 /// Codes the command line and the client answer for their own failures.
@@ -211,17 +296,22 @@ pub mod client {
     pub const KEYS_EMPTY: &str = "keys_empty";
     pub const KEYS_MALFORMED: &str = "keys_malformed";
     pub const KEYS_UNREADABLE: &str = "keys_unreadable";
+    pub const DECODE_FAILED: &str = "decode_failed";
+    pub const ENCODE_FAILED: &str = "encode_failed";
+    pub const ANSWER_MALFORMED: &str = "answer_malformed";
+    pub const HEALTH_UNREADABLE: &str = "health_unreadable";
+    pub const HTTP_STATUS: &str = "http_status";
+    pub const NOT_LIVE: &str = "not_live";
+    pub const NOT_READY: &str = "not_ready";
+    /// The target did not answer within the client's deadline.
+    pub const TIMEOUT: &str = "timeout";
 }
 
 /// Codes in use that no contract document names yet.
 ///
 /// Each one is kept until the document that owns it is written; renaming one is a contract change.
 pub mod legacy {
-    /// Reason words a decision response carries; outcomes, not refusals, but branched on the same way.
-    pub const PERMITTED: &str = "permitted";
-    pub const DENIED: &str = "denied";
     pub const REJECTED: &str = "rejected";
-    pub const NOT_PERMITTED: &str = "not_permitted";
 }
 
 /// Every code of this module as `(name, value)`, for vectors and the registration lint.
@@ -243,8 +333,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         common::UNAUTHENTICATED,
         common::FORBIDDEN,
         common::FORGED,
+        common::ROUTE_UNKNOWN,
         catalog::NAME_TAKEN,
-        catalog::NOT_EMPTY,
+        catalog::ZONE_NOT_EMPTY,
         catalog::INVALID_NAME,
         catalog::CATALOG_FAILED,
         pdp_native::ZONE_REQUIRED,
@@ -272,6 +363,18 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_native::EVALUATION_PANICKED,
         pdp_native::EVALUATION_FAILED,
         pdp_native::EVALUATION_INPUT_REJECTED,
+        pdp_native::LEDGER_EMPTY,
+        pdp_native::LEDGER_DAMAGED,
+        pdp_native::PROFILE_UNKNOWN,
+        pdp_native::LOAD_AT_CAPACITY,
+        pdp_native::LOAD_FAILED,
+        pdp_native::DECISION_FAILED,
+        pdp_native::DECISION_UNRECORDABLE,
+        pdp_native::EVALUATION_AT_CAPACITY,
+        pdp_native::EVALUATION_QUARANTINED,
+        pdp_native::LEDGER_EXPIRED,
+        pdp_native::LEDGER_INCOMPATIBLE,
+        pdp_native::LEDGER_NOT_SERVED,
         pdp_temporal::EVENT_REQUIRED,
         pdp_temporal::EVENT_MALFORMED,
         pdp_temporal::EVENT_NOT_CANONICAL,
@@ -305,6 +408,37 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         pdp_temporal::EVENT_APPLICATION_INCOMPLETE,
         pdp_temporal::EVENT_OUT_OF_ORDER,
         pdp_temporal::STORE_REQUIRED,
+        pdp_temporal::PERMITTED,
+        pdp_temporal::DENIED,
+        pdp_temporal::NOT_PERMITTED,
+        pdp_temporal::PARTITION_NOT_REBUILDABLE,
+        pdp_temporal::HISTORY_NOT_REPLAYABLE,
+        pdp_temporal::PARTITION_POISONED,
+        pdp_temporal::CLOCK_UNUSABLE,
+        pdp_temporal::DECISION_ID_NOT_DURABLE,
+        pdp_temporal::EVENT_JOURNAL_AMBIGUOUS,
+        pdp_temporal::EVENT_OUTCOME_UNREADABLE,
+        pdp_temporal::EVENT_OUTCOME_UNRENDERABLE,
+        pdp_temporal::EVENT_RECORD_INVALID,
+        pdp_temporal::EVENT_RECORD_UNREADABLE,
+        pdp_temporal::EVENT_RECOVERY_COMMIT_UNAVAILABLE,
+        pdp_temporal::HISTORY_CONTRACT_INCOMPATIBLE,
+        pdp_temporal::HISTORY_INCOMPLETE,
+        pdp_temporal::HISTORY_KEY_NOT_CANONICAL,
+        pdp_temporal::HISTORY_LOCK_POISONED,
+        pdp_temporal::HISTORY_RETENTION_INSUFFICIENT,
+        pdp_temporal::HISTORY_STALE,
+        pdp_temporal::HISTORY_UNORDERABLE,
+        pdp_temporal::HISTORY_UNREADABLE,
+        pdp_temporal::HISTORY_WINDOW_INVALID,
+        pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
+        pdp_temporal::JOURNAL_FULL,
+        pdp_temporal::JOURNAL_UNAVAILABLE,
+        pdp_temporal::PARTITION_NOT_TEMPORAL,
+        pdp_temporal::PROFILE_EMPTY,
+        pdp_temporal::PROFILE_NOT_TEMPORAL,
+        pdp_temporal::PROFILE_VANISHED,
+        pdp_temporal::RECORD_NOT_CANONICAL,
         stream::BATCH_UNATTRIBUTABLE,
         stream::BATCH_UNVERIFIABLE,
         stream::BATCH_UNREGISTERED,
@@ -333,11 +467,20 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::CLOSED,
         stream::ACK_AHEAD,
         stream::UNSHIPPABLE,
-        stream::READ_REFUSED,
         stream::DECISION_NOT_FOUND,
         stream::EVENT_NOT_FOUND,
         stream::QUOTA_EXHAUSTED,
         stream::OUT_OF_ORDER,
+        stream::SPOOL_FULL,
+        stream::AGE_EXPIRY,
+        stream::QUEUE_FULL,
+        stream::WORKER_STOPPED,
+        stream::BOUND_MALFORMED,
+        stream::CURSOR_MALFORMED,
+        stream::SCOPE_MISMATCH,
+        stream::SIGNER_RANGE_TOO_WIDE,
+        stream::STREAM_MALFORMED,
+        stream::STREAM_UNKNOWN,
         notp::NOT_FAST_FORWARD,
         notp::NOT_A_ROOT,
         notp::NOT_REACHABLE,
@@ -358,6 +501,21 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         notp::SCHEMA_MISSING,
         notp::SCHEMA_UNSATISFIED,
         notp::VALUE_UNREPRESENTABLE,
+        notp::REF_CONFLICT,
+        notp::MANIFEST_MISMATCH,
+        notp::BLOB_REJECTED,
+        notp::ARTIFACT_AMBIGUOUS,
+        notp::ARTIFACT_MISSING,
+        notp::BODY_REJECTED,
+        notp::MEDIA_TYPE_NOT_ALLOWED,
+        notp::NOTP_FAILED,
+        notp::PARTITION_MISSING,
+        notp::PARTITION_REJECTED,
+        notp::PARTITION_UNDECLARED,
+        notp::POLICY_ALIAS_MISMATCH,
+        notp::POLICY_ID_MISSING,
+        notp::POLICY_KIND_MISSING,
+        notp::SCHEMA_AMBIGUOUS,
         client::USAGE,
         client::TRANSPORT_FAILED,
         client::CONNECT_FAILED,
@@ -385,10 +543,15 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::KEYS_EMPTY,
         client::KEYS_MALFORMED,
         client::KEYS_UNREADABLE,
-        legacy::PERMITTED,
-        legacy::DENIED,
+        client::DECODE_FAILED,
+        client::ENCODE_FAILED,
+        client::ANSWER_MALFORMED,
+        client::HEALTH_UNREADABLE,
+        client::HTTP_STATUS,
+        client::NOT_LIVE,
+        client::NOT_READY,
+        client::TIMEOUT,
         legacy::REJECTED,
-        legacy::NOT_PERMITTED,
     ]
 }
 

@@ -23,7 +23,7 @@ use crate::wire;
 fn bad(detail: impl std::fmt::Display) -> ApiError {
     ApiError::new(
         ErrorClass::Validation,
-        "body_rejected",
+        permguard_core::codes::notp::BODY_REJECTED,
         format!("the request is not a valid NOTP message: {detail}"),
     )
 }

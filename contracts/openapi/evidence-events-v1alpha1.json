@@ -1,0 +1,1573 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard event evidence v1alpha1",
+    "version": "1",
+    "description": "The event log on the control plane, `permguard.api.events.native.v1alpha1`: shipping signed batches, reading blocks of records, signer histories and the discovery document."
+  },
+  "paths": {
+    "/events/v1alpha1/batches": {
+      "post": {
+        "operationId": "ingestEventBatch",
+        "summary": "Ship a signed event batch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Batch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The batch is stored, or was already held.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledgement"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a signed batch, or unattributable, unverifiable or carrying an unregistered type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Out of order (`OutOfOrder`), or the stream forked or is closed (WireError).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OutOfOrder"
+                    },
+                    {
+                      "$ref": "common.json#/components/schemas/WireError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable; the shipper retries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/IngestBatch"
+      }
+    },
+    "/events/v1alpha1/records": {
+      "get": {
+        "operationId": "readEventStream",
+        "summary": "Read one producer stream, administratively",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "query",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "query",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "producer_class",
+            "in": "query",
+            "required": true,
+            "description": "The producer class.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer_class"
+          },
+          {
+            "name": "producer",
+            "in": "query",
+            "required": true,
+            "description": "The producer id; also a filter on the tenant read.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer"
+          },
+          {
+            "name": "instance",
+            "in": "query",
+            "required": true,
+            "description": "The producer incarnation.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "instance"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Authenticated offset from a previous page's `next`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "The `high_watermark` of an export's first page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Alias of `limit_records`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "an alias of `limit_records` kept for older callers; gRPC has only `limit_records`"
+          },
+          {
+            "name": "limit_records",
+            "in": "query",
+            "required": false,
+            "description": "Record bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_records"
+          },
+          {
+            "name": "limit_bytes",
+            "in": "query",
+            "required": false,
+            "description": "Byte bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_bytes"
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "description": "Include signed envelopes and inclusion paths.",
+            "schema": {
+              "type": "boolean"
+            },
+            "x-grpc-field": "proof"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "description": "Exact event type; repeat the parameter to ask for several.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_types",
+            "x-grpc-note": "repeated `event_type` query parameters carry the list `event_types`"
+          },
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "description": "Exact profile.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "profile"
+          },
+          {
+            "name": "policy_partition",
+            "in": "query",
+            "required": false,
+            "description": "Exact policy partition.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "policy_partition"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "Exact kind.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "kind"
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "description": "Exact event identifier.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_id"
+          },
+          {
+            "name": "history",
+            "in": "query",
+            "required": false,
+            "description": "Exact history key digest.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "history"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Occurrence time lower bound (canonical UTC instant).",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "since"
+          },
+          {
+            "name": "until_time",
+            "in": "query",
+            "required": false,
+            "description": "Occurrence time upper bound (canonical UTC instant).",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until_time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One block of event records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed, foreign or tampered offset, or a missing stream selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The ledger or scope is not held.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The offset fell behind retention.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords"
+      }
+    },
+    "/events/v1alpha1/records/{event_id}": {
+      "get": {
+        "operationId": "getEventRecord",
+        "summary": "Read one occurrence by its identifier",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "description": "The caller's identifier for the occurrence.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_id"
+          },
+          {
+            "name": "zone",
+            "in": "query",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "query",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Record"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`zone` or `ledger` is missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No event in this ledger carries that identifier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable, or the search stopped at its bound before establishing absence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetRecord"
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/records": {
+      "get": {
+        "operationId": "readEventTenant",
+        "summary": "Read one tenant's events",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "producer",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one producer id.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer"
+          },
+          {
+            "name": "instance",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one incarnation.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "instance"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "description": "Authenticated offset from a previous page's `next`.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "description": "The `high_watermark` of an export's first page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Alias of `limit_records`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "an alias of `limit_records` kept for older callers; gRPC has only `limit_records`"
+          },
+          {
+            "name": "limit_records",
+            "in": "query",
+            "required": false,
+            "description": "Record bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_records"
+          },
+          {
+            "name": "limit_bytes",
+            "in": "query",
+            "required": false,
+            "description": "Byte bound, clamped by the server.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "x-grpc-field": "limit_bytes"
+          },
+          {
+            "name": "proof",
+            "in": "query",
+            "required": false,
+            "description": "Include signed envelopes and inclusion paths.",
+            "schema": {
+              "type": "boolean"
+            },
+            "x-grpc-field": "proof"
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "description": "Exact event type; repeat the parameter to ask for several.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_types",
+            "x-grpc-note": "repeated `event_type` query parameters carry the list `event_types`"
+          },
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "description": "Exact profile.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "profile"
+          },
+          {
+            "name": "policy_partition",
+            "in": "query",
+            "required": false,
+            "description": "Exact policy partition.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "policy_partition"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "Exact kind.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "kind"
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "description": "Exact event identifier.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_id"
+          },
+          {
+            "name": "history",
+            "in": "query",
+            "required": false,
+            "description": "Exact history key digest.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "history"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Occurrence time lower bound (canonical UTC instant).",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "since"
+          },
+          {
+            "name": "until_time",
+            "in": "query",
+            "required": false,
+            "description": "Occurrence time upper bound (canonical UTC instant).",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "until_time"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One block of event records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventBlock"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed, foreign or tampered offset, or a missing stream selector.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The ledger or scope is not held.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The offset fell behind retention.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "stream-common.json#/components/schemas/OffsetExpired"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/ListRecords",
+        "x-grpc-only": [
+          "producer_class"
+        ],
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.ListRecordsRequest`: `producer_class`."
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}/events/v1alpha1/signers": {
+      "get": {
+        "operationId": "getEventSigners",
+        "summary": "Which key signed which stretch of each producer stream of one ledger",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "path",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "from_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower sequence bound; zero or absent for the whole history.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "from_seq"
+          },
+          {
+            "name": "until_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive upper sequence bound; zero or absent for onward.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "until_seq"
+          },
+          {
+            "name": "producer_class",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one producer class.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer_class"
+          },
+          {
+            "name": "producer",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one producer.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "producer"
+          },
+          {
+            "name": "instance",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one incarnation.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "instance"
+          },
+          {
+            "name": "after_class",
+            "in": "query",
+            "required": false,
+            "description": "Cursor: class of the last stream of the previous page; all three `after_*` or none.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "one of the three parts of the gRPC `after` stream cursor, which REST splits into `after_class`, `after_producer` and `after_instance`"
+          },
+          {
+            "name": "after_producer",
+            "in": "query",
+            "required": false,
+            "description": "Cursor: producer of the last stream of the previous page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "one of the three parts of the gRPC `after` stream cursor, which REST splits into `after_class`, `after_producer` and `after_instance`"
+          },
+          {
+            "name": "after_instance",
+            "in": "query",
+            "required": false,
+            "description": "Cursor: instance of the last stream of the previous page.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "one of the three parts of the gRPC `after` stream cursor, which REST splits into `after_class`, `after_producer` and `after_instance`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of signer histories.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignersDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A malformed bound or cursor, or a range crossing too many spans.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The scope is unknown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The store is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetSigners",
+        "x-grpc-only": [
+          "after"
+        ],
+        "x-grpc-note": "gRPC-only input fields of `permguard.control.v1.GetSignersRequest`: `after`."
+      }
+    },
+    "/.well-known/permguard-events-native-v1alpha1-configuration": {
+      "get": {
+        "operationId": "getEventConfiguration",
+        "summary": "What this plane offers of the event log interface",
+        "responses": {
+          "200": {
+            "description": "The configuration document. Unauthenticated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.EventLog/GetEventConfiguration"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Producer": {
+        "type": "object",
+        "description": "Who produced a stream.",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "The registered producer class."
+          },
+          "id": {
+            "type": "string",
+            "description": "The deployment's name for this producer."
+          },
+          "instance": {
+            "type": "string",
+            "description": "One continuous incarnation."
+          }
+        },
+        "required": [
+          "class",
+          "id",
+          "instance"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the event record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.IngestBatchRequest, permguard.control.v1.ListRecordsResponse and the `record` of permguard.control.v1.GetRecordResponse."
+      },
+      "Stream": {
+        "type": "object",
+        "description": "One cryptographic stream: a producer's history for one tenant ledger.",
+        "properties": {
+          "producer": {
+            "$ref": "#/components/schemas/Producer"
+          },
+          "zone": {
+            "type": "string"
+          },
+          "ledger": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "producer",
+          "zone",
+          "ledger"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the event record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.IngestBatchRequest, permguard.control.v1.ListRecordsResponse and the `record` of permguard.control.v1.GetRecordResponse."
+      },
+      "HistoryKey": {
+        "type": "object",
+        "description": "The derived history key, kept beside its hash.",
+        "properties": {
+          "pins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The schema-declared pin names."
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Their canonical typed encodings, positionally matching `pins`."
+          },
+          "digest": {
+            "type": "string",
+            "description": "The digest over that encoding: the index key."
+          }
+        },
+        "required": [
+          "pins",
+          "values",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the event record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.IngestBatchRequest, permguard.control.v1.ListRecordsResponse and the `record` of permguard.control.v1.GetRecordResponse."
+      },
+      "Record": {
+        "type": "object",
+        "description": "An event record. Digested and stored verbatim. Open: validation ignores members it does not know, so a newer producer may extend a record.",
+        "properties": {
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "record_type": {
+            "type": "string",
+            "const": "permguard.event.record.v1"
+          },
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Position in the stream; starts at one."
+          },
+          "prev": {
+            "type": "string",
+            "description": "The digest of `seq - 1`, or the genesis."
+          },
+          "event_type": {
+            "type": "string",
+            "description": "The registered event type."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The caller's identifier, unique within the ledger."
+          },
+          "occurrence_digest": {
+            "type": "string",
+            "description": "The digest of the occurrence as the caller sent it."
+          },
+          "kind": {
+            "type": "string",
+            "description": "The runtime's word for what happened."
+          },
+          "profile": {
+            "type": "string"
+          },
+          "policy_partitions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The partitions the profile addressed.",
+            "minItems": 1
+          },
+          "commit": {
+            "type": "string",
+            "description": "The immutable ledger commit."
+          },
+          "history_key": {
+            "$ref": "#/components/schemas/HistoryKey"
+          },
+          "occurred_at": {
+            "type": "string",
+            "description": "When it happened, as stated."
+          },
+          "observed_at": {
+            "type": "string",
+            "description": "When this plane accepted it."
+          },
+          "event": {
+            "description": "The typed occurrence itself, verbatim."
+          }
+        },
+        "required": [
+          "v",
+          "record_type",
+          "stream",
+          "seq",
+          "prev",
+          "event_type",
+          "event_id",
+          "occurrence_digest",
+          "kind",
+          "profile",
+          "policy_partitions",
+          "commit",
+          "occurred_at",
+          "observed_at",
+          "event"
+        ],
+        "additionalProperties": {},
+        "x-grpc-message": null,
+        "x-grpc-note": "Part of the event record, which gRPC carries as JSON bytes (never re-encoded as protobuf, so the digests hold): an element of `records` in permguard.control.v1.IngestBatchRequest, permguard.control.v1.ListRecordsResponse and the `record` of permguard.control.v1.GetRecordResponse."
+      },
+      "Envelope": {
+        "type": "object",
+        "description": "What a batch attests to. Not a JSON member of the request: it is the canonical JSON inside `signature.payload` (base64url).",
+        "properties": {
+          "stream": {
+            "$ref": "#/components/schemas/Stream"
+          },
+          "first_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "last_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "`last_seq - first_seq + 1`."
+          },
+          "previous_head": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string",
+            "description": "The digest of the record at `last_seq`."
+          },
+          "merkle_root": {
+            "type": "string"
+          },
+          "event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The registered event types covered, sorted and deduplicated.",
+            "minItems": 1
+          },
+          "record_version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The record schema version every covered record carries."
+          },
+          "at": {
+            "type": "string",
+            "description": "When it was assembled, informational."
+          }
+        },
+        "required": [
+          "stream",
+          "first_seq",
+          "last_seq",
+          "count",
+          "previous_head",
+          "head",
+          "merkle_root",
+          "event_types",
+          "record_version",
+          "at"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The signed envelope payload, carried as JSON bytes inside the `envelope` field of permguard.control.v1.IngestBatchRequest and in an element of `proof` of permguard.control.v1.ListRecordsResponse; never a protobuf message."
+      },
+      "Protected": {
+        "type": "object",
+        "description": "The protected header of a batch signature: the JSON inside `signature.protected` (base64url).",
+        "properties": {
+          "alg": {
+            "type": "string",
+            "const": "EdDSA"
+          },
+          "typ": {
+            "type": "string",
+            "const": "permguard.event.batch.v1"
+          },
+          "kid": {
+            "type": "string",
+            "description": "Which key, in the producer's published set."
+          }
+        },
+        "required": [
+          "alg",
+          "typ",
+          "kid"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The protected header of the signature, carried as JSON bytes within `envelope` of permguard.control.v1.IngestBatchRequest and within `proof` of permguard.control.v1.ListRecordsResponse."
+      },
+      "Signed": {
+        "type": "object",
+        "description": "A signed batch envelope, JWS flattened.",
+        "properties": {
+          "protected": {
+            "type": "string",
+            "description": "Base64url of the protected header."
+          },
+          "payload": {
+            "type": "string",
+            "description": "Base64url of the canonical envelope."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64url signature over `protected || \".\" || payload`."
+          }
+        },
+        "required": [
+          "protected",
+          "payload",
+          "signature"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "The signed envelope as one JSON document: the `envelope` bytes of permguard.control.v1.IngestBatchRequest, and an element of `proof` of permguard.control.v1.ListRecordsResponse."
+      },
+      "Batch": {
+        "type": "object",
+        "description": "One batch: the signed envelope and the records verbatim, in sequence order.",
+        "properties": {
+          "signature": {
+            "$ref": "#/components/schemas/Signed",
+            "x-grpc-field": "envelope",
+            "x-grpc-note": "The signed envelope (`Signed`) as its canonical JSON bytes."
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Record"
+            },
+            "minItems": 1,
+            "x-grpc-field": "records",
+            "x-grpc-note": "Elements are `bytes` holding each record verbatim."
+          }
+        },
+        "required": [
+          "signature",
+          "records"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.IngestBatchRequest",
+        "x-grpc-note": "On gRPC the signed envelope and each record are `bytes` holding their JSON text (decoded by Batch::from_wire_parts); on REST they are JSON values of one body."
+      },
+      "Acknowledgement": {
+        "type": "object",
+        "description": "The 200 answer of a batch (built inline in the handler).",
+        "properties": {
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The highest contiguous durable sequence.",
+            "x-grpc-field": "acked"
+          },
+          "stored": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many records this call added.",
+            "x-grpc-field": "stored"
+          }
+        },
+        "required": [
+          "acked",
+          "stored"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.IngestBatchResponse",
+        "x-grpc-only": [
+          "expected_seq"
+        ],
+        "x-grpc-note": "The REST 200 answer. gRPC answers a run-ahead with the same message and an OK status (acked = expected_seq - 1, stored 0, expected_seq set); REST answers it with a 409 (OutOfOrder)."
+      },
+      "OutOfOrder": {
+        "type": "object",
+        "description": "The 409 answer of a producer that ran ahead: the shared refusal envelope plus where to resume.",
+        "properties": {
+          "class": {
+            "type": "string",
+            "const": "conflict",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: gRPC carries the error class in status metadata, and a run-ahead is not an error on gRPC."
+          },
+          "code": {
+            "type": "string",
+            "const": "out_of_order",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: gRPC carries the code in status metadata, and a run-ahead is not an error on gRPC."
+          },
+          "message": {
+            "type": "string",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: gRPC carries the message in the status."
+          },
+          "expected_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The sequence to resend from.",
+            "x-grpc-field": "expected_seq"
+          }
+        },
+        "required": [
+          "class",
+          "code",
+          "message",
+          "expected_seq"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.IngestBatchResponse",
+        "x-grpc-only": [
+          "acked",
+          "stored"
+        ],
+        "x-grpc-note": "The REST 409 body. gRPC answers a run-ahead with an OK status and IngestBatchResponse{acked: expected_seq - 1, stored: 0, expected_seq}; `acked` and `stored` have no member in the 409. `class`, `code` and `message` are the shared refusal envelope, which gRPC carries as status and metadata instead."
+      },
+      "EventBlock": {
+        "type": "object",
+        "description": "One page of event records: the common stream block with typed records.",
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Record"
+            },
+            "x-grpc-field": "records"
+          },
+          "next": {
+            "type": "string",
+            "x-grpc-field": "next"
+          },
+          "oldest_available": {
+            "type": "string",
+            "x-grpc-field": "oldest_available"
+          },
+          "high_watermark": {
+            "type": "string",
+            "x-grpc-field": "high_watermark"
+          },
+          "more": {
+            "type": "boolean",
+            "x-grpc-field": "more"
+          },
+          "proof": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Signed"
+            },
+            "x-grpc-field": "proof"
+          },
+          "inclusion": {
+            "type": "array",
+            "items": {
+              "$ref": "stream-common.json#/components/schemas/Inclusion"
+            },
+            "x-grpc-field": "inclusion"
+          },
+          "coverage": {
+            "$ref": "stream-common.json#/components/schemas/Coverage",
+            "x-grpc-field": "coverage"
+          }
+        },
+        "required": [
+          "records",
+          "next",
+          "oldest_available",
+          "high_watermark",
+          "more",
+          "coverage"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.ListRecordsResponse",
+        "x-grpc-note": "`records`, `proof` and `inclusion` are JSON values here and elements of `repeated bytes` (each the JSON text) on gRPC."
+      },
+      "StreamSignersView": {
+        "type": "object",
+        "description": "One producer stream's signer history with the receiver's durable frontier.",
+        "properties": {
+          "producer_class": {
+            "type": "string",
+            "x-grpc-field": "producer_class"
+          },
+          "producer": {
+            "type": "string",
+            "x-grpc-field": "producer"
+          },
+          "instance": {
+            "type": "string",
+            "x-grpc-field": "instance"
+          },
+          "acked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Everything through this sequence is durable here.",
+            "x-grpc-field": "acked"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "stream-common.json#/components/schemas/SignerSpan"
+            },
+            "x-grpc-field": "spans"
+          }
+        },
+        "required": [
+          "producer_class",
+          "producer",
+          "instance",
+          "acked",
+          "spans"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.StreamSigners"
+      },
+      "StreamCursor": {
+        "type": "object",
+        "description": "A position in the `(class, producer, instance)` order of one ledger's streams.",
+        "properties": {
+          "producer_class": {
+            "type": "string",
+            "x-grpc-field": "producer_class"
+          },
+          "producer": {
+            "type": "string",
+            "x-grpc-field": "producer"
+          },
+          "instance": {
+            "type": "string",
+            "x-grpc-field": "instance"
+          }
+        },
+        "required": [
+          "producer_class",
+          "producer",
+          "instance"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.StreamCursor"
+      },
+      "SignersDocument": {
+        "type": "object",
+        "description": "The signers answer: one page of streams.",
+        "properties": {
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamSignersView"
+            },
+            "description": "At most 256 streams.",
+            "x-grpc-field": "streams"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "More streams matched than one page carries.",
+            "x-grpc-field": "truncated"
+          },
+          "next": {
+            "$ref": "#/components/schemas/StreamCursor",
+            "x-grpc-field": "next"
+          }
+        },
+        "required": [
+          "streams",
+          "truncated"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.GetSignersResponse"
+      },
+      "Limits": {
+        "type": "object",
+        "description": "The ceilings a read is clamped to.",
+        "properties": {
+          "max_records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_examined": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The most positions one page examines while looking for matches."
+          }
+        },
+        "required": [
+          "max_records",
+          "max_bytes",
+          "max_examined"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only: the configuration document's `limits` member has no field in permguard.control.v1.GetEventConfigurationResponse."
+      },
+      "Endpoints": {
+        "type": "object",
+        "description": "Absolute URLs where batches are delivered and records are read.",
+        "properties": {
+          "ingest": {
+            "type": "string",
+            "x-grpc-field": "ingest"
+          },
+          "records": {
+            "type": "string",
+            "x-grpc-field": "records"
+          },
+          "record": {
+            "type": "string",
+            "description": "A template containing `{event_id}`.",
+            "x-grpc-field": "record"
+          },
+          "tenant_records": {
+            "type": "string",
+            "description": "A template containing `{zone}` and `{ledger}`.",
+            "x-grpc-field": "tenant_records"
+          }
+        },
+        "required": [
+          "ingest",
+          "records",
+          "record",
+          "tenant_records"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.EventEndpoints"
+      },
+      "Offsets": {
+        "type": "object",
+        "description": "How a reader's position is spelled.",
+        "properties": {
+          "api": {
+            "type": "string",
+            "description": "The API family an offset belongs to.",
+            "x-grpc-field": "api"
+          },
+          "format": {
+            "type": "string",
+            "description": "`opaque`.",
+            "x-grpc-field": "format"
+          },
+          "editable": {
+            "type": "boolean",
+            "description": "Whether an edited offset is accepted; never.",
+            "x-grpc-field": "editable"
+          }
+        },
+        "required": [
+          "api",
+          "format",
+          "editable"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.EventOffsets"
+      },
+      "Document": {
+        "type": "object",
+        "description": "What this plane publishes about `permguard.api.events.native.v1alpha1`.",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "x-grpc-field": "interface"
+          },
+          "store": {
+            "type": "string",
+            "description": "This store's identifier.",
+            "x-grpc-field": "store"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/Endpoints",
+            "x-grpc-field": "endpoints"
+          },
+          "event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The registered event contracts this plane stores.",
+            "x-grpc-field": "event_types"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "capabilities"
+          },
+          "offsets": {
+            "$ref": "#/components/schemas/Offsets",
+            "x-grpc-field": "offsets"
+          },
+          "producer_classes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The producer classes accepted.",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The filter names a read accepts.",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/Limits",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: not a field of GetEventConfigurationResponse."
+          }
+        },
+        "required": [
+          "interface",
+          "store",
+          "endpoints",
+          "event_types",
+          "capabilities",
+          "offsets",
+          "producer_classes",
+          "filters",
+          "limits"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.control.v1.GetEventConfigurationResponse",
+        "x-grpc-note": "gRPC GetEventConfigurationResponse omits `producer_classes`, `filters` and `limits`, although the proto comment calls it field for field the JSON document; the handler fills only the six mapped fields."
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.control.v1.GetRecordResponse",
+      "note": "`record` holds the JSON bytes of the one record REST answers as the body",
+      "fields": [
+        "record"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.EventCoverage",
+      "note": "the same three members as `stream-common.json` `Coverage`, which two messages share",
+      "fields": [
+        "contiguous",
+        "examined",
+        "scan_bounded"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.SignerSpan",
+      "note": "`from_seq`, `kid` and `jwk` (JSON bytes) of `stream-common.json` `SignerSpan`, whose REST name for the first is `from`",
+      "fields": [
+        "from_seq",
+        "kid",
+        "jwk"
+      ]
+    }
+  ]
+}

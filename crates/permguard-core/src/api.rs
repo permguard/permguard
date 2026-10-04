@@ -230,6 +230,12 @@ impl ApiError {
     ///
     /// `code` is one of [`crate::codes`]; the registration test fails the build on any other literal.
     pub fn new(class: ErrorClass, code: &'static str, message: impl Into<String>) -> Self {
+        // The lint reads literals; this catches a code that arrives through a variable or a
+        // constant of another module, the moment any test builds the refusal.
+        debug_assert!(
+            crate::codes::is_registered(code),
+            "`{code}` is not a registered stable code"
+        );
         Self {
             class,
             code,
@@ -494,7 +500,7 @@ mod tests {
         );
         let occupied = ApiError::new(
             ErrorClass::Conflict,
-            codes::catalog::NOT_EMPTY,
+            codes::catalog::ZONE_NOT_EMPTY,
             "the zone is not empty",
         );
 
@@ -525,7 +531,7 @@ mod tests {
             (
                 StatusTable::Common,
                 ErrorClass::Conflict,
-                codes::catalog::NOT_EMPTY,
+                codes::catalog::ZONE_NOT_EMPTY,
                 409,
                 9,
             ),

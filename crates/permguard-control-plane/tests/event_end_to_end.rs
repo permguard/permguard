@@ -181,7 +181,7 @@ impl EventReader for Wire {
                 requested_sequence,
             }),
             Err(error) => Err(ReadError::Refused {
-                code: "read_refused".to_owned(),
+                code: permguard_core::codes::stream::EVENT_STORE_UNAVAILABLE.to_owned(),
                 detail: error.to_string(),
             }),
         }
@@ -227,7 +227,7 @@ impl EventReader for Wire {
             &self.facade.cursor_key,
         )
         .map_err(|error| ReadError::Refused {
-            code: "read_refused".to_owned(),
+            code: permguard_core::codes::stream::EVENT_STORE_UNAVAILABLE.to_owned(),
             detail: error.to_string(),
         })
     }

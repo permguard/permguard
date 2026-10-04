@@ -1,0 +1,45 @@
+{
+  "artifact": "Ledger objects: blob, tree and commit",
+  "authority": "6-contracts/6-contract-ledger-notp.md#objects; crates/permguard-objects/src/object.rs (KEY_* constants, Kind discriminants)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "blob": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "const:1", "occurs": "required" },
+        { "label": 2, "name": "media_type", "type": "text", "occurs": "required", "note": "1 to 255 bytes, a registered media type" },
+        { "label": 3, "name": "data", "type": "bytes", "occurs": "required" }
+      ]
+    },
+    "tree": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "const:2", "occurs": "required" },
+        { "label": 2, "name": "entries", "type": "array<map:tree_entry>", "occurs": "required", "note": "sorted by name, names unique" }
+      ]
+    },
+    "tree_entry": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "uint", "occurs": "required", "note": "the Kind discriminant of the named object: 1 blob or 2 tree, never 3 commit" },
+        { "label": 2, "name": "digest", "type": "digest", "occurs": "required" },
+        { "label": 3, "name": "name", "type": "text", "occurs": "required", "note": "the entry-name grammar" },
+        { "label": 4, "name": "annotations", "type": "map<text,text>", "occurs": "required", "note": "written even when empty; keys follow the annotation-key grammar" }
+      ]
+    },
+    "commit": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "const:3", "occurs": "required" },
+        { "label": 2, "name": "tree", "type": "digest", "occurs": "required" },
+        { "label": 3, "name": "manifest", "type": "digest", "occurs": "required" },
+        { "label": 4, "name": "predecessors", "type": "array<digest>", "occurs": "required", "note": "empty for a history root, at most two and never the same digest twice" },
+        { "label": 5, "name": "author", "type": "text", "occurs": "required" },
+        { "label": 6, "name": "author_at", "type": "int", "occurs": "required", "note": "Unix seconds" },
+        { "label": 7, "name": "message", "type": "text", "occurs": "required" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["blob", "tree", "commit"]
+}

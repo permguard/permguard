@@ -204,12 +204,12 @@ fn classify(health: &HealthAnswer) -> (Status, Option<&'static str>, Option<Stri
         HealthAnswer::Known { live, ready } => match (live, ready) {
             (false, _) => (
                 Status::Unhealthy,
-                Some("not_live"),
+                Some(permguard_core::codes::client::NOT_LIVE),
                 Some("it reports itself wedged and has to be restarted".to_owned()),
             ),
             (true, false) => (
                 Status::Degraded,
-                Some("not_ready"),
+                Some(permguard_core::codes::client::NOT_READY),
                 Some(
                     "it is live but not willing to be sent work: starting up, or draining"
                         .to_owned(),
@@ -281,7 +281,7 @@ fn read_plane(
             ready: body.ready,
         },
         Err(failure) => HealthAnswer::Unknown {
-            reason: "health_unreadable",
+            reason: permguard_core::codes::client::HEALTH_UNREADABLE,
             detail: failure.detail,
         },
     };
@@ -317,13 +317,13 @@ fn fetch<T: for<'de> Deserialize<'de>>(
 
     if response.status != 200 {
         return Err(Failure {
-            reason: "http_status",
+            reason: permguard_core::codes::client::HTTP_STATUS,
             detail: format!("`{endpoint}{path}` answered {}", response.status),
         });
     }
 
     serde_json::from_str(&response.body).map_err(|error| Failure {
-        reason: "decode_failed",
+        reason: permguard_core::codes::client::DECODE_FAILED,
         detail: format!("`{endpoint}{path}` answered something unreadable: {error}"),
     })
 }

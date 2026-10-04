@@ -7,14 +7,15 @@
 //! everything that could be wrong lives below ([`super::zones`], [`super::ledgers`]) or beside
 //! ([`crate::wire`]) this file. A handler with logic in it is a handler gRPC does not have.
 
-use axum::extract::{Path, RawQuery, State};
+use axum::body::Bytes;
+use axum::extract::{FromRequest, Path, RawQuery, Request, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
 
-use permguard_core::ApiError;
+use permguard_core::{ApiError, ErrorClass, codes};
 
 use super::{CatalogFacade, ledgers, zones};
 use crate::wire;
@@ -38,10 +39,56 @@ pub(crate) fn routes(facade: CatalogFacade) -> Router {
         .with_state(facade)
 }
 
-/// What a create or rename carries: the name, and nothing else yet.
+/// What a create or rename carries: the name, and nothing else yet. A closed body: a member it
+/// does not name is refused, never ignored.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NameBody {
     name: String,
+}
+
+/// A [`NameBody`] read from the request. A body that is not one — not declared
+/// `application/json`, malformed JSON, a missing `name`, an unknown or repeated member — is
+/// refused in the shared `{class, code, message}` shape as `invalid_argument`, not in the
+/// extractor's own plain-text answer.
+///
+/// The media type is checked first and on purpose: a browser sends a `text/plain` POST
+/// cross-site without a preflight, carrying the client certificate the catalog authenticates
+/// with, so a body accepted whatever its type would let any page rename a zone.
+struct Named(NameBody);
+
+impl FromRequest<CatalogFacade> for Named {
+    type Rejection = Response;
+
+    async fn from_request(request: Request, facade: &CatalogFacade) -> Result<Self, Response> {
+        let refuse = |message: String| {
+            wire::http_error(
+                &ApiError::new(
+                    ErrorClass::Validation,
+                    codes::common::INVALID_ARGUMENT,
+                    message,
+                ),
+                facade.disclosure,
+            )
+        };
+        let json = request
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"));
+        if !json {
+            return Err(refuse(
+                "the body must be declared `Content-Type: application/json`".to_owned(),
+            ));
+        }
+        let bytes = Bytes::from_request(request, facade)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        serde_json::from_slice(&bytes)
+            .map(Named)
+            .map_err(|error| refuse(format!("the body is not a name: {error}")))
+    }
 }
 
 /// The paging a listing was asked for: `?page=1&size=50`, pages counted from
@@ -77,7 +124,7 @@ fn answer<T: serde::Serialize>(
     }
 }
 
-async fn create_zone(State(facade): State<CatalogFacade>, Json(body): Json<NameBody>) -> Response {
+async fn create_zone(State(facade): State<CatalogFacade>, Named(body): Named) -> Response {
     let outcome = zones::create(&facade, &body.name).await;
 
     answer(&facade, StatusCode::CREATED, outcome)
@@ -98,7 +145,7 @@ async fn get_zone(State(facade): State<CatalogFacade>, Path(zone): Path<String>)
 async fn rename_zone(
     State(facade): State<CatalogFacade>,
     Path(zone): Path<String>,
-    Json(body): Json<NameBody>,
+    Named(body): Named,
 ) -> Response {
     let outcome = zones::rename(&facade, &zone, &body.name).await;
 
@@ -114,7 +161,7 @@ async fn delete_zone(State(facade): State<CatalogFacade>, Path(zone): Path<Strin
 async fn create_ledger(
     State(facade): State<CatalogFacade>,
     Path(zone): Path<String>,
-    Json(body): Json<NameBody>,
+    Named(body): Named,
 ) -> Response {
     let outcome = ledgers::create(&facade, &zone, &body.name).await;
 
@@ -147,7 +194,7 @@ async fn get_ledger(
 async fn rename_ledger(
     State(facade): State<CatalogFacade>,
     Path((zone, ledger)): Path<(String, String)>,
-    Json(body): Json<NameBody>,
+    Named(body): Named,
 ) -> Response {
     let outcome = ledgers::rename(&facade, &zone, &ledger, &body.name).await;
 
@@ -265,6 +312,62 @@ mod tests {
         assert!(body.contains(r#""code":"zone_not_empty""#), "{body}");
     }
 
+    /// A create or rename body is closed: an unknown member, a repeated one, a missing `name` and
+    /// malformed JSON are each refused as `invalid_argument` in the shared shape, and nothing is
+    /// created.
+    #[tokio::test]
+    async fn test_a_name_body_is_closed_and_refused_in_the_shared_shape() {
+        let routes = testing_routes(Disclosure::Minimal);
+        for body in [
+            r#"{"name":"delivery","extra":1}"#,
+            r#"{"name":"delivery","name":"other"}"#,
+            r#"{}"#,
+            r#"{"name":"#,
+        ] {
+            let (status, answer) = send(&routes, "POST", "/v1/zones", Some(body)).await;
+            assert_eq!(status, 400, "{body}: {answer}");
+            assert!(
+                answer.contains(r#""class":"validation""#),
+                "{body}: {answer}"
+            );
+            assert!(
+                answer.contains(r#""code":"invalid_argument""#),
+                "{body}: {answer}"
+            );
+        }
+        // A cross-site `text/plain` POST needs no preflight; a body not declared JSON is refused
+        // before it is read, and so is one that declares nothing.
+        for media in [
+            Some("text/plain"),
+            Some("application/x-www-form-urlencoded"),
+            None,
+        ] {
+            let mut request = HttpRequest::builder().method("POST").uri("/v1/zones");
+            if let Some(media) = media {
+                request = request.header("content-type", media);
+            }
+            let request = request
+                .body(Body::from(r#"{"name":"delivery"}"#))
+                .expect("a request builds");
+            let answer = routes
+                .clone()
+                .oneshot(request)
+                .await
+                .expect("the router answers");
+            assert_eq!(answer.status().as_u16(), 400, "{media:?}");
+            let bytes = axum::body::to_bytes(answer.into_body(), 1 << 20)
+                .await
+                .expect("the body reads");
+            let body = String::from_utf8_lossy(&bytes);
+            assert!(
+                body.contains(r#""code":"invalid_argument""#),
+                "{media:?}: {body}"
+            );
+        }
+        let (status, answer) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        assert_eq!(status, 404, "nothing was created: {answer}");
+    }
+
     /// With `audit.refusals` on, a denied mutation lands on the trail; internal faults never do.
     #[tokio::test]
     async fn test_refusals_reach_the_trail_only_when_asked() {
@@ -380,5 +483,49 @@ mod tests {
         assert_eq!(by_name_status, 200);
         assert_eq!(by_id_status, 200);
         assert_eq!(by_name, by_id, "two references, one zone");
+    }
+
+    /// `contracts/openapi/catalog.json`: every schema of the document, from the real types.
+    ///
+    /// `NameBody` is private to this module and only deserialises, so it is built by parsing the
+    /// JSON a client sends and checked as that same JSON; `Zone` and `Ledger` are the public
+    /// types, built through the catalog itself. The one `assert_covered` of the document lives
+    /// here because this is the only place that sees all three.
+    #[test]
+    fn test_the_catalog_wire_types_match_openapi_catalog() {
+        use permguard_conformance::schema::Document;
+        use permguard_core::{Catalog, Selector};
+
+        let doc = Document::load("catalog.json");
+
+        let sent = serde_json::json!({"name": "delivery"});
+        let body: NameBody = serde_json::from_value(sent.clone()).expect("a name body parses");
+        assert_eq!(body.name, "delivery");
+        doc.check_json("NameBody", &sent);
+        // The schema and the type refuse the same bodies: an unknown member, a missing name.
+        for refused in [
+            serde_json::json!({"name": "x", "extra": 1}),
+            serde_json::json!({}),
+        ] {
+            assert!(!doc.accepts_json("NameBody", &refused), "{refused}");
+            assert!(
+                serde_json::from_value::<NameBody>(refused.clone()).is_err(),
+                "{refused}"
+            );
+        }
+
+        let root =
+            std::env::temp_dir().join(format!("permguard-catalog-openapi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let catalog = FileCatalog::new(root);
+        let zone = catalog.create_zone("delivery").expect("a zone is created");
+        let ledger = catalog
+            .create_ledger(&Selector::parse("delivery"), "policies")
+            .expect("a ledger is created");
+
+        doc.check("Zone", &zone);
+        doc.check("Ledger", &ledger);
+
+        doc.assert_covered();
     }
 }

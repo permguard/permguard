@@ -353,7 +353,7 @@ mod tests {
             // The catalog/discovery contract's own numbers, independent of the mapping above.
             match http_code.as_str() {
                 "name_taken" => assert_eq!((http_status, grpc_code), (409, 6), "{case}"),
-                "not_empty" => assert_eq!((http_status, grpc_code), (409, 9), "{case}"),
+                "zone_not_empty" => assert_eq!((http_status, grpc_code), (409, 9), "{case}"),
                 _ => {}
             }
         }

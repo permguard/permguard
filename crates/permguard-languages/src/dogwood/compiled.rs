@@ -653,7 +653,7 @@ struct CompiledDogwood {
 }
 
 /// The refusal of a history whose lock an earlier evaluation left poisoned: a panic's aftermath.
-const POISONED: &str = "partition_poisoned";
+const POISONED: &str = permguard_core::codes::pdp_temporal::PARTITION_POISONED;
 
 /// The `E` of a history this partition could not hold.
 ///
@@ -691,11 +691,12 @@ impl CompiledDogwood {
         // Built outside the map's lock: lowering a policy set is expensive, and holding the lock
         // across it would make one cold history block every other history's decisions.
         let fresh = Arc::new(Held {
-            authorizer: Mutex::new(
-                self.inputs
-                    .rebuild()
-                    .map_err(|detail| Refused::new("partition_not_rebuildable", detail))?,
-            ),
+            authorizer: Mutex::new(self.inputs.rebuild().map_err(|detail| {
+                Refused::new(
+                    permguard_core::codes::pdp_temporal::PARTITION_NOT_REBUILDABLE,
+                    detail,
+                )
+            })?),
             observed: std::sync::atomic::AtomicU64::new(0),
         });
 
@@ -846,14 +847,16 @@ impl crate::temporal::Temporal for CompiledDogwood {
     fn rebuild(&self, history: &str, occurrences: &[Occurrence]) -> Result<(), Refused> {
         // Built before any lock is taken, so a rebuild that fails leaves this history deciding
         // against what it already had rather than against nothing.
-        let mut fresh = self
-            .inputs
-            .rebuild()
-            .map_err(|detail| Refused::new("partition_not_rebuildable", detail))?;
+        let mut fresh = self.inputs.rebuild().map_err(|detail| {
+            Refused::new(
+                permguard_core::codes::pdp_temporal::PARTITION_NOT_REBUILDABLE,
+                detail,
+            )
+        })?;
         for occurrence in occurrences {
             let event = occurrence.to_event().map_err(|malformed| {
                 Refused::new(
-                    "history_not_replayable",
+                    permguard_core::codes::pdp_temporal::HISTORY_NOT_REPLAYABLE,
                     format!(
                         "the occurrence `{}` is in this partition's history and cannot be replayed \
                          into it: {malformed}",

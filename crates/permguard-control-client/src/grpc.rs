@@ -320,7 +320,7 @@ impl GrpcAdmin {
     fn zone(answer: proto::ZoneResponse) -> Result<Zone, CatalogFailure> {
         let zone = answer.zone.ok_or_else(|| CatalogFailure {
             class: "internal".to_owned(),
-            reason: "decode_failed".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
             detail: "the answer carries no zone".to_owned(),
             usage: false,
         })?;
@@ -335,7 +335,7 @@ impl GrpcAdmin {
     fn ledger(answer: proto::LedgerResponse) -> Result<Ledger, CatalogFailure> {
         let ledger = answer.ledger.ok_or_else(|| CatalogFailure {
             class: "internal".to_owned(),
-            reason: "decode_failed".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
             detail: "the answer carries no ledger".to_owned(),
             usage: false,
         })?;

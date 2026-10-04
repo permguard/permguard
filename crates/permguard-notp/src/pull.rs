@@ -63,7 +63,7 @@ impl NegotiatePullRequest {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3])?;
         Ok(Self {
             r#ref: text(need(pairs, 1)?)?,
             at: opt_digest(pairs, 2)?,
@@ -90,7 +90,7 @@ impl NegotiatePullResponse {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2, 3, 4, 5, 6, 7])?;
         Ok(Self {
             head: digest(need(pairs, 1)?)?,
             counter: uint(need(pairs, 2)?)?,
@@ -114,7 +114,7 @@ impl FetchObjectsRequest {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2])?;
         Ok(Self {
             digests: digest_list(need(pairs, 1)?)?,
             accept_compression: opt_text(pairs, 2)?,
@@ -141,7 +141,7 @@ impl FetchObjectsResponse {
 
     pub fn decode(input: &[u8]) -> Result<Self> {
         let value = cbor::decode_canonical(input)?;
-        let pairs = as_pairs(&value)?;
+        let pairs = closed(&value, &[1, 2])?;
         Ok(Self {
             objects: bytes_list(need(pairs, 1)?)?,
             compression: opt_text(pairs, 2)?,

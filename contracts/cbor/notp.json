@@ -1,0 +1,379 @@
+{
+  "artifact": "NOTP message bodies (application/vnd.permguard.notp.v1+cbor)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#messages (today's subset); crates/permguard-notp/src/push.rs and pull.rs (each encode and decode), crates/permguard-control-plane/src/notp/http.rs (get_ref)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "ref_answer": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "head",
+          "type": "text",
+          "occurs": "required",
+          "note": "the head commit digest",
+          "grpc_field": "head"
+        },
+        {
+          "label": 2,
+          "name": "counter",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "counter"
+        },
+        {
+          "label": 3,
+          "name": "statement",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "the COSE_Sign1 of head-statement.json",
+          "grpc_field": "statement"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.GetRefResponse"
+    },
+    "negotiate_push_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ref",
+          "type": "text",
+          "occurs": "required",
+          "grpc_field": "ref"
+        },
+        {
+          "label": 2,
+          "name": "new_head",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "new_head"
+        },
+        {
+          "label": 3,
+          "name": "expected_old",
+          "type": "digest",
+          "occurs": "optional",
+          "note": "absent when the push creates the ref",
+          "grpc_field": "expected_old"
+        },
+        {
+          "label": 4,
+          "name": "closure",
+          "type": "array<map:closure_entry>",
+          "occurs": "required",
+          "grpc_field": "closure"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.NegotiatePushRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path, not in the CBOR body"
+    },
+    "closure_entry": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "digest",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "digest"
+        },
+        {
+          "label": 2,
+          "name": "size",
+          "type": "uint",
+          "occurs": "required",
+          "note": "claimed; upload re-checks it",
+          "grpc_field": "size"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.ObjectClaim"
+    },
+    "negotiate_push_response": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "missing",
+          "type": "array<digest>",
+          "occurs": "required",
+          "grpc_field": "missing"
+        },
+        {
+          "label": 2,
+          "name": "max_batch_bytes",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "max_batch_bytes"
+        },
+        {
+          "label": 3,
+          "name": "max_batch_objects",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "max_batch_objects"
+        },
+        {
+          "label": 4,
+          "name": "compression",
+          "type": "text",
+          "occurs": "optional",
+          "note": "absent means uncompressed batches",
+          "grpc_field": "compression"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.NegotiatePushResponse"
+    },
+    "upload_objects_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "objects",
+          "type": "array<bytes>",
+          "occurs": "required",
+          "grpc_field": "objects"
+        },
+        {
+          "label": 2,
+          "name": "compression",
+          "type": "text",
+          "occurs": "optional",
+          "grpc_field": "compression"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.UploadObjectsRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path, not in the CBOR body"
+    },
+    "upload_objects_response": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "received",
+          "type": "array<digest>",
+          "occurs": "required",
+          "grpc_field": "received"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.UploadObjectsResponse"
+    },
+    "commit_push_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ref",
+          "type": "text",
+          "occurs": "required",
+          "grpc_field": "ref"
+        },
+        {
+          "label": 2,
+          "name": "new_head",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "new_head"
+        },
+        {
+          "label": 3,
+          "name": "expected_old",
+          "type": "digest",
+          "occurs": "optional",
+          "note": "absent when the push creates the ref",
+          "grpc_field": "expected_old"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.CommitPushRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path, not in the CBOR body"
+    },
+    "commit_push_response": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "head",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "head"
+        },
+        {
+          "label": 2,
+          "name": "counter",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "counter"
+        },
+        {
+          "label": 3,
+          "name": "statement",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "the COSE_Sign1 of head-statement.json",
+          "grpc_field": "statement"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.CommitPushResponse"
+    },
+    "negotiate_pull_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "ref",
+          "type": "text",
+          "occurs": "required",
+          "grpc_field": "ref"
+        },
+        {
+          "label": 2,
+          "name": "at",
+          "type": "digest",
+          "occurs": "optional",
+          "note": "pins the pull to a commit reachable from the ref",
+          "grpc_field": "at"
+        },
+        {
+          "label": 3,
+          "name": "have",
+          "type": "array<digest>",
+          "occurs": "required",
+          "grpc_field": "have"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.NegotiatePullRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path, not in the CBOR body"
+    },
+    "negotiate_pull_response": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "head",
+          "type": "digest",
+          "occurs": "required",
+          "grpc_field": "head"
+        },
+        {
+          "label": 2,
+          "name": "counter",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "counter"
+        },
+        {
+          "label": 3,
+          "name": "statement",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "the COSE_Sign1 of head-statement.json",
+          "grpc_field": "statement"
+        },
+        {
+          "label": 4,
+          "name": "missing",
+          "type": "array<digest>",
+          "occurs": "required",
+          "grpc_field": "missing"
+        },
+        {
+          "label": 5,
+          "name": "max_batch_bytes",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "max_batch_bytes"
+        },
+        {
+          "label": 6,
+          "name": "max_batch_objects",
+          "type": "uint",
+          "occurs": "required",
+          "grpc_field": "max_batch_objects"
+        },
+        {
+          "label": 7,
+          "name": "compression",
+          "type": "text",
+          "occurs": "optional",
+          "grpc_field": "compression"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.NegotiatePullResponse"
+    },
+    "fetch_objects_request": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "digests",
+          "type": "array<digest>",
+          "occurs": "required",
+          "grpc_field": "digests"
+        },
+        {
+          "label": 2,
+          "name": "accept_compression",
+          "type": "text",
+          "occurs": "optional",
+          "grpc_field": "accept_compression"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.FetchObjectsRequest",
+      "grpc_only": [
+        "zone",
+        "ledger"
+      ],
+      "grpc_note": "`zone` and `ledger` travel in the REST path, not in the CBOR body"
+    },
+    "fetch_objects_response": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "objects",
+          "type": "array<bytes>",
+          "occurs": "required",
+          "grpc_field": "objects"
+        },
+        {
+          "label": 2,
+          "name": "compression",
+          "type": "text",
+          "occurs": "optional",
+          "grpc_field": "compression"
+        }
+      ],
+      "grpc_message": "permguard.control.v1.FetchObjectsResponse"
+    }
+  },
+  "arrays": {},
+  "root": [
+    "ref_answer",
+    "negotiate_push_request",
+    "negotiate_push_response",
+    "upload_objects_request",
+    "upload_objects_response",
+    "commit_push_request",
+    "commit_push_response",
+    "negotiate_pull_request",
+    "negotiate_pull_response",
+    "fetch_objects_request",
+    "fetch_objects_response"
+  ]
+}

@@ -24,6 +24,8 @@ permguard-transport.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The OpenAPI check of `/version`, against the checked-in `contracts/openapi/health.json`.
+permguard-conformance.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "sync"] }
 permguard-std = { workspace = true, default-features = false, features = ["audit", "metrics", "storage"] }
 # `oneshot` drives the router directly, so the route tests need no socket at all.

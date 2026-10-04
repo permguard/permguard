@@ -86,7 +86,7 @@ fn call<T: for<'de> Deserialize<'de>>(
     if (200..300).contains(&response.status) {
         return serde_json::from_str(&response.body).map_err(|error| Failure {
             class: "internal".to_owned(),
-            reason: "decode_failed".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
             detail: format!("the answer to {method} {path} was unreadable: {error}"),
             usage: false,
         });
@@ -107,7 +107,7 @@ fn call<T: for<'de> Deserialize<'de>>(
         }),
         Err(_) => Err(Failure {
             class: "internal".to_owned(),
-            reason: format!("http_{}", response.status),
+            reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
             detail: format!("{method} {path} answered {}", response.status),
             usage: false,
         }),
@@ -123,7 +123,7 @@ fn name_body(name: &str) -> Result<String, Failure> {
 
     serde_json::to_string(&Body { name }).map_err(|error| Failure {
         class: "internal".to_owned(),
-        reason: "encode_failed".to_owned(),
+        reason: permguard_core::codes::client::ENCODE_FAILED.to_owned(),
         detail: error.to_string(),
         usage: false,
     })

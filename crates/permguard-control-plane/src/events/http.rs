@@ -232,7 +232,7 @@ impl EventFacade {
         let Scope::Tenant { zone, ledger } = scope else {
             return Err(ApiError::new(
                 ErrorClass::Internal,
-                "scope_mismatch",
+                permguard_core::codes::stream::SCOPE_MISMATCH,
                 "a tenant scope resolved to something else",
             ));
         };
@@ -280,7 +280,7 @@ impl EventFacade {
             if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
                 return Err(ApiError::new(
                     ErrorClass::Validation,
-                    "signer_range_too_wide",
+                    permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
                     format!(
                         "this range crosses more than {} signing-key spans; narrow `from_seq` and \
                          `until_seq`",
@@ -488,7 +488,7 @@ async fn signers(
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    "bound_malformed",
+                    permguard_core::codes::stream::BOUND_MALFORMED,
                     format!("`{name}` is a sequence number"),
                 ),
             );
@@ -510,7 +510,7 @@ async fn signers(
                         &facade,
                         ApiError::new(
                             ErrorClass::Validation,
-                            "cursor_malformed",
+                            permguard_core::codes::stream::CURSOR_MALFORMED,
                             error.to_string(),
                         ),
                     );
@@ -522,7 +522,7 @@ async fn signers(
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    "cursor_malformed",
+                    permguard_core::codes::stream::CURSOR_MALFORMED,
                     "a stream cursor names all of `after_class`, `after_producer` and \
                      `after_instance`, or none of them",
                 ),
@@ -892,4 +892,281 @@ fn read_refusal(facade: &EventFacade, error: read::ReadError) -> Response {
 
 fn refuse(facade: &EventFacade, error: ApiError) -> Response {
     wire::http_error(&error, facade.disclosure)
+}
+
+#[cfg(test)]
+mod openapi {
+    //! `contracts/openapi/evidence-events-v1alpha1.json`, checked against the types that put its
+    //! bodies on the wire.
+    //!
+    //! Here rather than beside the public event types because the signer views, the signers
+    //! document and the configuration document are private to this plane, and the document's one
+    //! `assert_covered` has to run in a process that has seen all of its schemas.
+
+    #![allow(clippy::expect_used)]
+
+    use std::time::Duration;
+
+    use permguard_conformance::schema::Document;
+    use permguard_core::KeyManager;
+    use permguard_events::envelope::{Batch, Envelope, Signed};
+    use permguard_events::record::{
+        GENESIS, HistoryKey, PRODUCER_CLASS_DATA_PLANE, Producer, RECORD_TYPE, Record, Stream,
+        VERSION, digest_of, occurrence_digest_of,
+    };
+    use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
+    use serde_json::{Value, json};
+
+    use super::*;
+
+    fn ring() -> DirectoryKeyManager {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-events-openapi-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let keys = DirectoryKeyManager::new(
+            root,
+            KeyPolicy {
+                publish_ahead: Duration::from_secs(0),
+                rotate_every: Duration::from_secs(3600),
+                retain: Duration::from_secs(3600),
+                verify_retain: Duration::from_secs(7200),
+            },
+        );
+        keys.maintain().expect("the ring produces a key");
+
+        keys
+    }
+
+    fn stream() -> Stream {
+        Stream::new(
+            Producer::data_plane("plane-a", "inst-1"),
+            "acme",
+            "agent-governance",
+        )
+    }
+
+    /// Two records: one with a history key, one with global history.
+    fn records() -> Vec<Value> {
+        let mut prev = GENESIS.to_owned();
+        let mut built = Vec::new();
+        for seq in 1..=2_u64 {
+            let event = json!({
+                "event_id": format!("evt-{seq}"),
+                "kind": "request",
+                "action": "Drupe::Action::Login",
+                "occurred_at": "2026-08-28T10:15:30Z",
+            });
+            let record = Record {
+                v: VERSION,
+                record_type: RECORD_TYPE.to_owned(),
+                stream: stream(),
+                seq,
+                prev: prev.clone(),
+                event_type: permguard_languages::event::EVENT_TYPE.to_owned(),
+                event_id: format!("evt-{seq}"),
+                occurrence_digest: occurrence_digest_of(&event).expect("the occurrence digests"),
+                kind: "request".to_owned(),
+                profile: "temporal".to_owned(),
+                policy_partitions: vec!["governance".to_owned()],
+                commit: "sha256:commit".to_owned(),
+                history_key: (seq == 1).then(|| HistoryKey {
+                    pins: vec!["user".to_owned()],
+                    values: vec!["alice".to_owned()],
+                    digest: "sha256:hk".to_owned(),
+                }),
+                occurred_at: "2026-08-28T10:15:30Z".to_owned(),
+                observed_at: "2026-08-28T10:15:31Z".to_owned(),
+                event,
+            };
+            let value = record.to_value().expect("a record renders");
+            prev = digest_of(&value).expect("it digests");
+            built.push(value);
+        }
+
+        built
+    }
+
+    #[test]
+    fn test_the_event_wire_types_match_openapi_evidence_events() {
+        let doc = Document::load("evidence-events-v1alpha1.json");
+        let values = records();
+        for value in &values {
+            doc.check_json("Record", value);
+        }
+        // The producer and stream identities, as a typed value serialises them.
+        doc.check("Stream", &stream());
+        doc.check("Producer", &stream().producer);
+        assert_eq!(stream().producer.class, PRODUCER_CLASS_DATA_PLANE);
+
+        let leaves: Vec<String> = values
+            .iter()
+            .map(|value| digest_of(value).expect("it digests"))
+            .collect();
+        let envelope = Envelope {
+            stream: stream(),
+            first_seq: 1,
+            last_seq: 2,
+            count: 2,
+            previous_head: GENESIS.to_owned(),
+            head: leaves[1].clone(),
+            merkle_root: permguard_stream::merkle::root(&leaves).expect("a root"),
+            event_types: vec![permguard_languages::event::EVENT_TYPE.to_owned()],
+            record_version: 1,
+            at: "2026-08-28T10:15:32Z".to_owned(),
+        };
+        let keys = ring();
+        let signed = Signed::create(&envelope, &keys).expect("it signs");
+        doc.check("Envelope", &envelope);
+        doc.check("Signed", &signed);
+        doc.check(
+            "Protected",
+            &signed.protected().expect("the header decodes"),
+        );
+        doc.check("Envelope", &signed.envelope().expect("the payload decodes"));
+
+        let batch = Batch {
+            signature: signed.clone(),
+            records: values.clone(),
+        };
+        doc.check("Batch", &batch);
+        let sent = serde_json::to_value(&batch).expect("a batch serialises");
+        assert!(Batch::decode(sent.to_string().as_bytes()).is_ok());
+
+        // Closed envelopes refuse a member the contract does not name.
+        let mut extra = sent.clone();
+        extra["unexpected"] = json!(1);
+        assert!(!doc.accepts_json("Batch", &extra));
+        let mut extra_header = sent.clone();
+        extra_header["signature"]["kid"] = json!("k");
+        assert!(!doc.accepts_json("Batch", &extra_header));
+        let mut empty = sent.clone();
+        empty["records"] = json!([]);
+        assert!(!doc.accepts_json("Batch", &empty));
+        assert!(!doc.accepts_json(
+            "Protected",
+            &json!({"alg": "EdDSA", "typ": "permguard.decision.batch.v1", "kid": "k"})
+        ));
+        let mut extra_stream = serde_json::to_value(stream()).expect("a stream serialises");
+        extra_stream["host"] = json!("h");
+        assert!(!doc.accepts_json("Stream", &extra_stream));
+        let mut nameless = values[1].clone();
+        nameless
+            .as_object_mut()
+            .expect("an object")
+            .remove("event_id");
+        assert!(!doc.accepts_json("Record", &nameless));
+        // Records are open: a newer producer's member is kept, not refused.
+        let mut newer = values[1].clone();
+        newer["added_later"] = json!(true);
+        assert!(doc.accepts_json("Record", &newer));
+
+        // The 200 and 409 answers are built inline in `batches`; these are the same objects.
+        doc.check_json("Acknowledgement", &json!({"acked": 2, "stored": 2}));
+        let expected_seq = 3_u64;
+        doc.check_json(
+            "OutOfOrder",
+            &json!({
+                "class": "conflict",
+                "code": permguard_core::codes::stream::OUT_OF_ORDER,
+                "message": format!(
+                    "this store holds through {} and this batch begins later: resend from {expected_seq}",
+                    expected_seq.saturating_sub(1)
+                ),
+                "expected_seq": expected_seq,
+            }),
+        );
+        assert!(!doc.accepts_json(
+            "OutOfOrder",
+            &json!({"class": "conflict", "code": "out_of_order", "message": "m"})
+        ));
+
+        // A page with proof, and one without.
+        let path = permguard_stream::merkle::path(&leaves, 0).expect("a path");
+        let page = permguard_stream::Block {
+            records: values.clone(),
+            next: "AAAA".to_owned(),
+            oldest_available: "BBBB".to_owned(),
+            high_watermark: "CCCC".to_owned(),
+            more: false,
+            proof: vec![serde_json::to_value(&signed).expect("a signature serialises")],
+            inclusion: vec![json!({
+                "seq": 1,
+                "leaf": leaves[0],
+                "root": envelope.merkle_root,
+                "path": path,
+            })],
+            coverage: permguard_stream::Coverage {
+                contiguous: true,
+                examined: 2,
+                scan_bounded: false,
+            },
+        };
+        doc.check("EventBlock", &page);
+        let bare = permguard_stream::Block {
+            proof: Vec::new(),
+            inclusion: Vec::new(),
+            ..page.clone()
+        };
+        doc.check("EventBlock", &bare);
+
+        // The signers answer: a truncated page with its cursor, and a complete one without.
+        let jwk = keys.public_keys().expect("the ring publishes").remove(0);
+        let view = StreamSignersView {
+            producer_class: PRODUCER_CLASS_DATA_PLANE.to_owned(),
+            producer: "plane-a".to_owned(),
+            instance: "inst-1".to_owned(),
+            acked: 2,
+            spans: vec![permguard_stream::SignerSpan {
+                from: 1,
+                kid: jwk.kid.clone(),
+                jwk: serde_json::to_value(&jwk).expect("a key serialises"),
+            }],
+        };
+        doc.check("StreamSignersView", &view);
+        doc.check(
+            "SignersDocument",
+            &SignersDocument {
+                streams: vec![view.clone()],
+                truncated: true,
+                next: Some(StreamCursor {
+                    producer_class: view.producer_class.clone(),
+                    producer: view.producer.clone(),
+                    instance: view.instance.clone(),
+                }),
+            },
+        );
+        doc.check(
+            "SignersDocument",
+            &SignersDocument {
+                streams: vec![view],
+                truncated: false,
+                next: None,
+            },
+        );
+
+        // The discovery document, built by the function the route serves.
+        let configuration = super::super::configuration::document(
+            "http://plane.example",
+            "plane.example",
+            &[permguard_languages::event::EVENT_TYPE],
+        );
+        doc.check("Document", &configuration);
+        let mut unlimited = serde_json::to_value(&configuration).expect("it serialises");
+        unlimited
+            .as_object_mut()
+            .expect("an object")
+            .remove("limits");
+        assert!(!doc.accepts_json("Document", &unlimited));
+        doc.check("Limits", &configuration.limits);
+        doc.check("Endpoints", &configuration.endpoints);
+        doc.check("Offsets", &configuration.offsets);
+
+        doc.assert_covered();
+    }
 }

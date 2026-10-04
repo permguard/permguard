@@ -106,7 +106,7 @@ impl HttpPdp {
             })?;
         let parsed: Value = serde_json::from_str(&response.body).map_err(|error| Failure {
             class: "internal".to_owned(),
-            reason: "decode_failed".to_owned(),
+            reason: permguard_core::codes::client::DECODE_FAILED.to_owned(),
             detail: format!("the answer to {method} {path} was unreadable: {error}"),
             usage: false,
         })?;
@@ -167,11 +167,14 @@ fn refusal(parsed: &Value, status: u16) -> Failure {
             class => class.to_owned(),
         },
         reason: match field("code").as_str() {
-            "" => format!("http_{status}"),
+            "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
             code => code.to_owned(),
         },
         detail: if message.is_empty() {
             format!("the endpoint refused the request with status {status}")
+        } else if field("code").is_empty() {
+            // No Permguard refusal: the status is the only fact, and `http_status` promises it.
+            format!("status {status}: {message}")
         } else {
             message
         },
@@ -204,4 +207,31 @@ pub fn payload(
         "resource": {"type": resource.0, "id": resource.1},
         "context": Value::Object(context),
     })
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    /// An answer that is no Permguard refusal, a proxy page or a bare `{message}`, is the one
+    /// code `http_status`, and its message always carries the status.
+    #[test]
+    fn an_answer_without_a_permguard_code_is_http_status_with_the_status() {
+        for (body, status) in [
+            (Value::Null, 502),
+            (serde_json::json!({ "message": "Bad gateway" }), 502),
+        ] {
+            let failure = refusal(&body, status);
+            assert_eq!(failure.reason, permguard_core::codes::client::HTTP_STATUS);
+            assert!(failure.detail.contains("502"), "{}", failure.detail);
+        }
+        let named = refusal(
+            &serde_json::json!({ "class": "validation", "code": "zone_required", "message": "m" }),
+            400,
+        );
+        assert_eq!(
+            (named.reason.as_str(), named.detail.as_str()),
+            ("zone_required", "m")
+        );
+    }
 }

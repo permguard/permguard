@@ -3,6 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The generated `permguard.data.v1` client stubs — a caller's half of the
-//! data plane's decision contract, compiled from the one `proto/` root.
+//! data plane's decision contract, compiled from the one `contracts/proto/` root.
 
 tonic::include_proto!("permguard.data.v1");

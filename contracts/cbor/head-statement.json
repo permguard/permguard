@@ -1,0 +1,38 @@
+{
+  "artifact": "Signed head statement (today's form)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement (the Today column of the head row); crates/permguard-objects/src/statement.rs (KEY_ZONE to KEY_SIGNED_AT, COSE_HEADER_ALG, COSE_HEADER_KID, COSE_ALG_EDDSA)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "protected_header": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "alg", "type": "const:-8", "occurs": "required", "note": "COSE EdDSA, pinned" },
+        { "label": 4, "name": "kid", "type": "bytes", "occurs": "required", "note": "the UTF-8 bytes of the signing key's id" }
+      ]
+    },
+    "unprotected_header": {
+      "keys": "int",
+      "fields": []
+    },
+    "head_statement": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "zone", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "ledger", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "ref", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "digest", "type": "digest", "occurs": "required", "note": "the head commit" },
+        { "label": 5, "name": "counter", "type": "uint", "occurs": "required" },
+        { "label": 6, "name": "signed_at", "type": "int", "occurs": "required", "note": "Unix seconds" }
+      ]
+    }
+  },
+  "arrays": {
+    "cose_sign1": [
+      { "position": 0, "name": "protected", "type": "cbor:map:protected_header" },
+      { "position": 1, "name": "unprotected", "type": "map:unprotected_header", "note": "always empty" },
+      { "position": 2, "name": "payload", "type": "cbor:map:head_statement", "note": "embedded, never detached" },
+      { "position": 3, "name": "signature", "type": "bytes", "note": "Ed25519 over the RFC 9052 Sig_structure [\"Signature1\", protected, h'', payload]" }
+    ]
+  },
+  "root": "cose_sign1"
+}

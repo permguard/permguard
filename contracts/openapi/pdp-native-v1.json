@@ -1,0 +1,771 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard native PDP v1",
+    "version": "1",
+    "description": "The stateless decision interface `permguard.api.pdp.native.v1`."
+  },
+  "paths": {
+    "/access/v1/evaluation": {
+      "post": {
+        "operationId": "pdpNativeEvaluation",
+        "summary": "Decide one request.",
+        "parameters": [
+          {
+            "name": "x-request-id",
+            "in": "header",
+            "required": false,
+            "description": "A correlation identifier, bounded by the rule every surface applies; echoed in the response and kept in the decision record.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "a header: gRPC carries it as request metadata `x-request-id`, read by the same handler, not as a field of the input message"
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "description": "W3C trace context, parsed strictly and dropped when malformed.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "a header: gRPC carries it as request metadata `traceparent`, read by the same handler, not as a field of the input message"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision or the receipt.",
+            "headers": {
+              "x-request-id": {
+                "description": "The caller's correlation identifier, echoed when admitted.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The payload is malformed, names an unknown member or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or profile is not served here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The plane failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/Evaluate"
+      }
+    },
+    "/access/v1/evaluations": {
+      "post": {
+        "operationId": "pdpNativeEvaluations",
+        "summary": "Decide a request, boxcarring evaluations[].",
+        "parameters": [
+          {
+            "name": "x-request-id",
+            "in": "header",
+            "required": false,
+            "description": "A correlation identifier, bounded by the rule every surface applies; echoed in the response and kept in the decision record.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "a header: gRPC carries it as request metadata `x-request-id`, read by the same handler, not as a field of the input message"
+          },
+          {
+            "name": "traceparent",
+            "in": "header",
+            "required": false,
+            "description": "W3C trace context, parsed strictly and dropped when malformed.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "a header: gRPC carries it as request metadata `traceparent`, read by the same handler, not as a field of the input message"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision or the receipt.",
+            "headers": {
+              "x-request-id": {
+                "description": "The caller's correlation identifier, echoed when admitted.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The payload is malformed, names an unknown member or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or profile is not served here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The plane failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/EvaluateMany"
+      }
+    },
+    "/.well-known/permguard-pdp-v1-configuration": {
+      "get": {
+        "operationId": "pdpNativeConfiguration",
+        "summary": "What the native interface offers here.",
+        "responses": {
+          "200": {
+            "description": "The configuration document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Configuration"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.PolicyDecisionPoint/GetConfiguration"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CheckRequest": {
+        "type": "object",
+        "description": "A decision request. Closed to members it does not declare.",
+        "properties": {
+          "zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The zone, by name or identity. Required by the plane, tolerated absent by the schema so that the refusal is the plane's, by name.",
+            "x-grpc-field": "zone"
+          },
+          "ledger": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ledger, by name or identity. Required by the plane.",
+            "x-grpc-field": "ledger"
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Which profile to evaluate; `default` when absent.",
+            "x-grpc-field": "profile"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "subject"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "resource"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "action"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open container: policy data.",
+            "x-grpc-field": "context"
+          },
+          "principal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "principal"
+          },
+          "partition_inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PartitionInputBody"
+            },
+            "description": "What each partition is given, by the partition's own name.",
+            "x-grpc-field": "partition_inputs"
+          },
+          "entities": {
+            "description": "The removed `entities` extension, declared only so it is refused by name.",
+            "x-grpc-field": null,
+            "x-grpc-note": "The removed `entities` extension: declared in JSON only so it is refused by name; the proto reserves tag 9 and the name instead."
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvaluationBody"
+            },
+            "description": "Boxcarred evaluations, each overriding the defaults.",
+            "x-grpc-field": "evaluations"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptionsBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": null,
+            "x-grpc-note": "REST nests the batch semantic in an `options` object; gRPC carries it as the top-level enum field `evaluations_semantic` (see x-grpc-only). translate.rs maps options.evaluations_semantic to and from that field."
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "request_id"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EvaluateRequest",
+        "x-grpc-only": [
+          "evaluations_semantic"
+        ],
+        "x-grpc-note": "`evaluations_semantic` is the gRPC counterpart of REST `options.evaluations_semantic`: same value, different nesting. gRPC UNSPECIFIED corresponds to an absent `options`/semantic; an undefined enum number is refused by the gRPC handler."
+      },
+      "EvaluationBody": {
+        "type": "object",
+        "description": "One entry of `evaluations[]`; whatever it declares overrides the defaults.",
+        "properties": {
+          "subject": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "subject"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "resource"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "action"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open container: policy data.",
+            "x-grpc-field": "context"
+          },
+          "partition_inputs": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/PartitionInputBody"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "partition_inputs"
+          },
+          "entities": {
+            "description": "Accepted only to be refused.",
+            "x-grpc-field": null,
+            "x-grpc-note": "Accepted only to be refused; the proto reserves tag 5 and the name `entities`."
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "request_id"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Evaluation",
+        "x-grpc-note": "REST `partition_inputs` is a plain object (absent vs `{}` distinguished by JSON); gRPC wraps it in the PartitionInputs message for explicit presence. Same value, different shape."
+      },
+      "OptionsBody": {
+        "type": "object",
+        "description": "The `options` object.",
+        "properties": {
+          "evaluations_semantic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Semantic"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only wrapper object; its single member `evaluations_semantic` is carried as the top-level field `evaluations_semantic` of permguard.data.v1.EvaluateRequest."
+      },
+      "Semantic": {
+        "type": "string",
+        "enum": [
+          "execute_all",
+          "deny_on_first_deny",
+          "permit_on_first_permit"
+        ],
+        "description": "How a boxcarred batch resolves.",
+        "x-grpc-message": null,
+        "x-grpc-note": "Maps to the enum permguard.data.v1.EvaluationsSemantic (not a message): execute_all, deny_on_first_deny, permit_on_first_permit; the enum additionally has EVALUATIONS_SEMANTIC_UNSPECIFIED, which REST expresses by omitting the member."
+      },
+      "EntityBody": {
+        "type": "object",
+        "description": "One entity.",
+        "properties": {
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "type"
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "id"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open container: attributes.",
+            "x-grpc-field": "properties"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Entity"
+      },
+      "ActionBody": {
+        "type": "object",
+        "description": "The action.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "name"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open container: attributes.",
+            "x-grpc-field": "properties"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Action"
+      },
+      "PartitionInputBody": {
+        "type": "object",
+        "description": "One partition input.",
+        "properties": {
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The input type, asserted and checked, never obeyed.",
+            "x-grpc-field": "type"
+          },
+          "data": {
+            "description": "Open container: the partition's input data.",
+            "x-grpc-field": "data"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.PartitionInput"
+      },
+      "CheckResponse": {
+        "type": "object",
+        "description": "The answer to a request.",
+        "properties": {
+          "decision": {
+            "type": "boolean",
+            "x-grpc-field": "decision"
+          },
+          "request_id": {
+            "type": "string",
+            "x-grpc-field": "request_id"
+          },
+          "context": {
+            "$ref": "#/components/schemas/DecisionContext",
+            "x-grpc-field": "context"
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
+            },
+            "description": "Present exactly when the request carried `evaluations[]`, in the same order.",
+            "x-grpc-field": "evaluations"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EvaluateResponse"
+      },
+      "Decision": {
+        "type": "object",
+        "description": "One decision.",
+        "properties": {
+          "decision": {
+            "type": "boolean",
+            "x-grpc-field": "decision"
+          },
+          "request_id": {
+            "type": "string",
+            "x-grpc-field": "request_id"
+          },
+          "context": {
+            "$ref": "#/components/schemas/DecisionContext",
+            "x-grpc-field": "context"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Decision"
+      },
+      "DecisionContext": {
+        "type": "object",
+        "description": "What a decision carries beside the boolean.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "x-grpc-field": "id"
+          },
+          "reason_admin": {
+            "$ref": "#/components/schemas/Reason",
+            "x-grpc-field": "reason_admin"
+          },
+          "reason_user": {
+            "$ref": "#/components/schemas/Reason",
+            "x-grpc-field": "reason_user"
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "policies"
+          },
+          "absent_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "absent_inputs"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.DecisionContext"
+      },
+      "Reason": {
+        "type": "object",
+        "description": "One reason: a stable code and a sentence.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "x-grpc-field": "code"
+          },
+          "message": {
+            "type": "string",
+            "x-grpc-field": "message"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Reason"
+      },
+      "Configuration": {
+        "type": "object",
+        "description": "What this plane publishes about `permguard.api.pdp.native.v1`.",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "x-grpc-field": "interface"
+          },
+          "pdp": {
+            "type": "string",
+            "x-grpc-field": "pdp"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/Endpoints",
+            "x-grpc-field": "endpoints"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "capabilities"
+          },
+          "store_scope": {
+            "$ref": "#/components/schemas/StoreScope",
+            "x-grpc-field": "store_scope"
+          }
+        },
+        "required": [
+          "interface",
+          "pdp",
+          "endpoints",
+          "capabilities",
+          "store_scope"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.GetConfigurationResponse"
+      },
+      "Endpoints": {
+        "type": "object",
+        "properties": {
+          "evaluation": {
+            "type": "string",
+            "x-grpc-field": "evaluation"
+          },
+          "evaluations": {
+            "type": "string",
+            "x-grpc-field": "evaluations"
+          }
+        },
+        "required": [
+          "evaluation",
+          "evaluations"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Endpoints"
+      },
+      "StoreScope": {
+        "type": "object",
+        "description": "Which fields name the policy store.",
+        "properties": {
+          "in": {
+            "type": "string",
+            "const": "payload",
+            "x-grpc-field": "in"
+          },
+          "zone": {
+            "type": "string",
+            "const": "required",
+            "x-grpc-field": "zone"
+          },
+          "ledger": {
+            "type": "string",
+            "const": "required",
+            "x-grpc-field": "ledger"
+          },
+          "profile": {
+            "type": "string",
+            "const": "optional",
+            "x-grpc-field": "profile"
+          }
+        },
+        "required": [
+          "in",
+          "zone",
+          "ledger",
+          "profile"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.StoreScope"
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.data.v1.PartitionInputs",
+      "note": "wraps the input map in `inputs` so that an absent map and an empty one differ on gRPC; REST distinguishes them by the member being absent",
+      "fields": [
+        "inputs"
+      ]
+    }
+  ]
+}

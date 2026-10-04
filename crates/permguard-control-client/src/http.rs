@@ -86,7 +86,7 @@ impl Error {
             }
             Self::Resolve { .. } => permguard_core::codes::client::RESOLVE_FAILED,
             Self::Refused { .. } => permguard_core::codes::client::CONNECTION_REFUSED,
-            Self::Timeout { .. } => "timeout",
+            Self::Timeout { .. } => permguard_core::codes::client::TIMEOUT,
             Self::Connect { .. } => permguard_core::codes::client::CONNECT_FAILED,
             Self::Transport { .. } => permguard_core::codes::client::TRANSPORT_FAILED,
             Self::PlaintextToTls { .. } => permguard_core::codes::client::TLS_EXPECTED,

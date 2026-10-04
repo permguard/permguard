@@ -195,7 +195,7 @@ impl EventLog for EventFacade {
                     status_of(
                         &ApiError::new(
                             ErrorClass::Validation,
-                            "cursor_malformed",
+                            permguard_core::codes::stream::CURSOR_MALFORMED,
                             error.to_string(),
                         ),
                         self.disclosure,

@@ -9,7 +9,7 @@ pub mod decisions;
 pub mod mirrors;
 mod service;
 pub mod temporal;
-/// The generated `permguard.data.v1` server stubs, compiled from the one `proto/` root.
+/// The generated `permguard.data.v1` server stubs, compiled from the one `contracts/proto/` root.
 ///
 /// Public because they *are* the contract this plane serves: a test that drives the PDP over a
 /// real socket needs the same service definition the server mounts, and a hand-written stand-in

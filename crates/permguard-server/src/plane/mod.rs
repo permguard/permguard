@@ -754,7 +754,10 @@ async fn unmatched(headers: HeaderMap) -> Response {
     (
         StatusCode::NOT_FOUND,
         [(header::CONTENT_TYPE, "application/json")],
-        r#"{"class":"not_found","code":"route_unknown","message":"this plane serves no such path"}"#,
+        format!(
+            r#"{{"class":"not_found","code":"{}","message":"this plane serves no such path"}}"#,
+            permguard_core::codes::common::ROUTE_UNKNOWN
+        ),
     )
         .into_response()
 }

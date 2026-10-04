@@ -1,0 +1,332 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard discovery",
+    "version": "1",
+    "description": "The well-known documents of the three-layer discovery chain and the stream listing."
+  },
+  "paths": {
+    "/.well-known/server-configuration": {
+      "get": {
+        "operationId": "getServerConfiguration",
+        "summary": "A plane's, or the process's, configuration document",
+        "description": "Served on the control plane, on the data plane and on the telemetry listener, each with its own schema: ControlPlaneConfiguration, DataPlaneConfiguration and ServerConfiguration.",
+        "responses": {
+          "200": {
+            "description": "The document of the listener asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ControlPlaneConfiguration"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DataPlaneConfiguration"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ServerConfiguration"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetServerConfiguration",
+        "x-grpc-note": "gRPC returns the document as a JSON string (`GetServerConfigurationResponse.document_json`), control plane only; the data plane and the telemetry listener have no gRPC counterpart."
+      }
+    },
+    "/v1/streams": {
+      "get": {
+        "operationId": "listStreams",
+        "summary": "The evidence streams a plane declares, enabled or not",
+        "responses": {
+          "200": {
+            "description": "Every declared stream; a disabled stream is listed with `enabled: false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamsDocument"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "No gRPC method lists the declared streams; REST-only."
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InterfaceLink": {
+        "type": "object",
+        "properties": {
+          "configuration": {
+            "type": "string",
+            "description": "The address of that interface's own configuration document."
+          }
+        },
+        "required": [
+          "configuration"
+        ],
+        "additionalProperties": false,
+        "description": "Where one interface publishes what it offers.",
+        "x-grpc-message": null,
+        "x-grpc-note": "Sub-object of the discovery documents, which gRPC carries as JSON text (`GetServerConfigurationResponse.document_json`)."
+      },
+      "ControlPlaneConfiguration": {
+        "type": "object",
+        "properties": {
+          "plane": {
+            "type": "string",
+            "const": "control-plane"
+          },
+          "transports": {
+            "type": "object",
+            "properties": {
+              "http": {
+                "type": "boolean"
+              },
+              "grpc": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "http",
+              "grpc"
+            ],
+            "additionalProperties": false,
+            "description": "Which transports this plane serves."
+          },
+          "jwks_uri": {
+            "type": "string",
+            "description": "Where this plane's signing keys are published."
+          },
+          "notp": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "type": "string",
+                "description": "The NOTP media type."
+              },
+              "compression": {
+                "type": "string",
+                "description": "`deflate` or `none`."
+              },
+              "ref_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template, `{zone}`, `{ledger}`, `{ref}`."
+              },
+              "push_negotiation_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template."
+              },
+              "push_commit_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template."
+              },
+              "pull_negotiation_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template."
+              },
+              "object_upload_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template."
+              },
+              "object_fetch_endpoint": {
+                "type": "string",
+                "description": "RFC 6570 template."
+              }
+            },
+            "required": [
+              "media_type",
+              "compression",
+              "ref_endpoint",
+              "push_negotiation_endpoint",
+              "push_commit_endpoint",
+              "pull_negotiation_endpoint",
+              "object_upload_endpoint",
+              "object_fetch_endpoint"
+            ],
+            "additionalProperties": false,
+            "description": "The ledger exchange endpoints."
+          },
+          "zones_endpoint": {
+            "type": "string",
+            "description": "Absolute URL of the zone collection."
+          },
+          "ledgers_endpoint": {
+            "type": "string",
+            "description": "RFC 6570 template, `{zone}`."
+          },
+          "streams_endpoint": {
+            "type": "string",
+            "description": "Where this plane lists the streams it declares."
+          },
+          "interfaces": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InterfaceLink"
+            },
+            "description": "Interfaces this plane serves, by interface id; absent when it serves none."
+          }
+        },
+        "required": [
+          "plane",
+          "transports",
+          "jwks_uri",
+          "notp",
+          "zones_endpoint",
+          "ledgers_endpoint",
+          "streams_endpoint"
+        ],
+        "additionalProperties": false,
+        "description": "The control plane's document, built by hand in `control_configuration_document` (permguard-control-plane service.rs).",
+        "x-grpc-message": null,
+        "x-grpc-note": "Carried as JSON text in `permguard.control.v1.GetServerConfigurationResponse.document_json`, not as structured fields."
+      },
+      "DataPlaneConfiguration": {
+        "type": "object",
+        "properties": {
+          "plane": {
+            "type": "string",
+            "const": "data-plane"
+          },
+          "jwks_uri": {
+            "type": "string",
+            "description": "Where this plane's signing keys are published."
+          },
+          "streams_endpoint": {
+            "type": "string",
+            "description": "Where this plane lists the streams it declares."
+          },
+          "interfaces": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InterfaceLink"
+            },
+            "description": "Interfaces this plane exposes, each pointing at its own configuration; absent when none."
+          }
+        },
+        "required": [
+          "plane",
+          "jwks_uri"
+        ],
+        "additionalProperties": false,
+        "description": "The data plane's document (`PlaneConfiguration`, permguard-server).",
+        "x-grpc-message": null,
+        "x-grpc-note": "The data plane serves no gRPC discovery method; REST-only (permguard.data.v1.DataPlane has GetInfo and GetHealth only)."
+      },
+      "PlaneLink": {
+        "type": "object",
+        "properties": {
+          "server_configuration": {
+            "type": "string",
+            "description": "The plane's own well-known document."
+          },
+          "grpc_endpoint": {
+            "type": "string",
+            "description": "For a plane serving only gRPC, its endpoint instead."
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Where one plane publishes its own document; at least one member is present.",
+        "x-grpc-message": null,
+        "x-grpc-note": "Sub-object of the process registry, REST-only on the telemetry listener."
+      },
+      "ServerConfiguration": {
+        "type": "object",
+        "properties": {
+          "planes": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PlaneLink"
+            },
+            "description": "Every plane the process hosts, by public name."
+          },
+          "jwks_uri": {
+            "type": "string",
+            "description": "The operations ring as a JWKS, when the deployment publishes keys."
+          }
+        },
+        "required": [
+          "planes"
+        ],
+        "additionalProperties": false,
+        "description": "The process-level registry served on the telemetry listener.",
+        "x-grpc-message": null,
+        "x-grpc-note": "The process-level registry is served on the telemetry listener only; no gRPC counterpart."
+      },
+      "StreamView": {
+        "type": "object",
+        "properties": {
+          "plane": {
+            "type": "string",
+            "description": "The plane serving the stream."
+          },
+          "stream_type": {
+            "type": "string",
+            "description": "What the stream carries."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "producer",
+              "consumer"
+            ],
+            "description": "Which way it flows through this process."
+          },
+          "record_type": {
+            "type": "string",
+            "description": "The record domain, e.g. `permguard.event.record.v1`."
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plane",
+          "stream_type",
+          "role",
+          "record_type",
+          "enabled"
+        ],
+        "additionalProperties": false,
+        "description": "`StreamDescriptor::public_view`: never the directory.",
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only: no gRPC method lists streams."
+      },
+      "StreamsDocument": {
+        "type": "object",
+        "properties": {
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StreamView"
+            }
+          }
+        },
+        "required": [
+          "streams"
+        ],
+        "additionalProperties": false,
+        "description": "The body of `/v1/streams`, built with `json!` in `streams_route`.",
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only: no gRPC method lists streams."
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.control.v1.GetServerConfigurationResponse",
+      "note": "`document_json` holds the JSON text of the document REST answers as the body",
+      "fields": [
+        "document_json"
+      ]
+    }
+  ]
+}

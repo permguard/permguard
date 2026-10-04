@@ -207,7 +207,7 @@ impl Submitter {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "event_journal_ambiguous",
+                    permguard_core::codes::pdp_temporal::EVENT_JOURNAL_AMBIGUOUS,
                     error.to_string(),
                 )
             })?;
@@ -587,13 +587,13 @@ impl Submitter {
                     &measure::REFUSALS,
                     &[(
                         permguard_core::metrics::labels::REASON,
-                        "history_unorderable",
+                        permguard_core::codes::pdp_temporal::HISTORY_UNORDERABLE,
                     )],
                 );
 
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "history_unorderable",
+                    permguard_core::codes::pdp_temporal::HISTORY_UNORDERABLE,
                     format!(
                         "`{zone}/{ledger}` cannot order this occurrence against the ones before \
                          it, so it was not recorded: {error}"
@@ -643,7 +643,7 @@ impl Submitter {
                     .map_err(|error| {
                         ApiError::new(
                             ErrorClass::Unavailable,
-                            "event_record_unreadable",
+                            permguard_core::codes::pdp_temporal::EVENT_RECORD_UNREADABLE,
                             format!(
                                 "the occurrence index names `{}` at sequence {seq}, but its \
                                  durable event record cannot be read: {error}",
@@ -654,7 +654,7 @@ impl Submitter {
                 let stored = permguard_events::record::validate(&stored).map_err(|error| {
                     ApiError::new(
                         ErrorClass::Unavailable,
-                        "event_record_invalid",
+                        permguard_core::codes::pdp_temporal::EVENT_RECORD_INVALID,
                         format!(
                             "the durable record for `{}` at sequence {seq} is invalid: {error}",
                             occurrence.event_id
@@ -708,7 +708,7 @@ impl Submitter {
                         Err(error) => {
                             return Err(ApiError::new(
                                 ErrorClass::Unavailable,
-                                "event_outcome_unreadable",
+                                permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                                 format!(
                                     "the durable answer for `{}` at sequence {seq} cannot be \
                                      decoded and must not be replaced by a new decision: {error}",
@@ -726,7 +726,7 @@ impl Submitter {
                     Err(error) => {
                         return Err(ApiError::new(
                             ErrorClass::Unavailable,
-                            "event_outcome_unreadable",
+                            permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                             format!(
                                 "the durable answer index for `{}` at sequence {seq} cannot be \
                                  read and must not be replaced by a new decision: {error}",
@@ -742,7 +742,7 @@ impl Submitter {
                 {
                     return Err(ApiError::new(
                         ErrorClass::Unavailable,
-                        "event_recovery_commit_unavailable",
+                        permguard_core::codes::pdp_temporal::EVENT_RECOVERY_COMMIT_UNAVAILABLE,
                         format!(
                             "`{}` is durable at commit `{}`, but its answer was not committed and \
                              this plane currently serves commit `{}` with a different temporal \
@@ -801,13 +801,13 @@ impl Submitter {
                         &measure::REFUSALS,
                         &[(
                             permguard_core::metrics::labels::REASON,
-                            "history_unorderable",
+                            permguard_core::codes::pdp_temporal::HISTORY_UNORDERABLE,
                         )],
                     );
 
                     ApiError::new(
                         ErrorClass::Unavailable,
-                        "history_unorderable",
+                        permguard_core::codes::pdp_temporal::HISTORY_UNORDERABLE,
                         format!(
                             "`{zone}/{ledger}` cannot order this occurrence against the ones \
                              before it: {error}"
@@ -830,7 +830,7 @@ impl Submitter {
                         serde_json::from_value::<SubmitResponse>(held).map_err(|error| {
                             ApiError::new(
                                 ErrorClass::Unavailable,
-                                "event_outcome_unreadable",
+                                permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                                 format!(
                                     "the durable answer for `{}` cannot be decoded: {error}",
                                     occurrence.event_id
@@ -848,7 +848,7 @@ impl Submitter {
                 Err(error) => {
                     return Err(ApiError::new(
                         ErrorClass::Unavailable,
-                        "event_outcome_unreadable",
+                        permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                         format!(
                             "the durable answer index for `{}` cannot be read: {error}",
                             occurrence.event_id
@@ -1006,7 +1006,7 @@ impl Submitter {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "decision_id_not_durable",
+                    permguard_core::codes::pdp_temporal::DECISION_ID_NOT_DURABLE,
                     format!(
                         "the stable decision identity for `{}` could not be made durable: {error}",
                         occurrence.event_id
@@ -1049,7 +1049,7 @@ impl Submitter {
         let held = serde_json::to_value(response).map_err(|error| {
             ApiError::new(
                 ErrorClass::Internal,
-                "event_outcome_unrenderable",
+                permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNRENDERABLE,
                 format!("the durable answer for `{event_id}` cannot be rendered: {error}"),
             )
         })?;
@@ -1254,7 +1254,7 @@ impl Submitter {
         let mut newer = self.streams.scan(zone, ledger, &query).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
-                "history_unreadable",
+                permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
                 format!("this plane's own journal could not be read: {error}"),
             )
         })?;
@@ -1276,7 +1276,7 @@ impl Submitter {
             newer = imports.window(zone, ledger, &query).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "imported_history_unreadable",
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
                     format!("the imported history could not be read: {error}"),
                 )
             })?;
@@ -1327,7 +1327,7 @@ impl Submitter {
         let seconds = u64::try_from(seconds).map_err(|_| {
             ApiError::new(
                 ErrorClass::Validation,
-                "history_window_invalid",
+                permguard_core::codes::pdp_temporal::HISTORY_WINDOW_INVALID,
                 format!(
                     "a temporal partition of `{zone}/{ledger}` declares a negative maximum window"
                 ),
@@ -1340,7 +1340,7 @@ impl Submitter {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "history_retention_insufficient",
+                    permguard_core::codes::pdp_temporal::HISTORY_RETENTION_INSUFFICIENT,
                     format!("`{zone}/{ledger}` cannot activate its temporal contract: {error}"),
                 )
             })
@@ -1371,7 +1371,7 @@ impl Submitter {
             .map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "event_outcome_unreadable",
+                    permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                     format!("the durable answer index for `{event_id}` cannot be read: {error}"),
                 )
             })?;
@@ -1444,7 +1444,7 @@ impl Submitter {
             serde_json::from_value(known.response.clone()).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "event_outcome_unreadable",
+                    permguard_core::codes::pdp_temporal::EVENT_OUTCOME_UNREADABLE,
                     format!(
                         "the durable answer for `{event_id}` cannot be decoded and must not be \
                          replaced by a new decision: {error}"
@@ -1492,7 +1492,7 @@ impl Submitter {
         let state = imports.state(zone, ledger).map_err(|error| {
             ApiError::new(
                 ErrorClass::Unavailable,
-                "imported_history_unreadable",
+                permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
                 format!(
                     "this plane's imported history for `{zone}/{ledger}` cannot be read: {error}"
                 ),
@@ -1518,12 +1518,15 @@ impl Submitter {
             if held > bound {
                 self.metrics.count(
                     &measure::REFUSALS,
-                    &[(permguard_core::metrics::labels::REASON, "history_stale")],
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        permguard_core::codes::pdp_temporal::HISTORY_STALE,
+                    )],
                 );
 
                 return Err(ApiError::new(
                     ErrorClass::Unavailable,
-                    "history_stale",
+                    permguard_core::codes::pdp_temporal::HISTORY_STALE,
                     match staleness {
                         Some(held) => format!(
                             "this plane last refreshed the shared history of `{zone}/{ledger}` \
@@ -1562,7 +1565,7 @@ impl Submitter {
                 &measure::REFUSALS,
                 &[(
                     permguard_core::metrics::labels::REASON,
-                    "history_incomplete",
+                    permguard_core::codes::pdp_temporal::HISTORY_INCOMPLETE,
                 )],
             );
             let oldest = state
@@ -1575,7 +1578,7 @@ impl Submitter {
 
             return Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "history_incomplete",
+                permguard_core::codes::pdp_temporal::HISTORY_INCOMPLETE,
                 format!(
                     "the shared history of `{zone}/{ledger}` has {gaps} recorded gap(s) — the \
                      oldest lost sequences {} through {} — and `shared-bounded` decides only on a \
@@ -1632,7 +1635,7 @@ impl Submitter {
             (Some(imports), true) => Some(imports.state(zone, ledger).map_err(|error| {
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "imported_history_unreadable",
+                    permguard_core::codes::pdp_temporal::IMPORTED_HISTORY_UNREADABLE,
                     error.to_string(),
                 )
             })?),
@@ -1667,7 +1670,7 @@ impl Submitter {
             let applied = self.applied.lock().map_err(|_| {
                 ApiError::new(
                     ErrorClass::Internal,
-                    "history_lock_poisoned",
+                    permguard_core::codes::pdp_temporal::HISTORY_LOCK_POISONED,
                     "this plane's record of what it has replayed is unusable",
                 )
             })?;
@@ -1731,7 +1734,7 @@ impl Submitter {
                     }
                     ApiError::new(
                         ErrorClass::Unavailable,
-                        "history_contract_incompatible",
+                        permguard_core::codes::pdp_temporal::HISTORY_CONTRACT_INCOMPATIBLE,
                         format!(
                             "the signed occurrence `{}` was addressed to partition `{}` under \
                              commit `{}` and is incompatible with the contract now loaded there: \
@@ -1744,7 +1747,7 @@ impl Submitter {
                 if derived != stored.record.history_key || history_of(&derived) != history {
                     return Err(ApiError::new(
                         ErrorClass::Unavailable,
-                        "history_contract_incompatible",
+                        permguard_core::codes::pdp_temporal::HISTORY_CONTRACT_INCOMPATIBLE,
                         format!(
                             "the signed occurrence `{}` carries history key {:?}, while partition \
                              `{}` derives {:?} from its current contract. Replaying it under a \
@@ -1780,7 +1783,7 @@ impl Submitter {
         let mut applied = self.applied.lock().map_err(|_| {
             ApiError::new(
                 ErrorClass::Internal,
-                "history_lock_poisoned",
+                permguard_core::codes::pdp_temporal::HISTORY_LOCK_POISONED,
                 "this plane's record of what it has replayed is unusable",
             )
         })?;
@@ -1809,7 +1812,7 @@ impl Submitter {
         let unreadable = |what: &str, detail: String| {
             ApiError::new(
                 ErrorClass::Unavailable,
-                "history_unreadable",
+                permguard_core::codes::pdp_temporal::HISTORY_UNREADABLE,
                 format!("{what}: {detail}"),
             )
         };
@@ -2030,7 +2033,7 @@ impl Submitter {
         let declared = loaded.head.manifest.profiles.get(profile).ok_or_else(|| {
             ApiError::new(
                 ErrorClass::Internal,
-                "profile_vanished",
+                permguard_core::codes::pdp_temporal::PROFILE_VANISHED,
                 format!(
                     "the profile `{profile}` was resolved and is now absent from the same commit"
                 ),
@@ -2039,7 +2042,7 @@ impl Submitter {
         if !permguard_objects::manifest::is_temporal_profile(&declared.r#type) {
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "profile_not_temporal",
+                permguard_core::codes::pdp_temporal::PROFILE_NOT_TEMPORAL,
                 format!(
                     "the profile `{profile}` is `{}`, which decides from the request alone. Submit \
                      to `{}` instead, or name a `{}` profile",
@@ -2057,7 +2060,7 @@ impl Submitter {
                 // ledger was loaded by a build whose gate disagreed with this one. Fail closed.
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "partition_not_temporal",
+                    permguard_core::codes::pdp_temporal::PARTITION_NOT_TEMPORAL,
                     format!(
                         "the partition `{}` runs `{}`, which keeps no history",
                         partition.name, partition.language
@@ -2069,7 +2072,7 @@ impl Submitter {
         if addressed.is_empty() {
             return Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "profile_empty",
+                permguard_core::codes::pdp_temporal::PROFILE_EMPTY,
                 format!("the profile `{profile}` names no partitions"),
             ));
         }
@@ -2087,7 +2090,7 @@ impl Submitter {
         permguard_events::index::render_epoch_seconds(seconds).ok_or_else(|| {
             ApiError::new(
                 ErrorClass::Internal,
-                "clock_unusable",
+                permguard_core::codes::pdp_temporal::CLOCK_UNUSABLE,
                 "this plane's clock is outside the range an event record can state".to_owned(),
             )
         })
@@ -2103,7 +2106,7 @@ impl Submitter {
         let Some(now) = permguard_events::index::epoch_seconds(observed_at) else {
             return Err(ApiError::new(
                 ErrorClass::Internal,
-                "clock_unusable",
+                permguard_core::codes::pdp_temporal::CLOCK_UNUSABLE,
                 "this plane's clock is not a canonical instant".to_owned(),
             ));
         };
@@ -2185,12 +2188,15 @@ impl Submitter {
             Failed::Journal(permguard_events::journal::JournalError::Full) => {
                 self.metrics.count(
                     &measure::REFUSALS,
-                    &[(permguard_core::metrics::labels::REASON, "journal_full")],
+                    &[(
+                        permguard_core::metrics::labels::REASON,
+                        permguard_core::codes::pdp_temporal::JOURNAL_FULL,
+                    )],
                 );
 
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "journal_full",
+                    permguard_core::codes::pdp_temporal::JOURNAL_FULL,
                     "this plane's event journal for that ledger is full. Temporal history is \
                      never dropped to make room: an event silently lost would change what future \
                      authorizations mean, so submissions fail until the control plane has \
@@ -2203,7 +2209,7 @@ impl Submitter {
                     &measure::REFUSALS,
                     &[(
                         permguard_core::metrics::labels::REASON,
-                        "journal_unavailable",
+                        permguard_core::codes::pdp_temporal::JOURNAL_UNAVAILABLE,
                     )],
                 );
                 warn!(
@@ -2215,7 +2221,7 @@ impl Submitter {
 
                 ApiError::new(
                     ErrorClass::Unavailable,
-                    "journal_unavailable",
+                    permguard_core::codes::pdp_temporal::JOURNAL_UNAVAILABLE,
                     format!(
                         "this occurrence could not be made durable, so it was not decided: {error}"
                     ),
@@ -2223,7 +2229,7 @@ impl Submitter {
             }
             Failed::Digest(error) => ApiError::new(
                 ErrorClass::Internal,
-                "record_not_canonical",
+                permguard_core::codes::pdp_temporal::RECORD_NOT_CANONICAL,
                 format!("the event record could not be canonicalized: {error}"),
             ),
         }
@@ -2321,7 +2327,7 @@ fn history_digest(pins: &[String], values: &[String]) -> Result<String, ApiError
     permguard_events::record::history_digest_of(&value).map_err(|error| {
         ApiError::new(
             ErrorClass::Internal,
-            "history_key_not_canonical",
+            permguard_core::codes::pdp_temporal::HISTORY_KEY_NOT_CANONICAL,
             format!("the history key could not be canonicalized: {error}"),
         )
     })
@@ -2354,13 +2360,17 @@ pub fn disclosed(
     mut response: temporal::SubmitResponse,
     disclosure: permguard_core::Disclosure,
 ) -> temporal::SubmitResponse {
-    use permguard_core::codes::{legacy, pdp_native};
+    use permguard_core::codes::{pdp_native, pdp_temporal};
 
     if disclosure == permguard_core::Disclosure::Full {
         return response;
     }
     if let Some(reason) = response.reason.as_mut() {
-        let decided = [legacy::PERMITTED, legacy::DENIED, legacy::NOT_PERMITTED];
+        let decided = [
+            pdp_temporal::PERMITTED,
+            pdp_temporal::DENIED,
+            pdp_temporal::NOT_PERMITTED,
+        ];
         if reason.code == pdp_native::EVALUATION_INDETERMINATE {
             reason.message =
                 "the occurrence is recorded and could not be evaluated; this is not a deny"
@@ -2396,19 +2406,19 @@ fn reason_of(outcome: &permguard_languages::evaluate::Outcome) -> temporal::Reas
     }
     if outcome.permitted() {
         return temporal::Reason {
-            code: permguard_core::codes::legacy::PERMITTED.to_owned(),
+            code: permguard_core::codes::pdp_temporal::PERMITTED.to_owned(),
             message: "a policy permitted it against this partition's history".to_owned(),
         };
     }
     if outcome.denials.is_empty() {
         return temporal::Reason {
-            code: permguard_core::codes::legacy::NOT_PERMITTED.to_owned(),
+            code: permguard_core::codes::pdp_temporal::NOT_PERMITTED.to_owned(),
             message: "no policy permitted it against this partition's history".to_owned(),
         };
     }
 
     temporal::Reason {
-        code: permguard_core::codes::legacy::DENIED.to_owned(),
+        code: permguard_core::codes::pdp_temporal::DENIED.to_owned(),
         message: "a policy refused it against this partition's history".to_owned(),
     }
 }
@@ -2426,7 +2436,7 @@ fn permguard_data_plane_mirror_of(
     crate::authz::store::find(root, zone, ledger).ok_or_else(|| {
         ApiError::new(
             ErrorClass::NotFound,
-            "ledger_not_served",
+            permguard_core::codes::pdp_native::LEDGER_NOT_SERVED,
             format!("this plane does not serve `{zone}/{ledger}`"),
         )
     })

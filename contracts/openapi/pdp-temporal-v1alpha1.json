@@ -1,0 +1,677 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard temporal PDP v1alpha1",
+    "version": "1",
+    "description": "The stateful occurrence interface `permguard.api.pdp.temporal.v1alpha1` and the signers read."
+  },
+  "paths": {
+    "/temporal/v1alpha1/events": {
+      "post": {
+        "operationId": "pdpTemporalSubmit",
+        "summary": "Submit one typed occurrence.",
+        "parameters": [
+          {
+            "name": "x-request-id",
+            "in": "header",
+            "required": false,
+            "description": "A correlation identifier, bounded by the rule every surface applies; echoed in the response and kept in the decision record.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": null,
+            "x-grpc-note": "a header REST echoes on the answer; the gRPC binding of the temporal PDP reads no request id, a divergence"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision or the receipt.",
+            "headers": {
+              "x-request-id": {
+                "description": "The caller's correlation identifier, echoed when admitted.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The payload is malformed, names an unknown member or fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The zone, ledger or profile is not served here.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The event id is already recorded with different content.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The plane failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ledger cannot be served, or the evaluation is indeterminate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/SubmitEvent"
+      }
+    },
+    "/.well-known/permguard-pdp-temporal-v1alpha1-configuration": {
+      "get": {
+        "operationId": "pdpTemporalConfiguration",
+        "summary": "What the temporal interface offers here.",
+        "responses": {
+          "200": {
+            "description": "The configuration document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetTemporalConfiguration"
+      }
+    },
+    "/events/v1alpha1/signers": {
+      "get": {
+        "operationId": "pdpTemporalSigners",
+        "summary": "This plane's journal watermarks and signer spans for one ledger.",
+        "parameters": [
+          {
+            "name": "zone",
+            "in": "query",
+            "required": true,
+            "description": "The zone.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "zone"
+          },
+          {
+            "name": "ledger",
+            "in": "query",
+            "required": true,
+            "description": "The ledger.",
+            "schema": {
+              "type": "string"
+            },
+            "x-grpc-field": "ledger"
+          },
+          {
+            "name": "from_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive lower bound; 0 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "from_seq"
+          },
+          {
+            "name": "until_seq",
+            "in": "query",
+            "required": false,
+            "description": "Inclusive upper bound; 0 or absent means unbounded.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "x-grpc-field": "until_seq"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The watermarks and the spans.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A journal is not named, or a bound is not a sequence number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "This plane keeps no journal for the ledger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The journal cannot be read now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.data.v1.TemporalPolicyDecisionPoint/GetSigners"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SubmitRequest": {
+        "type": "object",
+        "description": "One submission. Closed to members it does not declare.",
+        "properties": {
+          "store": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "store"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EventBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-grpc-field": "event"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.SubmitEventRequest"
+      },
+      "StoreBody": {
+        "type": "object",
+        "description": "Which store an occurrence belongs to.",
+        "properties": {
+          "zone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "zone"
+          },
+          "ledger": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-grpc-field": "ledger"
+          },
+          "profile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Must be a profile of this interface's type.",
+            "x-grpc-field": "profile"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EventStore"
+      },
+      "EventBody": {
+        "type": "object",
+        "description": "The typed occurrence.",
+        "properties": {
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Asserted contract, checked and never obeyed.",
+            "x-grpc-field": "type"
+          },
+          "data": {
+            "description": "Open container: the occurrence's payload.",
+            "x-grpc-field": "data"
+          }
+        },
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.TypedEvent"
+      },
+      "SubmitResponse": {
+        "type": "object",
+        "description": "What one submission concluded.",
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome",
+            "x-grpc-field": "outcome"
+          },
+          "event_id": {
+            "type": "string",
+            "x-grpc-field": "event_id"
+          },
+          "watermark": {
+            "$ref": "#/components/schemas/Watermark",
+            "x-grpc-field": "watermark"
+          },
+          "decision": {
+            "type": "boolean",
+            "description": "Present exactly when outcome is `decided`.",
+            "x-grpc-field": "decision"
+          },
+          "decision_id": {
+            "type": "string",
+            "x-grpc-field": "decision_id"
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "policies"
+          },
+          "evaluations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartitionEvaluation"
+            },
+            "x-grpc-field": "evaluations"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason",
+            "x-grpc-field": "reason"
+          },
+          "history": {
+            "$ref": "#/components/schemas/HistoryScope",
+            "x-grpc-field": "history"
+          }
+        },
+        "required": [
+          "outcome",
+          "event_id",
+          "watermark",
+          "history"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.SubmitEventResponse"
+      },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "decided",
+          "accepted",
+          "indeterminate"
+        ],
+        "x-grpc-message": null,
+        "x-grpc-note": "Maps to the enum permguard.data.v1.SubmitOutcome (not a message): decided, accepted, indeterminate; the enum additionally has SUBMIT_OUTCOME_UNSPECIFIED."
+      },
+      "Watermark": {
+        "type": "object",
+        "description": "Where an occurrence sits in this plane's stream.",
+        "properties": {
+          "instance": {
+            "type": "string",
+            "x-grpc-field": "instance"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "sequence"
+          },
+          "history": {
+            "type": "string",
+            "x-grpc-field": "history"
+          }
+        },
+        "required": [
+          "instance",
+          "sequence"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.EventWatermark"
+      },
+      "PartitionEvaluation": {
+        "type": "object",
+        "properties": {
+          "partition": {
+            "type": "string",
+            "x-grpc-field": "partition"
+          },
+          "decision": {
+            "type": "boolean",
+            "x-grpc-field": "decision"
+          },
+          "policies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "policies"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "partition",
+          "decision"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.TemporalPartitionEvaluation"
+      },
+      "HistoryScope": {
+        "type": "object",
+        "description": "Which history a decision ranged over.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "local",
+              "shared-eventual",
+              "shared-bounded"
+            ],
+            "x-grpc-field": "mode"
+          },
+          "watermark": {
+            "type": "string",
+            "x-grpc-field": "watermark"
+          },
+          "staleness_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "staleness_seconds"
+          },
+          "gaps": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Omitted when zero.",
+            "x-grpc-field": "gaps"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.DecisionHistory"
+      },
+      "Reason": {
+        "type": "object",
+        "description": "One reason: a stable code and a sentence.",
+        "properties": {
+          "code": {
+            "type": "string",
+            "x-grpc-field": "code"
+          },
+          "message": {
+            "type": "string",
+            "x-grpc-field": "message"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.Reason"
+      },
+      "Document": {
+        "type": "object",
+        "description": "What this plane publishes about `permguard.api.pdp.temporal.v1alpha1`.",
+        "properties": {
+          "interface": {
+            "type": "string",
+            "x-grpc-field": "interface"
+          },
+          "pdp": {
+            "type": "string",
+            "x-grpc-field": "pdp"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/Endpoints",
+            "x-grpc-field": "endpoints"
+          },
+          "event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "event_types"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "x-grpc-field": "capabilities"
+          },
+          "store_scope": {
+            "$ref": "#/components/schemas/StoreScope",
+            "x-grpc-field": "store_scope"
+          }
+        },
+        "required": [
+          "interface",
+          "pdp",
+          "endpoints",
+          "event_types",
+          "capabilities",
+          "store_scope"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.GetTemporalConfigurationResponse"
+      },
+      "Endpoints": {
+        "type": "object",
+        "properties": {
+          "submission": {
+            "type": "string",
+            "x-grpc-field": "submission"
+          }
+        },
+        "required": [
+          "submission"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.TemporalEndpoints"
+      },
+      "StoreScope": {
+        "type": "object",
+        "description": "Which fields name the policy store.",
+        "properties": {
+          "in": {
+            "type": "string",
+            "const": "payload",
+            "x-grpc-field": "in"
+          },
+          "zone": {
+            "type": "string",
+            "const": "required",
+            "x-grpc-field": "zone"
+          },
+          "ledger": {
+            "type": "string",
+            "const": "required",
+            "x-grpc-field": "ledger"
+          },
+          "profile": {
+            "type": "string",
+            "const": "optional",
+            "x-grpc-field": "profile"
+          }
+        },
+        "required": [
+          "in",
+          "zone",
+          "ledger",
+          "profile"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.StoreScope"
+      },
+      "SignersResponse": {
+        "type": "object",
+        "description": "This plane's own journal watermarks and signer history for one ledger.",
+        "properties": {
+          "producer": {
+            "$ref": "#/components/schemas/Producer",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST nests the producer identity in a `producer` object (class, id, instance); gRPC carries it flat as producer_class, producer and instance (see x-grpc-only)."
+          },
+          "durable_through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "durable_through"
+          },
+          "signed_through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "signed_through"
+          },
+          "acked_through": {
+            "type": "integer",
+            "minimum": 0,
+            "x-grpc-field": "acked_through"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignerSpan"
+            },
+            "x-grpc-field": "spans"
+          }
+        },
+        "required": [
+          "producer",
+          "durable_through",
+          "signed_through",
+          "acked_through",
+          "spans"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.GetTemporalSignersResponse",
+        "x-grpc-only": [
+          "producer_class",
+          "producer",
+          "instance"
+        ],
+        "x-grpc-note": "The gRPC fields producer_class, producer and instance are the flat counterparts of REST `producer.class`, `producer.id` and `producer.instance`: same values, different nesting."
+      },
+      "Producer": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string",
+            "description": "The journal's incarnation."
+          }
+        },
+        "required": [
+          "class",
+          "id",
+          "instance"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only grouping object; its members are the flat fields producer_class (class), producer (id) and instance (instance) of permguard.data.v1.GetTemporalSignersResponse."
+      },
+      "SignerSpan": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first offset this key signed.",
+            "x-grpc-field": "from_seq"
+          },
+          "kid": {
+            "type": "string",
+            "x-grpc-field": "kid"
+          },
+          "jwk": {
+            "$ref": "common.json#/components/schemas/Jwk",
+            "description": "the public key, closed: a member a public JWK does not carry, a private `d` included, is refused",
+            "x-grpc-field": "jwk"
+          }
+        },
+        "required": [
+          "from",
+          "kid",
+          "jwk"
+        ],
+        "additionalProperties": false,
+        "x-grpc-message": "permguard.data.v1.TemporalSignerSpan",
+        "x-grpc-note": "`jwk` is a JSON object in REST and the same JWK serialised as JSON bytes in the gRPC `bytes jwk` field. `from` is the REST name of from_seq."
+      }
+    }
+  }
+}

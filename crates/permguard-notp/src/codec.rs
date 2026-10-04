@@ -72,6 +72,22 @@ pub(crate) fn as_pairs(value: &Value) -> Result<&[(Value, Value)]> {
     }
 }
 
+/// The pairs of a closed message: a map whose every key is one of `labels`.
+///
+/// A message is a closed envelope: an unknown label is refused rather than skipped, so a field a
+/// later version adds is never silently dropped by a reader that cannot honour it. A new field is
+/// a new label, never a reinterpretation of an old one.
+pub(crate) fn closed<'a>(value: &'a Value, labels: &[i64]) -> Result<&'a [(Value, Value)]> {
+    let pairs = as_pairs(value)?;
+    if pairs
+        .iter()
+        .any(|(key, _)| !matches!(key, Value::Int(label) if labels.contains(label)))
+    {
+        return Err(WireError::Schema("unknown field"));
+    }
+    Ok(pairs)
+}
+
 pub(crate) fn text(value: &Value) -> Result<String> {
     match value {
         Value::Text(t) => Ok(t.clone()),

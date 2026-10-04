@@ -310,7 +310,7 @@ mod tests {
         assert_eq!(expected_statuses("validation", "invalid_name"), (400, 3));
         assert_eq!(expected_statuses("conflict", "name_taken"), (409, 6));
         assert_eq!(expected_statuses("conflict", "zone_not_empty"), (409, 9));
-        assert_eq!(expected_statuses("not_found", "zone_not_found"), (404, 5));
+        assert_eq!(expected_statuses("not_found", "not_found"), (404, 5));
         assert_statuses("ok", "internal", "internal", 500, 13);
         // The temporal PDP's own table: a conflict is ABORTED, not FAILED_PRECONDITION.
         assert_eq!(

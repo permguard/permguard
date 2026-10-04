@@ -130,7 +130,11 @@ mod tests {
     #[test]
     fn test_a_taken_name_is_already_exists_and_an_occupied_zone_is_a_precondition() {
         let taken = ApiError::new(ErrorClass::Conflict, codes::catalog::NAME_TAKEN, "taken");
-        let occupied = ApiError::new(ErrorClass::Conflict, codes::catalog::NOT_EMPTY, "occupied");
+        let occupied = ApiError::new(
+            ErrorClass::Conflict,
+            codes::catalog::ZONE_NOT_EMPTY,
+            "occupied",
+        );
 
         assert_eq!(
             grpc_error(&taken, Disclosure::Minimal).code(),

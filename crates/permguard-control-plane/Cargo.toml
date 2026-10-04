@@ -15,7 +15,7 @@ repository.workspace = true
 # taken on crates.io is taken permanently.
 publish = false
 
-# The gRPC contract this plane serves, compiled from its own `proto/`.
+# The gRPC contract this plane serves, compiled from the checked-in `contracts/proto/`.
 build = "build.rs"
 
 [[bin]]

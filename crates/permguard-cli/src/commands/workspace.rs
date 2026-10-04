@@ -866,7 +866,11 @@ pub fn workspace_command(
             let applied = ws.apply(&remote, &author, &message).map_err(|error| {
                 // The compare-and-swap lost: somebody applied first. The way
                 // out is always the same, so say it here, once.
-                if error.message.contains("ref_conflict") || error.message.contains("ref moved") {
+                if error
+                    .message
+                    .contains(permguard_core::codes::notp::REF_CONFLICT)
+                    || error.message.contains("ref moved")
+                {
                     Failure::usage(format!(
                         "{error}. Someone applied before you: run `permguard pull`, \
                          review, and apply again"

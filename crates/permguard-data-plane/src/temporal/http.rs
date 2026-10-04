@@ -114,6 +114,25 @@ async fn document(State(surface): State<Surface>) -> Json<configuration::Documen
     Json(configuration::document(&surface.base_url, &surface.pdp))
 }
 
+/// The signers refusal for a ledger this plane keeps no journal for, the same on both bindings.
+pub(crate) fn not_held(zone: &str, ledger: &str) -> ApiError {
+    ApiError::new(
+        ErrorClass::NotFound,
+        permguard_core::codes::stream::STORE_UNKNOWN,
+        format!("this plane keeps no journal for `{zone}/{ledger}`"),
+    )
+}
+
+/// The signers refusal for a held ledger whose journal cannot be read now, the same on both
+/// bindings: the store exists, so this is `unavailable`, never `not_found`.
+pub(crate) fn unreadable(refused: &dyn std::fmt::Display) -> ApiError {
+    ApiError::new(
+        ErrorClass::Unavailable,
+        permguard_core::codes::stream::STORE_UNAVAILABLE,
+        refused.to_string(),
+    )
+}
+
 /// This plane's own journal watermarks and signer history for one ledger.
 ///
 /// `?zone=&ledger=` name the journal; `from_seq`/`until_seq` bound the spans, both optional.
@@ -152,7 +171,7 @@ async fn signers(
             return error(
                 &ApiError::new(
                     ErrorClass::Validation,
-                    "bound_malformed",
+                    permguard_core::codes::stream::BOUND_MALFORMED,
                     format!("`{name}` is a sequence number"),
                 ),
                 surface.disclosure,
@@ -170,40 +189,15 @@ async fn signers(
         .iter()
         .any(|(held_zone, held_ledger)| held_zone == zone && held_ledger == ledger)
     {
-        return error(
-            &ApiError::new(
-                ErrorClass::NotFound,
-                permguard_core::codes::stream::STORE_UNKNOWN,
-                format!("this plane keeps no journal for `{zone}/{ledger}`"),
-            ),
-            surface.disclosure,
-        );
+        return error(&not_held(zone, ledger), surface.disclosure);
     }
     let state = match streams.state(zone, ledger) {
         Ok(state) => state,
-        Err(refused) => {
-            return error(
-                &ApiError::new(
-                    ErrorClass::NotFound,
-                    permguard_core::codes::stream::STORE_UNKNOWN,
-                    refused.to_string(),
-                ),
-                surface.disclosure,
-            );
-        }
+        Err(refused) => return error(&unreadable(&refused), surface.disclosure),
     };
     let held = match streams.signers(zone, ledger) {
         Ok(held) => held,
-        Err(refused) => {
-            return error(
-                &ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    refused.to_string(),
-                ),
-                surface.disclosure,
-            );
-        }
+        Err(refused) => return error(&unreadable(&refused), surface.disclosure),
     };
 
     // The producer identity carries the *journal's* incarnation: the stream-level identity knows
@@ -265,4 +259,31 @@ fn with_request_id(mut response: Response, request_id: Option<&str>) -> Response
     }
 
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A ledger nobody holds is `not_found`; a held ledger whose journal fails is `unavailable`, on
+    /// REST and gRPC alike, because both bindings answer through these two functions.
+    #[test]
+    fn test_the_signers_refusals_tell_an_unheld_ledger_from_an_unreadable_journal() {
+        let unheld = not_held("z", "l");
+        assert_eq!(
+            (unheld.class(), unheld.code()),
+            (
+                ErrorClass::NotFound,
+                permguard_core::codes::stream::STORE_UNKNOWN
+            )
+        );
+        let broken = unreadable(&"the journal is poisoned");
+        assert_eq!(
+            (broken.class(), broken.code()),
+            (
+                ErrorClass::Unavailable,
+                permguard_core::codes::stream::STORE_UNAVAILABLE
+            )
+        );
+    }
 }

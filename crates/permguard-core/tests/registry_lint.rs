@@ -57,10 +57,10 @@ fn collect(directory: &Path, into: &mut Vec<PathBuf>) {
 
 /// The lines of a file that are code rather than test code or comments.
 ///
-/// A `#[cfg(test)]` that marks the test module ends the scan: the module runs to the end of the
-/// file in every crate here. One that marks a single item — a test-only function, constant or
-/// import — skips that item and reads on, so production code after it is still checked. Comment
-/// lines are skipped because documentation quotes the strings.
+/// A `#[cfg(test)]` skips the item it marks — a test module, a test-only function, constant or
+/// import — and reads on, so production code after it is still checked: a test module is not
+/// always the last item of its file. Comment lines are skipped because documentation quotes the
+/// strings.
 fn code_lines(path: &Path) -> Vec<(usize, String)> {
     let Ok(text) = fs::read_to_string(path) else {
         return Vec::new();
@@ -76,11 +76,7 @@ fn code_lines(path: &Path) -> Vec<(usize, String)> {
             while item < all.len() && all[item].trim_start().starts_with("#[") {
                 item += 1;
             }
-            let Some(first) = all.get(item) else {
-                break;
-            };
-            let first = first.trim_start();
-            if first.starts_with("mod ") || first.starts_with("pub mod ") {
+            if item >= all.len() {
                 break;
             }
             // Skip to the end of the item: a `;` or a closing brace at depth zero.
@@ -163,14 +159,41 @@ fn test_no_domain_literal_is_spelled_outside_the_registry() {
 }
 
 /// The call shapes through which a stable code enters the program.
-const CODE_SHAPES: [&str; 6] = [
+const CODE_SHAPES: [&str; 13] = [
     "ApiError::new(",
     "malformed(",
     "Refusal::new(",
     "Malformed::new(",
     "code: \"",
     "refusal(",
+    "invalid(",
+    "rejected(",
+    "Refused::new(",
+    "reason: \"",
+    "reason = \"",
+    "refused(\"",
+    "\"code\":\"",
 ];
+
+/// Whether the line at `position` builds a code: it names a shape, or one of the two lines before
+/// it opens one, as `ApiError::new(` does when its class and code follow on lines of their own.
+fn shaped_at(lines: &[(usize, String)], position: usize) -> bool {
+    CODE_SHAPES
+        .iter()
+        .any(|shape| lines[position].1.contains(shape))
+        // A class beside a literal, as in a `(code, ErrorClass::…, reason)` tuple, makes it a code.
+        || lines[position].1.contains("ErrorClass::")
+        || (1..=2).any(|back| {
+            position
+                .checked_sub(back)
+                .and_then(|earlier| lines.get(earlier))
+                .is_some_and(|(_, earlier)| {
+                    CODE_SHAPES
+                        .iter()
+                        .any(|shape| earlier.trim_end().ends_with(shape.trim_end_matches('"')))
+                })
+        })
+}
 
 #[test]
 fn test_every_stable_code_is_registered() {
@@ -185,17 +208,21 @@ fn test_every_stable_code_is_registered() {
     let mut offences = Vec::new();
 
     for path in sources() {
+        // The supervised worker's `refused` frames carry words of its own pipe (`frame_malformed`,
+        // `compile_refused`, …), read back only by its parent in the same file and never answered
+        // on a wire: they are not stable codes. Only the lines of those calls are skipped; the
+        // rest of the file is read like any other.
+        let worker = path.ends_with("permguard-languages/src/worker.rs");
         let lines = code_lines(&path);
         for (position, (number, line)) in lines.iter().enumerate() {
-            let shaped = CODE_SHAPES.iter().any(|shape| line.contains(shape))
-                || lines
-                    .get(position.wrapping_sub(1))
-                    .is_some_and(|(_, previous)| {
-                        CODE_SHAPES
-                            .iter()
-                            .any(|shape| previous.trim_end().ends_with(shape.trim_end_matches('"')))
-                    });
-            if !shaped {
+            let in_frame = worker
+                && (0..=2).any(|back| {
+                    position
+                        .checked_sub(back)
+                        .and_then(|earlier| lines.get(earlier))
+                        .is_some_and(|(_, earlier)| earlier.contains("refused("))
+                });
+            if in_frame || !shaped_at(&lines, position) {
                 continue;
             }
             for literal in literals(line) {
@@ -300,8 +327,13 @@ fn test_no_registered_code_is_spelled_outside_the_registry() {
             }
             let shaped = CODE_SHAPES.iter().any(|shape| line.contains(shape));
             // Where a refusal is built with its class as an enum, a class-like literal on the same
-            // line is the code: `ApiError::new(ErrorClass::Internal, "internal", …)`.
-            let class_given = shaped && line.contains("ErrorClass::");
+            // line, or on the line after the class, is the code:
+            // `ApiError::new(ErrorClass::Internal, "internal", …)`.
+            let class_given = (shaped && line.contains("ErrorClass::"))
+                || position
+                    .checked_sub(1)
+                    .and_then(|previous| lines.get(previous))
+                    .is_some_and(|(_, previous)| previous.trim_start().starts_with("ErrorClass::"));
             for literal in literals(&without_label_values(line)) {
                 if !registered.contains(&literal.as_str())
                     || (CLASSES.contains(&literal.as_str()) && !class_given)
@@ -323,9 +355,9 @@ fn test_no_registered_code_is_spelled_outside_the_registry() {
     );
 }
 
-/// The scanner reads past a `#[cfg(test)]` that marks one item and stops only at the test module.
+/// The scanner skips what a `#[cfg(test)]` marks, a test module included, and reads on after it.
 #[test]
-fn test_the_scanner_skips_a_test_item_and_stops_only_at_the_test_module() {
+fn test_the_scanner_skips_test_items_and_test_modules_and_reads_on() {
     let path =
         std::env::temp_dir().join(format!("permguard-registry-lint-{}.rs", std::process::id()));
     fs::write(
@@ -338,7 +370,8 @@ fn test_the_scanner_skips_a_test_item_and_stops_only_at_the_test_module() {
          const ALSO_TEST: &str = \"a test constant\";\n\
          fn after() { let seen = \"production after the item\"; }\n\
          #[cfg(test)]\n\
-         mod tests {\n    fn t() { let x = \"in the test module\"; }\n}\n",
+         mod tests {\n    fn t() { let x = \"in the test module\"; }\n}\n\
+         fn last() { let seen = \"production after the module\"; }\n",
     )
     .expect("the sample file is written");
 
@@ -348,11 +381,12 @@ fn test_the_scanner_skips_a_test_item_and_stops_only_at_the_test_module() {
         .collect();
     let _ = fs::remove_file(&path);
 
-    assert!(
-        read.iter()
-            .any(|line| line.contains("production after the item")),
-        "{read:#?}"
-    );
+    for seen in ["production after the item", "production after the module"] {
+        assert!(
+            read.iter().any(|line| line.contains(seen)),
+            "`{seen}` was not read: {read:#?}"
+        );
+    }
     for skipped in [
         "inside the test item",
         "a test constant",
@@ -378,5 +412,53 @@ fn test_only_the_label_value_of_a_recording_tuple_is_excepted() {
             r#"(labels::OUTCOME, "ok"), (labels::REASON, "x")"#
         )),
         Vec::<String>::new()
+    );
+}
+
+/// A compatibility-only code is read, never generated: no production source names `legacy`.
+#[test]
+fn test_no_production_path_generates_a_compatibility_only_code() {
+    let mut offences = Vec::new();
+    for path in sources() {
+        for (number, line) in code_lines(&path) {
+            if line.contains("codes::legacy") || line.contains("legacy::") {
+                offences.push(format!("{}:{number}", path.display()));
+            }
+        }
+    }
+    assert!(
+        offences.is_empty(),
+        "compatibility-only codes named by production code:\n{}",
+        offences.join("\n")
+    );
+}
+
+/// A function that names a failure's stable code — `fn reason`, `fn code` — answers registered
+/// codes only, one-word codes included: `"timeout"` is as much a code as `"connect_failed"`.
+#[test]
+fn test_a_function_that_names_a_code_answers_registered_codes_only() {
+    let registered: Vec<&str> = codes::all().into_iter().map(|(_, value)| value).collect();
+    let mut offences = Vec::new();
+    for path in sources() {
+        let mut inside = false;
+        for (number, line) in code_lines(&path) {
+            let trimmed = line.trim_start();
+            if trimmed.contains("fn ") {
+                inside = trimmed.contains("fn reason(") || trimmed.contains("fn code(");
+            }
+            if !inside || !line.contains("=> \"") {
+                continue;
+            }
+            for literal in literals(&line) {
+                if !registered.contains(&literal.as_str()) {
+                    offences.push(format!("{}:{number}: {literal:?}", path.display()));
+                }
+            }
+        }
+    }
+    assert!(
+        offences.is_empty(),
+        "codes named by a code function and not registered:\n{}",
+        offences.join("\n")
     );
 }

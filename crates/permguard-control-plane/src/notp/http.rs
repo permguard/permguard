@@ -50,7 +50,46 @@ pub(crate) fn routes(facade: NotpFacade) -> Router {
             "/v1/zones/{zone}/ledgers/{ledger}/notp/objects/fetch",
             post(fetch),
         )
+        .route_layer(axum::middleware::from_fn_with_state(
+            facade.clone(),
+            declared_notp,
+        ))
         .with_state(facade)
+}
+
+/// Refuses a request body not declared `application/vnd.permguard.notp.v1+cbor`, before the
+/// handler reads it.
+///
+/// A browser sends a `text/plain` POST cross-site without a preflight, carrying the client
+/// certificate the listener authenticates with; a body read whatever its declared type would let
+/// any page push to a ledger. A request without a body, the ref read, is not affected.
+async fn declared_notp(
+    State(facade): State<NotpFacade>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request.method() == axum::http::Method::POST {
+        let declared = request
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .is_some_and(|media| {
+                media
+                    .trim()
+                    .eq_ignore_ascii_case(permguard_notp::MEDIA_TYPE)
+            });
+        if !declared {
+            return wire::http_error(
+                &bad_body(format!(
+                    "the body must be declared `Content-Type: {}`",
+                    permguard_notp::MEDIA_TYPE
+                )),
+                facade.disclosure,
+            );
+        }
+    }
+    next.run(request).await
 }
 
 /// Shapes a CBOR answer, or the taxonomy's refusal.
@@ -76,7 +115,7 @@ fn cbor_response(status: StatusCode, body: Vec<u8>) -> Response {
 fn bad_body(detail: impl std::fmt::Display) -> ApiError {
     ApiError::new(
         ErrorClass::Validation,
-        "body_rejected",
+        permguard_core::codes::notp::BODY_REJECTED,
         format!("the request body is not a valid NOTP message: {detail}"),
     )
 }
@@ -279,6 +318,42 @@ mod tests {
         );
 
         (routes(facade), zone.name, ledger.name)
+    }
+
+    /// A NOTP body not declared as one is refused before it is read: a cross-site `text/plain`
+    /// POST needs no preflight.
+    #[tokio::test]
+    async fn test_a_body_not_declared_notp_is_refused_before_it_is_read() {
+        let (routes, zone, ledger) = testing_routes();
+        let body = NegotiatePullRequest {
+            r#ref: "main".to_owned(),
+            at: None,
+            have: Vec::new(),
+        }
+        .encode()
+        .expect("encodes");
+        for media in [Some("text/plain"), Some("application/json"), None] {
+            let mut request = HttpRequest::builder().method("POST").uri(format!(
+                "/v1/zones/{zone}/ledgers/{ledger}/notp/pull/negotiate"
+            ));
+            if let Some(media) = media {
+                request = request.header("content-type", media);
+            }
+            let answer = routes
+                .clone()
+                .oneshot(request.body(Body::from(body.clone())).expect("builds"))
+                .await
+                .expect("the router answers");
+            assert_eq!(answer.status().as_u16(), 400, "{media:?}");
+            let bytes = axum::body::to_bytes(answer.into_body(), 1 << 20)
+                .await
+                .expect("reads");
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(
+                text.contains(r#""code":"body_rejected""#),
+                "{media:?}: {text}"
+            );
+        }
     }
 
     async fn post(routes: &Router, path: &str, body: Vec<u8>) -> (u16, Vec<u8>) {

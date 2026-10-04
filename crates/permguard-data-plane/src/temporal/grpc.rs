@@ -81,40 +81,17 @@ impl TemporalPolicyDecisionPoint for TemporalPdpApi {
             .any(|(zone, ledger)| zone == &asked.zone && ledger == &asked.ledger)
         {
             return Err(status_of(
-                &ApiError::new(
-                    ErrorClass::NotFound,
-                    permguard_core::codes::stream::STORE_UNKNOWN,
-                    format!(
-                        "this plane keeps no journal for `{}/{}`",
-                        asked.zone, asked.ledger
-                    ),
-                ),
+                &super::http::not_held(&asked.zone, &asked.ledger),
                 self.disclosure,
             ));
         }
 
-        let state = streams.state(&asked.zone, &asked.ledger).map_err(|error| {
-            status_of(
-                &ApiError::new(
-                    ErrorClass::Unavailable,
-                    permguard_core::codes::stream::STORE_UNAVAILABLE,
-                    error.to_string(),
-                ),
-                self.disclosure,
-            )
-        })?;
+        let state = streams
+            .state(&asked.zone, &asked.ledger)
+            .map_err(|error| status_of(&super::http::unreadable(&error), self.disclosure))?;
         let held = streams
             .signers(&asked.zone, &asked.ledger)
-            .map_err(|error| {
-                status_of(
-                    &ApiError::new(
-                        ErrorClass::Unavailable,
-                        permguard_core::codes::stream::STORE_UNAVAILABLE,
-                        error.to_string(),
-                    ),
-                    self.disclosure,
-                )
-            })?;
+            .map_err(|error| status_of(&super::http::unreadable(&error), self.disclosure))?;
         let instance = streams
             .instance(&asked.zone, &asked.ledger)
             .unwrap_or_default();

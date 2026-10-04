@@ -1,0 +1,1015 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard Control Plane catalog",
+    "version": "1",
+    "description": "The Control Plane's zone and ledger catalog over REST. Every refusal is a WireError; a surface gated by an allow list may answer 401 or 403 with a WireDenial before any handler runs."
+  },
+  "paths": {
+    "/v1/zones": {
+      "get": {
+        "operationId": "listZones",
+        "summary": "List zones",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "x-grpc-field": "page"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page size. A malformed or zero value is ignored today.",
+            "x-grpc-field": "size"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zones, whole or one page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Zone"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListZones"
+      },
+      "post": {
+        "operationId": "createZone",
+        "summary": "Create a zone",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The zone created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken (`name_taken`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateZone",
+        "x-grpc-body": {
+          "name": "name"
+        }
+      }
+    },
+    "/v1/zones/{zone}": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "get": {
+        "operationId": "getZone",
+        "summary": "Get a zone",
+        "responses": {
+          "200": {
+            "description": "The zone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetZone"
+      },
+      "patch": {
+        "operationId": "renameZone",
+        "summary": "Rename a zone",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The zone, renamed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken (`name_taken`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameZone",
+        "x-grpc-body": {
+          "name": "name"
+        }
+      },
+      "delete": {
+        "operationId": "deleteZone",
+        "summary": "Delete a zone",
+        "responses": {
+          "200": {
+            "description": "The zone deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The zone still holds ledgers (`zone_not_empty`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteZone"
+      }
+    },
+    "/v1/zones/{zone}/ledgers": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        }
+      ],
+      "get": {
+        "operationId": "listLedgers",
+        "summary": "List the ledgers of a zone",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Zero-based page; listing is whole without `page` and `size`. A malformed value is ignored today.",
+            "x-grpc-field": "page"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page size. A malformed or zero value is ignored today.",
+            "x-grpc-field": "size"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ledgers, whole or one page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Ledger"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/ListLedgers"
+      },
+      "post": {
+        "operationId": "createLedger",
+        "summary": "Create a ledger in a zone",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The ledger created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken in the zone (`name_taken`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/CreateLedger",
+        "x-grpc-body": {
+          "name": "name"
+        }
+      }
+    },
+    "/v1/zones/{zone}/ledgers/{ledger}": {
+      "parameters": [
+        {
+          "name": "zone",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A zone by name or by id; a GUID-shaped value is an id.",
+          "x-grpc-field": "zone"
+        },
+        {
+          "name": "ledger",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "A ledger by name or by id.",
+          "x-grpc-field": "ledger"
+        }
+      ],
+      "get": {
+        "operationId": "getLedger",
+        "summary": "Get a ledger",
+        "responses": {
+          "200": {
+            "description": "The ledger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/GetLedger"
+      },
+      "patch": {
+        "operationId": "renameLedger",
+        "summary": "Rename a ledger",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ledger, renamed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The name breaks the naming rules (`invalid_name`). A body that is not JSON is refused by the framework before the handler, as text/plain.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken in the zone (`name_taken`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/RenameLedger",
+        "x-grpc-body": {
+          "name": "name"
+        }
+      },
+      "delete": {
+        "operationId": "deleteLedger",
+        "summary": "Delete a ledger",
+        "responses": {
+          "200": {
+            "description": "The ledger deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ledger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing answers to the name or id (`not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credentials, on a surface gated by an allow list. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A known peer without standing, on a surface gated by an allow list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The catalog store failed (`catalog_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ZoneCatalog/DeleteLedger"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "NameBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The zone or ledger name: a-z, 0-9, `-`, `_`; letter first, alphanumeric last, 3 to 63 characters; a GUID-shaped name is refused with `invalid_name`."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "The body of a create or a rename. Closed by contract, although the Rust type does not deny unknown members yet.",
+        "x-grpc-message": null,
+        "x-grpc-note": "The body of a create or rename: gRPC carries `name` as a field of each request (CreateZoneRequest, RenameZoneRequest, CreateLedgerRequest, RenameLedgerRequest), no standalone message."
+      },
+      "Zone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The permanent identity, a GUID minted at creation.",
+            "x-grpc-field": "id"
+          },
+          "name": {
+            "type": "string",
+            "description": "The human name, unique across the deployment, free to change.",
+            "x-grpc-field": "name"
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "created_at"
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "updated_at"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false,
+        "description": "One zone.",
+        "x-grpc-message": "permguard.control.v1.Zone"
+      },
+      "Ledger": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The permanent identity, a GUID minted at creation.",
+            "x-grpc-field": "id"
+          },
+          "zone_id": {
+            "type": "string",
+            "description": "The zone this ledger belongs to, by id.",
+            "x-grpc-field": "zone_id"
+          },
+          "name": {
+            "type": "string",
+            "description": "The human name, unique within the zone.",
+            "x-grpc-field": "name"
+          },
+          "default_ref": {
+            "type": "string",
+            "description": "The ref this ledger considers its default line, `main` unless said otherwise.",
+            "x-grpc-field": "default_ref"
+          },
+          "created_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "created_at"
+          },
+          "updated_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds since the Unix epoch.",
+            "x-grpc-field": "updated_at"
+          }
+        },
+        "required": [
+          "id",
+          "zone_id",
+          "name",
+          "default_ref",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false,
+        "description": "One ledger, inside one zone.",
+        "x-grpc-message": "permguard.control.v1.Ledger"
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.control.v1.ZoneResponse",
+      "note": "wraps one `Zone` in `zone`; REST answers the bare `Zone`",
+      "fields": [
+        "zone"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.LedgerResponse",
+      "note": "wraps one `Ledger` in `ledger`; REST answers the bare `Ledger`",
+      "fields": [
+        "ledger"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.ListZonesResponse",
+      "note": "wraps the `Zone` list in `zones`; REST answers the bare array",
+      "fields": [
+        "zones"
+      ]
+    },
+    {
+      "message": "permguard.control.v1.ListLedgersResponse",
+      "note": "wraps the `Ledger` list in `ledgers`; REST answers the bare array",
+      "fields": [
+        "ledgers"
+      ]
+    }
+  ]
+}

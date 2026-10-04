@@ -1,0 +1,280 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+// The Host API, `permguard.host.v1`: a stub of the six services of the Host API contract, one RPC
+// per operation it names.
+//
+// The contract names its operations and their REST paths, not their message fields, so every
+// message here is empty: no field number is assigned before the package that implements the
+// operation defines its shape from the contract. Nothing serves this package yet; a test compiles
+// it so the stub stays valid protobuf.
+//
+// The service, RPC and message names are provisional: they are gRPC paths the contract does not
+// name yet, chosen from its operations, and the implementing package confirms or renames them
+// before anything serves them.
+//
+// The peer exchange (`hello`, both proofs, enrolment and every task message) is not a set of
+// unary RPCs: the contract requires one long-lived framed channel bound to one TLS connection.
+// `IdentityService.PeerChannel` reserves that bidirectional stream; its frames are defined with
+// the peer protocol. It carries the enrolment and task messages the contract groups under
+// membership, because they travel on the same proven connection.
+
+syntax = "proto3";
+
+package permguard.host.v1;
+
+
+// REST group: identity and sessions.
+service IdentityService {
+  // `POST /host/v1/sessions/hello`, `…/sessions/prove`, `POST /host/v1/members/enroll`,
+  // `POST /host/v1/tasks/{task}/session` and `…/progress`, on one framed channel.
+  rpc PeerChannel(stream PeerFrame) returns (stream PeerFrame);
+  // `GET /host/v1/identity`.
+  rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
+  // `POST /host/v1/identity/rotate`.
+  rpc RotateIdentity(RotateIdentityRequest) returns (RotateIdentityResponse);
+  // `POST /host/v1/identity/reset/plan`.
+  rpc PlanIdentityReset(PlanIdentityResetRequest) returns (PlanIdentityResetResponse);
+  // `POST /host/v1/identity/reset/run`.
+  rpc RunIdentityReset(RunIdentityResetRequest) returns (RunIdentityResetResponse);
+  // `GET /host/v1/ring-bindings`.
+  rpc ListRingBindings(ListRingBindingsRequest) returns (ListRingBindingsResponse);
+}
+
+// REST group: memberships and tasks.
+service MembershipService {
+  // `POST /host/v1/members/invites`.
+  rpc CreateInvite(CreateInviteRequest) returns (CreateInviteResponse);
+  // `GET /host/v1/members/invites`.
+  rpc ListInvites(ListInvitesRequest) returns (ListInvitesResponse);
+  // `DELETE /host/v1/members/invites/{id}`.
+  rpc DeleteInvite(DeleteInviteRequest) returns (DeleteInviteResponse);
+  // `GET /host/v1/members`.
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  // `GET /host/v1/members/{id}`.
+  rpc GetMember(GetMemberRequest) returns (GetMemberResponse);
+  // `POST /host/v1/members/{id}/approve`.
+  rpc ApproveMember(ApproveMemberRequest) returns (ApproveMemberResponse);
+  // `POST /host/v1/members/{id}/reject`.
+  rpc RejectMember(RejectMemberRequest) returns (RejectMemberResponse);
+  // `POST /host/v1/members/{id}/suspend`.
+  rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  // `POST /host/v1/members/{id}/resume`.
+  rpc ResumeMember(ResumeMemberRequest) returns (ResumeMemberResponse);
+  // `POST /host/v1/members/{id}/fence`.
+  rpc FenceMember(FenceMemberRequest) returns (FenceMemberResponse);
+  // `POST /host/v1/members/{id}/revoke/plan`.
+  rpc PlanMemberRevoke(PlanMemberRevokeRequest) returns (PlanMemberRevokeResponse);
+  // `POST /host/v1/members/{id}/revoke/run`.
+  rpc RunMemberRevoke(RunMemberRevokeRequest) returns (RunMemberRevokeResponse);
+  // `GET /host/v1/members/{id}/sessions`.
+  rpc ListMemberSessions(ListMemberSessionsRequest) returns (ListMemberSessionsResponse);
+}
+
+// REST group: grants.
+service GrantService {
+  // `GET /host/v1/grants`.
+  rpc ListGrants(ListGrantsRequest) returns (ListGrantsResponse);
+  // `POST /host/v1/grants`.
+  rpc CreateGrant(CreateGrantRequest) returns (CreateGrantResponse);
+  // `POST /host/v1/grants/{id}/revoke/plan`.
+  rpc PlanGrantRevoke(PlanGrantRevokeRequest) returns (PlanGrantRevokeResponse);
+  // `POST /host/v1/grants/{id}/revoke/run`.
+  rpc RunGrantRevoke(RunGrantRevokeRequest) returns (RunGrantRevokeResponse);
+}
+
+// REST group: keys and secrets.
+service KeyService {
+  // `GET /host/v1/keys`.
+  rpc ListKeyRings(ListKeyRingsRequest) returns (ListKeyRingsResponse);
+  // `GET /host/v1/keys/{ring}`.
+  rpc GetKeyRing(GetKeyRingRequest) returns (GetKeyRingResponse);
+  // `POST /host/v1/keys/{ring}/rotate`.
+  rpc RotateKeyRing(RotateKeyRingRequest) returns (RotateKeyRingResponse);
+  // `POST /host/v1/keys/{ring}/revoke/plan`.
+  rpc PlanKeyRevoke(PlanKeyRevokeRequest) returns (PlanKeyRevokeResponse);
+  // `POST /host/v1/keys/{ring}/revoke/run`.
+  rpc RunKeyRevoke(RunKeyRevokeRequest) returns (RunKeyRevokeResponse);
+  // `GET /host/v1/keys/bundle`.
+  rpc GetKeyBundle(GetKeyBundleRequest) returns (GetKeyBundleResponse);
+  // `GET /host/v1/secrets`.
+  rpc ListSecrets(ListSecretsRequest) returns (ListSecretsResponse);
+  // `POST /host/v1/secrets/{ref}/rotate`.
+  rpc RotateSecret(RotateSecretRequest) returns (RotateSecretResponse);
+}
+
+// REST group: audit and streams.
+service EvidenceService {
+  // `GET /host/v1/audit/{class}/records`.
+  rpc ListAuditRecords(ListAuditRecordsRequest) returns (ListAuditRecordsResponse);
+  // `GET /host/v1/audit/{class}/checkpoints`.
+  rpc ListAuditCheckpoints(ListAuditCheckpointsRequest) returns (ListAuditCheckpointsResponse);
+  // `GET /host/v1/audit/{class}/export`.
+  rpc ExportAudit(ExportAuditRequest) returns (ExportAuditResponse);
+  // `GET /host/v1/streams`.
+  rpc ListStreams(ListStreamsRequest) returns (ListStreamsResponse);
+  // `POST /host/v1/streams/{plane}/{type}/batches`.
+  rpc ShipStreamBatch(ShipStreamBatchRequest) returns (ShipStreamBatchResponse);
+  // `GET /host/v1/streams/{plane}/{type}/frontier`.
+  rpc GetStreamFrontier(GetStreamFrontierRequest) returns (GetStreamFrontierResponse);
+  // `GET /host/v1/streams/{plane}/{type}/records`.
+  rpc ListStreamRecords(ListStreamRecordsRequest) returns (ListStreamRecordsResponse);
+  // `GET /host/v1/streams/{plane}/{type}/signers`.
+  rpc ListStreamSigners(ListStreamSignersRequest) returns (ListStreamSignersResponse);
+  // `GET /host/v1/streams/{plane}/{type}/subscriptions`.
+  rpc ListStreamSubscriptions(ListStreamSubscriptionsRequest) returns (ListStreamSubscriptionsResponse);
+  // `GET /host/v1/streams/{plane}/{type}/gaps`.
+  rpc ListStreamGaps(ListStreamGapsRequest) returns (ListStreamGapsResponse);
+  // `GET /host/v1/streams/{plane}/{type}/anchors`.
+  rpc ListStreamAnchors(ListStreamAnchorsRequest) returns (ListStreamAnchorsResponse);
+}
+
+// REST group: lifecycle and storage.
+service OperationsService {
+  // `GET /host/v1/status`.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // `POST /host/v1/drain`.
+  rpc Drain(DrainRequest) returns (DrainResponse);
+  // `POST /host/v1/maintenance`.
+  rpc Maintenance(MaintenanceRequest) returns (MaintenanceResponse);
+  // `GET /host/v1/config/effective`.
+  rpc GetEffectiveConfig(GetEffectiveConfigRequest) returns (GetEffectiveConfigResponse);
+  // `GET /host/v1/config/revisions`.
+  rpc ListConfigRevisions(ListConfigRevisionsRequest) returns (ListConfigRevisionsResponse);
+  // `POST /host/v1/backup/prepare`.
+  rpc PrepareBackup(PrepareBackupRequest) returns (PrepareBackupResponse);
+  // `POST /host/v1/backup/finalize`.
+  rpc FinalizeBackup(FinalizeBackupRequest) returns (FinalizeBackupResponse);
+  // `POST /host/v1/backup/abort`.
+  rpc AbortBackup(AbortBackupRequest) returns (AbortBackupResponse);
+  // `GET /host/v1/backups`.
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+  // `POST /host/v1/gc/{job}/plan`.
+  rpc PlanGc(PlanGcRequest) returns (PlanGcResponse);
+  // `POST /host/v1/gc/{job}/run`.
+  rpc RunGc(RunGcRequest) returns (RunGcResponse);
+  // `GET /host/v1/storage/quota`.
+  rpc GetStorageQuota(GetStorageQuotaRequest) returns (GetStorageQuotaResponse);
+  // `POST /host/v1/storage/probe`.
+  rpc ProbeStorage(ProbeStorageRequest) returns (ProbeStorageResponse);
+  // `GET /host/v1/plans`.
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse);
+  // `POST /host/v1/plans/{id}/approve`.
+  rpc ApprovePlan(ApprovePlanRequest) returns (ApprovePlanResponse);
+}
+
+// A frame of the peer channel; defined with the peer protocol.
+message PeerFrame {}
+
+message GetIdentityRequest {}
+message GetIdentityResponse {}
+message RotateIdentityRequest {}
+message RotateIdentityResponse {}
+message PlanIdentityResetRequest {}
+message PlanIdentityResetResponse {}
+message RunIdentityResetRequest {}
+message RunIdentityResetResponse {}
+message ListRingBindingsRequest {}
+message ListRingBindingsResponse {}
+message CreateInviteRequest {}
+message CreateInviteResponse {}
+message ListInvitesRequest {}
+message ListInvitesResponse {}
+message DeleteInviteRequest {}
+message DeleteInviteResponse {}
+message ListMembersRequest {}
+message ListMembersResponse {}
+message GetMemberRequest {}
+message GetMemberResponse {}
+message ApproveMemberRequest {}
+message ApproveMemberResponse {}
+message RejectMemberRequest {}
+message RejectMemberResponse {}
+message SuspendMemberRequest {}
+message SuspendMemberResponse {}
+message ResumeMemberRequest {}
+message ResumeMemberResponse {}
+message FenceMemberRequest {}
+message FenceMemberResponse {}
+message PlanMemberRevokeRequest {}
+message PlanMemberRevokeResponse {}
+message RunMemberRevokeRequest {}
+message RunMemberRevokeResponse {}
+message ListMemberSessionsRequest {}
+message ListMemberSessionsResponse {}
+message ListGrantsRequest {}
+message ListGrantsResponse {}
+message CreateGrantRequest {}
+message CreateGrantResponse {}
+message PlanGrantRevokeRequest {}
+message PlanGrantRevokeResponse {}
+message RunGrantRevokeRequest {}
+message RunGrantRevokeResponse {}
+message ListKeyRingsRequest {}
+message ListKeyRingsResponse {}
+message GetKeyRingRequest {}
+message GetKeyRingResponse {}
+message RotateKeyRingRequest {}
+message RotateKeyRingResponse {}
+message PlanKeyRevokeRequest {}
+message PlanKeyRevokeResponse {}
+message RunKeyRevokeRequest {}
+message RunKeyRevokeResponse {}
+message GetKeyBundleRequest {}
+message GetKeyBundleResponse {}
+message ListSecretsRequest {}
+message ListSecretsResponse {}
+message RotateSecretRequest {}
+message RotateSecretResponse {}
+message ListAuditRecordsRequest {}
+message ListAuditRecordsResponse {}
+message ListAuditCheckpointsRequest {}
+message ListAuditCheckpointsResponse {}
+message ExportAuditRequest {}
+message ExportAuditResponse {}
+message ListStreamsRequest {}
+message ListStreamsResponse {}
+message ShipStreamBatchRequest {}
+message ShipStreamBatchResponse {}
+message GetStreamFrontierRequest {}
+message GetStreamFrontierResponse {}
+message ListStreamRecordsRequest {}
+message ListStreamRecordsResponse {}
+message ListStreamSignersRequest {}
+message ListStreamSignersResponse {}
+message ListStreamSubscriptionsRequest {}
+message ListStreamSubscriptionsResponse {}
+message ListStreamGapsRequest {}
+message ListStreamGapsResponse {}
+message ListStreamAnchorsRequest {}
+message ListStreamAnchorsResponse {}
+message GetStatusRequest {}
+message GetStatusResponse {}
+message DrainRequest {}
+message DrainResponse {}
+message MaintenanceRequest {}
+message MaintenanceResponse {}
+message GetEffectiveConfigRequest {}
+message GetEffectiveConfigResponse {}
+message ListConfigRevisionsRequest {}
+message ListConfigRevisionsResponse {}
+message PrepareBackupRequest {}
+message PrepareBackupResponse {}
+message FinalizeBackupRequest {}
+message FinalizeBackupResponse {}
+message AbortBackupRequest {}
+message AbortBackupResponse {}
+message ListBackupsRequest {}
+message ListBackupsResponse {}
+message PlanGcRequest {}
+message PlanGcResponse {}
+message RunGcRequest {}
+message RunGcResponse {}
+message GetStorageQuotaRequest {}
+message GetStorageQuotaResponse {}
+message ProbeStorageRequest {}
+message ProbeStorageResponse {}
+message ListPlansRequest {}
+message ListPlansResponse {}
+message ApprovePlanRequest {}
+message ApprovePlanResponse {}

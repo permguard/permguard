@@ -13,7 +13,7 @@ repository.workspace = true
 publish = false
 
 # The client half of the control plane's gRPC contract, generated from the
-# plane's own `proto/`.
+# checked-in `contracts/proto/`.
 build = "build.rs"
 
 [dependencies]

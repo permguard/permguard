@@ -1,0 +1,18 @@
+{
+  "artifact": "Key-set digest input",
+  "authority": "1-architecture/4-architecture-server-host-keys.md (key_set_digest); crates/permguard-objects/src/crypto/thumbprint.rs (RING, EPOCH, ALGORITHM, KEYS_BY_THUMBPRINT)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "key_set": {
+      "keys": "text",
+      "fields": [
+        { "label": "ring", "name": "ring", "type": "text", "occurs": "required", "note": "not empty" },
+        { "label": "epoch", "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": "algorithm", "name": "algorithm", "type": "text", "occurs": "required", "note": "the exact suite id" },
+        { "label": "keys_by_thumbprint", "name": "keys_by_thumbprint", "type": "array<text>", "occurs": "required", "note": "one or more unique RFC 7638 thumbprints, sorted bytewise" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": "key_set"
+}

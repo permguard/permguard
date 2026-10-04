@@ -1,0 +1,74 @@
+{
+  "artifact": "Ledger manifest (application/vnd.permguard.manifest.v1+cbor)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#objects (manifest and the partition today row); crates/permguard-objects/src/manifest.rs (KEY_*, META_*, REQ_*, RUNTIME_*, PARTITION_*, ARTIFACT_*, INPUT_*, PROFILE_* constants)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "manifest": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "metadata", "type": "map:metadata", "occurs": "required" },
+        { "label": 2, "name": "runtimes", "type": "map<text,map:runtime>", "occurs": "required", "note": "keyed by runtime name, at least one" },
+        { "label": 3, "name": "partitions", "type": "map<text,map:partition>", "occurs": "required", "note": "keyed by partition name, at least one" },
+        { "label": 4, "name": "profiles", "type": "map<text,map:profile>", "occurs": "required", "note": "keyed by profile name, at least one" }
+      ]
+    },
+    "metadata": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "const:\"policy\"", "occurs": "required" },
+        { "label": 2, "name": "name", "type": "text", "occurs": "required", "note": "not empty" },
+        { "label": 3, "name": "description", "type": "text", "occurs": "required", "note": "always written; a reader reads an absent one as empty text" },
+        { "label": 4, "name": "author", "type": "text", "occurs": "required", "note": "always written; a reader reads an absent one as empty text" },
+        { "label": 5, "name": "license", "type": "text", "occurs": "required", "note": "always written; a reader reads an absent one as empty text" }
+      ]
+    },
+    "runtime": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "language", "type": "map:requirement", "occurs": "required" },
+        { "label": 2, "name": "engine", "type": "map:requirement", "occurs": "required" }
+      ]
+    },
+    "requirement": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "name", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "constraint", "type": "text", "occurs": "required", "note": "the closed semver constraint grammar" }
+      ]
+    },
+    "partition": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "runtime", "type": "text", "occurs": "required", "note": "a key of runtimes" },
+        { "label": 2, "name": "media_types", "type": "array<text>", "occurs": "required", "note": "at least one" },
+        { "label": 3, "name": "schema", "type": "bool", "occurs": "required", "note": "false whenever artifacts is present" },
+        { "label": 4, "name": "input", "type": "map:input", "occurs": "optional", "note": "absent when the partition accepts no input" },
+        { "label": 5, "name": "artifacts", "type": "array<map:artifact>", "occurs": "optional", "note": "absent when the partition declares none; types unique" },
+        { "label": 6, "name": "history", "type": "text", "occurs": "optional", "note": "the history scope, today only global" }
+      ]
+    },
+    "input": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "required", "type": "bool", "occurs": "required" }
+      ]
+    },
+    "artifact": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "required", "type": "bool", "occurs": "required" }
+      ]
+    },
+    "profile": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "text", "occurs": "required", "note": "a profile type this build serves" },
+        { "label": 2, "name": "partitions", "type": "array<text>", "occurs": "required", "note": "keys of partitions, at least one, unique" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": "manifest"
+}

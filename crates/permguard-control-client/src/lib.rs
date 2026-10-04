@@ -50,7 +50,7 @@ pub mod http;
 pub mod narrate;
 pub mod objects;
 /// The generated `permguard.control.v1` stubs, from the plane's own
-/// `proto/`. Public so the wire tests can stand a fake server on the same
+/// `contracts/proto/`. Public so the wire tests can stand a fake server on the same
 /// contract this client calls.
 pub mod pdp;
 pub mod pdp_v1;

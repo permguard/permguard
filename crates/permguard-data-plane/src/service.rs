@@ -358,3 +358,30 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
         ready: state.health.is_ready(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The data plane's bodies against `contracts/openapi/health.json`, from the real types.
+    ///
+    /// Coverage of the document is asserted once, in the control plane's test, which sees every
+    /// schema; this checks that nothing the data plane serializes falls outside it.
+    #[test]
+    fn test_the_data_plane_bodies_match_openapi_health() {
+        let doc = permguard_conformance::schema::Document::load("health.json");
+
+        doc.check(
+            "InfoBody",
+            &InfoBody {
+                plane: PLANE,
+                product: "Permguard".to_owned(),
+                version: "1.2.3".to_owned(),
+                commit: "abc1234".to_owned(),
+            },
+        );
+        for (live, ready) in [(true, true), (true, false)] {
+            doc.check("DataHealthBody", &HealthBody { live, ready });
+        }
+    }
+}

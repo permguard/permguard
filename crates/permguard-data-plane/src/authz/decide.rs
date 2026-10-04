@@ -109,7 +109,10 @@ impl Loading {
         let mirror = store::find(root, zone, ledger).ok_or_else(|| {
             self.metrics.count(
                 &super::measure::REFUSALS,
-                &[(permguard_core::metrics::labels::REASON, "ledger_not_served")],
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    permguard_core::codes::pdp_native::LEDGER_NOT_SERVED,
+                )],
             );
             debug!(
                 event.name = "authz.ledger_not_served",
@@ -119,7 +122,7 @@ impl Loading {
 
             ApiError::new(
                 ErrorClass::NotFound,
-                "ledger_not_served",
+                permguard_core::codes::pdp_native::LEDGER_NOT_SERVED,
                 format!("this plane does not serve `{}/{}`", zone, ledger),
             )
         })?;
@@ -134,7 +137,10 @@ impl Loading {
         {
             self.metrics.count(
                 &super::measure::REFUSALS,
-                &[(permguard_core::metrics::labels::REASON, "ledger_expired")],
+                &[(
+                    permguard_core::metrics::labels::REASON,
+                    permguard_core::codes::pdp_native::LEDGER_EXPIRED,
+                )],
             );
             warn!(
                 event.name = "authz.ledger_expired",
@@ -148,7 +154,7 @@ impl Loading {
 
             return Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "ledger_expired",
+                permguard_core::codes::pdp_native::LEDGER_EXPIRED,
                 format!(
                     "`{}` was last confirmed {}s ago, which is past this deployment's expiry \
                      bound of {}s: refusing to decide on a state this old",
@@ -169,13 +175,13 @@ impl Loading {
                 &super::measure::REFUSALS,
                 &[(
                     permguard_core::metrics::labels::REASON,
-                    "ledger_incompatible",
+                    permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
                 )],
             );
 
             return Err(ApiError::new(
                 ErrorClass::Unavailable,
-                "ledger_incompatible",
+                permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
                 format!(
                     "this plane cannot serve `{}` at its current commit: {}",
                     mirror.display_name(),
@@ -309,14 +315,26 @@ impl Loading {
     /// the ones that will not fix themselves.
     fn refuse(&self, mirror: &store::Mirror, refusal: &Refusal) -> ApiError {
         let (code, class, reason) = match refusal {
-            Refusal::Empty => ("ledger_empty", ErrorClass::Unavailable, "ledger_empty"),
-            Refusal::Incompatible(_) => (
-                "ledger_incompatible",
+            Refusal::Empty => (
+                permguard_core::codes::pdp_native::LEDGER_EMPTY,
                 ErrorClass::Unavailable,
-                "ledger_incompatible",
+                permguard_core::codes::pdp_native::LEDGER_EMPTY,
             ),
-            Refusal::Damaged(_) => ("ledger_damaged", ErrorClass::Unavailable, "ledger_damaged"),
-            Refusal::Unknown(_) => ("profile_unknown", ErrorClass::Validation, "profile_unknown"),
+            Refusal::Incompatible(_) => (
+                permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
+                ErrorClass::Unavailable,
+                permguard_core::codes::pdp_native::LEDGER_INCOMPATIBLE,
+            ),
+            Refusal::Damaged(_) => (
+                permguard_core::codes::pdp_native::LEDGER_DAMAGED,
+                ErrorClass::Unavailable,
+                permguard_core::codes::pdp_native::LEDGER_DAMAGED,
+            ),
+            Refusal::Unknown(_) => (
+                permguard_core::codes::pdp_native::PROFILE_UNKNOWN,
+                ErrorClass::Validation,
+                permguard_core::codes::pdp_native::PROFILE_UNKNOWN,
+            ),
         };
         self.metrics.count(
             &super::measure::REFUSALS,
@@ -789,7 +807,7 @@ impl Decider {
 
                 return Err(ApiError::new(
                     ErrorClass::Unavailable,
-                    "evaluation_quarantined",
+                    permguard_core::codes::pdp_native::EVALUATION_QUARANTINED,
                     format!(
                         "evaluating `{guarded}` overran its deadline {overruns} times in a row and \
                          is out of service for another {}s. A provider inside an evaluation cannot \
@@ -867,7 +885,7 @@ impl Decider {
 
                     ApiError::new(
                         ErrorClass::Unavailable,
-                        "evaluation_at_capacity",
+                        permguard_core::codes::pdp_native::EVALUATION_AT_CAPACITY,
                         format!(
                             "{held}. An evaluation is synchronous and a provider inside one cannot \
                              be interrupted, so this plane bounds how many may run at once and \
@@ -880,7 +898,7 @@ impl Decider {
                 // engine's words can carry policy text or tenant data.
                 crate::blocking::Refused::Failed(why) => ApiError::new(
                     ErrorClass::Internal,
-                    "decision_failed",
+                    permguard_core::codes::pdp_native::DECISION_FAILED,
                     "the evaluation did not complete",
                 )
                 .with_internal(why),
@@ -1085,10 +1103,13 @@ impl Decider {
             .await
             .unwrap_or_else(|refused| {
                 let (code, why) = match refused {
-                    crate::blocking::Refused::AtCapacity(held) => {
-                        ("load_at_capacity", held.to_string())
+                    crate::blocking::Refused::AtCapacity(held) => (
+                        permguard_core::codes::pdp_native::LOAD_AT_CAPACITY,
+                        held.to_string(),
+                    ),
+                    crate::blocking::Refused::Failed(why) => {
+                        (permguard_core::codes::pdp_native::LOAD_FAILED, why)
                     }
-                    crate::blocking::Refused::Failed(why) => ("load_failed", why),
                 };
 
                 Err(ApiError::new(
@@ -1606,7 +1627,7 @@ impl Decider {
         );
         ApiError::new(
             ErrorClass::Unavailable,
-            "decision_unrecordable",
+            permguard_core::codes::pdp_native::DECISION_UNRECORDABLE,
             format!(
                 "this plane cannot record decisions right now ({reason}) and is configured to \
                  refuse rather than decide unrecorded"

@@ -1,0 +1,451 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard health, version and keys",
+    "version": "1",
+    "description": "Plane health and version, the telemetry listener's probes and the key-set endpoints. Both planes serve the same paths on their own ports."
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "getInfo",
+        "summary": "Who this plane is",
+        "responses": {
+          "200": {
+            "description": "Plane and product; build details only when disclosed. Both planes answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoBody"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetInfo",
+        "x-grpc-note": "The data plane answers the same document over permguard.data.v1.DataPlane/GetInfo (identical GetInfoResponse)."
+      }
+    },
+    "/version": {
+      "get": {
+        "operationId": "getVersion",
+        "summary": "The plane's build",
+        "responses": {
+          "200": {
+            "description": "Same body as `/`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoBody"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetInfo",
+        "x-grpc-note": "Same body as `/`; the data plane answers over permguard.data.v1.DataPlane/GetInfo."
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "The plane's liveness and readiness",
+        "description": "Always 200; the state is in the body. The control plane adds `degraded`, the data plane never does.",
+        "responses": {
+          "200": {
+            "description": "The health of the plane asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ControlHealthBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DataHealthBody"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetHealth",
+        "x-grpc-note": "The data plane answers over permguard.data.v1.DataPlane/GetHealth. gRPC carries `live` and `ready` only: `degraded` is REST-only."
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "getLiveness",
+        "summary": "Telemetry listener liveness",
+        "responses": {
+          "200": {
+            "description": "`live`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`not live`: restart me.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart."
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "Telemetry listener readiness",
+        "responses": {
+          "200": {
+            "description": "`ready`",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`not ready`: send no work.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "Telemetry listener probe; no gRPC counterpart."
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "summary": "Prometheus exposition",
+        "description": "Always 200, even when the process reports itself unhealthy.",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "Prometheus text exposition on the telemetry listener; no gRPC counterpart."
+      }
+    },
+    "/control-plane/keys": {
+      "get": {
+        "operationId": "getControlPlaneKeys",
+        "summary": "The control plane public keys as a JWKS",
+        "responses": {
+          "200": {
+            "description": "The key set; an empty set when nothing is published.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`max-age` of the verifier refresh."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/JwkSet"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ring cannot be read; plain text, never an empty set.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.control.v1.GitLikeStore/GetKeyRing",
+        "x-grpc-note": "The response carries the JWKS as JSON bytes (`GetKeyRingResponse.jwks`)."
+      }
+    },
+    "/data-plane/keys": {
+      "get": {
+        "operationId": "getDataPlaneKeys",
+        "summary": "The data plane public keys as a JWKS",
+        "responses": {
+          "200": {
+            "description": "The key set; an empty set when nothing is published.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`max-age` of the verifier refresh."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/JwkSet"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ring cannot be read; plain text, never an empty set.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "The data plane serves no key-ring RPC (permguard.data.v1 has none); keys are HTTP-only there."
+      }
+    },
+    "/server-host/keys": {
+      "get": {
+        "operationId": "getServerHostKeys",
+        "summary": "The Server Host operations ring public keys as a JWKS",
+        "responses": {
+          "200": {
+            "description": "The key set; an empty set when nothing is published.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`max-age` of the verifier refresh."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/JwkSet"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ring cannot be read; plain text, never an empty set.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "permguard.host.v1.IdentityService/ListRingBindings and KeyService/GetKeyRing are empty stubs for the Host API (`/host/v1/keys/{ring}`), not this telemetry endpoint; nothing serves them."
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "InfoBody": {
+        "type": "object",
+        "properties": {
+          "plane": {
+            "type": "string",
+            "enum": [
+              "control",
+              "data"
+            ],
+            "description": "The plane's id as configuration spells it.",
+            "x-grpc-field": "plane"
+          },
+          "product": {
+            "type": "string",
+            "description": "The product name.",
+            "x-grpc-field": "product"
+          },
+          "version": {
+            "type": "string",
+            "description": "Empty when the deployment does not disclose builds.",
+            "x-grpc-field": "version"
+          },
+          "commit": {
+            "type": "string",
+            "description": "Empty when the deployment does not disclose builds.",
+            "x-grpc-field": "commit"
+          }
+        },
+        "required": [
+          "plane",
+          "product",
+          "version",
+          "commit"
+        ],
+        "additionalProperties": false,
+        "description": "What `/` and `/version` answer on a plane.",
+        "x-grpc-message": "permguard.control.v1.GetInfoResponse",
+        "x-grpc-note": "The data plane's permguard.data.v1.GetInfoResponse has the same four fields."
+      },
+      "VersionBody": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "`server-host`: the Host is not a plane."
+          },
+          "product": {
+            "type": "string",
+            "description": "The product name."
+          },
+          "version": {
+            "type": "string",
+            "description": "Empty when the deployment does not disclose builds."
+          },
+          "commit": {
+            "type": "string",
+            "description": "Empty when the deployment does not disclose builds."
+          }
+        },
+        "required": [
+          "component",
+          "product",
+          "version",
+          "commit"
+        ],
+        "additionalProperties": false,
+        "description": "What the telemetry listener's `/version` answers (`VersionBody`, permguard-telemetry).",
+        "x-grpc-message": null,
+        "x-grpc-note": "The telemetry listener's `/version` is REST-only: the Server Host is not a plane and has no gRPC counterpart."
+      },
+      "Degraded": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "The capability's name, as the configuration calls it."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why, in the terms an operator would fix it in."
+          }
+        },
+        "required": [
+          "capability",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "One capability that is served and cannot currently do its work.",
+        "x-grpc-message": null,
+        "x-grpc-note": "REST-only: GetHealthResponse has no degraded list."
+      },
+      "ControlHealthBody": {
+        "type": "object",
+        "properties": {
+          "live": {
+            "type": "boolean",
+            "x-grpc-field": "live"
+          },
+          "ready": {
+            "type": "boolean",
+            "x-grpc-field": "ready"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Degraded"
+            },
+            "description": "Absent when empty.",
+            "x-grpc-field": null,
+            "x-grpc-note": "REST-only: permguard.control.v1.GetHealthResponse has no degraded list; a gRPC client cannot learn which capability is degraded."
+          }
+        },
+        "required": [
+          "live",
+          "ready"
+        ],
+        "additionalProperties": false,
+        "description": "The control plane's `/health`.",
+        "x-grpc-message": "permguard.control.v1.GetHealthResponse",
+        "x-grpc-note": "`degraded` is REST-only: the gRPC response carries live and ready only."
+      },
+      "DataHealthBody": {
+        "type": "object",
+        "properties": {
+          "live": {
+            "type": "boolean",
+            "x-grpc-field": "live"
+          },
+          "ready": {
+            "type": "boolean",
+            "x-grpc-field": "ready"
+          }
+        },
+        "required": [
+          "live",
+          "ready"
+        ],
+        "additionalProperties": false,
+        "description": "The data plane's `/health`.",
+        "x-grpc-message": "permguard.data.v1.GetHealthResponse"
+      }
+    }
+  },
+  "x-grpc-unmapped-rpcs": [
+    {
+      "rpc": "permguard.data.v1.DataPlane/GetInfo",
+      "note": "the data plane's `/` and `/version`: one REST path is served by both planes, and its operation names the control plane's `ControlPlane/GetInfo`"
+    },
+    {
+      "rpc": "permguard.data.v1.DataPlane/GetHealth",
+      "note": "the data plane's `/health`: one REST path is served by both planes, and its operation names the control plane's `ControlPlane/GetHealth`"
+    }
+  ],
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.data.v1.GetInfoRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.data.v1.GetInfoResponse",
+      "note": "`plane`, `product`, `version` and `commit`: the members of `InfoBody`, which maps the control plane's message",
+      "fields": [
+        "plane",
+        "product",
+        "version",
+        "commit"
+      ]
+    },
+    {
+      "message": "permguard.data.v1.GetHealthRequest",
+      "note": "an empty request",
+      "fields": []
+    }
+  ]
+}

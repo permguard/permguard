@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::store::{FileObjectStore, RefState, RefUpdate, StoreError};
+use permguard_core::codes;
 use permguard_notp::*;
 use permguard_objects::digest::Digest;
 use permguard_objects::grammar;
@@ -168,7 +169,7 @@ impl Engine<'_> {
     /// Push negotiation: preflight the declared delta, answer what is missing.
     pub fn negotiate_push(&self, request: &NegotiatePushRequest) -> Result<NegotiatePushResponse> {
         grammar::validate_ref_name(&request.r#ref)
-            .map_err(|e| invalid("grammar", e.to_string()))?;
+            .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
         if request.closure.len() as u64 > self.limits.max_push_objects {
             return Err(EngineError::Unavailable {
                 message: format!(
@@ -245,7 +246,7 @@ impl Engine<'_> {
         signer: HeadSigner<'_>,
     ) -> Result<CommitPushResponse> {
         grammar::validate_ref_name(&request.r#ref)
-            .map_err(|e| invalid("grammar", e.to_string()))?;
+            .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
 
         // Idempotency first: a retry whose commit already landed is a
         // success and re-runs nothing.
@@ -305,7 +306,7 @@ impl Engine<'_> {
         signer: HeadSigner<'_>,
     ) -> Result<NegotiatePullResponse> {
         grammar::validate_ref_name(&request.r#ref)
-            .map_err(|e| invalid("grammar", e.to_string()))?;
+            .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
         let state = self
             .store
             .read_ref(&request.r#ref)?
@@ -377,7 +378,8 @@ impl Engine<'_> {
 
     /// The advertised ref: state plus current statement.
     pub fn get_ref(&self, name: &str, signer: HeadSigner<'_>) -> Result<(RefState, Vec<u8>)> {
-        grammar::validate_ref_name(name).map_err(|e| invalid("grammar", e.to_string()))?;
+        grammar::validate_ref_name(name)
+            .map_err(|e| invalid(codes::notp::GRAMMAR, e.to_string()))?;
         let state = self
             .store
             .read_ref(name)?
@@ -513,7 +515,7 @@ impl Engine<'_> {
             })?;
         if manifest_entry.digest != head.manifest {
             return Err(invalid(
-                "manifest_mismatch",
+                codes::notp::MANIFEST_MISMATCH,
                 "the commit's manifest digest differs from the root entry `manifest`",
             ));
         }
@@ -585,7 +587,7 @@ impl Engine<'_> {
                     .any(|artifact| artifact.media_type() == media_type);
                 if !is_policy && !is_schema && !is_artifact {
                     return Err(invalid(
-                        "media_type_not_allowed",
+                        permguard_core::codes::notp::MEDIA_TYPE_NOT_ALLOWED,
                         format!(
                             "partition `{name}` allows `{media_type}`, which does not belong to the language `{}`",
                             runtime.language.name
@@ -612,7 +614,7 @@ impl Engine<'_> {
                 .any(|entry| entry.kind == Kind::Tree && entry.name == *name);
             if !present {
                 return Err(invalid(
-                    "partition_missing",
+                    permguard_core::codes::notp::PARTITION_MISSING,
                     format!("the manifest declares the partition `{name}`, which has no subtree"),
                 ));
             }
@@ -646,7 +648,7 @@ impl Engine<'_> {
                 Kind::Blob => {
                     if entry.name != MANIFEST_ENTRY {
                         return Err(invalid(
-                            "partition_rejected",
+                            permguard_core::codes::notp::PARTITION_REJECTED,
                             format!(
                                 "the root entry `{}` is neither a partition nor the manifest",
                                 entry.name
@@ -657,7 +659,7 @@ impl Engine<'_> {
                 Kind::Tree => {
                     let declared = manifest.partitions.get(&entry.name).ok_or_else(|| {
                         invalid(
-                            "partition_undeclared",
+                            permguard_core::codes::notp::PARTITION_UNDECLARED,
                             format!(
                                 "the partition `{}` is not declared by the manifest",
                                 entry.name
@@ -731,7 +733,7 @@ impl Engine<'_> {
                     let schemas = sources.schemas.len();
                     if schemas > 1 {
                         return Err(invalid(
-                            "schema_ambiguous",
+                            permguard_core::codes::notp::SCHEMA_AMBIGUOUS,
                             format!(
                                 "the partition `{}` holds {schemas} schemas: at most one",
                                 entry.name
@@ -769,7 +771,7 @@ impl Engine<'_> {
                             .unwrap_or_default();
                         if (contract.required || artifact.required_by_default()) && held == 0 {
                             return Err(invalid(
-                                "artifact_missing",
+                                permguard_core::codes::notp::ARTIFACT_MISSING,
                                 format!(
                                     "the partition `{}` declares `{}` and the commit carries none",
                                     entry.name,
@@ -784,7 +786,7 @@ impl Engine<'_> {
                             )
                         {
                             return Err(invalid(
-                                "artifact_ambiguous",
+                                permguard_core::codes::notp::ARTIFACT_AMBIGUOUS,
                                 format!(
                                     "the partition `{}` holds {held} of `{}`: at most one",
                                     entry.name,
@@ -879,7 +881,10 @@ impl Engine<'_> {
         depth: usize,
     ) -> Result<()> {
         if depth > limits::MAX_TREE_DEPTH {
-            return Err(invalid("limit", "tree depth exceeds the model limit"));
+            return Err(invalid(
+                codes::notp::LIMIT,
+                "tree depth exceeds the model limit",
+            ));
         }
         let tree = self.load_tree(tree_digest)?;
         let previous: Vec<Tree> = previous_trees
@@ -917,7 +922,7 @@ impl Engine<'_> {
                     let blob = self.load_blob(&entry.digest)?;
                     if !allowed_media_types.contains(&blob.media_type) {
                         return Err(invalid(
-                            "media_type_not_allowed",
+                            permguard_core::codes::notp::MEDIA_TYPE_NOT_ALLOWED,
                             format!("`{}` is not allowed in this partition", blob.media_type),
                         ));
                     }
@@ -971,7 +976,7 @@ impl Engine<'_> {
                     }
 
                     return Err(invalid(
-                        "media_type_not_allowed",
+                        permguard_core::codes::notp::MEDIA_TYPE_NOT_ALLOWED,
                         format!(
                             "`{}` holds `{}`, which the language `{}` does not own",
                             entry_path,
@@ -1001,13 +1006,13 @@ impl Engine<'_> {
     ) -> Result<()> {
         let annotated = entry.annotations.get(ANNOTATION_POLICY_ID).ok_or_else(|| {
             invalid(
-                "policy_id_missing",
+                permguard_core::codes::notp::POLICY_ID_MISSING,
                 format!("the policy `{path}` carries no {ANNOTATION_POLICY_ID} annotation"),
             )
         })?;
         if !entry.annotations.contains_key(ANNOTATION_POLICY_KIND) {
             return Err(invalid(
-                "policy_kind_missing",
+                permguard_core::codes::notp::POLICY_KIND_MISSING,
                 format!("the policy `{path}` carries no {ANNOTATION_POLICY_KIND} annotation"),
             ));
         }
@@ -1022,7 +1027,7 @@ impl Engine<'_> {
             (None, None) => {}
             _ => {
                 return Err(invalid(
-                    "policy_alias_mismatch",
+                    permguard_core::codes::notp::POLICY_ALIAS_MISMATCH,
                     format!(
                         "the policy `{path}` annotates an alias that does not mirror the source's @alias"
                     ),

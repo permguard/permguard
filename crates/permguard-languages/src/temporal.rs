@@ -173,6 +173,12 @@ pub struct Refused {
 
 impl Refused {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        // A temporal refusal reaches the wire as its code: an unregistered one fails any test that
+        // builds it.
+        debug_assert!(
+            permguard_core::codes::is_registered(code),
+            "`{code}` is not a registered stable code"
+        );
         Self {
             code,
             message: message.into(),

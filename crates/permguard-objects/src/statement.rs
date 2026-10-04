@@ -133,11 +133,25 @@ impl SignedHead {
         })
     }
 
-    /// The `kid` this envelope claims, for key-ring lookup.
-    pub fn kid(&self) -> Result<Vec<u8>, StatementError> {
+    /// The protected header, closed: only `alg` and `kid` may appear. A label this reader does
+    /// not know is signed data it cannot honour, so it is refused rather than skipped.
+    fn protected_map(&self) -> Result<Vec<(Value, Value)>, StatementError> {
         let Value::Map(map) = cbor::decode_canonical(&self.protected)? else {
             return Err(StatementError::Schema("protected header must be a map"));
         };
+        if map.iter().any(|(key, _)| {
+            *key != Value::Int(COSE_HEADER_ALG) && *key != Value::Int(COSE_HEADER_KID)
+        }) {
+            return Err(StatementError::Schema(
+                "protected header carries an unknown label",
+            ));
+        }
+        Ok(map)
+    }
+
+    /// The `kid` this envelope claims, for key-ring lookup.
+    pub fn kid(&self) -> Result<Vec<u8>, StatementError> {
+        let map = self.protected_map()?;
         match map.iter().find(|(k, _)| *k == Value::Int(COSE_HEADER_KID)) {
             Some((_, Value::Bytes(kid))) => Ok(kid.clone()),
             _ => Err(StatementError::Schema("missing kid")),
@@ -148,9 +162,7 @@ impl SignedHead {
     /// statement. The algorithm is pinned: the protected header must declare
     /// EdDSA, and the key must be an Ed25519 key — nothing else verifies.
     pub fn verify(&self, public_key: &[u8]) -> Result<HeadStatement, StatementError> {
-        let Value::Map(map) = cbor::decode_canonical(&self.protected)? else {
-            return Err(StatementError::Schema("protected header must be a map"));
-        };
+        let map = self.protected_map()?;
         match map.iter().find(|(k, _)| *k == Value::Int(COSE_HEADER_ALG)) {
             Some((_, Value::Int(alg))) if *alg == COSE_ALG_EDDSA => {}
             _ => return Err(StatementError::Algorithm),

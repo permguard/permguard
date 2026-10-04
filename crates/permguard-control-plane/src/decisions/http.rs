@@ -93,7 +93,7 @@ impl DecisionFacade {
         {
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "stream_malformed",
+                permguard_core::codes::stream::STREAM_MALFORMED,
                 "`pdp` and `instance` are unchanged portable names",
             ));
         }
@@ -113,7 +113,7 @@ impl DecisionFacade {
         if !exists {
             return Err(ApiError::new(
                 ErrorClass::NotFound,
-                "stream_unknown",
+                permguard_core::codes::stream::STREAM_UNKNOWN,
                 format!("this store holds no stream for `{pdp_id}/{instance}`"),
             ));
         }
@@ -138,7 +138,7 @@ impl DecisionFacade {
         if spans.len() > permguard_stream::MAX_SIGNER_SPANS {
             return Err(ApiError::new(
                 ErrorClass::Validation,
-                "signer_range_too_wide",
+                permguard_core::codes::stream::SIGNER_RANGE_TOO_WIDE,
                 format!(
                     "this range crosses more than {} signing-key spans; narrow `from_seq` and \
                      `until_seq`",
@@ -504,7 +504,7 @@ async fn signers(State(facade): State<DecisionFacade>, RawQuery(query): RawQuery
                 &facade,
                 ApiError::new(
                     ErrorClass::Validation,
-                    "bound_malformed",
+                    permguard_core::codes::stream::BOUND_MALFORMED,
                     format!("`{name}` is a sequence number"),
                 ),
             );
@@ -655,5 +655,501 @@ fn api_error(refused: &Refused) -> ApiError {
             permguard_core::codes::stream::STORE_UNAVAILABLE,
             detail.clone(),
         ),
+    }
+}
+
+#[cfg(test)]
+mod openapi {
+    //! `contracts/openapi/evidence-decisions.json` and `stream-common.json`, checked against the
+    //! types that put those documents' bodies on the wire.
+    //!
+    //! The two documents are checked here, in the crate that sees both the public record and
+    //! stream types and the private bodies of this module, so each document's one
+    //! `assert_covered` runs in a process that has seen all of its schemas.
+
+    #![allow(clippy::expect_used)]
+
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use permguard_conformance::schema::Document;
+    use permguard_core::KeyManager;
+    use permguard_decisions::envelope::{Batch, Envelope, Signed};
+    use permguard_decisions::merkle;
+    use permguard_decisions::record::{
+        ActionRef, Body, Build, Commitments, DecisionBody, DiscontinuityBody, EventRef, GENESIS,
+        Inputs, Lost, MarkerBody, Outcome, Party, Predecessor, Reason, Record, Sampling, StoreRef,
+        Stream, Trace, VERSION,
+    };
+    use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
+    use permguard_stream::{Block, Coverage, Cursor, Frontier, Position, SignerSpan, Signers};
+    use serde_json::{Value, json};
+
+    use super::*;
+    use crate::decisions::read::Inclusion;
+
+    fn ring() -> DirectoryKeyManager {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-decisions-openapi-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_nanos())
+                .unwrap_or_default()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let keys = DirectoryKeyManager::new(
+            root,
+            KeyPolicy {
+                publish_ahead: Duration::from_secs(0),
+                rotate_every: Duration::from_secs(3600),
+                retain: Duration::from_secs(3600),
+                verify_retain: Duration::from_secs(7200),
+            },
+        );
+        keys.maintain().expect("the ring produces a key");
+
+        keys
+    }
+
+    fn build(full: bool) -> Build {
+        Build {
+            version: "0.1.0".to_owned(),
+            build: full.then(|| "sha256:b1".to_owned()),
+            engines: full.then(|| BTreeMap::from([("cedar".to_owned(), "4.2.0".to_owned())])),
+        }
+    }
+
+    fn party(kind: &str, id: &str, properties: bool) -> Party {
+        Party {
+            kind: kind.to_owned(),
+            id: id.to_owned(),
+            properties: properties
+                .then(|| json!({"tier": "gold"}).as_object().cloned())
+                .flatten(),
+        }
+    }
+
+    fn store() -> StoreRef {
+        StoreRef {
+            zone: "acme".to_owned(),
+            ledger: "main-ledger".to_owned(),
+            commit: "sha256:ec1773bf".to_owned(),
+            counter: 3,
+            profile: "default".to_owned(),
+        }
+    }
+
+    /// A marker, two decisions, a marker and a discontinuity: every kind, every optional member
+    /// present in one record and absent in another.
+    fn records() -> Vec<Record> {
+        let marker_full = Body::Marker(Box::new(MarkerBody {
+            predecessor: Some(Predecessor {
+                instance: "inst-1".to_owned(),
+                last_seq: Some(9),
+                reason: "spool_full".to_owned(),
+            }),
+            pdp: build(true),
+            sampling: Sampling {
+                permits: "1.0".to_owned(),
+            },
+            commitments: Commitments {
+                alg: "HMAC-SHA256".to_owned(),
+                key_version: "v1".to_owned(),
+            },
+        }));
+        let decision_full = Body::Decision(Box::new(DecisionBody {
+            id: "id-2".to_owned(),
+            pdp: build(false),
+            store: store(),
+            subject: party("User", "pseudo:v1:9f2c", true),
+            resource: party("Document", "budget", false),
+            action: ActionRef {
+                name: "read".to_owned(),
+            },
+            principal: Some(party("User", "pseudo:v1:77aa", true)),
+            inputs: Inputs {
+                context: Some("hmac:c1".to_owned()),
+                partition_inputs: Some("hmac:p1".to_owned()),
+                absent: vec!["governance".to_owned()],
+                external: vec![json!({"source": "pip"})],
+            },
+            decision: false,
+            outcome: Some(Outcome::Indeterminate),
+            causes: Some(vec!["evaluation_failed".to_owned()]),
+            policies: vec![],
+            reason: Reason {
+                code: "evaluation_indeterminate".to_owned(),
+            },
+            trace: Some(Trace {
+                trace_id: "4bf92f3577b34da6a3ce929d0e0e4736".to_owned(),
+                span_id: "00f067aa0ba902b7".to_owned(),
+            }),
+            request_id: Some("req-1".to_owned()),
+            context: json!({"region": "eu"}).as_object().cloned(),
+            latency_us: 143,
+            event: Some(EventRef {
+                event_id: "evt-9".to_owned(),
+                event_type: "permguard.dogwood.event.v1".to_owned(),
+                instance: "inst-2".to_owned(),
+                sequence: 41,
+                history: Some("sha256:h1".to_owned()),
+                consistency: Some("shared-bounded".to_owned()),
+                watermark: Some("w1".to_owned()),
+            }),
+        }));
+        let decision_minimal = Body::Decision(Box::new(DecisionBody {
+            id: "id-3".to_owned(),
+            pdp: build(false),
+            store: store(),
+            subject: party("User", "pseudo:v1:9f2c", false),
+            resource: party("Document", "budget", false),
+            action: ActionRef {
+                name: "read".to_owned(),
+            },
+            principal: None,
+            inputs: Inputs::default(),
+            decision: true,
+            outcome: None,
+            causes: None,
+            policies: vec!["af4c4260".to_owned()],
+            reason: Reason {
+                code: "200".to_owned(),
+            },
+            trace: None,
+            request_id: None,
+            context: None,
+            latency_us: 12,
+            event: None,
+        }));
+        let marker_minimal = Body::Marker(Box::new(MarkerBody {
+            predecessor: Some(Predecessor {
+                instance: "inst-1".to_owned(),
+                last_seq: None,
+                reason: "age_expiry".to_owned(),
+            }),
+            pdp: build(false),
+            sampling: Sampling {
+                permits: "0.5".to_owned(),
+            },
+            commitments: Commitments {
+                alg: "HMAC-SHA256".to_owned(),
+                key_version: "v2".to_owned(),
+            },
+        }));
+        let discontinuity = Body::Discontinuity(Box::new(DiscontinuityBody {
+            reason: "spool_full".to_owned(),
+            lost: Lost {
+                from_seq: 10,
+                count_estimate: 4,
+            },
+            successor: "inst-3".to_owned(),
+        }));
+
+        let mut prev = GENESIS.to_owned();
+        let mut chained = Vec::new();
+        for (index, body) in [
+            marker_full,
+            decision_full,
+            decision_minimal,
+            marker_minimal,
+            discontinuity,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let record = Record {
+                v: VERSION,
+                stream: Stream::new("plane", "inst-2"),
+                seq: index as u64 + 1,
+                prev: prev.clone(),
+                at: "2026-08-24T10:00:00Z".to_owned(),
+                body,
+            };
+            prev = record.digest().expect("it digests");
+            chained.push(record);
+        }
+
+        chained
+    }
+
+    #[test]
+    fn test_the_decision_wire_types_match_openapi_evidence_decisions() {
+        let doc = Document::load("evidence-decisions.json");
+        let held = records();
+        let values: Vec<Value> = held
+            .iter()
+            .map(|record| record.to_value().expect("a record renders"))
+            .collect();
+
+        // Every kind, switched on `kind`; the oneOf takes exactly one branch.
+        for value in &values {
+            doc.check_json("Record", value);
+        }
+        for outcome in [
+            Outcome::Permit,
+            Outcome::Deny,
+            Outcome::DenyByDefault,
+            Outcome::Indeterminate,
+        ] {
+            doc.check("Outcome", &outcome);
+        }
+
+        // The signed envelope, built by the crate's own signer over this very chain.
+        let leaves: Vec<String> = held
+            .iter()
+            .map(|record| record.digest().expect("it digests"))
+            .collect();
+        let envelope = Envelope {
+            stream: Stream::new("plane", "inst-2"),
+            first_seq: 1,
+            last_seq: held.len() as u64,
+            count: held.len() as u64,
+            previous_head: GENESIS.to_owned(),
+            head: leaves.last().expect("a head").clone(),
+            merkle_root: merkle::root(&leaves).expect("a root"),
+            sampling: Sampling {
+                permits: "1.0".to_owned(),
+            },
+            at: "2026-08-24T10:00:01Z".to_owned(),
+        };
+        let keys = ring();
+        let signed = Signed::create(&envelope, &keys).expect("it signs");
+        doc.check("Envelope", &envelope);
+        doc.check("Signed", &signed);
+        // What the base64url members hold, which is what a verifier decodes.
+        doc.check(
+            "Protected",
+            &signed.protected().expect("the header decodes"),
+        );
+        doc.check("Envelope", &signed.envelope().expect("the payload decodes"));
+
+        let batch = Batch {
+            signature: signed.clone(),
+            records: values.clone(),
+        };
+        doc.check("Batch", &batch);
+        let sent = serde_json::to_value(&batch).expect("a batch serialises");
+        assert!(Batch::decode(sent.to_string().as_bytes()).is_ok());
+
+        // Closed envelopes: a member the contract does not name is refused.
+        let mut extra = sent.clone();
+        extra["unexpected"] = json!(1);
+        assert!(!doc.accepts_json("Batch", &extra));
+        let mut extra_signature = sent.clone();
+        extra_signature["signature"]["typ"] = json!("permguard.decision.batch.v1");
+        assert!(!doc.accepts_json("Batch", &extra_signature));
+        let mut no_records = sent.clone();
+        no_records["records"] = json!([]);
+        assert!(!doc.accepts_json("Batch", &no_records));
+        let mut extra_envelope = serde_json::to_value(&envelope).expect("an envelope serialises");
+        extra_envelope["event_types"] = json!(["x"]);
+        assert!(!doc.accepts_json("Envelope", &extra_envelope));
+        assert!(!doc.accepts_json("Protected", &json!({"alg": "HS256", "kid": "k"})));
+        assert!(!doc.accepts_json("Record", &json!({"kind": "loss"})));
+        let mut headless = values[2].clone();
+        headless.as_object_mut().expect("an object").remove("id");
+        assert!(!doc.accepts_json("Record", &headless));
+        assert!(!doc.accepts_json("Outcome", &json!("maybe")));
+        // Records are open: a newer producer's member is kept, not refused.
+        let mut newer = values[2].clone();
+        newer["added_later"] = json!(true);
+        assert!(doc.accepts_json("Record", &newer));
+
+        // The answers of the ship route.
+        doc.check(
+            "Acknowledgement",
+            &Acknowledgement {
+                acked: 5,
+                stored: 5,
+            },
+        );
+        doc.check(
+            "OutOfOrder",
+            &OutOfOrder {
+                status: permguard_core::codes::stream::OUT_OF_ORDER,
+                expected_seq: 6,
+            },
+        );
+        assert!(!doc.accepts_json(
+            "OutOfOrder",
+            &json!({"status": "out_of_order", "expected_seq": 6, "class": "conflict"})
+        ));
+
+        // A page with proof, and one without: `proof` and `inclusion` are absent when empty.
+        let path = merkle::path(&leaves, 1).expect("a path");
+        let inclusion = Inclusion {
+            seq: 2,
+            leaf: leaves[1].clone(),
+            root: envelope.merkle_root.clone(),
+            path,
+        };
+        let page = Block {
+            records: values.clone(),
+            next: "AAAA".to_owned(),
+            oldest_available: "BBBB".to_owned(),
+            high_watermark: "CCCC".to_owned(),
+            more: true,
+            proof: vec![serde_json::to_value(&signed).expect("a signature serialises")],
+            inclusion: vec![serde_json::to_value(&inclusion).expect("a path serialises")],
+            coverage: Coverage {
+                contiguous: false,
+                examined: 5,
+                scan_bounded: true,
+            },
+        };
+        doc.check("DecisionBlock", &page);
+        let bare = Block {
+            proof: Vec::new(),
+            inclusion: Vec::new(),
+            ..page.clone()
+        };
+        doc.check("DecisionBlock", &bare);
+        let mut no_next = serde_json::to_value(&bare).expect("a page serialises");
+        no_next.as_object_mut().expect("an object").remove("next");
+        assert!(!doc.accepts_json("DecisionBlock", &no_next));
+
+        // The signer manifest, from the ring that signed.
+        let jwk = keys.public_keys().expect("the ring publishes").remove(0);
+        let view = StreamSignersView {
+            acked: 5,
+            spans: vec![SignerSpan {
+                from: 1,
+                kid: jwk.kid.clone(),
+                jwk: serde_json::to_value(&jwk).expect("a key serialises"),
+            }],
+        };
+        doc.check("StreamSignersView", &view);
+
+        doc.assert_covered();
+    }
+
+    #[test]
+    fn test_the_stream_wire_types_match_openapi_stream_common() {
+        let doc = Document::load("stream-common.json");
+
+        let coverage = Coverage {
+            contiguous: true,
+            examined: 3,
+            scan_bounded: false,
+        };
+        doc.check("Coverage", &coverage);
+        assert!(!doc.accepts_json(
+            "Coverage",
+            &json!({"contiguous": true, "examined": 1, "scan_bounded": false, "x": 1})
+        ));
+
+        let leaves = vec![
+            "sha256:aa".to_owned(),
+            "sha256:bb".to_owned(),
+            "sha256:cc".to_owned(),
+        ];
+        let path = merkle::path(&leaves, 2).expect("a path");
+        assert!(!path.is_empty());
+        for step in &path {
+            doc.check("Step", step);
+        }
+        let inclusion = Inclusion {
+            seq: 3,
+            leaf: leaves[2].clone(),
+            root: merkle::root(&leaves).expect("a root"),
+            path,
+        };
+        doc.check("Inclusion", &inclusion);
+
+        let jwk = serde_json::to_value(permguard_core::keys::Jwk::okp(
+            "k1", "Ed25519", "EdDSA", "AAAA",
+        ))
+        .expect("a public key serialises");
+        let span = SignerSpan {
+            from: 1,
+            kid: "k1".to_owned(),
+            jwk: jwk.clone(),
+        };
+        doc.check("SignerSpan", &span);
+        let mut signers = Signers::empty();
+        assert!(signers.observe(1, "k1", &jwk).expect("the first key"));
+        doc.check("Signers", &signers);
+
+        let mut frontier = Frontier::of("plane/inst-2", 4);
+        frontier.cover("plane/inst-1", 9);
+        doc.check("Frontier", &frontier);
+        doc.check(
+            "Position",
+            &Position {
+                segment: 1,
+                offset: 3,
+            },
+        );
+        doc.check(
+            "Cursor",
+            &Cursor {
+                v: 1,
+                api: "decisions".to_owned(),
+                scope: "stream:plane/inst-2".to_owned(),
+                filters: "sha256:f".to_owned(),
+                until: Some(frontier.clone()),
+                positions: BTreeMap::from([(
+                    "plane/inst-2".to_owned(),
+                    Position {
+                        segment: 1,
+                        offset: 3,
+                    },
+                )]),
+                frontier: frontier.clone(),
+            },
+        );
+        doc.check(
+            "Cursor",
+            &Cursor {
+                v: 1,
+                api: "decisions".to_owned(),
+                scope: "stream:plane/inst-2".to_owned(),
+                filters: "sha256:f".to_owned(),
+                until: None,
+                positions: BTreeMap::new(),
+                frontier,
+            },
+        );
+
+        let block: Block<Value> = Block {
+            records: vec![json!({"seq": 3})],
+            next: "AAAA".to_owned(),
+            oldest_available: "BBBB".to_owned(),
+            high_watermark: "CCCC".to_owned(),
+            more: false,
+            proof: vec![json!({"payload": "x"})],
+            inclusion: vec![serde_json::to_value(&inclusion).expect("a path serialises")],
+            coverage,
+        };
+        doc.check("Block", &block);
+        let mut no_coverage = serde_json::to_value(&block).expect("a block serialises");
+        no_coverage
+            .as_object_mut()
+            .expect("an object")
+            .remove("coverage");
+        assert!(!doc.accepts_json("Block", &no_coverage));
+
+        // The 410 body is built by hand in `serve` above; this is the same object, with the
+        // message the real refusal renders.
+        let expired = read::ReadError::Expired {
+            oldest: "BBBB".to_owned(),
+            oldest_sequence: 40,
+            requested_sequence: 12,
+        };
+        let body = json!({
+            "class": "not_found",
+            "code": permguard_core::codes::stream::OFFSET_EXPIRED,
+            "message": expired.to_string(),
+            "oldest_available": "BBBB",
+            "oldest_sequence": 40,
+            "requested_sequence": 12,
+        });
+        doc.check_json("OffsetExpired", &body);
+        let mut wrong = body.clone();
+        wrong["class"] = json!("validation");
+        assert!(!doc.accepts_json("OffsetExpired", &wrong));
+
+        doc.assert_covered();
     }
 }

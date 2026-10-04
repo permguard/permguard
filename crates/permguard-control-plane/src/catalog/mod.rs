@@ -121,7 +121,7 @@ use std::sync::Arc;
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics};
-use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject};
+use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject, codes};
 
 /// Administrative operations answered — `action` is the audit action name
 /// (a fixed set of compile-time literals), `outcome` `ok` or `refused`.
@@ -249,29 +249,29 @@ pub(crate) fn api_error(error: CatalogError) -> ApiError {
     match &error {
         CatalogError::NotFound { kind, selector } => ApiError::new(
             ErrorClass::NotFound,
-            "not_found",
+            codes::common::NOT_FOUND,
             format!("no {kind} answers to `{selector}`"),
         ),
         CatalogError::NameTaken { name, scope } => ApiError::new(
             ErrorClass::Conflict,
-            "name_taken",
+            codes::catalog::NAME_TAKEN,
             format!("the name `{name}` is already taken in {scope}"),
         ),
         CatalogError::NotEmpty { zone, ledgers } => ApiError::new(
             ErrorClass::Conflict,
-            "zone_not_empty",
+            codes::catalog::ZONE_NOT_EMPTY,
             format!("the zone `{zone}` still holds {ledgers} ledger(s): delete them first"),
         ),
         CatalogError::InvalidName { name, detail } => ApiError::new(
             ErrorClass::Validation,
-            "invalid_name",
+            codes::catalog::INVALID_NAME,
             format!("`{name}` is not a name this catalog accepts: {detail}"),
         ),
         CatalogError::Backend { detail } => {
             // The generic sentence is the wire's; the detail — which may name paths — is the log's.
             ApiError::new(
                 ErrorClass::Internal,
-                "catalog_failed",
+                codes::catalog::CATALOG_FAILED,
                 "the catalog store failed",
             )
             .with_internal(detail.clone())

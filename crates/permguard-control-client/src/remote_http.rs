@@ -219,6 +219,13 @@ impl Remote for HttpRemote {
         let Value::Map(pairs) = value else {
             return Err("the ref answer is not a map".to_owned());
         };
+        // A closed message: a label this client does not know is refused, never skipped.
+        if pairs
+            .iter()
+            .any(|(key, _)| !matches!(key, Value::Int(1..=3)))
+        {
+            return Err("the ref answer carries an unknown field".to_owned());
+        }
         let field = |key: i64| {
             pairs
                 .iter()

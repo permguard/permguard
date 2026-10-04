@@ -502,7 +502,7 @@ pub(crate) struct GetRef {
 fn internal(detail: impl std::fmt::Display) -> ApiError {
     ApiError::new(
         ErrorClass::Internal,
-        "notp_failed",
+        permguard_core::codes::notp::NOTP_FAILED,
         "the ledger store failed",
     )
     .with_internal(detail.to_string())
@@ -517,7 +517,7 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
         EngineError::Conflict { current } => {
             let mut api = ApiError::new(
                 ErrorClass::Conflict,
-                "ref_conflict",
+                permguard_core::codes::notp::REF_CONFLICT,
                 "the ref moved: negotiate again from the current head",
             );
             if let Some(state) = current {
@@ -530,7 +530,7 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
         }
         EngineError::NotFound { what } => ApiError::new(
             ErrorClass::NotFound,
-            "not_found",
+            permguard_core::codes::common::NOT_FOUND,
             format!("nothing answers to {what}"),
         ),
         EngineError::Unavailable { message } => ApiError::new(
@@ -540,7 +540,7 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
         ),
         EngineError::Internal { detail } => ApiError::new(
             ErrorClass::Internal,
-            "notp_failed",
+            permguard_core::codes::notp::NOTP_FAILED,
             "the ledger store failed",
         )
         .with_internal(detail),

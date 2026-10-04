@@ -595,18 +595,19 @@ pub fn validate_blob(media_type: &str, data: &[u8]) -> Result<(), BlobRejected> 
     if language.schema_media_type() == Some(media_type) {
         return language
             .validate_schema(data)
-            .map_err(|e| rejected("blob_rejected", e));
+            .map_err(|e| rejected(permguard_core::codes::notp::BLOB_REJECTED, e));
     }
     // A registered artifact validates through its own type. Falling through to `validate_policy`
     // would hand an action schema to the policy parser and report the refusal as a broken policy —
     // an error about the wrong file, for a bundle that is in fact well formed.
     if let Some((_, artifact)) = crate::lookup::artifact_for_media_type(media_type) {
-        return validate_artifact(artifact, data).map_err(|e| rejected("blob_rejected", e));
+        return validate_artifact(artifact, data)
+            .map_err(|e| rejected(permguard_core::codes::notp::BLOB_REJECTED, e));
     }
 
     language
         .validate_policy(data)
-        .map_err(|e| rejected("blob_rejected", e))
+        .map_err(|e| rejected(permguard_core::codes::notp::BLOB_REJECTED, e))
 }
 
 /// One artifact against its registered type, inside the panic boundary: an artifact's validator

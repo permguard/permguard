@@ -141,11 +141,19 @@ impl EventSink for HttpEventSink {
 
         Err(ShipError::Rejected {
             code: match field("code").as_str() {
-                "" => format!("http_{}", response.status),
+                "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
                 code => code.to_owned(),
             },
             detail: match field("message").as_str() {
-                "" => response.body.chars().take(200).collect(),
+                "" => format!(
+                    "status {}: {}",
+                    response.status,
+                    response.body.chars().take(200).collect::<String>()
+                ),
+                // No Permguard refusal: the status is the only fact, and `http_status` promises it.
+                message if field("code").is_empty() => {
+                    format!("status {}: {message}", response.status)
+                }
                 message => message.to_owned(),
             },
         })
@@ -491,11 +499,16 @@ fn read_refusal(body: &str, status: u16) -> ReadError {
 
     ReadError::Refused {
         code: match field("code").as_str() {
-            "" => format!("http_{status}"),
+            "" => permguard_core::codes::client::HTTP_STATUS.to_owned(),
             code => code.to_owned(),
         },
         detail: match field("message").as_str() {
-            "" => body.chars().take(200).collect(),
+            "" => format!(
+                "status {status}: {}",
+                body.chars().take(200).collect::<String>()
+            ),
+            // No Permguard refusal: the status is the only fact, and `http_status` promises it.
+            message if field("code").is_empty() => format!("status {}: {message}", status),
             message => message.to_owned(),
         },
     }

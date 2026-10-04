@@ -1,0 +1,1361 @@
+{
+  "comment": [
+    "The stable-code ownership report of WP-0.8: every code of `permguard_core::codes`, the one contract document that owns it, how it travels and the class it is answered with.",
+    "`contract` is a path under the architecture knowledge base; `kind` is `refusal` (a wire `{class, code, message}`), `denial` (the access gate's `{code, message}`), `reason` (a code inside a successful answer or its evidence), `ack` (a stream acknowledgement word), `log` (a log and metric reason only), `local` (a command-line failure that never travels on a wire) or `unused` (registered and documented, produced by no path yet).",
+    "A code with two classes lists both under `classes`; each such code is an open finding of the status file.",
+    "`http` overrides the status a class maps to where the wire answers another one today; each override is an open finding of the status file."
+  ],
+  "codes": {
+    "catalog.CATALOG_FAILED": {
+      "code": "catalog_failed",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "catalog.INVALID_NAME": {
+      "code": "invalid_name",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "catalog.NAME_TAKEN": {
+      "code": "name_taken",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "catalog.ZONE_NOT_EMPTY": {
+      "code": "zone_not_empty",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "client.ANSWER_MALFORMED": {
+      "code": "answer_malformed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "internal"
+    },
+    "client.CONNECTION_REFUSED": {
+      "code": "connection_refused",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.CONNECT_FAILED": {
+      "code": "connect_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.DECISION_LOG_UNREACHABLE": {
+      "code": "decision_log_unreachable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.DECODE_FAILED": {
+      "code": "decode_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "internal"
+    },
+    "client.ENCODE_FAILED": {
+      "code": "encode_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "internal"
+    },
+    "client.EVENTS_UNVERIFIED": {
+      "code": "events_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_EXPORT_MALFORMED": {
+      "code": "event_export_malformed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_EXPORT_TRUNCATED": {
+      "code": "event_export_truncated",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_EXPORT_TYPE_UNSUPPORTED": {
+      "code": "event_export_type_unsupported",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_EXPORT_UNREADABLE": {
+      "code": "event_export_unreadable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_KEYS_REQUIRED": {
+      "code": "event_keys_required",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.EVENT_STORE_UNREACHABLE": {
+      "code": "event_store_unreachable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.EXPORT_TRUNCATED": {
+      "code": "export_truncated",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.HEALTH_UNREADABLE": {
+      "code": "health_unreadable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "reason"
+    },
+    "client.HTTP_STATUS": {
+      "code": "http_status",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "classes": [
+        "unavailable",
+        "internal"
+      ]
+    },
+    "client.KEYS_EMPTY": {
+      "code": "keys_empty",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.KEYS_MALFORMED": {
+      "code": "keys_malformed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.KEYS_UNREADABLE": {
+      "code": "keys_unreadable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.MALFORMED_RESPONSE": {
+      "code": "malformed_response",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.NOT_LIVE": {
+      "code": "not_live",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "reason"
+    },
+    "client.NOT_READY": {
+      "code": "not_ready",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "reason"
+    },
+    "client.RESOLVE_FAILED": {
+      "code": "resolve_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TIMEOUT": {
+      "code": "timeout",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_CLIENT_CERTIFICATE_REQUIRED": {
+      "code": "tls_client_certificate_required",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_CLIENT_IDENTITY_INCOMPLETE": {
+      "code": "tls_client_identity_incomplete",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_CLIENT_IDENTITY_REJECTED": {
+      "code": "tls_client_identity_rejected",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_EXPECTED": {
+      "code": "tls_expected",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_HANDSHAKE_FAILED": {
+      "code": "tls_handshake_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_MATERIAL_UNREADABLE": {
+      "code": "tls_material_unreadable",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_NO_TRUST_ANCHORS": {
+      "code": "tls_no_trust_anchors",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_SERVER_NAME_INVALID": {
+      "code": "tls_server_name_invalid",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TLS_UNSUPPORTED": {
+      "code": "tls_unsupported",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.TRANSPORT_FAILED": {
+      "code": "transport_failed",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "unavailable"
+    },
+    "client.USAGE": {
+      "code": "usage",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "common.CONFLICT": {
+      "code": "conflict",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "unused"
+    },
+    "common.EXHAUSTED": {
+      "code": "exhausted",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "unused"
+    },
+    "common.FORBIDDEN": {
+      "code": "forbidden",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "denial"
+    },
+    "common.FORGED": {
+      "code": "forged",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "unused"
+    },
+    "common.INTERFACE_RETIRED": {
+      "code": "interface_retired",
+      "contract": "6-contracts/0-interfaces-model.md",
+      "kind": "unused"
+    },
+    "common.INTERNAL": {
+      "code": "internal",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "common.INVALID_ARGUMENT": {
+      "code": "invalid_argument",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "common.NOT_FOUND": {
+      "code": "not_found",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "common.ROUTE_UNKNOWN": {
+      "code": "route_unknown",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "common.UNAUTHENTICATED": {
+      "code": "unauthenticated",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "denial"
+    },
+    "common.UNAVAILABLE": {
+      "code": "unavailable",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "legacy.REJECTED": {
+      "code": "rejected",
+      "contract": "legacy",
+      "kind": "unused",
+      "compatibility_only": true
+    },
+    "notp.ARTIFACT_AMBIGUOUS": {
+      "code": "artifact_ambiguous",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.ARTIFACT_MISSING": {
+      "code": "artifact_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.BLOB_REJECTED": {
+      "code": "blob_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.BODY_REJECTED": {
+      "code": "body_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.COMMIT_REJECTED": {
+      "code": "commit_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.FIELD_UNKNOWN": {
+      "code": "field_unknown",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.GRAMMAR": {
+      "code": "grammar",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.KIND_MISMATCH": {
+      "code": "kind_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.LIMIT": {
+      "code": "limit",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.MANIFEST_MISMATCH": {
+      "code": "manifest_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.MANIFEST_MISSING": {
+      "code": "manifest_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.MANIFEST_REJECTED": {
+      "code": "manifest_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.MEDIA_TYPE_NOT_ALLOWED": {
+      "code": "media_type_not_allowed",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.MEDIA_TYPE_UNREGISTERED": {
+      "code": "media_type_unregistered",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.NOTP_FAILED": {
+      "code": "notp_failed",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "notp.NOT_A_ROOT": {
+      "code": "not_a_root",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.NOT_FAST_FORWARD": {
+      "code": "not_fast_forward",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.NOT_REACHABLE": {
+      "code": "not_reachable",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.OBJECT_REJECTED": {
+      "code": "object_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.PARTITION_MISSING": {
+      "code": "partition_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.PARTITION_REJECTED": {
+      "code": "partition_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.PARTITION_UNDECLARED": {
+      "code": "partition_undeclared",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.PAYLOAD_MALFORMED": {
+      "code": "payload_malformed",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_ALIAS_MISMATCH": {
+      "code": "policy_alias_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_ALIAS_REJECTED": {
+      "code": "policy_alias_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_ID_MISMATCH": {
+      "code": "policy_id_mismatch",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_ID_MISSING": {
+      "code": "policy_id_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_ID_REJECTED": {
+      "code": "policy_id_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.POLICY_KIND_MISSING": {
+      "code": "policy_kind_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.REF_CONFLICT": {
+      "code": "ref_conflict",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "notp.RUNTIME_GATE": {
+      "code": "runtime_gate",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.SCHEMA_AMBIGUOUS": {
+      "code": "schema_ambiguous",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.SCHEMA_MISSING": {
+      "code": "schema_missing",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.SCHEMA_UNSATISFIED": {
+      "code": "schema_unsatisfied",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "notp.VALUE_UNREPRESENTABLE": {
+      "code": "value_unrepresentable",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.DECISION_FAILED": {
+      "code": "decision_failed",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_native.DECISION_UNRECORDABLE": {
+      "code": "decision_unrecordable",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.EVALUATIONS_SEMANTIC": {
+      "code": "evaluations_semantic",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "unused"
+    },
+    "pdp_native.EVALUATION_AT_CAPACITY": {
+      "code": "evaluation_at_capacity",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.EVALUATION_DEADLINE_EXCEEDED": {
+      "code": "evaluation_deadline_exceeded",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "reason"
+    },
+    "pdp_native.EVALUATION_FAILED": {
+      "code": "evaluation_failed",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "reason"
+    },
+    "pdp_native.EVALUATION_INDETERMINATE": {
+      "code": "evaluation_indeterminate",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.EVALUATION_INPUT_REJECTED": {
+      "code": "evaluation_input_rejected",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.EVALUATION_PANICKED": {
+      "code": "evaluation_panicked",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "reason"
+    },
+    "pdp_native.EVALUATION_QUARANTINED": {
+      "code": "evaluation_quarantined",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.FIELD_REMOVED": {
+      "code": "field_removed",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.FIELD_REQUIRED": {
+      "code": "field_required",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.FIELD_RESERVED": {
+      "code": "field_reserved",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.FIELD_UNSUPPORTED": {
+      "code": "field_unsupported",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.LEDGER_DAMAGED": {
+      "code": "ledger_damaged",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.LEDGER_EMPTY": {
+      "code": "ledger_empty",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.LEDGER_EXPIRED": {
+      "code": "ledger_expired",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.LEDGER_INCOMPATIBLE": {
+      "code": "ledger_incompatible",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.LEDGER_NOT_SERVED": {
+      "code": "ledger_not_served",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "pdp_native.LEDGER_REQUIRED": {
+      "code": "ledger_required",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.LOAD_AT_CAPACITY": {
+      "code": "load_at_capacity",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.LOAD_FAILED": {
+      "code": "load_failed",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_native.PARTITION_INPUT_MALFORMED": {
+      "code": "partition_input_malformed",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_REQUIRED": {
+      "code": "partition_input_required",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_SCHEMA": {
+      "code": "partition_input_schema",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_TOO_LARGE": {
+      "code": "partition_input_too_large",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_TYPE_INCOMPATIBLE": {
+      "code": "partition_input_type_incompatible",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_TYPE_MISMATCH": {
+      "code": "partition_input_type_mismatch",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_TYPE_REQUIRED": {
+      "code": "partition_input_type_required",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_TYPE_UNKNOWN": {
+      "code": "partition_input_type_unknown",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_INPUT_UNSUPPORTED": {
+      "code": "partition_input_unsupported",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PARTITION_UNKNOWN": {
+      "code": "partition_unknown",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.PROFILE_UNKNOWN": {
+      "code": "profile_unknown",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.REQUEST_ID_REPEATED": {
+      "code": "request_id_repeated",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.RESPONSE_SIGNING_UNAVAILABLE": {
+      "code": "response_signing_unavailable",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "unused"
+    },
+    "pdp_native.TOO_MANY_EVALUATIONS": {
+      "code": "too_many_evaluations",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_native.ZONE_REQUIRED": {
+      "code": "zone_required",
+      "contract": "6-contracts/1-contract-pdp-native-v1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.CLOCK_UNUSABLE": {
+      "code": "clock_unusable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.DECISION_ID_NOT_DURABLE": {
+      "code": "decision_id_not_durable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.DENIED": {
+      "code": "denied",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "reason"
+    },
+    "pdp_temporal.EVENT_ACTION_MALFORMED": {
+      "code": "event_action_malformed",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ACTION_UNDECLARED": {
+      "code": "event_action_undeclared",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ACTION_UNQUALIFIED": {
+      "code": "event_action_unqualified",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_AHEAD_OF_CLOCK": {
+      "code": "event_ahead_of_clock",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_APPLICATION_INCOMPLETE": {
+      "code": "event_application_incomplete",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_BAGS_DISAGREE": {
+      "code": "event_bags_disagree",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_BAG_NOT_GROUPED": {
+      "code": "event_bag_not_grouped",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ENTITIES_REJECTED": {
+      "code": "event_entities_rejected",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ENTITY_MALFORMED": {
+      "code": "event_entity_malformed",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_FIELD_MISTYPED": {
+      "code": "event_field_mistyped",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_FIELD_NOT_CARRIABLE": {
+      "code": "event_field_not_carriable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_FIELD_UNDECLARED": {
+      "code": "event_field_undeclared",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_HISTORY_DISAGREES": {
+      "code": "event_history_disagrees",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ID_CONFLICT": {
+      "code": "event_id_conflict",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "pdp_temporal.EVENT_JOURNAL_AMBIGUOUS": {
+      "code": "event_journal_ambiguous",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_KIND_DISAGREES": {
+      "code": "event_kind_disagrees",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_KIND_UNDECLARED": {
+      "code": "event_kind_undeclared",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_MALFORMED": {
+      "code": "event_malformed",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_NOT_CANONICAL": {
+      "code": "event_not_canonical",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "classes": [
+        "validation",
+        "internal"
+      ]
+    },
+    "pdp_temporal.EVENT_NOT_DURABLE": {
+      "code": "event_not_durable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_OUTCOME_NOT_DURABLE": {
+      "code": "event_outcome_not_durable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_OUTCOME_UNREADABLE": {
+      "code": "event_outcome_unreadable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_OUTCOME_UNRENDERABLE": {
+      "code": "event_outcome_unrenderable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.EVENT_OUT_OF_ORDER": {
+      "code": "event_out_of_order",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "pdp_temporal.EVENT_PIN_CONTRADICTED": {
+      "code": "event_pin_contradicted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_PIN_SOURCE_ABSENT": {
+      "code": "event_pin_source_absent",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_PRINCIPAL_NOT_ADMITTED": {
+      "code": "event_principal_not_admitted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_RECORD_INVALID": {
+      "code": "event_record_invalid",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_RECORD_UNREADABLE": {
+      "code": "event_record_unreadable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_RECOVERY_COMMIT_UNAVAILABLE": {
+      "code": "event_recovery_commit_unavailable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_REQUIRED": {
+      "code": "event_required",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_RESOURCE_NOT_ADMITTED": {
+      "code": "event_resource_not_admitted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_ROUTING_CONFLICT": {
+      "code": "event_routing_conflict",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "pdp_temporal.EVENT_SUBMISSION_AT_CAPACITY": {
+      "code": "event_submission_at_capacity",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.EVENT_TIME_NOT_CANONICAL": {
+      "code": "event_time_not_canonical",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_TOO_LATE": {
+      "code": "event_too_late",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_TYPE_UNSUPPORTED": {
+      "code": "event_type_unsupported",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.EVENT_VALUE_UNREPRESENTABLE": {
+      "code": "event_value_unrepresentable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.HISTORY_CONTRACT_INCOMPATIBLE": {
+      "code": "history_contract_incompatible",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_INCOMPLETE": {
+      "code": "history_incomplete",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_KEY_NOT_CANONICAL": {
+      "code": "history_key_not_canonical",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.HISTORY_LOCK_POISONED": {
+      "code": "history_lock_poisoned",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.HISTORY_NOT_REPLAYABLE": {
+      "code": "history_not_replayable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_RETENTION_INSUFFICIENT": {
+      "code": "history_retention_insufficient",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_STALE": {
+      "code": "history_stale",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_UNORDERABLE": {
+      "code": "history_unorderable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_UNREADABLE": {
+      "code": "history_unreadable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.HISTORY_WINDOW_INVALID": {
+      "code": "history_window_invalid",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.IMPORTED_HISTORY_UNREADABLE": {
+      "code": "imported_history_unreadable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.JOURNAL_FULL": {
+      "code": "journal_full",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.JOURNAL_UNAVAILABLE": {
+      "code": "journal_unavailable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.NOT_PERMITTED": {
+      "code": "not_permitted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "reason"
+    },
+    "pdp_temporal.PARTITION_NOT_REBUILDABLE": {
+      "code": "partition_not_rebuildable",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.PARTITION_NOT_TEMPORAL": {
+      "code": "partition_not_temporal",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.PARTITION_POISONED": {
+      "code": "partition_poisoned",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.PERMITTED": {
+      "code": "permitted",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "reason"
+    },
+    "pdp_temporal.PROFILE_EMPTY": {
+      "code": "profile_empty",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "pdp_temporal.PROFILE_NOT_TEMPORAL": {
+      "code": "profile_not_temporal",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "pdp_temporal.PROFILE_VANISHED": {
+      "code": "profile_vanished",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.RECORD_NOT_CANONICAL": {
+      "code": "record_not_canonical",
+      "contract": "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "pdp_temporal.STORE_REQUIRED": {
+      "code": "store_required",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.ACK_AHEAD": {
+      "code": "ack_ahead",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "log"
+    },
+    "stream.AGE_EXPIRY": {
+      "code": "age_expiry",
+      "contract": "6-contracts/3-contract-evidence-decisions.md",
+      "kind": "reason"
+    },
+    "stream.BATCH_REJECTED": {
+      "code": "batch_rejected",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.BATCH_UNATTRIBUTABLE": {
+      "code": "batch_unattributable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.BATCH_UNREGISTERED": {
+      "code": "batch_unregistered",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.BATCH_UNVERIFIABLE": {
+      "code": "batch_unverifiable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.BOUND_MALFORMED": {
+      "code": "bound_malformed",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.CLOSED": {
+      "code": "closed",
+      "contract": "6-contracts/3-contract-evidence-decisions.md",
+      "kind": "unused"
+    },
+    "stream.CURSOR_MALFORMED": {
+      "code": "cursor_malformed",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.DECISION_NOT_FOUND": {
+      "code": "decision_not_found",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "not_found"
+    },
+    "stream.DEFERRED": {
+      "code": "deferred",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "unused"
+    },
+    "stream.EVENT_NOT_FOUND": {
+      "code": "event_not_found",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "stream.EVENT_STORE_UNAVAILABLE": {
+      "code": "event_store_unavailable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "stream.FORK": {
+      "code": "fork",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "unused"
+    },
+    "stream.GONE": {
+      "code": "gone",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "unused"
+    },
+    "stream.KEYS_UNAVAILABLE": {
+      "code": "keys_unavailable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "stream.LEDGER_NOT_HELD": {
+      "code": "ledger_not_held",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "stream.MALFORMED_BATCH": {
+      "code": "malformed_batch",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.OFFSET_EXPIRED": {
+      "code": "offset_expired",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found",
+      "http": 410
+    },
+    "stream.OFFSET_INVALID": {
+      "code": "offset_invalid",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.OUT_OF_ORDER": {
+      "code": "out_of_order",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "ack"
+    },
+    "stream.QUEUE_FULL": {
+      "code": "queue_full",
+      "contract": "6-contracts/3-contract-evidence-decisions.md",
+      "kind": "log"
+    },
+    "stream.QUOTA_EXHAUSTED": {
+      "code": "quota_exhausted",
+      "contract": "6-contracts/6-contract-ledger-notp.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "stream.SCOPE_MISMATCH": {
+      "code": "scope_mismatch",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "stream.SCOPE_REQUIRED": {
+      "code": "scope_required",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.SCOPE_UNKNOWN": {
+      "code": "scope_unknown",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "stream.SEARCH_EXHAUSTED": {
+      "code": "search_exhausted",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "stream.SIGNER_MALFORMED": {
+      "code": "signer_malformed",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "stream.SIGNER_RANGE_TOO_WIDE": {
+      "code": "signer_range_too_wide",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.SPOOL_FULL": {
+      "code": "spool_full",
+      "contract": "6-contracts/3-contract-evidence-decisions.md",
+      "kind": "reason"
+    },
+    "stream.STORE_UNAVAILABLE": {
+      "code": "store_unavailable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "stream.STORE_UNKNOWN": {
+      "code": "store_unknown",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "stream.STREAM_CLOSED": {
+      "code": "stream_closed",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "stream.STREAM_CONFLICT": {
+      "code": "stream_conflict",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "stream.STREAM_FORKED": {
+      "code": "stream_forked",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "stream.STREAM_MALFORMED": {
+      "code": "stream_malformed",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.STREAM_REQUIRED": {
+      "code": "stream_required",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "stream.STREAM_UNKNOWN": {
+      "code": "stream_unknown",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "stream.UNSHIPPABLE": {
+      "code": "unshippable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "log"
+    },
+    "stream.UNSUPPORTED": {
+      "code": "unsupported",
+      "contract": "6-contracts/4-contract-evidence-events.md",
+      "kind": "unused"
+    },
+    "stream.UNVERIFIABLE": {
+      "code": "unverifiable",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "unused"
+    },
+    "stream.WORKER_STOPPED": {
+      "code": "worker_stopped",
+      "contract": "6-contracts/3-contract-evidence-decisions.md",
+      "kind": "log"
+    }
+  }
+}

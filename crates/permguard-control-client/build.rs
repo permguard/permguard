@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The client half of Permguard's gRPC contracts, generated from the one
-//! `proto/` root — a single source of truth for the wire, compiled twice: a
+//! `contracts/proto/` root — a single source of truth for the wire, compiled twice: a
 //! plane builds the server stubs, this builds the client ones.
 //!
 //! Two contracts, because a client of a Permguard deployment asks two things:
@@ -18,7 +18,7 @@ use std::error::Error;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let contract = Path::new("../../proto");
+    let contract = Path::new("../../contracts/proto");
     let protos = [
         contract.join("permguard/control/v1/control_plane.proto"),
         contract.join("permguard/control/v1/notp.proto"),

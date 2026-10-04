@@ -3,6 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The generated `permguard.control.v1` client stubs — the CLI's half of the
-//! control plane's contract, compiled from the plane's own `proto/`.
+//! control plane's contract, compiled from the checked-in `contracts/proto/`.
 
 tonic::include_proto!("permguard.control.v1");
