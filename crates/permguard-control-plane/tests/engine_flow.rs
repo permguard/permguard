@@ -1174,3 +1174,178 @@ fn a_partition_that_declares_a_schema_must_carry_one() {
         })
     ));
 }
+
+/// The signed statement is a rebuildable cache (P4): a retried commit whose statement file was
+/// lost is answered with a statement signed again, never with an empty one the client cannot
+/// verify.
+#[test]
+fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
+    let fixture = Fixture::new("statement-lost");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    std::fs::remove_file(fixture.store.root().join("signatures").join("main"))
+        .expect("the cached statement is removed");
+
+    let signer = fixture.signer();
+    let retried = fixture
+        .engine()
+        .commit_push(
+            &CommitPushRequest {
+                r#ref: "main".into(),
+                new_head: head.clone(),
+                expected_old: None,
+            },
+            &signer,
+        )
+        .unwrap();
+    let statement = SignedHead::decode(&retried.statement)
+        .unwrap()
+        .verify(fixture.key.public_key().as_ref())
+        .unwrap();
+    assert_eq!((statement.digest, statement.counter), (head, 1));
+    assert!(
+        fixture
+            .store
+            .root()
+            .join("signatures")
+            .join("main")
+            .is_file(),
+        "and the cache is rebuilt"
+    );
+}
+
+/// Every file a populated ledger holds is one the store declares (P4), and nothing the
+/// declaration calls rebuildable is anything else.
+#[test]
+fn every_file_of_a_populated_ledger_is_declared() {
+    use permguard_host::storage::authority::Declared as _;
+
+    let fixture = Fixture::new("declared");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let carried = derive_policy_id(b"permit(principal, action, resource);");
+    let (more, next) = build_commit_with_id(
+        "permit(principal in Group::\"billing\", action, resource);",
+        vec![head.clone()],
+        Some(carried),
+    );
+    push(&fixture, &more, &next, Some(head));
+
+    let declared: Vec<&str> = FileObjectStore::files()
+        .iter()
+        .map(|class| class.pattern)
+        .collect();
+    assert_eq!(
+        declared,
+        [
+            "objects/<2 hex>/<62 hex>",
+            "refs/<name>",
+            "FORMAT",
+            "signatures/<ref>"
+        ]
+    );
+    let hex = |text: &str, length: usize| {
+        text.len() == length && text.bytes().all(|byte| byte.is_ascii_hexdigit())
+    };
+    let mut files = Vec::new();
+    let mut pending = vec![fixture.store.root().to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let relative = path
+                    .strip_prefix(fixture.store.root())
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.push(relative);
+            }
+        }
+    }
+    assert!(files.len() > 4, "{files:?}");
+    for file in &files {
+        let parts: Vec<&str> = file.split('/').collect();
+        let matched = match parts.as_slice() {
+            ["FORMAT"] => true,
+            ["objects", fan, rest] => hex(fan, 2) && hex(rest, 62),
+            ["refs", name @ ..] | ["signatures", name @ ..] => {
+                permguard_objects::grammar::validate_ref_name(&name.join("/")).is_ok()
+            }
+            _ => false,
+        };
+        assert!(matched, "`{file}` is not a file the store declares");
+    }
+}
+
+/// A commit is a durable claim on the objects it reaches, including those negotiation told the
+/// push not to send: their directories are flushed before the ref is written, and a flush that
+/// fails stops the commit with the ref unmoved.
+#[test]
+fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
+    let fixture = Fixture::new("commit-durable");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    let engine = fixture.engine();
+    engine
+        .upload(&UploadObjectsRequest {
+            objects: objects.clone(),
+            compression: None,
+        })
+        .unwrap();
+
+    let signer = fixture.signer();
+    {
+        let _guard = permguard_core::fault::inject(
+            fixture.store.root().join("objects"),
+            permguard_core::fault::Fault::Fsync,
+        );
+        assert!(
+            engine
+                .commit_push(
+                    &CommitPushRequest {
+                        r#ref: "main".into(),
+                        new_head: head.clone(),
+                        expected_old: None,
+                    },
+                    &signer,
+                )
+                .is_err(),
+            "the objects could not be made durable, so the commit does not land"
+        );
+    }
+    assert!(
+        fixture.store.read_ref("main").unwrap().is_none(),
+        "the ref did not move"
+    );
+}
+
+/// A retried commit whose ref is already where it asks is answered only after the ref and its
+/// directory are flushed.
+#[test]
+fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
+    let fixture = Fixture::new("retry-durable");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let signer = fixture.signer();
+    let refs = fixture.store.root().join("refs");
+    for path in [refs.clone(), refs.join("main")] {
+        let _guard =
+            permguard_core::fault::inject_exact(&path, permguard_core::fault::Fault::Fsync);
+        assert!(
+            fixture
+                .engine()
+                .commit_push(
+                    &CommitPushRequest {
+                        r#ref: "main".into(),
+                        new_head: head.clone(),
+                        expected_old: None,
+                    },
+                    &signer,
+                )
+                .is_err(),
+            "{}",
+            path.display()
+        );
+    }
+}

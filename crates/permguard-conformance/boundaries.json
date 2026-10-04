@@ -456,6 +456,26 @@
       "source": "crates/permguard-objects/src/crypto/seal.rs",
       "item": "SealedKey::open",
       "reason": "a blob on the Host's own key volume, authenticated by AES-GCM under the configured provider; its bytes are read through `SealedKey::decode`, registered and fuzzed"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/dir.rs",
+      "item": "open",
+      "reason": "opens a directory the operator configured; reads no bytes"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/format.rs",
+      "item": "read_header",
+      "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/format.rs",
+      "item": "decode_file",
+      "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/journal.rs",
+      "item": "Journal::open",
+      "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"
     }
   ]
 }

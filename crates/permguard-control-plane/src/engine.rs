@@ -252,7 +252,10 @@ impl Engine<'_> {
         if let Some(current) = self.store.read_ref(&request.r#ref)?
             && current.head == request.new_head
         {
-            return self.answer_with_statement(&request.r#ref, current);
+            // A success is a durable claim: the ref may be one another commit renamed into place
+            // and has not flushed yet.
+            self.store.make_ref_durable(&request.r#ref)?;
+            return self.answer_with_statement(&request.r#ref, current, signer);
         }
 
         let old_reachable = match &request.expected_old {
@@ -267,11 +270,17 @@ impl Engine<'_> {
             && self.reachable_from_any_ref(&request.new_head)?;
 
         if !is_branch {
-            self.check_acceptance_invariants(
+            let region = self.check_acceptance_invariants(
                 &request.new_head,
                 request.expected_old.as_ref(),
                 old_reachable.as_ref(),
             )?;
+            // The ref is a durable claim on every object it reaches. Negotiation told this push
+            // not to send what was already present, and another push may have linked those
+            // objects without flushing them yet: their directories are flushed before the ref is
+            // written. What the old head reaches was made durable by the commit that wrote it, and
+            // a branch only names a commit an existing ref already reaches.
+            self.store.make_durable(&region)?;
         }
 
         let updated = self.store.update_ref(
@@ -381,12 +390,14 @@ impl Engine<'_> {
 
     // ---- invariants ----
 
+    /// Answers the new region it checked: every object the new head reaches that the old head
+    /// does not.
     fn check_acceptance_invariants(
         &self,
         new_head: &Digest,
         expected_old: Option<&Digest>,
         old_reachable: Option<&BTreeSet<Digest>>,
-    ) -> Result<()> {
+    ) -> Result<BTreeSet<Digest>> {
         // The new region: reachable from the new head, minus the old closure.
         let empty = BTreeSet::new();
         let stop = old_reachable.unwrap_or(&empty);
@@ -480,7 +491,7 @@ impl Engine<'_> {
 
         // Every commit in the region within predecessor rules is already
         // enforced by decoding; depth of trees is enforced by walk_region.
-        Ok(())
+        Ok(region)
     }
 
     /// Validate the head commit's snapshot: manifest authority, partitions,
@@ -1264,8 +1275,16 @@ impl Engine<'_> {
         })
     }
 
-    fn answer_with_statement(&self, name: &str, state: RefState) -> Result<CommitPushResponse> {
-        let statement = self.store.read_signature(name)?.unwrap_or_default();
+    /// The answer to a commit that already landed: the cached statement when it still matches,
+    /// signed again when it is missing or stale — the cache is rebuildable, and losing it must
+    /// not hand a client a commit it cannot verify.
+    fn answer_with_statement(
+        &self,
+        name: &str,
+        state: RefState,
+        signer: HeadSigner<'_>,
+    ) -> Result<CommitPushResponse> {
+        let statement = self.current_statement(name, &state, signer)?;
         Ok(CommitPushResponse {
             head: state.head,
             counter: state.counter,

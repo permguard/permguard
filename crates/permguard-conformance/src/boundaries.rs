@@ -28,6 +28,7 @@ pub const SCANNED: &[&str] = &[
     "crates/permguard-stream",
     "crates/permguard-decisions",
     "crates/permguard-events",
+    "crates/permguard-host",
     "crates/permguard-notp",
     "crates/permguard-transport",
 ];

@@ -242,6 +242,8 @@ pub struct Outcome {
     pub reclaimed: u64,
     /// Unreachable, and left alone because they are still young.
     pub retained: usize,
+    /// Temporary files of interrupted writes, removed.
+    pub temporaries: usize,
     /// Ledgers that could not be swept — a store that would not list, a ref
     /// that would not read. Nothing was removed for those.
     pub skipped: usize,
@@ -300,6 +302,7 @@ impl Sweep {
                         outcome.removed += swept.removed;
                         outcome.reclaimed += swept.reclaimed;
                         outcome.retained += swept.retained;
+                        outcome.temporaries += swept.temporaries;
                     }
                     Err(error) => {
                         outcome.skipped += 1;
@@ -380,6 +383,7 @@ impl Sweep {
             removed = outcome.removed,
             bytes = outcome.reclaimed,
             retained = outcome.retained,
+            temporaries = outcome.temporaries,
             skipped = outcome.skipped,
             "a garbage-collection sweep finished"
         );
@@ -414,6 +418,9 @@ pub struct Swept {
     /// Unreachable, and left alone because they are still young — what a push
     /// in flight looks like from here.
     pub retained: usize,
+    /// Temporary files of writes a crash interrupted, removed once older than
+    /// the grace period.
+    pub temporaries: usize,
 }
 
 /// Sweeps one ledger's store: what its refs reach stays, the rest goes once it
@@ -423,13 +430,36 @@ pub struct Swept {
 /// catalog, no clock but the filesystem's, no metrics. It answers what it did,
 /// or refuses — a store whose closure has a hole is left exactly as it was.
 pub fn sweep_once(store: &FileObjectStore, grace: Duration) -> Result<Swept> {
+    // A temporary is a write that never finished, unless it is younger than any write lasts: the
+    // grace period that keeps a push in flight safe keeps its temporaries safe too.
+    // A temporary that cannot be swept costs disk, not correctness: it never stops the
+    // collection of the objects.
+    let temporaries = match store.sweep_temporaries(grace) {
+        Ok(swept) => swept,
+        Err(error) => {
+            warn!(
+                event.name = "gc.temporaries_not_swept",
+                component = COMPONENT,
+                ledger = %store.root().display(),
+                error = %error,
+                "the temporaries of interrupted writes could not be swept"
+            );
+            0
+        }
+    };
     let held = store.list_objects().map_err(|error| anyhow!("{error}"))?;
     if held.is_empty() {
-        return Ok(Swept::default());
+        return Ok(Swept {
+            temporaries,
+            ..Swept::default()
+        });
     }
     let reachable = reachable(store)?;
     let now = SystemTime::now();
-    let mut swept = Swept::default();
+    let mut swept = Swept {
+        temporaries,
+        ..Swept::default()
+    };
 
     for object in held {
         if reachable.contains(&object.digest) {

@@ -14,8 +14,10 @@
 //! file at the ledger root pins the layout: a store written by a different
 //! layout is refused, never guessed at.
 //!
-//! Objects are written tmp + fsync + rename and verified canonical before
-//! they land; writing the same digest twice is a no-op by construction.
+//! Objects are verified canonical before they land, and published through the
+//! storage library without replacement (H-06): writing the same object twice
+//! is a no-op that rewrites nothing, and a name holding a different object is
+//! corruption, left as it was.
 //! Ref updates satisfy the abstract property of the specification —
 //! linearizable, `(head, counter)` one atomic durable unit — with a
 //! process-wide mutex per store and the write sequence: write temp, fsync
@@ -29,6 +31,8 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+use permguard_host::storage::write::{Published, publish_immutable};
+use permguard_host::storage::{Dir, StorageError};
 use permguard_objects::compress;
 use permguard_objects::digest::Digest;
 use permguard_objects::grammar::{self, GrammarError};
@@ -165,11 +169,24 @@ impl FileObjectStore {
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                         if self.root.join("objects").exists() || self.root.join("refs").exists() {
-                            return Err(StoreError::Incompatible {
-                                found: "unversioned".to_owned(),
-                            });
+                            // A first push through another store over this directory may have
+                            // pinned the format since the read above: the pin is always written
+                            // before anything else, so it is read once more before calling the
+                            // directory unversioned.
+                            return match fs::read_to_string(&path) {
+                                Ok(found) if found.trim() == FORMAT => Ok(()),
+                                Ok(found) => Err(StoreError::Incompatible {
+                                    found: found.trim().to_owned(),
+                                }),
+                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                    Err(StoreError::Incompatible {
+                                        found: "unversioned".to_owned(),
+                                    })
+                                }
+                                Err(error) => Err(backend("reading FORMAT", error)),
+                            };
                         }
-                        write_durable(&path, format!("{FORMAT}\n").as_bytes())
+                        write_durable(&self.root, "FORMAT", format!("{FORMAT}\n").as_bytes())
                     }
                     Err(error) => Err(backend("reading FORMAT", error)),
                 }
@@ -183,9 +200,16 @@ impl FileObjectStore {
     }
 
     fn object_path(&self, digest: &Digest) -> PathBuf {
+        let (shard, name) = Self::object_location(digest);
+        self.root.join("objects").join(shard).join(name)
+    }
+
+    /// The shard directory and the file name of an object: the first two hex characters of its
+    /// digest, and the rest.
+    fn object_location(digest: &Digest) -> (String, String) {
         let hex = digest.to_string();
         let hex = &hex["sha256:".len()..];
-        self.root.join("objects").join(&hex[..2]).join(&hex[2..])
+        (hex[..2].to_owned(), hex[2..].to_owned())
     }
 
     fn ref_path(&self, name: &str) -> PathBuf {
@@ -204,20 +228,54 @@ impl FileObjectStore {
     }
 
     /// Ingest one object: canonical decode, limits, grammars — fail-closed —
-    /// then write tmp + fsync + rename. Returns the digest and the decoded
-    /// object. Storing bytes already present is a success and a no-op.
+    /// then publish it without replacement. Returns the digest and the decoded
+    /// object. Storing content already present is a success and a no-op.
     pub fn put_object(&self, bytes: &[u8]) -> Result<(Digest, Object)> {
+        self.publish_object(bytes)
+            .map(|(digest, decoded, _)| (digest, decoded))
+    }
+
+    /// The same, and whether it wrote: [`Published::AlreadyThere`] when the
+    /// object was already stored, which then writes nothing at all.
+    ///
+    /// Published through the storage library's no-replace path (H-06): a
+    /// flushed temporary is hard-linked to the object's name, which fails when
+    /// the name exists. Two pushes of one object at once end with one write and
+    /// one no-op; a name already holding *different* content — whose bytes no
+    /// longer decompress to this object — is [`StoreError::Corrupt`], and the
+    /// existing file is left byte-for-byte as it was.
+    pub fn publish_object(&self, bytes: &[u8]) -> Result<(Digest, Object, Published)> {
         if bytes.len() > limits::MAX_OBJECT_BYTES {
             return Err(ObjectError::Limit("object bytes").into());
         }
         self.check_format()?;
         let decoded = object::decode(bytes)?;
         let digest = Digest::compute(bytes);
-        let path = self.object_path(&digest);
-        if !path.exists() {
-            write_durable(&path, &compress::deflate(bytes))?;
-        }
-        Ok((digest, decoded))
+        let (shard, name) = Self::object_location(&digest);
+        // The ledger directory exists once the format is pinned; below it, nothing is followed.
+        let directory = Dir::open(&self.root)
+            .and_then(|root| root.subdir("objects", true))
+            .and_then(|objects| objects.subdir(&shard, true))
+            .map_err(|error| storage("opening the object directory", error))?;
+        // Compared as content, not as compressed bytes: two compressors may encode one object
+        // differently, and only the object is the identity.
+        let holds_this = |stored: &[u8]| {
+            compress::inflate(stored, limits::MAX_OBJECT_BYTES).is_ok_and(|held| held == bytes)
+        };
+        let published = publish_immutable(
+            &directory,
+            &name,
+            &compress::deflate(bytes),
+            &holds_this,
+            &holds_this,
+        )
+        .map_err(|error| match error {
+            StorageError::Corruption(_) => StoreError::Corrupt {
+                digest: digest.clone(),
+            },
+            other => storage("publishing object", other),
+        })?;
+        Ok((digest, decoded, published))
     }
 
     /// Read one object, verifying on the way out that the bytes still hash
@@ -340,6 +398,72 @@ impl FileObjectStore {
         }
     }
 
+    /// Flushes the ref `name` and its directory, so that an answer saying the ref is where it is
+    /// never rests on a rename another update has not flushed yet.
+    pub fn make_ref_durable(&self, name: &str) -> Result<()> {
+        grammar::validate_ref_name(name)?;
+        let parts: Vec<&str> = name.split('/').collect();
+        let Some((file, parents)) = parts.split_last() else {
+            return Ok(());
+        };
+        let flushing = |error| storage("flushing a ref", error);
+        let mut dir = Dir::open(&self.root)
+            .and_then(|root| root.subdir("refs", false))
+            .map_err(flushing)?;
+        for parent in parents {
+            dir = dir.subdir(parent, false).map_err(flushing)?;
+        }
+        dir.sync_file(file).map_err(flushing)?;
+        dir.sync().map_err(flushing)
+    }
+
+    /// Flushes the directory entries of the objects `digests` name, so that a ref about to reach
+    /// them never outlives them.
+    ///
+    /// An object's bytes were flushed by whoever published it, before it was linked; its entry
+    /// becomes durable with its shard directory, which this flushes once per shard, and with the
+    /// shard's own entry, which `subdir` makes durable.
+    pub fn make_durable(&self, digests: &std::collections::BTreeSet<Digest>) -> Result<()> {
+        if digests.is_empty() {
+            return Ok(());
+        }
+        let shards: std::collections::BTreeSet<String> = digests
+            .iter()
+            .map(|digest| Self::object_location(digest).0)
+            .collect();
+        let objects = Dir::open(&self.root)
+            .and_then(|root| root.subdir("objects", true))
+            .map_err(|error| storage("opening the object directory", error))?;
+        // `create` only for what it brings: the shard's own entry made durable in `objects`. The
+        // shards exist, since every object of the region was just read from them.
+        for shard in shards {
+            objects
+                .subdir(&shard, true)
+                .and_then(|directory| directory.sync())
+                .map_err(|error| storage("flushing an object directory", error))?;
+        }
+        Ok(())
+    }
+
+    /// Removes the temporary files that writes interrupted by a crash left anywhere in this
+    /// ledger, once they are older than `older_than`; answers how many.
+    ///
+    /// A temporary is never the authority for anything, but one may belong to a write still in
+    /// flight through another handle on this ledger, so only one older than any write lasts is
+    /// removed: the collector passes its grace period, which already has to outlast a push.
+    pub fn sweep_temporaries(&self, older_than: std::time::Duration) -> Result<usize> {
+        let root = match Dir::open(&self.root) {
+            Ok(root) => root,
+            Err(StorageError::Io { source, .. })
+                if source.kind() == std::io::ErrorKind::NotFound =>
+            {
+                return Ok(0);
+            }
+            Err(error) => return Err(storage("opening the ledger", error)),
+        };
+        sweep_tree(&root, older_than)
+    }
+
     /// List every ref, by walking `refs/`.
     pub fn list_refs(&self) -> Result<Vec<(String, RefState)>> {
         let mut out = Vec::new();
@@ -376,6 +500,9 @@ impl FileObjectStore {
         if let Some(state) = &current
             && state.head == *new
         {
+            // A success is a durable claim: the ref may be one a concurrent update renamed into
+            // place and has not flushed yet.
+            self.make_ref_durable(name)?;
             return Ok(RefUpdate::AlreadyCurrent(state.clone()));
         }
 
@@ -393,7 +520,11 @@ impl FileObjectStore {
             head: new.clone(),
             counter,
         };
-        write_durable(&self.ref_path(name), render_ref(&state).as_bytes())?;
+        write_durable(
+            &self.root,
+            &format!("refs/{name}"),
+            render_ref(&state).as_bytes(),
+        )?;
         Ok(RefUpdate::Updated(state))
     }
 
@@ -401,7 +532,7 @@ impl FileObjectStore {
     /// every update, verified against the current ref before being served.
     pub fn write_signature(&self, name: &str, envelope: &[u8]) -> Result<()> {
         grammar::validate_ref_name(name)?;
-        write_durable(&self.signature_path(name), envelope)
+        write_durable(&self.root, &format!("signatures/{name}"), envelope)
     }
 
     /// Read the cached statement envelope for a ref, if any.
@@ -415,30 +546,116 @@ impl FileObjectStore {
     }
 }
 
-/// Write temp → fsync temp → atomic rename → fsync the containing directory:
-/// the durability sequence the specification requires before acknowledging.
-fn write_durable(path: &Path, bytes: &[u8]) -> Result<()> {
-    let directory = path.parent().ok_or_else(|| StoreError::Backend {
-        detail: format!("{} has no parent directory", path.display()),
-    })?;
-    fs::create_dir_all(directory).map_err(|e| backend("creating directory", e))?;
+/// Which of this store's files are the authority and which can be rebuilt (P4).
+impl permguard_host::storage::authority::Declared for FileObjectStore {
+    fn files() -> &'static [permguard_host::storage::authority::FileClass] {
+        use permguard_host::storage::authority::{Authority, FileClass};
 
-    let staged = path.with_extension("tmp");
-    let mut file = fs::File::create(&staged).map_err(|e| backend("staging write", e))?;
-    file.write_all(bytes)
-        .map_err(|e| backend("staging write", e))?;
-    file.sync_all()
-        .map_err(|e| backend("fsync of staged file", e))?;
-    drop(file);
-
-    fs::rename(&staged, path).map_err(|e| backend("atomic replace", e))?;
-
-    // Make the rename itself durable. Directory fsync is best-effort where
-    // the platform refuses to open directories for writing.
-    if let Ok(dir) = fs::File::open(directory) {
-        let _ = dir.sync_all();
+        &[
+            FileClass {
+                pattern: "objects/<2 hex>/<62 hex>",
+                authority: Authority::Authoritative,
+                why: "the ledger's content, named by its digest",
+            },
+            FileClass {
+                pattern: "refs/<name>",
+                authority: Authority::Authoritative,
+                why: "each ref's head and monotonic counter",
+            },
+            FileClass {
+                pattern: "FORMAT",
+                authority: Authority::Authoritative,
+                why: "the layout every other file is read under",
+            },
+            FileClass {
+                pattern: "signatures/<ref>",
+                authority: Authority::Rebuildable,
+                why: "a cache of the head statements, signed again whenever it is missing or stale",
+            },
+        ]
     }
-    Ok(())
+}
+
+/// A storage-library failure, as this store reports it.
+fn storage(what: &str, error: StorageError) -> StoreError {
+    StoreError::Backend {
+        detail: format!("{what}: {error}"),
+    }
+}
+
+/// Replaces the file `relative` (`/`-separated) below the ledger directory `root` with `bytes`: a
+/// fresh, exclusively created temporary, flushed, renamed over the target, and the directory
+/// flushed. Below `root` every directory is opened relative to its parent without following a
+/// link, and every directory created is flushed into its parent. The temporary's name is random,
+/// so two writers of one file never share a temporary; a failed flush is reported, never ignored.
+fn write_durable(root: &Path, relative: &str, bytes: &[u8]) -> Result<()> {
+    let parts: Vec<&str> = relative.split('/').collect();
+    let Some((name, parents)) = parts.split_last() else {
+        return Err(StoreError::Backend {
+            detail: format!("`{relative}` names no file"),
+        });
+    };
+    let mut dir = Dir::create_root(root).map_err(|error| storage("opening directory", error))?;
+    for parent in parents {
+        dir = dir
+            .subdir(parent, true)
+            .map_err(|error| storage("opening directory", error))?;
+    }
+    let temp = permguard_host::storage::dir::temp_name();
+    let staged = dir.child_path(&temp);
+    let written = (|| {
+        let mut file = dir
+            .create_exclusive(&temp)
+            .map_err(|error| storage("staging write", error))?;
+        permguard_core::fault::write(&staged, bytes.len(), || file.write_all(bytes))
+            .map_err(|e| backend("staging write", e))?;
+        permguard_core::fault::sync(&staged, || file.sync_all())
+            .map_err(|e| backend("fsync of staged file", e))?;
+        drop(file);
+        dir.rename(&temp, name)
+            .map_err(|error| storage("atomic replace", error))?;
+        dir.sync()
+            .map_err(|error| storage("flushing the directory", error))
+    })();
+    if written.is_err() {
+        let _ = dir.unlink(&temp);
+    }
+    written
+}
+
+/// Removes the temporaries below `dir`, in it and in every subdirectory, older than `older_than`:
+/// the storage library's, and the `*.tmp` files of the layout before it. Every directory is listed
+/// and opened through its parent's handle, never by following a link; one that disappears while
+/// the sweep walks is skipped.
+fn sweep_tree(dir: &Dir, older_than: std::time::Duration) -> Result<usize> {
+    let sweeping = |error| storage("sweeping temporaries", error);
+    let mut swept = dir.sweep_temps_older_than(older_than).map_err(sweeping)?;
+    let now = std::time::SystemTime::now();
+    for name in dir.names().map_err(sweeping)? {
+        if !name.ends_with(".tmp") {
+            continue;
+        }
+        let Some(file) = dir.open_read(&name).map_err(sweeping)? else {
+            continue;
+        };
+        let age = file
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .map(|modified| now.duration_since(modified).unwrap_or_default())
+            .map_err(|e| backend("sweeping temporaries", e))?;
+        if age >= older_than && dir.unlink(&name).map_err(sweeping)? {
+            swept += 1;
+        }
+    }
+    for name in dir.subdirs().map_err(sweeping)? {
+        match dir.subdir(&name, false) {
+            Ok(child) => swept += sweep_tree(&child, older_than)?,
+            Err(StorageError::Io { source, .. })
+                if source.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(sweeping(error)),
+        }
+    }
+    Ok(swept)
 }
 
 fn render_ref(state: &RefState) -> String {
@@ -472,10 +689,8 @@ fn collect_refs(base: &Path, directory: &Path, out: &mut Vec<(String, RefState)>
     };
     for entry in entries {
         let entry = entry.map_err(|e| backend("listing refs", e))?;
+        // A temporary is never listed: a ref name has no `.`, and every temporary has one.
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "tmp") {
-            continue;
-        }
         if path.is_dir() {
             collect_refs(base, &path, out)?;
         } else if let Ok(relative) = path.strip_prefix(base) {
@@ -525,6 +740,178 @@ mod tests {
         let (again, _) = store.put_object(&bytes).unwrap();
         assert_eq!(again, digest);
         assert_eq!(store.get_object(&digest).unwrap().unwrap(), bytes);
+    }
+
+    /// The storage contract (H-06), run against this store.
+    #[test]
+    fn the_object_store_keeps_the_immutable_storage_contract() {
+        struct Objects(FileObjectStore);
+        impl permguard_host::storage::testing::ImmutableStore for Objects {
+            fn publish(
+                &self,
+                content: &[u8],
+            ) -> std::result::Result<bool, permguard_host::storage::testing::Refused> {
+                use permguard_host::storage::testing::Refused;
+                self.0
+                    .publish_object(content)
+                    .map(|(_, _, published)| published == Published::Written)
+                    .map_err(|error| match error {
+                        StoreError::Corrupt { .. } => Refused::Corruption(error.to_string()),
+                        other => Refused::Other(other.to_string()),
+                    })
+            }
+            fn path_of(&self, content: &[u8]) -> PathBuf {
+                self.0.object_path(&Digest::compute(content))
+            }
+            fn read(&self, content: &[u8]) -> Option<Vec<u8>> {
+                self.0.get_object(&Digest::compute(content)).ok().flatten()
+            }
+        }
+
+        let store = Objects(FileObjectStore::new(scratch()));
+        let content = blob_bytes("permit(principal, action, resource);");
+        let forged = compress::deflate(&blob_bytes("forbid(principal, action, resource);"));
+        permguard_host::storage::testing::immutable_contract(&store, &content, &forged);
+    }
+
+    /// A temporary a crash left anywhere in the ledger is removed once older than the bound, and a
+    /// young one, which may be a write in flight, is kept; so is the old layout's `*.tmp`.
+    #[test]
+    fn temporaries_are_swept_by_age_across_the_ledger() {
+        use permguard_host::storage::dir::TEMP_PREFIX;
+
+        let store = FileObjectStore::new(scratch());
+        let (digest, _) = store.put_object(&blob_bytes("kept")).unwrap();
+        let head = digest.clone();
+        store.update_ref("feature/login", None, &head).unwrap();
+        store.write_signature("feature/login", b"envelope").unwrap();
+        let (shard, _) = FileObjectStore::object_location(&digest);
+        let root = store.root().to_path_buf();
+        let places = [
+            root.join("objects").join(&shard),
+            root.join("refs").join("feature"),
+            root.join("signatures").join("feature"),
+            root.clone(),
+        ];
+        let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+        for (at, place) in places.iter().enumerate() {
+            let old = place.join(format!("{TEMP_PREFIX}00000000000000a{at}"));
+            fs::write(&old, b"old").unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&old)
+                .unwrap()
+                .set_modified(hour_ago)
+                .unwrap();
+            fs::write(
+                place.join(format!("{TEMP_PREFIX}00000000000000b{at}")),
+                b"young",
+            )
+            .unwrap();
+        }
+        let legacy = root.join("FORMAT.tmp");
+        fs::write(&legacy, b"legacy").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&legacy)
+            .unwrap()
+            .set_modified(hour_ago)
+            .unwrap();
+
+        let swept = store
+            .sweep_temporaries(std::time::Duration::from_secs(60))
+            .unwrap();
+        assert_eq!(swept, places.len() + 1);
+        for (at, place) in places.iter().enumerate() {
+            assert!(
+                !place
+                    .join(format!("{TEMP_PREFIX}00000000000000a{at}"))
+                    .exists()
+            );
+            assert!(
+                place
+                    .join(format!("{TEMP_PREFIX}00000000000000b{at}"))
+                    .exists()
+            );
+        }
+        assert!(!legacy.exists());
+        assert!(store.has_object(&digest), "and nothing else moved");
+        assert_eq!(store.list_refs().unwrap().len(), 1);
+    }
+
+    /// A ref is a durable claim: a failed flush while writing it — of the staged file or of a
+    /// directory — is reported, never answered as an update.
+    #[test]
+    fn a_failed_flush_while_writing_a_ref_is_reported() {
+        let store = FileObjectStore::new(scratch());
+        let (digest, _) = store.put_object(&blob_bytes("x")).unwrap();
+        let _guard = permguard_core::fault::inject(
+            store.root().join("refs"),
+            permguard_core::fault::Fault::Fsync,
+        );
+        let refused = store.update_ref("main", None, &digest).unwrap_err();
+        assert!(matches!(refused, StoreError::Backend { .. }), "{refused}");
+    }
+
+    /// The directory's flush alone: the staged file flushes, the rename lands, and the update is
+    /// still refused because the directory did not flush.
+    #[test]
+    fn a_failed_directory_flush_while_writing_a_ref_is_reported() {
+        let store = FileObjectStore::new(scratch());
+        let (digest, _) = store.put_object(&blob_bytes("x")).unwrap();
+        store.update_ref("other", None, &digest).unwrap();
+        let _guard = permguard_core::fault::inject_exact(
+            store.root().join("refs"),
+            permguard_core::fault::Fault::Fsync,
+        );
+        assert!(store.update_ref("main", None, &digest).is_err());
+    }
+
+    /// The idempotent answer flushes too: the ref file and its directory, each on its own.
+    #[test]
+    fn an_already_current_ref_is_answered_only_after_a_flush() {
+        let store = FileObjectStore::new(scratch());
+        let (digest, _) = store.put_object(&blob_bytes("x")).unwrap();
+        store.update_ref("main", None, &digest).unwrap();
+        for path in [
+            store.root().join("refs"),
+            store.root().join("refs").join("main"),
+        ] {
+            let _guard =
+                permguard_core::fault::inject_exact(&path, permguard_core::fault::Fault::Fsync);
+            assert!(
+                store.update_ref("main", None, &digest).is_err(),
+                "{}",
+                path.display()
+            );
+        }
+        assert!(matches!(
+            store.update_ref("main", None, &digest).unwrap(),
+            RefUpdate::AlreadyCurrent(_)
+        ));
+    }
+
+    /// Many pushes of one object at once: one writes, the others find it there.
+    #[test]
+    fn concurrent_pushes_of_one_object_write_it_once() {
+        let root = scratch();
+        let bytes = blob_bytes("permit(principal, action, resource);");
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let (root, bytes) = (root.clone(), bytes.clone());
+                std::thread::spawn(move || {
+                    FileObjectStore::new(root)
+                        .publish_object(&bytes)
+                        .map(|(_, _, published)| published)
+                })
+            })
+            .collect();
+        let written = handles
+            .into_iter()
+            .map(|held| held.join().unwrap().unwrap())
+            .filter(|published| *published == Published::Written)
+            .count();
+        assert_eq!(written, 1);
     }
 
     #[test]

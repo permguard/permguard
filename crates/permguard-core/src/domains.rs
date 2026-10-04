@@ -192,6 +192,18 @@ pub mod format {
     pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
 }
 
+/// The 8-byte magics opening every file the storage library writes (`permguard_host::storage`).
+pub mod magic {
+    /// A journal segment: its header, the header's checksum, then frames.
+    pub const JOURNAL_SEGMENT: &str = "PGJRNSEG";
+    /// A replaceable view: a whole file replaced atomically.
+    pub const VIEW: &str = "PGSVIEW\0";
+    /// A snapshot cache, rebuilt from its authoritative journal.
+    pub const SNAPSHOT: &str = "PGSSNAP\0";
+    /// A tombstone: a deletion in progress, durable before the file is removed.
+    pub const TOMBSTONE: &str = "PGSTOMB\0";
+}
+
 /// Labels inside HKDF `info` tuples.
 pub mod kdf {
     /// The first element of every info tuple.
@@ -348,6 +360,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("annotation.POLICY_ALIAS", annotation::POLICY_ALIAS),
         ("annotation.POLICY_KIND", annotation::POLICY_KIND),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
+        ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),
+        ("magic.SNAPSHOT", magic::SNAPSHOT),
+        ("magic.TOMBSTONE", magic::TOMBSTONE),
+        ("magic.VIEW", magic::VIEW),
         ("kdf.LABEL", kdf::LABEL),
         ("kdf.HOST_LOCAL", kdf::HOST_LOCAL),
         ("kdf.ZONE_ROOT", kdf::ZONE_ROOT),

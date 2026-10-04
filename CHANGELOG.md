@@ -19,6 +19,10 @@ is cut.
 
 ### Changed
 
+- **Publishing an object needs a filesystem with hard links.**
+  The Control Plane's ledgers, a Data Plane mirror and a CLI workspace publish objects by hard-linking a flushed temporary file to the object's name.
+  The link is what makes the publish refuse to replace anything.
+  A volume without hard links (FAT, exFAT, some network filesystems) now fails the publish with an error that says so, where it used to work without that guarantee.
 - **Breaking for PEPs: an evaluation the plane could not perform is no longer a deny.**
   The native PDP answers it with the typed refusal `503`/`UNAVAILABLE`, class `unavailable`, code `evaluation_indeterminate`; a policy deny stays `200 {"decision": false}`.
   When an engine could not represent the request (a context, action or subject outside the partition's schema), the refusal is `400`/`INVALID_ARGUMENT`, class `validation`, code `evaluation_input_rejected` instead: sending it again cannot help.
@@ -73,6 +77,19 @@ is cut.
 
 ### Fixed
 
+- An object is never overwritten (H-06).
+  The Control Plane's object store, a Data Plane mirror and a CLI workspace publish each object through one storage library, without replacement.
+  Pushing the same object twice, at once or not, writes it once and rewrites nothing.
+  A name already holding a different object is reported as corruption and left byte-for-byte as it was.
+  A mirror's and a workspace's objects are now also flushed to disk, file and directory, before they count as stored.
+- A commit no longer points a ref at objects that a power loss could take away.
+  The objects negotiation told a push not to send may have been linked by another push that had not flushed them yet; their directories are now flushed before the ref is written.
+- Two first pushes to a fresh ledger at once no longer collide on its `FORMAT` pin.
+  Every replaced file is staged under its own random, exclusively created name, and a failed directory flush is reported instead of ignored.
+  A push that finds objects stored by a concurrent first push reads the pin again before calling the ledger unversioned.
+- A commit retried after its cached head statement was lost is answered with a statement signed again, where it used to carry an empty one the client could not verify.
+- Temporary files a crash left behind are removed, and no longer counted as objects.
+  The Control Plane's garbage collection removes those older than its grace period, and `permguard workspace objects prune` removes a workspace's.
 - Canonical JSON follows RFC 8785 for every finite number: fractions and exponents are accepted and written as ECMAScript writes them (`1E30` as `1e+30`, `4.50` as `4.5`), where they used to be refused.
   An integer that does not read back as written, such as `9007199254740993`, is still refused, and integers already signed keep their bytes.
 - Building a canonical CBOR map that names one key twice is refused instead of producing bytes no reader would accept.

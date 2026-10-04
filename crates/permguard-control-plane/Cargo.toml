@@ -40,6 +40,7 @@ permguard-decisions.workspace = true
 # The bounded stream-window contract both evidence stores are read through.
 # The event record, chain and signed batch contract this store keeps.
 permguard-events.workspace = true
+permguard-host.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.
 ring.workspace = true

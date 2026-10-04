@@ -1,7 +1,8 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `kill -9` in the middle of appending, for the decision spool and the event journal.
+//! `kill -9` in the middle of appending, for the decision spool, the event journal, and the storage
+//! library's journal and immutable publish.
 //!
 //! The test binary runs itself as the child: an ignored test, selected by name and told where to
 //! write through an environment variable, opens the store and appends until it is killed. The parent
@@ -24,6 +25,10 @@ use permguard_decisions::spool::{Bounds as SpoolBounds, Spool};
 use permguard_events::journal::{Bounds as JournalBounds, Journal};
 
 use support::{decision, event, scratch, stream, verified_journal, verified_spool};
+
+use permguard_host::storage::Dir;
+use permguard_host::storage::journal::{Journal as StorageJournal, Options as StorageOptions};
+use permguard_host::storage::write::publish_immutable;
 
 const CHILD_DIRECTORY: &str = "PERMGUARD_CRASH_CHILD_DIRECTORY";
 const DEFAULT_ROUNDS: u32 = 6;
@@ -209,5 +214,153 @@ fn child_appends_to_a_journal_until_killed() {
         journal
             .append(&event(seq, &prev))
             .expect("the child appends");
+    }
+}
+
+/// The bytes of the files in `directory` whose names start with `prefix`.
+fn bytes_of(directory: &Path, prefix: &str) -> Option<u64> {
+    std::fs::read_dir(directory).ok().map(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
+            .filter_map(|entry| entry.metadata().ok())
+            .map(|metadata| metadata.len())
+            .sum()
+    })
+}
+
+/// How many files in `directory` have names starting with `prefix`.
+fn count_of(directory: &Path, prefix: &str) -> Option<u64> {
+    std::fs::read_dir(directory).ok().map(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
+            .count() as u64
+    })
+}
+
+/// Small enough that the children roll segments as they go.
+fn storage_options() -> StorageOptions {
+    StorageOptions {
+        max_frame: 1024,
+        segment_bytes: 4096,
+    }
+}
+
+/// A frame's payload: its own index, then filler.
+fn storage_payload(index: u64) -> Vec<u8> {
+    let mut payload = index.to_be_bytes().to_vec();
+    payload.extend_from_slice(&[0x5a; 120]);
+    payload
+}
+
+#[test]
+fn test_a_storage_journal_killed_mid_append_reopens_with_every_frame_in_order_every_round() {
+    let directory = scratch("crash-storage-journal");
+    let mut recovered = 0usize;
+    let mut held_bytes = 0u64;
+    for round in 0..rounds() {
+        let child = Appender::spawn(
+            "child_appends_to_a_storage_journal_until_killed",
+            &directory,
+        );
+        wait_for_progress(&directory, held_bytes, |path| bytes_of(path, "seg-"));
+        std::thread::sleep(jitter(1, 40));
+        child.kill();
+
+        let opened = StorageJournal::open(
+            Dir::open(&directory).expect("the directory opens"),
+            storage_options(),
+        );
+        let (journal, _) = opened
+            .unwrap_or_else(|error| panic!("round {round}: the journal does not reopen: {error}"));
+        let frames = journal
+            .frames()
+            .unwrap_or_else(|error| panic!("round {round}: the frames do not read: {error}"));
+        assert!(
+            frames.len() >= recovered,
+            "round {round}: a recovered frame was lost ({} < {recovered})",
+            frames.len()
+        );
+        for (position, frame) in frames.iter().enumerate() {
+            assert_eq!(frame.index, position as u64, "round {round}");
+            assert_eq!(
+                frame.payload,
+                storage_payload(position as u64),
+                "round {round}: frame {position} is not the one appended there"
+            );
+        }
+        assert_eq!(journal.next_index(), frames.len() as u64, "round {round}");
+        recovered = frames.len();
+        held_bytes = bytes_of(&directory, "seg-").unwrap_or_default();
+    }
+    assert!(recovered > 0, "the children appended something");
+}
+
+#[test]
+fn test_immutable_publishes_killed_mid_write_leave_whole_files_or_none_every_round() {
+    let directory = scratch("crash-storage-publish");
+    let mut published = 0usize;
+    for round in 0..rounds() {
+        let child = Appender::spawn("child_publishes_until_killed", &directory);
+        wait_for_progress(&directory, published as u64, |path| count_of(path, "obj-"));
+        std::thread::sleep(jitter(1, 40));
+        child.kill();
+
+        let dir = Dir::open(&directory).expect("the directory opens");
+        dir.sweep_temps().expect("the temporaries are swept");
+        let names = dir.names().expect("listed");
+        for name in &names {
+            let index = name
+                .strip_prefix("obj-")
+                .unwrap_or_else(|| panic!("round {round}: `{name}` survived the sweep"));
+            assert_eq!(
+                dir.read(name).expect("read"),
+                Some(format!("content-{index}").into_bytes()),
+                "round {round}: `{name}` is partial or wrong"
+            );
+        }
+        assert!(
+            names.len() >= published,
+            "round {round}: a published file was lost"
+        );
+        published = names.len();
+    }
+    assert!(published > 0, "the children published something");
+}
+
+/// The child half for the storage library's journal.
+#[test]
+#[ignore = "the crash harness runs this as its child process"]
+fn child_appends_to_a_storage_journal_until_killed() {
+    let Some(directory) = std::env::var_os(CHILD_DIRECTORY) else {
+        return;
+    };
+    let dir = Dir::open(Path::new(&directory)).expect("the child opens the directory");
+    let (mut journal, _) = StorageJournal::open(dir, storage_options()).expect("the child opens");
+    loop {
+        let index = journal.next_index();
+        journal
+            .append(1, &storage_payload(index))
+            .expect("the child appends");
+    }
+}
+
+/// The child half for immutable publishes: the same names every round, so a round republishes
+/// what earlier rounds wrote before it adds more.
+#[test]
+#[ignore = "the crash harness runs this as its child process"]
+fn child_publishes_until_killed() {
+    let Some(directory) = std::env::var_os(CHILD_DIRECTORY) else {
+        return;
+    };
+    let dir = Dir::open(Path::new(&directory)).expect("the child opens the directory");
+    let mut index = 0u64;
+    loop {
+        let content = format!("content-{index}").into_bytes();
+        let same = |held: &[u8]| held == content.as_slice();
+        publish_immutable(&dir, &format!("obj-{index}"), &content, &same, &same)
+            .expect("the child publishes");
+        index += 1;
     }
 }

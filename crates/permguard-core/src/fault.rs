@@ -21,8 +21,9 @@
 //! | [`Fault::Fsync`]        | every flush under the scope fails with an I/O error; the bytes written stay where they are |
 //! | [`Fault::DiskFull`]     | writes under the scope succeed until the quota is spent, then fail with `StorageFull`, writing nothing |
 //!
-//! A fault is scoped to a directory and every path below it, and held by the guard [`inject`]
-//! returns: tests running in parallel in one process do not see each other's faults. Nothing outside
+//! A fault is scoped to a directory and every path below it — or, with [`inject_exact`], to one
+//! path alone, which is how a test fails a directory's flush without failing the flushes of the
+//! files in it — and held by the guard [`inject`] returns: tests running in parallel in one process do not see each other's faults. Nothing outside
 //! the process can arm one — there is no variable, file or flag that does — so the hooks cost a
 //! production store one atomic load per call and change nothing it does.
 
@@ -43,7 +44,18 @@ pub enum Fault {
 struct Rule {
     id: u64,
     scope: PathBuf,
+    exact: bool,
     fault: Fault,
+}
+
+impl Rule {
+    fn covers(&self, path: &Path) -> bool {
+        if self.exact {
+            path == self.scope
+        } else {
+            path.starts_with(&self.scope)
+        }
+    }
 }
 
 static RULES: Mutex<Vec<Rule>> = Mutex::new(Vec::new());
@@ -71,13 +83,23 @@ impl Drop for Injected {
 
 /// Arms `fault` for `scope` and every path below it, until the returned guard drops.
 pub fn inject(scope: impl AsRef<Path>, fault: Fault) -> Injected {
+    arm(scope.as_ref(), fault, false)
+}
+
+/// Arms `fault` for exactly `path`, not what is below it, until the returned guard drops.
+pub fn inject_exact(path: impl AsRef<Path>, fault: Fault) -> Injected {
+    arm(path.as_ref(), fault, true)
+}
+
+fn arm(scope: &Path, fault: Fault, exact: bool) -> Injected {
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     RULES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(Rule {
             id,
-            scope: scope.as_ref().to_path_buf(),
+            scope: scope.to_path_buf(),
+            exact,
             fault,
         });
     ARMED.fetch_add(1, Ordering::Release);
@@ -92,10 +114,7 @@ pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) ->
         let mut rules = RULES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for rule in rules
-            .iter_mut()
-            .filter(|rule| path.starts_with(&rule.scope))
-        {
+        for rule in rules.iter_mut().filter(|rule| rule.covers(path)) {
             if let Fault::DiskFull { remaining_bytes } = &mut rule.fault {
                 let len = len as u64;
                 if len > *remaining_bytes {
@@ -121,7 +140,7 @@ pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if rules
             .iter()
-            .any(|rule| rule.fault == Fault::Fsync && path.starts_with(&rule.scope))
+            .any(|rule| rule.fault == Fault::Fsync && rule.covers(path))
         {
             return Err(io::Error::other("injected fault: fsync failed"));
         }
@@ -149,6 +168,17 @@ mod tests {
         assert!(sync(&inside, ok).is_err());
         assert!(sync(&volume, ok).is_err(), "the scope itself is covered");
         assert!(sync(&outside, ok).is_ok(), "a sibling scope is not");
+        {
+            let _exact = inject_exact(&outside, Fault::Fsync);
+            assert!(
+                sync(&outside, ok).is_err(),
+                "an exact fault covers its path"
+            );
+            assert!(
+                sync(&outside.join("file"), ok).is_ok(),
+                "and nothing below it"
+            );
+        }
         assert!(write(&inside, 10, ok).is_ok(), "writes are untouched");
         drop(guard);
         assert!(sync(&inside, ok).is_ok(), "lifted with its guard");

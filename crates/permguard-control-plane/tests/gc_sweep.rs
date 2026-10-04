@@ -283,3 +283,34 @@ fn an_empty_store_is_a_sweep_that_does_nothing() {
 
     assert_eq!(swept, gc::Swept::default());
 }
+
+/// The sweep removes the temporaries of interrupted writes once they are older than the grace
+/// period, and keeps a young one, which may be a push in flight.
+#[test]
+fn the_sweep_removes_old_temporaries_and_keeps_young_ones() {
+    let root = scratch("temporaries");
+    let store = FileObjectStore::new(&root);
+    blob(&store, "anything, to give the ledger its layout");
+    let fan = std::fs::read_dir(root.join("objects"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let old = fan.join(".tmp-00000000000000aa");
+    let young = fan.join(".tmp-00000000000000bb");
+    std::fs::write(&old, b"interrupted").unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&old)
+        .unwrap()
+        .set_modified(SystemTime::now() - Duration::from_secs(3600))
+        .unwrap();
+    std::fs::write(&young, b"in flight").unwrap();
+
+    let swept = gc::sweep_once(&store, Duration::from_secs(60)).expect("the sweep runs");
+
+    assert_eq!(swept.temporaries, 1);
+    assert!(!old.exists());
+    assert!(young.exists());
+}

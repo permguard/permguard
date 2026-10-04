@@ -64,6 +64,8 @@ pub struct Pruned {
     pub kept: usize,
     /// Whether anything was actually removed.
     pub applied: bool,
+    /// Temporary files of publishes a crash interrupted, removed when applied.
+    pub temporaries: usize,
 }
 
 impl Pruned {
@@ -84,6 +86,10 @@ pub fn prune(store: &dyn Store, apply: bool) -> Result<Pruned> {
         applied: apply,
         ..Pruned::default()
     };
+    // The workspace lock is held, so no publish is in flight: every temporary is debris.
+    if apply {
+        pruned.temporaries = objects::sweep_temporaries(store, OBJECTS_DIR).map_err(err)?;
+    }
     for record in inventory::inventory(store).map_err(err)? {
         if tracked.contains(&record.digest) || staged.contains(&record.digest) {
             pruned.kept += 1;
@@ -268,6 +274,28 @@ mod tests {
         assert!(!inventory::has(&store, &orphan));
         assert!(inventory::has(&store, &policy), "and nothing else moved");
         assert!(inventory::has(&store, &commit));
+    }
+
+    /// A temporary a crashed publish left in the mirror goes with an applied prune, and a dry run
+    /// leaves it.
+    #[test]
+    fn an_applied_prune_sweeps_the_temporaries_a_crash_left() {
+        let root = scratch("temporaries");
+        let store = FsStore::new(&root);
+        let policy = blob(&store, "kept");
+        track(&store, &policy);
+        let hex = policy.to_string();
+        let fan = root
+            .join(OBJECTS_DIR)
+            .join(&hex["sha256:".len().."sha256:".len() + 2]);
+        let temporary = fan.join(".tmp-0123456789abcdef");
+        std::fs::write(&temporary, b"partial").expect("a temporary");
+
+        assert_eq!(prune(&store, false).expect("previewed").temporaries, 0);
+        assert!(temporary.exists(), "a dry run removes nothing");
+        assert_eq!(prune(&store, true).expect("pruned").temporaries, 1);
+        assert!(!temporary.exists());
+        assert!(inventory::has(&store, &policy));
     }
 
     #[test]

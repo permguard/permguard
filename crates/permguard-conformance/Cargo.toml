@@ -25,3 +25,4 @@ tonic.workspace = true
 [dev-dependencies]
 permguard-decisions.workspace = true
 permguard-events.workspace = true
+permguard-host.workspace = true

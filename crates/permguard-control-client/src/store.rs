@@ -28,6 +28,19 @@ pub trait Store: Send + Sync {
     fn create_exclusive(&self, path: &str, bytes: &[u8]) -> Result<bool, String>;
     /// Removes a file, or a directory and everything under it; removing an absent path succeeds.
     fn remove(&self, path: &str) -> Result<(), String>;
+    /// Publishes immutable `bytes` at `path`, never replacing what is there: `Ok(true)` when it
+    /// wrote them, `Ok(false)` when `path` already held content `same` accepts, and an error —
+    /// leaving the existing file untouched — when it holds anything else.
+    ///
+    /// No default: a read followed by a write is neither atomic nor free of replacement, so every
+    /// store says how it keeps the promise. The filesystem store publishes through the storage
+    /// library's no-replace path.
+    fn publish(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        same: &dyn Fn(&[u8]) -> bool,
+    ) -> Result<bool, String>;
 }
 
 /// The filesystem implementation.
@@ -143,6 +156,35 @@ impl Store for FsStore {
             fs::create_dir_all(parent).map_err(|error| format!("creating {path}: {error}"))?;
         }
         fs::write(&resolved, bytes).map_err(|error| format!("writing {path}: {error}"))
+    }
+
+    /// Through the storage library (H-06): a flushed temporary hard-linked to the name, which
+    /// fails when the name exists, every directory opened without following a link.
+    fn publish(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        same: &dyn Fn(&[u8]) -> bool,
+    ) -> Result<bool, String> {
+        self.resolve(path)?;
+        self.refuse_links(path)?;
+        let segments: Vec<&str> = path
+            .split('/')
+            .filter(|segment| !segment.is_empty() && *segment != ".")
+            .collect();
+        let Some((name, parents)) = segments.split_last() else {
+            return Err(format!("refusing `{path}`: it names no file"));
+        };
+        let mut directory = permguard_host::storage::Dir::create_root(&self.root)
+            .map_err(|error| format!("publishing {path}: {error}"))?;
+        for parent in parents {
+            directory = directory
+                .subdir(parent, true)
+                .map_err(|error| format!("publishing {path}: {error}"))?;
+        }
+        permguard_host::storage::write::publish_immutable(&directory, name, bytes, same, same)
+            .map(|published| published == permguard_host::storage::write::Published::Written)
+            .map_err(|error| format!("publishing {path}: {error}"))
     }
 
     fn exists(&self, path: &str) -> bool {

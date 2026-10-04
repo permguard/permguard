@@ -251,6 +251,14 @@ fn held_by(ledger: &Path) -> Held {
             continue;
         };
         for entry in entries.flatten() {
+            // A temporary is a write in flight or one a crash interrupted, not an object.
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(permguard_host::storage::dir::TEMP_PREFIX)
+            {
+                continue;
+            }
             if let Ok(metadata) = entry.metadata()
                 && metadata.is_file()
             {
@@ -296,6 +304,8 @@ mod tests {
         std::fs::write(fan.join("0123"), b"four").expect("another");
         // A directory inside the fanout is not an object.
         std::fs::create_dir_all(fan.join("nested")).expect("a directory");
+        // Nor is a temporary a write left behind.
+        std::fs::write(fan.join(".tmp-0123456789abcdef"), b"partial").expect("a temporary");
 
         assert_eq!(
             held_by(&ledger),

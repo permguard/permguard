@@ -12,6 +12,7 @@ members = [
     "crates/permguard-data-plane",
     "crates/permguard-decisions",
     "crates/permguard-events",
+    "crates/permguard-host",
     "crates/permguard-notp",
     "crates/permguard-control-client",
     "crates/permguard-objects",
@@ -53,6 +54,7 @@ permguard-core = { path = "crates/permguard-core", version = "0.1.0" }
 permguard-data-plane = { path = "crates/permguard-data-plane", version = "0.1.0" }
 permguard-decisions = { path = "crates/permguard-decisions", version = "0.1.0" }
 permguard-events = { path = "crates/permguard-events", version = "0.1.0" }
+permguard-host = { path = "crates/permguard-host", version = "0.1.0" }
 permguard-notp = { path = "crates/permguard-notp", version = "0.1.0" }
 permguard-control-client = { path = "crates/permguard-control-client", version = "0.1.0" }
 permguard-objects = { path = "crates/permguard-objects", version = "0.1.0" }
@@ -89,6 +91,7 @@ proptest = "1"
 rcgen = "0.14"
 regex = "1"
 ring = "0.17"
+rustix = { version = "1", features = ["fs"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }

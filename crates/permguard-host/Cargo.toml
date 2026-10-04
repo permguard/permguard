@@ -1,0 +1,30 @@
+# Copyright (c) 2022 Nitro Agility S.r.l.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "permguard-host"
+description = "The Host's own modules, starting with the storage library every subsystem writes its files through."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+publish = false
+
+[features]
+# Named crash points in every storage protocol: a process started with `PERMGUARD_CRASH_AT=<point>`
+# aborts there. Tests only; a release build never carries the check.
+crash-points = []
+
+[dependencies]
+permguard-core.workspace = true
+sha2.workspace = true
+
+# Directory-relative, no-follow opens and directory flushes (`storage::dir`).
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }
+
+[[test]]
+name = "crash_points"
+required-features = ["crash-points"]

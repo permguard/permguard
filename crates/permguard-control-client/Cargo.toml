@@ -23,6 +23,7 @@ permguard-core.workspace = true
 # wrote — which is the contract differing by transport.
 # The batch a shipper sends: one definition, so producer and receiver render it identically.
 permguard-events.workspace = true
+permguard-host.workspace = true
 permguard-languages.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true

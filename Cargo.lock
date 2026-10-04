@@ -2341,6 +2341,7 @@ dependencies = [
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
+ "permguard-host",
  "serde",
  "serde_json",
  "tokio",
@@ -2357,6 +2358,7 @@ dependencies = [
  "http",
  "permguard-core",
  "permguard-events",
+ "permguard-host",
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
@@ -2389,6 +2391,7 @@ dependencies = [
  "permguard-data-plane",
  "permguard-decisions",
  "permguard-events",
+ "permguard-host",
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
@@ -2483,6 +2486,15 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "permguard-host"
+version = "0.1.0"
+dependencies = [
+ "permguard-core",
+ "rustix",
  "sha2",
 ]
 
