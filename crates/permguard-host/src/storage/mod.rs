@@ -33,6 +33,8 @@ pub mod crash;
 pub mod dir;
 pub mod format;
 pub mod journal;
+pub mod probe;
+pub mod qualify;
 pub mod snapshot;
 pub mod testing;
 pub mod tombstone;

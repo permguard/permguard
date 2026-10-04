@@ -8,6 +8,27 @@ autogenerate: false
 # generated secrets. Move this and everything moves with it — it is the volume to mount and back up.
 working_dir: /var/lib/permguard
 
+# The volume under working_dir, as the startup probe and the qualification registry read it.
+# Its keys are checked when the file is read (a misspelled one is refused); its values are
+# validated and enforced once the Host composition lands (WP-2.1).
+# The filesystem and its version are detected, never configured. A tuple not listed under
+# `qualified` is refused under `production` unless `compatibility_mode` is on, which is then
+# published, and is always refused under `regulated`.
+# storage:
+#   volume:
+#     storage_class: fast-ssd          # the storage class the volume comes from
+#     driver: ebs.csi.aws.com          # the driver or provider that attaches it
+#   qualified:
+#     - storage_class: fast-ssd
+#       driver: ebs.csi.aws.com
+#       filesystem: ext4
+#       version: "6.8"                # a release, or a prefix of releases ending at . or -
+#       evidence: QUAL-2026-01         # where the crash and takeover tests are recorded
+#   compatibility_mode: false
+#   floors:
+#     free_bytes: 64M                  # the default
+#     free_inodes: "1000"              # the default
+
 log:
   level: info
   format: json

@@ -33,6 +33,16 @@ use super::{Result, StorageError, durability, io};
 /// The prefix every temporary name carries, so a sweep can find what a crash left behind.
 pub const TEMP_PREFIX: &str = ".tmp-";
 
+/// The space left on a filesystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FreeSpace {
+    /// Bytes an unprivileged writer can still use.
+    pub bytes: u64,
+    /// Inodes an unprivileged writer can still use; `None` where the filesystem does not limit
+    /// them (it allocates inodes as it goes, and reports none in advance).
+    pub inodes: Option<u64>,
+}
+
 /// A directory held open.
 #[derive(Debug)]
 pub struct Dir {
@@ -151,6 +161,17 @@ impl Dir {
     /// path elsewhere.
     pub fn identity(&self) -> Result<String> {
         self.identity_raw()
+    }
+
+    /// The space left on the filesystem holding this directory, for an unprivileged writer.
+    pub fn free_space(&self) -> Result<FreeSpace> {
+        self.free_space_raw()
+    }
+
+    /// The type of the filesystem holding this directory, as the platform names it: `ext4`, `xfs`,
+    /// `apfs`; a type this build does not know by name is its number in hex.
+    pub fn filesystem(&self) -> Result<String> {
+        self.filesystem_raw()
     }
 
     /// Flushes the file `name` below this directory.
@@ -281,6 +302,38 @@ mod platform {
                 self.make_entry_durable(&child, created)?;
             }
             Ok(child)
+        }
+
+        /// Creates the subdirectory `name`, which must not exist, and opens it; its entry is flushed
+        /// into this directory. If anything fails after the directory was made, it is removed
+        /// again, so a failed creation leaves nothing behind.
+        pub fn create_subdir(&self, name: &str) -> Result<Self> {
+            let name = component(name)?;
+            rustix::fs::mkdirat(&self.fd, name, Mode::from_raw_mode(0o700)).map_err(|error| {
+                StorageError::Io {
+                    what: format!("creating {}", self.child_path(name).display()),
+                    source: os(error),
+                }
+            })?;
+            let opened = rustix::fs::openat(
+                &self.fd,
+                name,
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )
+            .map_err(|error| StorageError::Io {
+                what: format!("opening {}", self.child_path(name).display()),
+                source: os(error),
+            })
+            .map(|fd| Self {
+                path: self.child_path(name),
+                fd,
+            })
+            .and_then(|child| self.make_entry_durable(&child, true).map(|()| child));
+            if opened.is_err() {
+                let _ = rustix::fs::unlinkat(&self.fd, name, AtFlags::REMOVEDIR);
+            }
+            opened
         }
 
         /// Flushes this directory so `child`'s entry in it is durable: always when the caller just
@@ -495,6 +548,61 @@ mod platform {
                 })
         }
 
+        /// Takes an exclusive advisory lock on this directory, without waiting: `false` when
+        /// another handle holds it. Released when this `Dir` is dropped.
+        pub fn try_lock(&self) -> Result<bool> {
+            match rustix::fs::flock(
+                &self.fd,
+                rustix::fs::FlockOperation::NonBlockingLockExclusive,
+            ) {
+                Ok(()) => Ok(true),
+                Err(Errno::WOULDBLOCK) => Ok(false),
+                Err(error) => Err(StorageError::Io {
+                    what: format!("locking {}", self.path.display()),
+                    source: os(error),
+                }),
+            }
+        }
+
+        /// Removes the empty subdirectory `name`; `false` when it was already gone.
+        pub fn remove_subdir(&self, name: &str) -> Result<bool> {
+            let name = component(name)?;
+            match rustix::fs::unlinkat(&self.fd, name, AtFlags::REMOVEDIR) {
+                Ok(()) => Ok(true),
+                Err(Errno::NOENT) => Ok(false),
+                Err(error) => Err(StorageError::Io {
+                    what: format!("removing {}", self.child_path(name).display()),
+                    source: os(error),
+                }),
+            }
+        }
+
+        pub(super) fn free_space_raw(&self) -> Result<FreeSpace> {
+            let stat = rustix::fs::fstatvfs(&self.fd).map_err(|error| StorageError::Io {
+                what: format!("measuring {}", self.path.display()),
+                source: os(error),
+            })?;
+            Ok(FreeSpace {
+                bytes: stat.f_bavail.saturating_mul(stat.f_frsize),
+                inodes: (stat.f_files > 0).then_some(stat.f_favail),
+            })
+        }
+
+        pub(super) fn filesystem_raw(&self) -> Result<String> {
+            #[cfg(target_os = "linux")]
+            if let Some(name) = rustix::fs::fstat(&self.fd)
+                .ok()
+                .and_then(|stat| mounted_filesystem(stat.st_dev))
+            {
+                return Ok(name);
+            }
+            let stat = rustix::fs::fstatfs(&self.fd).map_err(|error| StorageError::Io {
+                what: format!("identifying {}", self.path.display()),
+                source: os(error),
+            })?;
+            Ok(filesystem_name(&stat))
+        }
+
         /// A read handle is enough to flush a file on Unix.
         pub(super) fn open_flushable(&self, name: &str) -> Result<File> {
             let name = component(name)?;
@@ -525,6 +633,65 @@ mod platform {
     }
 }
 
+/// The type Linux mounted the device `dev` with, from `/proc/self/mountinfo`: exact where the magic
+/// number is shared (ext2, ext3 and ext4 have one).
+#[cfg(target_os = "linux")]
+fn mounted_filesystem(dev: u64) -> Option<String> {
+    let device = format!("{}:{}", rustix::fs::major(dev), rustix::fs::minor(dev));
+    let table = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
+    table.lines().find_map(|line| {
+        let mut fields = line.split(' ');
+        if fields.nth(2)? != device {
+            return None;
+        }
+        let (_, after) = line.split_once(" - ")?;
+        after.split(' ').next().map(str::to_owned)
+    })
+}
+
+/// Linux names a filesystem by its magic number: the ones a Host is likely to meet, by name. Used
+/// only where the mount table does not answer.
+#[cfg(target_os = "linux")]
+fn filesystem_name(stat: &rustix::fs::StatFs) -> String {
+    let magic = i128::from(stat.f_type);
+    let named = [
+        (0xEF53, "ext2/3/4"),
+        (0x5846_5342, "xfs"),
+        (0x9123_683E, "btrfs"),
+        (0x2FC1_2FC1, "zfs"),
+        (0xF2F5_2010, "f2fs"),
+        (0x0102_1994, "tmpfs"),
+        (0x6969, "nfs"),
+        (0x6573_5546, "fuse"),
+        (0x794C_7630, "overlayfs"),
+        (0xFF53_4D42, "cifs"),
+        (0xFE53_4D42, "smb2"),
+        (0x5346_544E, "ntfs"),
+        (0x4D44, "vfat"),
+    ];
+    named
+        .iter()
+        .find(|(number, _)| *number == magic)
+        .map_or_else(|| format!("{magic:#x}"), |(_, name)| (*name).to_owned())
+}
+
+/// Apple names a filesystem in the statfs record itself.
+#[cfg(target_vendor = "apple")]
+fn filesystem_name(stat: &rustix::fs::StatFs) -> String {
+    let bytes: Vec<u8> = stat
+        .f_fstypename
+        .iter()
+        .take_while(|byte| **byte != 0)
+        .map(|byte| byte.to_ne_bytes()[0])
+        .collect();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+#[cfg(all(unix, not(target_os = "linux"), not(target_vendor = "apple")))]
+fn filesystem_name(_stat: &rustix::fs::StatFs) -> String {
+    "unknown".to_owned()
+}
+
 #[cfg(not(unix))]
 mod platform {
     use super::*;
@@ -541,6 +708,17 @@ mod platform {
             Ok(Self {
                 path: path.to_path_buf(),
             })
+        }
+
+        /// Creates the subdirectory `name`, which must not exist, and opens it.
+        pub fn create_subdir(&self, name: &str) -> Result<Self> {
+            let path = self.child_path(component(name)?);
+            std::fs::create_dir(&path).map_err(io(format!("creating {}", path.display())))?;
+            let opened = Self::open(&path);
+            if opened.is_err() {
+                let _ = std::fs::remove_dir(&path);
+            }
+            opened
         }
 
         /// The subdirectory `name`, created when `create` and absent.
@@ -661,6 +839,37 @@ mod platform {
             std::fs::canonicalize(&self.path)
                 .map(|path| path.display().to_string())
                 .map_err(io(format!("resolving {}", self.path.display())))
+        }
+
+        /// No directory locks here: the platform is a compatibility mode, and one Host per volume
+        /// is the operator's to ensure.
+        pub fn try_lock(&self) -> Result<bool> {
+            Ok(true)
+        }
+
+        /// Removes the empty subdirectory `name`; `false` when it was already gone.
+        pub fn remove_subdir(&self, name: &str) -> Result<bool> {
+            let path = self.child_path(component(name)?);
+            match std::fs::remove_dir(&path) {
+                Ok(()) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(StorageError::Io {
+                    what: format!("removing {}", path.display()),
+                    source: error,
+                }),
+            }
+        }
+
+        /// Not measurable here: the platform is a compatibility mode.
+        pub(super) fn free_space_raw(&self) -> Result<FreeSpace> {
+            Err(StorageError::Io {
+                what: format!("measuring {}", self.path.display()),
+                source: std::io::Error::from(std::io::ErrorKind::Unsupported),
+            })
+        }
+
+        pub(super) fn filesystem_raw(&self) -> Result<String> {
+            Ok("unknown".to_owned())
         }
 
         /// Windows flushes a file only through a handle that may write.

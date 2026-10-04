@@ -4112,7 +4112,7 @@ fn parse_count(value: &str) -> Result<u32> {
 }
 
 /// Reads a setting written as a size: a plain number of bytes, or one suffixed `k`, `M` or `G`.
-fn parse_bytes(value: &str) -> Result<u64> {
+pub(crate) fn parse_bytes(value: &str) -> Result<u64> {
     const KIB: u64 = 1024;
 
     let value = value.trim();
@@ -4177,7 +4177,7 @@ fn is_loopback(address: &str) -> bool {
 }
 
 /// Reads a setting written as a boolean.
-fn parse_bool(value: &str) -> Result<bool> {
+pub(crate) fn parse_bool(value: &str) -> Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "yes" | "on" | "1" => Ok(true),
         "false" | "no" | "off" | "0" => Ok(false),

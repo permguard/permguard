@@ -110,6 +110,11 @@ pub struct ConfigFile {
     /// deployment can see everything it has opted into at once.
     #[serde(default)]
     experimental: ExperimentalSection,
+    /// The Host's storage volume: what the operator declares about it, the qualified tuples, the
+    /// compatibility mode and the safety floors. Structured, so carried from the file only, like
+    /// `realms`; read with [`ConfigFile::volume`].
+    #[serde(default)]
+    storage: StorageSection,
     /// The issuers this deployment hosts. A list, not a flat setting, so it is carried as structured
     /// configuration rather than through the layered key/value pipeline — realms come from the file
     /// (and, later, a database), never from a single environment variable.
@@ -124,6 +129,49 @@ pub struct ConfigFile {
     /// Sections outside the typed ones, kept verbatim for whoever claims them.
     #[serde(flatten)]
     sections: BTreeMap<String, Value>,
+}
+
+/// The top-level `storage` section, as the file writes it.
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StorageSection {
+    #[serde(default)]
+    volume: VolumeSection,
+    #[serde(default)]
+    qualified: Vec<QualifiedSection>,
+    #[serde(default, alias = "compatibilityMode")]
+    compatibility_mode: Option<String>,
+    #[serde(default)]
+    floors: FloorsSection,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VolumeSection {
+    #[serde(default, alias = "storageClass")]
+    storage_class: Option<String>,
+    #[serde(default)]
+    driver: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QualifiedSection {
+    #[serde(alias = "storageClass")]
+    storage_class: String,
+    driver: String,
+    filesystem: String,
+    version: String,
+    evidence: String,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FloorsSection {
+    #[serde(default, alias = "freeBytes")]
+    free_bytes: Option<String>,
+    #[serde(default, alias = "freeInodes")]
+    free_inodes: Option<String>,
 }
 
 /// One realm as the file declares it, before resolution.
@@ -1141,6 +1189,69 @@ impl ConfigFile {
         self.sections.get(name)
     }
 
+    /// Returns the `storage` section, validated: every qualified tuple names all four parts and its
+    /// evidence, no tuple is listed twice, and the floors read as sizes and counts.
+    pub fn volume(&self) -> Result<crate::volume::VolumeConfig> {
+        use crate::volume::{Floors, QualifiedTuple, Tuple, VolumeConfig};
+
+        let section = &self.storage;
+        let declared = |value: &Option<String>, key: &str| -> Result<Option<String>> {
+            match value.as_deref().map(str::trim) {
+                Some("") => bail!("storage.volume.{key} is empty: state it or leave it out"),
+                other => Ok(other.map(str::to_owned)),
+            }
+        };
+        let mut qualified: Vec<QualifiedTuple> = Vec::new();
+        for (position, entry) in section.qualified.iter().enumerate() {
+            let part = |value: &str, key: &str| -> Result<String> {
+                let value = value.trim();
+                if value.is_empty() {
+                    bail!("storage.qualified[{position}].{key} is empty");
+                }
+                Ok(value.to_owned())
+            };
+            let tuple = Tuple {
+                storage_class: part(&entry.storage_class, "storage_class")?,
+                driver: part(&entry.driver, "driver")?,
+                filesystem: part(&entry.filesystem, "filesystem")?,
+                version: part(&entry.version, "version")?,
+            };
+            if qualified.iter().any(|known| known.tuple == tuple) {
+                bail!("storage.qualified[{position}] repeats a tuple listed before it");
+            }
+            qualified.push(QualifiedTuple {
+                tuple,
+                evidence: part(&entry.evidence, "evidence")?,
+            });
+        }
+        let compatibility_mode = match &section.compatibility_mode {
+            Some(value) => crate::config::parse_bool(value)
+                .with_context(|| "reading storage.compatibility_mode".to_owned())?,
+            None => false,
+        };
+        let mut floors = Floors::default();
+        if let Some(value) = &section.floors.free_bytes {
+            floors.free_bytes = crate::config::parse_bytes(value)
+                .with_context(|| "reading storage.floors.free_bytes".to_owned())?;
+        }
+        if let Some(value) = &section.floors.free_inodes {
+            floors.free_inodes = match value.trim().parse::<u64>() {
+                Ok(count) if count > 0 => count,
+                _ => bail!(
+                    "reading storage.floors.free_inodes: `{value}` is not a count of inodes \
+                     above zero"
+                ),
+            };
+        }
+        Ok(VolumeConfig {
+            storage_class: declared(&section.volume.storage_class, "storage_class")?,
+            driver: declared(&section.volume.driver, "driver")?,
+            qualified,
+            compatibility_mode,
+            floors,
+        })
+    }
+
     /// Returns the realms this file declares, as raw overrides to be resolved against the server.
     ///
     /// No value is parsed here — a duration or a boolean is read by the same rules the server uses,
@@ -1637,5 +1748,60 @@ mod tests {
 
         assert_eq!(realms.len(), 1);
         assert_eq!(realms[0].name, "acme");
+    }
+
+    #[test]
+    fn test_the_storage_section_reads_declared_values_tuples_and_floors() {
+        let file = ConfigFile::parse(
+            "storage:\n  volume:\n    storage_class: fast-ssd\n    driver: ebs.csi.aws.com\n  qualified:\n    - storage_class: fast-ssd\n      driver: ebs.csi.aws.com\n      filesystem: ext4\n      version: 6.8.0\n      evidence: QUAL-2026-01\n  compatibility_mode: \"true\"\n  floors:\n    free_bytes: 2G\n    free_inodes: \"50000\"\n",
+        )
+        .expect("the file parses");
+        let volume = file.volume().expect("the section is valid");
+        assert_eq!(volume.storage_class.as_deref(), Some("fast-ssd"));
+        assert_eq!(volume.driver.as_deref(), Some("ebs.csi.aws.com"));
+        assert_eq!(volume.qualified.len(), 1);
+        assert_eq!(volume.qualified[0].tuple.filesystem, "ext4");
+        assert_eq!(volume.qualified[0].evidence, "QUAL-2026-01");
+        assert!(volume.compatibility_mode);
+        assert_eq!(volume.floors.free_bytes, 2 * 1024 * 1024 * 1024);
+        assert_eq!(volume.floors.free_inodes, 50_000);
+    }
+
+    #[test]
+    fn test_an_absent_storage_section_is_the_defaults() {
+        let volume = ConfigFile::parse(FULL)
+            .expect("the file parses")
+            .volume()
+            .expect("valid");
+        assert_eq!(volume, crate::volume::VolumeConfig::default());
+        assert!(!volume.compatibility_mode);
+        assert_eq!(volume.floors, crate::volume::Floors::default());
+    }
+
+    #[test]
+    fn test_a_malformed_storage_section_is_refused() {
+        let tuple = "    - storage_class: a\n      driver: b\n      filesystem: ext4\n      version: 6\n      evidence: e\n";
+        for (text, why) in [
+            ("storage:\n  qualified:\n".to_owned() + tuple + tuple, "a repeated tuple"),
+            (
+                "storage:\n  qualified:\n    - storage_class: a\n      driver: b\n      filesystem: ext4\n      version: 6\n      evidence: \"\"\n".to_owned(),
+                "empty evidence",
+            ),
+            ("storage:\n  compatibility_mode: perhaps\n".to_owned(), "not a boolean"),
+            ("storage:\n  floors:\n    free_bytes: lots\n".to_owned(), "not a size"),
+            ("storage:\n  floors:\n    free_inodes: \"0\"\n".to_owned(), "zero inodes"),
+            ("storage:\n  volume:\n    driver: \" \"\n".to_owned(), "an empty driver"),
+        ] {
+            let refused = ConfigFile::parse(&text)
+                .expect("the file parses: the section is refused by validation")
+                .volume()
+                .expect_err(why)
+                .to_string();
+            assert!(refused.contains("storage"), "{why}: {refused}");
+        }
+        assert!(
+            ConfigFile::parse("storage:\n  qualifed: []\n").is_err(),
+            "a misspelled key is refused"
+        );
     }
 }

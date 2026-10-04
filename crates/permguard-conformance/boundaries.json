@@ -476,6 +476,11 @@
       "source": "crates/permguard-host/src/storage/journal.rs",
       "item": "Journal::open",
       "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"
+    },
+    {
+      "source": "crates/permguard-core/src/assurance.rs",
+      "item": "AssuranceProfile::from_str",
+      "reason": "the assurance profile an operator states; the key that carries it arrives with the Host composition"
     }
   ]
 }

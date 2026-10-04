@@ -18,6 +18,7 @@
 #![deny(clippy::all, clippy::unwrap_used, clippy::expect_used)]
 
 pub mod api;
+pub mod assurance;
 pub mod audit;
 pub mod brand;
 pub mod build;
@@ -47,6 +48,7 @@ pub mod server;
 pub mod storage;
 pub mod time;
 pub mod tls;
+pub mod volume;
 
 pub use api::{
     AccessDenial, ApiError, Disclosure, ErrorClass, GRPC_ERROR_CLASS, GRPC_ERROR_CODE, GrpcCode,
