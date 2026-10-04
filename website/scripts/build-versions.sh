@@ -57,6 +57,9 @@ build() {
     )
     mkdir -p "${target}"
     cp -R "${site_dir}/.vitepress/dist/." "${target}/"
+    # Historical tags predate the alias script. Apply the current deployer's compatibility step
+    # after every copy so both `/page` and `/page/` resolve for latest and versioned docs alike.
+    node "${repo}/website/scripts/add-trailing-slash-aliases.mjs" "${target}"
 }
 
 build "${repo}/website" latest "${root_base}/" "${out}"

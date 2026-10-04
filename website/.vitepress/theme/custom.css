@@ -13,6 +13,9 @@
   --vp-nav-height: 5rem;
   --vp-nav-logo-height: 2.75rem;
   --pg-shell-gutter: clamp(1.5rem, 5.55vw, 5rem);
+  --pg-nav-accent: var(--brand-deep);
+  --pg-nav-active: var(--pg-nav-accent);
+  --pg-nav-hover: var(--pg-nav-accent);
 }
 
 .dark {
@@ -23,6 +26,9 @@
   --vp-c-bg-alt: #1d1e23;
   --vp-c-bg-elv: #1d1e23;
   --vp-c-bg-soft: #1d1e23;
+  --pg-nav-accent: var(--brand);
+  --pg-nav-active: var(--pg-nav-accent);
+  --pg-nav-hover: var(--pg-nav-accent);
 }
 
 .VPNavBar .divider {
@@ -47,7 +53,50 @@
 /* Match the public website shell: an 80px, full-width bar with content aligned to an 80px
    desktop gutter. Documentation content keeps its own readable measure below it. */
 .VPNavBar {
+  --vp-c-bg-elv: #1d1e23;
+  --vp-c-divider: rgba(255, 255, 255, 0.12);
   --vp-nav-col-offset: 0px !important;
+  --vp-c-text-1: #f4f4f5;
+  --vp-c-text-2: #a8a9b0;
+  --vp-nav-bg-color: transparent;
+  background-color: rgba(20, 17, 27, 0.94) !important;
+  background-image: radial-gradient(
+    ellipse 30% 140% at 78% 0%,
+    rgba(217, 70, 239, 0.13),
+    transparent 74%
+  ) !important;
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.22);
+  color: #f4f4f5;
+  backdrop-filter: blur(22px) saturate(125%);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
+}
+
+.VPNavBar:not(.home),
+.VPNavBar.has-sidebar {
+  background-color: rgba(20, 17, 27, 0.94) !important;
+}
+
+.VPNavBar .VPNavBarTitle .title,
+.VPNavBar .VPNavBarHamburger,
+.VPNavBar .VPNavBarAppearance,
+.VPNavBar .VPNavBarSocialLinks {
+  color: #f4f4f5;
+}
+
+.VPNavBar .VPNavBarHamburger .line {
+  background-color: currentcolor;
+}
+
+/* The documentation theme may be light, but the shared site shell remains dark. */
+.VPNavScreen {
+  --vp-c-bg: #191a1c;
+  --vp-c-bg-elv: #1d1e23;
+  --vp-c-bg-soft: #1d1e23;
+  --vp-c-divider: rgba(255, 255, 255, 0.12);
+  --vp-c-text-1: #f4f4f5;
+  --vp-c-text-2: #a8a9b0;
+  background-color: #191a1c !important;
+  color: #f4f4f5;
 }
 
 .VPNavBar .wrapper {
@@ -92,14 +141,172 @@
 
 .VPNavBarTitle .logo {
   margin-right: 0;
-  width: 170px;
-  height: 44px;
+  width: 150px;
+  height: 40px;
   object-fit: contain;
   object-position: left center;
 }
 
 .VPNavBarTitle .logo.light {
-  height: 44px;
+  height: 40px;
+}
+
+@media (max-width: 40rem) {
+  :root {
+    --vp-nav-height: 4.375rem;
+  }
+
+  .VPNavBar .wrapper {
+    padding-right: 20px !important;
+    padding-left: 20px !important;
+  }
+
+  .VPNavBarTitle .logo,
+  .VPNavBarTitle .logo.light {
+    width: 142px;
+    height: 36px;
+  }
+}
+
+/* Public-site navigation language ----------------------------------------------------------
+   Every interactive state uses the same brand violet. The current page remains a persistent
+   dot, while an open flyout receives a full underline and a turned chevron. */
+@media (min-width: 80rem) {
+  .VPNavBar .VPNavBarMenuLink,
+  .VPNavBar .VPNavBarMenuGroup > .button > .text > span:first-child {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    color: var(--vp-c-text-1);
+    transform: translateY(0);
+    transition:
+      color 0.22s ease,
+      text-shadow 0.22s ease,
+      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .VPNavBar .VPNavBarMenuLink::after,
+  .VPNavBar .VPNavBarMenuGroup > .button > .text > span:first-child::after {
+    position: absolute;
+    bottom: 1.35rem;
+    left: 50%;
+    width: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--pg-nav-accent);
+    content: "";
+    opacity: 0;
+    transform: translateX(-50%);
+    transition:
+      bottom 0.22s ease,
+      height 0.22s ease,
+      opacity 0.22s ease,
+      width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .VPNavBar .VPNavBarMenuLink:hover:not(.active),
+  .VPNavBar .VPNavBarMenuGroup:not(.active) > .button[aria-expanded="false"]:hover > .text > span:first-child {
+    color: var(--pg-nav-hover);
+    transform: translateY(-1px);
+  }
+
+  .VPNavBar .VPNavBarMenuLink:hover:not(.active)::after,
+  .VPNavBar .VPNavBarMenuGroup:not(.active) > .button[aria-expanded="false"]:hover > .text > span:first-child::after {
+    width: 42%;
+    opacity: 0.55;
+  }
+
+  .VPNavBar .VPNavBarMenuLink.active,
+  .VPNavBar .VPNavBarMenuGroup.active > .button[aria-expanded="false"] > .text > span:first-child {
+    color: var(--pg-nav-active);
+  }
+
+  .VPNavBar .VPNavBarMenuLink.active::after,
+  .VPNavBar .VPNavBarMenuGroup.active > .button[aria-expanded="false"] > .text > span:first-child::after {
+    bottom: 1.27rem;
+    width: 0.28rem;
+    height: 0.28rem;
+    background: var(--pg-nav-active);
+    box-shadow: 0 0 10px rgba(217, 70, 239, 0.42);
+    opacity: 1;
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="true"] > .text > span:first-child {
+    color: var(--pg-nav-active);
+    text-shadow: 0 0 18px rgba(217, 70, 239, 0.24);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="true"] > .text > span:first-child::after {
+    width: 100%;
+    box-shadow: 0 0 12px rgba(217, 70, 239, 0.32);
+    opacity: 1;
+  }
+
+  .VPNavBar .VPNavBarMenuGroup .text-icon {
+    color: currentcolor;
+    transform: translateY(0) rotate(0deg) scale(1);
+    transform-origin: center;
+    transition:
+      color 0.22s ease,
+      transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup:not(.active) > .button[aria-expanded="false"]:hover .text-icon {
+    color: var(--pg-nav-hover);
+    transform: translateY(1px) rotate(0deg) scale(1.04);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup.active > .button .text-icon,
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="true"] .text-icon {
+    color: var(--pg-nav-active);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="true"] .text-icon {
+    transform: translateY(-2px) rotate(180deg) scale(1.08);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .menu {
+    transform: translateY(0) scale(1);
+    transform-origin: top right;
+    will-change: opacity, transform;
+    transition:
+      opacity 0.18s ease,
+      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0.18s;
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="false"] + .menu {
+    pointer-events: none;
+    transform: translateY(6px) scale(0.985);
+  }
+
+  .VPNavBar .VPNavBarMenuGroup > .button[aria-expanded="true"] + .menu {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Keep flyout and navigation-screen items on the same accent as the desktop bar. */
+.VPNavBar .VPMenuLink .link:hover,
+.VPNavBar .VPMenuLink .link.active,
+.VPNavScreen .VPNavScreenMenuLink:hover,
+.VPNavScreen .VPNavScreenMenuLink.active,
+.VPNavScreen .VPNavScreenMenuGroup .button:hover,
+.VPNavScreen .VPNavScreenMenuGroup.active .button,
+.VPNavScreen .VPNavScreenMenuGroup.open .button,
+.VPNavScreen .VPMenuLink .link:hover,
+.VPNavScreen .VPMenuLink .link.active {
+  color: var(--pg-nav-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPNavBar .VPNavBarMenuLink,
+  .VPNavBar .VPNavBarMenuLink::after,
+  .VPNavBar .VPNavBarMenuGroup > .button > .text > span:first-child,
+  .VPNavBar .VPNavBarMenuGroup > .button > .text > span:first-child::after,
+  .VPNavBar .VPNavBarMenuGroup .text-icon,
+  .VPNavBar .VPNavBarMenuGroup > .menu {
+    transition-duration: 0s !important;
+  }
 }
 
 .pg-docs-label {
@@ -326,28 +533,184 @@
 }
 
 .pg-footer {
-  padding: 64px 0;
-  background-color: #141517;
-  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 1px, transparent 1px 7px);
-  color: #9a9ca1;
-  font-size: 14px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  padding: clamp(42px, 5vw, 76px) var(--pg-shell-gutter) 28px;
+  border-top: 0;
+  background-color: #130b1d;
+  background-image:
+    radial-gradient(ellipse 48% 58% at 84% 15%, rgba(217, 70, 239, 0.16), transparent 72%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(135deg, #17101f 0%, #12091d 56%, #170b25 100%);
+  background-size: auto, 64px 64px, 64px 64px, auto;
+  background-position: center top;
+  background-attachment: scroll, fixed, fixed, scroll;
+  color: #a8a9b0;
+  font-size: 16px;
+  line-height: 1.5;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.07);
 }
 
 .pg-footer > .pg-section-inner {
   width: 100%;
   max-width: none;
-  padding-right: var(--pg-shell-gutter);
-  padding-left: var(--pg-shell-gutter);
 }
 
 .pg-footer p {
   margin: 0;
 }
 
+.pg-footer__brand-stage {
+  position: relative;
+  padding-bottom: clamp(34px, 4vw, 58px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pg-footer__brand-stage::before {
+  position: absolute;
+  top: 48%;
+  right: 0;
+  left: 14%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(217, 70, 239, 0.5), transparent);
+  content: "";
+  opacity: 0.7;
+  transform: rotate(-7deg);
+  transform-origin: center;
+}
+
+.pg-footer__brand-stage::after {
+  position: absolute;
+  top: 45%;
+  right: 6%;
+  width: min(28vw, 390px);
+  height: min(28vw, 390px);
+  border: 1px solid rgba(217, 70, 239, 0.12);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.pg-footer__signal {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: clamp(24px, 3vw, 42px);
+  color: #a9a9b2;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+}
+
+.pg-footer__signal i {
+  width: 18vw;
+  max-width: 240px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(240, 92, 128, 0.7), rgba(217, 70, 239, 0.35));
+}
+
+.pg-footer__signal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d946ef;
+  box-shadow: 0 0 0 5px rgba(217, 70, 239, 0.08), 0 0 20px rgba(217, 70, 239, 0.6);
+}
+
+.pg-footer__word {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  max-width: max-content;
+  color: #f4f2f5 !important;
+  font-size: min(14.2vw, 204px);
+  font-weight: 650;
+  letter-spacing: -0.09em;
+  line-height: 0.78;
+  text-decoration: none !important;
+  white-space: nowrap;
+}
+
+/* The public site and VitePress ship different Inter builds. Balance their glyph
+   metrics here so this wordmark has the same measure without making it taller. */
+.pg-footer__word > * {
+  letter-spacing: clamp(-0.27px, calc(1.243vw - 4.248px), 0.6px);
+}
+
+@media (min-width: 1440px) {
+  .pg-footer__word > * {
+    letter-spacing: clamp(0.6px, calc(3.854vw - 54.9px), 4.3px);
+  }
+}
+
+.pg-footer__word strong {
+  padding-bottom: 0.08em;
+  background: linear-gradient(90deg, #f05c80 5%, #d946ef 82%);
+  background-clip: text;
+  color: transparent;
+  font: inherit;
+  -webkit-background-clip: text;
+}
+
+.pg-footer__statement {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+  margin-top: clamp(34px, 4vw, 54px);
+}
+
+.pg-footer__statement p {
+  max-width: 590px;
+  color: #f2eff4;
+  font-size: clamp(24px, 2.45vw, 36px);
+  font-weight: 520;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.pg-footer__statement p span {
+  background: linear-gradient(90deg, #f05c80 5%, #d946ef 82%);
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.pg-footer__statement > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-bottom: 3px;
+  color: #8f9098;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+}
+
+.pg-footer__statement > div i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #d946ef;
+}
+
 .pg-footer__main {
   display: grid;
-  grid-template-columns: minmax(230px, 1.2fr) minmax(0, 3fr);
-  gap: 64px;
+  grid-template-columns: minmax(230px, 0.85fr) minmax(0, 2fr);
+  gap: clamp(48px, 7vw, 110px);
+  padding: clamp(42px, 5vw, 68px) 0 46px;
 }
 
 .pg-footer a {
@@ -373,22 +736,25 @@
 
 .pg-footer__logo img {
   display: block;
-  width: 170px;
-  height: auto;
+  width: 165px;
+  height: 44px;
+  object-fit: contain;
+  object-position: left;
 }
 
 .pg-footer__email {
   display: inline-flex;
   align-items: center;
   gap: 11px;
-  margin-top: 24px;
-  color: #ffffff !important;
+  margin-top: 27px;
+  color: #dedee2 !important;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .pg-footer__email svg {
-  width: 25px;
-  height: 25px;
+  width: 20px;
+  height: 20px;
   fill: currentColor;
 }
 
@@ -396,7 +762,7 @@
   display: flex;
   align-items: center;
   gap: 24px;
-  margin-top: 24px;
+  margin-top: 27px;
 }
 
 .pg-footer__social a {
@@ -418,56 +784,63 @@
 .pg-footer__links {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 32px;
+  gap: 30px;
 }
 
 .pg-footer__links h2 {
   margin: 0;
   padding: 0;
   border: 0;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.5;
+  color: #f2f2f4;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .pg-footer__links ul {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin: 24px 0 0;
+  margin: 22px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .pg-footer__links a {
-  color: #a1a1aa;
-  font-weight: 600;
-  line-height: 1.55;
+  color: #999aa2;
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 1.45;
 }
 
 .pg-footer__legal-row {
   display: flex;
   justify-content: space-between;
   gap: 24px;
-  margin-top: 44px;
-  color: #ffffff;
+  padding-top: 23px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #777982;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .pg-footer__legal-row strong {
-  font-weight: 700;
+  font-weight: 550;
 }
 
 .pg-footer__legal-row a {
-  color: #ffffff;
-  text-decoration: underline;
+  color: #bfc0c6;
   text-decoration-color: rgba(217, 70, 239, .6);
   text-underline-offset: 3px;
 }
 
 .pg-footer__copy {
-  margin-top: 28px !important;
-  font-size: 12px;
+  margin-top: 12px !important;
+  color: #777982;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.5;
 }
 
 @media (max-width: 900px) {
@@ -490,15 +863,22 @@
 
   .pg-footer__main {
     grid-template-columns: 1fr;
-    gap: 44px;
+    gap: 48px;
   }
 
-  .pg-footer__legal-row {
+  .pg-footer__statement {
+    align-items: start;
     flex-direction: column;
+    gap: 24px;
   }
+
+  .pg-footer__statement > div {
+    justify-content: flex-start;
+  }
+
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .pg-home .pg-section-inner,
   .pg-home .pg-hero {
     width: min(100% - 48px, 1280px);
@@ -514,7 +894,55 @@
 
   .pg-footer__links {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 36px;
+    gap: 36px 20px;
+  }
+
+  .pg-footer {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .pg-footer__brand-stage::after {
+    right: -85px;
+    width: 250px;
+    height: 250px;
+    opacity: 0.7;
+  }
+
+  .pg-footer__signal {
+    gap: 8px;
+    font-size: 7px;
+    letter-spacing: 0.11em;
+  }
+
+  .pg-footer__signal i {
+    flex: 1;
+    width: auto;
+  }
+
+  .pg-footer__statement > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pg-footer__statement > div i {
+    display: none;
+  }
+
+  .pg-footer__main {
+    padding-bottom: 38px;
+  }
+
+  .pg-footer__legal-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 340px) {
+  .pg-footer__statement p {
+    max-width: calc(100% - 10px);
   }
 }
 

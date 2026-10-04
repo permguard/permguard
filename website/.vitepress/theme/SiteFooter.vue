@@ -11,6 +11,32 @@ const year = new Date().getFullYear()
 <template>
   <footer class="pg-footer">
     <div class="pg-section-inner">
+      <section class="pg-footer__brand-stage" aria-labelledby="pg-footer-statement">
+        <div class="pg-footer__signal" aria-hidden="true">
+          <span class="pg-footer__signal-dot" />
+          <span>PERMGUARD / AUTHORITY INFRASTRUCTURE</span>
+          <i />
+          <span>OPEN SOURCE</span>
+        </div>
+
+        <a class="pg-footer__word" href="https://permguard.com/" target="_blank" rel="noopener noreferrer" aria-label="Permguard website">
+          <span>PERM</span><strong>GUARD</strong>
+        </a>
+
+        <div class="pg-footer__statement">
+          <p id="pg-footer-statement">
+            Security overlay <span>for the agentic era.</span>
+          </p>
+          <div aria-label="Permguard principles">
+            <span>GOVERNED POLICIES</span>
+            <i />
+            <span>LOCAL DECISIONS</span>
+            <i />
+            <span>VERIFIABLE EVIDENCE</span>
+          </div>
+        </div>
+      </section>
+
       <div class="pg-footer__main">
         <div class="pg-footer__brand">
           <a class="pg-footer__logo" href="https://permguard.com/" target="_blank" rel="noopener noreferrer" aria-label="Permguard website">
