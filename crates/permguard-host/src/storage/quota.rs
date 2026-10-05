@@ -6,9 +6,15 @@
 //! # Accounts
 //!
 //! A [`Quota`] keeps one account per scope, in memory. A scope is a path — the Host, a Plane, a
-//! resource, then a stream or an upload session — and each account is measured from its directory
-//! when it is opened, so nothing is persisted and a crash costs only a new measurement. Sizes are
-//! the files' apparent lengths; every file and directory is an inode.
+//! resource, then a stream or an upload session — and each account is measured from its directory,
+//! so nothing is persisted and a crash costs only a new measurement. Sizes are the files' apparent
+//! lengths; every file and directory is an inode.
+//!
+//! An account with a limit is measured when it is opened: enforcing the limit needs the count. One
+//! without a limit — the Host's, by default — is measured later, by [`Quota::measure_pending`],
+//! which the background pass calls, so startup never walks a large store; until then it counts
+//! only what landed since, and [`Quota::usage`] says it is being measured. The floor does not
+//! depend on any of this: it is judged against the filesystem's own free space.
 //!
 //! A [`Reservation`] charges every scope of its path at once, before anything is written, and is
 //! refused when one of them would pass its [`Limit`]. What lands is recorded with
@@ -52,13 +58,20 @@ pub enum Class {
     Maintenance,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Account {
     limit: Limit,
     used_bytes: u64,
     used_files: u64,
     reserved_bytes: u64,
     reserved_files: u64,
+    /// The directory it is measured from.
+    dir: std::path::PathBuf,
+    measured: bool,
+}
+
+fn limited(limit: &Limit) -> bool {
+    limit.bytes.is_some() || limit.inodes.is_some()
 }
 
 #[derive(Debug)]
@@ -91,6 +104,9 @@ pub struct ScopeUsage {
     pub used_files: u64,
     pub reserved_bytes: u64,
     pub reserved_files: u64,
+    /// Whether the account was measured: an account without a limit is measured in the background,
+    /// and counts only what landed since the start until it is.
+    pub measured: bool,
 }
 
 /// What `storage quota show` reports.
@@ -122,7 +138,8 @@ impl Quota {
                 floors.free_inodes
             )));
         }
-        let (used_bytes, used_files) = measure(&root)?;
+        let measured = limited(&host);
+        let (used_bytes, used_files) = if measured { measure(&root)? } else { (0, 0) };
         let mut accounts = BTreeMap::new();
         accounts.insert(
             Vec::new(),
@@ -130,6 +147,8 @@ impl Quota {
                 limit: host,
                 used_bytes,
                 used_files,
+                dir: root.path().to_path_buf(),
+                measured,
                 ..Account::default()
             },
         );
@@ -174,6 +193,35 @@ impl Quota {
         self.refresh()
     }
 
+    /// Measures every account not measured yet, the ones without a limit; answers how many. Called
+    /// by the background pass, off the startup path. A measurement races the writers it counts, so
+    /// for these accounts, which enforce nothing, the figure is a report, not a bound.
+    pub fn measure_pending(&self) -> Result<usize> {
+        let pending: Vec<(Vec<String>, std::path::PathBuf)> = self
+            .state()
+            .accounts
+            .iter()
+            .filter(|(_, account)| !account.measured)
+            .map(|(path, account)| (path.clone(), account.dir.clone()))
+            .collect();
+        for (path, dir) in &pending {
+            // A directory gone since its account was opened is measured as empty, not a failed pass.
+            let (bytes, files) = match Dir::open(dir) {
+                Ok(dir) => measure(&dir)?,
+                Err(_) if !dir.exists() => (0, 0),
+                Err(error) => return Err(error),
+            };
+            if let Some(account) = self.state().accounts.get_mut(path) {
+                account.used_bytes = bytes;
+                account.used_files = files;
+                account.measured = true;
+            }
+        }
+        self.refresh()?;
+
+        Ok(pending.len())
+    }
+
     /// Judges readiness again against the space the filesystem reports now.
     pub fn refresh(&self) -> Result<()> {
         let state = self.state();
@@ -196,6 +244,7 @@ impl Quota {
                 used_files: account.used_files,
                 reserved_bytes: account.reserved_bytes,
                 reserved_files: account.reserved_files,
+                measured: account.measured,
             })
             .collect();
 
@@ -259,12 +308,39 @@ impl Scope {
     pub fn child(&self, name: &str, dir: &Dir, limit: Limit) -> Result<Self> {
         let mut path = self.path.clone();
         path.push(super::dir::component(name)?.to_owned());
-        let known = self.quota.state().accounts.contains_key(&path);
-        let measured = if known { None } else { Some(measure(dir)?) };
+        // Measured now when the account enforces a limit and was not measured yet; an account
+        // already measured keeps its live counts.
+        // What the account had counted before the walk: whatever lands during it is added on top.
+        let before = self
+            .quota
+            .state()
+            .accounts
+            .get(&path)
+            .map(|account| (account.measured, account.used_bytes, account.used_files));
+        let already = before.is_some_and(|(measured, _, _)| measured);
+        let measured = if limited(&limit) && !already {
+            Some(measure(dir)?)
+        } else {
+            None
+        };
         {
             let mut state = self.quota.state();
             match state.accounts.get_mut(&path) {
-                Some(account) => account.limit = limit,
+                Some(account) => {
+                    account.limit = limit;
+                    if let Some((used_bytes, used_files)) = measured
+                        && !account.measured
+                    {
+                        // Landings counted while the directory was walked are not lost: the walk
+                        // may have missed them, and the account enforces its limit from now on.
+                        let (_, bytes_before, files_before) = before.unwrap_or_default();
+                        account.used_bytes = used_bytes
+                            .saturating_add(account.used_bytes.saturating_sub(bytes_before));
+                        account.used_files = used_files
+                            .saturating_add(account.used_files.saturating_sub(files_before));
+                        account.measured = true;
+                    }
+                }
                 None => {
                     let (used_bytes, used_files) = measured.unwrap_or_default();
                     state.accounts.insert(
@@ -273,6 +349,8 @@ impl Scope {
                             limit,
                             used_bytes,
                             used_files,
+                            dir: dir.path().to_path_buf(),
+                            measured: measured.is_some(),
                             ..Account::default()
                         },
                     );
@@ -312,9 +390,8 @@ impl Scope {
                 continue;
             };
             let over = |limit: Option<u64>, used: u64, reserved: u64, more: u64| {
-                limit.is_some_and(|limit| {
-                    used.saturating_add(reserved).saturating_add(more) > limit
-                })
+                limit
+                    .is_some_and(|limit| used.saturating_add(reserved).saturating_add(more) > limit)
             };
             if over(
                 account.limit.bytes,
@@ -353,9 +430,10 @@ impl Scope {
                 "{bytes} bytes and {files} files would leave {} bytes and {} inodes free, below \
                  the {} bytes and {} inodes a {} writer must leave",
                 free_bytes.saturating_sub(bytes),
-                free_inodes.map_or_else(|| "unlimited".to_owned(), |inodes| inodes
-                    .saturating_sub(files)
-                    .to_string()),
+                free_inodes.map_or_else(
+                    || "unlimited".to_owned(),
+                    |inodes| inodes.saturating_sub(files).to_string()
+                ),
                 keep_bytes,
                 keep_inodes,
                 match self.class {
@@ -468,7 +546,9 @@ fn measure(dir: &Dir) -> Result<(u64, u64)> {
                     files = files.saturating_add(1);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(super::io(format!("measuring {}", path.display()))(error)),
+                Err(error) => {
+                    return Err(super::io(format!("measuring {}", path.display()))(error));
+                }
             }
         }
         for name in dir.subdirs()? {
@@ -533,7 +613,21 @@ mod tests {
             )
             .expect("account");
 
+        // The Host has no limit: startup does not walk it; the background pass measures it.
+        let host = |usage: &Usage| {
+            usage
+                .scopes
+                .iter()
+                .find(|s| s.scope == "host")
+                .cloned()
+                .expect("host")
+        };
+        let unmeasured = host(&quota.usage().expect("usage"));
+        assert!(!unmeasured.measured);
+        assert_eq!(unmeasured.used_bytes, 0);
+        assert_eq!(quota.measure_pending().expect("measured"), 1);
         let usage = quota.usage().expect("usage");
+        assert!(host(&usage).measured);
         let of = |name: &str| {
             usage
                 .scopes
@@ -548,8 +642,13 @@ mod tests {
 
         let reservation = plane.reserve(600, 1).expect("within the quota");
         assert_eq!(quota.usage().expect("usage").scopes[0].reserved_bytes, 600);
-        let refused = plane.reserve(200, 0).expect_err("600 reserved + 300 used + 200");
-        assert!(matches!(refused, StorageError::QuotaExceeded(_)), "{refused}");
+        let refused = plane
+            .reserve(200, 0)
+            .expect_err("600 reserved + 300 used + 200");
+        assert!(
+            matches!(refused, StorageError::QuotaExceeded(_)),
+            "{refused}"
+        );
         reservation.land(500, 1);
 
         let usage = quota.usage().expect("usage");

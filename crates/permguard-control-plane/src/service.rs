@@ -182,9 +182,19 @@ impl PlaneModule for ControlPlaneModule {
     /// Background work this plane runs beside its listeners: measuring what
     /// it holds, so "how much disk is this deployment using" is a number and
     /// not an ssh session.
+    fn verified_trees(&self) -> Vec<permguard_server::VerifiedTree> {
+        // `Config::zones_directory`, relative to the volume root: every ledger's objects.
+        vec![(
+            std::path::Path::new("data").join("zones"),
+            std::sync::Arc::new(crate::store::object_check),
+        )]
+    }
+
     fn services(&self) -> Vec<Box<dyn permguard_core::Service>> {
         vec![
             Box::new(crate::inventory::InventoryService::new()),
+            // What startup does not read: a sample of the objects, checked in the background.
+            Box::new(crate::verify::VerifyService::new()),
             Box::new(crate::gc::GcService::new()),
             Box::new(crate::decisions::retention::RetentionService::new()),
             // The event store's own sweep. Registered beside the decision store's rather than

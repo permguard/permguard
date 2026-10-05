@@ -18,6 +18,7 @@ pub mod inventory;
 mod service;
 pub mod store;
 mod v1;
+pub mod verify;
 mod wire;
 
 pub use service::{ControlPlaneModule, module};

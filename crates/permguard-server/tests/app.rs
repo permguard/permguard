@@ -212,10 +212,96 @@ async fn test_volume_claim_moves_the_generation_forward_and_never_back() {
         .dispatch_to(&claim("2"), &mut sink)
         .await
         .expect_err("a claim never moves back");
-    assert!(format!("{refused:#}").contains("must be higher"), "{refused:#}");
+    assert!(
+        format!("{refused:#}").contains("must be higher"),
+        "{refused:#}"
+    );
 
     let out = output_of(&app(), &claim("4")).await;
     assert!(out.contains("claimed at generation 4 (was 3)"), "{out}");
+}
+
+#[tokio::test]
+async fn test_volume_verify_reports_damage_startup_does_not_read_and_fails() {
+    use permguard_host::storage::Dir;
+    use permguard_host::storage::journal::{Journal, Options};
+
+    let volume = env::temp_dir().join(format!(
+        "permguard-app-test-verify-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("a volume root");
+    let verify = || {
+        Cli::try_parse_from([
+            "demo-x",
+            "volume",
+            "verify",
+            "--volume",
+            volume.to_str().expect("a UTF-8 path"),
+        ])
+        .expect("the command parses")
+        .action()
+        .expect("the invocation resolves to an action")
+    };
+
+    let mut sink = Vec::new();
+    let refused = app()
+        .dispatch_to(&verify(), &mut sink)
+        .await
+        .expect_err("no volume yet");
+    assert!(
+        format!("{refused:#}").contains("holds no volume"),
+        "{refused:#}"
+    );
+
+    // A volume with one journal of several segments.
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("a volume");
+    let journal = volume.join("data").join("journal");
+    fs::create_dir_all(&journal).expect("journal dir");
+    let (mut handle, _) = Journal::open(
+        Dir::open(&journal).expect("dir"),
+        Options {
+            max_frame: 1024,
+            segment_bytes: 200,
+            ..Options::default()
+        },
+    )
+    .expect("opens");
+    for index in 0..6u8 {
+        handle.append(1, &[index; 60]).expect("appended");
+    }
+    drop(handle);
+    let out = output_of(&app(), &verify()).await;
+    assert!(out.contains(", 0 findings"), "{out}");
+
+    let mut segments: Vec<_> = fs::read_dir(&journal)
+        .expect("listed")
+        .map(|entry| entry.expect("entry").path())
+        .collect();
+    segments.sort();
+    let mut bytes = fs::read(&segments[0]).expect("read");
+    let at = bytes.len() - 40;
+    bytes[at] ^= 0xff;
+    fs::write(&segments[0], &bytes).expect("damaged");
+
+    let mut out = Vec::new();
+    let refused = app()
+        .dispatch_to(&verify(), &mut out)
+        .await
+        .expect_err("a finding fails the command");
+    assert!(
+        format!("{refused:#}").contains("nothing was repaired"),
+        "{refused:#}"
+    );
+    let out = String::from_utf8(out).expect("UTF-8");
+    assert!(out.contains(segments[0].to_str().expect("UTF-8")), "{out}");
+    assert_eq!(
+        fs::read(&segments[0]).expect("read"),
+        bytes,
+        "left as it was"
+    );
 }
 
 #[tokio::test]

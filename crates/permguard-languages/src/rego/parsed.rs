@@ -253,10 +253,9 @@ pub fn check_nesting(source: &str) -> Result<(), String> {
 pub fn parse(source: &str) -> Result<Parsed, String> {
     check_nesting(source)?;
     let mut engine = regorus::Engine::new();
-    let package = crate::headroom::ample(|| {
-        engine.add_policy("policy.rego".to_owned(), source.to_owned())
-    })
-    .map_err(|error| format!("rego: {error}"))?;
+    let package =
+        crate::headroom::ample(|| engine.add_policy("policy.rego".to_owned(), source.to_owned()))
+            .map_err(|error| format!("rego: {error}"))?;
     let tree = engine
         .get_ast_as_json()
         .map_err(|error| format!("rego: the parsed module cannot be read: {error}"))?;
@@ -505,9 +504,7 @@ deny contains msg if { msg := \"x\" }\nhelper(x) if { x > 1 }\n";
     #[test]
     fn brackets_in_strings_raw_strings_and_comments_are_not_syntax() {
         let open = "[".repeat(MAX_NESTING * 4);
-        let module = format!(
-            "package p\n# {open}\nx := \"{open}\\\"{open}\"\ny := `{open}`\n"
-        );
+        let module = format!("package p\n# {open}\nx := \"{open}\\\"{open}\"\ny := `{open}`\n");
         parse(&module).expect("text is not nesting");
     }
 
@@ -551,7 +548,10 @@ deny contains msg if { msg := \"x\" }\nhelper(x) if { x > 1 }\n";
         for (source, named) in [
             ("x := time[\"now_ns\"]()", "time.now_ns"),
             ("x := rand[\"intn\"](\"a\", 9)", "rand.intn"),
-            ("x := y if { y := print() with print as time.now_ns }", "time.now_ns"),
+            (
+                "x := y if { y := print() with print as time.now_ns }",
+                "time.now_ns",
+            ),
             (
                 "x := y if { y := lower(\"a\") with lower as uuid[\"rfc4122\"] }",
                 "uuid.rfc4122",
@@ -617,13 +617,17 @@ deny contains msg if { msg := \"x\" }\nhelper(x) if { x > 1 }\n";
         let parsed = parse(other_scope).expect("parses");
         assert_eq!(alias(other_scope, &parsed), Ok(None));
 
-        let document_scope = "# METADATA\n# scope: document\n# custom:\n#   alias: decoy\npackage p\n";
+        let document_scope =
+            "# METADATA\n# scope: document\n# custom:\n#   alias: decoy\npackage p\n";
         let parsed = parse(document_scope).expect("parses");
         assert_eq!(alias(document_scope, &parsed), Ok(None));
 
         let odd_scope = "# METADATA\n# scope: 42\n# custom:\n#   alias: decoy\npackage p\n";
         let parsed = parse(odd_scope).expect("parses");
-        assert!(alias(odd_scope, &parsed).is_err(), "a non-string scope is refused");
+        assert!(
+            alias(odd_scope, &parsed).is_err(),
+            "a non-string scope is refused"
+        );
 
         let detached = "# METADATA\n# custom:\n#   alias: decoy\n\npackage p\n";
         let parsed = parse(detached).expect("parses");

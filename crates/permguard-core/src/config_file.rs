@@ -1274,8 +1274,10 @@ impl ConfigFile {
             Some(value) => match crate::config::parse_bytes(value)
                 .with_context(|| "reading storage.floors.maintenance_bytes".to_owned())?
             {
-                0 => bail!("storage.floors.maintenance_bytes is zero: the reserve keeps the last \
-                            bytes free, and cannot be empty"),
+                0 => bail!(
+                    "storage.floors.maintenance_bytes is zero: the reserve keeps the last \
+                            bytes free, and cannot be empty"
+                ),
                 bytes => bytes,
             },
             None => floors.maintenance_bytes.min(floors.free_bytes),
@@ -1878,10 +1880,11 @@ mod tests {
 
     #[test]
     fn test_a_small_floor_set_alone_keeps_a_reserve_within_it() {
-        let volume = ConfigFile::parse("storage:\n  floors:\n    free_bytes: 8M\n    free_inodes: \"50\"\n")
-            .expect("the file parses")
-            .volume()
-            .expect("a floor set before the reserve existed still loads");
+        let volume =
+            ConfigFile::parse("storage:\n  floors:\n    free_bytes: 8M\n    free_inodes: \"50\"\n")
+                .expect("the file parses")
+                .volume()
+                .expect("a floor set before the reserve existed still loads");
         assert_eq!(volume.floors.maintenance_bytes, 8 * 1024 * 1024);
         assert_eq!(volume.floors.maintenance_inodes, 50);
     }

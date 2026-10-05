@@ -706,6 +706,27 @@ fn collect_refs(base: &Path, directory: &Path, out: &mut Vec<(String, RefState)>
     Ok(())
 }
 
+/// Deep verification's check of one file below the zones directory (`storage::verify`): `Some(true)`
+/// when `<zone>/<ledger>/objects/<2 hex>/<62 hex>` inflates to content whose digest is its name,
+/// `Some(false)` when it does not, `None` for any other file, which is not an object.
+pub fn object_check(relative: &Path, stored: &[u8]) -> Option<bool> {
+    let parts: Vec<&str> = relative
+        .components()
+        .map(|component| component.as_os_str().to_str())
+        .collect::<Option<_>>()?;
+    let [_zone, _ledger, "objects", fan, rest] = parts.as_slice() else {
+        return None;
+    };
+    if fan.len() != 2 {
+        return None;
+    }
+    let digest = Digest::parse(&format!("sha256:{fan}{rest}")).ok()?;
+    Some(
+        compress::inflate(stored, limits::MAX_OBJECT_BYTES)
+            .is_ok_and(|bytes| Digest::compute(&bytes) == digest),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

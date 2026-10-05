@@ -19,8 +19,10 @@ const RESERVE: u64 = 8 * 1024;
 const FRAME: usize = 4096;
 
 fn volume(tag: &str) -> std::path::PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("permguard-host-pressure-{tag}-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-host-pressure-{tag}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&path);
     Dir::create_root(&path).expect("a volume");
     path
@@ -69,7 +71,10 @@ fn a_required_journal_refuses_before_exhaustion_and_maintenance_still_lands() {
     );
     quota.refresh().expect("measured");
     let readiness = quota.readiness();
-    assert!(readiness.is_ready(), "200 KiB free: ready before the first write");
+    assert!(
+        readiness.is_ready(),
+        "200 KiB free: ready before the first write"
+    );
 
     let decisions = data.subdir("decisions", true).expect("decisions");
     let decisions_scope = data_scope
@@ -116,8 +121,14 @@ fn a_required_journal_refuses_before_exhaustion_and_maintenance_still_lands() {
             remaining_bytes: FLOOR + 50,
         },
     );
-    let refused = replace_view_in(&data_scope, &data, "ANCHOR", format::VIEW, b"deleted batch-0001")
-        .expect_err("an ordinary writer may not write into the floor");
+    let refused = replace_view_in(
+        &data_scope,
+        &data,
+        "ANCHOR",
+        format::VIEW,
+        b"deleted batch-0001",
+    )
+    .expect_err("an ordinary writer may not write into the floor");
     assert!(matches!(refused, StorageError::BelowFloor(_)), "{refused}");
     assert!(!data.child_path("ANCHOR").exists(), "nothing was written");
 
@@ -205,7 +216,10 @@ fn a_quota_refuses_the_write_that_would_pass_it_and_nothing_is_written() {
     let refused = journal
         .append(1, &[1u8; FRAME])
         .expect_err("the third frame passes 10 KiB");
-    assert!(matches!(refused, StorageError::QuotaExceeded(_)), "{refused}");
+    assert!(
+        matches!(refused, StorageError::QuotaExceeded(_)),
+        "{refused}"
+    );
     assert_eq!(journal.next_index(), frames, "nothing was appended");
     assert_eq!(journal.frames().expect("read").len() as u64, frames);
 
@@ -217,5 +231,8 @@ fn a_quota_refuses_the_write_that_would_pass_it_and_nothing_is_written() {
         .expect("reported");
     assert_eq!(control.limit.bytes, Some(10 * 1024));
     assert!(control.used_bytes > 2 * FRAME as u64 && control.used_bytes <= 10 * 1024);
-    assert_eq!(control.reserved_bytes, 0, "the refused reservation was released");
+    assert_eq!(
+        control.reserved_bytes, 0,
+        "the refused reservation was released"
+    );
 }

@@ -30,12 +30,17 @@
 //! | a damaged frame with bytes beyond its own extent                      | [`StorageError::Corruption`]                       |
 //! | a damaged frame declaring more than the format's frame limit          | [`StorageError::Corruption`]                       |
 //! | a damaged header on a segment holding frames                          | [`StorageError::Corruption`]                       |
-//! | a torn frame in any segment but the last; a gap between segments      | [`StorageError::Corruption`]                       |
+//! | an earlier segment without a whole header and first frame             | [`StorageError::Corruption`]                       |
 //! | a damaged failure record, or one naming a frame past the end          | [`StorageError::Corruption`]                       |
 //! | a failed flush of an earlier repair, in this process                  | [`StorageError::NotRecoverable`]                   |
 //! | another magic, a newer version, an unknown flag                       | [`StorageError::Unsupported`]                      |
 //! | a frame's claim generation below one before it                        | [`StorageError::StaleWriter`], nothing changed     |
 //! | a frame's claim generation above the volume's claim                   | [`StorageError::ClaimBehindData`], nothing changed |
+//!
+//! Opening is bounded: it reads the last segment whole, and of every earlier segment only the
+//! name, the header and the first frame. A gap between earlier segments, a torn or damaged frame
+//! inside one, or a claim generation that decreases inside one is found by deep verification
+//! ([`crate::storage::verify`]), which reads every frame and repairs nothing.
 //!
 //! Acknowledged frames are never modified: a truncation cuts exactly the torn bytes, or exactly
 //! the frames a failure record names as never acknowledged. A repair whose flush fails is final:
@@ -459,31 +464,43 @@ impl Journal {
             recovery.cut_from = Some(first_unacknowledged);
         }
 
-        let mut expected = 0u64;
+        // Bounded at startup (WP-1.6): of every segment but the last, only the name, the header
+        // and the first frame are read, and the claim generations judged on that frame. A gap, a
+        // torn frame or a decreasing generation inside an older segment is deep verification's
+        // to find (`storage::verify`).
         // The highest claim generation a frame so far carried: generations never decrease.
         let mut highest = crate::storage::volume::UNCLAIMED;
-        let mut tail: Option<(u64, String, usize)> = None;
         let count = segments.len();
-        for (position, (first, name)) in segments.clone().into_iter().enumerate() {
-            let last = position + 1 == count;
+        for (first, name) in segments.iter().take(count.saturating_sub(1)) {
+            let frame = first_frame(&dir, name, *first)?;
+            judge_claims(
+                &dir,
+                std::slice::from_ref(&frame),
+                options.claim,
+                &mut highest,
+            )?;
+        }
+
+        // The last segment, the open tail, is read whole. A roll that crashed before its new
+        // segment's header was durable leaves a last segment holding no frame; it is removed, once,
+        // and the segment before it becomes the tail, read whole in turn.
+        let mut expected = 0u64;
+        let mut tail: Option<(u64, String, usize)> = None;
+        let mut removable = record.is_none();
+        while let Some((first, name)) = segments.last().cloned() {
             let bytes = dir.read(&name)?.unwrap_or_default();
-            if first != expected {
-                return Err(StorageError::Corruption(format!(
-                    "segment `{name}` starts at frame {first}, and the journal holds {expected} \
-                     frames before it"
-                )));
-            }
             if !head_is_whole(&bytes)? {
                 // After a record's cut, nothing the failure left remains: a segment without a
                 // whole header holds acknowledged frames, and is not removed.
-                if last && bytes.len() <= SEGMENT_HEAD && record.is_none() {
-                    // A roll that crashed before the new segment's header was durable: frames
-                    // are written only after it is, so it holds none, and is removed.
+                if removable && bytes.len() <= SEGMENT_HEAD {
+                    // Frames are written only after a header is durable: it holds none.
                     dir.unlink(&name)?;
                     dir.sync()?;
                     segments.pop();
                     recovery.removed_segment = Some(name);
-                    break;
+                    removable = false;
+                    expected = first;
+                    continue;
                 }
                 return Err(StorageError::Corruption(format!(
                     "segment `{name}` has a damaged header and holds frames or segments follow it"
@@ -499,9 +516,9 @@ impl Journal {
                     expected = first + frames.len() as u64;
                     tail = Some((first, name, end));
                 }
-                // After a record's cut, a torn frame is damage to an acknowledged one, and is
-                // not cut.
-                Scan::Torn { frames, at } if last && record.is_none() => {
+                // After a record's cut, or once a later segment was removed, a torn frame is
+                // damage to an acknowledged one, and is not cut.
+                Scan::Torn { frames, at } if removable => {
                     let file = dir.open_write(&name)?;
                     let path = dir.child_path(&name);
                     file.set_len(at as u64)
@@ -519,6 +536,7 @@ impl Journal {
                     )));
                 }
             }
+            break;
         }
 
         if let Some((first_unacknowledged, _)) = record {
@@ -580,7 +598,8 @@ impl Journal {
     /// when it rolls, before it writes, and the quota's readiness keeps the largest of them above
     /// the floor. A refused reservation writes nothing and leaves the handle as it was.
     pub fn charge(&mut self, scope: crate::storage::quota::Scope) -> Result<()> {
-        let largest = u64::from(self.options.max_frame) + (FRAME_HEAD + CHECKSUM_LEN + SEGMENT_HEAD) as u64;
+        let largest =
+            u64::from(self.options.max_frame) + (FRAME_HEAD + CHECKSUM_LEN + SEGMENT_HEAD) as u64;
         scope.quota().note_largest_write(largest)?;
         self.scope = Some(scope);
 
@@ -600,8 +619,8 @@ impl Journal {
             )));
         }
         let bytes = encode_frame(kind, self.options.claim, payload)?;
-        let rolls =
-            self.current_len >= self.options.segment_bytes && self.current_len > SEGMENT_HEAD as u64;
+        let rolls = self.current_len >= self.options.segment_bytes
+            && self.current_len > SEGMENT_HEAD as u64;
         // Reserved before anything is written: a refusal leaves the journal exactly as it was.
         let reservation = match &self.scope {
             Some(scope) => Some(scope.reserve(
@@ -753,9 +772,96 @@ fn failure_record(dir: &Dir) -> Result<Option<(u64, u64)>> {
     }
 }
 
+/// Every segment in `dir`, `(first frame index, name)`, in order.
+pub(crate) fn segment_names(dir: &Dir) -> Result<Vec<(u64, String)>> {
+    let mut segments: Vec<(u64, String)> = dir
+        .names()?
+        .into_iter()
+        .filter_map(|name| segment_first(&name).map(|first| first.map(|first| (first, name))))
+        .collect::<Result<_>>()?;
+    segments.sort();
+    Ok(segments)
+}
+
+/// Deep verification of one segment's bytes: how many frames it holds and each frame's
+/// `(index, claim generation)`, or what is wrong with it. A torn tail is accepted only in the last
+/// segment, where an append may be under way.
+pub(crate) fn verify_segment(
+    bytes: &[u8],
+    first: u64,
+    name: &str,
+    last: bool,
+) -> std::result::Result<(u64, Vec<(u64, u64)>), String> {
+    match head_is_whole(bytes) {
+        Ok(true) => {}
+        Ok(false) if last && bytes.len() <= SEGMENT_HEAD => return Ok((0, Vec::new())),
+        Ok(false) => return Err("the segment's header is damaged".to_owned()),
+        Err(error) => return Err(error.to_string()),
+    }
+    let frames = match scan(bytes, first, name) {
+        Ok(Scan::Whole { frames, .. }) => frames,
+        Ok(Scan::Torn { frames, .. }) if last => frames,
+        Ok(Scan::Torn { frames, at }) => {
+            return Err(format!(
+                "frame {} at byte {at} is torn or damaged, and segments follow it",
+                first + frames.len() as u64
+            ));
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    let claims = frames
+        .iter()
+        .map(|frame| (frame.index, frame.claim))
+        .collect();
+    Ok((frames.len() as u64, claims))
+}
+
+/// The first frame of the segment `name`, read without reading the rest of it: corruption when the
+/// header is not whole or no whole frame follows it, since a segment rolls only once it holds one.
+fn first_frame(dir: &Dir, name: &str, first: u64) -> Result<Frame> {
+    use std::io::Read as _;
+    let path = dir.child_path(name);
+    let corrupt = || {
+        StorageError::Corruption(format!(
+            "segment `{name}` has no whole header and first frame, and segments follow it"
+        ))
+    };
+    let Some(file) = dir.open_read(name)? else {
+        return Err(corrupt());
+    };
+    let mut prefix = Vec::new();
+    file.take((SEGMENT_HEAD + FRAME_HEAD) as u64)
+        .read_to_end(&mut prefix)
+        .map_err(io(format!("reading {}", path.display())))?;
+    if !head_is_whole(&prefix)? || prefix.len() < SEGMENT_HEAD + FRAME_HEAD {
+        return Err(corrupt());
+    }
+    let head = &prefix[SEGMENT_HEAD..];
+    let length = u32::from_be_bytes([head[0], head[1], head[2], head[3]]);
+    if length > FRAME_LIMIT {
+        return Err(corrupt());
+    }
+    let extent = (SEGMENT_HEAD + FRAME_HEAD + length as usize + CHECKSUM_LEN) as u64;
+    let Some(file) = dir.open_read(name)? else {
+        return Err(corrupt());
+    };
+    let mut bytes = Vec::new();
+    file.take(extent)
+        .read_to_end(&mut bytes)
+        .map_err(io(format!("reading {}", path.display())))?;
+    match scan(&bytes, first, name)? {
+        Scan::Whole { mut frames, .. } if !frames.is_empty() => Ok(frames.swap_remove(0)),
+        _ => Err(corrupt()),
+    }
+}
+
 /// Judges a failure record's generation against the claim and against every frame the journal
-/// holds, read only: a record below the highest frame is a superseded writer's, and one above the
-/// claim is a claim behind the data. A segment that does not scan is left to the cut to judge.
+/// holds: a record below the highest frame is a superseded writer's, and one above the claim is a
+/// claim behind the data. A segment that does not read is left to the cut to judge.
+///
+/// Every segment is read whole here, unlike the bounded open: a record exists only after a failed
+/// write, its cut reads the segments it keeps anyway, and a superseded writer's generation hidden
+/// inside an older segment must not let its record cut the new owner's acknowledged frames.
 fn judge_record(
     dir: &Dir,
     segments: &[(u64, String)],
@@ -781,7 +887,10 @@ fn judge_record(
         if let Ok(Scan::Whole { frames, .. } | Scan::Torn { frames, .. }) =
             scan(&bytes, *first, name)
         {
-            highest = frames.iter().map(|frame| frame.claim).fold(highest, u64::max);
+            highest = frames
+                .iter()
+                .map(|frame| frame.claim)
+                .fold(highest, u64::max);
         }
     }
     if generation < highest {
@@ -1103,7 +1212,14 @@ mod tests {
         let refused = Journal::open(Dir::open(&path).expect("opened"), claimed(3))
             .expect_err("behind the data");
         assert!(
-            matches!(refused, StorageError::ClaimBehindData { generation: 4, claim: 3, .. }),
+            matches!(
+                refused,
+                StorageError::ClaimBehindData {
+                    generation: 4,
+                    claim: 3,
+                    ..
+                }
+            ),
             "{refused}"
         );
     }

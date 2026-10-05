@@ -21,7 +21,7 @@ pub mod plane;
 pub mod signal;
 pub mod witness;
 
-pub use app::App;
+pub use app::{App, VerifiedTree};
 pub use banner::Banner;
 pub use command::{Action, AuditCommand, Cli, Command, KeysCommand, ServeArgs, VolumeCommand};
 pub use host::{DefaultServerHost, LAST_START_KEY};

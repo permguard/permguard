@@ -161,6 +161,20 @@ impl Volume {
     }
 }
 
+/// Holds an existing volume for an offline command that only reads it, such as `volume verify`:
+/// takes `LOCK`, so it fails while a process holds the volume, and refuses a root that holds no
+/// volume rather than creating one. The one thing it may write is `LOCK` itself, where a restored
+/// copy lacks it.
+pub fn hold(root: &Path) -> Result<Volume> {
+    if !root.join(HOST).join(FORMAT).is_file() {
+        return Err(StorageError::Refused(format!(
+            "{} holds no volume: there is no {HOST}/{FORMAT}",
+            root.display()
+        )));
+    }
+    Volume::lock(root)
+}
+
 /// Records `generation` as the volume's claim, for the orchestrator or the recovery operator, and
 /// answers the generation it replaced.
 ///
@@ -286,10 +300,12 @@ fn random_id() -> Result<[u8; 16]> {
     use ring::rand::{SecureRandom as _, SystemRandom};
 
     let mut id = [0u8; 16];
-    SystemRandom::new().fill(&mut id).map_err(|_| StorageError::Io {
-        what: "drawing a volume identity".to_owned(),
-        source: std::io::Error::other("the operating system's random source failed"),
-    })?;
+    SystemRandom::new()
+        .fill(&mut id)
+        .map_err(|_| StorageError::Io {
+            what: "drawing a volume identity".to_owned(),
+            source: std::io::Error::other("the operating system's random source failed"),
+        })?;
 
     Ok(id)
 }
@@ -376,7 +392,10 @@ mod tests {
 
         std::fs::create_dir_all(&root).expect("a mount point");
         assert_eq!(set_claim(&root, 1).expect("claimed"), UNCLAIMED);
-        assert!(root.join(HOST).join(VOLUME_ID).exists(), "the first claim creates the volume");
+        assert!(
+            root.join(HOST).join(VOLUME_ID).exists(),
+            "the first claim creates the volume"
+        );
     }
 
     #[test]

@@ -39,6 +39,7 @@ pub mod quota;
 pub mod snapshot;
 pub mod testing;
 pub mod tombstone;
+pub mod verify;
 pub mod volume;
 pub mod write;
 

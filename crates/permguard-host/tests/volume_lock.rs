@@ -21,8 +21,10 @@ const HELD: &str = "held";
 const RELEASE: &str = "release";
 
 fn scratch(tag: &str) -> PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("permguard-host-volume-{tag}-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "permguard-host-volume-{tag}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).expect("a scratch directory");
     path

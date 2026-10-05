@@ -106,6 +106,13 @@ pub trait PlaneModule: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// The content-addressed trees this plane keeps on the volume, for deep verification: each
+    /// path relative to the volume root, with the check that says whether a file holds what its
+    /// name says. `volume verify` checks every one. A plane that keeps none declares none.
+    fn verified_trees(&self) -> Vec<crate::VerifiedTree> {
+        Vec::new()
+    }
+
     /// What this plane requires of a configuration before the process starts.
     ///
     /// The hook exists because a plane's own requirements are the plane's, and the server has no
@@ -524,6 +531,12 @@ impl PlaneServer {
         .with_reload_handler(|| {
             permguard_transport::reload_all();
         })
+        .with_verified_trees(
+            self.planes
+                .iter()
+                .flat_map(|plane| plane.module().verified_trees())
+                .collect(),
+        )
         .with_declared_settings(declared_settings_for(&self.planes))
         .with_section_settings("runtime", runtime_settings)
         .with_service(Box::new(

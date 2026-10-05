@@ -151,6 +151,21 @@ pub enum VolumeCommand {
         #[arg(long, value_name = "N")]
         generation: u64,
     },
+    /// Check everything on the volume that startup does not read, and repair nothing.
+    ///
+    /// Every journal of the storage library, frame by frame, and every content-addressed tree the
+    /// planes keep, object by object. Run offline: it takes the volume's lock, so it fails while a
+    /// server holds the volume. Exits non-zero when anything is found, and leaves every file as it
+    /// was, for the operator to decide what to restore.
+    Verify {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// Check this many files in a thousand rather than all of them.
+        #[arg(long, value_name = "PER_MILLE", value_parser = clap::value_parser!(u16).range(1..=1000))]
+        sample: Option<u16>,
+    },
 }
 
 /// What can be asked of a key ring from the command line.

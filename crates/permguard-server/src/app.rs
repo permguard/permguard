@@ -89,6 +89,12 @@ type RealmFactory = Box<dyn Fn(&Config, &RealmConfig) -> Result<Realm> + Send + 
 /// can be verified, and only the composition root knows what the trail is made of.
 type AuditVerifier = Box<dyn Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync>;
 
+/// A content-addressed tree on the volume and the check of its files: what `volume verify` reads.
+pub type VerifiedTree = (
+    std::path::PathBuf,
+    Arc<permguard_host::storage::verify::ObjectCheck>,
+);
+
 /// Reads a key ring on disk and returns its public keys as a JWKS document.
 ///
 /// Registered by the binary for the same reason as the verifier: this crate knows a ring's public
@@ -150,6 +156,7 @@ pub struct App {
     audit_factory: Option<AuditSinkFactory>,
     realm_factory: Option<RealmFactory>,
     audit_verifier: Option<AuditVerifier>,
+    verified_trees: Vec<VerifiedTree>,
     keys_exporter: Option<KeysExporter>,
     reload_handler: Option<ReloadHandler>,
     provisioner: Option<Provisioner>,
@@ -191,6 +198,7 @@ impl App {
             audit_factory: None,
             realm_factory: None,
             audit_verifier: None,
+            verified_trees: Vec::new(),
             keys_exporter: None,
             reload_handler: None,
             provisioner: None,
@@ -343,6 +351,14 @@ impl App {
         F: Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync + 'static,
     {
         self.audit_verifier = Some(Box::new(verifier));
+
+        self
+    }
+
+    /// Supplies the content-addressed trees the planes keep, which `volume verify` checks beside
+    /// every journal of the storage library.
+    pub fn with_verified_trees(mut self, trees: Vec<VerifiedTree>) -> Self {
+        self.verified_trees = trees;
 
         self
     }
@@ -641,6 +657,9 @@ impl App {
             Action::Named(Command::Volume {
                 what: VolumeCommand::Claim { volume, generation },
             }) => claim_volume(volume, *generation, out),
+            Action::Named(Command::Volume {
+                what: VolumeCommand::Verify { volume, sample },
+            }) => verify_volume(volume, *sample, &self.verified_trees, out),
         }
     }
 
@@ -1095,6 +1114,59 @@ fn claim_volume(root: &Path, generation: u64, out: &mut dyn Write) -> Result<()>
         root.display()
     )
     .context("writing the result")?;
+
+    Ok(())
+}
+
+/// Checks the volume at `root` offline, every journal of the storage library and every tree the
+/// planes declare, and fails when anything is found. Holds the volume's lock throughout, so it never
+/// reads beside a process that writes.
+fn verify_volume(
+    root: &Path,
+    sample: Option<u16>,
+    trees: &[VerifiedTree],
+    out: &mut dyn Write,
+) -> Result<()> {
+    use permguard_host::storage::verify::{self, Budget, Mode};
+
+    let held = permguard_host::storage::volume::hold(root)
+        .with_context(|| format!("holding the volume at {}", root.display()))?;
+    let mode = match sample {
+        None => Mode::Full,
+        Some(per_mille) => Mode::Sample {
+            per_mille,
+            seed: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_secs()),
+        },
+    };
+    let report = verify::volume(
+        root,
+        Some(held.generation()),
+        trees,
+        mode,
+        &mut Budget::unbounded(),
+    )
+    .with_context(|| format!("verifying the volume at {}", root.display()))?;
+    for finding in &report.findings {
+        writeln!(out, "{}: {}", finding.path.display(), finding.what)
+            .context("writing a finding")?;
+    }
+    writeln!(
+        out,
+        "{} files and {} bytes checked, {} findings",
+        report.files_checked,
+        report.bytes_read,
+        report.findings.len()
+    )
+    .context("writing the result")?;
+    if !report.findings.is_empty() {
+        bail!(
+            "the volume at {} holds {} damaged files; nothing was repaired",
+            root.display(),
+            report.findings.len()
+        );
+    }
 
     Ok(())
 }

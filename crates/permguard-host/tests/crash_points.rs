@@ -448,8 +448,8 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "failure.",
         "volume.",
     ]
-        .iter()
-        .flat_map(|prefix| points(prefix))
-        .collect();
+    .iter()
+    .flat_map(|prefix| points(prefix))
+    .collect();
     assert_eq!(visited.len(), POINTS.len());
 }
