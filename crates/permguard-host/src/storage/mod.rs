@@ -35,6 +35,7 @@ pub mod format;
 pub mod journal;
 pub mod probe;
 pub mod qualify;
+pub mod quota;
 pub mod snapshot;
 pub mod testing;
 pub mod tombstone;
@@ -73,6 +74,12 @@ pub enum StorageError {
     /// A journal this process does not open again: a failed write or flush could not be recorded,
     /// or a repair made while opening it could not be flushed.
     NotRecoverable(String),
+    /// A write would pass the quota of a scope of its path; nothing was written.
+    QuotaExceeded(String),
+    /// A write would take free space below what its writer must leave: the emergency floor for an
+    /// ordinary writer, the maintenance reserve for garbage collection and retention; nothing was
+    /// written.
+    BelowFloor(String),
     /// The volume's `LOCK` is held by another process on this mount.
     Held(String),
     /// A volume operation the volume's state does not permit: serving without a claim where the
@@ -123,6 +130,8 @@ impl std::fmt::Display for StorageError {
                  journal again to recover it",
             ),
             Self::NotRecoverable(what) => write!(f, "not recoverable in this process: {what}"),
+            Self::QuotaExceeded(what) => write!(f, "over quota: {what}"),
+            Self::BelowFloor(what) => write!(f, "below the emergency floor: {what}"),
             Self::Held(what) => write!(f, "the volume is held: {what}"),
             Self::Refused(what) => write!(f, "refused: {what}"),
             Self::StaleWriter {

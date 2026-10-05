@@ -151,6 +151,26 @@ pub fn write(path: &Path, len: usize, write: impl FnOnce() -> io::Result<()>) ->
     write()
 }
 
+/// The bytes a disk-full fault still leaves for writes at or below `path`: the fewest any rule
+/// covering it allows, or `None` when no such fault is armed. A store that measures free space
+/// before it writes reads this beside the filesystem's own figure, so a disk a test filled is full
+/// to the measurement too.
+pub fn free_bytes(path: &Path) -> Option<u64> {
+    if ARMED.load(Ordering::Acquire) == 0 {
+        return None;
+    }
+    RULES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .filter(|rule| rule.covers(path))
+        .filter_map(|rule| match rule.fault {
+            Fault::DiskFull { remaining_bytes } => Some(remaining_bytes),
+            _ => None,
+        })
+        .min()
+}
+
 /// Runs `flush`, which flushes a file or directory at or below `path`, unless an fsync fault is
 /// armed for that path.
 pub fn sync(path: &Path, flush: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
@@ -231,6 +251,25 @@ mod tests {
                 "the failed write charged no quota, whatever the order"
             );
         }
+    }
+
+    #[test]
+    fn test_a_full_disk_reports_the_space_it_still_leaves() {
+        let volume = scope("free");
+        let inside = volume.join("segment");
+        assert_eq!(free_bytes(&inside), None, "no fault, no figure");
+        let _full = inject(
+            &volume,
+            Fault::DiskFull {
+                remaining_bytes: 10,
+            },
+        );
+        let _fuller = inject(&inside, Fault::DiskFull { remaining_bytes: 4 });
+        assert_eq!(free_bytes(&volume), Some(10));
+        assert_eq!(free_bytes(&inside), Some(4), "the fewest that covers it");
+        assert!(write(&inside, 3, || Ok(())).is_ok());
+        assert_eq!(free_bytes(&inside), Some(1), "what writes spent is gone");
+        assert_eq!(free_bytes(&volume), Some(7));
     }
 
     #[test]

@@ -176,12 +176,14 @@ static UNRECORDED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// Whether a journal handle is ready: true from open, false for good once the handle is given up
 /// (a failed write or flush, or any step of a roll that fails). The journal opened again to
 /// recover is a new handle with its own readiness, which a watcher takes in place of the old.
-/// Cloned freely, so the Host lifecycle can watch a journal it does not hold.
+/// Cloned freely, so the Host lifecycle can watch a journal it does not hold. A
+/// [`Quota`](crate::storage::quota::Quota) answers one too, which, unlike a journal's, turns true
+/// again once space returns.
 #[derive(Debug, Clone)]
 pub struct Readiness(Arc<AtomicBool>);
 
 impl Readiness {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(Arc::new(AtomicBool::new(true)))
     }
 
@@ -192,6 +194,10 @@ impl Readiness {
 
     fn lose(&self) {
         self.0.store(false, Ordering::Release);
+    }
+
+    pub(crate) fn set(&self, ready: bool) {
+        self.0.store(ready, Ordering::Release);
     }
 }
 
@@ -234,6 +240,8 @@ pub struct Journal {
     readiness: Readiness,
     /// The directory's identity, taken at open: what the process remembers it by.
     identity: String,
+    /// The quota every append reserves from before it writes, once one is attached.
+    scope: Option<crate::storage::quota::Scope>,
 }
 
 fn segment_name(first: u64) -> String {
@@ -552,6 +560,7 @@ impl Journal {
                 poisoned: false,
                 readiness: Readiness::new(),
                 identity,
+                scope: None,
             },
             recovery,
         ))
@@ -567,6 +576,17 @@ impl Journal {
         self.segments.iter().map(|(_, name)| name.clone()).collect()
     }
 
+    /// Charges every later append to `scope`: each reserves its frame, and a segment's head and file
+    /// when it rolls, before it writes, and the quota's readiness keeps the largest of them above
+    /// the floor. A refused reservation writes nothing and leaves the handle as it was.
+    pub fn charge(&mut self, scope: crate::storage::quota::Scope) -> Result<()> {
+        let largest = u64::from(self.options.max_frame) + (FRAME_HEAD + CHECKSUM_LEN + SEGMENT_HEAD) as u64;
+        scope.quota().note_largest_write(largest)?;
+        self.scope = Some(scope);
+
+        Ok(())
+    }
+
     /// Appends one frame of `kind` and flushes it; answers its index.
     pub fn append(&mut self, kind: u16, payload: &[u8]) -> Result<u64> {
         if self.poisoned {
@@ -580,8 +600,17 @@ impl Journal {
             )));
         }
         let bytes = encode_frame(kind, self.options.claim, payload)?;
-        if self.current_len >= self.options.segment_bytes && self.current_len > SEGMENT_HEAD as u64
-        {
+        let rolls =
+            self.current_len >= self.options.segment_bytes && self.current_len > SEGMENT_HEAD as u64;
+        // Reserved before anything is written: a refusal leaves the journal exactly as it was.
+        let reservation = match &self.scope {
+            Some(scope) => Some(scope.reserve(
+                bytes.len() as u64 + if rolls { SEGMENT_HEAD as u64 } else { 0 },
+                u64::from(rolls),
+            )?),
+            None => None,
+        };
+        if rolls {
             self.roll()?;
         }
         let name = self.current_name();
@@ -601,6 +630,12 @@ impl Journal {
             return Err(self.give_up(self.next_index, failed));
         }
         point("journal.frame_flushed");
+        if let Some(reservation) = reservation {
+            reservation.land(
+                bytes.len() as u64 + if rolls { SEGMENT_HEAD as u64 } else { 0 },
+                u64::from(rolls),
+            );
+        }
         let index = self.next_index;
         self.next_index += 1;
         self.current_len += bytes.len() as u64;

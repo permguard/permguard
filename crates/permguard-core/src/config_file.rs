@@ -143,6 +143,26 @@ struct StorageSection {
     compatibility_mode: Option<String>,
     #[serde(default)]
     floors: FloorsSection,
+    #[serde(default)]
+    quotas: QuotasSection,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QuotasSection {
+    #[serde(default)]
+    host: LimitSection,
+    #[serde(default)]
+    planes: BTreeMap<String, LimitSection>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LimitSection {
+    #[serde(default)]
+    bytes: Option<String>,
+    #[serde(default)]
+    inodes: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Deserialize)]
@@ -172,6 +192,10 @@ struct FloorsSection {
     free_bytes: Option<String>,
     #[serde(default, alias = "freeInodes")]
     free_inodes: Option<String>,
+    #[serde(default, alias = "maintenanceBytes")]
+    maintenance_bytes: Option<String>,
+    #[serde(default, alias = "maintenanceInodes")]
+    maintenance_inodes: Option<String>,
 }
 
 /// One realm as the file declares it, before resolution.
@@ -1192,7 +1216,7 @@ impl ConfigFile {
     /// Returns the `storage` section, validated: every qualified tuple names all four parts and its
     /// evidence, no tuple is listed twice, and the floors read as sizes and counts.
     pub fn volume(&self) -> Result<crate::volume::VolumeConfig> {
-        use crate::volume::{Floors, QualifiedTuple, Tuple, VolumeConfig};
+        use crate::volume::{Floors, Limit, QualifiedTuple, Quotas, Tuple, VolumeConfig};
 
         let section = &self.storage;
         let declared = |value: &Option<String>, key: &str| -> Result<Option<String>> {
@@ -1243,12 +1267,77 @@ impl ConfigFile {
                 ),
             };
         }
+        // Unset, the reserve is its default within the floor: a small floor an operator set
+        // before the reserve existed keeps loading. Set, it is checked: above zero, and within the
+        // floor it is the last of.
+        floors.maintenance_bytes = match &section.floors.maintenance_bytes {
+            Some(value) => match crate::config::parse_bytes(value)
+                .with_context(|| "reading storage.floors.maintenance_bytes".to_owned())?
+            {
+                0 => bail!("storage.floors.maintenance_bytes is zero: the reserve keeps the last \
+                            bytes free, and cannot be empty"),
+                bytes => bytes,
+            },
+            None => floors.maintenance_bytes.min(floors.free_bytes),
+        };
+        floors.maintenance_inodes = match &section.floors.maintenance_inodes {
+            Some(value) => match value.trim().parse::<u64>() {
+                Ok(count) if count > 0 => count,
+                _ => bail!(
+                    "reading storage.floors.maintenance_inodes: `{value}` is not a count of \
+                     inodes above zero"
+                ),
+            },
+            None => floors.maintenance_inodes.min(floors.free_inodes),
+        };
+        if floors.maintenance_bytes > floors.free_bytes
+            || floors.maintenance_inodes > floors.free_inodes
+        {
+            bail!(
+                "storage.floors: the maintenance reserve ({} bytes, {} inodes) is part of the \
+                 floor and cannot exceed it ({} bytes, {} inodes)",
+                floors.maintenance_bytes,
+                floors.maintenance_inodes,
+                floors.free_bytes,
+                floors.free_inodes
+            );
+        }
+        let limit = |section: &LimitSection, key: &str| -> Result<Limit> {
+            let bytes = section
+                .bytes
+                .as_deref()
+                .map(crate::config::parse_bytes)
+                .transpose()
+                .with_context(|| format!("reading storage.quotas.{key}.bytes"))?;
+            let inodes = section
+                .inodes
+                .as_deref()
+                .map(|value| {
+                    value.trim().parse::<u64>().map_err(|_| {
+                        anyhow::anyhow!(
+                            "reading storage.quotas.{key}.inodes: `{value}` is not a count of inodes"
+                        )
+                    })
+                })
+                .transpose()?;
+            Ok(Limit { bytes, inodes })
+        };
+        let mut quotas = Quotas {
+            host: limit(&section.quotas.host, "host")?,
+            ..Quotas::default()
+        };
+        for (plane, section) in &section.quotas.planes {
+            quotas
+                .planes
+                .insert(plane.clone(), limit(section, &format!("planes.{plane}"))?);
+        }
         Ok(VolumeConfig {
             storage_class: declared(&section.volume.storage_class, "storage_class")?,
             driver: declared(&section.volume.driver, "driver")?,
             qualified,
             compatibility_mode,
             floors,
+            quotas,
         })
     }
 
@@ -1765,6 +1854,36 @@ mod tests {
         assert!(volume.compatibility_mode);
         assert_eq!(volume.floors.free_bytes, 2 * 1024 * 1024 * 1024);
         assert_eq!(volume.floors.free_inodes, 50_000);
+        assert_eq!(
+            volume.floors.maintenance_bytes,
+            crate::volume::DEFAULT_MAINTENANCE_BYTES
+        );
+    }
+
+    #[test]
+    fn test_the_storage_section_reads_the_maintenance_reserve_and_the_quotas() {
+        let file = ConfigFile::parse(
+            "storage:\n  floors:\n    free_bytes: 1G\n    maintenance_bytes: 32M\n    maintenance_inodes: \"200\"\n  quotas:\n    host:\n      bytes: 100G\n    planes:\n      control:\n        bytes: 40G\n        inodes: \"1000000\"\n",
+        )
+        .expect("the file parses");
+        let volume = file.volume().expect("the section is valid");
+        assert_eq!(volume.floors.maintenance_bytes, 32 * 1024 * 1024);
+        assert_eq!(volume.floors.maintenance_inodes, 200);
+        assert_eq!(volume.quotas.host.bytes, Some(100 * 1024 * 1024 * 1024));
+        assert_eq!(volume.quotas.host.inodes, None, "absent is unlimited");
+        let control = volume.quotas.planes["control"];
+        assert_eq!(control.bytes, Some(40 * 1024 * 1024 * 1024));
+        assert_eq!(control.inodes, Some(1_000_000));
+    }
+
+    #[test]
+    fn test_a_small_floor_set_alone_keeps_a_reserve_within_it() {
+        let volume = ConfigFile::parse("storage:\n  floors:\n    free_bytes: 8M\n    free_inodes: \"50\"\n")
+            .expect("the file parses")
+            .volume()
+            .expect("a floor set before the reserve existed still loads");
+        assert_eq!(volume.floors.maintenance_bytes, 8 * 1024 * 1024);
+        assert_eq!(volume.floors.maintenance_inodes, 50);
     }
 
     #[test]
@@ -1790,6 +1909,19 @@ mod tests {
             ("storage:\n  compatibility_mode: perhaps\n".to_owned(), "not a boolean"),
             ("storage:\n  floors:\n    free_bytes: lots\n".to_owned(), "not a size"),
             ("storage:\n  floors:\n    free_inodes: \"0\"\n".to_owned(), "zero inodes"),
+            (
+                "storage:\n  floors:\n    free_bytes: 8M\n    maintenance_bytes: 9M\n".to_owned(),
+                "a reserve beyond the floor",
+            ),
+            (
+                "storage:\n  floors:\n    maintenance_bytes: \"0\"\n".to_owned(),
+                "an empty reserve",
+            ),
+            ("storage:\n  quotas:\n    host:\n      bytes: lots\n".to_owned(), "a quota that is not a size"),
+            (
+                "storage:\n  quotas:\n    planes:\n      control:\n        inodes: many\n".to_owned(),
+                "a quota that is not a count",
+            ),
             ("storage:\n  volume:\n    driver: \" \"\n".to_owned(), "an empty driver"),
         ] {
             let refused = ConfigFile::parse(&text)

@@ -595,6 +595,7 @@ mod tests {
             floors: Floors {
                 free_bytes: 1,
                 free_inodes: 1,
+                ..Floors::default()
             },
             reserve_bytes: 0,
         }
@@ -812,6 +813,7 @@ mod tests {
                 floors: Floors {
                     free_bytes: u64::MAX,
                     free_inodes: 1,
+                    ..Floors::default()
                 },
                 reserve_bytes: 0,
             },
@@ -827,6 +829,7 @@ mod tests {
                 floors: Floors {
                     free_bytes: 1,
                     free_inodes: u64::MAX,
+                    ..Floors::default()
                 },
                 reserve_bytes: 0,
             },

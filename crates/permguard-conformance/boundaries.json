@@ -473,6 +473,11 @@
       "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"
     },
     {
+      "source": "crates/permguard-host/src/storage/quota.rs",
+      "item": "Quota::open",
+      "reason": "measures the Host's own volume: file lengths and counts from metadata, no bytes read; a hostile tree can only make the measurement larger, which refuses writes sooner"
+    },
+    {
       "source": "crates/permguard-host/src/storage/journal.rs",
       "item": "Journal::open",
       "reason": "the store's own directory on the Host's volume, written by this process; checksums detect damage, not an attacker"

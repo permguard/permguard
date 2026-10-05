@@ -49,6 +49,25 @@ pub fn delete(dir: &Dir, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// [`delete`], charged to `scope` — a maintenance scope for garbage collection and retention, which
+/// may use the emergency floor: the tombstone is reserved before anything is written, and the
+/// deleted file is freed once the deletion is durable.
+pub fn delete_in(scope: &crate::storage::quota::Scope, dir: &Dir, name: &str) -> Result<()> {
+    let deleted = std::fs::symlink_metadata(dir.child_path(name))
+        .ok()
+        .map(|metadata| metadata.len());
+    let tomb = format::encode_file(format::TOMBSTONE, 0, name.as_bytes()).len() as u64;
+    // The tombstone lives only for the deletion: reserved, never counted as used.
+    let reservation = scope.reserve(tomb, 1)?;
+    delete(dir, name)?;
+    drop(reservation);
+    if let Some(deleted) = deleted {
+        scope.freed(deleted, 1)?;
+    }
+
+    Ok(())
+}
+
 /// Whether a deletion of `name` is in progress: its tombstone is durable and not yet removed.
 pub fn is_pending(dir: &Dir, name: &str) -> Result<bool> {
     dir.exists(&tombstone_of(name)?)

@@ -169,6 +169,48 @@ pub fn replace_view(dir: &Dir, name: &str, format: Format, body: &[u8]) -> Resul
     outcome
 }
 
+/// [`publish_immutable`], charged to `scope`: the content's bytes and one file are reserved before
+/// anything is written, and only what was written is counted; content already there costs nothing.
+pub fn publish_immutable_in(
+    scope: &crate::storage::quota::Scope,
+    dir: &Dir,
+    name: &str,
+    content: &[u8],
+    verify: &dyn Fn(&[u8]) -> bool,
+    same: &dyn Fn(&[u8]) -> bool,
+) -> Result<Published> {
+    let reservation = scope.reserve(content.len() as u64, 1)?;
+    let published = publish_immutable(dir, name, content, verify, same)?;
+    if published == Published::Written {
+        reservation.land(content.len() as u64, 1);
+    }
+
+    Ok(published)
+}
+
+/// [`replace_view`], charged to `scope`: the whole new file and its temporary's inode are reserved
+/// before anything is written; once it lands, the view it replaced is freed.
+pub fn replace_view_in(
+    scope: &crate::storage::quota::Scope,
+    dir: &Dir,
+    name: &str,
+    format: Format,
+    body: &[u8],
+) -> Result<()> {
+    let length = format::encode_file(format, 0, body).len() as u64;
+    let old = std::fs::symlink_metadata(dir.child_path(name))
+        .ok()
+        .map(|metadata| metadata.len());
+    let reservation = scope.reserve(length, 1)?;
+    replace_view(dir, name, format, body)?;
+    reservation.land(length, u64::from(old.is_none()));
+    if let Some(old) = old {
+        scope.freed(old, 0)?;
+    }
+
+    Ok(())
+}
+
 /// The body of the view `name` below `dir`, or `None` when there is none.
 pub fn read_view(dir: &Dir, name: &str, format: Format) -> Result<Option<Vec<u8>>> {
     let Some(bytes) = dir.read(name)? else {
