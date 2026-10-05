@@ -11,6 +11,7 @@
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+use permguard_core::keys::PublicSet as _;
 use permguard_core::{Jwk, KeyId, KeyManager, Maintenance, Signature};
 use permguard_decisions::commitment::Commitment;
 use permguard_decisions::envelope::{Batch, Envelope, Signed};
@@ -66,15 +67,12 @@ impl KeyManager for VectorKey {
         "vector-key"
     }
 
-    fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
-        Ok(vec![Jwk::okp(
-            self.kid.clone(),
-            "Ed25519",
-            "EdDSA",
-            B64.encode(self.pair.public_key().as_ref()),
-        )])
+    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+        Ok(Maintenance::default())
     }
+}
 
+impl permguard_core::keys::Sign for VectorKey {
     fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
         Ok(KeyId::new(self.kid.clone()))
     }
@@ -86,12 +84,18 @@ impl KeyManager for VectorKey {
             self.pair.sign(payload).as_ref().to_vec(),
         ))
     }
-
-    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
-        Ok(Maintenance::default())
-    }
 }
 
+impl permguard_core::keys::PublicSet for VectorKey {
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
+        Ok(vec![Jwk::okp(
+            self.kid.clone(),
+            "Ed25519",
+            "EdDSA",
+            B64.encode(self.pair.public_key().as_ref()),
+        )])
+    }
+}
 #[test]
 fn decision_record_digests_match_the_vectors() {
     let vectors = vectors();

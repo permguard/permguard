@@ -2444,6 +2444,7 @@ dependencies = [
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
+ "permguard-host",
  "permguard-languages",
  "permguard-objects",
  "permguard-server",
@@ -2499,10 +2500,13 @@ dependencies = [
 name = "permguard-host"
 version = "0.1.0"
 dependencies = [
+ "hmac",
  "permguard-core",
  "ring",
  "rustix",
  "sha2",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]

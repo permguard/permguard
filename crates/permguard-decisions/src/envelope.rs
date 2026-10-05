@@ -29,7 +29,7 @@ use std::fmt;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-use permguard_core::{Jwk, KeyManager};
+use permguard_core::{Jwk, Sign};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -141,7 +141,7 @@ pub struct Protected {
 
 impl Signed {
     /// Signs `envelope` under the manager's active key.
-    pub fn create(envelope: &Envelope, keys: &dyn KeyManager) -> Result<Self, EnvelopeError> {
+    pub fn create(envelope: &Envelope, keys: &dyn Sign) -> Result<Self, EnvelopeError> {
         envelope.check_shape()?;
         let payload = B64.encode(envelope.signed_bytes()?);
         let key_id = keys

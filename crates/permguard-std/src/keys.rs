@@ -441,35 +441,6 @@ impl KeyManager for DirectoryKeyManager {
         "directory"
     }
 
-    fn public_keys(&self) -> Result<Vec<Jwk>> {
-        Ok(self.read_ring()?.keys.iter().map(Entry::to_jwk).collect())
-    }
-
-    fn active_key_id(&self) -> Result<KeyId> {
-        self.read_ring()?
-            .keys
-            .into_iter()
-            .find(|entry| entry.state == KeyState::Active)
-            .map(|entry| KeyId::new(entry.kid))
-            .ok_or_else(|| {
-                KeyError::not_ready(format!(
-                    "no key in {} is active yet",
-                    self.directory.display()
-                ))
-            })
-    }
-
-    fn sign(&self, payload: &[u8]) -> Result<Signature> {
-        let key_id = self.active_key_id()?;
-        let signer = self.signer(key_id.as_str())?;
-        let algorithm = match signer.as_ref() {
-            SigningPair::Ed25519(_) => ALGORITHM,
-            SigningPair::Es256(_) => P256_ALGORITHM,
-        };
-
-        Ok(Signature::new(key_id, algorithm, signer.sign(payload)?))
-    }
-
     fn maintain(&self) -> Result<Maintenance> {
         let _serialised = self
             .maintaining
@@ -621,6 +592,38 @@ impl KeyManager for DirectoryKeyManager {
     }
 }
 
+impl permguard_core::keys::Sign for DirectoryKeyManager {
+    fn active_key_id(&self) -> Result<KeyId> {
+        self.read_ring()?
+            .keys
+            .into_iter()
+            .find(|entry| entry.state == KeyState::Active)
+            .map(|entry| KeyId::new(entry.kid))
+            .ok_or_else(|| {
+                KeyError::not_ready(format!(
+                    "no key in {} is active yet",
+                    self.directory.display()
+                ))
+            })
+    }
+
+    fn sign(&self, payload: &[u8]) -> Result<Signature> {
+        let key_id = self.active_key_id()?;
+        let signer = self.signer(key_id.as_str())?;
+        let algorithm = match signer.as_ref() {
+            SigningPair::Ed25519(_) => ALGORITHM,
+            SigningPair::Es256(_) => P256_ALGORITHM,
+        };
+
+        Ok(Signature::new(key_id, algorithm, signer.sign(payload)?))
+    }
+}
+
+impl permguard_core::keys::PublicSet for DirectoryKeyManager {
+    fn public_keys(&self) -> Result<Vec<Jwk>> {
+        Ok(self.read_ring()?.keys.iter().map(Entry::to_jwk).collect())
+    }
+}
 impl DirectoryKeyManager {
     fn seconds_ahead(&self) -> u64 {
         self.policy.publish_ahead.as_secs()

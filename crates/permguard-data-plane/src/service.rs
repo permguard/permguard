@@ -16,7 +16,7 @@ use crate::v1::policy_decision_point_server::PolicyDecisionPointServer;
 use crate::v1::temporal_policy_decision_point_server::TemporalPolicyDecisionPointServer;
 
 const COMPONENT: &str = "data-plane";
-const PLANE: &str = "data";
+pub(crate) const PLANE: &str = "data";
 
 #[derive(Clone)]
 struct PlaneState {
@@ -51,7 +51,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
     #[derive(Clone)]
     struct Discovery {
         document: permguard_server::plane::PlaneConfiguration,
-        keys: Option<std::sync::Arc<dyn permguard_core::keys::KeyManager>>,
+        keys: Option<std::sync::Arc<dyn permguard_core::keys::PublicSet>>,
     }
 
     /// Serialized by the response type, not by hand. A document that could not be rendered is a
@@ -109,7 +109,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 
     let state = Discovery {
         document: data_plane_configuration(context),
-        keys: context.data_signing_keys().cloned(),
+        keys: crate::handles::public_keys(context),
     };
 
     Router::new()
@@ -190,6 +190,13 @@ pub fn module() -> Box<dyn PlaneModule> {
 impl PlaneModule for DataPlaneModule {
     fn id(&self) -> &'static str {
         PLANE
+    }
+
+    fn declaration(
+        &self,
+        config: &permguard_core::Config,
+    ) -> permguard_host::composition::Declaration {
+        crate::handles::declaration(config)
     }
 
     fn component(&self) -> &'static str {

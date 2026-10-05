@@ -248,26 +248,39 @@ impl Maintenance {
     }
 }
 
-/// The keys a deployment signs with and publishes.
+/// Signs under one ring's active key, and does nothing else: what a signing codec needs.
 ///
-/// Implementations are shared across tasks, so they are `Send + Sync` and take `&self`.
-pub trait KeyManager: Send + Sync {
-    /// Returns the name of this implementation, for banners and diagnostics.
-    fn name(&self) -> &'static str;
-
-    /// Returns every key a client may need to verify with.
-    ///
-    /// Published, active and retired together — see the module documentation for why all three.
-    fn public_keys(&self) -> Result<Vec<Jwk>>;
-
-    /// Returns the key currently signing.
-    ///
-    /// Fails rather than inventing one: a deployment whose keys are not ready must refuse to sign,
-    /// not sign under something nobody published.
+/// Every [`KeyManager`] is one, by supertrait; so is the Host's `Signer<T>` handle, which a Plane holds instead of a
+/// key manager. A codec that signs asks for this rather than a key manager, so it cannot rotate a
+/// ring, publish keys or reach another ring (P1).
+pub trait Sign: Send + Sync {
+    /// The key the next signature is made under.
     fn active_key_id(&self) -> Result<KeyId>;
 
     /// Signs `payload` under the active key.
     fn sign(&self, payload: &[u8]) -> Result<Signature>;
+}
+
+/// Reads one ring's public set, and does nothing else: what publishing or verifying needs.
+pub trait PublicSet: Send + Sync {
+    /// Every key a client may need to verify with.
+    fn public_keys(&self) -> Result<Vec<Jwk>>;
+}
+
+/// Signs with one ring and reads its public set: what a plane that publishes what it signs needs.
+pub trait SigningRing: Sign + PublicSet {}
+
+impl<R: Sign + PublicSet + ?Sized> SigningRing for R {}
+
+/// The keys a deployment signs with and publishes, and their lifecycle.
+///
+/// Signing is [`Sign`] and publishing is [`PublicSet`]: a key manager is both, and adds the
+/// maintenance that moves keys through their states. Code that only signs or only publishes asks for
+/// the narrower trait. Implementations are shared across tasks, so they are `Send + Sync` and take
+/// `&self`.
+pub trait KeyManager: SigningRing + Send + Sync {
+    /// Returns the name of this implementation, for banners and diagnostics.
+    fn name(&self) -> &'static str;
 
     /// Moves every key that is due to its next state, creating and forgetting keys as the policy says.
     ///

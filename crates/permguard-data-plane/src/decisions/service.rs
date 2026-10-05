@@ -95,9 +95,8 @@ impl Service for DecisionService {
             // plane — a different trust domain, with a different set of readers
             // — never holds a raw one. A plane that shipped them raw would make
             // that sentence false, and it would do so silently.
-            if context
-                .recorder()
-                .and_then(permguard_core::AuditRecorder::pseudonymizer)
+            if crate::handles::audit(context)
+                .and_then(|audit| audit.pseudonymizer())
                 .is_none()
             {
                 return Err(anyhow!(
@@ -107,7 +106,7 @@ impl Service for DecisionService {
                      tokenise them with"
                 ));
             }
-            let Some(keys) = context.data_signing_keys() else {
+            let Some(keys) = crate::handles::decision_signer(context) else {
                 // Same reasoning: records that leave unattributable are records
                 // nobody can act on, and a plane that keeps deciding while
                 // producing them is worse than one that will not start.
@@ -141,7 +140,7 @@ impl Service for DecisionService {
             let shipper = Arc::new(Shipper::new(
                 journal,
                 sink,
-                Arc::clone(keys),
+                keys,
                 config.log_batch_bytes(),
                 super::rate(config.log_sample_permits()),
                 context.metrics().clone(),

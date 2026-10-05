@@ -121,7 +121,7 @@ use std::sync::Arc;
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics};
-use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject, codes};
+use permguard_core::{ApiError, Disclosure, ErrorClass, Subject, codes};
 
 /// Administrative operations answered — `action` is the audit action name
 /// (a fixed set of compile-time literals), `outcome` `ok` or `refused`.
@@ -143,7 +143,7 @@ const LEDGERS: Metric = Metric::gauge(
 #[derive(Clone)]
 pub(crate) struct CatalogFacade {
     pub(crate) catalog: Arc<dyn Catalog>,
-    pub(crate) recorder: Option<AuditRecorder>,
+    pub(crate) recorder: Option<crate::handles::Audit>,
     pub(crate) disclosure: Disclosure,
     /// Whether refused operations go on the trail too — `audit.refusals`, off by default.
     pub(crate) audit_refusals: bool,

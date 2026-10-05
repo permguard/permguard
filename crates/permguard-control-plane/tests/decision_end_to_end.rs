@@ -19,6 +19,7 @@ use permguard_control_client::decisions::{
 };
 use permguard_control_plane::decisions::store::Scope;
 use permguard_control_plane::decisions::{Accepted, DecisionStore, Refused, ingest, read};
+use permguard_core::keys::PublicSet as _;
 use permguard_core::{KeyManager, Metrics};
 use permguard_data_plane::decisions::journal::{Decided, Epoch, Journal, WhenFull};
 use permguard_data_plane::decisions::shipper::{Round, Shipper};

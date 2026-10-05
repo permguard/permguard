@@ -63,15 +63,12 @@ impl KeyManager for AliasedRing<'_> {
         self.inner.name()
     }
 
-    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
-        self.inner.public_keys().map(|mut keys| {
-            for key in &mut keys {
-                key.kid.clone_from(&self.kid);
-            }
-            keys
-        })
+    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+        self.inner.maintain()
     }
+}
 
+impl permguard_core::keys::Sign for AliasedRing<'_> {
     fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
         Ok(KeyId::new(self.kid.clone()))
     }
@@ -85,12 +82,18 @@ impl KeyManager for AliasedRing<'_> {
             )
         })
     }
-
-    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
-        self.inner.maintain()
-    }
 }
 
+impl permguard_core::keys::PublicSet for AliasedRing<'_> {
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
+        self.inner.public_keys().map(|mut keys| {
+            for key in &mut keys {
+                key.kid.clone_from(&self.kid);
+            }
+            keys
+        })
+    }
+}
 fn store(tag: &str) -> DecisionStore {
     DecisionStore::open(scratch(tag)).expect("the store opens")
 }

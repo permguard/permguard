@@ -172,18 +172,12 @@ impl Service for KeyService {
             }
             // The plane signing rings: separate rings from the one sealing
             // the trail, maintained by the same pass. The control plane's
-            // signs what it serves; the data plane's will sign decisions.
-            if let Some(keys) = context.control_signing_keys() {
+            // signs what it serves; the data plane's signs its evidence. The
+            // Planes sign through their handles; only this pass reads the rings.
+            for (role, keys) in context.maintained_rings() {
                 rings.push(Ring {
                     realm: None,
-                    role: "control-signing",
-                    keys: Arc::clone(keys),
-                });
-            }
-            if let Some(keys) = context.data_signing_keys() {
-                rings.push(Ring {
-                    realm: None,
-                    role: "data-signing",
+                    role,
                     keys: Arc::clone(keys),
                 });
             }

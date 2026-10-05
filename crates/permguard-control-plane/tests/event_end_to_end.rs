@@ -29,6 +29,7 @@ use permguard_control_plane::events::http::EventFacade;
 use permguard_control_plane::events::read::Filters;
 use permguard_control_plane::events::store::{EventStore, Scope};
 use permguard_control_plane::events::{ingest, read};
+use permguard_core::keys::{PublicSet as _, Sign as _};
 use permguard_core::{Disclosure, KeyManager, Metrics};
 use permguard_data_plane::temporal::imports::Imports;
 use permguard_data_plane::temporal::pull::{

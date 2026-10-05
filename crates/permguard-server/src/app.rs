@@ -89,6 +89,13 @@ type RealmFactory = Box<dyn Fn(&Config, &RealmConfig) -> Result<Realm> + Send + 
 /// can be verified, and only the composition root knows what the trail is made of.
 type AuditVerifier = Box<dyn Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync>;
 
+/// What a Plane declares to the Host under a configuration, when the configuration selects it.
+type PlaneDeclarationFactory = Box<
+    dyn Fn(&Config) -> Option<(&'static str, permguard_host::composition::Declaration)>
+        + Send
+        + Sync,
+>;
+
 /// A content-addressed tree on the volume and the check of its files: what `volume verify` reads.
 pub type VerifiedTree = (
     std::path::PathBuf,
@@ -157,6 +164,7 @@ pub struct App {
     realm_factory: Option<RealmFactory>,
     audit_verifier: Option<AuditVerifier>,
     verified_trees: Vec<VerifiedTree>,
+    plane_declarations: Vec<PlaneDeclarationFactory>,
     keys_exporter: Option<KeysExporter>,
     reload_handler: Option<ReloadHandler>,
     provisioner: Option<Provisioner>,
@@ -199,6 +207,7 @@ impl App {
             realm_factory: None,
             audit_verifier: None,
             verified_trees: Vec::new(),
+            plane_declarations: Vec::new(),
             keys_exporter: None,
             reload_handler: None,
             provisioner: None,
@@ -351,6 +360,20 @@ impl App {
         F: Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync + 'static,
     {
         self.audit_verifier = Some(Box::new(verifier));
+
+        self
+    }
+
+    /// Supplies what a Plane declares to the Host, registered before any service starts: its
+    /// handles reach it through [`ServerContext::plane_handles`] and nothing else.
+    pub fn with_plane_declaration<F>(mut self, declare: F) -> Self
+    where
+        F: Fn(&Config) -> Option<(&'static str, permguard_host::composition::Declaration)>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.plane_declarations.push(Box::new(declare));
 
         self
     }
@@ -706,7 +729,6 @@ impl App {
         &'a self,
         config: &'a Config,
         pseudonymizer: Option<&'a dyn Pseudonymizer>,
-        secrets: Option<&'a dyn SecretStore>,
         keys: Option<Arc<dyn KeyManager>>,
     ) -> ServerContext<'a> {
         let mut context = ServerContext::new(
@@ -717,10 +739,6 @@ impl App {
         )
         .with_services(&self.services)
         .with_metrics(self.metrics.clone());
-
-        if let Some(secrets) = secrets.or(self.secrets.as_deref()) {
-            context = context.with_secrets(secrets);
-        }
 
         if let Some(pseudonymizer) = pseudonymizer {
             context = context.with_pseudonymizer(pseudonymizer);
@@ -1065,22 +1083,39 @@ impl App {
             .as_ref()
             .map(|handler| signal::on_hangup(Arc::clone(handler)));
 
+        let recorder = self.recorder(&audit, pseudonymizer.as_ref());
         let mut context = self
-            .context(config, pseudonymizer.as_deref(), secrets, keys)
+            .context(config, pseudonymizer.as_deref(), keys)
             .with_audit(audit.as_ref())
-            .with_recorder(self.recorder(&audit, pseudonymizer.as_ref()))
             .with_realms(realms);
 
         if let Some(catalog) = catalog {
             context = context.with_catalog(catalog);
         }
 
+        // The Host: every generic capability once. The Planes' rings, the audit recorder and the
+        // secret store reach a Plane only as the handles its declaration grants (P1); the rings are
+        // also handed to the Host's own maintenance pass.
+        let mut host = permguard_host::composition::Host::builder().audit(recorder);
         if let Some(keys) = control_signing_keys {
-            context = context.with_control_signing_keys(keys);
+            context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
+            host = host.ring(permguard_host::composition::CONTROL_ATTEST, keys);
         }
-
         if let Some(keys) = data_signing_keys {
-            context = context.with_data_signing_keys(keys);
+            context = context.with_maintained_ring("data-signing", Arc::clone(&keys));
+            host = host.ring(permguard_host::composition::DATA_ATTEST, keys);
+        }
+        let host = host.build();
+        // Every selected Plane registers before any service starts, so its state opens with its
+        // handles in place, and two Planes claiming one thing stop the start.
+        for declare in &self.plane_declarations {
+            let Some((plane, declaration)) = declare(config) else {
+                continue;
+            };
+            let registration = host
+                .register(declaration, secrets)
+                .with_context(|| format!("registering the {plane} plane with the Host"))?;
+            context = context.with_plane_handles(plane, Arc::new(registration));
         }
 
         let outcome = self.server.run(&context, shutdown).await;

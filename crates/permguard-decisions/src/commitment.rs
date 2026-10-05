@@ -46,15 +46,35 @@ pub const COMMITMENT_ALGORITHM: &str = "HMAC-SHA256";
 /// Holding the key material here rather than reaching for the secret store on
 /// every decision is deliberate: the decision path may not do I/O.
 pub struct Commitment {
-    key: Vec<u8>,
+    mac: MacFn,
     version: String,
 }
+
+/// HMAC-SHA256 under the commitment key, over its arguments in order.
+type MacFn = std::sync::Arc<dyn Fn(&[&[u8]]) -> Option<[u8; 32]> + Send + Sync>;
 
 impl Commitment {
     /// Builds a commitment scheme from key material and its version.
     pub fn new(key: impl Into<Vec<u8>>, version: impl Into<String>) -> Self {
+        let key: Vec<u8> = key.into();
+        Self::with_mac(version, move |parts: &[&[u8]]| {
+            // HMAC accepts a key of any length; a refusal is rendered `unavailable`, never a tag.
+            let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&key).ok()?;
+            for part in parts {
+                mac.update(part);
+            }
+            Some(mac.finalize().into_bytes().into())
+        })
+    }
+
+    /// Builds a commitment scheme over an HMAC computed elsewhere — the Host's secret handle — so
+    /// the key itself never reaches the code that commits.
+    pub fn with_mac(
+        version: impl Into<String>,
+        mac: impl Fn(&[&[u8]]) -> Option<[u8; 32]> + Send + Sync + 'static,
+    ) -> Self {
         Self {
-            key: key.into(),
+            mac: std::sync::Arc::new(mac),
             version: version.into(),
         }
     }
@@ -71,15 +91,12 @@ impl Commitment {
     /// keys" instead of concluding the first when it is the second.
     pub fn commit(&self, value: &Value) -> Result<String, CanonicalError> {
         let canonical = jcs::canonicalize(value)?;
-        // HMAC accepts a key of any length, so this cannot fail for a real key.
-        let Ok(mut mac) = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key) else {
+        let Some(tag) = (self.mac)(&[COMMITMENT_DOMAIN.as_bytes(), &canonical]) else {
             return Ok(format!("hmac-sha256:{}:unavailable", self.version));
         };
-        mac.update(COMMITMENT_DOMAIN.as_bytes());
-        mac.update(&canonical);
 
         let mut rendered = format!("hmac-sha256:{}:", self.version);
-        for byte in mac.finalize().into_bytes() {
+        for byte in tag {
             rendered.push_str(&format!("{byte:02x}"));
         }
 

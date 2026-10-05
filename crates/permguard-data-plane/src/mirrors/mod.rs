@@ -149,7 +149,7 @@ impl Service for MirrorService {
                 metrics: context.metrics().clone(),
             });
             let jitter = config.mirrors_jitter();
-            let recorder = context.recorder().cloned();
+            let recorder = crate::handles::audit(context);
 
             // The first round runs before the loop, so a plane that starts is
             // a plane that has already tried: nobody has to wait an interval
@@ -257,7 +257,7 @@ fn with_jitter(interval: Duration, fraction: f64) -> Duration {
 /// Every round is recorded, including the quiet ones: "nothing changed" is
 /// the fact an auditor needs in order to say the plane was current at a given
 /// hour, and a trail that only carries changes cannot answer that.
-async fn report(recorder: &Option<permguard_core::AuditRecorder>, outcome: round::Outcome) {
+async fn report(recorder: &Option<crate::handles::Audit>, outcome: round::Outcome) {
     info!(
         event.name = "sync.round",
         component = COMPONENT,

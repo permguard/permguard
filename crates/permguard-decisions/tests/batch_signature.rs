@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use permguard_core::KeyManager;
+use permguard_core::keys::PublicSet as _;
 use permguard_decisions::envelope::{Envelope, Signed};
 use permguard_decisions::record::{
     Body, Build, Commitments, GENESIS, MarkerBody, Record, Sampling, Stream, VERSION,

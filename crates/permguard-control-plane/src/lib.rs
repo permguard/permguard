@@ -14,6 +14,7 @@ pub mod decisions;
 pub mod engine;
 pub mod events;
 pub mod gc;
+mod handles;
 pub mod inventory;
 mod service;
 pub mod store;

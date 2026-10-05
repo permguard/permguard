@@ -15,7 +15,7 @@ use crate::v1::control_plane_server::ControlPlaneServer;
 use crate::v1::zone_catalog_server::ZoneCatalogServer;
 
 const COMPONENT: &str = "control-plane";
-const PLANE: &str = "control";
+pub(crate) const PLANE: &str = "control";
 
 #[derive(Clone)]
 struct PlaneState {
@@ -182,6 +182,13 @@ impl PlaneModule for ControlPlaneModule {
     /// Background work this plane runs beside its listeners: measuring what
     /// it holds, so "how much disk is this deployment using" is a number and
     /// not an ssh session.
+    fn declaration(
+        &self,
+        _config: &permguard_core::Config,
+    ) -> permguard_host::composition::Declaration {
+        crate::handles::declaration()
+    }
+
     fn verified_trees(&self) -> Vec<permguard_server::VerifiedTree> {
         // `Config::zones_directory`, relative to the volume root: every ledger's objects.
         vec![(
@@ -279,7 +286,7 @@ impl PlaneModule for ControlPlaneModule {
             Some(catalog) => {
                 let facade = CatalogFacade {
                     catalog: std::sync::Arc::clone(catalog),
-                    recorder: context.recorder().cloned(),
+                    recorder: crate::handles::audit(context),
                     disclosure: context.config().error_detail(),
                     audit_refusals: context.config().audit_refusals(),
                     metrics: context.metrics().clone(),
@@ -341,7 +348,7 @@ impl PlaneModule for ControlPlaneModule {
         if let Some(catalog) = context.catalog() {
             grpc.add_service(ZoneCatalogServer::new(CatalogFacade {
                 catalog: std::sync::Arc::clone(catalog),
-                recorder: context.recorder().cloned(),
+                recorder: crate::handles::audit(context),
                 disclosure: context.config().error_detail(),
                 audit_refusals: context.config().audit_refusals(),
                 metrics: context.metrics().clone(),
@@ -424,7 +431,7 @@ fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Route
     #[derive(Clone)]
     struct Discovery {
         document: String,
-        keys: Option<std::sync::Arc<dyn permguard_core::keys::KeyManager>>,
+        keys: Option<std::sync::Arc<dyn permguard_core::keys::PublicSet>>,
     }
 
     async fn configuration(State(state): State<Discovery>) -> axum::response::Response {
@@ -483,7 +490,7 @@ fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Route
 
     let state = Discovery {
         document: control_configuration_document(context, events_composed),
-        keys: context.control_signing_keys().cloned(),
+        keys: crate::handles::own_public_keys(context),
     };
 
     Router::new()
@@ -833,7 +840,7 @@ fn build_decision_facade(
     // The ring sharing this process is trusted only when a local producer actually exists to
     // bind it to — see `local_producer_composed`.
     let local = local_producer_composed(config)
-        .then(|| context.data_signing_keys().map(std::sync::Arc::clone))
+        .then(|| crate::handles::data_public_keys(context))
         .flatten();
     if producers.is_empty() && local.is_none() {
         if config.decision_producer_keys().is_empty() {
@@ -1004,7 +1011,7 @@ fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<perm
 
 fn notp_facade(context: &ServerContext<'_>) -> Option<crate::notp::NotpFacade> {
     let catalog = context.catalog()?;
-    let Some(keys) = context.control_signing_keys() else {
+    let Some(keys) = crate::handles::head_signer(context) else {
         tracing::warn!(
             event.name = "notp.disabled",
             component = COMPONENT,
@@ -1017,7 +1024,7 @@ fn notp_facade(context: &ServerContext<'_>) -> Option<crate::notp::NotpFacade> {
     Some(crate::notp::NotpFacade::new(
         std::sync::Arc::clone(catalog),
         config.zones_directory(),
-        std::sync::Arc::clone(keys),
+        keys,
         crate::engine::EngineLimits {
             max_batch_bytes: config.notp_max_batch_bytes(),
             max_batch_objects: config.notp_max_batch_objects(),
@@ -1030,7 +1037,7 @@ fn notp_facade(context: &ServerContext<'_>) -> Option<crate::notp::NotpFacade> {
         // then refuse to serve.
         permguard_languages::registry::Enabled::from_names(config.experimental_enabled_names()),
         config.notp_compression(),
-        context.recorder().cloned(),
+        crate::handles::audit(context),
         config.error_detail(),
         config.audit_refusals(),
         context.metrics().clone(),

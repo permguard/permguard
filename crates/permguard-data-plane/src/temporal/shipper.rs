@@ -32,7 +32,7 @@
 use std::sync::Arc;
 
 use permguard_control_client::events::{EventSink, ShipError, Shipped};
-use permguard_core::{KeyManager, Metrics};
+use permguard_core::{Metrics, SigningRing};
 use permguard_events::chain;
 use permguard_events::envelope::{Envelope, Signed};
 use serde_json::Value;
@@ -76,7 +76,7 @@ pub enum Round {
 pub struct Shipper {
     streams: Arc<Streams>,
     sink: Box<dyn EventSink>,
-    keys: Arc<dyn KeyManager>,
+    keys: Arc<dyn SigningRing>,
     /// The most bytes one batch carries.
     max_bytes: u64,
     metrics: Metrics,
@@ -87,7 +87,7 @@ impl Shipper {
     pub fn new(
         streams: Arc<Streams>,
         sink: Box<dyn EventSink>,
-        keys: Arc<dyn KeyManager>,
+        keys: Arc<dyn SigningRing>,
         max_bytes: u64,
         metrics: Metrics,
     ) -> Self {

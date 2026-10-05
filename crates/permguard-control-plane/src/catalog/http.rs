@@ -414,7 +414,7 @@ mod tests {
 
         let routes = routes(CatalogFacade {
             catalog: Arc::new(FileCatalog::new(root)),
-            recorder: Some(recorder),
+            recorder: Some(crate::handles::audit_for_tests(recorder)),
             disclosure: Disclosure::Minimal,
             audit_refusals: true,
             metrics: permguard_core::metrics::Metrics::none(),

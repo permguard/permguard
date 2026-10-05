@@ -62,7 +62,10 @@ pub use config_section::{AnyConfigSection, ConfigSection};
 pub use error::{AuditError, KeyError, SecretError, ServiceError, StorageError};
 pub use future::{BoxFuture, ready};
 pub use identity::ProductIdentity;
-pub use keys::{Jwk, JwkSet, KEY_SET_MAX_AGE, KeyId, KeyManager, KeyState, Maintenance, Signature};
+pub use keys::{
+    Jwk, JwkSet, KEY_SET_MAX_AGE, KeyId, KeyManager, KeyState, Maintenance, PublicSet, Sign,
+    Signature, SigningRing,
+};
 pub use limits::{Limits, PeerBlock};
 pub use logging::{LogFormat, LogLevel};
 pub use metrics::{Aggregate, Kind, Label, Metric, Metrics, Reading, Recorder, Sample};

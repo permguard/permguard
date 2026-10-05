@@ -106,6 +106,20 @@ pub trait PlaneModule: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// What this plane declares to the Host before its state opens: the artifacts it signs, the
+    /// public keys it reads, its audit schemas, secrets, streams, tasks and scope schemas. The Host
+    /// answers the handles the declaration grants — read with `context.plane_handles::<Registration>`
+    /// under this plane's id — and refuses a declaration that collides with another plane's. The
+    /// default declares nothing.
+    fn declaration(
+        &self,
+        config: &permguard_core::Config,
+    ) -> permguard_host::composition::Declaration {
+        let _ = config;
+
+        permguard_host::composition::Declaration::new(self.id())
+    }
+
     /// The content-addressed trees this plane keeps on the volume, for deep verification: each
     /// path relative to the volume root, with the check that says whether a file holds what its
     /// name says. `volume verify` checks every one. A plane that keeps none declares none.
@@ -605,6 +619,15 @@ impl PlaneServer {
                  docs/operations/administrative-surface.md says what does protect it"
             );
         });
+
+        // Each selected plane declares itself to the Host before any service starts.
+        for plane in &self.planes {
+            let module = plane.module();
+            app = app.with_plane_declaration(move |config| {
+                plane_enabled(config, module.id())
+                    .then(|| (module.id(), module.declaration(config)))
+            });
+        }
 
         // Every stream every selected plane declares, registered once — a validation pass, by
         // design: the registry lives for this check and is dropped with it, because nothing at

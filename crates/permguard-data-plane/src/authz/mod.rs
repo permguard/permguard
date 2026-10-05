@@ -107,9 +107,7 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
             // there is one spool, and a second writer would share its sequence.
             .with_journal(
                 crate::decisions::journal(context),
-                context
-                    .recorder()
-                    .and_then(permguard_core::AuditRecorder::pseudonymizer),
+                crate::handles::audit(context).and_then(|audit| audit.pseudonymizer()),
                 config.log_include().clone(),
             )
             .with_expiry(config.mirrors_expire_after())

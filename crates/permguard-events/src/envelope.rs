@@ -27,7 +27,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use serde::{Deserialize, Serialize};
 
-use permguard_core::keys::{Jwk, KeyManager};
+use permguard_core::keys::{Jwk, Sign};
 use permguard_stream::jcs;
 
 use crate::record::Stream;
@@ -192,7 +192,7 @@ pub struct Signed {
 
 impl Signed {
     /// Signs `envelope` under the manager's active key.
-    pub fn create(envelope: &Envelope, keys: &dyn KeyManager) -> Result<Self, EnvelopeError> {
+    pub fn create(envelope: &Envelope, keys: &dyn Sign) -> Result<Self, EnvelopeError> {
         envelope.check_shape()?;
         let payload = B64.encode(envelope.signed_bytes()?);
         let key_id = keys

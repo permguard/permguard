@@ -41,7 +41,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use permguard_core::{ApiError, AuditRecorder, ErrorClass, Metrics, Subject};
+use permguard_core::{ApiError, ErrorClass, Metrics, Subject};
 use permguard_languages::request::{Asking, PartitionTarget};
 use permguard_languages::{Query, resolve};
 use tracing::{debug, info, warn};
@@ -484,7 +484,7 @@ pub struct Decider {
 }
 
 enum AuditTarget {
-    Direct(AuditRecorder),
+    Direct(crate::handles::Audit),
     Queued(Arc<super::audit::DecisionAudit>),
 }
 
@@ -494,7 +494,7 @@ impl Decider {
         root: PathBuf,
         cache: Arc<Cache>,
         metrics: Metrics,
-        recorder: Option<AuditRecorder>,
+        recorder: Option<crate::handles::Audit>,
         max_evaluations: usize,
     ) -> Self {
         let metrics_for_pool = metrics.clone();

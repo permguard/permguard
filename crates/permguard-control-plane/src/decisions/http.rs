@@ -23,7 +23,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use permguard_core::metrics::labels;
-use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, KeyManager, Metrics};
+use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
 use permguard_decisions::envelope::Batch;
 use permguard_stream::Window;
 use serde::Serialize;
@@ -42,7 +42,7 @@ pub struct DecisionFacade {
     /// A batch is signed by the plane that decided, never by this one, so this
     /// is a *producer's* ring that happens to be here rather than this plane's
     /// own. A control plane with no such neighbour has none.
-    pub local: Option<Arc<dyn KeyManager>>,
+    pub local: Option<Arc<dyn permguard_core::keys::PublicSet>>,
     /// The producers this plane accepts, each key bound to the one `pdp_id` it may sign for.
     /// From the file, never fetched: ingestion must not depend on reaching the planes that are
     /// shipping to it.
@@ -668,6 +668,8 @@ mod openapi {
     //! `assert_covered` runs in a process that has seen all of its schemas.
 
     #![allow(clippy::expect_used)]
+
+    use permguard_core::keys::PublicSet as _;
 
     use std::collections::BTreeMap;
     use std::time::Duration;

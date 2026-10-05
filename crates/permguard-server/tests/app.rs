@@ -396,26 +396,72 @@ async fn test_serve_starts_the_registered_services() {
 }
 
 #[test]
-fn test_the_context_carries_the_registered_services_and_secret_store() {
-    let app = app()
-        .with_secrets(Box::new(StubSecrets))
-        .with_service(Box::new(StubService::new("admin")));
+fn test_the_context_carries_the_registered_services() {
+    let app = app().with_service(Box::new(StubService::new("admin")));
     let config = Config::default();
 
-    let context = app.context(&config, None, None, None);
+    let context = app.context(&config, None, None);
 
     assert_eq!(context.services().len(), 1);
-    assert_eq!(
-        context.secrets().map(SecretStore::name),
-        Some("stub-secrets")
-    );
 }
 
-#[test]
-fn test_a_build_without_a_secret_store_composes_a_context_without_one() {
-    let config = Config::default();
+/// A secret purpose wider than the stub secret store's 32 bytes.
+struct WideSecret;
 
-    assert!(app().context(&config, None, None, None).secrets().is_none());
+impl permguard_host::composition::SecretPurpose for WideSecret {
+    const NAME: &'static str = "test.wide";
+    const MIN_BYTES: usize = 64;
+}
+
+#[tokio::test]
+async fn test_a_plane_whose_declared_secret_is_too_short_does_not_start() {
+    use permguard_host::composition::Declaration;
+
+    let path = config_file("short-secret", SERVABLE);
+    let app = app()
+        .with_secrets(Box::new(StubSecrets))
+        .with_plane_declaration(|_| {
+            Some((
+                "data",
+                Declaration::new("data").uses_secret::<WideSecret>(SecretRef::new("k"), "v1"),
+            ))
+        });
+
+    let refused = app
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("registration refuses the plane");
+    let message = format!("{refused:#}");
+    assert!(message.contains("registering the data plane"), "{message}");
+    assert!(message.contains("shorter than the 64 bytes"), "{message}");
+}
+
+#[tokio::test]
+async fn test_two_planes_declaring_one_artifact_do_not_start() {
+    use permguard_host::composition::{DecisionBatchV1, Declaration};
+
+    let path = config_file("collision", SERVABLE);
+    let app = app()
+        .with_plane_declaration(|_| {
+            Some(("data", Declaration::new("data").signs::<DecisionBatchV1>()))
+        })
+        .with_plane_declaration(|_| {
+            Some((
+                "other",
+                Declaration::new("other").signs::<DecisionBatchV1>(),
+            ))
+        });
+
+    let refused = app
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the second declaration collides");
+    let message = format!("{refused:#}");
+    assert!(message.contains("registering the other plane"), "{message}");
+    assert!(
+        message.contains("declared by both `data` and `other`"),
+        "{message}"
+    );
 }
 
 #[tokio::test]

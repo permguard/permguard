@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine as _;
+use permguard_core::keys::{PublicSet as _, Sign as _};
 use permguard_core::{AuditEvent, AuditSink, Catalog, KeyManager, Maintenance, Selector};
 use permguard_std::audit::{FileAuditSink, verify};
 use permguard_std::catalog::FileCatalog;

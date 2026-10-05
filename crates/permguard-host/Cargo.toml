@@ -22,6 +22,10 @@ permguard-core.workspace = true
 # The OS CSPRNG, for the volume identity (`storage::volume`).
 ring.workspace = true
 sha2.workspace = true
+# The secret handle's HMAC, computed inside the Host, and the key wiped when it is dropped
+# (`composition`).
+hmac.workspace = true
+zeroize.workspace = true
 
 # Directory-relative, no-follow opens and directory flushes (`storage::dir`).
 [target.'cfg(unix)'.dependencies]
@@ -30,3 +34,7 @@ rustix = { workspace = true }
 [[test]]
 name = "crash_points"
 required-features = ["crash-points"]
+
+[dev-dependencies]
+# The audit handle is async (`composition` tests).
+tokio = { workspace = true, features = ["macros", "rt"] }

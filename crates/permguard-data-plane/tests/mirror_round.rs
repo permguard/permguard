@@ -88,12 +88,19 @@ mod plane {
         keys.maintain().expect("the ring publishes");
         keys.maintain().expect("the ring activates");
 
+        // The control plane signs through the handle the Host registers for it, as in a server.
+        let module = permguard_control_plane::module();
+        let registration = permguard_host::composition::Host::builder()
+            .ring(permguard_host::composition::CONTROL_ATTEST, keys)
+            .build()
+            .register(module.declaration(config), None)
+            .expect("the control plane registers");
         let context: &'static ServerContext<'static> = Box::leak(Box::new(
             ServerContext::new(identity(), config, storage, audit)
                 .with_catalog(catalog)
-                .with_control_signing_keys(keys),
+                .with_plane_handles("control", Arc::new(registration)),
         ));
-        let router = permguard_control_plane::module().http_routes(context);
+        let router = module.http_routes(context);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

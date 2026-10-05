@@ -109,7 +109,7 @@ impl Service for EventService {
                      journals: refusing to start rather than fail every submission closed"
                 ));
             };
-            let Some(keys) = context.data_signing_keys() else {
+            let Some(keys) = crate::handles::event_signer(context) else {
                 return Err(anyhow!(
                     "the temporal interface is enabled and no signing ring is composed \
                      (dataPlane.keys): event records would leave this plane unattributable, and \
@@ -128,7 +128,7 @@ impl Service for EventService {
             let shipper = Arc::new(Shipper::new(
                 Arc::clone(submitter.streams()),
                 sink,
-                Arc::clone(keys),
+                keys,
                 DEFAULT_BATCH_BYTES,
                 context.metrics().clone(),
             ));

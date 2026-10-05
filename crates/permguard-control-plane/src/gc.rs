@@ -49,7 +49,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Result, anyhow};
 use permguard_core::catalog::{Catalog, Selector};
 use permguard_core::metrics::{Metric, SECONDS};
-use permguard_core::{AuditRecorder, BoxFuture, Metrics, ServerContext, Service, Subject, ready};
+use permguard_core::{BoxFuture, Metrics, ServerContext, Service, Subject, ready};
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Object};
 use tokio::sync::watch;
@@ -162,7 +162,7 @@ impl Service for GcService {
                 root: config.zones_directory(),
                 grace: config.gc_grace(),
                 metrics: context.metrics().clone(),
-                recorder: context.recorder().cloned(),
+                recorder: crate::handles::audit(context),
             };
             let every = self.every.unwrap_or_else(|| config.gc_interval());
             info!(
@@ -231,7 +231,7 @@ struct Sweep {
     root: std::path::PathBuf,
     grace: Duration,
     metrics: Metrics,
-    recorder: Option<AuditRecorder>,
+    recorder: Option<crate::handles::Audit>,
 }
 
 /// What a sweep did.

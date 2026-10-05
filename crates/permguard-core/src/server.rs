@@ -26,7 +26,6 @@ use crate::keys::KeyManager;
 use crate::metrics::Metrics;
 use crate::pseudonym::Pseudonymizer;
 use crate::realm::{Realm, Realms};
-use crate::secrets::SecretStore;
 use crate::storage::Storage;
 
 /// A way to record audit events that outlives the call it was obtained in.
@@ -172,20 +171,22 @@ pub struct ServerContext<'a> {
     config: &'a Config,
     storage: &'a dyn Storage,
     audit: &'a dyn AuditSink,
-    secrets: Option<&'a dyn SecretStore>,
     pseudonymizer: Option<&'a dyn Pseudonymizer>,
     /// Shared rather than borrowed, unlike everything else here — see [`ServerContext::with_keys`].
     keys: Option<Arc<dyn KeyManager>>,
     /// Shared for the same reason the key ring is: the routes that serve zones and ledgers outlive
     /// the borrow a context could offer.
     catalog: Option<Arc<dyn Catalog>>,
-    /// The control plane's signing ring — signs what that plane serves (git-like head statements
-    /// today). Deliberately not the operations ring that seals the audit trail: different duty,
-    /// different rotation, different blast radius.
-    control_signing_keys: Option<Arc<dyn KeyManager>>,
-    /// The data plane's signing ring — will sign the decision responses it returns.
-    data_signing_keys: Option<Arc<dyn KeyManager>>,
-    recorder: Option<AuditRecorder>,
+    /// The Planes' signing rings, by role, for the Host's own maintenance pass only: the rotation
+    /// that moves keys through their lifecycle. A Plane signs through its handles and never reads
+    /// this; `scripts/check-composition-root.sh` refuses it in a Plane crate until the lifecycle
+    /// engine (WP-2.6) gives the Planes a context without it.
+    maintained_rings: Vec<(&'static str, Arc<dyn KeyManager>)>,
+    /// Each Plane's handles, from the Host's registration of its declaration, by Plane id. Typed by
+    /// the composition, which knows them; a Plane reads its own with [`ServerContext::plane_handles`].
+    /// The Planes' signing rings, the audit recorder and the secret store are reached only through
+    /// them (P1).
+    plane_handles: std::collections::BTreeMap<&'static str, Arc<dyn std::any::Any + Send + Sync>>,
     services: &'a [Box<dyn Service>],
     health: Health,
     /// Shared rather than borrowed, for the same reason the key ring is: what records a number is
@@ -217,25 +218,16 @@ impl<'a> ServerContext<'a> {
             config,
             storage,
             audit,
-            secrets: None,
             pseudonymizer: None,
             keys: None,
             catalog: None,
-            control_signing_keys: None,
-            data_signing_keys: None,
-            recorder: None,
+            maintained_rings: Vec::new(),
+            plane_handles: std::collections::BTreeMap::new(),
             services: NO_SERVICES,
             health: Health::new(),
             metrics: Metrics::none(),
             realms: Realms::default(),
         }
-    }
-
-    /// Adds the secret store this build resolves secret material from.
-    pub fn with_secrets(mut self, secrets: &'a dyn SecretStore) -> Self {
-        self.secrets = Some(secrets);
-
-        self
     }
 
     /// Adds the privacy policy audit subjects are recorded under.
@@ -255,16 +247,6 @@ impl<'a> ServerContext<'a> {
     /// that has read it.
     pub fn with_audit(mut self, audit: &'a dyn AuditSink) -> Self {
         self.audit = audit;
-
-        self
-    }
-
-    /// Adds the way to record audit events from work that outlives a call.
-    ///
-    /// A service that spawns anything — which is every service that listens — takes this at start
-    /// and clones it into whatever it spawned. See [`AuditRecorder`].
-    pub fn with_recorder(mut self, recorder: AuditRecorder) -> Self {
-        self.recorder = Some(recorder);
 
         self
     }
@@ -289,16 +271,20 @@ impl<'a> ServerContext<'a> {
         self
     }
 
-    /// Attaches the control plane's signing ring, shared like every ring.
-    pub fn with_control_signing_keys(mut self, keys: Arc<dyn KeyManager>) -> Self {
-        self.control_signing_keys = Some(keys);
+    /// Adds a Plane signing ring to the Host's maintenance pass, under `role`.
+    pub fn with_maintained_ring(mut self, role: &'static str, keys: Arc<dyn KeyManager>) -> Self {
+        self.maintained_rings.push((role, keys));
 
         self
     }
 
-    /// Attaches the data plane's signing ring, shared like every ring.
-    pub fn with_data_signing_keys(mut self, keys: Arc<dyn KeyManager>) -> Self {
-        self.data_signing_keys = Some(keys);
+    /// Attaches the handles the Host registered for the Plane `plane`.
+    pub fn with_plane_handles(
+        mut self,
+        plane: &'static str,
+        handles: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Self {
+        self.plane_handles.insert(plane, handles);
 
         self
     }
@@ -361,11 +347,6 @@ impl<'a> ServerContext<'a> {
         self.audit
     }
 
-    /// Returns the secret store, when this build composed one.
-    pub fn secrets(&self) -> Option<&dyn SecretStore> {
-        self.secrets
-    }
-
     /// Returns the privacy policy audit subjects are recorded under, when this build composed one.
     pub fn pseudonymizer(&self) -> Option<&dyn Pseudonymizer> {
         self.pseudonymizer
@@ -381,19 +362,17 @@ impl<'a> ServerContext<'a> {
         self.keys.as_ref()
     }
 
-    /// Returns the control plane's signing ring, when this build composes one.
-    pub fn control_signing_keys(&self) -> Option<&Arc<dyn KeyManager>> {
-        self.control_signing_keys.as_ref()
+    /// The Planes' signing rings, by role, for the Host's maintenance pass; never a Plane's to read.
+    pub fn maintained_rings(&self) -> &[(&'static str, Arc<dyn KeyManager>)] {
+        &self.maintained_rings
     }
 
-    /// Returns the data plane's signing ring, when this build composes one.
-    pub fn data_signing_keys(&self) -> Option<&Arc<dyn KeyManager>> {
-        self.data_signing_keys.as_ref()
-    }
-
-    /// Returns the way to record audit events from spawned work, when this build supplied one.
-    pub fn recorder(&self) -> Option<&AuditRecorder> {
-        self.recorder.as_ref()
+    /// Returns the handles the Host registered for the Plane `plane`, as the type the composition
+    /// stored them as; `None` when the Plane was not registered or the type does not match.
+    pub fn plane_handles<T: std::any::Any + Send + Sync>(&self, plane: &str) -> Option<Arc<T>> {
+        self.plane_handles
+            .get(plane)
+            .and_then(|handles| Arc::clone(handles).downcast::<T>().ok())
     }
 
     /// Returns the services the host is expected to start, in registration order.
@@ -504,8 +483,6 @@ mod tests {
 
     use anyhow::anyhow;
 
-    use crate::secrets::{Secret, SecretRef};
-
     fn identity() -> ProductIdentity {
         ProductIdentity::new("demo-x", "Demo X", "A tagline", "Demo X CLI", "<art>")
     }
@@ -548,18 +525,6 @@ mod tests {
             _policy: Option<&'a dyn Pseudonymizer>,
         ) -> BoxFuture<'a, crate::audit::Result<()>> {
             ready(Ok(()))
-        }
-    }
-
-    struct StubSecrets;
-
-    impl SecretStore for StubSecrets {
-        fn name(&self) -> &'static str {
-            "stub-secrets"
-        }
-
-        fn resolve(&self, reference: &SecretRef) -> crate::secrets::Result<Secret> {
-            Ok(Secret::new(reference.name().as_bytes().to_vec()))
         }
     }
 
@@ -607,7 +572,6 @@ mod tests {
         assert_eq!(context.config().version(), config.version());
         assert_eq!(context.storage().name(), "stub-storage");
         assert_eq!(context.audit().name(), "stub-sink");
-        assert!(context.secrets().is_none());
         assert!(context.pseudonymizer().is_none());
         assert!(context.services().is_empty());
     }
@@ -647,20 +611,30 @@ mod tests {
     }
 
     #[test]
-    fn test_a_composed_context_hands_back_the_secrets_and_services_it_was_given() {
+    fn test_a_composed_context_hands_back_the_services_and_plane_handles_it_was_given() {
         let config = Config::default();
         let storage = StubStorage;
         let audit = StubSink;
-        let secrets = StubSecrets;
         let services: Vec<Box<dyn Service>> = vec![Box::new(StubService::default())];
 
         let context = ServerContext::new(identity(), &config, &storage, &audit)
-            .with_secrets(&secrets)
-            .with_services(&services);
+            .with_services(&services)
+            .with_plane_handles("control", Arc::new(String::from("control handles")));
 
         assert_eq!(
-            context.secrets().map(SecretStore::name),
-            Some("stub-secrets")
+            context
+                .plane_handles::<String>("control")
+                .as_deref()
+                .map(String::as_str),
+            Some("control handles")
+        );
+        assert!(
+            context.plane_handles::<u32>("control").is_none(),
+            "another type"
+        );
+        assert!(
+            context.plane_handles::<String>("data").is_none(),
+            "another plane"
         );
         assert_eq!(context.services().len(), 1);
         assert_eq!(context.services()[0].name(), "stub-service");

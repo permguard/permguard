@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use permguard_core::keys::{PublicSet as _, Sign as _};
 use permguard_core::{KeyManager, KeyState};
 use permguard_std::keys::{Clock, DirectoryKeyManager, KeyPolicy, RingAlgorithm};
 

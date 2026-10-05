@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use permguard_core::keys::PublicSet as _;
 use permguard_core::{AuditEvent, AuditSink, Subject};
 use permguard_std::audit::{FileAuditSink, verify};
 
@@ -389,8 +390,6 @@ async fn test_a_trail_rewritten_from_the_beginning_stops_agreeing_with_its_seal(
 #[cfg(feature = "keys")]
 #[tokio::test]
 async fn test_a_seal_is_signed_by_the_key_ring_and_verifies_against_the_published_set() {
-    use permguard_core::KeyManager;
-
     let directory = trail("signed");
     let keys = ring("signed");
     let sink = sink(&directory).sealed_by(keys.clone());

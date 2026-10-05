@@ -18,10 +18,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use permguard_core::catalog::{Catalog, Selector};
-use permguard_core::keys::KeyManager;
+use permguard_core::keys::SigningRing;
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics, SECONDS};
-use permguard_core::{ApiError, AuditRecorder, Disclosure, ErrorClass, Subject};
+use permguard_core::{ApiError, Disclosure, ErrorClass, Subject};
 
 use crate::engine::{Engine, EngineError, EngineLimits, LedgerIdentity};
 use crate::store::FileObjectStore;
@@ -70,14 +70,14 @@ pub(crate) struct NotpFacade {
     pub(crate) zones_root: PathBuf,
     /// The ring that signs head statements — the git-like ring, never the
     /// one sealing the audit trail.
-    pub(crate) keys: Arc<dyn KeyManager>,
+    pub(crate) keys: Arc<dyn SigningRing>,
     pub(crate) limits: EngineLimits,
     /// What this deployment has opted into among the provisional contracts, for the ingest gate.
     pub(crate) enabled: permguard_languages::registry::Enabled,
     /// Whether batches ride deflate-compressed — advertised at negotiation,
     /// echoed per batch; the engine below only ever sees canonical bytes.
     pub(crate) compression: bool,
-    pub(crate) recorder: Option<AuditRecorder>,
+    pub(crate) recorder: Option<crate::handles::Audit>,
     pub(crate) disclosure: Disclosure,
     pub(crate) audit_refusals: bool,
     /// Where the numbers go; a handle that may hold nothing, costing a branch.
@@ -91,11 +91,11 @@ impl NotpFacade {
     pub(crate) fn new(
         catalog: Arc<dyn Catalog>,
         zones_root: PathBuf,
-        keys: Arc<dyn KeyManager>,
+        keys: Arc<dyn SigningRing>,
         limits: EngineLimits,
         enabled: permguard_languages::registry::Enabled,
         compression: bool,
-        recorder: Option<AuditRecorder>,
+        recorder: Option<crate::handles::Audit>,
         disclosure: Disclosure,
         audit_refusals: bool,
         metrics: Metrics,

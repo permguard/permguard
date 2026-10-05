@@ -13,9 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Result;
 use permguard_core::metrics::labels;
-use permguard_core::{
-    AuditError, AuditRecorder, BoxFuture, Metrics, ServerContext, Service, Subject, ready,
-};
+use permguard_core::{BoxFuture, Metrics, ServerContext, Service, Subject, ready};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
@@ -48,7 +46,7 @@ pub struct DecisionAudit {
 
 impl DecisionAudit {
     /// Starts a worker that records queued decision audit entries.
-    pub fn start(recorder: AuditRecorder, metrics: Metrics, capacity: usize) -> Arc<Self> {
+    pub fn start(recorder: crate::handles::Audit, metrics: Metrics, capacity: usize) -> Arc<Self> {
         let capacity = capacity.clamp(MIN_CAPACITY, MAX_CAPACITY);
         let (sender, receiver) = mpsc::channel(capacity);
         let (stop, stopped) = watch::channel(false);
@@ -189,7 +187,7 @@ impl Service for DecisionAuditService {
 pub fn decision_audit(context: &ServerContext<'_>) -> Option<Arc<DecisionAudit>> {
     DECISION_AUDIT
         .get_or_init(|| {
-            let recorder = context.recorder().cloned()?;
+            let recorder = crate::handles::audit(context)?;
             let capacity = capacity(context);
             info!(
                 event.name = "authz.audit_worker",
@@ -217,7 +215,7 @@ fn capacity(context: &ServerContext<'_>) -> usize {
 }
 
 async fn run(
-    recorder: AuditRecorder,
+    recorder: crate::handles::Audit,
     mut receiver: mpsc::Receiver<Entry>,
     mut stopped: watch::Receiver<bool>,
     metrics: Metrics,
@@ -242,7 +240,7 @@ async fn run(
     }
 }
 
-async fn record_one(recorder: AuditRecorder, entry: Entry, metrics: &Metrics) {
+async fn record_one(recorder: crate::handles::Audit, entry: Entry, metrics: &Metrics) {
     let handle = tokio::runtime::Handle::current();
     let outcome = tokio::task::spawn_blocking(move || {
         handle.block_on(async move {
@@ -263,13 +261,13 @@ async fn record_one(recorder: AuditRecorder, entry: Entry, metrics: &Metrics) {
         }
         Ok(Err(error)) => report_failure(error, metrics),
         Err(error) => report_failure(
-            AuditError::backend(format!("the decision audit worker panicked: {error}")),
+            format!("the decision audit worker panicked: {error}"),
             metrics,
         ),
     }
 }
 
-fn report_failure(error: AuditError, metrics: &Metrics) {
+fn report_failure(error: impl std::fmt::Display, metrics: &Metrics) {
     metrics.count(&measure::AUDIT_RECORDS, &[(labels::OUTCOME, "failed")]);
     warn!(
         event.name = "authz.audit_failed",
@@ -304,7 +302,7 @@ mod tests {
             &'a self,
             _event: &'a AuditEvent<'a>,
             _policy: Option<&'a dyn Pseudonymizer>,
-        ) -> BoxFuture<'a, std::result::Result<(), AuditError>> {
+        ) -> BoxFuture<'a, std::result::Result<(), permguard_core::AuditError>> {
             Box::pin(async move {
                 while !self.release.load(Ordering::SeqCst) {
                     tokio::time::sleep(Duration::from_millis(10)).await;
@@ -321,7 +319,11 @@ mod tests {
         let sink = Arc::new(BlockingSink {
             release: Arc::clone(&release),
         });
-        let audit = DecisionAudit::start(AuditRecorder::new(sink), Metrics::none(), 1);
+        let audit = DecisionAudit::start(
+            crate::handles::audit_for_tests(permguard_core::AuditRecorder::new(sink)),
+            Metrics::none(),
+            1,
+        );
 
         tokio::time::timeout(Duration::from_secs(1), async {
             audit.record("alice".to_owned(), "ledger read decision=true".to_owned());

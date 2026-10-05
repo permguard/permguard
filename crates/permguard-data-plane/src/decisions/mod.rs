@@ -50,46 +50,28 @@ static JOURNAL: OnceLock<Option<Arc<Journal>>> = OnceLock::new();
 
 /// Resolves the secret input commitments are taken under.
 ///
-/// Resolved here, at startup, and held as bytes: the decision path may not do
-/// I/O, and a commitment scheme that reached for a secret store per decision
-/// would be one that fails under exactly the load it is meant to record.
+/// Resolved by the Host at startup and held by its handle: the decision path may
+/// not do I/O, and a commitment scheme that reached for a secret store per
+/// decision would be one that fails under exactly the load it is meant to
+/// record. This plane holds the handle and never the key's bytes.
 fn commitment_key(context: &ServerContext<'_>) -> anyhow::Result<permguard_decisions::Commitment> {
     use anyhow::Context as _;
 
-    let config = context.config();
-    let reference = config
+    context
+        .config()
         .log_commitment_key_ref()
         .context("the decision log is enabled and names no commitment key")?;
-    let secrets = context
-        .secrets()
-        .context("the decision log is enabled and this build resolved no secret store")?;
-    // The reference is safe to name in an error; what it resolves to never is.
-    let key = secrets.resolve(reference).with_context(|| {
-        format!(
-            "resolving the decision-log commitment key `{}` from the {} secret store",
-            reference.name(),
-            secrets.name()
-        )
-    })?;
-    if key.expose().len() < MINIMUM_COMMITMENT_KEY_LENGTH {
-        anyhow::bail!(
-            "the secret `{}` is shorter than {MINIMUM_COMMITMENT_KEY_LENGTH} bytes, which is too \
-             short to commit to caller attributes with",
-            reference.name()
-        );
-    }
+    // Resolved by the Host when the plane registered, and checked against its purpose's floor
+    // there: what reaches this plane computes HMACs and never shows the key.
+    let secret = crate::handles::commitment(context)
+        .context("the decision-log commitment key was not resolved by the Host")?;
+    let version = secret.version().to_owned();
 
-    Ok(permguard_decisions::Commitment::new(
-        key.expose().to_vec(),
-        config.log_commitment_key_version(),
+    Ok(permguard_decisions::Commitment::with_mac(
+        version,
+        move |parts| secret.mac(parts),
     ))
 }
-
-/// The shortest key this plane will commit under.
-///
-/// The same floor the pseudonym key has, for the same reason: below it, an
-/// exhaustive search over the key is cheaper than a dictionary over the values.
-const MINIMUM_COMMITMENT_KEY_LENGTH: usize = 32;
 
 /// Renders a sampling rate the way it is written in configuration.
 ///

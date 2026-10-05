@@ -6,6 +6,7 @@ mod api;
 pub mod authz;
 pub mod blocking;
 pub mod decisions;
+pub mod handles;
 pub mod mirrors;
 mod service;
 pub mod temporal;

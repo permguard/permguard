@@ -905,6 +905,8 @@ mod openapi {
 
     #![allow(clippy::expect_used)]
 
+    use permguard_core::keys::PublicSet as _;
+
     use std::time::Duration;
 
     use permguard_conformance::schema::Document;

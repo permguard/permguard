@@ -34,7 +34,7 @@ use std::time::Duration;
 
 use permguard_control_client::decisions::{DecisionLog, ShipError, Shipped};
 use permguard_core::metrics::labels;
-use permguard_core::{KeyManager, Metrics};
+use permguard_core::{Metrics, SigningRing};
 use permguard_decisions::envelope::{Batch, Envelope, Signed};
 use permguard_decisions::record::Sampling;
 use permguard_decisions::{chain, merkle, record};
@@ -76,7 +76,7 @@ pub enum Round {
 pub struct Shipper {
     journal: Arc<Journal>,
     sink: Box<dyn DecisionLog>,
-    keys: Arc<dyn KeyManager>,
+    keys: Arc<dyn SigningRing>,
     /// The most records one batch carries.
     max_records: usize,
     /// The most bytes one batch carries.
@@ -90,7 +90,7 @@ impl Shipper {
     pub fn new(
         journal: Arc<Journal>,
         sink: Box<dyn DecisionLog>,
-        keys: Arc<dyn KeyManager>,
+        keys: Arc<dyn SigningRing>,
         max_bytes: u64,
         sampling: impl Into<String>,
         metrics: Metrics,
