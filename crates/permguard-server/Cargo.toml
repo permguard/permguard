@@ -21,6 +21,8 @@ anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true
 permguard-core.workspace = true
+# The volume's ownership: the claim `serve` takes first, and the `volume claim` command.
+permguard-host.workspace = true
 # The stream foundation: the composition registers every stream its planes declare,
 # so a directory collision is a startup refusal rather than a runtime surprise.
 permguard-stream.workspace = true

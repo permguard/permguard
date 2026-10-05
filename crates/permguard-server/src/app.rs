@@ -23,7 +23,7 @@ use permguard_core::{
 };
 
 use crate::banner::Banner;
-use crate::command::{Action, AuditCommand, Cli, Command, KeysCommand};
+use crate::command::{Action, AuditCommand, Cli, Command, KeysCommand, VolumeCommand};
 use crate::signal::ReloadHandler;
 use crate::{logging, signal, witness};
 
@@ -638,6 +638,9 @@ impl App {
             Action::Named(Command::Keys {
                 what: KeysCommand::Export { directory },
             }) => self.export_keys(directory, out),
+            Action::Named(Command::Volume {
+                what: VolumeCommand::Claim { volume, generation },
+            }) => claim_volume(volume, *generation, out),
         }
     }
 
@@ -971,6 +974,22 @@ impl App {
             None => signal::process_shutdown(),
         };
 
+        // The volume is claimed before anything writes to it — the provisioner, the stores — and
+        // held until this returns: a second process on the same mount fails here instead of writing
+        // beside this one. The configuration states no assurance profile yet (WP-07), so a volume
+        // without a claim is served as under `development`.
+        let volume = permguard_host::storage::volume::Volume::claim(
+            config.working_dir(),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .with_context(|| format!("claiming the volume at {}", config.working_dir().display()))?;
+        tracing::info!(
+            event.name = "volume.claimed",
+            volume_id = %volume.id_hex(),
+            generation = volume.generation(),
+            "this process holds the volume"
+        );
+
         if let Some(provisioner) = &self.provisioner {
             provisioner(config).with_context(|| {
                 format!("preparing the volume at {}", config.working_dir().display())
@@ -1063,4 +1082,19 @@ impl App {
 
         Ok(())
     }
+}
+
+/// Records a new claim generation on the volume at `root`, as the orchestrator or the operator asks.
+fn claim_volume(root: &Path, generation: u64, out: &mut dyn Write) -> Result<()> {
+    let previous = permguard_host::storage::volume::set_claim(root, generation)
+        .with_context(|| format!("claiming the volume at {}", root.display()))?;
+
+    writeln!(
+        out,
+        "the volume at {} is claimed at generation {generation} (was {previous})",
+        root.display()
+    )
+    .context("writing the result")?;
+
+    Ok(())
 }

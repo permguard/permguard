@@ -38,6 +38,7 @@ pub mod qualify;
 pub mod snapshot;
 pub mod testing;
 pub mod tombstone;
+pub mod volume;
 pub mod write;
 
 pub use authority::{Authoritative, Authority, Rebuildable};
@@ -72,6 +73,38 @@ pub enum StorageError {
     /// A journal this process does not open again: a failed write or flush could not be recorded,
     /// or a repair made while opening it could not be flushed.
     NotRecoverable(String),
+    /// The volume's `LOCK` is held by another process on this mount.
+    Held(String),
+    /// A volume operation the volume's state does not permit: serving without a claim where the
+    /// profile requires one, or a claim that does not increase.
+    Refused(String),
+    /// A frame carries a lower claim generation than a frame before it: a writer whose claim was
+    /// superseded appended after the takeover (H-05).
+    StaleWriter {
+        journal: String,
+        index: u64,
+        generation: u64,
+        after: u64,
+    },
+    /// A frame carries a claim generation above the volume's current claim: the claim is stale,
+    /// rolled back or inconsistent with the data.
+    ClaimBehindData {
+        journal: String,
+        index: u64,
+        generation: u64,
+        claim: u64,
+    },
+}
+
+impl StorageError {
+    /// The registered code of a fencing incident, the evidence an operator's runbook branches on.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::StaleWriter { .. } => Some(permguard_core::codes::storage::STALE_WRITER),
+            Self::ClaimBehindData { .. } => Some(permguard_core::codes::storage::CLAIM_BEHIND_DATA),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for StorageError {
@@ -90,6 +123,30 @@ impl std::fmt::Display for StorageError {
                  journal again to recover it",
             ),
             Self::NotRecoverable(what) => write!(f, "not recoverable in this process: {what}"),
+            Self::Held(what) => write!(f, "the volume is held: {what}"),
+            Self::Refused(what) => write!(f, "refused: {what}"),
+            Self::StaleWriter {
+                journal,
+                index,
+                generation,
+                after,
+            } => write!(
+                f,
+                "stale writer in {journal}: frame {index} carries claim generation {generation} \
+                 after a frame of generation {after}; a writer whose claim was superseded wrote \
+                 after the takeover, and nothing is replayed until the fence is re-established"
+            ),
+            Self::ClaimBehindData {
+                journal,
+                index,
+                generation,
+                claim,
+            } => write!(
+                f,
+                "claim behind the data in {journal}: frame {index} carries claim generation \
+                 {generation}, above the volume's claim {claim}; the claim is stale or rolled \
+                 back, and nothing is replayed"
+            ),
         }
     }
 }

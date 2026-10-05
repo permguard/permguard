@@ -20,20 +20,22 @@
 //!
 //! # Recovery, at open
 //!
-//! | What is found                                                         | What happens                                  |
-//! | --------------------------------------------------------------------- | --------------------------------------------- |
-//! | in the last segment, a damaged frame whose own extent reaches the end | truncated: a torn write                       |
-//! | in the last segment, an incomplete frame header, or zeros to the end  | truncated: a torn write                       |
-//! | with no record, a last segment of at most 48 bytes, header not whole  | removed: it held no frame                     |
-//! | a failure record naming frame `n`                                     | frames from `n` cut, then the record removed  |
-//! | with a record, an acknowledged frame not whole, or a segment missing  | [`StorageError::Corruption`], nothing changed |
-//! | a damaged frame with bytes beyond its own extent                      | [`StorageError::Corruption`]                  |
-//! | a damaged frame declaring more than the format's frame limit          | [`StorageError::Corruption`]                  |
-//! | a damaged header on a segment holding frames                          | [`StorageError::Corruption`]                  |
-//! | a torn frame in any segment but the last; a gap between segments      | [`StorageError::Corruption`]                  |
-//! | a damaged failure record, or one naming a frame past the end          | [`StorageError::Corruption`]                  |
-//! | a failed flush of an earlier repair, in this process                  | [`StorageError::NotRecoverable`]              |
-//! | another magic, a newer version, an unknown flag                       | [`StorageError::Unsupported`]                 |
+//! | What is found                                                         | What happens                                       |
+//! | --------------------------------------------------------------------- | -------------------------------------------------- |
+//! | in the last segment, a damaged frame whose own extent reaches the end | truncated: a torn write                            |
+//! | in the last segment, an incomplete frame header, or zeros to the end  | truncated: a torn write                            |
+//! | with no record, a last segment of at most 48 bytes, header not whole  | removed: it held no frame                          |
+//! | a failure record naming frame `n`                                     | frames from `n` cut, then the record removed       |
+//! | with a record, an acknowledged frame not whole, or a segment missing  | [`StorageError::Corruption`], nothing changed      |
+//! | a damaged frame with bytes beyond its own extent                      | [`StorageError::Corruption`]                       |
+//! | a damaged frame declaring more than the format's frame limit          | [`StorageError::Corruption`]                       |
+//! | a damaged header on a segment holding frames                          | [`StorageError::Corruption`]                       |
+//! | a torn frame in any segment but the last; a gap between segments      | [`StorageError::Corruption`]                       |
+//! | a damaged failure record, or one naming a frame past the end          | [`StorageError::Corruption`]                       |
+//! | a failed flush of an earlier repair, in this process                  | [`StorageError::NotRecoverable`]                   |
+//! | another magic, a newer version, an unknown flag                       | [`StorageError::Unsupported`]                      |
+//! | a frame's claim generation below one before it                        | [`StorageError::StaleWriter`], nothing changed     |
+//! | a frame's claim generation above the volume's claim                   | [`StorageError::ClaimBehindData`], nothing changed |
 //!
 //! Acknowledged frames are never modified: a truncation cuts exactly the torn bytes, or exactly
 //! the frames a failure record names as never acknowledged. A repair whose flush fails is final:
@@ -62,8 +64,19 @@
 //! # Exclusion
 //!
 //! Opening repairs the directory: it truncates, removes and sweeps. Only one process may hold a
-//! journal open; the volume `LOCK` (WP-1.4) is what guarantees that, and a caller opens a journal
-//! only under it.
+//! journal open; the volume's `LOCK`, which [`crate::storage::volume::Volume::claim`] takes and
+//! holds, is what guarantees that on one mount, and a caller opens a journal only under it.
+//!
+//! # Claim generations
+//!
+//! Every frame carries the claim generation of [`Options::claim`], the one the writer's
+//! [`Volume`](crate::storage::volume::Volume) holds. Opening judges every frame, in index order and
+//! before any repair, against the volume's current claim: generations equal to it, or below it and
+//! never decreasing, are history; a decrease is a writer whose claim was superseded, and a
+//! generation above the claim is a claim behind the data. Either refuses the open with its own
+//! error and code, and nothing is rewritten to make the sequence fit. A failure record carries its
+//! writer's generation and is judged the same way before its cut, against every frame there, so a
+//! superseded writer's record cannot cut the new owner's acknowledged frames.
 //!
 //! # Appends, and a failed flush
 //!
@@ -72,7 +85,7 @@
 //! A failed write or flush is final (WP-1.2). The append fails, the handle refuses every later
 //! append and read ([`StorageError::Poisoned`]) and its [`Readiness`] turns not ready. Before the
 //! error returns, the journal writes and flushes a failure record, [`FAILED`], a view whose body is
-//! the index of the first frame that was not acknowledged.
+//! the index of the first frame that was not acknowledged and the writer's claim generation.
 //!
 //! Opening the journal again applies the record before anything else is judged, having refused any
 //! segment of a newer format: it removes every segment whose first frame is at or after that
@@ -133,10 +146,14 @@ const SEGMENT_HEAD: usize = HEADER_LEN + CHECKSUM_LEN;
 /// any bound, lower or higher than the one it was written with, since recovery judges against the
 /// format's limit. A segment rolls only once it holds a frame, so a `segment_bytes` below the
 /// segment head means one frame per segment.
+///
+/// `claim` is the volume claim generation the writer holds ([`crate::storage::volume`]): every
+/// appended frame carries it, and opening judges the frames already there against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Options {
     pub max_frame: u32,
     pub segment_bytes: u64,
+    pub claim: u64,
 }
 
 impl Default for Options {
@@ -144,6 +161,7 @@ impl Default for Options {
         Self {
             max_frame: DEFAULT_MAX_FRAME,
             segment_bytes: DEFAULT_SEGMENT_BYTES,
+            claim: crate::storage::volume::UNCLAIMED,
         }
     }
 }
@@ -183,7 +201,7 @@ pub struct Frame {
     /// Its position in the journal, from zero.
     pub index: u64,
     pub kind: u16,
-    /// The volume claim it was written under; zero until volume claims exist (WP-1.4).
+    /// The volume claim generation its writer held; zero for a frame written without a claim.
     pub claim: u64,
     pub payload: Vec<u8>,
 }
@@ -234,6 +252,38 @@ fn segment_first(name: &str) -> Option<Result<u64>> {
             "segment `{name}` names a frame past the last index"
         ))
     }))
+}
+
+/// Judges the claim generations of `frames`, in index order, against the volume's `claim`.
+///
+/// | Generation                                        | Meaning                                   |
+/// | ------------------------------------------------- | ----------------------------------------- |
+/// | equal to the claim                                | the current writer's                      |
+/// | below the claim, never below a frame before it    | history from an earlier owner             |
+/// | below a frame before it                           | [`StorageError::StaleWriter`]             |
+/// | above the claim                                   | [`StorageError::ClaimBehindData`]         |
+fn judge_claims(dir: &Dir, frames: &[Frame], claim: u64, highest: &mut u64) -> Result<()> {
+    for frame in frames {
+        if frame.claim > claim {
+            return Err(StorageError::ClaimBehindData {
+                journal: dir.path().display().to_string(),
+                index: frame.index,
+                generation: frame.claim,
+                claim,
+            });
+        }
+        if frame.claim < *highest {
+            return Err(StorageError::StaleWriter {
+                journal: dir.path().display().to_string(),
+                index: frame.index,
+                generation: frame.claim,
+                after: *highest,
+            });
+        }
+        *highest = frame.claim;
+    }
+
+    Ok(())
 }
 
 /// The bytes of one frame; a payload whose length does not fit the `u32` length field is refused.
@@ -383,16 +433,27 @@ impl Journal {
         // What a failure record names is cut before anything is judged: those bytes were never
         // acknowledged, whatever shape a failed write left them in.
         let record = failure_record(&dir)?;
-        if let Some(first_unacknowledged) = record {
+        if let Some((first_unacknowledged, generation)) = record {
             // A segment of a format this build does not read is refused before anything changes.
             for (_, name) in &segments {
                 refuse_newer(&dir, name)?;
             }
+            // The record is judged before its cut, like a frame against every frame there: a
+            // superseded writer's record would otherwise cut the new owner's acknowledged frames.
+            judge_record(
+                &dir,
+                &segments,
+                first_unacknowledged,
+                generation,
+                options.claim,
+            )?;
             cut_from(&dir, &mut segments, first_unacknowledged)?;
             recovery.cut_from = Some(first_unacknowledged);
         }
 
         let mut expected = 0u64;
+        // The highest claim generation a frame so far carried: generations never decrease.
+        let mut highest = crate::storage::volume::UNCLAIMED;
         let mut tail: Option<(u64, String, usize)> = None;
         let count = segments.len();
         for (position, (first, name)) in segments.clone().into_iter().enumerate() {
@@ -420,7 +481,12 @@ impl Journal {
                     "segment `{name}` has a damaged header and holds frames or segments follow it"
                 )));
             }
-            match scan(&bytes, first, &name)? {
+            let scanned = scan(&bytes, first, &name)?;
+            // Before the tail is cut, or anything else changes: a frame no claim allows refuses
+            // the open, and nothing is rewritten to make the sequence fit (H-05).
+            let (Scan::Whole { frames, .. } | Scan::Torn { frames, .. }) = &scanned;
+            judge_claims(&dir, frames, options.claim, &mut highest)?;
+            match scanned {
                 Scan::Whole { frames, end } => {
                     expected = first + frames.len() as u64;
                     tail = Some((first, name, end));
@@ -447,7 +513,7 @@ impl Journal {
             }
         }
 
-        if let Some(first_unacknowledged) = record {
+        if let Some((first_unacknowledged, _)) = record {
             if first_unacknowledged != expected {
                 return Err(StorageError::Corruption(format!(
                     "the failure record in {} names frame {first_unacknowledged} as the first \
@@ -513,7 +579,7 @@ impl Journal {
                 self.options.max_frame
             )));
         }
-        let bytes = encode_frame(kind, 0, payload)?;
+        let bytes = encode_frame(kind, self.options.claim, payload)?;
         if self.current_len >= self.options.segment_bytes && self.current_len > SEGMENT_HEAD as u64
         {
             self.roll()?;
@@ -586,12 +652,9 @@ impl Journal {
     fn give_up(&mut self, first_unacknowledged: u64, failed: StorageError) -> StorageError {
         self.poisoned = true;
         self.readiness.lose();
-        let recorded = replace_view(
-            &self.dir,
-            FAILED,
-            format::VIEW,
-            &first_unacknowledged.to_be_bytes(),
-        );
+        let mut body = first_unacknowledged.to_be_bytes().to_vec();
+        body.extend_from_slice(&self.options.claim.to_be_bytes());
+        let recorded = replace_view(&self.dir, FAILED, format::VIEW, &body);
         match recorded {
             Ok(()) => {
                 point("failure.recorded");
@@ -634,19 +697,68 @@ impl Journal {
     }
 }
 
-/// The index a failure record names, when there is one.
-fn failure_record(dir: &Dir) -> Result<Option<u64>> {
+/// The index a failure record names and the claim generation of the writer that failed, when
+/// there is one; a record of the first format, the index alone, is generation 0.
+fn failure_record(dir: &Dir) -> Result<Option<(u64, u64)>> {
     let Some(body) = read_view(dir, FAILED, format::VIEW)? else {
         return Ok(None);
     };
-    let index = <[u8; 8]>::try_from(body.as_slice()).map_err(|_| {
-        StorageError::Corruption(format!(
-            "the failure record in {} holds {} bytes, not an index",
-            dir.path().display(),
-            body.len()
-        ))
-    })?;
-    Ok(Some(u64::from_be_bytes(index)))
+    let word = |at: usize| {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&body[at..at + 8]);
+        u64::from_be_bytes(bytes)
+    };
+    match body.len() {
+        8 => Ok(Some((word(0), crate::storage::volume::UNCLAIMED))),
+        16 => Ok(Some((word(0), word(8)))),
+        held => Err(StorageError::Corruption(format!(
+            "the failure record in {} holds {held} bytes, not an index and a generation",
+            dir.path().display()
+        ))),
+    }
+}
+
+/// Judges a failure record's generation against the claim and against every frame the journal
+/// holds, read only: a record below the highest frame is a superseded writer's, and one above the
+/// claim is a claim behind the data. A segment that does not scan is left to the cut to judge.
+fn judge_record(
+    dir: &Dir,
+    segments: &[(u64, String)],
+    index: u64,
+    generation: u64,
+    claim: u64,
+) -> Result<()> {
+    let journal = || dir.path().display().to_string();
+    if generation > claim {
+        return Err(StorageError::ClaimBehindData {
+            journal: journal(),
+            index,
+            generation,
+            claim,
+        });
+    }
+    let mut highest = crate::storage::volume::UNCLAIMED;
+    for (first, name) in segments {
+        let bytes = dir.read(name)?.unwrap_or_default();
+        if !head_is_whole(&bytes).unwrap_or(false) {
+            continue;
+        }
+        if let Ok(Scan::Whole { frames, .. } | Scan::Torn { frames, .. }) =
+            scan(&bytes, *first, name)
+        {
+            highest = frames.iter().map(|frame| frame.claim).fold(highest, u64::max);
+        }
+    }
+    if generation < highest {
+        return Err(StorageError::StaleWriter {
+            journal: journal(),
+            index,
+            generation,
+            after: highest,
+        });
+    }
+
+    Ok(())
 }
 
 /// Refuses a segment whose whole header names a format this build does not read; reads only
@@ -792,6 +904,191 @@ mod tests {
         Journal::open(Dir::open(path).expect("opened"), options).expect("the journal opens")
     }
 
+    fn claimed(claim: u64) -> Options {
+        Options {
+            claim,
+            ..Options::default()
+        }
+    }
+
+    /// The whole journal directory, name by name, to prove a refused open changed nothing.
+    fn contents(path: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+        let mut all: Vec<(String, Vec<u8>)> = std::fs::read_dir(path)
+            .expect("listed")
+            .map(|entry| {
+                let entry = entry.expect("entry");
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    std::fs::read(entry.path()).expect("read"),
+                )
+            })
+            .collect();
+        all.sort();
+        all
+    }
+
+    /// Appends `frame` to the last segment behind the journal's back: what a second writer does.
+    fn append_behind(path: &std::path::Path, frame: &[u8]) {
+        use std::io::Write as _;
+        let mut segments: Vec<_> = std::fs::read_dir(path)
+            .expect("listed")
+            .map(|entry| entry.expect("entry").path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "pgj"))
+            .collect();
+        segments.sort();
+        let last = segments.last().expect("a segment");
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(last)
+            .expect("opened")
+            .write_all(frame)
+            .expect("appended");
+    }
+
+    #[test]
+    fn frames_carry_the_claim_and_monotonic_history_recovers() {
+        let path = scratch("claims");
+        for claim in [0, 1, 1, 4] {
+            let (mut journal, _) = open(&path, claimed(claim));
+            journal.append(1, b"x").expect("appended");
+        }
+        let (journal, recovery) = open(&path, claimed(4));
+        assert_eq!(recovery, Recovery::default());
+        let generations: Vec<u64> = journal
+            .frames()
+            .expect("read")
+            .iter()
+            .map(|frame| frame.claim)
+            .collect();
+        assert_eq!(generations, vec![0, 1, 1, 4], "earlier owners' history");
+
+        // A later owner reads the same history as legitimate.
+        open(&path, claimed(9));
+    }
+
+    #[test]
+    fn a_generation_that_decreases_is_a_stale_writer_and_nothing_is_cut() {
+        let path = scratch("stale");
+        for claim in [2, 3] {
+            let (mut journal, _) = open(&path, claimed(claim));
+            journal.append(1, b"owner").expect("appended");
+        }
+        // The superseded writer of generation 2 appends after the takeover, and dies mid-frame.
+        append_behind(&path, &encode_frame(1, 2, b"stale").expect("encoded"));
+        append_behind(&path, &encode_frame(1, 2, b"torn").expect("encoded")[..9]);
+        let before = contents(&path);
+
+        let refused = Journal::open(Dir::open(&path).expect("opened"), claimed(3))
+            .expect_err("a stale writer");
+        match &refused {
+            StorageError::StaleWriter {
+                index,
+                generation,
+                after,
+                ..
+            } => assert_eq!((*index, *generation, *after), (2, 2, 3)),
+            other => panic!("{other}"),
+        }
+        assert_eq!(
+            refused.code(),
+            Some(permguard_core::codes::storage::STALE_WRITER)
+        );
+        assert_eq!(contents(&path), before, "the torn tail is not cut either");
+    }
+
+    #[test]
+    fn a_generation_above_the_claim_is_a_claim_behind_the_data() {
+        let path = scratch("behind");
+        let (mut journal, _) = open(&path, claimed(5));
+        journal.append(1, b"x").expect("appended");
+        drop(journal);
+        let before = contents(&path);
+
+        // The claim was rolled back to 4 after a writer of generation 5 wrote.
+        let refused = Journal::open(Dir::open(&path).expect("opened"), claimed(4))
+            .expect_err("behind the data");
+        match &refused {
+            StorageError::ClaimBehindData {
+                index,
+                generation,
+                claim,
+                ..
+            } => assert_eq!((*index, *generation, *claim), (0, 5, 4)),
+            other => panic!("{other}"),
+        }
+        assert_eq!(
+            refused.code(),
+            Some(permguard_core::codes::storage::CLAIM_BEHIND_DATA)
+        );
+        assert_ne!(
+            refused.code(),
+            Some(permguard_core::codes::storage::STALE_WRITER)
+        );
+        assert_eq!(contents(&path), before, "nothing is rewritten to fit");
+    }
+
+    fn record(path: &std::path::Path, index: u64, generation: u64) {
+        let mut body = index.to_be_bytes().to_vec();
+        body.extend_from_slice(&generation.to_be_bytes());
+        replace_view(
+            &Dir::open(path).expect("opened"),
+            FAILED,
+            format::VIEW,
+            &body,
+        )
+        .expect("a record");
+    }
+
+    #[test]
+    fn a_superseded_writers_failure_record_cuts_nothing() {
+        let path = scratch("stale-record");
+        for claim in [2, 2, 3, 3] {
+            let (mut journal, _) = open(&path, claimed(claim));
+            journal.append(1, b"x").expect("appended");
+        }
+        // The writer of generation 2, unfenced, fails at the index it believed next.
+        record(&path, 2, 2);
+        let before = contents(&path);
+
+        let refused = Journal::open(Dir::open(&path).expect("opened"), claimed(3))
+            .expect_err("a stale writer's record");
+        match &refused {
+            StorageError::StaleWriter {
+                index,
+                generation,
+                after,
+                ..
+            } => assert_eq!((*index, *generation, *after), (2, 2, 3)),
+            other => panic!("{other}"),
+        }
+        assert_eq!(contents(&path), before, "the new owner's frames stay");
+
+        // A record above the claim is a claim behind the data, and cuts nothing either.
+        record(&path, 3, 4);
+        let refused = Journal::open(Dir::open(&path).expect("opened"), claimed(3))
+            .expect_err("behind the data");
+        assert!(
+            matches!(refused, StorageError::ClaimBehindData { generation: 4, claim: 3, .. }),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn the_current_writers_failure_record_cuts_as_before() {
+        let path = scratch("own-record");
+        let (mut journal, _) = open(&path, claimed(3));
+        for _ in 0..3 {
+            journal.append(1, b"x").expect("appended");
+        }
+        drop(journal);
+        record(&path, 2, 3);
+
+        let (journal, recovery) = open(&path, claimed(3));
+        assert_eq!(recovery.cut_from, Some(2));
+        assert_eq!(journal.next_index(), 2);
+        assert!(!path.join(FAILED).exists());
+    }
+
     #[test]
     fn frames_round_trip_with_their_indexes_and_the_decided_layout() {
         let path = scratch("round-trip");
@@ -883,6 +1180,7 @@ mod tests {
         let options = Options {
             max_frame: 1024,
             segment_bytes: 200,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         for index in 0..10u64 {
@@ -1009,6 +1307,7 @@ mod tests {
         let lower = Options {
             max_frame: 16,
             segment_bytes: DEFAULT_SEGMENT_BYTES,
+            ..Options::default()
         };
         let (journal, recovery) = open(&path, lower);
         assert_eq!(recovery.truncated_bytes, 600);
@@ -1017,6 +1316,7 @@ mod tests {
         let over = Options {
             max_frame: FRAME_LIMIT + 1,
             segment_bytes: DEFAULT_SEGMENT_BYTES,
+            ..Options::default()
         };
         assert!(matches!(
             Journal::open(Dir::open(&path).expect("opened"), over).expect_err("refused"),
@@ -1053,6 +1353,7 @@ mod tests {
         let options = Options {
             max_frame: 64,
             segment_bytes: 0,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         for index in 0..3u64 {
@@ -1073,6 +1374,7 @@ mod tests {
         let options = Options {
             max_frame: 1024,
             segment_bytes: 100,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         journal.append(1, &[1u8; 40]).expect("appended");
@@ -1146,6 +1448,7 @@ mod tests {
         let options = Options {
             max_frame: 1024,
             segment_bytes: 100,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         assert_eq!(journal.append(1, &[1u8; 40]).expect("appended"), 0);
@@ -1314,6 +1617,7 @@ mod tests {
         let options = Options {
             max_frame: 64,
             segment_bytes: 120,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         for index in 0..6u8 {
@@ -1425,6 +1729,7 @@ mod tests {
         let options = Options {
             max_frame: 64,
             segment_bytes: 120,
+            ..Options::default()
         };
         let (mut journal, _) = open(&path, options);
         for index in 0..4u8 {
@@ -1463,6 +1768,7 @@ mod tests {
         let options = Options {
             max_frame: 64,
             segment_bytes: 100,
+            ..Options::default()
         };
         /// A boundary, whether it is reached through a roll, the fault there, and whether the
         /// record can still be written.
@@ -1588,6 +1894,7 @@ mod tests {
                     let options = Options {
                         max_frame: 64,
                         segment_bytes: 0,
+                        ..Options::default()
                     };
                     let (mut journal, _) = open(path, options);
                     journal.append(1, b"one").expect("appended");
@@ -1666,6 +1973,7 @@ mod tests {
             Options {
                 max_frame: 4,
                 segment_bytes: DEFAULT_SEGMENT_BYTES,
+                ..Options::default()
             },
         );
         assert!(matches!(

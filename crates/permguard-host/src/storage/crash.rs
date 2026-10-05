@@ -44,6 +44,8 @@ pub const POINTS: &[&str] = &[
     "failure.cut_segments_removed",
     "failure.cut_flushed",
     "failure.record_removed",
+    "volume.id_written",
+    "volume.format_written",
 ];
 
 /// The crash point `name`: aborts here when this process was told to.

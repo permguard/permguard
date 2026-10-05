@@ -1117,6 +1117,16 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "storage.CLAIM_BEHIND_DATA": {
+      "code": "storage_claim_behind_data",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
+    "storage.STALE_WRITER": {
+      "code": "storage_stale_writer",
+      "contract": "1-architecture/8-architecture-storage-operations.md",
+      "kind": "log"
+    },
     "stream.ACK_AHEAD": {
       "code": "ack_ahead",
       "contract": "6-contracts/5-contract-stream-common.md",

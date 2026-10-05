@@ -307,6 +307,15 @@ pub mod client {
     pub const TIMEOUT: &str = "timeout";
 }
 
+/// The storage library's fencing incidents: the evidence a volume's recovery reports instead of
+/// replaying what a superseded or misrecorded claim wrote.
+pub mod storage {
+    /// A frame carries a lower claim generation than one before it: a stale writer.
+    pub const STALE_WRITER: &str = "storage_stale_writer";
+    /// A frame carries a claim generation above the volume's claim.
+    pub const CLAIM_BEHIND_DATA: &str = "storage_claim_behind_data";
+}
+
 /// Codes in use that no contract document names yet.
 ///
 /// Each one is kept until the document that owns it is written; renaming one is a contract change.
@@ -551,6 +560,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::NOT_LIVE,
         client::NOT_READY,
         client::TIMEOUT,
+        storage::STALE_WRITER,
+        storage::CLAIM_BEHIND_DATA,
         legacy::REJECTED,
     ]
 }

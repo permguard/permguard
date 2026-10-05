@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 use permguard_host::storage::crash::{CRASH_AT, POINTS};
 use permguard_host::storage::journal::{Journal, Options};
 use permguard_host::storage::write::{Published, publish_immutable, read_view, replace_view};
-use permguard_host::storage::{Dir, format, tombstone};
+use permguard_host::storage::{Dir, format, tombstone, volume};
 
 const DIRECTORY: &str = "PERMGUARD_CRASH_DIRECTORY";
 
@@ -79,6 +79,7 @@ fn journal_options() -> Options {
     Options {
         max_frame: 1024,
         segment_bytes: 120,
+        ..Options::default()
     }
 }
 
@@ -93,6 +94,16 @@ fn child_immutable() {
         &exact(b"content"),
     )
     .expect("published");
+}
+
+#[test]
+#[ignore = "started by its parent, with a crash point"]
+fn child_volume() {
+    volume::Volume::claim(
+        Path::new(&std::env::var(DIRECTORY).expect("the parent names the directory")),
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .expect("claimed");
 }
 
 #[test]
@@ -148,6 +159,7 @@ fn failure_options() -> Options {
     Options {
         max_frame: 64,
         segment_bytes: 120,
+        ..Options::default()
     }
 }
 
@@ -385,11 +397,57 @@ fn every_crash_point_of_a_deletion_recovers() {
     }
 }
 
+/// Volume creation: after a crash at any step, the next claim completes the volume, keeping a
+/// `VOLUME_ID` already written, and every later claim reads the same identity.
+#[test]
+fn every_crash_point_of_a_volume_creation_recovers() {
+    for point in points("volume.") {
+        let path = scratch(point);
+        assert!(
+            crash("child_volume", point, &path),
+            "the child aborted at {point}"
+        );
+        let host = path.join(volume::HOST);
+        let written = std::fs::read(host.join(volume::VOLUME_ID)).expect("VOLUME_ID was written");
+        assert_eq!(
+            host.join(volume::FORMAT).exists(),
+            point == "volume.format_written",
+            "{point}: FORMAT is written last"
+        );
+
+        let claimed = volume::Volume::claim(
+            &path,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("the next claim completes the volume");
+        assert_eq!(
+            std::fs::read(host.join(volume::VOLUME_ID)).expect("VOLUME_ID"),
+            written,
+            "{point}: the identity is kept"
+        );
+        let id = claimed.id();
+        drop(claimed);
+        let again = volume::Volume::claim(
+            &path,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed again");
+        assert_eq!(again.id(), id, "{point}");
+    }
+}
+
 /// Every crash point the library names belongs to one of the protocols tested above; each round
 /// there proves its point was reached, by requiring the child to die of the abort at it.
 #[test]
 fn every_named_crash_point_belongs_to_a_tested_protocol() {
-    let visited: Vec<&str> = ["immutable.", "view.", "journal.", "tombstone.", "failure."]
+    let visited: Vec<&str> = [
+        "immutable.",
+        "view.",
+        "journal.",
+        "tombstone.",
+        "failure.",
+        "volume.",
+    ]
         .iter()
         .flat_map(|prefix| points(prefix))
         .collect();

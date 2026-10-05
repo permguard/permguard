@@ -123,6 +123,34 @@ pub enum Command {
         #[command(subcommand)]
         what: KeysCommand,
     },
+    /// Work with the volume's ownership.
+    Volume {
+        /// What to do with it.
+        #[command(subcommand)]
+        what: VolumeCommand,
+    },
+}
+
+/// What can be asked of a volume's ownership from the command line.
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum VolumeCommand {
+    /// Record the lease generation of the volume's new owner.
+    ///
+    /// Run by the orchestrator (an init container) or the recovery operator when the volume is
+    /// handed to a new owner, before that owner starts. It takes the volume's lock, so it fails
+    /// while a server holds the volume, and refuses a generation that does not increase. Every
+    /// journal frame the next server writes carries the generation, so a frame from a writer whose
+    /// claim was superseded is recognised on recovery. The claim is a fencing token in the data,
+    /// not the fence: the previous writer must already be unable to write.
+    Claim {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The new lease generation; higher than the current one.
+        #[arg(long, value_name = "N")]
+        generation: u64,
+    },
 }
 
 /// What can be asked of a key ring from the command line.

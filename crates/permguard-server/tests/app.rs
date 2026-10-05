@@ -139,6 +139,17 @@ fn config_file(name: &str, contents: &str) -> std::path::PathBuf {
     fs::create_dir_all(&dir).expect("creating the fixture directory");
 
     let path = dir.join(format!("{name}.yml"));
+    // Its own volume too: the server holds the volume's lock while it serves, so two tests sharing
+    // the default `.volume` would be two processes on one mount.
+    let contents = if contents.contains("working_dir:") {
+        contents.to_owned()
+    } else {
+        let volume = dir.join(format!("{name}-volume"));
+        format!(
+            "working_dir: {}\n{contents}",
+            volume.to_str().expect("a UTF-8 path")
+        )
+    };
     fs::write(&path, contents).expect("writing the fixture configuration file");
 
     path
@@ -166,6 +177,45 @@ async fn output_of(app: &App, action: &Action) -> String {
         .expect("the command runs");
 
     String::from_utf8(out).expect("the output is valid UTF-8")
+}
+
+#[tokio::test]
+async fn test_volume_claim_moves_the_generation_forward_and_never_back() {
+    let volume = env::temp_dir().join(format!(
+        "permguard-app-test-claim-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = fs::remove_dir_all(&volume);
+    // A volume root exists before it is claimed, as a mount point does.
+    fs::create_dir_all(&volume).expect("a volume root");
+    let claim = |generation: &str| {
+        Cli::try_parse_from([
+            "demo-x",
+            "volume",
+            "claim",
+            "--volume",
+            volume.to_str().expect("a UTF-8 path"),
+            "--generation",
+            generation,
+        ])
+        .expect("the command parses")
+        .action()
+        .expect("the invocation resolves to an action")
+    };
+
+    let out = output_of(&app(), &claim("3")).await;
+    assert!(out.contains("claimed at generation 3 (was 0)"), "{out}");
+
+    let mut sink = Vec::new();
+    let refused = app()
+        .dispatch_to(&claim("2"), &mut sink)
+        .await
+        .expect_err("a claim never moves back");
+    assert!(format!("{refused:#}").contains("must be higher"), "{refused:#}");
+
+    let out = output_of(&app(), &claim("4")).await;
+    assert!(out.contains("claimed at generation 4 (was 3)"), "{out}");
 }
 
 #[tokio::test]

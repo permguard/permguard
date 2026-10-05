@@ -23,6 +23,6 @@ pub mod witness;
 
 pub use app::App;
 pub use banner::Banner;
-pub use command::{Action, AuditCommand, Cli, Command, KeysCommand, ServeArgs};
+pub use command::{Action, AuditCommand, Cli, Command, KeysCommand, ServeArgs, VolumeCommand};
 pub use host::{DefaultServerHost, LAST_START_KEY};
 pub use plane::{PlaneModule, PlaneServer, addresses_for_plane, build_settings};

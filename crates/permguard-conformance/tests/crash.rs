@@ -244,6 +244,7 @@ fn storage_options() -> StorageOptions {
     StorageOptions {
         max_frame: 1024,
         segment_bytes: 4096,
+        ..StorageOptions::default()
     }
 }
 

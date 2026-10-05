@@ -2500,6 +2500,7 @@ name = "permguard-host"
 version = "0.1.0"
 dependencies = [
  "permguard-core",
+ "ring",
  "rustix",
  "sha2",
 ]
@@ -2560,6 +2561,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "permguard-core",
+ "permguard-host",
  "permguard-std",
  "permguard-stream",
  "permguard-telemetry",

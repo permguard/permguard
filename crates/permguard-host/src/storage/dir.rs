@@ -549,7 +549,9 @@ mod platform {
         }
 
         /// Takes an exclusive advisory lock on this directory, without waiting: `false` when
-        /// another handle holds it. Released when this `Dir` is dropped.
+        /// another handle holds it. Released when this `Dir` is dropped. The probe's check of the
+        /// filesystem's locks; the volume's own lock is the file `host/LOCK`
+        /// ([`crate::storage::volume`]).
         pub fn try_lock(&self) -> Result<bool> {
             match rustix::fs::flock(
                 &self.fd,

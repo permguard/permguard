@@ -281,6 +281,8 @@
     "pdp_temporal.PROFILE_VANISHED": "profile_vanished",
     "pdp_temporal.RECORD_NOT_CANONICAL": "record_not_canonical",
     "pdp_temporal.STORE_REQUIRED": "store_required",
+    "storage.CLAIM_BEHIND_DATA": "storage_claim_behind_data",
+    "storage.STALE_WRITER": "storage_stale_writer",
     "stream.ACK_AHEAD": "ack_ahead",
     "stream.AGE_EXPIRY": "age_expiry",
     "stream.BATCH_REJECTED": "batch_rejected",

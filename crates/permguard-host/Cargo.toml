@@ -19,6 +19,8 @@ crash-points = []
 
 [dependencies]
 permguard-core.workspace = true
+# The OS CSPRNG, for the volume identity (`storage::volume`).
+ring.workspace = true
 sha2.workspace = true
 
 # Directory-relative, no-follow opens and directory flushes (`storage::dir`).

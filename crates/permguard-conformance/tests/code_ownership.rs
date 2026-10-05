@@ -3,8 +3,9 @@
 
 //! The stable-code ownership report, `contracts/codes.json`, against `permguard_core::codes`.
 //!
-//! Every registered code has exactly one entry, naming the one contract document that owns it, how
-//! it travels and the class it is answered with. A code registered without an owner, an owner for
+//! Every registered code has exactly one entry, naming the one document that owns it — a contract,
+//! the command line, or the storage document for the storage library's incident codes — how it
+//! travels and the class it is answered with. A code registered without an owner, an owner for
 //! a code no longer registered, or a compatibility-only code outside `legacy` fails here.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,7 +14,8 @@ use permguard_core::codes;
 use serde_json::Value;
 
 /// The documents that own codes, as paths under the architecture knowledge base.
-const CONTRACTS: [&str; 10] = [
+const CONTRACTS: [&str; 11] = [
+    "1-architecture/8-architecture-storage-operations.md",
     "6-contracts/0-interfaces-model.md",
     "6-contracts/1-contract-pdp-native-v1.md",
     "6-contracts/2-contract-pdp-temporal-v1alpha1.md",
