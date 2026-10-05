@@ -1453,7 +1453,7 @@
 @media (max-width: 800px) {
   .pg-page-concepts { --pgx-page-end-space: 60px; }
   .pgx-hero, .pgx-section { padding: 60px 0; }
-  .pgx-flow { grid-template-columns: 1fr; max-width: 420px; margin: 48px auto 0; }
+  .pgx-flow { grid-template-columns: 1fr; width: min(100%, 190px); margin: 48px auto 0; }
   .pgx-flow__track { top: 5%; bottom: 5%; left: 50%; width: 1px; height: auto; }
   .pgx-flow__track i { animation: pgx-travel-down 8s ease-in-out infinite; }
   .pgx-cards--3, .pgx-principles { grid-template-columns: 1fr; }
