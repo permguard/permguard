@@ -91,7 +91,7 @@ type AuditVerifier = Box<dyn Fn(&Path, Option<&Path>) -> Result<String> + Send +
 
 /// What a Plane declares to the Host under a configuration, when the configuration selects it.
 type PlaneDeclarationFactory = Box<
-    dyn Fn(&Config) -> Option<(&'static str, permguard_host::composition::Declaration)>
+    dyn Fn(&Config) -> Option<(&'static str, bool, permguard_host::composition::Declaration)>
         + Send
         + Sync,
 >;
@@ -368,7 +368,7 @@ impl App {
     /// handles reach it through [`ServerContext::plane_handles`] and nothing else.
     pub fn with_plane_declaration<F>(mut self, declare: F) -> Self
     where
-        F: Fn(&Config) -> Option<(&'static str, permguard_host::composition::Declaration)>
+        F: Fn(&Config) -> Option<(&'static str, bool, permguard_host::composition::Declaration)>
             + Send
             + Sync
             + 'static,
@@ -1093,6 +1093,13 @@ impl App {
             context = context.with_catalog(catalog);
         }
 
+        // Bootstrap is behind us: the volume is claimed and the configuration validated, and the
+        // Host's own state is opening. No listener is bound yet, so nothing earlier is observable.
+        context.health().lifecycle().advance(
+            permguard_core::lifecycle::HOST,
+            permguard_core::lifecycle::Phase::Load,
+        );
+
         // The Host: every generic capability once. The Planes' rings, the audit recorder and the
         // secret store reach a Plane only as the handles its declaration grants (P1); the rings are
         // also handed to the Host's own maintenance pass.
@@ -1109,9 +1116,17 @@ impl App {
         // Every selected Plane registers before any service starts, so its state opens with its
         // handles in place, and two Planes claiming one thing stop the start.
         for declare in &self.plane_declarations {
-            let Some((plane, declaration)) = declare(config) else {
+            let Some((plane, required, declaration)) = declare(config) else {
                 continue;
             };
+            // Listed from here on, in Bootstrap: a Plane is never omitted from what the Host
+            // reports, whatever it binds later.
+            context.health().lifecycle().enter(
+                plane,
+                permguard_core::lifecycle::Kind::Plane,
+                required,
+                permguard_core::lifecycle::Phase::Bootstrap,
+            );
             let registration = host
                 .register(declaration, secrets)
                 .with_context(|| format!("registering the {plane} plane with the Host"))?;

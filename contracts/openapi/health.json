@@ -50,8 +50,8 @@
     "/health": {
       "get": {
         "operationId": "getHealth",
-        "summary": "The plane's liveness and readiness",
-        "description": "Always 200; the state is in the body. The control plane adds `degraded`, the data plane never does.",
+        "summary": "The plane's liveness, readiness and lifecycle phase",
+        "description": "Always 200; the state is in the body. Both planes carry the lifecycle: the plane's `state`, what it serves without in `degraded`, and every component the process hosts in `components`, a plane not yet Ready listed with its phase rather than omitted.",
         "responses": {
           "200": {
             "description": "The health of the plane asked.",
@@ -72,7 +72,7 @@
           }
         },
         "x-grpc-rpc": "permguard.control.v1.ControlPlane/GetHealth",
-        "x-grpc-note": "The data plane answers over permguard.data.v1.DataPlane/GetHealth. gRPC carries `live` and `ready` only: `degraded` is REST-only."
+        "x-grpc-note": "The data plane answers over permguard.data.v1.DataPlane/GetHealth with the same members."
       }
     },
     "/healthz": {
@@ -348,11 +348,13 @@
         "properties": {
           "capability": {
             "type": "string",
-            "description": "The capability's name, as the configuration calls it."
+            "description": "The capability's name, as the configuration calls it.",
+            "x-grpc-field": "capability"
           },
           "reason": {
             "type": "string",
-            "description": "Why, in the terms an operator would fix it in."
+            "description": "Why, in the terms an operator would fix it in.",
+            "x-grpc-field": "reason"
           }
         },
         "required": [
@@ -361,8 +363,83 @@
         ],
         "additionalProperties": false,
         "description": "One capability that is served and cannot currently do its work.",
-        "x-grpc-message": null,
-        "x-grpc-note": "REST-only: GetHealthResponse has no degraded list."
+        "x-grpc-message": "permguard.control.v1.Degraded",
+        "x-grpc-note": "The data plane's permguard.data.v1.Degraded has the same two fields."
+      },
+      "Component": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "The component's name: `host`, a plane's id, or a service's name.",
+            "x-grpc-field": "component"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "host",
+              "plane",
+              "service"
+            ],
+            "x-grpc-field": "kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed",
+              "disabled",
+              "running",
+              "backoff"
+            ],
+            "description": "A lifecycle phase for the Host and a plane; `disabled`, `running`, `backoff`, `draining` or `failed` for a service.",
+            "x-grpc-field": "state"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the component gates readiness: the Host always, a plane unless `runtime.optional_planes` names it, a service never.",
+            "x-grpc-field": "required"
+          },
+          "stalled_since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Since when it cannot progress for a remote reason. Absent when it can.",
+            "x-grpc-field": "stalled_since"
+          },
+          "last_success": {
+            "type": "string",
+            "format": "date-time",
+            "description": "A service's last successful run. Absent when it had none, or for the Host and a plane.",
+            "x-grpc-field": "last_success"
+          },
+          "next_attempt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a service in backoff tries again. Absent otherwise.",
+            "x-grpc-field": "next_attempt"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it is where it is: the failure, the backoff, what it waits for. Absent when nothing is wrong.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "component",
+          "kind",
+          "state",
+          "required"
+        ],
+        "additionalProperties": false,
+        "description": "One component of the process, as `components[]` lists it.",
+        "x-grpc-message": "permguard.control.v1.Component",
+        "x-grpc-note": "The data plane's permguard.data.v1.Component has the same fields."
       },
       "ControlHealthBody": {
         "type": "object",
@@ -375,24 +452,47 @@
             "type": "boolean",
             "x-grpc-field": "ready"
           },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "This plane's lifecycle phase.",
+            "x-grpc-field": "state"
+          },
           "degraded": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Degraded"
             },
-            "description": "Absent when empty.",
-            "x-grpc-field": null,
-            "x-grpc-note": "REST-only: permguard.control.v1.GetHealthResponse has no degraded list; a gRPC client cannot learn which capability is degraded."
+            "description": "Capabilities this plane serves without. Absent when empty.",
+            "x-grpc-field": "degraded"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "description": "Every component the process hosts: the Host first, then every configured plane, then the services. A plane not yet Ready is listed with its phase, never omitted.",
+            "x-grpc-field": "components"
           }
         },
         "required": [
           "live",
-          "ready"
+          "ready",
+          "state",
+          "components"
         ],
         "additionalProperties": false,
         "description": "The control plane's `/health`.",
-        "x-grpc-message": "permguard.control.v1.GetHealthResponse",
-        "x-grpc-note": "`degraded` is REST-only: the gRPC response carries live and ready only."
+        "x-grpc-message": "permguard.control.v1.GetHealthResponse"
       },
       "DataHealthBody": {
         "type": "object",
@@ -404,11 +504,44 @@
           "ready": {
             "type": "boolean",
             "x-grpc-field": "ready"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "This plane's lifecycle phase.",
+            "x-grpc-field": "state"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Degraded"
+            },
+            "description": "Capabilities this plane serves without. Absent when empty.",
+            "x-grpc-field": "degraded"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "description": "Every component the process hosts: the Host first, then every configured plane, then the services. A plane not yet Ready is listed with its phase, never omitted.",
+            "x-grpc-field": "components"
           }
         },
         "required": [
           "live",
-          "ready"
+          "ready",
+          "state",
+          "components"
         ],
         "additionalProperties": false,
         "description": "The data plane's `/health`.",
@@ -446,6 +579,28 @@
       "message": "permguard.data.v1.GetHealthRequest",
       "note": "an empty request",
       "fields": []
+    },
+    {
+      "message": "permguard.data.v1.Degraded",
+      "note": "`capability` and `reason`: the members of `Degraded`, which maps the control plane's message",
+      "fields": [
+        "capability",
+        "reason"
+      ]
+    },
+    {
+      "message": "permguard.data.v1.Component",
+      "note": "the members of `Component`, which maps the control plane's message",
+      "fields": [
+        "component",
+        "kind",
+        "state",
+        "required",
+        "stalled_since",
+        "last_success",
+        "next_attempt",
+        "reason"
+      ]
     }
   ]
 }

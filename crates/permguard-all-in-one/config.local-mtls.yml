@@ -46,6 +46,10 @@ runtime:
   planes:
     - control
     - data
+  # Every selected plane gates readiness unless it is listed here: an optional plane that
+  # fails or waits for a remote is listed as such by `GET /health`, and the rest serves.
+  # optional_planes:
+  #   - control
 
 controlPlane:
   public:

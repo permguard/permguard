@@ -120,7 +120,7 @@ impl std::fmt::Debug for AuditRecorder {
 #[derive(Debug, Clone)]
 pub struct Health {
     live: Arc<AtomicBool>,
-    ready: Arc<AtomicBool>,
+    lifecycle: crate::lifecycle::Lifecycle,
 }
 
 impl Default for Health {
@@ -130,13 +130,13 @@ impl Default for Health {
 }
 
 impl Health {
-    /// Builds a health state that is live but not yet ready.
+    /// Builds a health state that is live but not yet ready: the Host is in Bootstrap.
     ///
     /// Not-ready is the honest starting point: the process exists, and nothing it serves is up.
     pub fn new() -> Self {
         Self {
             live: Arc::new(AtomicBool::new(true)),
-            ready: Arc::new(AtomicBool::new(false)),
+            lifecycle: crate::lifecycle::Lifecycle::new(),
         }
     }
 
@@ -145,19 +145,32 @@ impl Health {
         self.live.load(Ordering::SeqCst)
     }
 
-    /// Reports whether the process is willing to be sent work.
+    /// Reports whether the process is willing to be sent work: the Host and every required Plane
+    /// are Ready or Serving. Derived from the lifecycle, never set on its own.
     pub fn is_ready(&self) -> bool {
-        self.ready.load(Ordering::SeqCst)
+        self.lifecycle.ready()
     }
 
-    /// Records that the process is or is no longer willing to be sent work.
+    /// Records that the Host is or is no longer willing to be sent work: Serving, or Draining from
+    /// a phase that accepted work.
     pub fn set_ready(&self, ready: bool) {
-        self.ready.store(ready, Ordering::SeqCst);
+        use crate::lifecycle::{HOST, Phase};
+
+        if ready {
+            self.lifecycle.serve();
+        } else if self.lifecycle.phase(HOST).is_some_and(Phase::accepts_work) {
+            self.lifecycle.advance(HOST, Phase::Draining);
+        }
     }
 
     /// Records that the process is or is no longer alive.
     pub fn set_live(&self, live: bool) {
         self.live.store(live, Ordering::SeqCst);
+    }
+
+    /// The lifecycle of the Host, every Plane and every service, which readiness is derived from.
+    pub fn lifecycle(&self) -> &crate::lifecycle::Lifecycle {
+        &self.lifecycle
     }
 }
 
@@ -447,6 +460,12 @@ pub trait Service: Send + Sync {
         let _ = context;
 
         ready(Ok(()))
+    }
+
+    /// The Plane this service belongs to, or `None` for the Host's own: the Host's services start
+    /// first and the Host reaches Ready before any Plane leaves Bootstrap (P2).
+    fn plane(&self) -> Option<&'static str> {
+        None
     }
 }
 

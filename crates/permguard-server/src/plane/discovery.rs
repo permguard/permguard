@@ -10,7 +10,9 @@
 
 use permguard_core::Config;
 
-use super::settings::{SETTING_RUNTIME_PLANES, addresses_for_plane};
+use super::settings::{
+    SETTING_RUNTIME_OPTIONAL_PLANES, SETTING_RUNTIME_PLANES, addresses_for_plane,
+};
 
 /// One plane's entry in the server-configuration document.
 ///
@@ -413,6 +415,13 @@ pub struct ServerConfiguration {
     pub jwks_uri: Option<String>,
 }
 
+/// Whether a selected plane gates readiness: every one does unless `runtime.optional_planes` names it.
+pub(crate) fn plane_required(config: &Config, id: &str) -> bool {
+    !config
+        .setting(SETTING_RUNTIME_OPTIONAL_PLANES)
+        .is_some_and(|value| value.split(',').map(str::trim).any(|plane| plane == id))
+}
+
 pub(crate) fn plane_enabled(config: &Config, id: &str) -> bool {
     config
         .setting(SETTING_RUNTIME_PLANES)
@@ -437,7 +446,7 @@ mod document_tests {
     /// A configuration shaped like a real deployment: both planes on their
     /// conventional ports, everything else defaulted.
     pub(super) fn config_with(pairs: &[(&str, &str)]) -> Config {
-        let mut declared = vec![SETTING_RUNTIME_PLANES];
+        let mut declared = vec![SETTING_RUNTIME_PLANES, SETTING_RUNTIME_OPTIONAL_PLANES];
         declared.extend(PlaneSettingKeys::CONTROL.settings());
         declared.extend(PlaneSettingKeys::DATA.settings());
         Config::from_layers(
@@ -479,6 +488,23 @@ mod document_tests {
         assert_eq!(planes.len(), 1);
         assert_eq!(planes[0].id, "control-plane");
         assert!(plane_http_base(&config, PlaneId::Data).is_none());
+    }
+
+    #[test]
+    fn a_plane_is_required_unless_the_runtime_lists_it_optional() {
+        let config = config_with(&[(SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443")]);
+        assert!(plane_required(&config, "control"), "required by default");
+        assert!(plane_required(&config, "data"));
+
+        let config = config_with(&[
+            (SETTING_RUNTIME_OPTIONAL_PLANES, " control , other"),
+            (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+        ]);
+        assert!(!plane_required(&config, "control"));
+        assert!(
+            plane_required(&config, "data"),
+            "listing one leaves the other required"
+        );
     }
 
     #[test]

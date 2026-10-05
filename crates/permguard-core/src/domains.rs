@@ -28,6 +28,8 @@
 //! * [`annotation`] — tree-entry annotations of the object model.
 //! * [`format`] — format labels of files the Host writes.
 //! * [`kdf`] — labels inside HKDF `info` tuples.
+//! * [`grpc`] — the gRPC services the lifecycle gate names: the planes' own, open in every phase,
+//!   and those with a discovery or key method open before Ready.
 
 /// Prefixes of digests and MACs. Every value ends with `\n`.
 pub mod digest {
@@ -206,6 +208,21 @@ pub mod magic {
     pub const TOMBSTONE: &str = "PGSTOMB\0";
 }
 
+/// The gRPC services a plane answers in every lifecycle phase (P2): info, health and discovery,
+/// which are how a client finds out when to come back. Every other service is a domain route,
+/// refused with `plane_not_ready` until the plane is Ready.
+pub mod grpc {
+    pub const CONTROL_PLANE: &str = "permguard.control.v1.ControlPlane";
+    pub const DATA_PLANE: &str = "permguard.data.v1.DataPlane";
+    /// The other services with a discovery or key method open before Ready, named with it.
+    pub const GIT_LIKE_STORE: &str = "permguard.control.v1.GitLikeStore";
+    pub const EVENT_LOG: &str = "permguard.control.v1.EventLog";
+    pub const DECISION_LOG: &str = "permguard.control.v1.DecisionLog";
+    pub const POLICY_DECISION_POINT: &str = "permguard.data.v1.PolicyDecisionPoint";
+    pub const TEMPORAL_POLICY_DECISION_POINT: &str =
+        "permguard.data.v1.TemporalPolicyDecisionPoint";
+}
+
 /// Labels inside HKDF `info` tuples.
 pub mod kdf {
     /// The first element of every info tuple.
@@ -374,6 +391,16 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("kdf.HOST_LOCAL", kdf::HOST_LOCAL),
         ("kdf.ZONE_ROOT", kdf::ZONE_ROOT),
         ("kdf.ZONE_USE", kdf::ZONE_USE),
+        ("grpc.CONTROL_PLANE", grpc::CONTROL_PLANE),
+        ("grpc.DATA_PLANE", grpc::DATA_PLANE),
+        ("grpc.GIT_LIKE_STORE", grpc::GIT_LIKE_STORE),
+        ("grpc.EVENT_LOG", grpc::EVENT_LOG),
+        ("grpc.DECISION_LOG", grpc::DECISION_LOG),
+        ("grpc.POLICY_DECISION_POINT", grpc::POLICY_DECISION_POINT),
+        (
+            "grpc.TEMPORAL_POLICY_DECISION_POINT",
+            grpc::TEMPORAL_POLICY_DECISION_POINT,
+        ),
     ]
 }
 

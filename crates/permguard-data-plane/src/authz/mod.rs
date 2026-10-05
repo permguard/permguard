@@ -54,7 +54,7 @@ pub mod wire;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use permguard_core::ServerContext;
+use permguard_core::PlaneContext;
 
 use cache::Cache;
 use decide::Decider;
@@ -81,7 +81,7 @@ fn decision_budget(config: &permguard_core::Config) -> std::time::Duration {
     (timeout * 9 / 10).max(std::time::Duration::from_millis(100))
 }
 
-pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
+pub fn decider(context: &PlaneContext<'_>) -> Arc<Decider> {
     Arc::clone(DECIDER.get_or_init(|| {
         let config = context.config();
         let root: PathBuf = config.mirrors_directory();
@@ -131,7 +131,7 @@ pub fn decider(context: &ServerContext<'_>) -> Arc<Decider> {
 /// so a plane serving HTTPS could publish `http://` endpoints — and it read the bind address
 /// directly, so behind a Service it published `0.0.0.0`. Both are documents a client cannot
 /// follow, and neither failure shows up anywhere except in a caller that cannot connect.
-pub fn base_url(context: &ServerContext<'_>) -> String {
+pub fn base_url(context: &PlaneContext<'_>) -> String {
     permguard_server::plane::plane_http_base(
         context.config(),
         permguard_server::plane::PlaneId::Data,

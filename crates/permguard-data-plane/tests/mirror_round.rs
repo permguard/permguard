@@ -33,7 +33,7 @@ mod plane {
     use std::time::Duration;
 
     use permguard_core::keys::KeyManager as _;
-    use permguard_core::{Config, ProductIdentity, ServerContext};
+    use permguard_core::{Config, PlaneContext, ProductIdentity, ServerContext};
     use permguard_std::audit::RecordingAuditSink;
     use permguard_std::catalog::FileCatalog;
     use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
@@ -95,12 +95,12 @@ mod plane {
             .build()
             .register(module.declaration(config), None)
             .expect("the control plane registers");
-        let context: &'static ServerContext<'static> = Box::leak(Box::new(
+        let server: &'static ServerContext<'static> = Box::leak(Box::new(
             ServerContext::new(identity(), config, storage, audit)
                 .with_catalog(catalog)
                 .with_plane_handles("control", Arc::new(registration)),
         ));
-        let router = module.http_routes(context);
+        let router = module.http_routes(&PlaneContext::new(server, "control"));
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -145,6 +145,7 @@ fn declared(url: &str, zones: &[&str], ledgers: &[&str]) -> MirrorSource {
         tls: permguard_core::mirrors::MirrorTls::default(),
         zones: zones.iter().map(|p| (*p).to_owned()).collect(),
         ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
+        required: true,
     }
 }
 
@@ -159,6 +160,7 @@ fn context(
         tls: permguard_core::mirrors::MirrorTls::default(),
         zones: zones.iter().map(|p| (*p).to_owned()).collect(),
         ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
+        required: true,
     };
     Arc::new(round::Context {
         // This suite is about mirroring; the decision path has its own.

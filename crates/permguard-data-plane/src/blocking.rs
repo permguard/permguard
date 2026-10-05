@@ -119,7 +119,7 @@ pub struct Blocking {
 static SHARED: OnceLock<Blocking> = OnceLock::new();
 
 /// The process-wide pool, composed from the deployment's configured bound.
-pub fn shared(context: &permguard_core::ServerContext<'_>) -> Blocking {
+pub fn shared(context: &permguard_core::PlaneContext<'_>) -> Blocking {
     SHARED
         .get_or_init(|| Blocking::new(context.config().max_blocking(), context.metrics().clone()))
         .clone()

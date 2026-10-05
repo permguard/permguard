@@ -2664,6 +2664,7 @@ produce: use `EdDSA` or `ES256`"
                 tls: destination.tls.clone(),
                 zones: Vec::new(),
                 ledgers: Vec::new(),
+                required: true,
             })
             .context("reading the decision log's server")?;
         }
@@ -2684,6 +2685,7 @@ produce: use `EdDSA` or `ES256`"
                 tls: destination.tls.clone(),
                 zones: Vec::new(),
                 ledgers: Vec::new(),
+                required: true,
             })
             .context("reading the event store's server")?;
 

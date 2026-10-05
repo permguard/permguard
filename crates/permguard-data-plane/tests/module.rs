@@ -8,7 +8,7 @@
 
 use http::Request;
 use http_body_util::BodyExt as _;
-use permguard_core::{Config, ProductIdentity, ServerContext};
+use permguard_core::{Config, PlaneContext, ProductIdentity, ServerContext};
 use permguard_std::audit::RecordingAuditSink;
 use permguard_std::storage::MemoryStorage;
 use tower::ServiceExt as _;
@@ -83,7 +83,8 @@ async fn the_http_surface_answers_info_health_and_discovery() {
     let config = deployed();
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let context = ServerContext::new(identity(), &config, &storage, &audit);
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
     let module = permguard_data_plane::module();
 
     let (status, info) = get(module.http_routes(&context), "/").await;
@@ -177,7 +178,8 @@ async fn the_grpc_surface_mounts() {
     let config = Config::default();
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let context = ServerContext::new(identity(), &config, &storage, &audit);
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
 
     // Mounting is the assertion: a service that cannot compose panics here.
     let _routes = permguard_data_plane::module().grpc_routes(&context);
@@ -264,7 +266,8 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     let audit = RecordingAuditSink::new();
 
     let off = deployed();
-    let context = ServerContext::new(identity(), &off, &storage, &audit);
+    let server = ServerContext::new(identity(), &off, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
     let (status, document) = get(
         permguard_data_plane::module().http_routes(&context),
         "/.well-known/server-configuration",
@@ -280,7 +283,8 @@ async fn discovery_lists_the_temporal_interface_only_where_it_is_served() {
     // Half-said is refused at startup; a document is not even reached. Asserted here too, because
     // the two checks are what keep "advertised" and "served" the same set.
     let half = deployed_with(&[(SETTING_EVENTS_ENABLED, "true")]);
-    let context = ServerContext::new(identity(), &half, &storage, &audit);
+    let server = ServerContext::new(identity(), &half, &storage, &audit);
+    let context = PlaneContext::new(&server, "data");
     let (status, document) = get(
         permguard_data_plane::module().http_routes(&context),
         "/.well-known/server-configuration",

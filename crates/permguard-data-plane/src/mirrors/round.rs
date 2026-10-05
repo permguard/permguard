@@ -58,16 +58,47 @@ pub struct Outcome {
     /// therefore left untouched rather than taken from whichever was
     /// configured first.
     pub contested: usize,
+    /// How each configured server fared, in configuration order: what the
+    /// plane's readiness is decided from (P2, F-13).
+    pub sources: Vec<SourceOutcome>,
+    /// Failures by the server that offered the mirror, folded into `sources`
+    /// once the round is over; of no interest after that.
+    pub(super) failed_by_server: std::collections::BTreeMap<String, usize>,
+}
+
+/// One server's part in a round.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SourceOutcome {
+    /// The server, exactly as configured.
+    pub url: String,
+    /// Whether it answered discovery at all.
+    pub answered: bool,
+    /// Mirrors it offered that were not mirrored this round.
+    pub failed: usize,
+}
+
+impl SourceOutcome {
+    /// Whether a round from this server succeeded: it answered, and every
+    /// ledger it offered is mirrored.
+    pub fn succeeded(&self) -> bool {
+        self.answered && self.failed == 0
+    }
 }
 
 impl Outcome {
     /// How the round ended, in one word, for the counter and the record.
     pub fn label(&self) -> &'static str {
-        if self.failed == 0 && self.unreachable == 0 && self.contested == 0 {
+        if self.label_success() {
             "ok"
         } else {
             "partial"
         }
+    }
+
+    /// Whether the round was a success for the loop's own record: nothing
+    /// failed, every server answered, nothing was contested.
+    pub fn label_success(&self) -> bool {
+        self.failed == 0 && self.unreachable == 0 && self.contested == 0
     }
 }
 
@@ -151,11 +182,17 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     let parallelism = context.parallelism.max(1);
     for held in served.clone() {
         let carried = Arc::clone(&context);
-        running.push(tokio::spawn(async move {
-            let mirror = held.mirror.clone();
-            let outcome = mirror_one(&carried, &held).await;
-            (mirror, outcome)
-        }));
+        // The server is kept beside the task, not inside it: a mirror that panics is still
+        // charged to the server that offered it, so its source cannot count as succeeded.
+        let server = held.server.clone();
+        running.push((
+            server,
+            tokio::spawn(async move {
+                let mirror = held.mirror.clone();
+                let outcome = mirror_one(&carried, &held).await;
+                (mirror, outcome)
+            }),
+        ));
         if running.len() >= parallelism {
             outcome.absorb(join(&mut running).await);
         }
@@ -166,6 +203,19 @@ pub async fn run(context: Arc<Context>) -> Outcome {
     if !answered.is_empty() {
         outcome.reaped = reap(&context, &wanted, &answered);
     }
+    outcome.sources = context
+        .sources
+        .iter()
+        .map(|source| SourceOutcome {
+            url: source.url().to_owned(),
+            answered: answered.iter().any(|url| url == source.url()),
+            failed: outcome
+                .failed_by_server
+                .get(source.url())
+                .copied()
+                .unwrap_or(0),
+        })
+        .collect();
 
     context.metrics.count(
         &measure::ROUNDS,
@@ -201,23 +251,31 @@ impl Outcome {
         self.synchronized += tally.synchronized;
         self.blocked += tally.blocked;
         self.failed += tally.failed;
+        for (server, failed) in tally.failed_by_server {
+            *self.failed_by_server.entry(server).or_default() += failed;
+        }
     }
 }
 
-/// Waits for the running mirrors and counts how they ended.
-async fn join(running: &mut Vec<tokio::task::JoinHandle<(Mirror, Attempt)>>) -> Tally {
+/// Waits for the running mirrors and counts how they ended, by the server that offered each.
+async fn join(running: &mut Vec<(String, tokio::task::JoinHandle<(Mirror, Attempt)>)>) -> Tally {
     let mut tally = Tally::default();
-    for handle in running.drain(..) {
+    for (server, handle) in running.drain(..) {
         match handle.await {
             Ok((_, Attempt::Current)) => tally.synchronized += 1,
             Ok((_, Attempt::Blocked)) => {
                 tally.synchronized += 1;
                 tally.blocked += 1;
             }
-            Ok((_, Attempt::Failed)) => tally.failed += 1,
-            // A panicking mirror is a bug, and it must not take the loop with it.
+            Ok((_, Attempt::Failed)) => {
+                tally.failed += 1;
+                *tally.failed_by_server.entry(server).or_default() += 1;
+            }
+            // A panicking mirror is a bug, and it must not take the loop with it; it is a
+            // failure of the server's round like any other.
             Err(error) => {
                 tally.failed += 1;
+                *tally.failed_by_server.entry(server).or_default() += 1;
                 warn!(
                     event.name = "sync.mirror_panicked",
                     component = COMPONENT,
@@ -237,6 +295,7 @@ struct Tally {
     synchronized: usize,
     blocked: usize,
     failed: usize,
+    failed_by_server: std::collections::BTreeMap<String, usize>,
 }
 
 /// How one mirror's round ended.

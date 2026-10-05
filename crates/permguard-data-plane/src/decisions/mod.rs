@@ -38,7 +38,7 @@ pub use service::DecisionService;
 
 use std::sync::{Arc, OnceLock};
 
-use permguard_core::ServerContext;
+use permguard_core::PlaneContext;
 
 /// The journal this plane writes to, when it keeps a decision log.
 ///
@@ -54,7 +54,7 @@ static JOURNAL: OnceLock<Option<Arc<Journal>>> = OnceLock::new();
 /// not do I/O, and a commitment scheme that reached for a secret store per
 /// decision would be one that fails under exactly the load it is meant to
 /// record. This plane holds the handle and never the key's bytes.
-fn commitment_key(context: &ServerContext<'_>) -> anyhow::Result<permguard_decisions::Commitment> {
+fn commitment_key(context: &PlaneContext<'_>) -> anyhow::Result<permguard_decisions::Commitment> {
     use anyhow::Context as _;
 
     context
@@ -92,7 +92,7 @@ fn rate(value: f64) -> String {
 /// `None` when the log is off, or when the spool could not be opened — and the
 /// second is not silent: a plane configured to record and unable to is a plane
 /// whose operator must hear about it.
-pub fn journal(context: &ServerContext<'_>) -> Option<Arc<Journal>> {
+pub fn journal(context: &PlaneContext<'_>) -> Option<Arc<Journal>> {
     JOURNAL
         .get_or_init(|| {
             let config = context.config();

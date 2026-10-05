@@ -25,7 +25,7 @@ COMPOSITION_ROOTS=(
     "crates/permguard-control-plane/src/main.rs"
     "crates/permguard-data-plane/src/main.rs"
 )
-CONSTRUCTORS='Host::builder|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|FileAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|FileAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a
@@ -70,17 +70,17 @@ if [ -n "${violations}" ]; then
 fi
 
 # A Plane reaches the Host's capabilities only through the handles its declaration was granted
-# (P1). Its services still receive the context the Host's own services do, until the lifecycle
-# engine (WP-2.6) gives the Planes one of their own; until then, the accessors that hand out a
-# general key manager are refused in the Plane crates' code here.
+# (P1), and sees the Host only through its own `PlaneContext` (P2): the split is by type, since
+# `PlaneContext` has none of the Host's accessors. What the type system cannot say is that a Plane
+# crate never names the Host's types at all — `ServerContext`, with the operations ring, the realms,
+# the raw audit sink and the maintenance list, and `Health`, which sets the Host's own phase — so
+# that is checked here, in the Plane crates' non-test code. `handles.rs` reads the Plane's own
+# handles through its context; `plane_handles`, keyed by plane id, is the Host's.
 PLANE_CRATES=(
     "crates/permguard-control-plane/src"
     "crates/permguard-data-plane/src"
 )
-# The context's general key managers and raw sinks: the operations ring (`keys()`), a realm's rings
-# and trail (`realms()`), the raw audit sink (`audit()`), the Host's maintenance list, and the
-# composition-only setters. The Planes name their context `context`.
-HOST_ONLY='(context|ctx|cx)\.keys\(\)|ServerContext::keys|\.realms\(\)|(context|ctx|cx)\.audit\(\)|\.maintained_rings\(\)|\.with_plane_handles\(|\.with_maintained_ring\('
+HOST_ONLY='ServerContext|(^|[^A-Za-z_])Health([^A-Za-z_]|$)|(context|ctx|cx|server)\.keys\(\)|\.realms\(\)|(context|ctx|cx|server)\.audit\(\)|\.maintained_rings\(\)|\.with_plane_handles\(|\.with_maintained_ring\(|\.lifecycle\(\)|\.set_ready\(|\.set_live\('
 
 plane_violations=""
 for crate in "${PLANE_CRATES[@]}"; do
@@ -88,10 +88,11 @@ for crate in "${PLANE_CRATES[@]}"; do
         found="$(
             {
                 awk "${NON_TEST_CODE}" "${file}" | grep -E "${HOST_ONLY}"
-                # A Plane reads its own handles in its `handles` module, and nowhere else: the
-                # registry is keyed by plane id, so code elsewhere could name another plane's.
+                awk "${NON_TEST_CODE}" "${file}" | grep -E 'plane_handles'
+                # A Plane reads its own handles in its `handles` module, and nowhere else: one
+                # place to see what the Plane was granted.
                 if [ "$(basename "${file}")" != "handles.rs" ]; then
-                    awk "${NON_TEST_CODE}" "${file}" | grep -E 'plane_handles'
+                    awk "${NON_TEST_CODE}" "${file}" | grep -E '\.handles::<'
                 fi
             } || true
         )"
@@ -103,7 +104,7 @@ done
 
 if [ -n "${plane_violations}" ]; then
     printf '%s' "${plane_violations}" >&2
-    printf 'error: a Plane reaches Host capabilities only through its handles\n' >&2
+    printf 'error: a Plane sees the Host only through its PlaneContext and its handles\n' >&2
     exit 1
 fi
 

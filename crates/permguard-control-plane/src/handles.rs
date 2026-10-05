@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use permguard_core::ServerContext;
+use permguard_core::PlaneContext;
 use permguard_core::keys::{PublicSet, SigningRing};
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, Registration,
@@ -58,12 +58,12 @@ pub(crate) fn declaration() -> Declaration {
         .audits::<ControlPlaneAudit>()
 }
 
-fn registration(context: &ServerContext<'_>) -> Option<Arc<Registration>> {
-    context.plane_handles::<Registration>(PLANE)
+fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
+    context.handles::<Registration>()
 }
 
 /// The audit handle, when an audit recorder is composed.
-pub(crate) fn audit(context: &ServerContext<'_>) -> Option<Audit> {
+pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
     registration(context)?
         .audit::<ControlPlaneAudit>()
         .ok()
@@ -71,7 +71,7 @@ pub(crate) fn audit(context: &ServerContext<'_>) -> Option<Audit> {
 }
 
 /// The head statement signer, when the plane's signing ring is composed.
-pub(crate) fn head_signer(context: &ServerContext<'_>) -> Option<Arc<dyn SigningRing>> {
+pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
     let signer = registration(context)?
         .signer::<HeadStatementV1>()
         .ok()
@@ -80,7 +80,7 @@ pub(crate) fn head_signer(context: &ServerContext<'_>) -> Option<Arc<dyn Signing
 }
 
 /// This plane's own public set, to publish, when its signing ring is composed.
-pub(crate) fn own_public_keys(context: &ServerContext<'_>) -> Option<Arc<dyn PublicSet>> {
+pub(crate) fn own_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
     let signer = registration(context)?
         .signer::<HeadStatementV1>()
         .ok()
@@ -89,7 +89,7 @@ pub(crate) fn own_public_keys(context: &ServerContext<'_>) -> Option<Arc<dyn Pub
 }
 
 /// The data plane's public set, to verify a local producer with, when that ring is composed.
-pub(crate) fn data_public_keys(context: &ServerContext<'_>) -> Option<Arc<dyn PublicSet>> {
+pub(crate) fn data_public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
     let keys = registration(context)?
         .public_keys(DATA_ATTEST)
         .ok()

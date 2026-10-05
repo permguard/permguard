@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
-use permguard_core::{BoxFuture, ServerContext, Service, future::ready};
+use permguard_core::{BoxFuture, PlaneContext, PlaneTask, future::ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
@@ -88,12 +88,12 @@ impl EventService {
     }
 }
 
-impl Service for EventService {
+impl PlaneTask for EventService {
     fn name(&self) -> &'static str {
         "events"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
             if !super::served(config) {
@@ -294,7 +294,7 @@ impl Service for EventService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let running = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the event service lock is poisoned"))),
@@ -318,7 +318,7 @@ impl Service for EventService {
 /// events has nothing to import and nothing to verify, and building a worker for it would be
 /// building something that runs and finds nothing for ever.
 fn puller(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
     url: &str,
     tls: &permguard_control_client::TlsOptions,
 ) -> Result<Option<Arc<Puller>>> {
@@ -440,7 +440,7 @@ fn puller(
 /// the decision-log endpoint otherwise for deployments that send both streams to one control
 /// plane.
 fn destination(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
 ) -> Result<(String, permguard_control_client::TlsOptions)> {
     let config = context.config();
     if let Some(destination) = config.events_destination() {

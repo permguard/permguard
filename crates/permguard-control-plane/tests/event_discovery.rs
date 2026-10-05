@@ -20,7 +20,7 @@ use permguard_core::config::{
     SETTING_EVENT_STORE_DIRECTORY, SETTING_EVENT_STORE_ENABLED, SETTING_EXPERIMENTAL_DOGWOOD,
     SETTING_WORKING_DIR,
 };
-use permguard_core::{Config, ProductIdentity, ServerContext};
+use permguard_core::{Config, PlaneContext, ProductIdentity, ServerContext};
 use permguard_std::audit::RecordingAuditSink;
 use permguard_std::storage::MemoryStorage;
 use tower::ServiceExt as _;
@@ -121,7 +121,8 @@ async fn the_chain_leads_from_the_plane_to_the_endpoints_a_producer_ships_to() {
     let config = receiving("chain");
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let context = ServerContext::new(identity(), &config, &storage, &audit);
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "control");
     let module = permguard_control_plane::module();
 
     // Layer two: the plane says which interfaces it serves.
@@ -198,7 +199,8 @@ async fn an_unserved_interface_is_neither_advertised_nor_answered() {
     let config = deployed(&[]);
     let storage = MemoryStorage::new();
     let audit = RecordingAuditSink::new();
-    let context = ServerContext::new(identity(), &config, &storage, &audit);
+    let server = ServerContext::new(identity(), &config, &storage, &audit);
+    let context = PlaneContext::new(&server, "control");
     let module = permguard_control_plane::module();
 
     let (status, plane) = get(

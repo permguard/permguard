@@ -423,6 +423,7 @@ async fn test_a_plane_whose_declared_secret_is_too_short_does_not_start() {
         .with_plane_declaration(|_| {
             Some((
                 "data",
+                true,
                 Declaration::new("data").uses_secret::<WideSecret>(SecretRef::new("k"), "v1"),
             ))
         });
@@ -443,11 +444,16 @@ async fn test_two_planes_declaring_one_artifact_do_not_start() {
     let path = config_file("collision", SERVABLE);
     let app = app()
         .with_plane_declaration(|_| {
-            Some(("data", Declaration::new("data").signs::<DecisionBatchV1>()))
+            Some((
+                "data",
+                true,
+                Declaration::new("data").signs::<DecisionBatchV1>(),
+            ))
         })
         .with_plane_declaration(|_| {
             Some((
                 "other",
+                true,
                 Declaration::new("other").signs::<DecisionBatchV1>(),
             ))
         });

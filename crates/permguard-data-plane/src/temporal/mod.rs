@@ -69,7 +69,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
-use permguard_core::ServerContext;
+use permguard_core::PlaneContext;
 use permguard_events::journal::Bounds;
 
 use streams::Streams;
@@ -95,7 +95,7 @@ static IMPORTS: OnceLock<Mutex<BTreeMap<PathBuf, Weak<imports::Imports>>>> = Onc
 ///
 /// `None` when the deployment did not turn the interface on, which is the ordinary case: a plane
 /// that keeps a durable history should be a plane somebody chose to run.
-pub fn submitter(context: &ServerContext<'_>) -> Option<Arc<Submitter>> {
+pub fn submitter(context: &PlaneContext<'_>) -> Option<Arc<Submitter>> {
     SUBMITTER
         .get_or_init(|| {
             let config = context.config();

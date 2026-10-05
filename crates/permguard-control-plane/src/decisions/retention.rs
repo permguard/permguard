@@ -113,14 +113,14 @@ impl RetentionService {
     }
 }
 
-impl permguard_core::Service for RetentionService {
+impl permguard_core::PlaneTask for RetentionService {
     fn name(&self) -> &'static str {
         "decision-retention"
     }
 
     fn start<'a>(
         &'a self,
-        context: &'a permguard_core::ServerContext<'a>,
+        context: &'a permguard_core::PlaneContext<'a>,
     ) -> permguard_core::BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
@@ -185,7 +185,7 @@ impl permguard_core::Service for RetentionService {
 
     fn stop<'a>(
         &'a self,
-        _context: &'a permguard_core::ServerContext<'a>,
+        _context: &'a permguard_core::PlaneContext<'a>,
     ) -> permguard_core::BoxFuture<'a, Result<()>> {
         let running = self.running.lock().ok().and_then(|mut held| held.take());
 

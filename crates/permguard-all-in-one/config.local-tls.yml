@@ -45,6 +45,10 @@ runtime:
   planes:
     - control
     - data
+  # Every selected plane gates readiness unless it is listed here: an optional plane that
+  # fails or waits for a remote is listed as such by `GET /health`, and the rest serves.
+  # optional_planes:
+  #   - control
 
 controlPlane:
   public:
@@ -125,6 +129,9 @@ dataPlane:
     timeout: "1m"
     parallelism: "4"
     servers:
+      # The data plane waits for this server before it accepts work: with the server down, a
+      # mirror verified within `expire_after` still counts. `required: false` makes a server
+      # followed but never waited for.
       - url: "https://127.0.0.1:6443"
         tls:
           # The authority this runtime generated beside the certificate it serves.

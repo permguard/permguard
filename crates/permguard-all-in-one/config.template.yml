@@ -74,6 +74,10 @@ runtime:
   planes:
     - control
     - data
+  # Every selected plane gates readiness unless it is listed here: an optional plane that
+  # fails or waits for a remote is listed as such by `GET /health`, and the rest serves.
+  # optional_planes:
+  #   - control
 
 controlPlane:
   # The plane's signing ring: what the control plane serves is attested with these keys —
@@ -213,6 +217,7 @@ dataPlane:
   #     - url: "https://control.acme.com"     # narrowed, and reached over TLS
   #       zones: ["acme-.*"]                  # absent means every zone the server lists
   #       ledgers: ["main-ledger", "prod"]    # absent means every ledger of a matching zone
+  #       required: false                     # followed, but readiness never waits for it; absent means it does
   #       tls:
   #         ca_file: tls/control-plane-ca.pem   # the authority its certificate is checked against;
   #                                             # absent means the platform trust store

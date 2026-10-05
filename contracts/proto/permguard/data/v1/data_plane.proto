@@ -21,5 +21,34 @@ message GetHealthRequest {}
 message GetHealthResponse {
   bool live = 1;
   bool ready = 2;
+  // The lifecycle (P2), additive beside the two booleans: this plane's phase — bootstrap, load,
+  // initialize, ready, serving, draining, stopped or failed — what it serves without, and every
+  // component the process hosts, a plane not yet Ready listed with its phase rather than omitted.
+  string state = 3;
+  repeated Degraded degraded = 4;
+  repeated Component components = 5;
+}
+
+// One capability that is served and cannot currently do its work.
+message Degraded {
+  string capability = 1;
+  string reason = 2;
+}
+
+// One component of the process: the Host, a plane, or a background service, with its state and
+// whether it gates readiness. The instants are RFC 3339 at second precision, absent when the
+// component has none to report.
+message Component {
+  string component = 1;
+  // `host`, `plane` or `service`.
+  string kind = 2;
+  // A phase for the Host and a plane; `disabled`, `running`, `backoff`, `draining` or `failed`
+  // for a service.
+  string state = 3;
+  bool required = 4;
+  optional string stalled_since = 5;
+  optional string last_success = 6;
+  optional string next_attempt = 7;
+  optional string reason = 8;
 }
 

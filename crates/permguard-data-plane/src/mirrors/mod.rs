@@ -37,6 +37,7 @@
 
 pub mod layout;
 pub mod measure;
+pub mod readiness;
 pub mod round;
 pub mod source;
 
@@ -46,7 +47,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use permguard_core::metrics::labels;
-use permguard_core::{BoxFuture, ServerContext, Service, Subject, ready};
+use permguard_core::{BoxFuture, PlaneContext, PlaneTask, Subject, ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
@@ -92,12 +93,12 @@ impl MirrorService {
     }
 }
 
-impl Service for MirrorService {
+impl PlaneTask for MirrorService {
     fn name(&self) -> &'static str {
         "sync"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
             if !config.mirrors_enabled() || config.mirror_sources().is_empty() {
@@ -105,6 +106,13 @@ impl Service for MirrorService {
                     event.name = "sync.disabled",
                     component = COMPONENT,
                     "this plane mirrors nothing: it serves whatever its volume already holds"
+                );
+                context.health().service(
+                    self.name(),
+                    permguard_core::lifecycle::ServiceState::Disabled,
+                    None,
+                    None,
+                    Some("this plane mirrors nothing".to_owned()),
                 );
 
                 return Ok(());
@@ -150,11 +158,31 @@ impl Service for MirrorService {
             });
             let jitter = config.mirrors_jitter();
             let recorder = crate::handles::audit(context);
+            let health = context.health();
+            let name = self.name();
+            let expire_after = config.mirrors_expire_after();
 
             // The first round runs before the loop, so a plane that starts is
             // a plane that has already tried: nobody has to wait an interval
-            // to learn the configuration is wrong.
-            report(&recorder, round::run(Arc::clone(&context_for_round)).await).await;
+            // to learn the configuration is wrong. What it found decides
+            // whether the plane leaves Load (P2, F-13).
+            let outcome = round::run(Arc::clone(&context_for_round)).await;
+            readiness::report(
+                &health,
+                &context_for_round.sources,
+                &context_for_round.root,
+                expire_after,
+                &outcome,
+                std::time::SystemTime::now(),
+            );
+            health.service(
+                name,
+                service_state(&outcome),
+                outcome.label_success().then(std::time::SystemTime::now),
+                Some(std::time::SystemTime::now() + with_jitter(interval, jitter)),
+                service_reason(&outcome),
+            );
+            report(&recorder, outcome).await;
 
             let (stop, mut stopped) = watch::channel(false);
             let working = Arc::new(AtomicBool::new(false));
@@ -181,6 +209,21 @@ impl Service for MirrorService {
                             }
                             let outcome = round::run(Arc::clone(&context_for_round)).await;
                             working.store(false, Ordering::SeqCst);
+                            readiness::report(
+                                &health,
+                                &context_for_round.sources,
+                                &context_for_round.root,
+                                expire_after,
+                                &outcome,
+                                std::time::SystemTime::now(),
+                            );
+                            health.service(
+                                name,
+                                service_state(&outcome),
+                                outcome.label_success().then(std::time::SystemTime::now),
+                                Some(std::time::SystemTime::now() + with_jitter(interval, jitter)),
+                                service_reason(&outcome),
+                            );
                             report(&recorder, outcome).await;
                         }
                         _ = stopped.changed() => break,
@@ -198,7 +241,7 @@ impl Service for MirrorService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let running = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the sync service lock is poisoned"))),
@@ -226,6 +269,26 @@ impl Service for MirrorService {
             Ok(())
         })
     }
+}
+
+/// The loop's lifecycle state after a round: running, or in backoff when a server did not
+/// answer — the next round is the retry, at the configured cadence.
+fn service_state(outcome: &round::Outcome) -> permguard_core::lifecycle::ServiceState {
+    if outcome.unreachable > 0 {
+        permguard_core::lifecycle::ServiceState::Backoff
+    } else {
+        permguard_core::lifecycle::ServiceState::Running
+    }
+}
+
+/// Why the loop is in backoff, when it is.
+fn service_reason(outcome: &round::Outcome) -> Option<String> {
+    (outcome.unreachable > 0).then(|| {
+        format!(
+            "{} server(s) did not answer; retrying at the configured interval",
+            outcome.unreachable
+        )
+    })
 }
 
 /// Spreads the wait, so replicas of this plane do not all wake at once and

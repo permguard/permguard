@@ -6,7 +6,7 @@ use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tonic::service::RoutesBuilder;
 
-use permguard_core::{Health, ServerContext};
+use permguard_core::{PlaneContext, PlaneHealth};
 use permguard_server::plane::PlaneModule;
 
 use crate::api::PlaneApi;
@@ -23,7 +23,7 @@ struct PlaneState {
     product: String,
     version: String,
     commit: String,
-    health: Health,
+    health: PlaneHealth,
     /// The event ingestion capability, when this deployment serves it.
     ///
     /// Carried so `/health` can say *which* part of the plane is not ready. A plane whose event
@@ -43,26 +43,31 @@ struct InfoBody {
     commit: String,
 }
 
+/// `GET /health`: the two booleans every reader knows, then the lifecycle (P2) — this plane's
+/// phase, what it serves without, and every component the process hosts, a plane not yet Ready
+/// listed with its phase rather than omitted.
+///
+/// `degraded` was added rather than folded into `ready`: a reader that only knows the two booleans
+/// keeps reading them and gets the same answer it always did, and a reader that wants to know *why*
+/// a plane is accepting nothing no longer has to infer it from refusals. It carries what the
+/// lifecycle recorded and what this plane's facades say about themselves at the moment asked.
 #[derive(Serialize)]
 struct HealthBody {
     live: bool,
     ready: bool,
-    /// What each capability this deployment serves can currently do, when it is not simply ready.
-    ///
-    /// Added rather than folded into `ready`: a reader that only knows the two booleans keeps
-    /// reading them and gets the same answer it always did, and a reader that wants to know *why*
-    /// a plane is accepting nothing no longer has to infer it from refusals.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    degraded: Vec<Degraded>,
+    #[serde(flatten)]
+    lifecycle: permguard_core::lifecycle::Report,
 }
 
 /// One capability that is served and cannot currently do its work.
-#[derive(Serialize)]
-struct Degraded {
-    /// The capability's name, as the configuration calls it.
-    capability: &'static str,
-    /// Why, in the terms an operator would fix it in.
-    reason: &'static str,
+type Degraded = permguard_core::lifecycle::Degraded;
+
+/// One of this plane's degraded capabilities, in the terms an operator would fix it in.
+fn degraded(capability: &str, reason: &str) -> Degraded {
+    Degraded {
+        capability: capability.to_owned(),
+        reason: reason.to_owned(),
+    }
 }
 
 /// A facade composed once per store directory, for every surface that serves it.
@@ -134,10 +139,7 @@ fn composed<T: Clone>(
 
 impl ControlPlaneModule {
     /// The event store's facade, composed once and shared by both surfaces.
-    fn event_facade(
-        &self,
-        context: &ServerContext<'_>,
-    ) -> Option<crate::events::http::EventFacade> {
+    fn event_facade(&self, context: &PlaneContext<'_>) -> Option<crate::events::http::EventFacade> {
         let config = context.config();
         if !events_served(config) {
             return None;
@@ -152,7 +154,7 @@ impl ControlPlaneModule {
     /// The decision log's facade, composed the same way and for the same reason.
     fn decision_facade(
         &self,
-        context: &ServerContext<'_>,
+        context: &PlaneContext<'_>,
     ) -> Option<crate::decisions::http::DecisionFacade> {
         let config = context.config();
         if !config.decision_store_enabled() {
@@ -197,7 +199,7 @@ impl PlaneModule for ControlPlaneModule {
         )]
     }
 
-    fn services(&self) -> Vec<Box<dyn permguard_core::Service>> {
+    fn services(&self) -> Vec<Box<dyn permguard_core::PlaneTask>> {
         vec![
             Box::new(crate::inventory::InventoryService::new()),
             // What startup does not read: a sample of the objects, checked in the background.
@@ -266,7 +268,7 @@ impl PlaneModule for ControlPlaneModule {
         decisions_startup_check(config)
     }
 
-    fn http_routes(&self, context: &ServerContext<'_>) -> Router {
+    fn http_routes(&self, context: &PlaneContext<'_>) -> Router {
         let state = plane_state(context)
             .serving_events(&self.event_trust, context.config())
             .serving_decisions(&self.decision_state, context.config());
@@ -328,7 +330,7 @@ impl PlaneModule for ControlPlaneModule {
         ))
     }
 
-    fn grpc_routes(&self, context: &ServerContext<'_>) -> Router {
+    fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
         let state = plane_state(context)
             .serving_events(&self.event_trust, context.config())
             .serving_decisions(&self.decision_state, context.config());
@@ -427,7 +429,7 @@ fn grpc_message_ceiling(config: &permguard_core::Config) -> usize {
 /// `/control-plane/keys` (the plane's signing ring, published as JWKS). The
 /// cross-plane registry is the process's business and lives on the telemetry
 /// surface, so nothing ever collapses two planes onto one public port.
-fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Router {
+fn discovery_routes(context: &PlaneContext<'_>, events_composed: bool) -> Router {
     #[derive(Clone)]
     struct Discovery {
         document: String,
@@ -504,7 +506,7 @@ fn discovery_routes(context: &ServerContext<'_>, events_composed: bool) -> Route
 /// caller fills in (`{zone}`, `{ledger}`, `{ref}`). It describes this plane
 /// and nothing else; the base URL is resolved from the same configuration
 /// the listener binds with.
-fn control_configuration_document(context: &ServerContext<'_>, events_composed: bool) -> String {
+fn control_configuration_document(context: &PlaneContext<'_>, events_composed: bool) -> String {
     let base = permguard_server::plane::plane_http_base(
         context.config(),
         permguard_server::plane::PlaneId::Control,
@@ -588,7 +590,7 @@ fn interfaces(events_composed: bool, base: &str) -> String {
 
 /// Whether one of this plane's transports is on: absent means on — a plane
 /// section that never mentioned a listener still serves it.
-fn transport_enabled(context: &ServerContext<'_>, setting: &str) -> bool {
+fn transport_enabled(context: &PlaneContext<'_>, setting: &str) -> bool {
     context
         .config()
         .setting(setting)
@@ -737,7 +739,7 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
 /// issues positions into, and a store that cannot be opened means the surface is not served rather
 /// than served badly.
 fn build_event_facade(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
     directory: &std::path::Path,
     shared: &std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::events::EventStore>>>>,
     facades: &std::sync::Arc<std::sync::Mutex<Option<crate::events::http::EventFacade>>>,
@@ -829,7 +831,7 @@ fn local_producer_composed(config: &permguard_core::Config) -> bool {
 }
 
 fn build_decision_facade(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
     directory: &std::path::Path,
     shared: &std::sync::Arc<std::sync::Mutex<Option<crate::decisions::http::DecisionFacade>>>,
 ) -> Option<crate::decisions::http::DecisionFacade> {
@@ -1009,7 +1011,7 @@ fn load_keys_from(config: &permguard_core::Config, paths: &[String]) -> Vec<perm
     keys
 }
 
-fn notp_facade(context: &ServerContext<'_>) -> Option<crate::notp::NotpFacade> {
+fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
     let catalog = context.catalog()?;
     let Some(keys) = crate::handles::head_signer(context) else {
         tracing::warn!(
@@ -1049,7 +1051,7 @@ fn notp_facade(context: &ServerContext<'_>) -> Option<crate::notp::NotpFacade> {
 /// The build details follow `public.disclose_build`: a deployment that turned it off answers with
 /// the plane and product — enough for `permguard inspect` to identify what it reached — and nothing
 /// a fingerprinting pass can match an exploit against.
-fn plane_state(context: &ServerContext<'_>) -> PlaneState {
+fn plane_state(context: &PlaneContext<'_>) -> PlaneState {
     let disclose = context.config().disclose_build();
 
     PlaneState {
@@ -1065,7 +1067,7 @@ fn plane_state(context: &ServerContext<'_>) -> PlaneState {
         } else {
             String::new()
         },
-        health: context.health().clone(),
+        health: context.health(),
         events: None,
         decisions: None,
     }
@@ -1112,7 +1114,7 @@ async fn info(State(state): State<PlaneState>) -> Json<InfoBody> {
 }
 
 async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
-    let mut degraded = Vec::new();
+    let mut found = Vec::new();
     // Served and holding nobody's keys: every batch is refused as unattributable, which from the
     // outside looks like the producers are at fault. Said here instead.
     if let Some(events) = &state.events {
@@ -1125,16 +1127,16 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
                 .map(|facade| facade.accepted_producers().len())
         });
         match composed {
-            None => degraded.push(Degraded {
-                capability: "events",
-                reason: "the event store did not compose: this plane serves no event routes at \
+            None => found.push(degraded(
+                "events",
+                "the event store did not compose: this plane serves no event routes at \
                          all, and the reason it could not open them was recorded at startup",
-            }),
-            Some(0) => degraded.push(Degraded {
-                capability: "events",
-                reason: "no producer key set has loaded: batches are refused as unattributable \
+            )),
+            Some(0) => found.push(degraded(
+                "events",
+                "no producer key set has loaded: batches are refused as unattributable \
                          until one is published under `controlPlane.events.producer_keys`",
-            }),
+            )),
             Some(_) => {}
         }
     }
@@ -1144,29 +1146,38 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
                 .map(|facade| facade.accepted_producers().map(|keys| keys.len()))
         });
         match composed {
-            None => degraded.push(Degraded {
-                capability: "decisions",
-                reason: "the decision store did not compose: this plane serves no decision routes \
+            None => found.push(degraded(
+                "decisions",
+                "the decision store did not compose: this plane serves no decision routes \
                          and its startup preflight must be corrected before it can become ready",
-            }),
-            Some(Err(_)) => degraded.push(Degraded {
-                capability: "decisions",
-                reason: "the decision store composed but its local producer keys cannot currently \
+            )),
+            Some(Err(_)) => found.push(degraded(
+                "decisions",
+                "the decision store composed but its local producer keys cannot currently \
                          be published: batches are refused until the signing ring recovers",
-            }),
-            Some(Ok(0)) => degraded.push(Degraded {
-                capability: "decisions",
-                reason: "no decision producer key is available: batches are refused as \
+            )),
+            Some(Ok(0)) => found.push(degraded(
+                "decisions",
+                "no decision producer key is available: batches are refused as \
                          unattributable until a configured key set is published",
-            }),
+            )),
             Some(Ok(_)) => {}
         }
+    }
+
+    let mut lifecycle = state.health.report();
+    // What the lifecycle recorded first, then what the facades say now: one list, no duplicates.
+    for item in found {
+        lifecycle
+            .degraded
+            .retain(|held| held.capability != item.capability);
+        lifecycle.degraded.push(item);
     }
 
     Json(HealthBody {
         live: state.health.is_live(),
         ready: state.health.is_ready(),
-        degraded,
+        lifecycle,
     })
 }
 
@@ -1252,7 +1263,8 @@ mod tests {
         let config = receiving("event-store");
         let storage = MemoryStorage::new();
         let audit = RecordingAuditSink::new();
-        let context = ServerContext::new(identity(), &config, &storage, &audit);
+        let server = permguard_core::ServerContext::new(identity(), &config, &storage, &audit);
+        let context = PlaneContext::new(&server, PLANE);
         let module = ControlPlaneModule::default();
 
         let http = module.event_facade(&context).expect("the store opens");
@@ -1274,7 +1286,8 @@ mod tests {
         let config = receiving("decision-store");
         let storage = MemoryStorage::new();
         let audit = RecordingAuditSink::new();
-        let context = ServerContext::new(identity(), &config, &storage, &audit);
+        let server = permguard_core::ServerContext::new(identity(), &config, &storage, &audit);
+        let context = PlaneContext::new(&server, PLANE);
         let module = ControlPlaneModule::default();
 
         match (
@@ -1301,14 +1314,15 @@ mod tests {
             product: "Permguard".to_owned(),
             version: String::new(),
             commit: String::new(),
-            health: health_state,
+            health: PlaneHealth::new(health_state, PLANE),
             events: None,
             decisions: Some(std::sync::Arc::new(std::sync::Mutex::new(None))),
         };
 
         let body = health(State(state)).await.0;
         assert!(
-            body.degraded
+            body.lifecycle
+                .degraded
                 .iter()
                 .any(|held| held.capability == "decisions"),
             "an enabled capability cannot disappear behind a clean health answer"
@@ -1332,7 +1346,8 @@ mod tests {
         let config = receiving("openapi-discovery");
         let storage = MemoryStorage::new();
         let audit = RecordingAuditSink::new();
-        let context = ServerContext::new(identity(), &config, &storage, &audit);
+        let server = permguard_core::ServerContext::new(identity(), &config, &storage, &audit);
+        let context = PlaneContext::new(&server, PLANE);
 
         // With and without the optional `interfaces` member.
         for events_composed in [false, true] {
@@ -1466,38 +1481,98 @@ mod tests {
                 commit: String::new(),
             },
         );
+        // Serving, nothing degraded: the lifecycle members beside the two booleans.
+        let health = permguard_core::Health::new();
+        health.lifecycle().enter(
+            PLANE,
+            permguard_core::lifecycle::Kind::Plane,
+            true,
+            permguard_core::lifecycle::Phase::Load,
+        );
+        health.lifecycle().settle(PLANE);
+        health.set_ready(true);
+        let plane = PlaneHealth::new(health.clone(), PLANE);
         doc.check(
             "ControlHealthBody",
             &HealthBody {
                 live: true,
                 ready: true,
-                degraded: Vec::new(),
+                lifecycle: plane.report(),
             },
         );
-        let degraded = vec![
-            Degraded {
-                capability: "events",
-                reason: "no producer key set has loaded",
-            },
-            Degraded {
-                capability: "decisions",
-                reason: "the decision store did not compose",
-            },
+        let found = vec![
+            degraded("events", "no producer key set has loaded"),
+            degraded("decisions", "the decision store did not compose"),
         ];
-        doc.check("Degraded", &degraded[0]);
+        doc.check("Degraded", &found[0]);
+        let mut lifecycle = plane.report();
+        lifecycle.degraded = found;
         doc.check(
             "ControlHealthBody",
             &HealthBody {
                 live: true,
                 ready: false,
-                degraded,
+                lifecycle,
+            },
+        );
+        // A component with every optional member: a stalled plane and a service in backoff.
+        let since = std::time::SystemTime::now();
+        health.lifecycle().enter(
+            "data",
+            permguard_core::lifecycle::Kind::Plane,
+            false,
+            permguard_core::lifecycle::Phase::Load,
+        );
+        health
+            .lifecycle()
+            .wait("data", "mirrors", "the server did not answer", since);
+        health.lifecycle().service(
+            "sync",
+            permguard_core::lifecycle::ServiceState::Backoff,
+            Some(since),
+            Some(since),
+            Some("retrying".to_owned()),
+        );
+        let report = plane.report();
+        for component in &report.components {
+            doc.check("Component", component);
+        }
+        doc.check(
+            "ControlHealthBody",
+            &HealthBody {
+                live: true,
+                ready: true,
+                lifecycle: report,
             },
         );
 
-        // permguard-data-plane service.rs `HealthBody`: the two booleans and nothing else.
+        // permguard-data-plane service.rs `HealthBody`: the same members, checked from its real
+        // types in its own crate.
         doc.check_json(
             "DataHealthBody",
-            &serde_json::json!({"live": true, "ready": false}),
+            &serde_json::json!({
+                "live": true,
+                "ready": false,
+                "state": "load",
+                "components": [
+                    {"component": "host", "kind": "host", "state": "serving", "required": true},
+                    {"component": "data", "kind": "plane", "state": "load", "required": true,
+                     "stalled_since": "2026-10-05T00:00:00Z", "reason": "the server did not answer"}
+                ]
+            }),
+        );
+        doc.check_json(
+            "DataHealthBody",
+            &serde_json::json!({
+                "live": true,
+                "ready": true,
+                "state": "serving",
+                "degraded": [{"capability": "mirrors:https://control.example", "reason": "older than `mirrors.expire_after`"}],
+                "components": [
+                    {"component": "host", "kind": "host", "state": "serving", "required": true},
+                    {"component": "data", "kind": "plane", "state": "serving", "required": true}
+                ]
+            }),
         );
         // permguard-telemetry host.rs `VersionBody`: `component` where a plane says `plane`.
         doc.check_json(
@@ -1510,10 +1585,20 @@ mod tests {
             }),
         );
 
-        assert!(!doc.accepts_json(
-            "DataHealthBody",
-            &serde_json::json!({"live": true, "ready": true, "degraded": []})
-        ));
+        assert!(
+            !doc.accepts_json(
+                "DataHealthBody",
+                &serde_json::json!({"live": true, "ready": true})
+            ),
+            "the phase and the components are not optional"
+        );
+        assert!(
+            !doc.accepts_json(
+                "Component",
+                &serde_json::json!({"component": "host", "kind": "host", "state": "serving"})
+            ),
+            "`required` is not optional"
+        );
         assert!(!doc.accepts_json(
             "InfoBody",
             &serde_json::json!({"plane": "control-plane", "product": "p", "version": "", "commit": ""})

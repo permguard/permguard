@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use permguard_control_client::decisions;
-use permguard_core::{BoxFuture, ServerContext, Service, future::ready};
+use permguard_core::{BoxFuture, PlaneContext, PlaneTask, future::ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
@@ -67,12 +67,12 @@ impl DecisionService {
     }
 }
 
-impl Service for DecisionService {
+impl PlaneTask for DecisionService {
     fn name(&self) -> &'static str {
         "decisions"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
             if !config.log_enabled() {
@@ -189,7 +189,7 @@ impl Service for DecisionService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let running = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the decision service lock is poisoned"))),
@@ -213,7 +213,7 @@ impl Service for DecisionService {
 /// Shared with the event shipper: one deployment ships both to one control plane, and asking it to
 /// name that plane twice would be asking it to keep two settings in step.
 pub fn destination(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
 ) -> Result<(String, permguard_control_client::TlsOptions)> {
     let config = context.config();
     if let Some(destination) = config.log_destination() {

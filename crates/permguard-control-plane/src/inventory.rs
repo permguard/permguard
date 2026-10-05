@@ -35,7 +35,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
 use permguard_core::catalog::{Catalog, Selector};
 use permguard_core::metrics::{Metric, SECONDS};
-use permguard_core::{BoxFuture, Metrics, ServerContext, Service, ready};
+use permguard_core::{BoxFuture, Metrics, PlaneContext, PlaneTask, ready};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
@@ -104,12 +104,12 @@ impl InventoryService {
     }
 }
 
-impl Service for InventoryService {
+impl PlaneTask for InventoryService {
     fn name(&self) -> &'static str {
         "inventory"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let Some(catalog) = context.catalog().cloned() else {
                 debug!(
@@ -158,7 +158,7 @@ impl Service for InventoryService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let running = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the inventory service lock is poisoned"))),

@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use permguard_core::metrics::Metric;
-use permguard_core::{BoxFuture, ServerContext, Service, ready};
+use permguard_core::{BoxFuture, PlaneContext, PlaneTask, ready};
 use permguard_host::storage::verify::{self, Background, Budget, Mode, Report};
 use tracing::{debug, error, warn};
 
@@ -85,12 +85,12 @@ pub fn pass(zones: &Path, mode: Mode, budget: &mut Budget) -> Report {
     report
 }
 
-impl Service for VerifyService {
+impl PlaneTask for VerifyService {
     fn name(&self) -> &'static str {
         "verify"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let zones = context.config().zones_directory();
             let metrics = context.metrics().clone();
@@ -132,7 +132,7 @@ impl Service for VerifyService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let running = match self.running.lock() {
             Ok(mut running) => running.take(),
             Err(_) => return ready(Err(anyhow!("the verification service lock is poisoned"))),

@@ -95,14 +95,14 @@ pub(crate) fn reload_once(facade: &EventFacade) -> Result<usize, String> {
     Ok(facade.accepted_producers().len())
 }
 
-impl permguard_core::Service for EventTrustService {
+impl permguard_core::PlaneTask for EventTrustService {
     fn name(&self) -> &'static str {
         "event-trust"
     }
 
     fn start<'a>(
         &'a self,
-        context: &'a permguard_core::ServerContext<'a>,
+        context: &'a permguard_core::PlaneContext<'a>,
     ) -> permguard_core::BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let config = context.config();
@@ -175,7 +175,7 @@ impl permguard_core::Service for EventTrustService {
 
     fn stop<'a>(
         &'a self,
-        _context: &'a permguard_core::ServerContext<'a>,
+        _context: &'a permguard_core::PlaneContext<'a>,
     ) -> permguard_core::BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let running = self.running.lock().ok().and_then(|mut held| held.take());

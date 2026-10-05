@@ -31,7 +31,7 @@ use anyhow::{Context, Result, bail};
 use tokio::time::{Instant, timeout_at};
 use tracing::{debug, info, warn};
 
-use permguard_core::{BoxFuture, ServerContext, ServerHost, Subject};
+use permguard_core::{BoxFuture, ServerContext, ServerHost, Service, Subject};
 
 /// The storage key under which a run records the host that produced it.
 pub const LAST_START_KEY: &str = "server/last-start";
@@ -84,27 +84,115 @@ impl DefaultServerHost {
         Self
     }
 
-    /// Starts every registered service in registration order.
+    /// Starts the Host's services, then the Planes': the Host reaches Ready before any Plane
+    /// leaves Bootstrap (P2). Within each group, registration order.
+    ///
+    /// A Plane's service that fails fails its Plane. A required Plane failing fails the process; an
+    /// optional one stays listed as `failed` and the rest starts.
     async fn start_services(&self, context: &ServerContext<'_>) -> Result<()> {
-        for service in context.services() {
-            transition(context, "service.starting", service.name(), "starting");
+        use permguard_core::lifecycle::{HOST, Phase, ServiceState};
 
-            service
-                .start(context)
-                .await
-                .with_context(|| format!("starting the {} service", service.name()))?;
+        let lifecycle = context.health().lifecycle();
+        lifecycle.advance(HOST, Phase::Initialize);
+        for service in context
+            .services()
+            .iter()
+            .filter(|service| service.plane().is_none())
+        {
+            self.start_one(context, service.as_ref()).await?;
+        }
+        lifecycle.advance(HOST, Phase::Ready);
 
-            context
-                .record_audit("service.start", Subject::System(service.name()))
-                .await
-                .with_context(|| {
-                    format!("recording the start of the {} service", service.name())
-                })?;
-
-            state(context, "service.started", service.name(), "started");
+        for service in context
+            .services()
+            .iter()
+            .filter(|service| service.plane().is_some())
+        {
+            let Some(plane) = service.plane() else {
+                continue;
+            };
+            // A Plane the configuration does not select is not listed: its services are still
+            // taken through their lifecycle, and each says it has nothing to do. A failed Plane's
+            // remaining services are not started: what they would serve is gone.
+            match lifecycle.phase(plane) {
+                Some(Phase::Failed) => continue,
+                Some(Phase::Bootstrap) => lifecycle.advance(plane, Phase::Load),
+                None | Some(_) => {}
+            }
+            if let Err(error) = self.start_one(context, service.as_ref()).await {
+                lifecycle.fail(plane, format!("{error:#}"));
+                let required = lifecycle
+                    .component(plane)
+                    .is_some_and(|component| component.required);
+                if required {
+                    // The process fails with it: the Host says so before it exits non-zero.
+                    lifecycle.fail(HOST, format!("the required {plane} plane failed to start"));
+                    return Err(error);
+                }
+                warn!(
+                    event.name = "plane.failed",
+                    component = service.name(),
+                    plane,
+                    error = %format!("{error:#}"),
+                    "an optional plane failed to start; it stays listed as failed and does not \
+                     gate readiness"
+                );
+                lifecycle.service(
+                    service.name(),
+                    ServiceState::Failed,
+                    None,
+                    None,
+                    Some(format!("{error:#}")),
+                );
+            }
         }
 
         Ok(())
+    }
+
+    async fn start_one(&self, context: &ServerContext<'_>, service: &dyn Service) -> Result<()> {
+        transition(context, "service.starting", service.name(), "starting");
+
+        service
+            .start(context)
+            .await
+            .with_context(|| format!("starting the {} service", service.name()))?;
+
+        context
+            .record_audit("service.start", Subject::System(service.name()))
+            .await
+            .with_context(|| format!("recording the start of the {} service", service.name()))?;
+
+        // A Host service that reports its own state keeps it; the rest are running once started.
+        // A Plane's services are listed by the Plane's wrapper, which knows whether they ran.
+        if service.plane().is_none()
+            && context
+                .health()
+                .lifecycle()
+                .component(service.name())
+                .is_none()
+        {
+            context.health().lifecycle().service(
+                service.name(),
+                permguard_core::lifecycle::ServiceState::Running,
+                None,
+                None,
+                None,
+            );
+        }
+        state(context, "service.started", service.name(), "started");
+
+        Ok(())
+    }
+
+    /// Moves every Plane to `phase`; a failed Plane stays failed.
+    fn planes_enter(&self, context: &ServerContext<'_>, phase: permguard_core::lifecycle::Phase) {
+        let lifecycle = context.health().lifecycle();
+        for component in lifecycle.components() {
+            if component.kind == permguard_core::lifecycle::Kind::Plane {
+                lifecycle.advance(&component.name, phase);
+            }
+        }
     }
 
     /// Stops every registered service in the reverse of the order it started them.
@@ -177,6 +265,8 @@ impl ServerHost for DefaultServerHost {
 
             self.start_services(context).await?;
 
+            // The Host serves; each Plane reaches Ready on its own, and readiness waits for the
+            // required ones.
             context.health().set_ready(true);
             state(context, "server.started", COMPONENT, "started");
 
@@ -187,7 +277,9 @@ impl ServerHost for DefaultServerHost {
             context.health().set_ready(false);
             transition(context, "server.stopping", COMPONENT, "stopping");
 
+            // Every Plane drains with the Host; a failed one stays failed, which is terminal.
             let deadline = Instant::now() + context.config().shutdown_timeout();
+            self.planes_enter(context, permguard_core::lifecycle::Phase::Draining);
             let mut unfinished = self.stop_services(context, deadline).await;
 
             match within(deadline, context.storage().shutdown()).await {
@@ -209,6 +301,13 @@ impl ServerHost for DefaultServerHost {
                 .await
                 .context("recording the server stop event")?;
 
+            // Stopped: the services are down and the store released, whatever did not finish in
+            // the budget is named below. The Host goes last, after its Planes.
+            self.planes_enter(context, permguard_core::lifecycle::Phase::Stopped);
+            context.health().lifecycle().advance(
+                permguard_core::lifecycle::HOST,
+                permguard_core::lifecycle::Phase::Stopped,
+            );
             state(context, "server.stopped", COMPONENT, "stopped");
 
             // Each realm's trail is sealed too, in sequence — one process, one drain, no task apiece.

@@ -35,11 +35,13 @@ pub mod fault;
 pub mod future;
 pub mod identity;
 pub mod keys;
+pub mod lifecycle;
 pub mod limits;
 pub mod logging;
 pub mod metrics;
 pub mod mirrors;
 pub mod peer;
+pub mod plane;
 pub mod pseudonym;
 pub mod realm;
 pub mod redact;
@@ -70,6 +72,7 @@ pub use limits::{Limits, PeerBlock};
 pub use logging::{LogFormat, LogLevel};
 pub use metrics::{Aggregate, Kind, Label, Metric, Metrics, Reading, Recorder, Sample};
 pub use peer::{AllowedPeer, PeerIdentity};
+pub use plane::{PlaneContext, PlaneHealth, PlaneTask};
 pub use pseudonym::Pseudonymizer;
 pub use realm::{
     ClaimMapping, EXCHANGE_ON_UNMATCHED_SCOPE_REJECT, EXCHANGE_SOURCE_FORMAT_JWT,

@@ -24,6 +24,10 @@ use super::{PlaneAddresses, PlaneService};
 /// Runtime setting key for the comma-separated list of planes to host in this process.
 pub const SETTING_RUNTIME_PLANES: &str = "PERMGUARD_RUNTIME_PLANES";
 
+/// The selected planes that do not gate readiness: every selected plane is required unless named
+/// here (P2, required versus optional).
+pub const SETTING_RUNTIME_OPTIONAL_PLANES: &str = "PERMGUARD_RUNTIME_OPTIONAL_PLANES";
+
 /// Runtime setting keys for control-plane public addresses.
 /// Where this plane tells the world to reach it. See [`SETTING_DATA_HTTP_ADVERTISED_URL`].
 pub const SETTING_CONTROL_HTTP_ADVERTISED_URL: &str = "PERMGUARD_CONTROL_HTTP_ADVERTISED_URL";
@@ -246,7 +250,7 @@ pub const fn addresses_for_plane(id: &str) -> Option<PlaneAddresses> {
 }
 
 pub(crate) fn declared_settings_for(planes: &[PlaneService]) -> Vec<&'static str> {
-    let mut settings = vec![SETTING_RUNTIME_PLANES];
+    let mut settings = vec![SETTING_RUNTIME_PLANES, SETTING_RUNTIME_OPTIONAL_PLANES];
 
     for section in section_settings_for(planes) {
         settings.extend(section.keys.settings());
@@ -291,15 +295,21 @@ pub(crate) fn runtime_settings(value: &Value) -> Result<Vec<(String, String)>> {
     let section: RuntimeSection =
         serde_norway::from_value(value.clone()).context("parsing the runtime section")?;
 
-    Ok(section
-        .planes
-        .map(|planes| {
-            vec![(
-                SETTING_RUNTIME_PLANES.to_owned(),
-                planes.into_setting_value(),
-            )]
-        })
-        .unwrap_or_default())
+    let mut settings = Vec::new();
+    if let Some(planes) = section.planes {
+        settings.push((
+            SETTING_RUNTIME_PLANES.to_owned(),
+            planes.into_setting_value(),
+        ));
+    }
+    if let Some(planes) = section.optional_planes {
+        settings.push((
+            SETTING_RUNTIME_OPTIONAL_PLANES.to_owned(),
+            planes.into_setting_value(),
+        ));
+    }
+
+    Ok(settings)
 }
 
 pub fn plane_settings(value: &Value, keys: PlaneSettingKeys) -> Result<Vec<(String, String)>> {
@@ -646,6 +656,8 @@ pub(crate) fn tls_for(config: &Config, keys: PlaneTlsKeys) -> Result<Option<TlsS
 struct RuntimeSection {
     #[serde(default)]
     planes: Option<PlaneList>,
+    #[serde(default, alias = "optionalPlanes")]
+    optional_planes: Option<PlaneList>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -875,6 +887,38 @@ mod tests {
         assert_eq!(
             runtime_settings(&value("planes: [control, data]")).expect("runtime parses"),
             vec![(SETTING_RUNTIME_PLANES.to_owned(), "control,data".to_owned())]
+        );
+    }
+
+    #[test]
+    fn runtime_section_names_the_optional_planes() {
+        assert_eq!(
+            runtime_settings(&value(
+                "planes: [control, data]\noptional_planes: [control]"
+            ))
+            .expect("runtime parses"),
+            vec![
+                (SETTING_RUNTIME_PLANES.to_owned(), "control,data".to_owned()),
+                (
+                    SETTING_RUNTIME_OPTIONAL_PLANES.to_owned(),
+                    "control".to_owned()
+                ),
+            ]
+        );
+        // The camel-cased spelling the other sections accept, and a file that names none.
+        assert_eq!(
+            runtime_settings(&value("optionalPlanes: [data]")).expect("runtime parses"),
+            vec![(
+                SETTING_RUNTIME_OPTIONAL_PLANES.to_owned(),
+                "data".to_owned()
+            )]
+        );
+        assert!(
+            runtime_settings(&value("planes: [data]"))
+                .expect("runtime parses")
+                .iter()
+                .all(|(key, _)| key != SETTING_RUNTIME_OPTIONAL_PLANES),
+            "absent means every selected plane is required"
         );
     }
 

@@ -25,8 +25,8 @@ use axum::response::{IntoResponse as _, Response};
 use tracing::{info, warn};
 
 use permguard_core::{
-    BoxFuture, BuildSettings, Config, Metrics, ProductIdentity, ServerContext, Service,
-    TlsSettings, ready,
+    BoxFuture, BuildSettings, Config, Metrics, PlaneContext, PlaneTask, ProductIdentity,
+    ServerContext, Service, TlsSettings, ready,
 };
 use permguard_std::audit::TracingAuditSink;
 use permguard_std::keys::KeyService;
@@ -49,7 +49,7 @@ pub use discovery::{
 pub use factories::build_settings;
 pub use settings::*;
 
-use discovery::plane_enabled;
+use discovery::{plane_enabled, plane_required};
 use factories::{
     audit_sink_for, catalog_for, control_signing_keys_for, data_signing_keys_for, key_manager_for,
     secret_store_for,
@@ -67,11 +67,11 @@ pub trait PlaneModule: Send + Sync + 'static {
     /// Human-readable service name used in startup errors.
     fn description(&self) -> &'static str;
 
-    /// Builds this plane's HTTP router.
-    fn http_routes(&self, context: &ServerContext<'_>) -> Router;
+    /// Builds this plane's HTTP router, from the plane's own view of the Host.
+    fn http_routes(&self, context: &PlaneContext<'_>) -> Router;
 
-    /// Builds this plane's gRPC router.
-    fn grpc_routes(&self, context: &ServerContext<'_>) -> Router;
+    /// Builds this plane's gRPC router, from the plane's own view of the Host.
+    fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router;
 
     /// Background work this plane runs beside its listeners.
     ///
@@ -79,7 +79,7 @@ pub trait PlaneModule: Send + Sync + 'static {
     /// plane that keeps state current — a mirroring data plane, say — hands
     /// its loop over here, so it starts and stops with the process instead of
     /// inventing a lifecycle of its own.
-    fn services(&self) -> Vec<Box<dyn Service>> {
+    fn services(&self) -> Vec<Box<dyn PlaneTask>> {
         Vec::new()
     }
 
@@ -300,6 +300,10 @@ impl Service for PlaneService {
         self.module.component()
     }
 
+    fn plane(&self) -> Option<&'static str> {
+        Some(self.module.id())
+    }
+
     fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             if !plane_enabled(context.config(), self.module.id()) {
@@ -313,6 +317,7 @@ impl Service for PlaneService {
                 return Ok(());
             }
 
+            let plane_context = PlaneContext::new(context, self.module.id());
             let http_addr = self.addresses.http.resolve(context.config())?;
             let grpc_addr = self.addresses.grpc.resolve(context.config())?;
             let http_tls = self.addresses.http_tls.resolve(context.config())?;
@@ -327,7 +332,9 @@ impl Service for PlaneService {
                         "no plane address is configured"
                     );
 
-                    return Ok(());
+                    // Still watched: its background work runs, and its phase is what discovery
+                    // and readiness report.
+                    Vec::new()
                 }
                 (Some(addr), Some(grpc), http_tls, grpc_tls) if addr == grpc => {
                     if http_tls != grpc_tls {
@@ -342,8 +349,8 @@ impl Service for PlaneService {
                         addr,
                         "http+grpc",
                         shared_port(
-                            self.module.http_routes(context),
-                            self.module.grpc_routes(context),
+                            self.module.http_routes(&plane_context),
+                            self.module.grpc_routes(&plane_context),
                         ),
                         http_tls,
                     )]
@@ -363,19 +370,45 @@ impl Service for PlaneService {
                     );
 
                     vec![
-                        (addr, "http", self.module.http_routes(context), http_tls),
-                        (grpc, "grpc", self.module.grpc_routes(context), grpc_tls),
+                        (
+                            addr,
+                            "http",
+                            self.module.http_routes(&plane_context),
+                            http_tls,
+                        ),
+                        (
+                            grpc,
+                            "grpc",
+                            self.module.grpc_routes(&plane_context),
+                            grpc_tls,
+                        ),
                     ]
                 }
                 (Some(addr), None, http_tls, _) => {
-                    vec![(addr, "http", self.module.http_routes(context), http_tls)]
+                    vec![(
+                        addr,
+                        "http",
+                        self.module.http_routes(&plane_context),
+                        http_tls,
+                    )]
                 }
                 (None, Some(addr), _, grpc_tls) => {
-                    vec![(addr, "grpc", self.module.grpc_routes(context), grpc_tls)]
+                    vec![(
+                        addr,
+                        "grpc",
+                        self.module.grpc_routes(&plane_context),
+                        grpc_tls,
+                    )]
                 }
             };
 
+            // Initialize: the listeners bind, and until the plane is Ready every domain route
+            // they serve refuses with the phase. A plane still waiting for a requirement stays in
+            // Load, listed as such, and refuses the same way.
+            let lifecycle = context.health().lifecycle().clone();
+            lifecycle.initialize(self.module.id());
             for (configured, protocol, router, tls) in surfaces {
+                let router = gated(router, lifecycle.clone(), self.module.id());
                 let surface = self
                     .start_surface(context, configured, protocol, router, tls)
                     .await?;
@@ -386,6 +419,11 @@ impl Service for PlaneService {
                     })?
                     .push(surface);
             }
+
+            // The plane's start is complete: Ready now, or as soon as its services report the last
+            // requirement satisfied. Its services started before this, so what they wait for is
+            // already recorded.
+            lifecycle.settle(self.module.id());
 
             Ok(())
         })
@@ -624,8 +662,13 @@ impl PlaneServer {
         for plane in &self.planes {
             let module = plane.module();
             app = app.with_plane_declaration(move |config| {
-                plane_enabled(config, module.id())
-                    .then(|| (module.id(), module.declaration(config)))
+                plane_enabled(config, module.id()).then(|| {
+                    (
+                        module.id(),
+                        plane_required(config, module.id()),
+                        module.declaration(config),
+                    )
+                })
             });
         }
 
@@ -719,7 +762,7 @@ impl PlaneServer {
 /// selection, so a disabled plane contributes nothing at all — no checks, no listeners, no loops.
 struct SelectedService {
     plane: &'static str,
-    inner: Box<dyn Service>,
+    inner: Box<dyn PlaneTask>,
 }
 
 impl Service for SelectedService {
@@ -727,18 +770,53 @@ impl Service for SelectedService {
         self.inner.name()
     }
 
+    fn plane(&self) -> Option<&'static str> {
+        Some(self.plane)
+    }
+
     fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        let lifecycle = context.health().lifecycle();
         if !plane_enabled(context.config(), self.plane) {
+            // Listed as what it is: a task that has nothing to do here, not one that runs.
+            lifecycle.service(
+                self.name(),
+                permguard_core::lifecycle::ServiceState::Disabled,
+                None,
+                None,
+                Some(format!(
+                    "the {} plane is not selected by the runtime configuration",
+                    self.plane
+                )),
+            );
             return Box::pin(std::future::ready(Ok(())));
         }
 
-        self.inner.start(context)
+        // The plane's view of the Host, built here and nowhere a plane can reach (P1).
+        Box::pin(async move {
+            let plane_context = PlaneContext::new(context, self.plane);
+            self.inner.start(&plane_context).await?;
+            // A task that reported its own state keeps it; the rest are running once started.
+            if lifecycle.component(self.name()).is_none() {
+                lifecycle.service(
+                    self.name(),
+                    permguard_core::lifecycle::ServiceState::Running,
+                    None,
+                    None,
+                    None,
+                );
+            }
+
+            Ok(())
+        })
     }
 
     fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         // Delegated unconditionally: a service that never started has nothing to release and
         // must say so gracefully, and one that did start must always be given its stop.
-        self.inner.stop(context)
+        Box::pin(async move {
+            let plane_context = PlaneContext::new(context, self.plane);
+            self.inner.stop(&plane_context).await
+        })
     }
 }
 
@@ -762,6 +840,138 @@ impl Service for SelectedService {
 fn shared_port(http: Router, grpc: Router) -> Router {
     http.merge(grpc).fallback(unmatched)
 }
+
+/// Answers `plane_not_ready` on every domain route of `plane` while it is not Ready or Serving
+/// (P2: no partial serving). Health, version, discovery and the public keys stay open in every
+/// phase, because they are how a client finds out when to come back.
+///
+/// Answers `plane_not_ready` on every domain route of `plane` while it is not Ready or Serving
+/// (P2: no partial serving). Health, version, discovery and the public keys stay open in every
+/// phase, because they are how a client finds out when to come back.
+///
+/// A plane the lifecycle does not list is in Bootstrap, where nothing is answered: a composition
+/// that mounts a plane without declaring it to the Host gets a closed plane, not an open one.
+///
+/// Applied to the routes only, so a path nothing serves is still the protocol's own "no such
+/// thing" in every phase.
+fn gated(
+    router: Router,
+    lifecycle: permguard_core::lifecycle::Lifecycle,
+    plane: &'static str,
+) -> Router {
+    router.route_layer(axum::middleware::from_fn(
+        move |request: axum::extract::Request, next: axum::middleware::Next| {
+            let phase = lifecycle
+                .phase(plane)
+                .unwrap_or(permguard_core::lifecycle::Phase::Bootstrap);
+            async move {
+                let grpc = is_grpc(request.headers());
+                if !phase.accepts_work() && !always_open(request.uri().path(), grpc) {
+                    not_ready(plane, phase, grpc)
+                } else {
+                    next.run(request).await
+                }
+            }
+        },
+    ))
+}
+
+/// Whether a request speaks gRPC: it says so in its content type.
+fn is_grpc(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/grpc"))
+}
+
+/// The routes answered in every phase: health, version, discovery and the public keys. On gRPC,
+/// the planes' own services whole, and the named discovery and key methods of the others: a
+/// method is open by its service and its name together, never by its name alone.
+fn always_open(path: &str, grpc: bool) -> bool {
+    use permguard_core::domains::grpc as services;
+
+    if grpc {
+        let Some((service, method)) = path.trim_start_matches('/').split_once('/') else {
+            return false;
+        };
+        return service == services::CONTROL_PLANE
+            || service == services::DATA_PLANE
+            || matches!(
+                (service, method),
+                (services::GIT_LIKE_STORE, "GetKeyRing")
+                    | (services::EVENT_LOG, "GetSigners" | "GetEventConfiguration")
+                    | (services::DECISION_LOG, "GetSigners")
+                    | (services::POLICY_DECISION_POINT, "GetConfiguration")
+                    | (
+                        services::TEMPORAL_POLICY_DECISION_POINT,
+                        "GetTemporalConfiguration" | "GetSigners"
+                    )
+            );
+    }
+
+    matches!(path, "/" | "/health" | "/version" | "/v1/streams")
+        || path.starts_with("/.well-known/")
+        || path.ends_with("/keys")
+        || path.ends_with("/signers")
+}
+
+/// The refusal for a domain route asked before the plane is ready: class `unavailable`, code
+/// `plane_not_ready`, the phase in the message and beside it — the `Permguard-Phase` header on
+/// HTTP, `permguard-phase` metadata on gRPC — so the closed envelope stays closed.
+fn not_ready(plane: &'static str, phase: permguard_core::lifecycle::Phase, grpc: bool) -> Response {
+    use permguard_core::{ErrorClass, codes::common::PLANE_NOT_READY};
+
+    let message = format!(
+        "the {plane} plane is in {}, not ready: retry once its health reports it ready",
+        phase.as_str()
+    );
+    let phase_value = header::HeaderValue::from_static(phase.as_str());
+    let class = ErrorClass::Unavailable;
+
+    if grpc {
+        let mut response = Response::new(axum::body::Body::empty());
+        let headers = response.headers_mut();
+        headers.insert(
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("application/grpc"),
+        );
+        if let Ok(status) = header::HeaderValue::from_str(&class.grpc_code().number().to_string()) {
+            headers.insert("grpc-status", status);
+        }
+        if let Ok(value) = header::HeaderValue::from_str(&message) {
+            headers.insert("grpc-message", value);
+        }
+        headers.insert(
+            permguard_core::GRPC_ERROR_CLASS,
+            header::HeaderValue::from_static(class.as_str()),
+        );
+        headers.insert(
+            permguard_core::GRPC_ERROR_CODE,
+            header::HeaderValue::from_static(PLANE_NOT_READY),
+        );
+        headers.insert(PHASE_HEADER, phase_value);
+
+        return response;
+    }
+
+    let body = serde_json::json!({
+        "class": class.as_str(),
+        "code": PLANE_NOT_READY,
+        "message": message,
+    });
+    let mut response = (
+        StatusCode::from_u16(class.http_status()).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+        axum::Json(body),
+    )
+        .into_response();
+    response.headers_mut().insert(PHASE_HEADER, phase_value);
+
+    response
+}
+
+/// Where a refusal before Ready carries the plane's phase: the `Permguard-Phase` header on HTTP and
+/// the `permguard-phase` metadata key on gRPC, one name since gRPC metadata are HTTP/2 headers.
+pub const PHASE_HEADER: &str = "permguard-phase";
 
 /// The answer for a path neither surface serves.
 async fn unmatched(headers: HeaderMap) -> Response {
@@ -796,4 +1006,253 @@ async fn unmatched(headers: HeaderMap) -> Response {
         ),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post};
+    use permguard_core::lifecycle::{Kind, Lifecycle, Phase};
+    use tower::ServiceExt as _;
+
+    #[test]
+    fn what_a_client_needs_to_come_back_is_open_in_every_phase() {
+        for path in [
+            "/",
+            "/health",
+            "/version",
+            "/.well-known/server-configuration",
+            "/data-plane/keys",
+            "/decisions/v1/signers",
+        ] {
+            assert!(always_open(path, false), "{path}");
+        }
+        for path in ["/v1/zones", "/decisions/v1/batches", "/v1/decide"] {
+            assert!(!always_open(path, false), "{path}");
+        }
+        assert!(always_open("/permguard.data.v1.DataPlane/GetHealth", true));
+        assert!(always_open(
+            "/permguard.control.v1.ControlPlane/GetServerConfiguration",
+            true
+        ));
+        for open in [
+            "/permguard.control.v1.GitLikeStore/GetKeyRing",
+            "/permguard.control.v1.EventLog/GetSigners",
+            "/permguard.control.v1.EventLog/GetEventConfiguration",
+            "/permguard.control.v1.DecisionLog/GetSigners",
+            "/permguard.data.v1.PolicyDecisionPoint/GetConfiguration",
+            "/permguard.data.v1.TemporalPolicyDecisionPoint/GetTemporalConfiguration",
+            "/permguard.data.v1.TemporalPolicyDecisionPoint/GetSigners",
+        ] {
+            assert!(always_open(open, true), "{open}");
+        }
+        for closed in [
+            "/permguard.data.v1.PolicyDecisionPoint/Evaluate",
+            "/permguard.control.v1.ZoneCatalog/GetKeyRing",
+            "/permguard.control.v1.DecisionLog/GetConfiguration",
+            "/permguard.control.v1.GitLikeStore/GetRef",
+            "/malformed",
+        ] {
+            assert!(!always_open(closed, true), "{closed}");
+        }
+    }
+
+    fn plane_in(phase: Phase) -> Lifecycle {
+        let lifecycle = Lifecycle::new();
+        lifecycle.enter("data", Kind::Plane, true, phase);
+        lifecycle
+    }
+
+    fn routes(lifecycle: &Lifecycle) -> Router {
+        gated(
+            Router::new()
+                .route("/v1/decide", post(|| async { "decided" }))
+                .route("/health", get(|| async { "healthy" }))
+                .route(
+                    "/permguard.data.v1.PolicyDecisionPoint/Evaluate",
+                    post(|| async { "evaluated" }),
+                ),
+            lifecycle.clone(),
+            "data",
+        )
+    }
+
+    async fn text(response: Response) -> String {
+        let bytes = axum::body::to_bytes(response.into_body(), 1 << 16)
+            .await
+            .expect("the body reads");
+        String::from_utf8(bytes.to_vec()).expect("UTF-8")
+    }
+
+    #[tokio::test]
+    async fn a_domain_route_before_ready_is_refused_with_the_phase_and_health_is_not() {
+        let lifecycle = plane_in(Phase::Load);
+        let router = routes(&lifecycle);
+
+        let refused = router
+            .clone()
+            .oneshot(
+                Request::post("/v1/decide")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            refused
+                .headers()
+                .get(PHASE_HEADER)
+                .and_then(|v| v.to_str().ok()),
+            Some("load")
+        );
+        let body: serde_json::Value =
+            serde_json::from_str(&text(refused).await).expect("the envelope is JSON");
+        assert_eq!(body["class"], "unavailable");
+        assert_eq!(body["code"], "plane_not_ready");
+        assert!(
+            body["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("in load")),
+            "{body}"
+        );
+        assert_eq!(
+            body.as_object().map(|fields| fields.len()),
+            Some(3),
+            "the envelope stays closed"
+        );
+
+        let open = router
+            .clone()
+            .oneshot(
+                Request::get("/health")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(open.status(), StatusCode::OK);
+        assert_eq!(text(open).await, "healthy");
+
+        let unknown = router
+            .clone()
+            .oneshot(
+                Request::get("/nowhere")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(
+            unknown.status(),
+            StatusCode::NOT_FOUND,
+            "a path nothing serves is still 404 in every phase"
+        );
+
+        // Ready: the same route answers.
+        lifecycle.advance("data", Phase::Serving);
+        let served = router
+            .oneshot(
+                Request::post("/v1/decide")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(served.status(), StatusCode::OK);
+        assert_eq!(text(served).await, "decided");
+    }
+
+    #[tokio::test]
+    async fn a_grpc_domain_route_before_ready_carries_the_refusal_in_its_own_vocabulary() {
+        let lifecycle = plane_in(Phase::Initialize);
+        let refused = routes(&lifecycle)
+            .oneshot(
+                Request::post("/permguard.data.v1.PolicyDecisionPoint/Evaluate")
+                    .header(header::CONTENT_TYPE, "application/grpc")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        let headers = refused.headers();
+        let text_of = |name: &str| {
+            headers
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+        };
+        assert_eq!(
+            refused.status(),
+            StatusCode::OK,
+            "gRPC carries its status in the metadata"
+        );
+        assert_eq!(
+            text_of("grpc-status").as_deref(),
+            Some(
+                permguard_core::ErrorClass::Unavailable
+                    .grpc_code()
+                    .number()
+                    .to_string()
+                    .as_str()
+            )
+        );
+        assert_eq!(
+            text_of(permguard_core::GRPC_ERROR_CLASS).as_deref(),
+            Some("unavailable")
+        );
+        assert_eq!(
+            text_of(permguard_core::GRPC_ERROR_CODE).as_deref(),
+            Some("plane_not_ready")
+        );
+        assert_eq!(text_of(PHASE_HEADER).as_deref(), Some("initialize"));
+    }
+
+    #[tokio::test]
+    async fn a_plane_the_lifecycle_does_not_list_is_closed_as_bootstrap() {
+        let lifecycle = Lifecycle::new();
+        let refused = routes(&lifecycle)
+            .oneshot(
+                Request::post("/v1/decide")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            refused
+                .headers()
+                .get(PHASE_HEADER)
+                .and_then(|v| v.to_str().ok()),
+            Some("bootstrap"),
+            "unlisted is closed, never open"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_draining_plane_refuses_too() {
+        let lifecycle = plane_in(Phase::Serving);
+        lifecycle.advance("data", Phase::Draining);
+        let refused = routes(&lifecycle)
+            .oneshot(
+                Request::post("/v1/decide")
+                    .body(Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            refused
+                .headers()
+                .get(PHASE_HEADER)
+                .and_then(|v| v.to_str().ok()),
+            Some("draining")
+        );
+    }
 }

@@ -283,6 +283,12 @@
       "kind": "refusal",
       "class": "not_found"
     },
+    "common.PLANE_NOT_READY": {
+      "code": "plane_not_ready",
+      "contract": "6-contracts/7-contract-catalog-discovery.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "common.ROUTE_UNKNOWN": {
       "code": "route_unknown",
       "contract": "6-contracts/7-contract-catalog-discovery.md",

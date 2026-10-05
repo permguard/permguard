@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use permguard_core::keys::{PublicSet, SigningRing};
-use permguard_core::{Config, ServerContext};
+use permguard_core::{Config, PlaneContext};
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DecisionBatchV1, Declaration, EventBatchV1, Registration,
     SecretHandle, SecretPurpose,
@@ -61,12 +61,12 @@ pub(crate) fn declaration(config: &Config) -> Declaration {
     }
 }
 
-fn registration(context: &ServerContext<'_>) -> Option<Arc<Registration>> {
-    context.plane_handles::<Registration>(PLANE)
+fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
+    context.handles::<Registration>()
 }
 
 /// The audit handle, when an audit recorder is composed.
-pub(crate) fn audit(context: &ServerContext<'_>) -> Option<Audit> {
+pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
     registration(context)?
         .audit::<DataPlaneAudit>()
         .ok()
@@ -74,7 +74,7 @@ pub(crate) fn audit(context: &ServerContext<'_>) -> Option<Audit> {
 }
 
 /// The decision batch signer, when the plane's signing ring is composed.
-pub(crate) fn decision_signer(context: &ServerContext<'_>) -> Option<Arc<dyn SigningRing>> {
+pub(crate) fn decision_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
     let signer = registration(context)?
         .signer::<DecisionBatchV1>()
         .ok()
@@ -83,7 +83,7 @@ pub(crate) fn decision_signer(context: &ServerContext<'_>) -> Option<Arc<dyn Sig
 }
 
 /// The event batch signer, when the plane's signing ring is composed.
-pub(crate) fn event_signer(context: &ServerContext<'_>) -> Option<Arc<dyn SigningRing>> {
+pub(crate) fn event_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
     let signer = registration(context)?
         .signer::<EventBatchV1>()
         .ok()
@@ -92,7 +92,7 @@ pub(crate) fn event_signer(context: &ServerContext<'_>) -> Option<Arc<dyn Signin
 }
 
 /// This plane's public set, to publish, when its signing ring is composed.
-pub(crate) fn public_keys(context: &ServerContext<'_>) -> Option<Arc<dyn PublicSet>> {
+pub(crate) fn public_keys(context: &PlaneContext<'_>) -> Option<Arc<dyn PublicSet>> {
     let signer = registration(context)?
         .signer::<DecisionBatchV1>()
         .ok()
@@ -113,6 +113,6 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
 }
 
 /// The commitment key's handle, when the declaration named one.
-pub(crate) fn commitment(context: &ServerContext<'_>) -> Option<SecretHandle<DecisionCommitment>> {
+pub(crate) fn commitment(context: &PlaneContext<'_>) -> Option<SecretHandle<DecisionCommitment>> {
     registration(context)?.secret::<DecisionCommitment>().ok()
 }

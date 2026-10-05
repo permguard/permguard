@@ -69,6 +69,9 @@ pub struct MirrorSource {
     /// The ledger-name patterns to follow inside a matching zone. Absent
     /// means every ledger of that zone.
     pub ledgers: Vec<String>,
+    /// Whether the plane waits for this source before it accepts work (P2). Required unless the
+    /// file says `required: false`: an optional source is followed, and never gates readiness.
+    pub required: bool,
 }
 
 /// A mirroring plane's synchronization loop, as the `dataPlane.sync` block of
@@ -121,6 +124,9 @@ struct MirrorServerSection {
     /// Ledger-name patterns inside a matching zone. Absent means every one.
     #[serde(default)]
     ledgers: Vec<String>,
+    /// Whether readiness waits for this server. Absent means it does.
+    #[serde(default)]
+    required: Option<bool>,
 }
 
 impl MirrorsSection {
@@ -149,6 +155,7 @@ impl MirrorsSection {
                 tls: server.tls.clone(),
                 zones: server.zones.clone(),
                 ledgers: server.ledgers.clone(),
+                required: server.required.unwrap_or(true),
             })
             .collect()
     }
@@ -222,6 +229,7 @@ mod tests {
             tls: MirrorTls::default(),
             zones: Vec::new(),
             ledgers: Vec::new(),
+            required: true,
         }
     }
 

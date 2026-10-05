@@ -23,6 +23,7 @@ pub struct Source {
     tls: TlsOptions,
     zones: Patterns,
     ledgers: Patterns,
+    required: bool,
 }
 
 impl Source {
@@ -46,7 +47,19 @@ impl Source {
             .rooted_at(workdir),
             zones: Patterns::compile(&input.zones, "zone")?,
             ledgers: Patterns::compile(&input.ledgers, "ledger")?,
+            required: input.required,
         })
+    }
+
+    /// Whether the plane waits for this server before it accepts work (P2):
+    /// every server is required unless its entry says `required: false`.
+    pub fn required(&self) -> bool {
+        self.required
+    }
+
+    /// Whether this source follows mirror `identity`: both its names match.
+    pub fn follows(&self, identity: &crate::authz::store::Identity) -> bool {
+        self.follows_zone(&identity.zone_name) && self.follows_ledger(&identity.ledger_name)
     }
 
     /// The server, exactly as configured.
@@ -160,6 +173,7 @@ mod tests {
                 tls: permguard_core::mirrors::MirrorTls::default(),
                 zones: zones.iter().map(|p| (*p).to_owned()).collect(),
                 ledgers: ledgers.iter().map(|p| (*p).to_owned()).collect(),
+                required: true,
             },
             Path::new("/var/lib/permguard"),
         )
@@ -177,6 +191,7 @@ mod tests {
                 },
                 zones: Vec::new(),
                 ledgers: Vec::new(),
+                required: true,
             },
             Path::new("/var/lib/permguard"),
         )
@@ -231,6 +246,7 @@ mod tests {
                 tls: permguard_core::mirrors::MirrorTls::default(),
                 zones: vec!["acme-[".to_owned()],
                 ledgers: Vec::new(),
+                required: true,
             },
             Path::new("/var/lib/permguard"),
         )
@@ -253,6 +269,7 @@ mod overlap {
             tls: permguard_core::mirrors::MirrorTls::default(),
             zones: zones.iter().map(|pattern| (*pattern).to_owned()).collect(),
             ledgers: Vec::new(),
+            required: true,
         }
     }
 

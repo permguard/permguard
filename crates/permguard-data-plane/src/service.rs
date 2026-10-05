@@ -5,7 +5,7 @@ use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tonic::service::RoutesBuilder;
 
-use permguard_core::{Health, ServerContext};
+use permguard_core::{PlaneContext, PlaneHealth};
 use permguard_server::plane::PlaneModule;
 
 use crate::api::PlaneApi;
@@ -24,7 +24,7 @@ struct PlaneState {
     product: String,
     version: String,
     commit: String,
-    health: Health,
+    health: PlaneHealth,
 }
 
 #[derive(Serialize)]
@@ -35,10 +35,15 @@ struct InfoBody {
     commit: String,
 }
 
+/// `GET /health`: the two booleans every reader knows, then the lifecycle (P2) — this plane's
+/// phase, what it serves without, and every component the process hosts, a plane not yet Ready
+/// listed with its phase rather than omitted.
 #[derive(Serialize)]
 struct HealthBody {
     live: bool,
     ready: bool,
+    #[serde(flatten)]
+    lifecycle: permguard_core::lifecycle::Report,
 }
 
 /// The service-config pattern, same shape on every plane: the well-known
@@ -47,7 +52,7 @@ struct HealthBody {
 /// will sign the decision responses it returns. Until that ring is enabled
 /// the key set is published empty: the endpoint exists from day one so the
 /// pattern is uniform, and keys appear here the day this plane signs.
-fn discovery_routes(context: &ServerContext<'_>) -> Router {
+fn discovery_routes(context: &PlaneContext<'_>) -> Router {
     #[derive(Clone)]
     struct Discovery {
         document: permguard_server::plane::PlaneConfiguration,
@@ -135,7 +140,7 @@ fn discovery_routes(context: &ServerContext<'_>) -> Router {
 /// the *unextended* document when the surgery did not find what it expected. A caller following a
 /// link that silently was not there concludes the plane offers nothing.
 fn data_plane_configuration(
-    context: &ServerContext<'_>,
+    context: &PlaneContext<'_>,
 ) -> permguard_server::plane::PlaneConfiguration {
     // The same string the PDP's own document publishes, from the same function: a plane whose two
     // documents named different addresses would send a client following the link somewhere the
@@ -167,7 +172,7 @@ fn data_plane_configuration(
 }
 
 /// The temporal interface's routes, when this deployment serves it.
-fn temporal_routes(context: &ServerContext<'_>) -> Router {
+fn temporal_routes(context: &PlaneContext<'_>) -> Router {
     let Some(submitter) = temporal::submitter(context) else {
         return Router::new();
     };
@@ -207,7 +212,7 @@ impl PlaneModule for DataPlaneModule {
         "data plane"
     }
 
-    fn http_routes(&self, context: &ServerContext<'_>) -> Router {
+    fn http_routes(&self, context: &PlaneContext<'_>) -> Router {
         let state = plane_state(context);
 
         Router::new()
@@ -280,7 +285,7 @@ impl PlaneModule for DataPlaneModule {
     /// the request: the mirroring loop keeps the policies current, and the
     /// decision-log loop drains what this plane decided. A plane fed by other
     /// means, or one that records nothing, is a legitimate deployment.
-    fn services(&self) -> Vec<Box<dyn permguard_core::Service>> {
+    fn services(&self) -> Vec<Box<dyn permguard_core::PlaneTask>> {
         vec![
             Box::new(crate::mirrors::MirrorService::new()),
             Box::new(crate::decisions::DecisionService::new()),
@@ -292,7 +297,7 @@ impl PlaneModule for DataPlaneModule {
         ]
     }
 
-    fn grpc_routes(&self, context: &ServerContext<'_>) -> Router {
+    fn grpc_routes(&self, context: &PlaneContext<'_>) -> Router {
         let state = plane_state(context);
         let mut grpc = RoutesBuilder::default();
         grpc.add_service(DataPlaneServer::new(PlaneApi {
@@ -330,7 +335,7 @@ impl PlaneModule for DataPlaneModule {
 /// The build details follow `public.disclose_build`: a deployment that turned it off answers with
 /// the plane and product — enough for `permguard inspect` to identify what it reached — and nothing
 /// a fingerprinting pass can match an exploit against.
-fn plane_state(context: &ServerContext<'_>) -> PlaneState {
+fn plane_state(context: &PlaneContext<'_>) -> PlaneState {
     let disclose = context.config().disclose_build();
 
     PlaneState {
@@ -346,7 +351,7 @@ fn plane_state(context: &ServerContext<'_>) -> PlaneState {
         } else {
             String::new()
         },
-        health: context.health().clone(),
+        health: context.health(),
     }
 }
 
@@ -363,6 +368,7 @@ async fn health(State(state): State<PlaneState>) -> Json<HealthBody> {
     Json(HealthBody {
         live: state.health.is_live(),
         ready: state.health.is_ready(),
+        lifecycle: state.health.report(),
     })
 }
 
@@ -387,8 +393,53 @@ mod tests {
                 commit: "abc1234".to_owned(),
             },
         );
-        for (live, ready) in [(true, true), (true, false)] {
-            doc.check("DataHealthBody", &HealthBody { live, ready });
-        }
+        let health = permguard_core::Health::new();
+        let lifecycle = health.lifecycle();
+        lifecycle.enter(
+            PLANE,
+            permguard_core::lifecycle::Kind::Plane,
+            true,
+            permguard_core::lifecycle::Phase::Load,
+        );
+        let plane = PlaneHealth::new(health.clone(), PLANE);
+        // In Load, stalled on a remote: the phase, the stall and the reason all travel.
+        plane.wait(
+            "mirrors:https://control.example",
+            "the server did not answer",
+            std::time::SystemTime::now(),
+        );
+        lifecycle.service(
+            "sync",
+            permguard_core::lifecycle::ServiceState::Backoff,
+            None,
+            Some(std::time::SystemTime::now()),
+            Some("retrying".to_owned()),
+        );
+        doc.check(
+            "DataHealthBody",
+            &HealthBody {
+                live: plane.is_live(),
+                ready: plane.is_ready(),
+                lifecycle: plane.report(),
+            },
+        );
+        // Serving with a capability degraded.
+        plane.satisfy("mirrors:https://control.example");
+        lifecycle.settle(PLANE);
+        health.set_ready(true);
+        plane.wait(
+            "mirrors:https://control.example",
+            "older than `mirrors.expire_after`",
+            std::time::SystemTime::now(),
+        );
+        let body = HealthBody {
+            live: plane.is_live(),
+            ready: plane.is_ready(),
+            lifecycle: plane.report(),
+        };
+        assert!(body.ready);
+        assert_eq!(body.lifecycle.state, "serving");
+        assert_eq!(body.lifecycle.degraded.len(), 1);
+        doc.check("DataHealthBody", &body);
     }
 }

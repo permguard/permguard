@@ -36,6 +36,10 @@ runtime:
   planes:
     - control
     - data
+  # Every selected plane gates readiness unless it is listed here: an optional plane that
+  # fails or waits for a remote is listed as such by `GET /health`, and the rest serves.
+  # optional_planes:
+  #   - control
 
 controlPlane:
   public:
@@ -105,6 +109,9 @@ dataPlane:
     parallelism: "4"
     servers:
       # This process's own control plane. The URL alone: every zone and every ledger it lists.
+      # The data plane waits for this server before it accepts work: with the server down, a
+      # mirror verified within `expire_after` still counts. `required: false` makes a server
+      # followed but never waited for.
       - url: "http://127.0.0.1:6443"
 
   # The decision path, sized for a laptop: a handful of ledgers, a small heap.

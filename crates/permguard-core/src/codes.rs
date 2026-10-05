@@ -37,6 +37,9 @@ pub mod common {
     pub const FORGED: &str = "forged";
     /// A path no route of the plane serves.
     pub const ROUTE_UNKNOWN: &str = "route_unknown";
+    /// A domain route asked of a Plane that has not reached Ready, or has left it; the phase
+    /// travels beside the code.
+    pub const PLANE_NOT_READY: &str = "plane_not_ready";
 }
 
 /// The catalog of zones and ledgers.
@@ -343,6 +346,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         common::FORBIDDEN,
         common::FORGED,
         common::ROUTE_UNKNOWN,
+        common::PLANE_NOT_READY,
         catalog::NAME_TAKEN,
         catalog::ZONE_NOT_EMPTY,
         catalog::INVALID_NAME,

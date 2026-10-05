@@ -63,6 +63,9 @@ impl ControlPlane for FakePlane {
         Ok(Response::new(proto::GetHealthResponse {
             live: true,
             ready: true,
+            state: "serving".into(),
+            degraded: Vec::new(),
+            components: Vec::new(),
         }))
     }
 

@@ -2574,6 +2574,7 @@ dependencies = [
  "serde_json",
  "serde_norway",
  "tokio",
+ "tower",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",

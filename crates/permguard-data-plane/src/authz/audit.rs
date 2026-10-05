@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use anyhow::Result;
 use permguard_core::metrics::labels;
-use permguard_core::{BoxFuture, Metrics, ServerContext, Service, Subject, ready};
+use permguard_core::{BoxFuture, Metrics, PlaneContext, PlaneTask, Subject, ready};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
@@ -156,12 +156,12 @@ impl DecisionAuditService {
     }
 }
 
-impl Service for DecisionAuditService {
+impl PlaneTask for DecisionAuditService {
     fn name(&self) -> &'static str {
         "authz-audit"
     }
 
-    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn start<'a>(&'a self, context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             let _ = decision_audit(context);
 
@@ -169,7 +169,7 @@ impl Service for DecisionAuditService {
         })
     }
 
-    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+    fn stop<'a>(&'a self, _context: &'a PlaneContext<'a>) -> BoxFuture<'a, Result<()>> {
         let audit = DECISION_AUDIT.get().and_then(Clone::clone);
         let Some(audit) = audit else {
             return ready(Ok(()));
@@ -184,7 +184,7 @@ impl Service for DecisionAuditService {
 }
 
 /// Returns the decision-audit worker for this process, when audit is composed.
-pub fn decision_audit(context: &ServerContext<'_>) -> Option<Arc<DecisionAudit>> {
+pub fn decision_audit(context: &PlaneContext<'_>) -> Option<Arc<DecisionAudit>> {
     DECISION_AUDIT
         .get_or_init(|| {
             let recorder = crate::handles::audit(context)?;
@@ -205,7 +205,7 @@ pub fn decision_audit(context: &ServerContext<'_>) -> Option<Arc<DecisionAudit>>
         .clone()
 }
 
-fn capacity(context: &ServerContext<'_>) -> usize {
+fn capacity(context: &PlaneContext<'_>) -> usize {
     let requests = context.config().limits().concurrent_requests() as usize;
     let evaluations = context.config().authz_max_evaluations();
 

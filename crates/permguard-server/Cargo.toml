@@ -46,6 +46,8 @@ tracing-opentelemetry.workspace = true
 [dev-dependencies]
 # `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
 tokio = { workspace = true, features = ["test-util"] }
+# `oneshot`, to ask a gated router one request at a time.
+tower = { workspace = true, features = ["util"] }
 
 [[bench]]
 name = "server_host"
