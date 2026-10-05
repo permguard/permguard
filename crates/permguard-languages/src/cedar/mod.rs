@@ -133,8 +133,15 @@ impl Language for Cedar {
     /// From `production` upward a Cedar partition carries a schema (CEDAR-05): untyped Cedar
     /// evaluates whatever the request says an entity is, and a policy reads differently than it
     /// runs. Schema-less Cedar remains a development compatibility mode.
-    fn schema_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
-        profile.at_least(permguard_core::assurance::AssuranceProfile::Production)
+    fn required_schemas(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        if profile.at_least(permguard_core::assurance::AssuranceProfile::Production) {
+            &[SCHEMA_ARTIFACT]
+        } else {
+            &[]
+        }
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {

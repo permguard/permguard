@@ -70,6 +70,7 @@
     "media.POLICY_PREFIX": "application/vnd.permguard.policy.",
     "media.POLICY_REGO": "application/vnd.permguard.policy.rego",
     "media.SCHEMA_CEDAR": "application/vnd.permguard.schema.cedar",
+    "media.SCHEMA_REGO_INPUT_JSON": "application/vnd.permguard.schema.rego.input+json",
     "media.SCHEMA_REGO_JSON": "application/vnd.permguard.schema.rego+json",
     "producer.DATA_PLANE_V1": "permguard.event.producer.data-plane.v1",
     "protected.AUDIT_CHECKPOINT": "permguard.audit.checkpoint.v1",

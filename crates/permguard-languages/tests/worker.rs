@@ -11,6 +11,9 @@
 #![allow(clippy::expect_used, clippy::print_stdout, clippy::print_stderr)]
 
 #[cfg(unix)]
+mod harness;
+
+#[cfg(unix)]
 mod unix {
     use std::process::ExitCode;
     use std::time::{Duration, Instant};
@@ -508,8 +511,7 @@ mod unix {
         true
     }
 
-    /// One case: it returns whether it ran, or `false` when the platform cannot run it.
-    type Case = fn() -> bool;
+    use super::harness::Case;
 
     pub fn main() -> ExitCode {
         if permguard_languages::worker::started_as_worker() {
@@ -580,85 +582,7 @@ mod unix {
             ),
         ];
 
-        // Enough of libtest's command line for `cargo test` and `cargo nextest`: `--list` names
-        // the cases (none is ignored), and the other free arguments filter them, exactly with
-        // `--exact`.
-        let arguments: Vec<String> = std::env::args().skip(1).collect();
-        if arguments.iter().any(|argument| argument == "--list") {
-            if !arguments.iter().any(|argument| argument == "--ignored") {
-                for (name, _) in cases {
-                    println!("{name}: test");
-                }
-            }
-            return ExitCode::SUCCESS;
-        }
-        // Options that take a value consume it rather than reading as filters.
-        const VALUED: &[&str] = &[
-            "--test-threads",
-            "--format",
-            "--color",
-            "--logfile",
-            "--report-time",
-            "-Z",
-        ];
-        let exact = arguments.iter().any(|argument| argument == "--exact");
-        // No case is ignored, so asking for the ignored ones runs none.
-        let only_ignored = arguments.iter().any(|argument| argument == "--ignored");
-        let mut filters: Vec<&str> = Vec::new();
-        let mut skips: Vec<&str> = Vec::new();
-        let mut held = arguments.iter();
-        while let Some(argument) = held.next() {
-            if argument == "--skip" {
-                skips.extend(held.next().map(String::as_str));
-            } else if VALUED.contains(&argument.as_str()) {
-                held.next();
-            } else if !argument.starts_with('-') {
-                filters.push(argument);
-            }
-        }
-        let matches = |name: &str, filter: &str| {
-            if exact {
-                name == filter
-            } else {
-                name.contains(filter)
-            }
-        };
-        let selected = |name: &str| {
-            !only_ignored
-                && (filters.is_empty() || filters.iter().any(|filter| matches(name, filter)))
-                && !skips.iter().any(|skip| matches(name, skip))
-        };
-
-        let (mut passed, mut failed, mut ignored) = (0, 0, 0);
-        for (name, case) in cases {
-            if !selected(name) {
-                continue;
-            }
-            match std::panic::catch_unwind(case) {
-                Ok(true) => {
-                    println!("test {name} ... ok");
-                    passed += 1;
-                }
-                Ok(false) => {
-                    println!("test {name} ... ignored");
-                    ignored += 1;
-                }
-                Err(_) => {
-                    println!("test {name} ... FAILED");
-                    failed += 1;
-                }
-            }
-        }
-        println!(
-            "\ntest result: {}. {passed} passed; {failed} failed; {ignored} ignored",
-            if failed == 0 { "ok" } else { "FAILED" },
-        );
-
-        if failed == 0 {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::FAILURE
-        }
+        super::harness::run(&cases)
     }
 }
 

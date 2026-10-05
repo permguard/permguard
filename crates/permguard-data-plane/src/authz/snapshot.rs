@@ -266,6 +266,7 @@ pub fn compile(
     head: &Head,
     partition: &str,
     profile: permguard_core::assurance::AssuranceProfile,
+    supervisors: &permguard_languages::worker::Supervisors,
 ) -> Result<Arc<Partition>, Refusal> {
     let declared = head.manifest.partitions.get(partition).ok_or_else(|| {
         Refusal::Unknown(format!("this ledger declares no partition `{partition}`"))
@@ -324,10 +325,22 @@ pub fn compile(
         .map_err(Refusal::BelowFloor)?;
 
     let policies = collected.policies.len();
-    let evaluator: Arc<dyn Evaluator> = permguard_languages::headroom::with(|| {
-        engine.compile(&collected.policies, &collected.artifacts)
-    })
-    .map_err(Refusal::Incompatible)?
+    // A runtime with no hard bound in-process runs in its supervised worker where the profile
+    // requires it (REGO-03, LANG-04); where no worker can run, the partition is not served —
+    // never compiled in-process instead.
+    let evaluator: Arc<dyn Evaluator> = if registry::isolation_required(&language_name, profile) {
+        supervisors
+            .compile(&language_name, &collected.policies, &collected.artifacts)
+            .map_err(|why| match why {
+                permguard_languages::worker::Isolated::Unavailable(why) => Refusal::BelowFloor(why),
+                permguard_languages::worker::Isolated::Refused(why) => Refusal::Incompatible(why),
+            })?
+    } else {
+        permguard_languages::headroom::with(|| {
+            engine.compile(&collected.policies, &collected.artifacts)
+        })
+        .map_err(Refusal::Incompatible)?
+    }
     .into();
 
     // What the manifest declared about this partition's history, against what its schemas turned

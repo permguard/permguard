@@ -71,19 +71,19 @@ use crate::evaluate::{Evaluating, Evaluator, Query, StoredPolicy, Verdict};
 
 use super::Rego;
 
-/// The most wall-clock one rule evaluation may spend.
+/// The most wall-clock one partition's evaluation may spend, every module and rule together.
 ///
 /// Rego is not structurally terminating the way Cedar is: comprehensions and
 /// `walk` over adversarial data can be made arbitrarily expensive, and the
 /// transport's request timeout is not a preemption boundary for a synchronous
 /// evaluation — it ends the response, not the work. This is the boundary. It
 /// is enormous next to a real authorization rule, which evaluates in
-/// microseconds, and small next to a stalled worker. A rule that exceeds it
-/// answers as every other evaluation fault does: a deny that says why.
+/// microseconds, and small next to a stalled worker.
 ///
-/// The same engine configuration governs the per-rule probe at compile time,
-/// so a policy that stalls *loading* is refused rather than served.
-const RULE_BUDGET: Duration = Duration::from_secs(1);
+/// One budget, decreasing (REGO-02, LANG-04): each rule is started with what the partition has
+/// left, and a partition with no time left starts no rule, so many expensive rules cannot each
+/// spend a full budget. Finishing late is `E`, as every evaluation fault is.
+const PARTITION_BUDGET: Duration = Duration::from_secs(1);
 
 /// How many interpreter work units pass between clock checks.
 ///
@@ -113,7 +113,19 @@ impl Evaluating for Rego {
         // Compiled once, here, and never again: a schema recompiled per request would be the
         // most expensive thing on the decision path and would say the same thing every time.
         let schema = artifacts.bytes(crate::rego::SCHEMA_ARTIFACT);
+        let input_schema = artifacts.bytes(crate::rego::INPUT_SCHEMA_ARTIFACT);
+        // One schema, one truth: v2 types `input.partition` too, so a partition carrying both
+        // would answer to two schemas that may disagree.
+        if schema.is_some() && input_schema.is_some() {
+            return Err(format!(
+                "rego: the partition carries both `{}` and `{}`; the whole-input schema covers \
+                 the partition document too, so carry one",
+                crate::rego::SCHEMA_ARTIFACT,
+                crate::rego::INPUT_SCHEMA_ARTIFACT
+            ));
+        }
         let validator = schema.map(compile_schema).transpose()?;
+        let input_validator = input_schema.map(compile_schema).transpose()?;
 
         let mut engine = prepared_engine();
         let mut modules = Vec::new();
@@ -125,29 +137,43 @@ impl Evaluating for Rego {
         for stored in policies {
             let text = std::str::from_utf8(&stored.source)
                 .map_err(|_| format!("rego: module {} is not valid UTF-8", stored.id))?;
-            let package = engine
-                .add_policy(format!("{}.rego", stored.id), text.to_owned())
+            // The parsed tree says which rules the module declares and which built-ins it calls:
+            // declarations are inspected, never discovered by running a rule (REGO-05), and a
+            // built-in outside the allow-list refuses the load (REGO-01).
+            let module = super::parsed::parse(text)
                 .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
+            super::parsed::check_builtins(&module)
+                .map_err(|error| format!("rego: module {}: {error}", stored.id))?;
+            // `parse` has bounded the module's nesting and parse work; the parse itself still
+            // runs on a stack segment sized for them.
+            let package = crate::headroom::ample(|| {
+                engine.add_policy(format!("{}.rego", stored.id), text.to_owned())
+            })
+            .map_err(|error| format!("rego: module {} does not parse: {error}", stored.id))?;
             if let Some(first) = claimed.get(&package) {
                 return Err(shared_package(&package, first, &stored.id));
             }
             claimed.insert(package.clone(), stored.id.clone());
             modules.push(Module {
                 id: stored.id.clone(),
-                allow: defined(&mut engine, &format!("{package}.allow")),
-                deny: defined(&mut engine, &format!("{package}.deny")),
+                allow: module
+                    .rules
+                    .contains("allow")
+                    .then(|| format!("{package}.allow")),
+                deny: module
+                    .rules
+                    .contains("deny")
+                    .then(|| format!("{package}.deny")),
             });
             policy_bytes += stored.source.len();
         }
-
-        // Whatever the compile-time probes printed is not carried into every request's clone.
-        let _ = engine.take_prints();
 
         Ok(Box::new(RegoEvaluator {
             engine,
             modules,
             validator,
-            footprint: footprint(policy_bytes, schema.map_or(0, <[u8]>::len)),
+            input_validator,
+            footprint: footprint(policy_bytes, schema.or(input_schema).map_or(0, <[u8]>::len)),
         }))
     }
 }
@@ -184,6 +210,8 @@ struct RegoEvaluator {
     modules: Vec<Module>,
     /// The partition's compiled JSON Schema, when it declares one.
     validator: Option<jsonschema::Validator>,
+    /// The whole-input schema, v2, when the partition carries one instead.
+    input_validator: Option<jsonschema::Validator>,
     footprint: usize,
 }
 
@@ -197,7 +225,7 @@ struct RegoEvaluator {
 fn prepared_engine() -> Engine {
     let mut engine = Engine::new();
     engine.set_execution_timer_config(ExecutionTimerConfig {
-        limit: RULE_BUDGET,
+        limit: PARTITION_BUDGET,
         check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL).unwrap_or(NonZeroU32::MIN),
     });
     engine.set_gather_prints(true);
@@ -222,7 +250,21 @@ fn footprint(policy_bytes: usize, schema_bytes: usize) -> usize {
 
 impl Evaluator for RegoEvaluator {
     fn evaluate(&self, query: &Query) -> Verdict {
-        let input = match value_of(&input_document(query)) {
+        // The partition's budget starts here: building and checking the input spend from it too.
+        let started = std::time::Instant::now();
+        let document = input_document(query);
+        // The whole input against v2 before any rule: a misspelled common field is refused, not
+        // read as `undefined` by a rule that then says "no".
+        if let Some(validator) = &self.input_validator
+            && let Err(error) = validator.validate(&document)
+        {
+            return Verdict::input_rejected(format!(
+                "rego: the input does not satisfy this partition's whole-input schema: {error} \
+                 (at {})",
+                error.instance_path()
+            ));
+        }
+        let input = match value_of(&document) {
             Ok(input) => input,
             Err(error) => return Verdict::input_rejected(error),
         };
@@ -232,17 +274,12 @@ impl Evaluator for RegoEvaluator {
         // cannot leave anything behind for the next.
         let mut engine = self.engine.clone();
 
-        // The request's own deadline, handed to the interpreter. `RULE_BUDGET` bounds a single
-        // rule; a partition with many modules can spend that many times over and still be inside
-        // it, which is why a per-rule limit alone never bounded a *request*. Whichever is smaller
-        // wins, so a decision that is nearly out of time cannot start a rule that would outlive
-        // it — this is the one engine here whose interpreter can be told to stop.
-        if let Some(left) = query.remaining() {
-            engine.set_execution_timer_config(ExecutionTimerConfig {
-                limit: left.min(RULE_BUDGET),
-                check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL).unwrap_or(NonZeroU32::MIN),
-            });
-        }
+        // The partition's one budget: the request's own deadline when it is nearer, the partition
+        // budget otherwise. It decreases as rules run and is handed to the interpreter before
+        // each one, so no rule can outlive what the partition has left.
+        let budget = query
+            .remaining()
+            .map_or(PARTITION_BUDGET, |left| left.min(PARTITION_BUDGET));
         engine.set_input(input);
 
         // Every module is evaluated, both rules, in order: what a rule answers is independent of
@@ -259,10 +296,22 @@ impl Evaluator for RegoEvaluator {
                 (module.allow.as_deref(), &mut permitted),
             ] {
                 let Some(rule) = rule else { continue };
+                let left = budget.saturating_sub(started.elapsed());
+                if left.is_zero() {
+                    failure.get_or_insert(Verdict::deadline_exceeded(
+                        "the partition spent its budget before every rule was asked",
+                    ));
+                    break 'modules;
+                }
+                engine.set_execution_timer_config(ExecutionTimerConfig {
+                    limit: left,
+                    check_interval: NonZeroU32::new(BUDGET_CHECK_INTERVAL)
+                        .unwrap_or(NonZeroU32::MIN),
+                });
                 match asked(&mut engine, rule) {
                     Ok(true) => answers.push(module.id.clone()),
                     Ok(false) => {}
-                    Err(error) if query.expired() => {
+                    Err(error) if query.expired() || started.elapsed() >= budget => {
                         failure.get_or_insert(Verdict::deadline_exceeded(error));
                         break 'modules;
                     }
@@ -334,19 +383,6 @@ pub(super) fn compile_schema(bytes: &[u8]) -> Result<jsonschema::Validator, Stri
         .with_draft(jsonschema::Draft::Draft202012)
         .build(&document)
         .map_err(|error| format!("rego: the schema is not a usable JSON Schema: {error}"))
-}
-
-/// Whether a module defines this rule at all. Asked once, at compile time:
-/// the engine answers "not a valid rule path" for a rule nobody wrote, and
-/// that is a fact about the module, not about a request.
-fn defined(engine: &mut Engine, rule: &str) -> Option<String> {
-    match engine.eval_rule(rule.to_owned()) {
-        Ok(_) => Some(rule.to_owned()),
-        Err(error) if error.to_string().contains("not a valid rule path") => None,
-        // Anything else means the rule exists and evaluating it without an
-        // input went wrong — which is exactly what a request will decide.
-        Err(_) => Some(rule.to_owned()),
-    }
 }
 
 /// Asks one rule the module defines. `undefined` — a rule whose body did not
@@ -474,7 +510,7 @@ deny if input.subject.id == "bob"
 
     #[test]
     fn a_hostile_rule_is_stopped_by_the_decisions_deadline_long_before_the_rule_budget() {
-        // `RULE_BUDGET` bounds one rule at a second; a decision given 150ms must not spend a
+        // `PARTITION_BUDGET` bounds a partition at a second; a decision given 150ms must not spend a
         // second on it. This is the propagation working: the interpreter is handed whichever
         // budget is smaller, so a request nearly out of time cannot start a rule that would
         // outlive it — and a partition with many modules cannot spend the per-rule budget once
@@ -509,7 +545,7 @@ allow if {
         assert!(!verdict.permitted(), "it fails closed");
         assert!(verdict.error().is_some(), "and says why");
         assert!(
-            spent < RULE_BUDGET,
+            spent < PARTITION_BUDGET,
             "the decision's deadline bounded it, not the per-rule budget: {spent:?}"
         );
     }
@@ -550,6 +586,145 @@ allow if {
             verdict.error().is_some(),
             "as an evaluation fault that says why, not as a silent deny"
         );
+    }
+
+    /// REGO-02: many expensive rules share the partition's one budget. Five modules, each able to
+    /// spend far more than the budget, stop together near one budget — never five — as `E`.
+    #[test]
+    fn many_expensive_rules_share_one_decreasing_budget() {
+        let hostile = |package: &str| {
+            format!(
+                "package {package}\n\nimport rego.v1\n\nallow if {{\n    input.subject.id != \"\"\n    \
+                 some x in numbers.range(0, 20000)\n    some y in numbers.range(0, 20000)\n    \
+                 x + y == -1\n}}\n"
+            )
+        };
+        let policies: Vec<StoredPolicy> = (0..5)
+            .map(|i| {
+                stored(
+                    &format!("01a0-hostile-{i}"),
+                    &hostile(&format!("hostile{i}")),
+                )
+            })
+            .collect();
+        let compiled = Rego
+            .compile(&policies, &crate::artifact::Artifacts::default())
+            .expect("the modules compile");
+
+        let started = std::time::Instant::now();
+        let verdict = compiled.evaluate(&query("alice", "read", "open"));
+        let spent = started.elapsed();
+        assert!(
+            spent < PARTITION_BUDGET * 2,
+            "five rules spent {spent:?}: the budget is the partition's, not each rule's"
+        );
+        let error = verdict.error().expect("finishing late is `E`");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_DEADLINE_EXCEEDED
+        );
+    }
+
+    /// REGO-06: the whole-input schema refuses an input it does not admit before any rule runs,
+    /// and admits one it describes; a partition carrying v1 and v2 is refused at load; a remote
+    /// `$ref` never compiles.
+    #[test]
+    fn the_whole_input_schema_types_every_member_and_excludes_v1() {
+        let v2 = br#"{
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["subject", "context"],
+            "properties": {
+                "subject": { "type": "object", "required": ["id"] },
+                "context": { "type": "object", "required": ["tenant"],
+                             "properties": { "tenant": { "type": "string" } } }
+            }
+        }"#;
+        let held = crate::artifact::Artifacts::just(crate::rego::INPUT_SCHEMA_ARTIFACT, v2)
+            .expect("the v2 artifact is registered");
+        let compiled = Rego
+            .compile(
+                &[stored(
+                    "01a0-allow",
+                    "package typed\nimport rego.v1\nallow if { input.context.tenant == \"acme\" }\n",
+                )],
+                &held,
+            )
+            .expect("compiles with v2");
+
+        let mut typed = query("alice", "read", "open");
+        typed
+            .context
+            .insert("tenant".to_owned(), Value::from("acme"));
+        assert!(compiled.evaluate(&typed).permitted());
+
+        let mut misspelled = query("alice", "read", "open");
+        misspelled
+            .context
+            .insert("tennant".to_owned(), Value::from("acme"));
+        let error = compiled
+            .evaluate(&misspelled)
+            .error()
+            .expect("a refusal, not an `undefined` read as no");
+        assert_eq!(
+            error.code,
+            permguard_core::codes::pdp_native::EVALUATION_INPUT_REJECTED
+        );
+        assert!(
+            error.message.contains("whole-input schema"),
+            "{}",
+            error.message
+        );
+
+        let mut both = held.clone();
+        both.insert(
+            &crate::rego::SchemaArtifact,
+            crate::artifact::ArtifactBlob {
+                name: "partition.regoschema".to_owned(),
+                media_type: crate::rego::SCHEMA_MEDIA_TYPE.to_owned(),
+                data: br#"{"type":"object"}"#.to_vec(),
+            },
+        );
+        let refused = Rego
+            .compile(
+                &[stored("01a0-allow", "package typed\nimport rego.v1\n")],
+                &both,
+            )
+            .err()
+            .expect("v1 and v2 together are refused");
+        assert!(refused.contains("carry one"), "{refused}");
+
+        let remote = br#"{"$ref": "https://example.invalid/schema.json"}"#;
+        assert!(
+            crate::artifact::ArtifactType::validate(&crate::rego::InputSchemaArtifact, remote)
+                .is_err(),
+            "a remote reference is refused at compile, without I/O"
+        );
+    }
+
+    /// REGO-06 floors: from `production` a Rego partition carries v1 or v2, under `regulated`
+    /// the whole-input v2.
+    #[test]
+    fn the_assurance_profile_raises_the_schema_floor() {
+        use permguard_core::assurance::AssuranceProfile::{Development, Production, Regulated};
+        let floor = |profile, held: &crate::artifact::Artifacts| {
+            crate::registry::check_schema_floor(crate::rego::NAME, profile, held)
+        };
+        let none = crate::artifact::Artifacts::default();
+        let v1 = artifacts(br#"{"type":"object"}"#);
+        let v2 = crate::artifact::Artifacts::just(
+            crate::rego::INPUT_SCHEMA_ARTIFACT,
+            br#"{"type":"object"}"#,
+        )
+        .expect("registered");
+        assert!(floor(Development, &none).is_ok());
+        assert!(floor(Production, &none).is_err());
+        assert!(floor(Production, &v1).is_ok() && floor(Production, &v2).is_ok());
+        assert!(
+            floor(Regulated, &v1).is_err(),
+            "v1 types only the partition document"
+        );
+        assert!(floor(Regulated, &v2).is_ok());
     }
 
     #[test]

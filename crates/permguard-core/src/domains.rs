@@ -122,6 +122,8 @@ pub mod media {
     pub const POLICY_DOGWOOD: &str = "application/vnd.permguard.policy.dogwood";
     pub const SCHEMA_CEDAR: &str = "application/vnd.permguard.schema.cedar";
     pub const SCHEMA_REGO_JSON: &str = "application/vnd.permguard.schema.rego+json";
+    /// The whole-input Rego schema, `permguard.rego.schema.v2`, authored as `.regoinput`.
+    pub const SCHEMA_REGO_INPUT_JSON: &str = "application/vnd.permguard.schema.rego.input+json";
     pub const DOGWOOD_ACTION_SCHEMA: &str = "application/vnd.permguard.dogwood.action-schema";
     pub const DOGWOOD_EVENT_SCHEMA: &str = "application/vnd.permguard.dogwood.event-schema";
     pub const DOGWOOD_MACROS: &str = "application/vnd.permguard.dogwood.macros";
@@ -285,6 +287,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("media.POLICY_DOGWOOD", media::POLICY_DOGWOOD),
         ("media.SCHEMA_CEDAR", media::SCHEMA_CEDAR),
         ("media.SCHEMA_REGO_JSON", media::SCHEMA_REGO_JSON),
+        (
+            "media.SCHEMA_REGO_INPUT_JSON",
+            media::SCHEMA_REGO_INPUT_JSON,
+        ),
         ("media.DOGWOOD_ACTION_SCHEMA", media::DOGWOOD_ACTION_SCHEMA),
         ("media.DOGWOOD_EVENT_SCHEMA", media::DOGWOOD_EVENT_SCHEMA),
         ("media.DOGWOOD_MACROS", media::DOGWOOD_MACROS),

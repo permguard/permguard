@@ -8,6 +8,7 @@
 //! `# METADATA` annotation block, under `custom.alias`; no bespoke syntax.
 
 pub(crate) mod evaluate;
+pub(crate) mod parsed;
 
 use crate::role::{Authoring, ExtractedPolicy, Language};
 
@@ -23,6 +24,15 @@ pub const SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA_REGO_
 
 /// The extension an authored Rego partition schema carries.
 pub const SCHEMA_EXTENSION: &str = "regoschema";
+
+/// The registered type of the whole-input schema, `permguard.rego.schema.v2`: JSON Schema over all
+/// of `input` — `subject`, `resource`, `action`, `context` and `partition` — so a misspelled common
+/// field is a typed refusal rather than an `undefined` a rule reads as "no" (REGO-06, IFACE-07).
+pub const INPUT_SCHEMA_ARTIFACT: &str = permguard_core::domains::artifact::REGO_SCHEMA_V2;
+/// The media type of the whole-input schema.
+pub const INPUT_SCHEMA_MEDIA_TYPE: &str = permguard_core::domains::media::SCHEMA_REGO_INPUT_JSON;
+/// The extension an authored whole-input schema carries.
+pub const INPUT_SCHEMA_EXTENSION: &str = "regoinput";
 
 /// The Rego plugin.
 pub struct Rego;
@@ -48,15 +58,18 @@ impl Language for Rego {
                 // `time` gives `time.now_ns`; `std` gives `rand.intn` and `uuid` gives
                 // `uuid.rfc4122`. Neither `http` nor `opa-runtime` reaches the network or the
                 // environment in this build.
-                clock: true,
-                randomness: true,
+                // The allow-list refuses every built-in that reads the clock or draws randomness at
+                // load, whatever the build compiled in (REGO-01).
+                clock: false,
+                randomness: false,
                 io: false,
             },
-            limits: &["rego_request_timer"],
+            limits: &["rego_nesting", "rego_parse_work", "rego_partition_deadline"],
             isolation: Isolation {
                 mode: IsolationMode::InProcess,
-                reason: "a cooperative timer bounds each request's work; memory is not bounded \
-                         in-process (LANG-04), and adopting the supervised worker is TL-4",
+                reason: "one decreasing deadline bounds each partition's work; memory is not \
+                         bounded in-process (LANG-04), so from production upward every partition \
+                         compiles and evaluates in the supervised worker, or is refused",
             },
         }
     }
@@ -71,22 +84,48 @@ impl Language for Rego {
 
     fn artifacts(&self) -> &'static [&'static dyn crate::artifact::ArtifactType] {
         const SCHEMA: &SchemaArtifact = &SchemaArtifact;
+        const INPUT: &InputSchemaArtifact = &InputSchemaArtifact;
 
-        &[SCHEMA]
+        &[SCHEMA, INPUT]
+    }
+
+    /// Regorus has no hard memory bound in-process, and a comprehension or `walk` over hostile
+    /// data can spend without limit: from `production` upward a Rego partition runs in a
+    /// supervised worker, under the OS limits, or not at all (REGO-03, LANG-04).
+    fn isolation_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
+        profile.at_least(permguard_core::assurance::AssuranceProfile::Production)
+    }
+
+    /// From `production` the partition carries a schema, v1 or v2; under `regulated` the
+    /// whole-input v2, because v1 types only `input.partition` (REGO-06).
+    fn required_schemas(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        use permguard_core::assurance::AssuranceProfile;
+
+        if profile.at_least(AssuranceProfile::Regulated) {
+            &[INPUT_SCHEMA_ARTIFACT]
+        } else if profile.at_least(AssuranceProfile::Production) {
+            &[SCHEMA_ARTIFACT, INPUT_SCHEMA_ARTIFACT]
+        } else {
+            &[]
+        }
     }
 
     fn validate_schema(&self, bytes: &[u8]) -> Result<(), String> {
         evaluate::compile_schema(bytes).map(|_| ())
     }
 
+    /// The module parses, calls only allowed built-ins and declares a well-formed alias, if any:
+    /// what authoring and the Control Plane's acceptance of a push check, read from the parsed
+    /// tree as the load gate reads it.
     fn validate_policy(&self, bytes: &[u8]) -> Result<(), String> {
         let text = std::str::from_utf8(bytes)
             .map_err(|_| "a Rego module must be valid UTF-8".to_owned())?;
-        let mut engine = regorus::Engine::new();
-        engine
-            .add_policy("policy.rego".to_owned(), text.to_owned())
-            .map(|_| ())
-            .map_err(|error| format!("rego: {error}"))
+        let module = parsed::parse(text)?;
+        parsed::check_builtins(&module)?;
+        parsed::alias(text, &module).map(|_| ())
     }
     /// Rego's marker is `# METADATA` with `custom.alias`, above the package.
     /// Refuses a partition whose policies share a package.
@@ -104,9 +143,13 @@ impl Language for Rego {
         let mut claimed: std::collections::BTreeMap<String, &str> =
             std::collections::BTreeMap::new();
         for (name, source) in policies {
-            let Some(package) = package_of(source) else {
-                continue;
-            };
+            // The package the parser reports, the value the compile and the load gate use too
+            // (REGO-07): never a second, lexical reading of it.
+            let text = std::str::from_utf8(source)
+                .map_err(|_| format!("rego: policy {name} is not valid UTF-8"))?;
+            let package = parsed::parse(text)
+                .map_err(|error| format!("rego: policy {name}: {error}"))?
+                .package;
             if let Some(first) = claimed.get(&package) {
                 return Err(crate::rego::evaluate::shared_package(&package, first, name));
             }
@@ -116,8 +159,11 @@ impl Language for Rego {
         Ok(())
     }
 
+    /// `custom.alias` of the `# METADATA` block heading the package the parser located.
     fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String> {
-        Ok(std::str::from_utf8(source).ok().and_then(alias_of))
+        let text = std::str::from_utf8(source)
+            .map_err(|_| "a Rego module must be valid UTF-8".to_owned())?;
+        parsed::alias(text, &parsed::parse(text)?)
     }
 
     fn authoring(&self) -> Option<&dyn Authoring> {
@@ -127,40 +173,6 @@ impl Language for Rego {
     fn evaluating(&self) -> Option<&dyn crate::evaluate::Evaluating> {
         Some(self)
     }
-}
-
-/// The declared alias: the standard OPA `# METADATA` block, `custom.alias`.
-///
-/// The block is the comment lines immediately preceding (or heading) the
-/// module; its content is YAML behind the `# ` prefix — parsed as such,
-/// never scraped with guesses.
-fn alias_of(text: &str) -> Option<String> {
-    let mut yaml = String::new();
-    let mut in_block = false;
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed == "# METADATA" {
-            in_block = true;
-            continue;
-        }
-        if in_block {
-            if let Some(rest) = trimmed.strip_prefix("#") {
-                yaml.push_str(rest.strip_prefix(' ').unwrap_or(rest));
-                yaml.push('\n');
-            } else {
-                break;
-            }
-        }
-    }
-    if yaml.is_empty() {
-        return None;
-    }
-    let value: serde_norway::Value = serde_norway::from_str(&yaml).ok()?;
-    value
-        .get("custom")?
-        .get("alias")?
-        .as_str()
-        .map(ToOwned::to_owned)
 }
 
 impl Authoring for Rego {
@@ -173,12 +185,13 @@ impl Authoring for Rego {
     }
 
     fn extract(&self, source: &[u8]) -> Result<Vec<ExtractedPolicy>, String> {
-        self.validate_policy(source)?;
         let text = std::str::from_utf8(source)
             .map_err(|_| "a Rego module must be valid UTF-8".to_owned())?;
+        let module = parsed::parse(text)?;
+        parsed::check_builtins(&module)?;
         Ok(vec![ExtractedPolicy {
             bytes: source.to_vec(),
-            alias: alias_of(text),
+            alias: parsed::alias(text, &module)?,
         }])
     }
 }
@@ -226,35 +239,41 @@ impl crate::artifact::ArtifactType for SchemaArtifact {
     }
 }
 
-/// The package a module declares, read from its own source.
-///
-/// Read here rather than by adding it to an engine, because this runs at authoring where the
-/// question is "may these files live together" and not "does this whole set compile". A line-by-line
-/// read is enough for that and cannot fail on a module whose *body* has a problem the set check is
-/// not about.
-fn package_of(source: &[u8]) -> Option<String> {
-    let text = std::str::from_utf8(source).ok()?;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('#') {
-            continue;
-        }
-        let Some(rest) = line.strip_prefix("package") else {
-            continue;
-        };
-        // `package` must be followed by whitespace: `packages` is not a declaration.
-        if !rest.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let named = rest.trim();
-        if named.is_empty() {
-            continue;
-        }
+/// The registered type of a Rego partition's whole-input schema.
+pub struct InputSchemaArtifact;
 
-        return Some(named.to_owned());
+impl crate::artifact::ArtifactType for InputSchemaArtifact {
+    fn name(&self) -> &'static str {
+        INPUT_SCHEMA_ARTIFACT
     }
 
-    None
+    fn media_type(&self) -> &'static str {
+        INPUT_SCHEMA_MEDIA_TYPE
+    }
+
+    fn runtime(&self) -> &'static str {
+        NAME
+    }
+
+    fn role(&self) -> crate::artifact::ArtifactRole {
+        crate::artifact::ArtifactRole::Schema
+    }
+
+    fn semantic_role(&self) -> &'static str {
+        "input-schema"
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &[INPUT_SCHEMA_EXTENSION]
+    }
+
+    fn cardinality(&self) -> crate::artifact::Cardinality {
+        crate::artifact::Cardinality::ZeroOrOne
+    }
+
+    fn validate(&self, bytes: &[u8]) -> Result<(), String> {
+        evaluate::compile_schema(bytes).map(|_| ())
+    }
 }
 
 #[cfg(test)]

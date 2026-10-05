@@ -37,6 +37,7 @@ sha2.workspace = true
 cedar-policy = { version = "=4.11.0", default-features = false, features = ["datetime", "decimal", "ipaddr"] }
 regorus = { version = "=0.12.0", default-features = false, features = [
     "arc",
+    "ast",
     "base64",
     "base64url",
     "cache",
@@ -110,4 +111,9 @@ libc = "0.2"
 # itself — which the test harness, parsing every argument as a filter, cannot allow.
 [[test]]
 name = "worker"
+harness = false
+
+# Rego in its supervised worker, against the real runtime catalogue: the same two lives.
+[[test]]
+name = "rego_supervised"
 harness = false

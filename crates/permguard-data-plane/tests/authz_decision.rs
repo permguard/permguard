@@ -789,6 +789,62 @@ async fn a_schema_less_cedar_partition_serves_only_below_production() {
     );
 }
 
+/// REGO-03: from `production` a Rego partition runs only in its supervised worker. With no
+/// worker able to start, the partition is refused — never compiled in-process instead — and the
+/// refusal is not written down against the ledger; under `development` it is served in-process.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rego_partition_runs_isolated_from_production_or_not_at_all() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_languages::worker::{Limits, Supervisors};
+
+    let root = scratch("isolated").join("mirrors");
+    let manifest = manifest(&[("app", "rego", false)], ">=0.0.0");
+    let mirror = provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest,
+        &[("app", vec![&REGO_READ], None)],
+    );
+    let nowhere = Arc::new(Supervisors::with_executable(
+        PathBuf::from("/nonexistent/permguard-worker"),
+        Vec::new(),
+        Limits::default(),
+        1,
+    ));
+    let under = |profile| {
+        Arc::new(
+            Decider::new(
+                root.clone(),
+                Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+                Metrics::none(),
+                None,
+                256,
+            )
+            .with_profile(profile)
+            .with_supervisors(Arc::clone(&nowhere)),
+        )
+    };
+
+    let refused = under(AssuranceProfile::Production)
+        .decide(&ask("acme", "main-ledger", "alice", "list"), None)
+        .await
+        .expect_err("no worker, no in-process fallback");
+    assert_eq!(refused.code(), "ledger_incompatible");
+    assert!(
+        block::read(&mirror.path).is_none(),
+        "a worker that could not start is not the ledger's fault"
+    );
+    assert!(
+        under(AssuranceProfile::Development)
+            .decide(&ask("acme", "main-ledger", "alice", "list"), None)
+            .await
+            .expect("development evaluates in process")
+            .decision
+    );
+}
+
 #[tokio::test]
 async fn an_engine_outside_the_manifests_range_refuses_and_stays_refused() {
     let root = scratch("gate").join("mirrors");

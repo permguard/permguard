@@ -40,6 +40,7 @@ pub mod engine_features {
     /// `regorus`: its upstream default set, spelled out.
     pub const REGO: &[&str] = &[
         "arc",
+        "ast",
         "base64",
         "base64url",
         "cache",
@@ -655,22 +656,30 @@ pub fn check_schema_floor(
     let Some(language) = crate::lookup::language(language_name) else {
         return Ok(());
     };
-    if !language.schema_required(profile) {
-        return Ok(());
-    }
-    let carried = language.artifacts().iter().any(|artifact| {
-        artifact.role() == crate::artifact::ArtifactRole::Schema
-            && artifacts.bytes(artifact.name()).is_some()
-    });
-    if carried {
+    let required = language.required_schemas(profile);
+    if required.is_empty() || required.iter().any(|name| artifacts.bytes(name).is_some()) {
         return Ok(());
     }
 
     Err(format!(
-        "a `{language_name}` partition carries no schema, which the `{}` assurance profile \
-         requires; schema-less `{language_name}` serves only under `development`",
+        "a `{language_name}` partition carries none of {}, which the `{}` assurance profile \
+         requires",
+        required
+            .iter()
+            .map(|name| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", "),
         profile.as_str()
     ))
+}
+
+/// Whether a partition of `language_name` must run in a supervised worker under `profile`.
+pub fn isolation_required(
+    language_name: &str,
+    profile: permguard_core::assurance::AssuranceProfile,
+) -> bool {
+    crate::lookup::language(language_name)
+        .is_some_and(|language| language.isolation_required(profile))
 }
 
 /// The evaluating half of a language named by the manifest, when this build

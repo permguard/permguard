@@ -306,6 +306,117 @@ impl std::error::Error for Refused {}
 #[cfg(unix)]
 pub use supervised::Supervisor;
 
+/// Why a partition could not be compiled in a supervised worker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Isolated {
+    /// No worker can run here: a platform without one, or a supervisor that could not start. The
+    /// partition is not served — never served in-process instead.
+    Unavailable(String),
+    /// The worker compiled the partition and its runtime refused it, as an in-process compile
+    /// would have.
+    Refused(String),
+}
+
+/// The supervisors a plane runs its isolated runtimes in: one per runtime, started the first time a
+/// partition of that runtime needs one, and shared by every partition after.
+pub struct Supervisors {
+    limits: Limits,
+    size: usize,
+    /// The executable and arguments workers start from, when not this process's own.
+    #[cfg(unix)]
+    executable: Option<(std::path::PathBuf, Vec<String>)>,
+    #[cfg(unix)]
+    held: std::sync::Mutex<std::collections::HashMap<String, Arc<Supervisor>>>,
+}
+
+impl Supervisors {
+    /// Pools of at most `size` workers per runtime, each under `limits`.
+    pub fn new(limits: Limits, size: usize) -> Self {
+        Self {
+            limits,
+            size: size.max(1),
+            #[cfg(unix)]
+            executable: None,
+            #[cfg(unix)]
+            held: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// The same, with workers started from `executable` and `arguments` — what a test whose own
+    /// binary is not the worker uses.
+    #[cfg(unix)]
+    pub fn with_executable(
+        executable: std::path::PathBuf,
+        arguments: Vec<String>,
+        limits: Limits,
+        size: usize,
+    ) -> Self {
+        Self {
+            executable: Some((executable, arguments)),
+            ..Self::new(limits, size)
+        }
+    }
+
+    /// Compiles a partition of `language` in that runtime's supervised worker.
+    #[cfg(unix)]
+    pub fn compile(
+        &self,
+        language: &str,
+        policies: &[StoredPolicy],
+        artifacts: &Artifacts,
+    ) -> Result<Box<dyn Evaluator>, Isolated> {
+        let supervisor = {
+            let mut held = match self.held.lock() {
+                Ok(held) => held,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            match held.get(language) {
+                Some(supervisor) => Arc::clone(supervisor),
+                None => {
+                    let supervisor = match &self.executable {
+                        Some((executable, arguments)) => Supervisor::with_executable(
+                            executable.clone(),
+                            arguments.clone(),
+                            language,
+                            self.limits,
+                            self.size,
+                            &Registry,
+                        ),
+                        None => Supervisor::new(language, self.limits, self.size),
+                    }
+                    .map_err(|refused| Isolated::Unavailable(refused.0))?;
+                    held.insert(language.to_owned(), Arc::clone(&supervisor));
+                    supervisor
+                }
+            }
+        };
+        supervisor.compile_isolated(policies, artifacts)
+    }
+
+    /// No supervised worker runs on this platform, so a runtime that requires one is not served.
+    #[cfg(not(unix))]
+    pub fn compile(
+        &self,
+        language: &str,
+        _policies: &[StoredPolicy],
+        _artifacts: &Artifacts,
+    ) -> Result<Box<dyn Evaluator>, Isolated> {
+        let _ = (self.limits, self.size);
+        Err(Isolated::Unavailable(format!(
+            "`{language}` must run in a supervised worker at this assurance profile, and this \
+             platform cannot run one"
+        )))
+    }
+}
+
+impl Default for Supervisors {
+    /// Two workers per runtime under the default limits: what a plane uses until its
+    /// configuration narrows them.
+    fn default() -> Self {
+        Self::new(Limits::default(), 2)
+    }
+}
+
 #[cfg(unix)]
 mod supervised {
     use std::collections::HashSet;
@@ -393,6 +504,14 @@ mod supervised {
     }
 
     impl WorkerError {
+        /// A refusal the runtime made, or a worker that could not answer.
+        fn isolated(self) -> Isolated {
+            match self.kind {
+                Kind::Refused => Isolated::Refused(self.message),
+                Kind::Late | Kind::Broken => Isolated::Unavailable(self.message),
+            }
+        }
+
         fn refused(message: String) -> Self {
             Self {
                 kind: Kind::Refused,
@@ -472,21 +591,33 @@ mod supervised {
             policies: &[StoredPolicy],
             artifacts: &Artifacts,
         ) -> Result<Box<dyn Evaluator>, String> {
+            self.compile_isolated(policies, artifacts)
+                .map_err(|(Isolated::Refused(why) | Isolated::Unavailable(why))| why)
+        }
+
+        /// The same, telling a partition the runtime refused from a worker that could not
+        /// answer: the first is the ledger's fault and stays refused, the second is this host's
+        /// and must not be remembered against the ledger.
+        pub fn compile_isolated(
+            self: &Arc<Self>,
+            policies: &[StoredPolicy],
+            artifacts: &Artifacts,
+        ) -> Result<Box<dyn Evaluator>, Isolated> {
             let material = encode_material(policies, artifacts);
             // Under the frame bound with room for the frame around it: a partition the worker
             // would refuse to read is refused here, by name, rather than as a broken worker.
             if material.len() > MAX_FRAME - 1024 * 1024 {
-                return Err(format!(
+                return Err(Isolated::Refused(format!(
                     "the partition is {} bytes, more than a supervised worker accepts ({} bytes)",
                     material.len(),
                     MAX_FRAME - 1024 * 1024
-                ));
+                )));
             }
             let checksum = hex_sha256(&material);
             let deadline = Instant::now() + self.limits.wall_clock;
-            let mut worker = self.worker(deadline).map_err(|error| error.message)?;
+            let mut worker = self.worker(deadline).map_err(WorkerError::isolated)?;
             self.compile_in(&mut worker, &checksum, &material, deadline, false)
-                .map_err(|error| error.message)?;
+                .map_err(WorkerError::isolated)?;
             self.release(worker);
 
             Ok(Box::new(SupervisedEvaluator {

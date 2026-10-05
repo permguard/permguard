@@ -152,12 +152,25 @@ pub trait Language: Send + Sync {
     /// identity resolution rather than read as "no alias".
     fn declared_alias(&self, source: &[u8]) -> Result<Option<String>, String>;
 
-    /// Whether a partition of this language must carry a schema to serve under `profile`.
+    /// The schema artifacts any one of which a partition of this language must carry to serve
+    /// under `profile`; empty when it needs none.
     ///
     /// The assurance profile is the operator's serving floor, never something a manifest can
     /// lower; a language whose policies only mean what they read when typed against a schema
-    /// raises the floor from the profile it names (CEDAR-05). Most require nothing.
-    fn schema_required(&self, _profile: permguard_core::assurance::AssuranceProfile) -> bool {
+    /// raises the floor from the profile it names (CEDAR-05, REGO-06). Most require nothing.
+    fn required_schemas(
+        &self,
+        _profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Whether a partition of this language must run in a supervised worker under `profile`.
+    ///
+    /// A runtime whose worst case cannot be bounded in-process — no hard memory bound — does not
+    /// pass the in-process gate from `production` upward (LANG-04): it runs where the OS bounds
+    /// and the supervisor can kill it, or it is not served. Most runtimes are bounded already.
+    fn isolation_required(&self, _profile: permguard_core::assurance::AssuranceProfile) -> bool {
         false
     }
 

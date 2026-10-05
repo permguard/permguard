@@ -286,8 +286,9 @@ impl Loading {
             }
 
             let started = Instant::now();
-            let partition = snapshot::compile(&mirror.path, head, &name, self.profile)
-                .map_err(|refusal| self.refuse(mirror, &refusal))?;
+            let partition =
+                snapshot::compile(&mirror.path, head, &name, self.profile, &self.supervisors)
+                    .map_err(|refusal| self.refuse(mirror, &refusal))?;
             self.metrics.observe(
                 &super::measure::COMPILE_SECONDS,
                 &[],
@@ -417,6 +418,7 @@ struct Loading {
     expire_after: Option<std::time::Duration>,
     enabled: permguard_languages::registry::Enabled,
     profile: permguard_core::assurance::AssuranceProfile,
+    supervisors: Arc<permguard_languages::worker::Supervisors>,
     single_flight: Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<()>>>>>,
 }
 
@@ -458,6 +460,8 @@ pub struct Decider {
     enabled: permguard_languages::registry::Enabled,
     /// The operator's serving floor: a partition that does not meet it is refused at load.
     profile: permguard_core::assurance::AssuranceProfile,
+    /// Where a runtime the floor requires isolated runs: its supervised workers.
+    supervisors: Arc<permguard_languages::worker::Supervisors>,
     /// One gate per `(zone, ledger, commit[, partition])` being read or compiled.
     ///
     /// # Why a plane needs this
@@ -512,6 +516,7 @@ impl Decider {
             // `development` until the Host configuration carries the profile (WP-2.8): the floor
             // that refuses nothing a deployment served before.
             profile: permguard_core::assurance::AssuranceProfile::Development,
+            supervisors: Arc::new(permguard_languages::worker::Supervisors::default()),
             single_flight: Arc::new(Mutex::new(std::collections::HashMap::new())),
             // A bound on how much blocking work exists at once, defaulted rather than optional:
             // an unbounded `spawn_blocking` is what lets a plane accumulate instead of refusing,
@@ -530,6 +535,15 @@ impl Decider {
     /// configuration carries the profile (WP-2.8).
     pub fn with_profile(mut self, profile: permguard_core::assurance::AssuranceProfile) -> Self {
         self.profile = profile;
+        self
+    }
+
+    /// The supervised workers a runtime the profile requires isolated runs in.
+    pub fn with_supervisors(
+        mut self,
+        supervisors: Arc<permguard_languages::worker::Supervisors>,
+    ) -> Self {
+        self.supervisors = supervisors;
         self
     }
 
@@ -554,6 +568,7 @@ impl Decider {
             expire_after: self.expire_after,
             enabled: self.enabled.clone(),
             profile: self.profile,
+            supervisors: Arc::clone(&self.supervisors),
             single_flight: Arc::clone(&self.single_flight),
         }
     }
@@ -696,7 +711,7 @@ impl Decider {
             if self.cache.partition(&key).is_some() {
                 continue;
             }
-            match snapshot::compile(&mirror.path, &head, name, self.profile) {
+            match snapshot::compile(&mirror.path, &head, name, self.profile, &self.supervisors) {
                 Ok(partition) => {
                     self.cache
                         .keep_partition(key, &mirror.identity.zone_id, partition);

@@ -67,6 +67,9 @@ impl<L: Language + 'static> Guarded<L> {
     }
 }
 
+/// The schema a floor that came apart demands: a name no artifact has, so nothing satisfies it.
+const FLOOR_CAME_APART: &str = "a schema floor that came apart";
+
 impl<L: Language + 'static> Language for Guarded<L> {
     fn name(&self) -> &'static str {
         self.0.name()
@@ -76,9 +79,18 @@ impl<L: Language + 'static> Language for Guarded<L> {
         self.0.language_version()
     }
 
-    fn schema_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
-        // A floor that came apart is no floor at all: refuse to serve rather than drop it.
-        contained(|| self.0.schema_required(profile)).unwrap_or(true)
+    fn required_schemas(
+        &self,
+        profile: permguard_core::assurance::AssuranceProfile,
+    ) -> &'static [&'static str] {
+        // A floor that came apart is no floor at all: demand a schema no partition carries, so
+        // the partition is refused rather than served without one.
+        contained(|| self.0.required_schemas(profile)).unwrap_or(&[FLOOR_CAME_APART])
+    }
+
+    fn isolation_required(&self, profile: permguard_core::assurance::AssuranceProfile) -> bool {
+        // A requirement that came apart is kept: isolate rather than run unbounded.
+        contained(|| self.0.isolation_required(profile)).unwrap_or(true)
     }
 
     fn engine(&self) -> crate::descriptor::Engine {

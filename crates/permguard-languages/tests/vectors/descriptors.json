@@ -127,10 +127,12 @@
         ],
         "media_types": [
           "application/vnd.permguard.policy.rego",
-          "application/vnd.permguard.schema.rego+json"
+          "application/vnd.permguard.schema.rego+json",
+          "application/vnd.permguard.schema.rego.input+json"
         ],
         "artifacts": [
-          "permguard.rego.schema.v1"
+          "permguard.rego.schema.v1",
+          "permguard.rego.schema.v2"
         ],
         "inputs": [
           "permguard.rego.data.v1"
@@ -138,6 +140,7 @@
         "capabilities": {
           "features": [
             "arc",
+            "ast",
             "base64",
             "base64url",
             "cache",
@@ -160,23 +163,25 @@
             "yaml"
           ],
           "extensions": [],
-          "clock": true,
-          "randomness": true,
+          "clock": false,
+          "randomness": false,
           "io": false
         },
         "limits": [
           "deadline_after_evaluation",
           "deadline_before_evaluation",
           "panic_boundary",
-          "rego_request_timer",
+          "rego_nesting",
+          "rego_parse_work",
+          "rego_partition_deadline",
           "stack_headroom"
         ],
         "isolation": {
           "mode": "in_process",
-          "reason": "a cooperative timer bounds each request's work; memory is not bounded in-process (LANG-04), and adopting the supervised worker is TL-4"
+          "reason": "one decreasing deadline bounds each partition's work; memory is not bounded in-process (LANG-04), so from production upward every partition compiles and evaluates in the supervised worker, or is refused"
         }
       },
-      "digest": "sha256:369c4f0587893d81b6221460f4ec62b64c0e42f84828f84346787d165fdb79ad"
+      "digest": "sha256:3b617cd13366bcf53eb7d81319d5006619a5ce8143bb956e804e8c7c53f23875"
     }
   ]
 }
