@@ -147,6 +147,11 @@ tasks:
     cmds:
       - ./scripts/check-license-headers.sh
 
+  check:vectors:
+    desc: Check that the golden vectors are what their independent generator prints (needs Python 3 and the `cryptography` package).
+    cmds:
+      - python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
+
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.
     cmds:

@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: check-boundaries fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: check-boundaries fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -197,6 +197,9 @@ fuzz: ## Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuz
 
 check-headers: ## Check that every source file carries the licence header.
 	./scripts/check-license-headers.sh
+
+check-vectors: ## Check that the golden vectors are what their independent generator prints (Python 3, `cryptography`).
+	python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
 
 notices: ## Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
 	./scripts/third-party-notices.sh

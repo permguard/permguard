@@ -238,42 +238,39 @@ impl Cursor {
     }
 }
 
-/// The digest of a normalized filter set, as a cursor binds it.
+/// The digest of a normalized filter set, as a cursor binds it: SHA-256 over
+/// `permguard.stream.filters.v1\n` and the RFC 8785 form of the filters, like every other evidence
+/// digest of this product.
 ///
 /// Normalization is the caller's: what reaches here must already be the *canonical* form of the
 /// filters, or two spellings of one filter set would produce two cursors that refuse each other.
+///
+/// The form carries every member's name. An earlier form wrote a name's length but not the name,
+/// so `{"type":"x"}` and `{"zone":"x"}` collided and a cursor could be presented under another
+/// filter set; a cursor issued under it is refused as `filters differ`, and its reader starts again.
+///
+/// A value RFC 8785 refuses — an integer beyond double precision; no filter a store builds holds
+/// one — is digested over a `0xff` byte and the canonical form of [`crate::jcs::normalized`], which
+/// carries such a number as its decimal text: canonical too, so equal filter sets still agree, and
+/// distinct from every digest of a canonical form, since `0xff` never occurs in JSON text.
 pub fn filter_digest(normalized: &serde_json::Value) -> String {
     use sha2::Digest as _;
 
     let mut hasher = Sha256::new();
     hasher.update(permguard_core::domains::digest::STREAM_FILTERS.as_bytes());
-    hasher.update(canonical(normalized).as_bytes());
+    match crate::jcs::canonicalize(normalized) {
+        Ok(canonical) => hasher.update(&canonical),
+        Err(_) => {
+            hasher.update([0xff]);
+            // Every number of a normalized value is in range, so this always canonicalizes.
+            hasher.update(
+                crate::jcs::canonicalize(&crate::jcs::normalized(normalized)).unwrap_or_default(),
+            );
+        }
+    }
     let digest = hasher.finalize();
 
     format!("sha256:{}", hex(&digest))
-}
-
-/// A value as one string, with object keys in sorted order.
-fn canonical(value: &serde_json::Value) -> String {
-    match value {
-        serde_json::Value::Object(fields) => {
-            let mut sorted: Vec<(&String, &serde_json::Value)> = fields.iter().collect();
-            sorted.sort_by(|left, right| left.0.cmp(right.0));
-            let inner: Vec<String> = sorted
-                .into_iter()
-                .map(|(name, held)| format!("{}:{}", name.len(), canonical(held)))
-                .collect();
-
-            format!("o{}[{}]", inner.len(), inner.join(","))
-        }
-        serde_json::Value::Array(items) => {
-            let inner: Vec<String> = items.iter().map(canonical).collect();
-
-            format!("a{}[{}]", inner.len(), inner.join(","))
-        }
-        serde_json::Value::String(held) => format!("s{}:{held}", held.len()),
-        other => other.to_string(),
-    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -515,6 +512,25 @@ mod tests {
         assert_ne!(
             filter_digest(&json!({"ab": "c"})),
             filter_digest(&json!({"a": "bc"}))
+        );
+        // Names of equal length are names, not lengths: the earlier form collided here.
+        assert_ne!(
+            filter_digest(&json!({"type": "x"})),
+            filter_digest(&json!({"zone": "x"}))
+        );
+        assert_ne!(
+            filter_digest(&json!({"subject": "alice"})),
+            filter_digest(&json!({"subjekt": "alice"}))
+        );
+        // A value RFC 8785 refuses still has a digest, and never a canonical form's.
+        let beyond = json!({"n": u64::MAX});
+        assert_ne!(
+            filter_digest(&beyond),
+            filter_digest(&json!({"n": "18446744073709551615"}))
+        );
+        assert_eq!(
+            filter_digest(&beyond),
+            filter_digest(&json!({"n": u64::MAX}))
         );
     }
 
