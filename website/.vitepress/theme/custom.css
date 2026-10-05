@@ -173,7 +173,9 @@
    applications: the VitePress hamburger becomes the same rounded 3x3 control, while its
    existing active state still supplies the close icon and all menu behaviour. */
 @media (max-width: 79.999rem) {
-  .VPNavBar {
+  .VPNavBar,
+  .VPNavBar:not(.home),
+  .VPNavBar.has-sidebar {
     background-color: rgba(20, 16, 28, 0.99) !important;
     background-image: radial-gradient(
       ellipse 62% 190% at 88% -45%,
@@ -749,6 +751,10 @@
 .pg-footer {
   position: relative;
   isolation: isolate;
+  display: flex;
+  min-height: calc(100dvh - var(--vp-nav-height));
+  flex-direction: column;
+  justify-content: flex-end;
   overflow: hidden;
   width: 100%;
   padding: clamp(42px, 5vw, 76px) var(--pg-shell-gutter) 28px;
