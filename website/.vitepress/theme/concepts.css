@@ -5,11 +5,7 @@
   --pgx-bg: #ffffff;
   --pgx-surface: #f7f7f5;
   --pgx-surface-strong: #efefec;
-  --pgx-shell-bg: #efefec;
   --pgx-shell-grid: rgba(17, 18, 22, 0.055);
-  --pgx-panel-edge: rgba(17, 18, 22, 0.1);
-  --pgx-panel-shadow: rgba(17, 18, 22, 0.08);
-  --pgx-panel-width: min(1120px, calc(100% - 48px));
   --pgx-ink: #111216;
   --pgx-muted: #696a72;
   --pgx-line: rgba(17, 18, 22, 0.14);
@@ -21,13 +17,10 @@
 
 .dark .pg-page-concepts,
 .dark.pg-page-concepts {
-  --pgx-bg: #191a1c;
-  --pgx-surface: #1f2024;
-  --pgx-surface-strong: #25262b;
-  --pgx-shell-bg: #131418;
+  --pgx-bg: #101215;
+  --pgx-surface: #15171b;
+  --pgx-surface-strong: #1b1d22;
   --pgx-shell-grid: rgba(255, 255, 255, 0.032);
-  --pgx-panel-edge: rgba(255, 255, 255, 0.07);
-  --pgx-panel-shadow: rgba(0, 0, 0, 0.34);
   --pgx-ink: #f6f6f2;
   --pgx-muted: #b0b2b9;
   --pgx-line: rgba(255, 255, 255, 0.13);
@@ -43,53 +36,52 @@
 /* Keep the pager-to-footer rhythm identical between VitePress `doc` pages and
    the custom overview page. VitePress otherwise adds 128px on wide screens. */
 .pg-page-concepts .VPDoc {
-  position: relative;
-  isolation: isolate;
+  overflow-x: clip;
   padding-bottom: var(--pgx-page-end-space);
-  background-color: var(--pgx-shell-bg);
-  background-image:
-    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
-  background-position: center top;
-  background-size: 64px 64px;
-  background-attachment: fixed;
-}
-
-/* The technical grid belongs to the outer documentation shell. The complete
-   reading surface stays solid, like a dark editor pane, so long-form text,
-   diagrams and the table of contents never compete with the grid. */
-.pg-page-concepts .VPDoc::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0 auto 0 50%;
-  box-sizing: border-box;
-  width: var(--pgx-panel-width);
-  border-right: 1px solid var(--pgx-panel-edge);
-  border-left: 1px solid var(--pgx-panel-edge);
   background: var(--pgx-bg);
-  box-shadow: 0 0 44px var(--pgx-panel-shadow);
-  content: "";
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.pg-page-concepts .VPDoc > .container {
-  position: relative;
-  z-index: 1;
 }
 
 .pg-page-concepts .VPDoc .content {
+  min-width: 0;
   padding-bottom: 0;
+}
+
+.pg-page-concepts .VPDoc .content-container,
+.pg-page-concepts .VPDoc .vp-doc {
+  min-width: 0;
+}
+
+/* Long commands belong to their own horizontal viewport. The code surface never
+   widens the document column or leaks into the page gutter. */
+.pg-page-concepts .vp-doc div[class*="language-"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-right: 0;
+  margin-left: 0;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.pg-page-concepts .vp-doc div[class*="language-"] pre {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pg-page-concepts .vp-doc div[class*="language-"] pre code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  white-space: pre;
 }
 
 .pg-page-concepts .VPDocFooter:empty {
   margin-top: 0;
-}
-
-@media (min-width: 40rem) {
-  .pg-page-concepts {
-    --pgx-panel-width: min(1120px, calc(100% - 64px));
-  }
 }
 
 .pg-page-concepts .VPDoc h1,
@@ -104,6 +96,10 @@
   padding-top: 0;
   font-size: clamp(26px, 3vw, 36px);
   letter-spacing: -0.025em;
+}
+
+.pg-page-concepts .VPDoc h2 .header-anchor {
+  top: 0;
 }
 
 .pg-page-concepts .VPDoc p,
@@ -176,18 +172,72 @@
 }
 
 .pgx-doc-hero {
-  margin: 8px 0 54px;
-  padding: 56px clamp(24px, 5vw, 64px);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 310px;
+  flex-direction: column;
+  justify-content: center;
+  margin: 8px 0 58px;
+  overflow: hidden;
+  padding: 58px clamp(28px, 6vw, 72px);
   border: 1px solid var(--pgx-line);
-  border-radius: 24px;
+  border-radius: 0;
   background:
-    radial-gradient(circle at 90% 10%, var(--pgx-glow), transparent 35%),
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px),
     var(--pgx-surface);
-  text-align: center;
+  background-size: 48px 48px, 48px 48px, auto;
+  text-align: left;
 }
 
 .pgx-doc-hero h1 {
-  font-size: clamp(40px, 6vw, 68px);
+  position: relative;
+  z-index: 1;
+  max-width: 690px;
+  font-size: clamp(40px, 5.2vw, 64px);
+}
+
+.pgx-doc-hero > .pgx-kicker,
+.pgx-doc-hero > p {
+  position: relative;
+  z-index: 1;
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.pgx-doc-hero > p {
+  max-width: 620px;
+}
+
+.pgx-doc-hero::before {
+  position: absolute;
+  top: 50%;
+  right: -0.06em;
+  color: transparent;
+  content: "AUTHORITY";
+  font-size: clamp(74px, 11vw, 150px);
+  font-weight: 760;
+  letter-spacing: -0.08em;
+  line-height: 1;
+  opacity: 0.32;
+  pointer-events: none;
+  transform: translateY(-50%);
+  -webkit-text-stroke: 1px var(--pgx-line);
+}
+
+.pgx-doc-hero::after {
+  position: absolute;
+  right: 5%;
+  bottom: 20%;
+  width: 42%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--pgx-brand));
+  content: "";
+  opacity: 0.42;
+  pointer-events: none;
+  transform: rotate(-7deg);
+  transform-origin: right;
 }
 
 .pgx-section--tint {
@@ -360,7 +410,10 @@
 /* Cards and navigation */
 .pgx-cards {
   display: grid;
-  gap: 18px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--pgx-line);
+  background: var(--pgx-line);
 }
 
 .pgx-cards--3,
@@ -374,9 +427,9 @@
   min-height: 210px;
   min-width: 0;
   padding: 26px;
-  border: 1px solid var(--pgx-line);
-  border-radius: 18px;
-  background: var(--pgx-bg);
+  border: 0;
+  border-radius: 0;
+  background: var(--pgx-surface);
   color: var(--pgx-ink) !important;
   text-decoration: none !important;
   transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
@@ -384,8 +437,8 @@
 
 .pgx-card:hover {
   border-color: var(--pgx-brand);
-  box-shadow: 0 16px 40px var(--pgx-glow);
-  transform: translateY(-3px);
+  box-shadow: inset 0 2px var(--pgx-brand);
+  transform: none;
 }
 
 .pgx-card--accent {
@@ -453,22 +506,29 @@
 .pgx-link-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--pgx-line);
+  background: var(--pgx-line);
 }
 
 .pgx-link-grid a {
   display: flex;
+  min-height: 72px;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 20px 22px;
-  border: 1px solid var(--pgx-line);
-  border-radius: 12px;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--pgx-surface);
   color: var(--pgx-ink);
   text-decoration: none;
+  transition: box-shadow .18s ease;
 }
 
-.pgx-link-grid a:hover { border-color: var(--pgx-brand); }
+.pgx-link-grid a:hover { box-shadow: inset 0 2px var(--pgx-brand); }
+.pgx-link-grid strong { font-size: 16px; }
 .pgx-link-grid span { color: var(--pgx-muted); font-size: 13px; }
 
 .pgx-pager {
@@ -487,23 +547,22 @@
 
 .pgx-pager a {
   display: flex;
-  min-height: 92px;
+  min-height: 72px;
   flex-direction: column;
   justify-content: center;
-  padding: 16px 20px;
+  padding: 18px 20px;
   border: 1px solid var(--pgx-line);
-  border-radius: 14px;
+  border-radius: 0;
   background: var(--pgx-surface);
   color: var(--pgx-ink) !important;
   text-decoration: none !important;
-  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  transition: border-color .18s ease, box-shadow .18s ease;
 }
 
 .pgx-pager a:hover {
   border-color: var(--pgx-brand);
-  box-shadow: 0 12px 28px var(--pgx-glow);
+  box-shadow: inset 0 2px var(--pgx-brand);
   text-decoration: none !important;
-  transform: translateY(-2px);
 }
 
 .pgx-pager a > span {
@@ -780,8 +839,11 @@
 .pgx-distro-grid,
 .pgx-image-grid {
   display: grid;
-  gap: 14px;
+  gap: 1px;
+  overflow: hidden;
   margin: 38px 0 52px;
+  border: 1px solid var(--pgx-line);
+  background: var(--pgx-line);
 }
 
 .pgx-install-paths { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -799,8 +861,8 @@
   flex-direction: column;
   justify-content: center;
   padding: 22px;
-  border: 1px solid var(--pgx-line);
-  border-radius: 14px;
+  border: 0;
+  border-radius: 0;
   background: var(--pgx-surface);
 }
 
@@ -822,7 +884,11 @@
 .pgx-image-grid span,
 .pgx-registry-flow span,
 .pgx-trust-flow span { margin-top: 7px; color: var(--pgx-muted); font-size: 12px; }
-.pgx-install-paths__recommended { border-color: var(--pgx-brand) !important; box-shadow: 0 0 24px var(--pgx-glow); }
+.pgx-install-paths__recommended {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--pgx-brand) 13%, var(--pgx-surface)), var(--pgx-surface) 72%);
+  box-shadow: inset 0 2px var(--pgx-brand), 0 0 24px var(--pgx-glow);
+}
 .pgx-image-grid code { width: fit-content; margin-top: 12px; overflow-wrap: anywhere; color: var(--pgx-brand); }
 
 .pgx-registry-flow {
@@ -1327,6 +1393,63 @@
 .pgx-language-flow i { color: var(--pgx-brand); font-style: normal; }
 .pgx-language-flow strong { padding: 11px 14px; border: 1px solid var(--pgx-brand); border-radius: 9px; color: var(--pgx-ink); text-align: center; }
 
+/* Public-site visual language -------------------------------------------------------------
+   Documentation diagrams use the same technical surfaces as the marketing site: square
+   frames, fine grids, connected cells and restrained colour fields instead of soft cards. */
+.pg-page-concepts .vp-doc article,
+.pg-page-concepts .vp-doc .pgx-link-grid a,
+.pg-page-concepts .vp-doc .pgx-pager a {
+  border-radius: 0;
+}
+
+.pg-page-concepts .vp-doc :is(
+  .pgx-system-map,
+  .pgx-system-map__frame,
+  .pgx-server,
+  .pgx-config-map,
+  .pgx-registry-flow,
+  .pgx-history-flow,
+  .pgx-distribution-cycle,
+  .pgx-integrity-strip,
+  .pgx-equation,
+  .pgx-resolution,
+  .pgx-frontier,
+  .pgx-language-flow,
+  .pgx-principles
+) {
+  border-radius: 0;
+}
+
+.pg-page-concepts .vp-doc :is(
+  .pgx-system-map,
+  .pgx-server,
+  .pgx-config-map,
+  .pgx-registry-flow,
+  .pgx-history-flow,
+  .pgx-distribution-cycle
+) {
+  background-color: var(--pgx-surface);
+  background-image:
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.pg-page-concepts .vp-doc :is(
+  .pgx-system-map,
+  .pgx-server,
+  .pgx-config-map,
+  .pgx-registry-flow,
+  .pgx-history-flow,
+  .pgx-distribution-cycle,
+  .pgx-cards,
+  .pgx-install-paths,
+  .pgx-distro-grid,
+  .pgx-image-grid
+) {
+  box-shadow: inset 0 1px color-mix(in srgb, var(--pgx-brand) 28%, transparent);
+}
+
 @media (max-width: 800px) {
   .pg-page-concepts { --pgx-page-end-space: 60px; }
   .pgx-hero, .pgx-section { padding: 60px 0; }
@@ -1435,7 +1558,7 @@
   .pgx-note strong { white-space: normal; }
   .pgx-languages article { grid-template-columns: 1fr; }
   .pgx-pager { grid-template-columns: 1fr; }
-  .pgx-pager a { min-height: 82px; }
+  .pgx-pager a { min-height: 72px; }
   .pgx-byo-targets { grid-template-columns: 1fr; }
   .pgx-store-flow__targets--modes { grid-template-columns: 1fr; }
   .pgx-pull-paths ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }

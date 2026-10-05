@@ -16,7 +16,7 @@ const { theme } = useData()
 
 <div class="pg-home">
   <section class="pg-hero">
-    <svg class="pg-mesh" viewBox="0 0 720 610" aria-hidden="true" focusable="false">
+    <svg v-if="false" class="pg-mesh" viewBox="0 0 720 610" aria-hidden="true" focusable="false">
       <line class="pg-mesh__edge" x1="110" y1="130" x2="290" y2="70"/>
       <line class="pg-mesh__edge" x1="290" y1="70" x2="470" y2="150"/>
       <line class="pg-mesh__edge" x1="470" y1="150" x2="640" y2="90"/>
@@ -55,18 +55,91 @@ const { theme } = useData()
       <circle class="pg-mesh__policy" r="3"><animateMotion path="M640 90 L610 300" dur="7s" begin="3.5s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;0.4;1" calcMode="linear"/><animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.05;0.36;0.42;1" dur="7s" begin="3.5s" repeatCount="indefinite"/></circle>
       <circle class="pg-mesh__decision" cx="610" cy="300" r="4"><animate attributeName="r" values="4;4;5;16;16" keyTimes="0;0.4;0.42;0.62;1" dur="7s" begin="3.5s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;.75;0;0" keyTimes="0;0.4;0.43;0.62;1" dur="7s" begin="3.5s" repeatCount="indefinite"/></circle>
     </svg>
+    <svg class="pg-auth-network" viewBox="0 0 720 520" aria-hidden="true" focusable="false">
+      <circle class="pg-auth-network__orbit" cx="360" cy="260" r="218"/>
+      <path class="pg-auth-network__perimeter" d="M120 118 L360 58 L600 118 L612 392 L360 462 L108 392 Z"/>
+      <g class="pg-auth-network__links">
+        <path d="M360 260 L120 118"/>
+        <path d="M360 260 L360 58"/>
+        <path d="M360 260 L600 118"/>
+        <path d="M360 260 L612 392"/>
+        <path d="M360 260 L108 392"/>
+      </g>
+      <g class="pg-auth-network__node pg-auth-network__node--agent" transform="translate(120 118)">
+        <g class="pg-auth-network__node-float" style="--node-phase: 0s">
+          <circle r="25"/>
+          <g class="pg-auth-network__icon">
+            <path d="M-10 -7 H10 V9 H-10 Z M-4 -11 V-7 M-7 5 H7"/>
+            <circle class="pg-auth-network__icon-dot" cx="-4" cy="0" r="1.5"/>
+            <circle class="pg-auth-network__icon-dot" cx="4" cy="0" r="1.5"/>
+          </g>
+          <text y="44">Customer</text><text class="pg-auth-network__role" y="57">AI Agent</text>
+        </g>
+      </g>
+      <g class="pg-auth-network__node pg-auth-network__node--agent" transform="translate(360 58)">
+        <g class="pg-auth-network__node-float" style="--node-phase: -0.8s">
+          <circle r="25"/>
+          <g class="pg-auth-network__icon">
+            <path d="M-10 -7 H10 V9 H-10 Z M-4 -11 V-7 M-7 5 H7"/>
+            <circle class="pg-auth-network__icon-dot" cx="-4" cy="0" r="1.5"/>
+            <circle class="pg-auth-network__icon-dot" cx="4" cy="0" r="1.5"/>
+          </g>
+          <text y="44">Planner</text><text class="pg-auth-network__role" y="57">AI Agent</text>
+        </g>
+      </g>
+      <g class="pg-auth-network__node pg-auth-network__node--workload" transform="translate(600 118)">
+        <g class="pg-auth-network__node-float" style="--node-phase: -1.6s">
+          <circle r="25"/>
+          <g class="pg-auth-network__icon">
+            <rect x="-11" y="-10" width="22" height="8"/><rect x="-11" y="2" width="22" height="8"/>
+            <circle class="pg-auth-network__icon-dot" cx="-7" cy="-6" r="1.4"/><circle class="pg-auth-network__icon-dot" cx="-7" cy="6" r="1.4"/>
+            <path d="M-2 -6 H7 M-2 6 H7"/>
+          </g>
+          <text y="44">Products</text><text class="pg-auth-network__role" y="57">API</text>
+        </g>
+      </g>
+      <g class="pg-auth-network__node pg-auth-network__node--workload" transform="translate(612 392)">
+        <g class="pg-auth-network__node-float" style="--node-phase: -2.4s">
+          <circle r="25"/>
+          <g class="pg-auth-network__icon">
+            <rect x="-11" y="-10" width="22" height="8"/><rect x="-11" y="2" width="22" height="8"/>
+            <circle class="pg-auth-network__icon-dot" cx="-7" cy="-6" r="1.4"/><circle class="pg-auth-network__icon-dot" cx="-7" cy="6" r="1.4"/>
+            <path d="M-2 -6 H7 M-2 6 H7"/>
+          </g>
+          <text y="44">Orders</text><text class="pg-auth-network__role" y="57">Worker</text>
+        </g>
+      </g>
+      <g class="pg-auth-network__node pg-auth-network__node--workload" transform="translate(108 392)">
+        <g class="pg-auth-network__node-float" style="--node-phase: -3.2s">
+          <circle r="25"/>
+          <g class="pg-auth-network__icon">
+            <rect x="-11" y="-10" width="22" height="8"/><rect x="-11" y="2" width="22" height="8"/>
+            <circle class="pg-auth-network__icon-dot" cx="-7" cy="-6" r="1.4"/><circle class="pg-auth-network__icon-dot" cx="-7" cy="6" r="1.4"/>
+            <path d="M-2 -6 H7 M-2 6 H7"/>
+          </g>
+          <text y="44">Inventory</text><text class="pg-auth-network__role" y="57">Worker</text>
+        </g>
+      </g>
+      <g class="pg-auth-network__signals">
+        <circle class="pg-auth-network__signal" r="6">
+          <animateMotion dur="10s" repeatCount="indefinite" path="M120 118 L360 260 L360 58 L360 260 L600 118 L360 260 L612 392 L360 260 L108 392 L360 260 L120 118"/>
+        </circle>
+      </g>
+    </svg>
     <div class="pg-hero__copy">
       <div class="pg-kicker">Documentation · {{ theme.docsVersion === 'latest' ? 'latest' : `version ${theme.docsVersion}` }}</div>
-      <h1>Permguard <span class="pg-badge">Docs</span></h1>
+      <h1>The security overlay, <span class="pg-hero__accent">documented.</span></h1>
       <p>This is the documentation of <a href="https://permguard.com" target="_blank" rel="noopener noreferrer">Permguard</a>, authorization and trust for the agentic era. Start from the model, then install the CLI and run each plane.</p>
       <div class="pg-actions">
         <a class="pg-btn pg-btn--primary" :href="withBase('/how-it-works')">Read the docs</a>
         <a class="pg-btn pg-btn--ghost" href="https://github.com/permguard/permguard" target="_blank" rel="noopener noreferrer">View on GitHub</a>
       </div>
     </div>
-    <div class="pg-hero__brand" aria-label="Permguard">
-      <img class="pg-logo pg-logo--light" :src="withBase('/permguard/logo-dark-txt.png')" alt="Permguard">
-      <img class="pg-logo pg-logo--dark" :src="withBase('/permguard/logo-white-txt.svg')" alt="Permguard">
+    <div class="pg-hero__brand">
+      <a class="pg-hero__core" :href="withBase('/how-it-works')" aria-label="Open the Permguard documentation">
+        <img class="pg-logo" :src="withBase('/permguard/symbol.svg')" alt="">
+      </a>
+      <span class="pg-hero__brand-label">Permguard network</span>
     </div>
   </section>
   <section class="pg-docs">
