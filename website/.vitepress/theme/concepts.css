@@ -5,6 +5,11 @@
   --pgx-bg: #ffffff;
   --pgx-surface: #f7f7f5;
   --pgx-surface-strong: #efefec;
+  --pgx-shell-bg: #efefec;
+  --pgx-shell-grid: rgba(17, 18, 22, 0.055);
+  --pgx-panel-edge: rgba(17, 18, 22, 0.1);
+  --pgx-panel-shadow: rgba(17, 18, 22, 0.08);
+  --pgx-panel-width: min(1120px, calc(100% - 48px));
   --pgx-ink: #111216;
   --pgx-muted: #696a72;
   --pgx-line: rgba(17, 18, 22, 0.14);
@@ -19,6 +24,10 @@
   --pgx-bg: #191a1c;
   --pgx-surface: #1f2024;
   --pgx-surface-strong: #25262b;
+  --pgx-shell-bg: #131418;
+  --pgx-shell-grid: rgba(255, 255, 255, 0.032);
+  --pgx-panel-edge: rgba(255, 255, 255, 0.07);
+  --pgx-panel-shadow: rgba(0, 0, 0, 0.34);
   --pgx-ink: #f6f6f2;
   --pgx-muted: #b0b2b9;
   --pgx-line: rgba(255, 255, 255, 0.13);
@@ -34,7 +43,39 @@
 /* Keep the pager-to-footer rhythm identical between VitePress `doc` pages and
    the custom overview page. VitePress otherwise adds 128px on wide screens. */
 .pg-page-concepts .VPDoc {
+  position: relative;
+  isolation: isolate;
   padding-bottom: var(--pgx-page-end-space);
+  background-color: var(--pgx-shell-bg);
+  background-image:
+    linear-gradient(var(--pgx-shell-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pgx-shell-grid) 1px, transparent 1px);
+  background-position: center top;
+  background-size: 64px 64px;
+  background-attachment: fixed;
+}
+
+/* The technical grid belongs to the outer documentation shell. The complete
+   reading surface stays solid, like a dark editor pane, so long-form text,
+   diagrams and the table of contents never compete with the grid. */
+.pg-page-concepts .VPDoc::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 50%;
+  box-sizing: border-box;
+  width: var(--pgx-panel-width);
+  border-right: 1px solid var(--pgx-panel-edge);
+  border-left: 1px solid var(--pgx-panel-edge);
+  background: var(--pgx-bg);
+  box-shadow: 0 0 44px var(--pgx-panel-shadow);
+  content: "";
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.pg-page-concepts .VPDoc > .container {
+  position: relative;
+  z-index: 1;
 }
 
 .pg-page-concepts .VPDoc .content {
@@ -43,6 +84,12 @@
 
 .pg-page-concepts .VPDocFooter:empty {
   margin-top: 0;
+}
+
+@media (min-width: 40rem) {
+  .pg-page-concepts {
+    --pgx-panel-width: min(1120px, calc(100% - 64px));
+  }
 }
 
 .pg-page-concepts .VPDoc h1,

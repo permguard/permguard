@@ -25,7 +25,7 @@ const year = new Date().getFullYear()
 
         <div class="pg-footer__statement">
           <p id="pg-footer-statement">
-            Security overlay <span>for the agentic era.</span>
+            The security overlay <span>for the agentic era.</span>
           </p>
           <div aria-label="Permguard principles">
             <span>GOVERNED POLICIES</span>
