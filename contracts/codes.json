@@ -306,6 +306,96 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.GRANT_STORE_UNAVAILABLE": {
+      "code": "grant_store_unavailable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.GRANT_TERMINAL": {
+      "code": "grant_terminal",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.GRANT_UNKNOWN": {
+      "code": "grant_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.MUTATION_UNRECORDED": {
+      "code": "mutation_unrecorded",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "internal"
+    },
+    "host.NOT_SERVED_YET": {
+      "code": "not_served_yet",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.PLAN_DIGEST_MISMATCH": {
+      "code": "plan_digest_mismatch",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.PLAN_EXPIRED": {
+      "code": "plan_expired",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.PLAN_UNKNOWN": {
+      "code": "plan_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.PRINCIPAL_BOUND_EXCEEDED": {
+      "code": "principal_bound_exceeded",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.REPLAY_UNAVAILABLE": {
+      "code": "replay_unavailable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.REQUEST_ID_REQUIRED": {
+      "code": "request_id_required",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.REQUEST_ID_REUSED": {
+      "code": "request_id_reused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.REVISION_MISMATCH": {
+      "code": "revision_mismatch",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.RING_UNKNOWN": {
+      "code": "ring_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.RING_UNREADABLE": {
+      "code": "ring_unreadable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "legacy.REJECTED": {
       "code": "rejected",
       "contract": "legacy",

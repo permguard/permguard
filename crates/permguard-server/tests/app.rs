@@ -474,10 +474,7 @@ async fn test_two_planes_declaring_one_artifact_do_not_start() {
 async fn test_serve_rejects_a_config_that_declares_no_listener_at_all() {
     // The Server Host surface defaults on, so a file has to opt out of it explicitly before the
     // process is left with no listener — and that is the configuration worth refusing.
-    let path = config_file(
-        "no-listener",
-        "host:\n  addr: off\nadmin:\n  addr: 127.0.0.1:5557\n",
-    );
+    let path = config_file("no-listener", "host:\n  addr: off\n");
 
     let error = app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
@@ -491,7 +488,7 @@ async fn test_serve_rejects_a_config_that_declares_no_listener_at_all() {
 async fn test_a_config_that_declares_no_web_address_still_serves_the_host_surface() {
     // Zero planes, nothing public: the Server Host operations surface alone is a legal
     // deployment, on the default role port.
-    let path = config_file("host-only", "admin:\n  addr: 127.0.0.1:5557\n");
+    let path = config_file("host-only", "host:\n  addr: 0.0.0.0:5443\n");
     let app = app();
 
     let config = app

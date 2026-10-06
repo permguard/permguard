@@ -57,6 +57,24 @@ host:
     cert: tls/server.pem
     key: tls/server.key
 
+# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over mutual TLS,
+# where grants and keys are administered and the lifecycle and the effective configuration are
+# read. Of everybody tls/ca.pem signs, `allow` names who may administer; the principal every route
+# decides with comes from `host.principals`.
+admin:
+  addr: 0.0.0.0:5444
+  # Where the listener is reached from outside the container, when something names it to a
+  # client: the keys redirect and the registry's `jwks_uri` while the listener serves plain TLS,
+  # the Host's own documents later. Optional.
+  advertised_url: "https://localhost:5444"
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+    client_ca: tls/ca.pem
+    crl: tls/ca.crl
+  allow:
+    - cn:local-operator
+
 runtime:
   planes:
     - control

@@ -70,11 +70,12 @@ fn every_shipped_configuration_parses() {
 
 #[test]
 fn every_shipped_configuration_uses_the_canonical_role_ports() {
-    use permguard_core::config::SETTING_TELEMETRY_ADDR;
+    use permguard_core::config::{SETTING_ADMIN_ADDR, SETTING_TELEMETRY_ADDR};
 
     for path in shipped() {
         for (setting_name, role, expected) in [
             (SETTING_TELEMETRY_ADDR, "Server Host", "5443"),
+            (SETTING_ADMIN_ADDR, "Host listener", "5444"),
             (SETTING_CONTROL_HTTP_ADDR, "Control Plane", "6443"),
             (SETTING_DATA_HTTP_ADDR, "Data Plane", "7443"),
         ] {

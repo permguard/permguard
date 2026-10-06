@@ -37,13 +37,14 @@ use permguard_conformance::schema::Document;
 use serde_json::{Map, Value};
 
 /// The documents of the surfaces served on both bindings, and the ones described for REST only.
-const MAPPED: [&str; 10] = [
+const MAPPED: [&str; 11] = [
     "catalog.json",
     "common.json",
     "discovery.json",
     "evidence-decisions.json",
     "evidence-events-v1alpha1.json",
     "health.json",
+    "host.json",
     "notp.json",
     "pdp-native-v1.json",
     "pdp-temporal-v1alpha1.json",

@@ -217,7 +217,9 @@ curl -s http://127.0.0.1:5443/.well-known/server-configuration | jq
 ```
 
 Port `5443` is the Server Host operations surface: process discovery, health, readiness, version,
-and metrics. The public plane APIs stay on their own ports. Every shipped Server Host configuration
+and metrics. Port `5444` is the Host listener, `admin.addr`: the Host API (`/host/v1` and
+`permguard.host.v1`) over TLS, where grants are administered and the key rings, the lifecycle and
+the effective configuration are read. The public plane APIs stay on their own ports. Every shipped Server Host configuration
 uses `5443`. The assigned role port does not change between HTTP and HTTPS: the scheme describes
 transport security, while the port identifies the server role. HTTP and gRPC share that role port
 and, when TLS is enabled, the same TLS or mutual-TLS policy.
@@ -225,6 +227,7 @@ and, when TLS is enabled, the same TLS or mutual-TLS policy.
 | Server role | Port |
 | --- | ---: |
 | Server Host operations | `5443` |
+| Host listener (`/host/v1`, `admin.addr`) | `5444` |
 | Control Plane | `6443` |
 | Data Plane | `7443` |
 | Trust Plane | `8443` |

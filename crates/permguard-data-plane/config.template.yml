@@ -279,7 +279,8 @@ experimental:
     enabled: "false"
 
 # Server Host operations surface: process discovery, health, readiness, version, metrics — and
-# the operations ring published as a JWKS at /server-host/keys. This surface is what every
+# the operations ring published as a JWKS at /server-host/keys (a redirect to a Host listener
+# that serves plain TLS; behind a client CA the ring stays here). This surface is what every
 # Permguard deployment exposes identically, so it defaults to 0.0.0.0:5443 even when this
 # section is absent; `addr: off` is the explicit opt-out for a process that must expose nothing.
 host:

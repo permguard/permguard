@@ -51,6 +51,15 @@ type SecretStoreFactory =
 ///
 /// It hands back an `Arc` rather than a `Box` because a key ring is maintained by work that outlives
 /// any single call — see [`ServerContext::with_keys`](permguard_core::ServerContext::with_keys).
+/// What `authorization_for` opens on the volume (WP-2.4, WP-2.5): the authorization every Plane
+/// and the Host listener decide with, the credential mapper, and the grant store the Host API
+/// mutates.
+struct HostAuthz {
+    authorization: Arc<permguard_host::authz::Authorization>,
+    authenticator: Arc<dyn permguard_core::authz::Authenticator>,
+    store: Arc<permguard_host::authz::GrantStore>,
+}
+
 type KeyManagerFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync>;
 
 /// Builds the catalog of zones and ledgers a deployment keeps, from its effective configuration.
@@ -954,10 +963,7 @@ impl App {
         config_file: &Path,
         file: &ConfigFile,
         volume: &permguard_host::storage::volume::Volume,
-    ) -> Result<(
-        Arc<permguard_host::authz::Authorization>,
-        Arc<dyn permguard_core::authz::Authenticator>,
-    )> {
+    ) -> Result<HostAuthz> {
         use permguard_host::authz::{
             Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
         };
@@ -1026,14 +1032,18 @@ impl App {
                 "the configuration declares public grants: what they name needs no credential"
             );
         }
-        let authorization = Arc::new(Authorization::new(store, &public));
+        let authorization = Arc::new(Authorization::new(Arc::clone(&store), &public));
         tracing::info!(
             event.name = "authz.mapper",
             component = "server",
             rules = mapper.rules(),
             "the credential mapper is built"
         );
-        Ok((authorization, Arc::new(mapper)))
+        Ok(HostAuthz {
+            authorization,
+            authenticator: Arc::new(mapper),
+            store,
+        })
     }
 
     fn load(&self, config_file: &Path) -> Result<ConfigFile> {
@@ -1195,9 +1205,76 @@ impl App {
         // what the configuration declares public, and the rules that turn a credential into a
         // principal. Built before the Planes register, since every Plane decides with them.
         let file = self.load(config_file)?;
-        let (authorization, authenticator) =
-            self.authorization_for(config, config_file, &file, &volume)?;
+        let HostAuthz {
+            authorization,
+            authenticator,
+            store: grants,
+        } = self.authorization_for(config, config_file, &file, &volume)?;
         context = context.with_authenticator(authenticator);
+
+        // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
+        // journal on the volume, the grant store, every ring this process composes and the
+        // lifecycle, built once and served by both transports. Without `admin.addr` nothing is
+        // opened: a volume without a listener keeps no replay window.
+        if config.admin_addr().is_some() {
+            use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
+
+            let (replay, recovery) = Replay::open(&volume, permguard_host::authz::store::now())
+                .with_context(|| {
+                    format!(
+                        "opening the replay journal on {}",
+                        volume.host().path().display()
+                    )
+                })?;
+            tracing::info!(
+                event.name = "host_api.replay_opened",
+                component = "server",
+                held = replay.held(),
+                recovered_truncated_bytes = recovery.truncated_bytes,
+                "the replay journal is open"
+            );
+            let mut rings: Vec<(String, Arc<dyn KeyManager>)> = Vec::new();
+            if let Some(keys) = context.keys() {
+                rings.push((
+                    permguard_host::composition::HOST_OPERATIONS
+                        .as_str()
+                        .to_owned(),
+                    Arc::clone(keys),
+                ));
+            }
+            if let Some(keys) = &control_signing_keys {
+                rings.push((
+                    permguard_host::composition::CONTROL_ATTEST
+                        .as_str()
+                        .to_owned(),
+                    Arc::clone(keys),
+                ));
+            }
+            if let Some(keys) = &data_signing_keys {
+                rings.push((
+                    permguard_host::composition::DATA_ATTEST.as_str().to_owned(),
+                    Arc::clone(keys),
+                ));
+            }
+            let api = HostApi::new(Composition {
+                authorization: Arc::clone(&authorization),
+                store: Some(grants),
+                replay,
+                rings,
+                health: context.health().clone(),
+                // The configuration states no assurance profile yet (WP-07): the volume is
+                // claimed as under `development` above, and the status says the same.
+                assurance: Assurance {
+                    profile: permguard_core::assurance::AssuranceProfile::Development
+                        .as_str()
+                        .to_owned(),
+                },
+                effective: Effective::from_supplied(config.supplied_settings()),
+                trail: audit.name().to_owned(),
+                recorder: Some(self.recorder(&audit, pseudonymizer.as_ref())),
+            });
+            context = context.with_host_handles(Arc::new(api));
+        }
 
         // The Host: every generic capability once. The Planes' rings, the audit recorder and the
         // secret store reach a Plane only as the handles its declaration grants (P1); the rings are

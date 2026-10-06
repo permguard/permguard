@@ -191,3 +191,107 @@ async fn test_the_surface_listens_and_answers_and_then_stops() {
         .await
         .expect("stopping again is harmless");
 }
+
+/// A ring with one fixed public key, for the keys route.
+struct FixedRing;
+
+impl permguard_core::keys::Sign for FixedRing {
+    fn active_key_id(&self) -> permguard_core::keys::Result<permguard_core::keys::KeyId> {
+        unreachable!("telemetry never signs")
+    }
+
+    fn sign(&self, _: &[u8]) -> permguard_core::keys::Result<permguard_core::keys::Signature> {
+        unreachable!("telemetry never signs")
+    }
+}
+
+impl permguard_core::keys::PublicSet for FixedRing {
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::keys::Jwk>> {
+        Ok(vec![permguard_core::keys::Jwk::okp(
+            "k1", "Ed25519", "EdDSA", "AAAA",
+        )])
+    }
+}
+
+impl permguard_core::keys::KeyManager for FixedRing {
+    fn name(&self) -> &'static str {
+        "fixed"
+    }
+
+    fn maintain(&self) -> permguard_core::keys::Result<permguard_core::keys::Maintenance> {
+        unreachable!("telemetry never maintains")
+    }
+}
+
+/// One HTTP/1.1 `GET` over a plain socket to a running surface.
+async fn http_get(address: std::net::SocketAddr, path: &str) -> String {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let mut stream = tokio::net::TcpStream::connect(address)
+        .await
+        .expect("the surface answers");
+    stream
+        .write_all(
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .as_bytes(),
+        )
+        .await
+        .expect("the request is written");
+    let mut said = Vec::new();
+    stream
+        .read_to_end(&mut said)
+        .await
+        .expect("the answer reads");
+    String::from_utf8_lossy(&said).into_owned()
+}
+
+/// The keys route on a running surface: the ring itself without a Host listener, a `308` to the
+/// Host listener once the composition names where the keys moved (WP-2.5).
+#[tokio::test]
+async fn test_the_keys_route_redirects_to_the_host_listener_once_one_is_named() {
+    let config = Config::from_layers(
+        BuildSettings::new("9.9.9", "2026", "Test Holder"),
+        Vec::<String>::new(),
+        Layers::new().with_file(vec![(
+            permguard_core::config::SETTING_TELEMETRY_ADDR.to_owned(),
+            "127.0.0.1:0".to_owned(),
+        )]),
+    )
+    .expect("the config builds");
+    let storage = MemoryStorage::new();
+    let audit = RecordingAuditSink::new();
+    let ring: std::sync::Arc<dyn permguard_core::keys::KeyManager> = std::sync::Arc::new(FixedRing);
+    let context = ServerContext::new(
+        ProductIdentity::new("demo-x", "Demo X", "A tagline", "Demo X CLI", "<art>"),
+        &config,
+        &storage,
+        &audit,
+    )
+    .with_keys(std::sync::Arc::clone(&ring));
+
+    // Without a Host listener the legacy route publishes the ring.
+    let legacy = TelemetryService::new();
+    legacy.start(&context).await.expect("the surface starts");
+    let answered = http_get(legacy.bound().expect("bound"), "/server-host/keys").await;
+    assert!(answered.starts_with("HTTP/1.1 200"), "{answered}");
+    assert!(answered.contains("\"kid\":\"k1\""), "{answered}");
+    legacy.stop(&context).await.expect("the surface stops");
+
+    // With one, the route is a permanent redirect to the Host listener, marked deprecated.
+    let moved = TelemetryService::new().with_keys_location(|_| {
+        Some("https://127.0.0.1:5444/host/v1/keys/host.operations".to_owned())
+    });
+    moved.start(&context).await.expect("the surface starts");
+    let answered = http_get(moved.bound().expect("bound"), "/server-host/keys").await;
+    assert!(answered.starts_with("HTTP/1.1 308"), "{answered}");
+    assert!(
+        answered.contains("location: https://127.0.0.1:5444/host/v1/keys/host.operations"),
+        "{answered}"
+    );
+    assert!(answered.contains("deprecation: true"), "{answered}");
+    assert!(
+        !answered.contains("\"kid\""),
+        "the telemetry listener publishes nothing administrative: {answered}"
+    );
+    moved.stop(&context).await.expect("the surface stops");
+}

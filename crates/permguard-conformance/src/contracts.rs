@@ -9,7 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-/// The generated server half of the Host API stub, `permguard.host.v1`.
+/// The generated halves of the Host API, `permguard.host.v1`: the servers, so the stub test
+/// names every service, and the clients, so the vectors drive the listener over gRPC.
 #[allow(clippy::all, missing_docs)]
 pub mod host_v1 {
     tonic::include_proto!("permguard.host.v1");

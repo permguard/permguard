@@ -56,6 +56,15 @@ host:
     cert: tls/server.pem
     key: tls/server.key
 
+# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, where grants and
+# keys are administered. It is never served in the clear, and a bind reachable from outside this
+# host demands a client certificate: this file has no TLS material, so the listener stays off.
+# admin:
+#   addr: 127.0.0.1:5444
+#   tls:
+#     cert: tls/server.pem
+#     key: tls/server.key
+
 runtime:
   planes:
     - control

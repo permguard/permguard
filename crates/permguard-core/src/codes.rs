@@ -319,6 +319,42 @@ pub mod storage {
     pub const CLAIM_BEHIND_DATA: &str = "storage_claim_behind_data";
 }
 
+/// The Host API, `/host/v1` and `permguard.host.v1` (WP-2.5): what the common envelope refuses
+/// beyond the shared codes.
+pub mod host {
+    /// A mutation arrived without a request id, or with one outside its bounds.
+    pub const REQUEST_ID_REQUIRED: &str = "request_id_required";
+    /// A request id a principal already used for a different mutation inside the replay window.
+    pub const REQUEST_ID_REUSED: &str = "request_id_reused";
+    /// The expected revision a mutation stated is not the current one; the answer carries it.
+    pub const REVISION_MISMATCH: &str = "revision_mismatch";
+    /// No grant has the id named.
+    pub const GRANT_UNKNOWN: &str = "grant_unknown";
+    /// The grant named is revoked or expired: a terminal status nothing moves.
+    pub const GRANT_TERMINAL: &str = "grant_terminal";
+    /// No plan has the id named for this principal and target.
+    pub const PLAN_UNKNOWN: &str = "plan_unknown";
+    /// The plan digest presented is not the one the plan step answered.
+    pub const PLAN_DIGEST_MISMATCH: &str = "plan_digest_mismatch";
+    /// The plan has passed its expiry, or was already run.
+    pub const PLAN_EXPIRED: &str = "plan_expired";
+    /// The principal has more requests in flight, or arriving faster, than its bound allows.
+    pub const PRINCIPAL_BOUND_EXCEEDED: &str = "principal_bound_exceeded";
+    /// The grant store is not open on this process: no volume holds one.
+    pub const GRANT_STORE_UNAVAILABLE: &str = "grant_store_unavailable";
+    /// The replay journal could not be read before the mutation: nothing is applied.
+    pub const REPLAY_UNAVAILABLE: &str = "replay_unavailable";
+    /// The mutation is applied and the replay journal could not record it: a retry with the same
+    /// request id is not answered from the window, so the caller reads before it retries.
+    pub const MUTATION_UNRECORDED: &str = "mutation_unrecorded";
+    /// No key ring of that name is composed in this process.
+    pub const RING_UNKNOWN: &str = "ring_unknown";
+    /// The ring named could not be read.
+    pub const RING_UNREADABLE: &str = "ring_unreadable";
+    /// The route exists in the contract and a later package serves it.
+    pub const NOT_SERVED_YET: &str = "not_served_yet";
+}
+
 /// Codes in use that no contract document names yet.
 ///
 /// Each one is kept until the document that owns it is written; renaming one is a contract change.
@@ -566,6 +602,21 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::TIMEOUT,
         storage::STALE_WRITER,
         storage::CLAIM_BEHIND_DATA,
+        host::REQUEST_ID_REQUIRED,
+        host::REQUEST_ID_REUSED,
+        host::REVISION_MISMATCH,
+        host::GRANT_UNKNOWN,
+        host::GRANT_TERMINAL,
+        host::PLAN_UNKNOWN,
+        host::PLAN_DIGEST_MISMATCH,
+        host::PLAN_EXPIRED,
+        host::PRINCIPAL_BOUND_EXCEEDED,
+        host::GRANT_STORE_UNAVAILABLE,
+        host::REPLAY_UNAVAILABLE,
+        host::MUTATION_UNRECORDED,
+        host::RING_UNKNOWN,
+        host::RING_UNREADABLE,
+        host::NOT_SERVED_YET,
         legacy::REJECTED,
     ]
 }

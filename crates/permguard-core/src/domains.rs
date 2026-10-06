@@ -223,6 +223,12 @@ pub mod grpc {
     pub const POLICY_DECISION_POINT: &str = "permguard.data.v1.PolicyDecisionPoint";
     pub const TEMPORAL_POLICY_DECISION_POINT: &str =
         "permguard.data.v1.TemporalPolicyDecisionPoint";
+    /// The Host API services the Host listener serves (WP-2.5); membership and evidence arrive
+    /// with their packages.
+    pub const HOST_IDENTITY_SERVICE: &str = "permguard.host.v1.IdentityService";
+    pub const HOST_GRANT_SERVICE: &str = "permguard.host.v1.GrantService";
+    pub const HOST_KEY_SERVICE: &str = "permguard.host.v1.KeyService";
+    pub const HOST_OPERATIONS_SERVICE: &str = "permguard.host.v1.OperationsService";
 }
 
 /// Labels inside HKDF `info` tuples.
@@ -403,6 +409,13 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "grpc.TEMPORAL_POLICY_DECISION_POINT",
             grpc::TEMPORAL_POLICY_DECISION_POINT,
+        ),
+        ("grpc.HOST_IDENTITY_SERVICE", grpc::HOST_IDENTITY_SERVICE),
+        ("grpc.HOST_GRANT_SERVICE", grpc::HOST_GRANT_SERVICE),
+        ("grpc.HOST_KEY_SERVICE", grpc::HOST_KEY_SERVICE),
+        (
+            "grpc.HOST_OPERATIONS_SERVICE",
+            grpc::HOST_OPERATIONS_SERVICE,
         ),
     ]
 }

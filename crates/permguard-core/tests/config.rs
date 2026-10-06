@@ -250,7 +250,8 @@ fn test_validate_accepts_a_config_with_a_public_address() {
 
 #[test]
 fn test_validate_rejects_a_config_with_no_listen_address_at_all() {
-    let config = config(&[(SETTING_ADMIN_ADDR, "127.0.0.1:5557")], &[], &[]);
+    // Nothing public, the Server Host surface switched off, no Host listener: nothing to reach.
+    let config = config(&[(SETTING_TELEMETRY_ADDR, "off")], &[], &[]);
 
     let error = config.validate().expect_err("no listen address is invalid");
     assert!(format!("{error}").contains("no listen address"));

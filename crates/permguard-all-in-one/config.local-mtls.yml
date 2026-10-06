@@ -57,6 +57,16 @@ host:
     cert: tls/server.pem
     key: tls/server.key
 
+# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over TLS, where
+# grants and keys are administered and the lifecycle and the effective configuration are read.
+# A loopback bind in development may serve plain TLS; anywhere else a client CA is required and
+# `allow` names who may administer. Every route decides with the Host's grants.
+admin:
+  addr: 127.0.0.1:5444
+  tls:
+    cert: tls/server.pem
+    key: tls/server.key
+
 runtime:
   planes:
     - control

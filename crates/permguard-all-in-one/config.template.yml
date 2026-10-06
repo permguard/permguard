@@ -54,7 +54,8 @@ experimental:
     enabled: "false"
 
 # Server Host operations surface: process discovery, health, readiness, version, metrics — and
-# the operations ring published as a JWKS at /server-host/keys. This surface is what every
+# the operations ring published as a JWKS at /server-host/keys (a redirect to a Host listener
+# that serves plain TLS; behind a client CA the ring stays here). This surface is what every
 # Permguard deployment exposes identically, so it defaults to 0.0.0.0:5443 even when this
 # section is absent; `addr: off` is the explicit opt-out for a process that must expose nothing.
 host:
@@ -90,6 +91,26 @@ host:
   #   enabled: "true"
   #   endpoint: "http://127.0.0.1:4317"   # the OTLP/gRPC collector (e.g. Tempo, otel-collector)
   #   sample_rate: "1.0"                  # fraction of traces kept, 0.0..=1.0
+
+# The Host listener (WP-2.5): `/host/v1` and `permguard.host.v1` on one port, over mutual TLS.
+# Grants are issued and revoked here, the key rings read, the lifecycle and the effective
+# configuration reported; every route decides with the Host's grants (`host.principals` names
+# who a caller is). TLS is required, and a client CA with it unless the bind is a loopback
+# address under `development_mode: true`; `allow` names, of everybody the client CA signed, who
+# may reach the listener at all. Without this section grants are administered offline, with
+# `permguard host grants`. The telemetry listener's `/server-host/keys` redirects to
+# `/host/v1/keys/host.operations` here when the listener serves plain TLS; behind a client CA the
+# ring stays on the telemetry listener, a verifier holding no operator certificate.
+# admin:
+#   addr: 0.0.0.0:5444
+#   advertised_url: "https://ops.example.com:5444"   # where it is reached from outside, optional
+#   tls:
+#     cert: tls/server.pem
+#     key: tls/server.key
+#     client_ca: tls/ca.pem
+#     crl: tls/ca.crl
+#   allow:
+#     - cn:operator
 
 runtime:
   planes:

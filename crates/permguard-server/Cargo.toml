@@ -29,6 +29,10 @@ permguard-stream.workspace = true
 permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
 permguard-telemetry.workspace = true
 permguard-transport.workspace = true
+# The Host listener's gRPC half, `permguard.host.v1`, compiled by `build.rs` from `contracts/proto`.
+prost.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
 serde.workspace = true
 # Discovery documents are types, not hand-written strings: a plane that adds a field to
 # its own document composes a value rather than slicing a closing brace off some text.
@@ -43,11 +47,20 @@ opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
 tracing-opentelemetry.workspace = true
 
+[build-dependencies]
+tonic-prost-build.workspace = true
+
 [dev-dependencies]
 # `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
 tokio = { workspace = true, features = ["test-util"] }
 # `oneshot`, to ask a gated router one request at a time.
 tower = { workspace = true, features = ["util"] }
+# The cross-transport vectors of the Host API: the parity harness and the generated gRPC client.
+permguard-conformance.workspace = true
+http-body-util.workspace = true
+# The Host listener bound over the material the provisioner generates, spoken to over TLS.
+rustls.workspace = true
+tokio-rustls.workspace = true
 
 [[bench]]
 name = "server_host"

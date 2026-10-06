@@ -21,8 +21,10 @@ crash-points = []
 permguard-core.workspace = true
 # The canonical CBOR of the grant record and the bootstrap commitment (`authz`).
 permguard-objects.workspace = true
-# The compact JWS of a bearer token and the JWKS file of a pinned issuer (`authz::oidc`).
+# The compact JWS of a bearer token and the JWKS file of a pinned issuer (`authz::oidc`); the
+# Host API's documents and the replay journal's frames (`api`).
 base64.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 # The start-up record of grants that allow nothing and of a key set that did not re-read (`authz`).
 tracing.workspace = true
@@ -43,5 +45,5 @@ name = "crash_points"
 required-features = ["crash-points"]
 
 [dev-dependencies]
-# The audit handle is async (`composition` tests).
+# The audit handle and the Host API mutations are async (`composition` and `api` tests).
 tokio = { workspace = true, features = ["macros", "rt"] }

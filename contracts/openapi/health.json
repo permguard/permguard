@@ -238,7 +238,7 @@
         "summary": "The Server Host operations ring public keys as a JWKS",
         "responses": {
           "200": {
-            "description": "The key set; an empty set when nothing is published.",
+            "description": "The key set, when no Host listener a verifier can reach is configured; an empty set when nothing is published.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -255,6 +255,30 @@
               }
             }
           },
+          "308": {
+            "description": "A Host listener over plain TLS is configured: the ring is served there. `308` keeps the method, so a verifier follows as the same `GET`.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`https://<admin.advertised_url or admin.addr>/host/v1/keys/host.operations`."
+              },
+              "Deprecation": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`true`, the boolean form of the HTTP Deprecation header's draft (RFC 9745 later made the value a date): this route is legacy."
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "503": {
             "description": "The ring cannot be read; plain text, never an empty set.",
             "content": {
@@ -267,7 +291,8 @@
           }
         },
         "x-grpc-rpc": null,
-        "x-grpc-note": "permguard.host.v1.IdentityService/ListRingBindings and KeyService/GetKeyRing are empty stubs for the Host API (`/host/v1/keys/{ring}`), not this telemetry endpoint; nothing serves them."
+        "x-grpc-note": "The telemetry listener has no gRPC. The ring's Host API counterpart is `permguard.host.v1.KeyService/GetKeyRing`, served by the Host listener and described in `host.json`; this endpoint redirects to its REST path once a Host listener is configured.",
+        "description": "The legacy route of the operations ring. Without a Host listener (`admin.addr`), or with one that demands a client certificate, it publishes the ring; with a Host listener over plain TLS it answers `308 Permanent Redirect` to that listener's `/host/v1/keys/host.operations`, the place the process registry's `jwks_uri` then names, and publishes nothing itself (WP-2.5)."
       }
     }
   },

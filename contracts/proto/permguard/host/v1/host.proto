@@ -1,17 +1,21 @@
 // Copyright (c) 2022 Nitro Agility S.r.l.
 // SPDX-License-Identifier: Apache-2.0
 
-// The Host API, `permguard.host.v1`: a stub of the six services of the Host API contract, one RPC
-// per operation it names.
+// The Host API, `permguard.host.v1`: the six services of the Host API contract, one RPC per
+// operation it names.
 //
-// The contract names its operations and their REST paths, not their message fields, so every
-// message here is empty: no field number is assigned before the package that implements the
-// operation defines its shape from the contract. Nothing serves this package yet; a test compiles
-// it so the stub stays valid protobuf.
+// The contract names its operations and their REST paths, not their message fields, so a message
+// gets its fields when the package that serves its operation defines the shape from the
+// contract, and stays empty until then: no field number is assigned ahead of the contract. The
+// Host listener (WP-2.5) serves `GrantService`, `KeyService.ListKeyRings`, `KeyService.GetKeyRing`
+// and `OperationsService.GetStatus` and `GetEffectiveConfig`; `IdentityService.GetIdentity`,
+// `ListRingBindings` and `OperationsService.ListConfigRevisions` answer `not_served_yet` with empty
+// messages. The REST side of every served operation is `contracts/openapi/host.json`, and the
+// mapping between the two is written there.
 //
-// The service, RPC and message names are provisional: they are gRPC paths the contract does not
-// name yet, chosen from its operations, and the implementing package confirms or renames them
-// before anything serves them.
+// The service, RPC and message names of the unserved operations are provisional: they are gRPC
+// paths the contract does not name yet, chosen from its operations, and the implementing package
+// confirms or renames them before anything serves them.
 //
 // The peer exchange (`hello`, both proofs, enrolment and every task message) is not a set of
 // unary RPCs: the contract requires one long-lived framed channel bound to one TLS connection.
@@ -202,18 +206,127 @@ message RunMemberRevokeRequest {}
 message RunMemberRevokeResponse {}
 message ListMemberSessionsRequest {}
 message ListMemberSessionsResponse {}
-message ListGrantsRequest {}
-message ListGrantsResponse {}
-message CreateGrantRequest {}
-message CreateGrantResponse {}
-message PlanGrantRevokeRequest {}
-message PlanGrantRevokeResponse {}
-message RunGrantRevokeRequest {}
-message RunGrantRevokeResponse {}
+// `GET /host/v1/grants?principal&selector`: both filters optional, exact matches.
+message ListGrantsRequest {
+  string principal = 1;
+  string selector = 2;
+}
+message ListGrantsResponse {
+  // The store revision the list was read at.
+  uint64 revision = 1;
+  repeated Grant grants = 2;
+}
+
+// One grant, as the API shows it.
+message Grant {
+  string grant_id = 1;
+  string principal = 2;
+  repeated string operations = 3;
+  string selector = 4;
+  repeated string resource_types = 5;
+  map<string, string> constraints = 6;
+  uint64 revision = 7;
+  // `active`, `revoked` or `expired`.
+  string status = 8;
+  string issued_by = 9;
+  // RFC 3339.
+  string issued_at = 10;
+  // RFC 3339, when the grant expires.
+  optional string expires_at = 11;
+}
+
+// The common envelope's receipt: `{operation_id, revision, audit}`.
+message Receipt {
+  string operation_id = 1;
+  uint64 revision = 2;
+  AuditReference audit = 3;
+}
+
+// Where the audit trail recorded a mutation; `seq` and `digest` arrive with the sealed trail.
+message AuditReference {
+  string trail = 1;
+  optional uint64 seq = 2;
+  optional string digest = 3;
+}
+// `POST /host/v1/grants`.
+message CreateGrantRequest {
+  string request_id = 1;
+  optional uint64 expected_revision = 2;
+  string principal = 3;
+  repeated string operations = 4;
+  string selector = 5;
+  repeated string resource_types = 6;
+  map<string, string> constraints = 7;
+  // RFC 3339.
+  optional string expires_at = 8;
+}
+message CreateGrantResponse {
+  Receipt receipt = 1;
+  Grant grant = 2;
+}
+// `POST /host/v1/grants/{id}/revoke/plan`.
+message PlanGrantRevokeRequest {
+  string grant_id = 1;
+  string request_id = 2;
+  optional uint64 expected_revision = 3;
+}
+message PlanGrantRevokeResponse {
+  string plan_id = 1;
+  string plan_digest = 2;
+  // RFC 3339: when the plan can no longer be run.
+  string expires = 3;
+  // The grant revision the plan was made against.
+  uint64 revision = 4;
+}
+// `POST /host/v1/grants/{id}/revoke/run`.
+message RunGrantRevokeRequest {
+  string grant_id = 1;
+  string request_id = 2;
+  string plan_id = 3;
+  string plan_digest = 4;
+}
+message RunGrantRevokeResponse {
+  Receipt receipt = 1;
+  Grant grant = 2;
+}
 message ListKeyRingsRequest {}
-message ListKeyRingsResponse {}
-message GetKeyRingRequest {}
-message GetKeyRingResponse {}
+message ListKeyRingsResponse {
+  repeated KeyRingSummary rings = 1;
+}
+
+// One ring in the list.
+message KeyRingSummary {
+  string ring = 1;
+  uint32 keys = 2;
+  string digest = 3;
+}
+// `GET /host/v1/keys/{ring}`: public, no grant is checked.
+message GetKeyRingRequest {
+  string ring = 1;
+}
+message GetKeyRingResponse {
+  string ring = 1;
+  // The ring epoch, once the bindings carry one (WP-2.3).
+  optional uint64 epoch = 2;
+  // SHA-256 over the public set as published, hex.
+  string digest = 3;
+  // The signed binding of this ring to the Host identity (WP-2.3).
+  optional string binding = 4;
+  // How long a client may cache the set, in seconds.
+  uint32 cache_max_age = 5;
+  repeated Jwk keys = 6;
+}
+
+// One public key as RFC 7517 defines it; the private half is never expressed.
+message Jwk {
+  string kid = 1;
+  string kty = 2;
+  optional string crv = 3;
+  string x = 4;
+  optional string y = 5;
+  string alg = 6;
+  string use = 7;
+}
 message RotateKeyRingRequest {}
 message RotateKeyRingResponse {}
 message PlanKeyRevokeRequest {}
@@ -249,13 +362,58 @@ message ListStreamGapsResponse {}
 message ListStreamAnchorsRequest {}
 message ListStreamAnchorsResponse {}
 message GetStatusRequest {}
-message GetStatusResponse {}
+message GetStatusResponse {
+  bool live = 1;
+  bool ready = 2;
+  // The Host's phase.
+  string state = 3;
+  repeated HostDegraded degraded = 4;
+  repeated HostComponent components = 5;
+  Assurance assurance = 6;
+}
+
+// One capability served without its backing.
+message HostDegraded {
+  string capability = 1;
+  string reason = 2;
+}
+
+// One component of the process, as the health document reports it; the instants are RFC 3339 and
+// absent when the component has none to report.
+message HostComponent {
+  string component = 1;
+  string kind = 2;
+  string state = 3;
+  bool required = 4;
+  optional string stalled_since = 5;
+  optional string last_success = 6;
+  optional string next_attempt = 7;
+  optional string reason = 8;
+}
+
+// The assurance profile the volume runs under.
+message Assurance {
+  string profile = 1;
+}
 message DrainRequest {}
 message DrainResponse {}
 message MaintenanceRequest {}
 message MaintenanceResponse {}
 message GetEffectiveConfigRequest {}
-message GetEffectiveConfigResponse {}
+message GetEffectiveConfigResponse {
+  // `0`: the static configuration this process started with.
+  uint64 revision = 1;
+  repeated Setting settings = 2;
+}
+
+// One effective setting, its value masked when the key names a secret.
+message Setting {
+  string key = 1;
+  string value = 2;
+  bool masked = 3;
+  // `file`, `environment` or `command_line`.
+  string origin = 4;
+}
 message ListConfigRevisionsRequest {}
 message ListConfigRevisionsResponse {}
 message PrepareBackupRequest {}

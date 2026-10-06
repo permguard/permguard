@@ -13,13 +13,14 @@ use permguard_conformance::schema::Document;
 use serde_json::Value;
 
 /// The documents the REST surfaces are described by; a new file must be listed here.
-const DOCUMENTS: [&str; 10] = [
+const DOCUMENTS: [&str; 11] = [
     "catalog.json",
     "common.json",
     "discovery.json",
     "evidence-decisions.json",
     "evidence-events-v1alpha1.json",
     "health.json",
+    "host.json",
     "notp.json",
     "pdp-native-v1.json",
     "pdp-temporal-v1alpha1.json",

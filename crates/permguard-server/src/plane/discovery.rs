@@ -231,6 +231,36 @@ pub fn host_http_base(config: &Config) -> Option<String> {
     Some(format!("{scheme}://{addr}"))
 }
 
+/// The base URL of the Host listener (WP-2.5), when `admin.addr` is set: what the deployment
+/// advertises (`admin.advertised_url`) wins, the bound address is the fallback, always `https`
+/// since the listener is refused without TLS.
+pub fn host_api_base(config: &Config) -> Option<String> {
+    let bound = config.admin_addr()?;
+    Some(
+        config
+            .admin_advertised_url()
+            .map_or_else(|| format!("https://{bound}"), str::to_owned),
+    )
+}
+
+/// Where the operations ring's public set lives once the Host listener serves it to everybody:
+/// the `Location` the telemetry listener's `/server-host/keys` redirects to, and the `jwks_uri`
+/// the registry publishes. `None` without a Host listener, and `None` when the Host listener
+/// demands a client certificate (owner decision, 2026-10-06, after the review): a verifier
+/// following `jwks_uri` holds no operator certificate, so the ring stays published where it
+/// was and the registry names it as before.
+pub fn host_keys_location(config: &Config) -> Option<String> {
+    if config.admin_tls().is_none_or(|tls| tls.is_mutual()) {
+        return None;
+    }
+    host_api_base(config).map(|base| {
+        format!(
+            "{base}/host/v1/keys/{}",
+            permguard_host::composition::HOST_OPERATIONS.as_str()
+        )
+    })
+}
+
 /// The HTTP base URL (`scheme://addr`) one plane answers on, when it is
 /// loaded and has an HTTP address — for a plane module composing its own
 /// configuration document.
@@ -371,11 +401,16 @@ pub fn server_configuration_document(config: &Config) -> String {
         // The Host's own keys, when the deployment publishes any: the one field of this document
         // that is the process's rather than a plane's, because the operations ring seals what the
         // whole process did.
+        // Behind the Host listener when the deployment has one (WP-2.5), on the telemetry
+        // listener's legacy route otherwise.
         jwks_uri: config
             .keys_enabled()
-            .then(|| host_http_base(config))
-            .flatten()
-            .map(|base| format!("{base}/server-host/keys")),
+            .then(|| {
+                host_keys_location(config).or_else(|| {
+                    host_http_base(config).map(|base| format!("{base}/server-host/keys"))
+                })
+            })
+            .flatten(),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -558,6 +593,100 @@ mod document_tests {
         assert!(
             registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
             "{registry}"
+        );
+    }
+
+    #[test]
+    fn the_registry_names_the_host_listener_for_the_keys_once_one_is_configured() {
+        // WP-2.5: the operations ring is served by the Host listener, and the legacy route on
+        // the telemetry listener redirects there; the registry names the new place.
+        let config = config_with(&[
+            (
+                permguard_core::config::SETTING_TELEMETRY_ADDR,
+                "127.0.0.1:5443",
+            ),
+            (permguard_core::config::SETTING_ADMIN_ADDR, "127.0.0.1:5444"),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_CERT,
+                "tls/server.pem",
+            ),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_KEY,
+                "tls/server.key",
+            ),
+            (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
+        ]);
+
+        assert_eq!(
+            host_keys_location(&config).as_deref(),
+            Some("https://127.0.0.1:5444/host/v1/keys/host.operations")
+        );
+        let registry = server_configuration_document(&config);
+        assert!(
+            registry
+                .contains("\"jwks_uri\":\"https://127.0.0.1:5444/host/v1/keys/host.operations\""),
+            "{registry}"
+        );
+        assert!(!registry.contains("server-host/keys"), "{registry}");
+
+        // Without the listener nothing moved.
+        let without = config_with(&[(permguard_core::config::SETTING_KEYS_ENABLED, "true")]);
+        assert_eq!(host_keys_location(&without), None);
+
+        // Bound on every interface, the advertised URL is what the registry names.
+        let advertised = config_with(&[
+            (permguard_core::config::SETTING_ADMIN_ADDR, "0.0.0.0:5444"),
+            (
+                permguard_core::config::SETTING_ADMIN_ADVERTISED_URL,
+                "https://ops.example.com:5444/",
+            ),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_CERT,
+                "tls/server.pem",
+            ),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_KEY,
+                "tls/server.key",
+            ),
+            (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
+        ]);
+        assert_eq!(
+            host_api_base(&advertised).as_deref(),
+            Some("https://ops.example.com:5444")
+        );
+        assert_eq!(
+            host_keys_location(&advertised).as_deref(),
+            Some("https://ops.example.com:5444/host/v1/keys/host.operations")
+        );
+
+        // A Host listener that demands a client certificate is no place for a verifier: the
+        // ring stays where it was, and the registry names it there (owner decision after the
+        // review).
+        let mutual = config_with(&[
+            (
+                permguard_core::config::SETTING_TELEMETRY_ADDR,
+                "127.0.0.1:5443",
+            ),
+            (permguard_core::config::SETTING_ADMIN_ADDR, "127.0.0.1:5444"),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_CERT,
+                "tls/server.pem",
+            ),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_KEY,
+                "tls/server.key",
+            ),
+            (
+                permguard_core::config::SETTING_ADMIN_TLS_CLIENT_CA,
+                "tls/ca.pem",
+            ),
+            (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
+        ]);
+        assert_eq!(host_keys_location(&mutual), None);
+        assert!(
+            server_configuration_document(&mutual)
+                .contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
+            "the registry keeps the legacy route"
         );
     }
 

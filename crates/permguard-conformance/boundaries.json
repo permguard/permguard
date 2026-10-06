@@ -551,6 +551,11 @@
       "source": "crates/permguard-host/src/authz/store.rs",
       "item": "GrantStore::open",
       "reason": "the store's own directory on the Host's volume, written by this process; every frame is decoded by `GrantRecord::decode` and `Transition::decode`, the registered boundaries"
+    },
+    {
+      "source": "crates/permguard-host/src/api/replay.rs",
+      "item": "Replay::open",
+      "reason": "the replay journal's own directory on the Host's volume, written by this process; every frame is JSON this process encoded, read back through the storage library's journal, which checks the frames"
     }
   ]
 }

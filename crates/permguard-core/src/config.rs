@@ -125,6 +125,9 @@ pub const SETTING_OTEL_SAMPLE_RATE: &str = "PERMGUARD_OTEL_SAMPLE_RATE";
 
 /// Runtime setting key for the admin listen address.
 pub const SETTING_ADMIN_ADDR: &str = "PERMGUARD_ADMIN_ADDR";
+/// Where the Host listener is reached from outside, when that is not where it binds: what the
+/// registry's `jwks_uri` and the telemetry listener's redirect name (WP-2.5).
+pub const SETTING_ADMIN_ADVERTISED_URL: &str = "PERMGUARD_ADMIN_ADVERTISED_URL";
 
 /// Runtime setting keys for the TLS material of each surface.
 ///
@@ -1021,6 +1024,7 @@ pub struct Config {
     public_grpc_addr: Option<String>,
     telemetry_addr: Option<String>,
     telemetry_advertised_url: Option<String>,
+    admin_advertised_url: Option<String>,
     admin_addr: Option<String>,
     admin_allow: Vec<AllowedPeer>,
     disclose_build: bool,
@@ -1135,7 +1139,33 @@ pub struct Config {
     realms: Vec<RealmConfig>,
     declared: BTreeSet<String>,
     declared_values: BTreeMap<String, String>,
+    // Which layer each effective setting came from, for the effective-configuration document the
+    // Host API answers (WP-2.5): the last layer that supplied a non-empty value wins, as in
+    // `from_layers`.
+    origins: BTreeMap<String, (String, SettingOrigin)>,
     sections: BTreeMap<&'static str, Arc<dyn AnyConfigSection>>,
+}
+
+/// The layer an effective setting came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingOrigin {
+    /// The configuration file named on the command line.
+    File,
+    /// The process environment.
+    Environment,
+    /// A command-line flag.
+    CommandLine,
+}
+
+impl SettingOrigin {
+    /// The word the effective-configuration document uses.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Environment => "environment",
+            Self::CommandLine => "command_line",
+        }
+    }
 }
 
 impl Default for Config {
@@ -1156,6 +1186,7 @@ impl Default for Config {
             public_grpc_addr: None,
             telemetry_addr: None,
             telemetry_advertised_url: None,
+            admin_advertised_url: None,
             admin_addr: None,
             admin_allow: Vec::new(),
             disclose_build: true,
@@ -1257,6 +1288,7 @@ impl Default for Config {
             realms: Vec::new(),
             declared: BTreeSet::new(),
             declared_values: BTreeMap::new(),
+            origins: BTreeMap::new(),
             sections: BTreeMap::new(),
         }
     }
@@ -1304,9 +1336,18 @@ impl Config {
         };
 
         config.apply_build_settings(build_settings);
-        config.apply_pairs(layers.file)?;
-        config.apply_pairs(layers.environment)?;
-        config.apply_pairs(layers.command_line)?;
+        for (origin, pairs) in [
+            (SettingOrigin::File, layers.file),
+            (SettingOrigin::Environment, layers.environment),
+            (SettingOrigin::CommandLine, layers.command_line),
+        ] {
+            for (key, value) in &pairs {
+                if !value.is_empty() && is_known_setting(key, &config.declared) {
+                    config.origins.insert(key.clone(), (value.clone(), origin));
+                }
+            }
+            config.apply_pairs(pairs)?;
+        }
         config.check_cache_bounds()?;
 
         Ok(config)
@@ -1562,19 +1603,21 @@ produce: use `EdDSA` or `ES256`"
 
         let declared_addresses = self.declared_addresses()?;
 
-        // A process serving only the Server Host operations surface is a legal deployment — it
-        // answers its whole operational contract and authorizes nothing. What is refused is a
-        // process with no listener at all: nothing could ever reach it, so starting it can only
-        // be a mistake.
+        // A process serving only the Server Host operations surface, or only the Host listener
+        // (WP-2.5), is a legal deployment — it answers its operational contract and authorizes
+        // nothing a plane would. What is refused is a process with no listener at all: nothing
+        // could ever reach it, so starting it can only be a mistake.
         if self.public_http_addr().is_none()
             && self.public_grpc_addr().is_none()
             && self.declared_extra_addresses()?.is_empty()
             && self.telemetry_addr().is_none()
+            && self.admin_addr().is_none()
         {
             bail!(
                 "the configuration defines no listen address at all: set `public.http.addr` or \
                  `public.grpc.addr`, configure a plane public address, pass --public-http-addr, \
-                 or keep the Server Host surface (`host.addr`, default {DEFAULT_TELEMETRY_ADDR})"
+                 keep the Server Host surface (`host.addr`, default {DEFAULT_TELEMETRY_ADDR}), or \
+                 bind the Host listener (`admin.addr`)"
             );
         }
 
@@ -1607,6 +1650,7 @@ produce: use `EdDSA` or `ES256`"
         }
 
         self.validate_development()?;
+        self.validate_admin_advertised_url()?;
         self.validate_admin_access()?;
         self.validate_key_lifecycle()?;
         self.validate_realms()?;
@@ -1660,22 +1704,32 @@ produce: use `EdDSA` or `ES256`"
     /// client administer this deployment*, and a surface that stops at the first question hands
     /// administration to every client that authority ever signed — which, for the authority that
     /// also issues ordinary service certificates, is usually all of them.
+    ///
+    /// The surface is the Host listener (WP-2.5, owner decision of 2026-10-06): TLS is required,
+    /// and a client CA with it, unless the deployment is in development *and* the bind is a
+    /// loopback address — both, because either alone is a laptop convention that a cluster copies.
     fn validate_admin_access(&self) -> Result<()> {
         let Some(address) = self.admin_addr() else {
             return Ok(());
         };
 
-        let mutual = self.admin_tls.as_ref().is_some_and(TlsSettings::is_mutual);
+        let Some(tls) = self.admin_tls.as_ref() else {
+            bail!(
+                "the Host listener is bound to {address} without TLS: set `admin.tls.cert` and \
+                 `admin.tls.key`, because grants and keys are administered over it and nothing \
+                 administrative travels in the clear"
+            );
+        };
 
-        if !mutual {
-            if is_loopback(address) || self.development_mode {
+        if !tls.is_mutual() {
+            if is_loopback(address) && self.development_mode {
                 return Ok(());
             }
 
             bail!(
-                "the administrative surface is bound to {address}, which is reachable from outside \
-                 this host, and demands no client certificate: set `admin.tls.client_ca`, bind it to \
-                 a loopback address, or say `development_mode: true`"
+                "the Host listener is bound to {address} and demands no client certificate: set \
+                 `admin.tls.client_ca`; only a loopback bind under `development_mode: true` may \
+                 serve it over plain TLS"
             );
         }
 
@@ -1684,6 +1738,24 @@ produce: use `EdDSA` or `ES256`"
                 "the administrative surface demands a client certificate but names nobody: list the \
                  peers that may administer it under `admin.allow`, because a certificate authority \
                  signs every client it was built for and mutual TLS alone would admit all of them"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Where the Host listener says it is reached, when the deployment states it: the URL the
+    /// keys redirect and the registry's `jwks_uri` name while the listener serves plain TLS, and
+    /// what the Host's documents will name once it has an identity (WP-2.2). Reached over TLS,
+    /// so `https`. Not required: behind mutual TLS nothing names the listener to a stranger yet,
+    /// and a bind on every interface is advertised by whatever fronts it.
+    fn validate_admin_advertised_url(&self) -> Result<()> {
+        if let Some(url) = self.admin_advertised_url()
+            && !url.starts_with("https://")
+        {
+            bail!(
+                "`admin.advertised_url` is `{url}`: the Host listener is reached over TLS, so it \
+                 is an https URL"
             );
         }
 
@@ -2264,6 +2336,23 @@ produce: use `EdDSA` or `ES256`"
     /// Returns the effective admin listen address, when one is configured.
     pub fn admin_addr(&self) -> Option<&str> {
         self.admin_addr.as_deref()
+    }
+
+    /// Where the Host listener is reached from outside, trimmed of a trailing slash, when stated.
+    pub fn admin_advertised_url(&self) -> Option<&str> {
+        self.admin_advertised_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty())
+            .map(|url| url.trim_end_matches('/'))
+    }
+
+    /// Whether the Host listener may serve plain TLS, without a client CA: only a loopback bind
+    /// under `development_mode` (owner decision, 2026-10-06). The listener re-checks this where
+    /// it binds, so a composition that skipped validation decides the same.
+    pub fn admin_plain_tls_allowed(&self) -> bool {
+        self.admin_addr()
+            .is_some_and(|address| is_loopback(address) && self.development_mode)
     }
 
     /// Returns how much this build says.
@@ -3043,6 +3132,15 @@ produce: use `EdDSA` or `ES256`"
         self.declared.iter().map(String::as_str)
     }
 
+    /// Every setting this build reads that a layer supplied, with the layer it came from: the
+    /// effective configuration as the Host API reports it, values included. A pair no setting
+    /// reads — the rest of the process environment — is not here. The caller masks what is secret.
+    pub fn supplied_settings(&self) -> impl Iterator<Item = (&str, &str, SettingOrigin)> {
+        self.origins
+            .iter()
+            .map(|(key, (value, origin))| (key.as_str(), value.as_str(), *origin))
+    }
+
     /// The listen addresses the assembled config actually declares, labelled for diagnostics.
     fn declared_addresses(&self) -> Result<Vec<(String, &str)>> {
         let mut addresses = [
@@ -3162,6 +3260,10 @@ produce: use `EdDSA` or `ES256`"
 
         if let Some(value) = settings.get(SETTING_TELEMETRY_ADVERTISED_URL) {
             self.telemetry_advertised_url = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_ADMIN_ADVERTISED_URL) {
+            self.admin_advertised_url = Some(value.clone());
         }
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADDR) {
@@ -4185,6 +4287,144 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
         "false" | "no" | "off" | "0" => Ok(false),
         other => bail!("`{other}` is not a boolean: expected true or false"),
     }
+}
+
+/// Every setting this crate reads: the inventory the effective-configuration document is
+/// restricted to, so a layer's stray pair — the process environment is a layer — is never
+/// recorded as a setting (WP-2.5). A build's extra settings are declared beside them.
+const CORE_SETTINGS: &[&str] = &[
+    SETTING_ADMIN_ADDR,
+    SETTING_ADMIN_ADVERTISED_URL,
+    SETTING_ADMIN_ALLOW,
+    SETTING_ADMIN_TLS_CERT,
+    SETTING_ADMIN_TLS_CLIENT_CA,
+    SETTING_ADMIN_TLS_CRL,
+    SETTING_ADMIN_TLS_KEY,
+    SETTING_ADMIN_TLS_MIN_VERSION,
+    SETTING_AUDIT_DIRECTORY,
+    SETTING_AUDIT_PSEUDONYM_ENABLED,
+    SETTING_AUDIT_PSEUDONYM_KEY_REF,
+    SETTING_AUDIT_PSEUDONYM_KEY_VERSION,
+    SETTING_AUDIT_REFUSALS,
+    SETTING_AUDIT_RETENTION,
+    SETTING_AUDIT_SINK,
+    SETTING_AUTHZ_CACHE_BYTES,
+    SETTING_AUTHZ_CACHE_PARTITIONS,
+    SETTING_AUTHZ_CACHE_ZONE_BYTES,
+    SETTING_AUTHZ_CACHE_ZONE_PARTITIONS,
+    SETTING_AUTHZ_MAX_EVALUATIONS,
+    SETTING_AUTOGENERATE,
+    SETTING_CONTROL_KEYS_DIRECTORY,
+    SETTING_CONTROL_KEYS_ENABLED,
+    SETTING_COPYRIGHT_HOLDER,
+    SETTING_COPYRIGHT_YEAR,
+    SETTING_DATA_KEYS_DIRECTORY,
+    SETTING_DATA_KEYS_ENABLED,
+    SETTING_DECISION_STORE_DIRECTORY,
+    SETTING_DECISION_STORE_ENABLED,
+    SETTING_DECISION_STORE_RETENTION,
+    SETTING_DEVELOPMENT_MODE,
+    SETTING_EVENTS_ALLOWED_LATENESS,
+    SETTING_EVENTS_CLOCK_SKEW,
+    SETTING_EVENTS_DIRECTORY,
+    SETTING_EVENTS_ENABLED,
+    SETTING_EVENTS_GROUP_COMMIT_DELAY,
+    SETTING_EVENTS_MAX_BYTES,
+    SETTING_EVENTS_MAX_RECORD_BYTES,
+    SETTING_EVENTS_PRODUCER_ID,
+    SETTING_EVENTS_PULL_INTERVAL,
+    SETTING_EVENTS_PULL_MAX_STALENESS,
+    SETTING_EVENTS_PULL_MODE,
+    SETTING_EVENTS_RETENTION_MINIMUM,
+    SETTING_EVENTS_SEGMENT_BYTES,
+    SETTING_EVENT_STORE_DIRECTORY,
+    SETTING_EVENT_STORE_ENABLED,
+    SETTING_EVENT_STORE_RETENTION,
+    SETTING_EXPERIMENTAL_DOGWOOD,
+    SETTING_EXPERIMENTAL_PREFIX,
+    SETTING_EXPERIMENTAL_SUFFIX,
+    SETTING_GC_ENABLED,
+    SETTING_GC_GRACE,
+    SETTING_GC_INTERVAL,
+    SETTING_ISSUER,
+    SETTING_KEYS_DIRECTORY,
+    SETTING_KEYS_ENABLED,
+    SETTING_KEYS_MAINTENANCE_INTERVAL,
+    SETTING_KEYS_PUBLISH_AHEAD,
+    SETTING_KEYS_RETAIN,
+    SETTING_KEYS_ROTATE_EVERY,
+    SETTING_LIMITS_BODY_BYTES,
+    SETTING_LIMITS_CONCURRENT_REQUESTS,
+    SETTING_LIMITS_CONNECTIONS,
+    SETTING_LIMITS_CONNECTIONS_PER_PEER,
+    SETTING_LIMITS_CONNECTION_LIFETIME,
+    SETTING_LIMITS_HANDSHAKE_TIMEOUT,
+    SETTING_LIMITS_HEADER_BYTES,
+    SETTING_LIMITS_HEADER_TIMEOUT,
+    SETTING_LIMITS_PEER_EXEMPT,
+    SETTING_LIMITS_REQUEST_TIMEOUT,
+    SETTING_LIMITS_WRITE_STALL_TIMEOUT,
+    SETTING_LOG_BATCH_BYTES,
+    SETTING_LOG_BATCH_INTERVAL,
+    SETTING_LOG_COMMITMENT_KEY_REF,
+    SETTING_LOG_COMMITMENT_KEY_VERSION,
+    SETTING_LOG_ENABLED,
+    SETTING_LOG_FORMAT,
+    SETTING_LOG_LEVEL,
+    SETTING_LOG_ON_FULL,
+    SETTING_LOG_PDP_ID,
+    SETTING_LOG_SAMPLE_PERMITS,
+    SETTING_LOG_SPOOL_AGE,
+    SETTING_LOG_SPOOL_BYTES,
+    SETTING_LOG_SPOOL_DIRECTORY,
+    SETTING_MAX_BLOCKING,
+    SETTING_MIRRORS_ENABLED,
+    SETTING_MIRRORS_EXPIRE_AFTER,
+    SETTING_MIRRORS_INTERVAL,
+    SETTING_MIRRORS_JITTER,
+    SETTING_MIRRORS_PARALLELISM,
+    SETTING_MIRRORS_STALE_AFTER,
+    SETTING_MIRRORS_TIMEOUT,
+    SETTING_NOTP_COMPRESSION,
+    SETTING_NOTP_LEDGER_QUOTA_BYTES,
+    SETTING_NOTP_MAX_BATCH_BYTES,
+    SETTING_NOTP_MAX_BATCH_OBJECTS,
+    SETTING_NOTP_MAX_PUSH_BYTES,
+    SETTING_NOTP_MAX_PUSH_OBJECTS,
+    SETTING_OTEL_ENABLED,
+    SETTING_OTEL_ENDPOINT,
+    SETTING_OTEL_SAMPLE_RATE,
+    SETTING_PUBLIC_DISCLOSE_BUILD,
+    SETTING_PUBLIC_ERROR_DETAIL,
+    SETTING_PUBLIC_GRPC_ADDR,
+    SETTING_PUBLIC_GRPC_ENABLED,
+    SETTING_PUBLIC_HTTP_ADDR,
+    SETTING_PUBLIC_HTTP_ENABLED,
+    SETTING_PUBLIC_PATH_PREFIX,
+    SETTING_PUBLIC_TLS_ALLOW,
+    SETTING_PUBLIC_TLS_CERT,
+    SETTING_PUBLIC_TLS_CLIENT_CA,
+    SETTING_PUBLIC_TLS_CRL,
+    SETTING_PUBLIC_TLS_KEY,
+    SETTING_PUBLIC_TLS_MIN_VERSION,
+    SETTING_SECRETS_DIRECTORY,
+    SETTING_SECRETS_ENV_PREFIX,
+    SETTING_SECRETS_PROVIDER,
+    SETTING_SHUTDOWN_TIMEOUT,
+    SETTING_TELEMETRY_ADDR,
+    SETTING_TELEMETRY_ADVERTISED_URL,
+    SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY,
+    SETTING_TELEMETRY_TLS_MIN_VERSION,
+    SETTING_TLS_RELOAD,
+    SETTING_TLS_RELOAD_INTERVAL,
+    SETTING_VERSION,
+    SETTING_WORKING_DIR,
+];
+
+/// Whether `key` is a setting this build reads: one of [`CORE_SETTINGS`] or a declared extra.
+fn is_known_setting(key: &str, declared: &BTreeSet<String>) -> bool {
+    key.starts_with("PERMGUARD_") && (CORE_SETTINGS.contains(&key) || declared.contains(key))
 }
 
 fn is_declared_listen_address(key: &str) -> bool {

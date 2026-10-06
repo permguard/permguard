@@ -17,7 +17,28 @@ is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **The Host listener: `admin.addr` serves the Host API.**
+  The `admin` section, which was read and refused, is now the Host listener: `/host/v1` and `permguard.host.v1` on one port, over TLS, with `admin.tls` and `admin.allow` as before.
+  It serves the grants: `GET` and `POST /host/v1/grants`, then the two-step `revoke/plan` and `revoke/run`.
+  It serves the key rings (`GET /host/v1/keys`, and the public `GET /host/v1/keys/{ring}`), the lifecycle (`GET /host/v1/status`) and the effective configuration (`GET /host/v1/config/effective`).
+  Identity, ring bindings and the configuration journal answer `not_served_yet` until their packages.
+  Every mutation carries a `request_id`; a retry inside ten minutes returns the stored answer, across a restart, from `host/state/replay/` on the volume.
+  Every route decides with the Host's grants, under `authz.admin`, `lifecycle.read`, `keys.read`, `config.read` and `identity.read`.
+  The last four operations are new to the grant registry.
+  `admin.advertised_url`, optional, names where the listener is reached from outside; the keys redirect and `jwks_uri` use it while the listener serves plain TLS.
+  The shipped development configurations bind it on `127.0.0.1:5444`; the container image exposes `5444`.
+
 ### Changed
+
+- **`admin.addr` requires TLS, and a client CA unless it is a loopback bind in development.**
+  A configuration that named `admin.addr` without `admin.tls` used to be refused because nothing served it; it is now refused because the Host listener never serves in the clear.
+  A bind reachable from outside the host demands `admin.tls.client_ca` whatever `development_mode` says, where a loopback bind alone used to be enough.
+- **`/server-host/keys` redirects once a Host listener a verifier can reach is configured.**
+  With `admin.addr` set and no `admin.tls.client_ca`, the telemetry listener answers `308 Permanent Redirect` to the listener's `/host/v1/keys/host.operations`, at `admin.advertised_url` or `https://<admin.addr>`.
+  The answer carries `Deprecation: true` (the HTTP Deprecation header in its draft form), and the process registry's `jwks_uri` names the new place.
+  Behind mutual TLS, and without a Host listener, the route and the registry are unchanged: a verifier following `jwks_uri` holds no operator certificate.
 
 - **Publishing an object needs a filesystem with hard links.**
   The Control Plane's ledgers, a Data Plane mirror and a CLI workspace publish objects by hard-linking a flushed temporary file to the object's name.

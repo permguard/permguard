@@ -200,6 +200,9 @@ pub struct ServerContext<'a> {
     /// The Planes' signing rings, the audit recorder and the secret store are reached only through
     /// them (P1).
     plane_handles: std::collections::BTreeMap<&'static str, Arc<dyn std::any::Any + Send + Sync>>,
+    /// What the Host's own listener serves with (WP-2.5), typed by the composition like the Plane
+    /// handles, so the core names no Host type.
+    host_handles: Option<Arc<dyn std::any::Any + Send + Sync>>,
     /// The Host's credential mapper, which every Plane surface decides its actor with (WP-2.4).
     /// The composition sets it; a Plane never reaches it, its context having no accessor.
     authenticator: Option<Arc<dyn crate::authz::Authenticator>>,
@@ -239,6 +242,7 @@ impl<'a> ServerContext<'a> {
             catalog: None,
             maintained_rings: Vec::new(),
             plane_handles: std::collections::BTreeMap::new(),
+            host_handles: None,
             authenticator: None,
             services: NO_SERVICES,
             health: Health::new(),
@@ -302,6 +306,13 @@ impl<'a> ServerContext<'a> {
         handles: Arc<dyn std::any::Any + Send + Sync>,
     ) -> Self {
         self.plane_handles.insert(plane, handles);
+
+        self
+    }
+
+    /// Attaches what the Host's own listener serves with (WP-2.5).
+    pub fn with_host_handles(mut self, handles: Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        self.host_handles = Some(handles);
 
         self
     }
@@ -404,6 +415,14 @@ impl<'a> ServerContext<'a> {
     pub fn plane_handles<T: std::any::Any + Send + Sync>(&self, plane: &str) -> Option<Arc<T>> {
         self.plane_handles
             .get(plane)
+            .and_then(|handles| Arc::clone(handles).downcast::<T>().ok())
+    }
+
+    /// Returns what the Host listener serves with, as the type the composition stored it as;
+    /// `None` when the composition built none or the type does not match.
+    pub fn host_handles<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.host_handles
+            .as_ref()
             .and_then(|handles| Arc::clone(handles).downcast::<T>().ok())
     }
 

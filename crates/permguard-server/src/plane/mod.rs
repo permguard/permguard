@@ -593,9 +593,14 @@ impl PlaneServer {
         .with_declared_settings(declared_settings_for(&self.planes))
         .with_section_settings("runtime", runtime_settings)
         .with_service(Box::new(
-            TelemetryService::new().with_configuration(server_configuration_document),
+            TelemetryService::new()
+                .with_configuration(server_configuration_document)
+                .with_keys_location(discovery::host_keys_location),
         ))
-        .with_service(Box::new(KeyService::new()));
+        .with_service(Box::new(KeyService::new()))
+        // The Host listener (WP-2.5): the `admin` section, serving `/host/v1` and
+        // `permguard.host.v1` when `admin.addr` is set, and nothing otherwise.
+        .with_service(Box::new(crate::host_api::HostApiService::new()));
 
         for section in section_settings_for(&self.planes) {
             app = app.with_section_settings(section.name, move |value| {
@@ -631,33 +636,6 @@ impl PlaneServer {
                 });
             }
         }
-
-        // A configured administrative surface that nothing serves.
-        //
-        // `admin.addr`, `admin.tls` and `admin.allow` are read and validated — mutual TLS
-        // demanded, the allow list required outside development — and then no listener binds them.
-        // The planes registered here serve one public surface and one Server Host operations
-        // surface. The catalog's mutations, policy push and audit reads are answered on the public
-        // surface.
-        //
-        // The danger is not the missing listener. It is an operator reading a configuration that
-        // names an admin address behind mutual TLS and an allow list, concluding that
-        // administration is separated, and leaving the public endpoint open to the cluster. So a
-        // configuration that describes the boundary is refused until something serves it: the
-        // check disappears on its own the day a plane answers there.
-        app = app.with_startup_check(|config| {
-            let Some(address) = config.admin_addr() else {
-                return Ok(());
-            };
-
-            anyhow::bail!(
-                "`admin.addr` is {address}, and this build serves no administrative surface: the \
-                 catalog's mutations, the policy push and the audit reads are answered on the \
-                 public endpoint. Remove the setting and restrict the public endpoint instead — \
-                 leaving it describes a separation that does not exist. \
-                 docs/operations/administrative-surface.md says what does protect it"
-            );
-        });
 
         // Each selected plane declares itself to the Host before any service starts.
         for plane in &self.planes {
@@ -838,7 +816,7 @@ impl Service for SelectedService {
 ///
 /// So the fallback asks which protocol is speaking — a gRPC request says so in its content type —
 /// and answers in that protocol's own vocabulary.
-fn shared_port(http: Router, grpc: Router) -> Router {
+pub(crate) fn shared_port(http: Router, grpc: Router) -> Router {
     http.merge(grpc).fallback(unmatched)
 }
 

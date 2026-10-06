@@ -1,0 +1,1683 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Permguard Host API",
+    "version": "1",
+    "description": "The Host listener (WP-2.5): `/host/v1` over TLS on `admin.addr`, and `permguard.host.v1` on the same port, one facade behind both. Every route authorizes with the Host's grants; every mutation carries a request id, may state the revision it expects, and answers a receipt. Identity, membership, evidence and the key and configuration mutations arrive with their packages; this document describes what this build serves."
+  },
+  "paths": {
+    "/host/v1/identity": {
+      "get": {
+        "operationId": "getHostIdentity",
+        "summary": "The Host identity",
+        "description": "Under `identity.read` on the Host. Served as `not_served_yet` by this build: the route authorizes, then says a later package serves it.",
+        "responses": {
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Under `identity.read`; the signed identity document arrives with WP-2.2 (`not_served_yet`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity"
+      }
+    },
+    "/host/v1/ring-bindings": {
+      "get": {
+        "operationId": "listRingBindings",
+        "summary": "The signed ring bindings",
+        "description": "Under `identity.read` on the Host. Served as `not_served_yet` by this build.",
+        "responses": {
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Under `identity.read`; the bindings arrive with WP-2.3 (`not_served_yet`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/ListRingBindings"
+      }
+    },
+    "/host/v1/grants": {
+      "get": {
+        "operationId": "listGrants",
+        "summary": "The grants, with their revisions",
+        "description": "Under `authz.admin` on the Host.",
+        "parameters": [
+          {
+            "name": "principal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the grants of this principal, exactly.",
+            "x-grpc-field": "principal"
+          },
+          {
+            "name": "selector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the grants with this selector, spelled exactly.",
+            "x-grpc-field": "selector"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grants matching the filters, and the store revision they were read at.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No grant store is open (`grant_store_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.GrantService/ListGrants"
+      },
+      "post": {
+        "operationId": "createGrant",
+        "summary": "Issue a grant",
+        "description": "Under `authz.admin` on the Host. A mutation of the common envelope: it carries a request id and may state the store revision it expects; it answers a receipt. `TODO(WP-3.6)`: the security-mutation transaction.",
+        "requestBody": {
+          "required": true,
+          "description": "The grant to issue, with the envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGrantBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The grant was issued, or this request id was already answered inside the replay window and the stored answer is returned, operation id included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`), the request id is absent or out of bounds (`request_id_required`), or the grant is invalid: an unregistered operation or type, the reserved principal, an expiry in the past (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected revision is not the current one (`revision_mismatch`, `revision` carried), or this request id was used for a different mutation inside the window (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No grant store is open (`grant_store_unavailable`), the replay journal cannot record (`replay_unavailable`, nothing applied), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.GrantService/CreateGrant"
+      }
+    },
+    "/host/v1/grants/{id}/revoke/plan": {
+      "post": {
+        "operationId": "planGrantRevoke",
+        "summary": "Plan the revocation of a grant",
+        "description": "Under `authz.admin` on the Host. The first step of a destructive operation: the plan is held by the server and consumed once by the run (owner decision, 2026-10-06). `TODO(WP-3.9)`: the COSE_Sign1 plan receipt and dual control.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The grant's id, 32 hex characters.",
+            "x-grpc-field": "grant_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and, optionally, the grant revision the caller read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan, to present to the run step within its lifetime; a retry with the same request id answers the same plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantRevokePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape or the id is malformed (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No grant has that id (`grant_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The grant is revoked or expired (`grant_terminal`), the expected revision is not the grant's (`revision_mismatch`, `revision` carried), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No grant store is open, the replay journal cannot record, or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.GrantService/PlanGrantRevoke"
+      }
+    },
+    "/host/v1/grants/{id}/revoke/run": {
+      "post": {
+        "operationId": "runGrantRevoke",
+        "summary": "Run the planned revocation",
+        "description": "Under `authz.admin` on the Host. Presents the plan the plan step answered; the plan is consumed, the grant revoked, and a receipt answered.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The grant's id, 32 hex characters.",
+            "x-grpc-field": "grant_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, and the plan as answered.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The grant is revoked; a retry with the same request id answers the stored receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape or the id is malformed (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No plan of that id is held for this principal and grant (`plan_unknown`), or no grant has that id (`grant_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The plan expired or was already run (`plan_expired`), the grant is already terminal (`grant_terminal`), the grant revision moved since the plan (`revision_mismatch`, `revision` carried), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No grant store is open, the replay journal cannot record, or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.GrantService/RunGrantRevoke"
+      }
+    },
+    "/host/v1/keys": {
+      "get": {
+        "operationId": "listKeyRings",
+        "summary": "The key rings this process composes",
+        "description": "Under `keys.read` on the Host.",
+        "responses": {
+          "200": {
+            "description": "Every ring, with how many keys it publishes and the digest of its set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyRings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A ring could not be read (`ring_unreadable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/ListKeyRings"
+      }
+    },
+    "/host/v1/keys/{ring}": {
+      "get": {
+        "operationId": "getKeyRing",
+        "summary": "One ring's public set",
+        "description": "Public: public keys need no grant (owner decision, 2026-10-06). The telemetry listener's `/server-host/keys` redirects here with `308` once a Host listener over plain TLS is configured, at `admin.advertised_url` when the deployment states one, and keeps publishing the ring behind mutual TLS; without one the legacy route stays served.",
+        "parameters": [
+          {
+            "name": "ring",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`.",
+            "x-grpc-field": "ring"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The public set, with its digest and cache policy.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`max-age` of the verifier refresh, the same number as `cache_max_age`."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyRing"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No ring of that name is composed (`ring_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The ring could not be read (`ring_unreadable`); never an empty set dressed as an answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyRing"
+      }
+    },
+    "/host/v1/status": {
+      "get": {
+        "operationId": "getHostStatus",
+        "summary": "The lifecycle of the Host, every Plane and every service",
+        "description": "Under `lifecycle.read` on the Host.",
+        "responses": {
+          "200": {
+            "description": "The phase of the Host and every component, with reasons and `stalled_since`, and the assurance profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The principal is over its rate or concurrency bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetStatus"
+      }
+    },
+    "/host/v1/config/effective": {
+      "get": {
+        "operationId": "getEffectiveConfig",
+        "summary": "The effective configuration",
+        "description": "Under `config.read` on the Host.",
+        "responses": {
+          "200": {
+            "description": "Every setting a layer supplied, with its origin, secrets masked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The principal is over its rate or concurrency bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/GetEffectiveConfig"
+      }
+    },
+    "/host/v1/config/revisions": {
+      "get": {
+        "operationId": "listConfigRevisions",
+        "summary": "The dynamic configuration journal",
+        "description": "Under `config.read` on the Host. Served as `not_served_yet` by this build: the static configuration is revision `0` and nothing changes it at runtime yet.",
+        "responses": {
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Under `config.read`; the dynamic journal arrives with the configuration packages (`not_served_yet`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListConfigRevisions"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HostWireError": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": [
+              "validation",
+              "conflict",
+              "not_found",
+              "unavailable",
+              "internal"
+            ],
+            "description": "Which kind of thing went wrong; fixes the HTTP status: 400, 409, 404, 503, 500.",
+            "x-grpc-field": null,
+            "x-grpc-note": "gRPC carries the class as the `permguard-error-class` metadata of the status."
+          },
+          "code": {
+            "type": "string",
+            "description": "The stable name of the exact condition; the Host API's own codes are owned by 6-contracts/8-contract-host-api.md.",
+            "x-grpc-field": null,
+            "x-grpc-note": "gRPC carries the code as the `permguard-error-code` metadata of the status."
+          },
+          "message": {
+            "type": "string",
+            "description": "One sentence for a person.",
+            "x-grpc-field": null,
+            "x-grpc-note": "The gRPC status message."
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Beside a `conflict`: the current revision, so the caller can read, decide and retry. Absent otherwise.",
+            "x-grpc-field": null,
+            "x-grpc-note": "gRPC carries it as the `permguard-revision` metadata of a `FAILED_PRECONDITION` status."
+          }
+        },
+        "required": [
+          "class",
+          "code",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "A refusal of the Host API: the shared `{class, code, message}`, and the current revision beside a conflict (the common envelope's *errors*).",
+        "x-grpc-message": null,
+        "x-grpc-note": "gRPC answers a refusal with a status whose metadata carries `permguard-error-class`, `permguard-error-code` and, beside a conflict, `permguard-revision`; no proto message carries the fields."
+      },
+      "Grant": {
+        "type": "object",
+        "properties": {
+          "grant_id": {
+            "type": "string",
+            "description": "The grant's id: 32 hex characters, permanent.",
+            "x-grpc-field": "grant_id"
+          },
+          "principal": {
+            "type": "string",
+            "description": "The authorization principal the grant is held by.",
+            "x-grpc-field": "principal"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The registered operations it allows.",
+            "x-grpc-field": "operations"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The resource prefix it covers, optionally ending in `/*`.",
+            "x-grpc-field": "selector"
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The registered resource types, or `*`.",
+            "x-grpc-field": "resource_types"
+          },
+          "constraints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Reserved for later packages; empty today.",
+            "x-grpc-field": "constraints"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The store revision of the grant's last transition.",
+            "x-grpc-field": "revision"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked",
+              "expired"
+            ],
+            "description": "`active`, `revoked` or `expired`; the last two are terminal.",
+            "x-grpc-field": "status"
+          },
+          "issued_by": {
+            "type": "string",
+            "description": "The principal that issued it.",
+            "x-grpc-field": "issued_by"
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was issued, RFC 3339.",
+            "x-grpc-field": "issued_at"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When it expires, RFC 3339; `null` for a grant without an expiry.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "grant_id",
+          "principal",
+          "operations",
+          "selector",
+          "resource_types",
+          "constraints",
+          "revision",
+          "status",
+          "issued_by",
+          "issued_at",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "One grant, as the API shows it (every replaceable record carries a revision).",
+        "x-grpc-message": "permguard.host.v1.Grant"
+      },
+      "GrantList": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The store revision the list was read at.",
+            "x-grpc-field": "revision"
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Grant"
+            },
+            "description": "The grants, filtered as asked.",
+            "x-grpc-field": "grants"
+          }
+        },
+        "required": [
+          "revision",
+          "grants"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/grants` answers.",
+        "x-grpc-message": "permguard.host.v1.ListGrantsResponse"
+      },
+      "CreateGrantBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation, 1 to 128 bytes without control characters; a retry carries the same one and is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The store revision the caller read; a different current revision is a `conflict` (`revision_mismatch`) carrying it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          },
+          "principal": {
+            "type": "string",
+            "description": "The authorization principal to hold the grant; never `anonymous`.",
+            "x-grpc-field": "principal"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "At least one registered operation.",
+            "x-grpc-field": "operations"
+          },
+          "selector": {
+            "type": "string",
+            "description": "A resource prefix, optionally ending in `/*`.",
+            "x-grpc-field": "selector"
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Registered resource types; `*` when absent.",
+            "x-grpc-field": "resource_types"
+          },
+          "constraints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Reserved; empty today.",
+            "x-grpc-field": "constraints"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the grant expires, RFC 3339; absent or `null` for no expiry.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "request_id",
+          "principal",
+          "operations",
+          "selector"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/grants` carries: the contract's `{principal, operations[], selector, resource_types[], constraints?, expires_at?}` with the envelope's request id and expected revision. A closed body.",
+        "x-grpc-message": "permguard.host.v1.CreateGrantRequest"
+      },
+      "AuditReference": {
+        "type": "object",
+        "properties": {
+          "trail": {
+            "type": "string",
+            "description": "The audit trail that recorded the event.",
+            "x-grpc-field": "trail"
+          },
+          "seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The event's position in the trail; `null` until the trail numbers its events (WP-3.5).",
+            "x-grpc-field": "seq"
+          },
+          "digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The event's digest; `null` until the trail seals its events (WP-3.7).",
+            "x-grpc-field": "digest"
+          }
+        },
+        "required": [
+          "trail",
+          "seq",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "description": "Where the audit trail recorded a mutation.",
+        "x-grpc-message": "permguard.host.v1.AuditReference",
+        "x-grpc-note": "`seq` and `digest` are present and `null` until the sealed trail produces them (owner decision, 2026-10-06); they are never invented."
+      },
+      "Receipt": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "description": "This process's name for the mutation as applied; the same on a replayed answer.",
+            "x-grpc-field": "operation_id"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The revision the mutation produced.",
+            "x-grpc-field": "revision"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/AuditReference",
+            "description": "Where the audit trail recorded it.",
+            "x-grpc-field": "audit"
+          }
+        },
+        "required": [
+          "operation_id",
+          "revision",
+          "audit"
+        ],
+        "additionalProperties": false,
+        "description": "What every mutation answers: the envelope's `{operation_id, revision, audit}`.",
+        "x-grpc-message": "permguard.host.v1.Receipt"
+      },
+      "GrantCreated": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "x-grpc-field": "receipt"
+          },
+          "grant": {
+            "$ref": "#/components/schemas/Grant",
+            "x-grpc-field": "grant"
+          }
+        },
+        "required": [
+          "receipt",
+          "grant"
+        ],
+        "additionalProperties": false,
+        "description": "What a create answers: the receipt and the grant, `grant_id` included.",
+        "x-grpc-message": "permguard.host.v1.CreateGrantResponse"
+      },
+      "PlanRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The grant revision the caller read; a different one is a `conflict` carrying the current. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/grants/{id}/revoke/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanGrantRevokeRequest",
+        "x-grpc-only": [
+          "grant_id"
+        ],
+        "x-grpc-note": "`grant_id` travels in the path on REST."
+      },
+      "GrantRevokePlan": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "The server-held plan's id.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The grant revision the plan was made against; the run is a `conflict` when it moved.",
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "What a plan answers: a server-held plan, consumed once by its run. `TODO(WP-3.9)`: the client-held COSE_Sign1 `permguard.operation.plan.v1` receipt.",
+        "x-grpc-message": "permguard.host.v1.PlanGrantRevokeResponse"
+      },
+      "RunRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the stored receipt.",
+            "x-grpc-field": "request_id"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the plan step answered.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Its digest, as answered.",
+            "x-grpc-field": "plan_digest"
+          }
+        },
+        "required": [
+          "request_id",
+          "plan_id",
+          "plan_digest"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/grants/{id}/revoke/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunGrantRevokeRequest",
+        "x-grpc-only": [
+          "grant_id"
+        ],
+        "x-grpc-note": "`grant_id` travels in the path on REST."
+      },
+      "GrantRevoked": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "x-grpc-field": "receipt"
+          },
+          "grant": {
+            "$ref": "#/components/schemas/Grant",
+            "x-grpc-field": "grant"
+          }
+        },
+        "required": [
+          "receipt",
+          "grant"
+        ],
+        "additionalProperties": false,
+        "description": "What a run answers: the receipt and the grant as revoked.",
+        "x-grpc-message": "permguard.host.v1.RunGrantRevokeResponse"
+      },
+      "KeyRingSummary": {
+        "type": "object",
+        "properties": {
+          "ring": {
+            "type": "string",
+            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`.",
+            "x-grpc-field": "ring"
+          },
+          "keys": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many public keys it publishes.",
+            "x-grpc-field": "keys"
+          },
+          "digest": {
+            "type": "string",
+            "description": "SHA-256 over its public set as published, hex.",
+            "x-grpc-field": "digest"
+          }
+        },
+        "required": [
+          "ring",
+          "keys",
+          "digest"
+        ],
+        "additionalProperties": false,
+        "description": "One ring in the list.",
+        "x-grpc-message": "permguard.host.v1.KeyRingSummary"
+      },
+      "KeyRings": {
+        "type": "object",
+        "properties": {
+          "rings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyRingSummary"
+            },
+            "description": "Every ring this process composes.",
+            "x-grpc-field": "rings"
+          }
+        },
+        "required": [
+          "rings"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/keys` answers.",
+        "x-grpc-message": "permguard.host.v1.ListKeyRingsResponse"
+      },
+      "HostJwk": {
+        "type": "object",
+        "properties": {
+          "kid": {
+            "type": "string",
+            "description": "Which key this is, matching the `kid` a signature names.",
+            "x-grpc-field": "kid"
+          },
+          "kty": {
+            "type": "string",
+            "description": "The key type: `OKP` for the Edwards curves, `EC` for the NIST ones.",
+            "x-grpc-field": "kty"
+          },
+          "crv": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The curve, when the key type has one.",
+            "x-grpc-field": "crv"
+          },
+          "x": {
+            "type": "string",
+            "description": "The public key itself, base64url without padding.",
+            "x-grpc-field": "x"
+          },
+          "y": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The second coordinate, for the key types that have one.",
+            "x-grpc-field": "y"
+          },
+          "alg": {
+            "type": "string",
+            "description": "The algorithm this key is used with.",
+            "x-grpc-field": "alg"
+          },
+          "use": {
+            "type": "string",
+            "description": "What the key is for; always `sig`.",
+            "x-grpc-field": "use"
+          }
+        },
+        "required": [
+          "kid",
+          "kty",
+          "crv",
+          "x",
+          "y",
+          "alg",
+          "use"
+        ],
+        "additionalProperties": false,
+        "description": "One public key as RFC 7517 defines it, every member present; the private half is never expressed. The same key `common.json#/components/schemas/Jwk` describes, with `null` where that document omits.",
+        "x-grpc-message": "permguard.host.v1.Jwk"
+      },
+      "KeyRing": {
+        "type": "object",
+        "properties": {
+          "ring": {
+            "type": "string",
+            "description": "The ring id.",
+            "x-grpc-field": "ring"
+          },
+          "epoch": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The ring epoch; `null` until the ring bindings carry one (WP-2.3).",
+            "x-grpc-field": "epoch"
+          },
+          "digest": {
+            "type": "string",
+            "description": "SHA-256 over the public set as published, hex: what a cache compares.",
+            "x-grpc-field": "digest"
+          },
+          "binding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The signed binding of this ring to the Host identity; `null` until WP-2.3.",
+            "x-grpc-field": "binding"
+          },
+          "cache_max_age": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How long a client may cache the set, in seconds; also the `Cache-Control` header.",
+            "x-grpc-field": "cache_max_age"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostJwk"
+            },
+            "description": "Every key a client may need to verify with.",
+            "x-grpc-field": "keys"
+          }
+        },
+        "required": [
+          "ring",
+          "epoch",
+          "digest",
+          "binding",
+          "cache_max_age",
+          "keys"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/keys/{ring}` answers: one ring's public set with its digest and cache policy.",
+        "x-grpc-message": "permguard.host.v1.GetKeyRingResponse"
+      },
+      "HostDegraded": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "What is served without its backing.",
+            "x-grpc-field": "capability"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "capability",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "One capability that is served and cannot currently do its work.",
+        "x-grpc-message": "permguard.host.v1.HostDegraded"
+      },
+      "HostComponent": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "description": "The component's name: `host`, a plane's id, or a service's name.",
+            "x-grpc-field": "component"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "host",
+              "plane",
+              "service"
+            ],
+            "description": "`host`, `plane` or `service`.",
+            "x-grpc-field": "kind"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed",
+              "disabled",
+              "running",
+              "backoff"
+            ],
+            "description": "A lifecycle phase for the Host and a plane; `disabled`, `running`, `backoff`, `draining` or `failed` for a service.",
+            "x-grpc-field": "state"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the component gates readiness.",
+            "x-grpc-field": "required"
+          },
+          "stalled_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Since when it cannot progress for a remote reason, RFC 3339; `null` when it can.",
+            "x-grpc-field": "stalled_since"
+          },
+          "last_success": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A service's last successful run, RFC 3339; `null` when it had none.",
+            "x-grpc-field": "last_success"
+          },
+          "next_attempt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When a service in backoff tries again, RFC 3339; `null` otherwise.",
+            "x-grpc-field": "next_attempt"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it is where it is; `null` when nothing is wrong.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "component",
+          "kind",
+          "state",
+          "required",
+          "stalled_since",
+          "last_success",
+          "next_attempt",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "One component of the process, every member present: the same component `health.json` lists, with `null` where that document omits.",
+        "x-grpc-message": "permguard.host.v1.HostComponent"
+      },
+      "Assurance": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "development",
+              "production",
+              "regulated"
+            ],
+            "description": "`development`, `production` or `regulated`.",
+            "x-grpc-field": "profile"
+          }
+        },
+        "required": [
+          "profile"
+        ],
+        "additionalProperties": false,
+        "description": "The assurance profile the volume runs under. The controls it adds and the relaxations it allows arrive with the profile's package.",
+        "x-grpc-message": "permguard.host.v1.Assurance"
+      },
+      "HostStatus": {
+        "type": "object",
+        "properties": {
+          "live": {
+            "type": "boolean",
+            "description": "Whether the process is live.",
+            "x-grpc-field": "live"
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "Whether the process is ready: the Host and every required Plane in Ready or Serving.",
+            "x-grpc-field": "ready"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "bootstrap",
+              "load",
+              "initialize",
+              "ready",
+              "serving",
+              "draining",
+              "stopped",
+              "failed"
+            ],
+            "description": "The Host's phase.",
+            "x-grpc-field": "state"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostDegraded"
+            },
+            "description": "What the Host serves without.",
+            "x-grpc-field": "degraded"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostComponent"
+            },
+            "description": "Every component the process hosts, the Host first.",
+            "x-grpc-field": "components"
+          },
+          "assurance": {
+            "$ref": "#/components/schemas/Assurance",
+            "x-grpc-field": "assurance"
+          }
+        },
+        "required": [
+          "live",
+          "ready",
+          "state",
+          "degraded",
+          "components",
+          "assurance"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/status` answers.",
+        "x-grpc-message": "permguard.host.v1.GetStatusResponse"
+      },
+      "Setting": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The setting's key, as the environment spells it.",
+            "x-grpc-field": "key"
+          },
+          "value": {
+            "type": "string",
+            "description": "Its value, or `********` when the key names a secret.",
+            "x-grpc-field": "value"
+          },
+          "masked": {
+            "type": "boolean",
+            "description": "Whether `value` is the mask.",
+            "x-grpc-field": "masked"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "file",
+              "environment",
+              "command_line"
+            ],
+            "description": "The layer the value came from.",
+            "x-grpc-field": "origin"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "masked",
+          "origin"
+        ],
+        "additionalProperties": false,
+        "description": "One effective setting with the layer it came from, secrets masked.",
+        "x-grpc-message": "permguard.host.v1.Setting"
+      },
+      "EffectiveConfig": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "`0`: the static configuration this process started with.",
+            "x-grpc-field": "revision"
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Setting"
+            },
+            "description": "Every setting a layer supplied.",
+            "x-grpc-field": "settings"
+          }
+        },
+        "required": [
+          "revision",
+          "settings"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/config/effective` answers.",
+        "x-grpc-message": "permguard.host.v1.GetEffectiveConfigResponse"
+      }
+    }
+  },
+  "x-grpc-unmapped": [
+    {
+      "message": "permguard.host.v1.GetIdentityRequest",
+      "note": "an empty request; the identity document is shaped by WP-2.2",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.GetIdentityResponse",
+      "note": "empty until WP-2.2 defines the signed identity document; the rpc answers `not_served_yet`",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListRingBindingsRequest",
+      "note": "an empty request; the bindings are shaped by WP-2.3",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListRingBindingsResponse",
+      "note": "empty until WP-2.3 defines the signed bindings; the rpc answers `not_served_yet`",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListKeyRingsRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.GetStatusRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.GetEffectiveConfigRequest",
+      "note": "an empty request",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListConfigRevisionsRequest",
+      "note": "an empty request; the journal is shaped by the configuration packages",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListConfigRevisionsResponse",
+      "note": "empty until the configuration packages define the dynamic journal; the rpc answers `not_served_yet`",
+      "fields": []
+    }
+  ]
+}

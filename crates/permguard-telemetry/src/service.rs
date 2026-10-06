@@ -31,10 +31,16 @@ pub struct TelemetryService {
     /// Operator material on the operator's port: a plane's public port
     /// describes itself, never its neighbours.
     configuration: Option<ConfigurationDocument>,
+    /// Where the operations ring's public set is served once the Host listener serves it
+    /// (WP-2.5): `/server-host/keys` then redirects there instead of publishing the ring.
+    keys_location: Option<KeysLocation>,
 }
 
 /// Renders the registry document from the materialized configuration.
 type ConfigurationDocument = Box<dyn Fn(&Config) -> String + Send + Sync>;
+
+/// Names where the keys moved to, from the materialized configuration; `None` keeps the route.
+type KeysLocation = Box<dyn Fn(&Config) -> Option<String> + Send + Sync>;
 
 impl TelemetryService {
     /// Builds a telemetry surface that has not started yet.
@@ -50,6 +56,26 @@ impl TelemetryService {
         self.configuration = Some(Box::new(build));
 
         self
+    }
+
+    /// Names where the operations ring's public set is served once a Host listener serves it:
+    /// `/server-host/keys` answers `308 Permanent Redirect` there, as the legacy route it is.
+    pub fn with_keys_location<F>(mut self, location: F) -> Self
+    where
+        F: Fn(&Config) -> Option<String> + Send + Sync + 'static,
+    {
+        self.keys_location = Some(Box::new(location));
+
+        self
+    }
+
+    /// The address the surface is bound to, while it runs: what a test connects to when the
+    /// configuration asked for an ephemeral port.
+    pub fn bound(&self) -> Option<std::net::SocketAddr> {
+        self.running
+            .lock()
+            .ok()
+            .and_then(|running| running.as_ref().map(Surface::address))
     }
 
     /// Builds the routes this surface answers on.
@@ -109,9 +135,21 @@ impl Service for TelemetryService {
                 )));
                 // The operations ring as a JWKS, when this process composes one. Absent ring,
                 // absent route: a deployment that keeps no keys has nothing to publish, and a
-                // `404` says so better than an empty set would.
+                // `404` says so better than an empty set would. With a Host listener a verifier
+                // can reach — one that demands no client certificate — the ring is served
+                // there, and this route is the legacy one: a redirect, so a verifier configured
+                // against it follows, and the telemetry listener publishes nothing
+                // administrative (WP-2.5). Behind mutual TLS the ring stays here, by owner
+                // decision: a verifier holds no operator certificate.
                 if let Some(keys) = context.keys() {
-                    routes = routes.merge(host::keys_route(std::sync::Arc::clone(keys)));
+                    let moved = self
+                        .keys_location
+                        .as_ref()
+                        .and_then(|location| location(context.config()));
+                    routes = routes.merge(match moved {
+                        Some(location) => host::keys_moved_route(location),
+                        None => host::keys_route(std::sync::Arc::clone(keys)),
+                    });
                 }
                 routes
             })

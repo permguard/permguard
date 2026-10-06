@@ -22,14 +22,15 @@ use serde_norway::Value;
 
 use crate::config::experimental_setting_key;
 use crate::config::{
-    DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ALLOW, SETTING_ADMIN_TLS_CERT,
-    SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY,
-    SETTING_ADMIN_TLS_MIN_VERSION, SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED,
-    SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS,
-    SETTING_AUDIT_RETENTION, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
-    SETTING_ISSUER, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
-    SETTING_KEYS_MAINTENANCE_INTERVAL, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
-    SETTING_KEYS_ROTATE_EVERY, SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ADVERTISED_URL, SETTING_ADMIN_ALLOW,
+    SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_CRL,
+    SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION, SETTING_AUDIT_DIRECTORY,
+    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
+    SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
+    SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE, SETTING_ISSUER,
+    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
+    SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
+    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
@@ -765,6 +766,9 @@ struct OtelSection {
 struct AdminSection {
     #[serde(default)]
     addr: Option<String>,
+    /// Where the Host listener is reachable from outside, when that is not where it binds.
+    #[serde(default)]
+    advertised_url: Option<String>,
     #[serde(default)]
     tls: TlsSection,
     /// Who may administer this deployment. A list, because it is one.
@@ -1152,6 +1156,10 @@ impl ConfigFile {
                 self.host.advertised_url.as_ref(),
             ),
             (SETTING_ADMIN_ADDR, self.admin.addr.as_ref()),
+            (
+                SETTING_ADMIN_ADVERTISED_URL,
+                self.admin.advertised_url.as_ref(),
+            ),
             (SETTING_LOG_LEVEL, self.log.level.as_ref()),
             (SETTING_PUBLIC_TLS_CERT, self.public.tls.cert.as_ref()),
             (SETTING_PUBLIC_TLS_KEY, self.public.tls.key.as_ref()),
@@ -1709,6 +1717,17 @@ mod tests {
         let renamed = settings_of("host:\n  addr: 0.0.0.0:6000\n");
         let dated = settings_of("telemetry:\n  addr: 0.0.0.0:6000\n");
         assert_eq!(renamed, dated);
+    }
+
+    #[test]
+    fn test_the_admin_advertised_url_is_carried() {
+        let settings = settings_of(
+            "admin:\n  addr: 0.0.0.0:5444\n  advertised_url: https://ops.example.com:5444\n",
+        );
+        assert!(settings.contains(&(
+            SETTING_ADMIN_ADVERTISED_URL.to_owned(),
+            "https://ops.example.com:5444".to_owned()
+        )));
     }
 
     #[test]

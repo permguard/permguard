@@ -51,6 +51,16 @@ pub mod operations {
     pub const EVENT_SUBMIT: &str = "event.submit";
     /// List, issue and revoke grants.
     pub const AUTHZ_ADMIN: &str = "authz.admin";
+    /// Read the lifecycle of the Host, its Planes and its services: `GET /host/v1/status`
+    /// (WP-2.5, owner decision of 2026-10-06).
+    pub const LIFECYCLE_READ: &str = "lifecycle.read";
+    /// List the key rings the Host composes: `GET /host/v1/keys`. One ring's public set is
+    /// public keys, served without a grant.
+    pub const KEYS_READ: &str = "keys.read";
+    /// Read the effective configuration and its revisions.
+    pub const CONFIG_READ: &str = "config.read";
+    /// Read the Host identity and its ring bindings; the routes arrive with WP-2.2 and WP-2.3.
+    pub const IDENTITY_READ: &str = "identity.read";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -60,6 +70,10 @@ pub mod operations {
         DECISION_EVALUATE,
         EVENT_SUBMIT,
         AUTHZ_ADMIN,
+        LIFECYCLE_READ,
+        KEYS_READ,
+        CONFIG_READ,
+        IDENTITY_READ,
     ];
 
     /// Whether `operation` is registered.

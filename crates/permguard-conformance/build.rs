@@ -39,9 +39,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .file_descriptor_set_path(out.join("contracts.bin"))
         .compile_protos(&every, &["../../contracts/proto"])?;
 
+    // The Host API's server half, so the stub test names every service, and its client half, so
+    // the cross-transport vectors drive the Host listener over gRPC exactly as REST is driven;
+    // every message serializes, so a gRPC answer is compared with a REST answer as one JSON.
     tonic_prost_build::configure()
-        .build_client(false)
+        .build_client(true)
         .build_server(true)
+        .type_attribute(".permguard.host.v1", "#[derive(serde::Serialize)]")
         .compile_protos(&protos, &["../../contracts/proto"])?;
 
     Ok(())

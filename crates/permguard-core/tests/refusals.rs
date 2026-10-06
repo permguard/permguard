@@ -62,22 +62,176 @@ fn test_generating_material_is_refused_to_a_deployment_that_has_not_said_it_is_a
     .expect("a development deployment may generate what it is missing");
 }
 
-#[test]
-fn test_an_administrative_surface_the_world_can_reach_must_demand_a_certificate() {
-    // The configuration that reads as fine and hands administration to anyone who can route to it.
-    let exposed = serving(&[(SETTING_ADMIN_ADDR, "0.0.0.0:6443")]);
-    let why = refusal(&exposed);
-
-    assert!(why.contains("0.0.0.0:6443"));
-    assert!(why.contains("client_ca"));
+/// The Host listener's TLS material, as real files: validation checks the material before it
+/// checks the policy, and these tests are about the policy.
+fn host_listener_tls(tag: &str, client_ca: bool) -> Vec<(&'static str, String)> {
+    let volume = std::env::temp_dir().join(format!(
+        "permguard-refusals-admin-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    std::fs::create_dir_all(volume.join("tls")).expect("the fixture directory is created");
+    for name in ["server.pem", "server.key", "ca.pem"] {
+        std::fs::write(volume.join("tls").join(name), "placeholder").expect("the file is written");
+    }
+    let mut settings = vec![
+        (SETTING_WORKING_DIR, volume.to_string_lossy().into_owned()),
+        (SETTING_ADMIN_TLS_CERT, "tls/server.pem".to_owned()),
+        (SETTING_ADMIN_TLS_KEY, "tls/server.key".to_owned()),
+    ];
+    if client_ca {
+        settings.push((SETTING_ADMIN_TLS_CLIENT_CA, "tls/ca.pem".to_owned()));
+    }
+    settings
 }
 
 #[test]
-fn test_the_same_surface_on_loopback_is_allowed() {
-    for address in ["127.0.0.1:6443", "localhost:6443", "[::1]:6443"] {
-        serving(&[(SETTING_ADMIN_ADDR, address)])
+fn test_a_host_listener_without_tls_is_refused_wherever_it_binds() {
+    // Grants and keys are administered over it (WP-2.5): nothing administrative in the clear.
+    for address in ["0.0.0.0:5444", "127.0.0.1:5444"] {
+        let why = refusal(&serving(&[
+            (SETTING_ADMIN_ADDR, address),
+            (SETTING_DEVELOPMENT_MODE, "true"),
+        ]));
+        assert!(why.contains(address), "{why}");
+        assert!(why.contains("admin.tls.cert"), "{why}");
+    }
+}
+
+#[test]
+fn test_a_host_listener_the_world_can_reach_must_demand_a_certificate() {
+    // The configuration that reads as fine and hands administration to anyone who can route to it.
+    let tls = host_listener_tls("exposed", false);
+    let mut settings: Vec<(&str, &str)> = tls
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect();
+    settings.push((SETTING_ADMIN_ADDR, "0.0.0.0:5444"));
+    settings.push((SETTING_DEVELOPMENT_MODE, "true"));
+    let why = refusal(&serving(&settings));
+
+    assert!(why.contains("0.0.0.0:5444"), "{why}");
+    assert!(why.contains("client_ca"), "{why}");
+}
+
+#[test]
+fn test_the_host_listener_advertised_url_is_optional_and_https() {
+    let tls = host_listener_tls("advertised", true);
+    let mut settings: Vec<(&str, &str)> = tls
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect();
+    settings.push((SETTING_ADMIN_ADDR, "0.0.0.0:5444"));
+    settings.push((SETTING_ADMIN_ALLOW, "cn:operator"));
+    serving(&settings)
+        .validate()
+        .expect("a mutual listener on every interface needs no advertised URL");
+
+    settings.push((SETTING_ADMIN_ADVERTISED_URL, "http://ops.example.com:5444"));
+    let why = refusal(&serving(&settings));
+    assert!(why.contains("https"), "{why}");
+    // Checked whether or not a listener is configured: a stated URL is a stated URL.
+    let why = refusal(&serving(&[(
+        SETTING_ADMIN_ADVERTISED_URL,
+        "http://ops.example.com:5444",
+    )]));
+    assert!(why.contains("https"), "{why}");
+
+    settings.pop();
+    settings.push((
+        SETTING_ADMIN_ADVERTISED_URL,
+        "https://ops.example.com:5444/",
+    ));
+    let config = serving(&settings);
+    config.validate().expect("an https URL is accepted");
+    assert_eq!(
+        config.admin_advertised_url(),
+        Some("https://ops.example.com:5444")
+    );
+}
+
+#[test]
+fn test_a_deployment_with_only_the_host_listener_is_legal() {
+    // Nothing public, the Server Host surface off: the Host listener alone can be reached.
+    let tls = host_listener_tls("alone", false);
+    let mut settings: Vec<(&str, &str)> = tls
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect();
+    settings.push((SETTING_TELEMETRY_ADDR, "off"));
+    settings.push((SETTING_ADMIN_ADDR, "127.0.0.1:5444"));
+    settings.push((SETTING_DEVELOPMENT_MODE, "true"));
+    config(&settings)
+        .validate()
+        .expect("the Host listener is a listener");
+    assert!(config(&settings).admin_plain_tls_allowed());
+}
+
+#[test]
+fn test_the_effective_configuration_never_carries_the_rest_of_the_environment() {
+    // The environment is a layer, and a layer holds whatever the process was started with.
+    let config = Config::from_layers(
+        BuildSettings::new("1.2.3", "2026", "Build Holder"),
+        ["PERMGUARD_EXTRA_DECLARED"],
+        Layers::new()
+            .with_file(vec![(
+                SETTING_PUBLIC_HTTP_ADDR.to_owned(),
+                "0.0.0.0:6443".to_owned(),
+            )])
+            .with_environment(vec![
+                ("PATH".to_owned(), "/usr/bin".to_owned()),
+                ("AZURE_CLIENT_SECRET".to_owned(), "hunter2".to_owned()),
+                (
+                    "DATABASE_URL".to_owned(),
+                    "postgres://u:pass@db/x".to_owned(),
+                ),
+                ("PERMGUARD_NOT_A_SETTING".to_owned(), "x".to_owned()),
+                ("PERMGUARD_EXTRA_DECLARED".to_owned(), "declared".to_owned()),
+                (SETTING_LOG_LEVEL.to_owned(), "debug".to_owned()),
+            ]),
+    )
+    .expect("the layers build a config");
+    let supplied: Vec<(&str, &str, SettingOrigin)> = config.supplied_settings().collect();
+    let keys: Vec<&str> = supplied.iter().map(|(key, _, _)| *key).collect();
+    assert_eq!(
+        keys,
+        vec![
+            "PERMGUARD_EXTRA_DECLARED",
+            SETTING_LOG_LEVEL,
+            SETTING_PUBLIC_HTTP_ADDR
+        ],
+        "only settings this build reads, in key order"
+    );
+    assert!(
+        supplied
+            .iter()
+            .any(|(key, value, origin)| *key == SETTING_LOG_LEVEL
+                && *value == "debug"
+                && *origin == SettingOrigin::Environment)
+    );
+    assert!(
+        supplied
+            .iter()
+            .any(|(key, _, origin)| *key == SETTING_PUBLIC_HTTP_ADDR
+                && *origin == SettingOrigin::File)
+    );
+}
+
+#[test]
+fn test_plain_tls_on_loopback_is_allowed_in_development_only() {
+    let tls = host_listener_tls("loopback", false);
+    for address in ["127.0.0.1:5444", "localhost:5444", "[::1]:5444"] {
+        let mut settings: Vec<(&str, &str)> = tls
+            .iter()
+            .map(|(key, value)| (*key, value.as_str()))
+            .collect();
+        settings.push((SETTING_ADMIN_ADDR, address));
+        let why = refusal(&serving(&settings));
+        assert!(why.contains("client_ca"), "{address}: {why}");
+        settings.push((SETTING_DEVELOPMENT_MODE, "true"));
+        serving(&settings)
             .validate()
-            .unwrap_or_else(|error| panic!("{address} was refused: {error:#}"));
+            .unwrap_or_else(|error| panic!("{address} was refused in development: {error:#}"));
     }
 }
 

@@ -115,12 +115,77 @@ pub fn keys_route(keys: Arc<dyn KeyManager>) -> Router {
         .with_state(keys)
 }
 
+/// The `/server-host/keys` route once the Host listener serves the ring: `308 Permanent
+/// Redirect` to `location`, the one the registry's `jwks_uri` names, with `Deprecation: true`
+/// (the HTTP Deprecation header field in the boolean form of its draft; RFC 9745 later made the
+/// value a date) so a client reading the headers learns the route is legacy. `308` keeps the method;
+/// a verifier fetching a key set follows it as the same `GET`.
+pub fn keys_moved_route(location: String) -> Router {
+    async fn answer(State(location): State<Arc<String>>) -> axum::response::Response {
+        match header::HeaderValue::from_str(&location) {
+            Ok(value) => (
+                StatusCode::PERMANENT_REDIRECT,
+                [
+                    (header::LOCATION, value),
+                    (
+                        header::HeaderName::from_static("deprecation"),
+                        header::HeaderValue::from_static("true"),
+                    ),
+                ],
+                "the operations key ring moved to the Host listener\n",
+            )
+                .into_response(),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the Host listener's address is not a valid Location\n",
+            )
+                .into_response(),
+        }
+    }
+
+    Router::new()
+        .route("/server-host/keys", get(answer))
+        .with_state(Arc::new(location))
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
     use permguard_core::{BuildSettings, Layers};
 
     use super::*;
+
+    #[tokio::test]
+    async fn the_moved_keys_route_redirects_permanently_and_says_it_is_deprecated() {
+        use tower::ServiceExt as _;
+
+        let router =
+            keys_moved_route("https://127.0.0.1:5444/host/v1/keys/host.operations".to_owned());
+        let response = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/server-host/keys")
+                    .body(axum::body::Body::empty())
+                    .expect("a request"),
+            )
+            .await
+            .expect("answered");
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("https://127.0.0.1:5444/host/v1/keys/host.operations")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("deprecation")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+    }
 
     fn config_disclosing(disclose: bool) -> Config {
         let file: Vec<(String, String)> = if disclose {
