@@ -62,6 +62,27 @@ host:
   # What the process-level well-known and the Host jwks_uri publish, when where this surface is
   # reached is not where it binds — a Service, an Ingress, a load balancer.
   # advertised_url: "https://ops.example.com"
+  # Who a caller is (WP-2.4). A certificate whose SAN URI a rule names, or whose subject public
+  # key a rule pins, maps to that principal; CN and DN are labels and map nothing; a bearer token
+  # from a pinned OIDC issuer maps to `oidc:<issuer>#<claim>`. A credential no rule maps is
+  # unauthenticated. Two rules that collapse to one principal stop the start. Grants are issued
+  # offline with `permguard host grants`, the first administrator with `host grants bootstrap`.
+  # principals:
+  #   - san_uri: "spiffe://acme/operators/alice"
+  #   - spki: "sha256:<64 hex of the subject public key info>"
+  #   - oidc:
+  #       issuer: "https://login.example.com"
+  #       audience: "permguard"
+  #       algorithms: [RS256, ES256, EdDSA]   # the default; the token's header is compared, never obeyed
+  #       claim: sub                           # the default
+  #       jwks_file: "./login.example.com.jwks.json"   # beside this file; re-read when it changes, never fetched
+  #       max_stale: "24h"                     # a key set not re-read for this long makes authentication unavailable
+  # What anybody may do without a credential: nothing, in production. Declared here, never
+  # journaled; the development configurations open the catalog, pushes and evaluations this way.
+  # authz:
+  #   public:
+  #     - operations: [decision.evaluate]
+  #       selector: "plane/data/zone/<zone-id>/ledger/<ledger-id>"
   # Distributed tracing over OTLP/gRPC. Off by default; when on, spans leave from a
   # dedicated background thread with a bounded queue — a collector that is down means
   # dropped spans and a warning, never a slower or failing request.

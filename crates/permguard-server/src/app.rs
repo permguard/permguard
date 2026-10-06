@@ -945,6 +945,97 @@ impl App {
     }
 
     /// Reads and parses the configuration file, rejecting sections nothing in this build accounts for.
+    /// Opens `host/authz/` on the volume, builds the credential mapper from `host.principals[]`
+    /// and the bootstrap commitment, and the authorization from the store plus
+    /// `host.authz.public[]`. A rule that cannot be honoured, or two that collide, stop the start.
+    fn authorization_for(
+        &self,
+        config: &Config,
+        config_file: &Path,
+        file: &ConfigFile,
+        volume: &permguard_host::storage::volume::Volume,
+    ) -> Result<(
+        Arc<permguard_host::authz::Authorization>,
+        Arc<dyn permguard_core::authz::Authenticator>,
+    )> {
+        use permguard_host::authz::{
+            Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
+        };
+
+        let auth = file
+            .host_auth()
+            .with_context(|| format!("in the configuration file {}", config_file.display()))?;
+        let (store, recovery) = GrantStore::open(volume).with_context(|| {
+            format!(
+                "opening the grant store on {}",
+                volume.host().path().display()
+            )
+        })?;
+        let expired = store
+            .expire_due(permguard_host::authz::store::now())
+            .context("writing the expiry of grants past their time")?;
+        tracing::info!(
+            event.name = "authz.opened",
+            component = "server",
+            grants = store.records().len(),
+            revision = store.revision(),
+            expired = expired.len(),
+            recovered_truncated_bytes = recovery.truncated_bytes,
+            bootstrap = store.bootstrap().is_some(),
+            "the grant store is open"
+        );
+        let rules: Vec<Rule> = auth
+            .principals
+            .iter()
+            .map(|rule| match rule {
+                permguard_core::authz::PrincipalRule::SanUri(uri) => Rule::SanUri(uri.clone()),
+                permguard_core::authz::PrincipalRule::Spki(digest) => Rule::Spki(digest.clone()),
+                permguard_core::authz::PrincipalRule::Oidc(oidc) => {
+                    Rule::Oidc(permguard_host::authz::OidcRule {
+                        issuer: oidc.issuer.clone(),
+                        audience: oidc.audience.clone(),
+                        algorithms: oidc.algorithms.clone(),
+                        claim: oidc.claim.clone(),
+                        jwks_file: resolve_beside(config_file, &oidc.jwks_file),
+                        max_stale: oidc.max_stale,
+                    })
+                }
+            })
+            .collect();
+        let bootstrap = store.bootstrap();
+        let mapper = PrincipalMapper::new(
+            &rules,
+            bootstrap.as_ref().map(|held| held.fingerprint.as_str()),
+        )
+        .context("building the credential mapper from host.principals")?;
+        let public: Vec<PublicGrant> = auth
+            .public
+            .iter()
+            .map(|grant| PublicGrant {
+                operations: grant.operations.clone(),
+                selector: grant.selector.clone(),
+                resource_types: grant.resource_types.clone(),
+            })
+            .collect();
+        if !public.is_empty() {
+            tracing::info!(
+                event.name = "authz.public",
+                component = "server",
+                grants = public.len(),
+                development_mode = config.development_mode(),
+                "the configuration declares public grants: what they name needs no credential"
+            );
+        }
+        let authorization = Arc::new(Authorization::new(store, &public));
+        tracing::info!(
+            event.name = "authz.mapper",
+            component = "server",
+            rules = mapper.rules(),
+            "the credential mapper is built"
+        );
+        Ok((authorization, Arc::new(mapper)))
+    }
+
     fn load(&self, config_file: &Path) -> Result<ConfigFile> {
         let file = ConfigFile::load(config_file)?;
 
@@ -1100,10 +1191,20 @@ impl App {
             permguard_core::lifecycle::Phase::Load,
         );
 
+        // The authorization store and the credential mapper (WP-2.4): the grants on the volume,
+        // what the configuration declares public, and the rules that turn a credential into a
+        // principal. Built before the Planes register, since every Plane decides with them.
+        let file = self.load(config_file)?;
+        let (authorization, authenticator) =
+            self.authorization_for(config, config_file, &file, &volume)?;
+        context = context.with_authenticator(authenticator);
+
         // The Host: every generic capability once. The Planes' rings, the audit recorder and the
         // secret store reach a Plane only as the handles its declaration grants (P1); the rings are
         // also handed to the Host's own maintenance pass.
-        let mut host = permguard_host::composition::Host::builder().audit(recorder);
+        let mut host = permguard_host::composition::Host::builder()
+            .audit(recorder)
+            .authorization(authorization);
         if let Some(keys) = control_signing_keys {
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::CONTROL_ATTEST, keys);
@@ -1171,6 +1272,17 @@ fn claim_volume(root: &Path, generation: u64, out: &mut dyn Write) -> Result<()>
 /// Checks the volume at `root` offline, every journal of the storage library and every tree the
 /// planes declare, and fails when anything is found. Holds the volume's lock throughout, so it never
 /// reads beside a process that writes.
+/// A path from the configuration file, resolved against the file's own directory when relative:
+/// a key set travels with the file that names it, as a realm file does.
+fn resolve_beside(config_file: &Path, path: &Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    config_file
+        .parent()
+        .map_or_else(|| path.to_path_buf(), |directory| directory.join(path))
+}
+
 fn verify_volume(
     root: &Path,
     sample: Option<u16>,

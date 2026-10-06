@@ -292,6 +292,7 @@ impl PlaneModule for ControlPlaneModule {
                     disclosure: context.config().error_detail(),
                     audit_refusals: context.config().audit_refusals(),
                     metrics: context.metrics().clone(),
+                    authorization: crate::handles::authorization(context),
                 };
                 // The holdings gauges start truthful, not at zero.
                 facade.refresh_holdings();
@@ -354,6 +355,7 @@ impl PlaneModule for ControlPlaneModule {
                 disclosure: context.config().error_detail(),
                 audit_refusals: context.config().audit_refusals(),
                 metrics: context.metrics().clone(),
+                authorization: crate::handles::authorization(context),
             }));
         }
 
@@ -1043,6 +1045,7 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         config.error_detail(),
         config.audit_refusals(),
         context.metrics().clone(),
+        crate::handles::authorization(context),
     ))
 }
 

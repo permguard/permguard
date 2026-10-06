@@ -40,6 +40,12 @@ pub struct PeerIdentity {
     common_name: Option<String>,
     fingerprint: String,
     serial: String,
+    /// The URI subject alternative names, in certificate order: what an authorization principal
+    /// is read from (WP-2.4); the subject and common name above are labels.
+    san_uris: Vec<String>,
+    /// The SHA-256 of the subject public key info, lowercase hex: the other identifier a mapper
+    /// rule may pin, surviving a renewal that keeps the key.
+    spki_sha256: Option<String>,
 }
 
 impl PeerIdentity {
@@ -59,7 +65,31 @@ impl PeerIdentity {
             common_name,
             fingerprint: fingerprint.into(),
             serial: serial.into(),
+            san_uris: Vec::new(),
+            spki_sha256: None,
         }
+    }
+
+    /// Adds the URI subject alternative names the certificate carries.
+    pub fn with_san_uris(mut self, uris: Vec<String>) -> Self {
+        self.san_uris = uris;
+        self
+    }
+
+    /// Adds the SHA-256 of the certificate's subject public key info, lowercase hex.
+    pub fn with_spki_sha256(mut self, digest: impl Into<String>) -> Self {
+        self.spki_sha256 = Some(digest.into());
+        self
+    }
+
+    /// The URI subject alternative names, in certificate order.
+    pub fn san_uris(&self) -> &[String] {
+        &self.san_uris
+    }
+
+    /// The SHA-256 of the subject public key info, when the acceptor computed it.
+    pub fn spki_sha256(&self) -> Option<&str> {
+        self.spki_sha256.as_deref()
     }
 
     /// Returns the distinguished name the certificate carried, in RFC 4514 form.

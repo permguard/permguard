@@ -194,6 +194,8 @@ pub mod annotation {
 pub mod format {
     /// A private key sealed at rest under envelope encryption.
     pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
+    /// The source marker of the grant store's snapshot (`permguard_host::authz::store`).
+    pub const AUTHZ_SNAPSHOT_V1: &str = "permguard.host.authz.snapshot.v1";
 }
 
 /// The 8-byte magics opening every file the storage library writes (`permguard_host::storage`).
@@ -383,6 +385,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("annotation.POLICY_ALIAS", annotation::POLICY_ALIAS),
         ("annotation.POLICY_KIND", annotation::POLICY_KIND),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
+        ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),
         ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),
         ("magic.SNAPSHOT", magic::SNAPSHOT),
         ("magic.TOMBSTONE", magic::TOMBSTONE),

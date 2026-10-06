@@ -22,7 +22,7 @@ use axum::response::{IntoResponse, Response};
 use tonic::Status;
 use tonic::metadata::MetadataValue;
 
-use permguard_core::{ApiError, Disclosure, ErrorClass, GrpcCode};
+use permguard_core::{AccessDenial, ApiError, Disclosure, ErrorClass, GrpcCode};
 
 /// The gRPC metadata keys carrying the structured half of a refusal: the one pair every surface and
 /// every client uses, defined with the taxonomy.
@@ -82,6 +82,81 @@ pub fn with_refusal_metadata(mut status: Status, class: &str, code: &str) -> Sta
     }
 
     status
+}
+
+/// What a route answers instead of its payload: a domain refusal in the `{class, code, message}`
+/// envelope, or an access denial in the closed `{code, message}` body the contract keeps apart
+/// from it (WP-2.4). One type, so a facade function has one error path for both.
+#[derive(Debug, Clone)]
+pub(crate) enum Refusal {
+    Api(ApiError),
+    Denied(AccessDenial),
+}
+
+impl From<ApiError> for Refusal {
+    fn from(error: ApiError) -> Self {
+        Self::Api(error)
+    }
+}
+
+impl From<AccessDenial> for Refusal {
+    fn from(denial: AccessDenial) -> Self {
+        Self::Denied(denial)
+    }
+}
+
+/// Turns a denial into the HTTP answer: `401` with the `Mutual-TLS` challenge for nobody, `403`
+/// for somebody without a grant, the closed `{code, message}` body either way, identical for an
+/// existing and a non-existing resource.
+pub fn http_denial(denial: &AccessDenial) -> Response {
+    tracing::debug!(
+        event.name = "api.denied",
+        component = "control-plane",
+        error.code = denial.code(),
+        "an api call was denied"
+    );
+    let status = StatusCode::from_u16(denial.http_status()).unwrap_or(StatusCode::FORBIDDEN);
+    let mut response = (status, Json(denial.on_the_wire())).into_response();
+    if let Some(challenge) = denial.challenge()
+        && let Ok(value) = axum::http::HeaderValue::from_str(challenge)
+    {
+        response
+            .headers_mut()
+            .insert(axum::http::header::WWW_AUTHENTICATE, value);
+    }
+    response
+}
+
+/// Turns a denial into the gRPC answer: `UNAUTHENTICATED` or `PERMISSION_DENIED`, the code as
+/// metadata; a denial has no class, so none travels.
+pub fn grpc_denial(denial: &AccessDenial) -> Status {
+    tracing::debug!(
+        event.name = "api.denied",
+        component = "control-plane",
+        error.code = denial.code(),
+        "an api call was denied"
+    );
+    let mut status = grpc_status(denial.grpc_code(), denial.message().to_owned());
+    if let Ok(code) = MetadataValue::try_from(denial.code()) {
+        status.metadata_mut().insert(GRPC_ERROR_CODE, code);
+    }
+    status
+}
+
+/// Either refusal, over HTTP.
+pub(crate) fn http_refusal(refusal: &Refusal, disclosure: Disclosure) -> Response {
+    match refusal {
+        Refusal::Api(error) => http_error(error, disclosure),
+        Refusal::Denied(denial) => http_denial(denial),
+    }
+}
+
+/// Either refusal, over gRPC.
+pub(crate) fn grpc_refusal(refusal: &Refusal, disclosure: Disclosure) -> Status {
+    match refusal {
+        Refusal::Api(error) => grpc_error(error, disclosure),
+        Refusal::Denied(denial) => grpc_denial(denial),
+    }
 }
 
 /// Turns a refusal into the gRPC answer: the taxonomy's status, the same fields as metadata.

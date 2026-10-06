@@ -21,6 +21,33 @@ mod tests {
     /// Identifiers and timestamps a mutation mints: two planes cannot share them.
     const MINTED: &[&str] = &["id", "zone_id", "created_at", "updated_at"];
 
+    /// The routes behind the boundary every served surface has (WP-2.4): anonymous requests,
+    /// admitted by the permissive authorization.
+    fn routed(facade: CatalogFacade) -> axum::Router {
+        crate::catalog::http::routes(facade).layer(permguard_transport::ActorLayer::new(Arc::new(
+            permguard_core::NoRules,
+        )))
+    }
+
+    /// The interceptor a served surface's boundary stands in for: every request anonymous.
+    fn anonymous_interceptor(
+        mut request: tonic::Request<()>,
+    ) -> Result<tonic::Request<()>, tonic::Status> {
+        request
+            .extensions_mut()
+            .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+        Ok(request)
+    }
+
+    /// A gRPC request as the boundary would hand it on: anonymous.
+    fn anonymous_request<T>(inner: T) -> tonic::Request<T> {
+        let mut request = tonic::Request::new(inner);
+        request
+            .extensions_mut()
+            .insert(Arc::new(permguard_core::authz::Actor::Anonymous));
+        request
+    }
+
     fn facade(name: &str) -> CatalogFacade {
         let root = std::env::temp_dir().join(format!(
             "permguard-catalog-parity-{name}-{}",
@@ -29,6 +56,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("the catalog volume exists");
         CatalogFacade {
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
             catalog: Arc::new(FileCatalog::new(&root)),
             recorder: None,
             disclosure: Disclosure::Full,
@@ -41,10 +71,13 @@ mod tests {
         let facade = facade(name);
 
         serve(
-            crate::catalog::http::routes(facade.clone()),
-            tonic::service::Routes::new(crate::v1::zone_catalog_server::ZoneCatalogServer::new(
-                facade,
-            )),
+            routed(facade.clone()),
+            tonic::service::Routes::new(
+                crate::v1::zone_catalog_server::ZoneCatalogServer::with_interceptor(
+                    facade,
+                    anonymous_interceptor,
+                ),
+            ),
         )
     }
 
@@ -200,6 +233,7 @@ mod tests {
         use http_body_util::BodyExt as _;
         use tower::ServiceExt as _;
 
+        use super::{anonymous_request, routed};
         use crate::catalog::CatalogFacade;
         use crate::v1;
         use crate::v1::zone_catalog_server::ZoneCatalog as _;
@@ -218,7 +252,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .body(body.map_or_else(Body::empty, |body| Body::from(body.to_owned())))
                 .expect("the request builds");
-            let answer = crate::catalog::http::routes(facade.clone())
+            let answer = routed(facade.clone())
                 .oneshot(request)
                 .await
                 .expect("the router answers");
@@ -256,7 +290,7 @@ mod tests {
 
         pub(super) async fn create_zone(facade: &CatalogFacade, name: &str) -> tonic::Status {
             facade
-                .create_zone(tonic::Request::new(v1::CreateZoneRequest {
+                .create_zone(anonymous_request(v1::CreateZoneRequest {
                     name: name.to_owned(),
                 }))
                 .await
@@ -265,7 +299,7 @@ mod tests {
 
         pub(super) async fn get_zone(facade: &CatalogFacade, zone: &str) -> tonic::Status {
             facade
-                .get_zone(tonic::Request::new(v1::GetZoneRequest {
+                .get_zone(anonymous_request(v1::GetZoneRequest {
                     zone: zone.to_owned(),
                 }))
                 .await
@@ -274,7 +308,7 @@ mod tests {
 
         pub(super) async fn delete_zone(facade: &CatalogFacade, zone: &str) -> tonic::Status {
             facade
-                .delete_zone(tonic::Request::new(v1::DeleteZoneRequest {
+                .delete_zone(anonymous_request(v1::DeleteZoneRequest {
                     zone: zone.to_owned(),
                 }))
                 .await
@@ -287,7 +321,7 @@ mod tests {
             name: &str,
         ) -> tonic::Status {
             facade
-                .create_ledger(tonic::Request::new(v1::CreateLedgerRequest {
+                .create_ledger(anonymous_request(v1::CreateLedgerRequest {
                     zone: zone.to_owned(),
                     name: name.to_owned(),
                 }))

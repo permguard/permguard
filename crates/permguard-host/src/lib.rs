@@ -14,5 +14,6 @@
 
 #![forbid(unsafe_code)]
 
+pub mod authz;
 pub mod composition;
 pub mod storage;

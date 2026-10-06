@@ -485,6 +485,7 @@ impl PlaneService {
             .tls(secured.as_ref())
             .limits(self.module.limits(context.config()))
             .metrics(context.metrics().clone())
+            .authenticator(context.authenticator())
             .start()
             .await
             .with_context(|| format!("starting the {} surface", self.module.description()))?;

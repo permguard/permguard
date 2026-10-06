@@ -20,6 +20,7 @@ permguard-core = { path = "../crates/permguard-core" }
 permguard-decisions = { path = "../crates/permguard-decisions" }
 permguard-notp = { path = "../crates/permguard-notp" }
 permguard-objects = { path = "../crates/permguard-objects" }
+permguard-host = { path = "../crates/permguard-host" }
 permguard-events = { path = "../crates/permguard-events" }
 permguard-stream = { path = "../crates/permguard-stream" }
 serde_json = "1"
@@ -118,6 +119,27 @@ bench = false
 [[bin]]
 name = "crypto_statements"
 path = "fuzz_targets/crypto_statements.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "grant_record"
+path = "fuzz_targets/grant_record.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "grant_transition"
+path = "fuzz_targets/grant_transition.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "oidc_token"
+path = "fuzz_targets/oidc_token.rs"
 test = false
 doc = false
 bench = false

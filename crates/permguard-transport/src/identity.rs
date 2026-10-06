@@ -135,12 +135,36 @@ pub fn identity_of(certificate: &CertificateDer<'_>) -> Option<PeerIdentity> {
         .and_then(|attribute| attribute.as_str().ok())
         .map(str::to_owned);
 
-    Some(PeerIdentity::new(
-        parsed.subject().to_string(),
-        common_name,
-        fingerprint(certificate),
-        crate::digest::hex(parsed.raw_serial()),
-    ))
+    // The URI names, in certificate order: what a mapper rule reads a principal from (WP-2.4).
+    // A SAN extension that does not parse yields no names, and the certificate still has its
+    // fingerprint and key: it is then a certificate no URI rule can match, which is the truth.
+    let san_uris: Vec<String> = parsed
+        .subject_alternative_name()
+        .ok()
+        .flatten()
+        .map(|extension| {
+            extension
+                .value
+                .general_names
+                .iter()
+                .filter_map(|name| match name {
+                    x509_parser::extensions::GeneralName::URI(uri) => Some((*uri).to_owned()),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(
+        PeerIdentity::new(
+            parsed.subject().to_string(),
+            common_name,
+            fingerprint(certificate),
+            crate::digest::hex(parsed.raw_serial()),
+        )
+        .with_san_uris(san_uris)
+        .with_spki_sha256(crate::digest::digest(parsed.public_key().raw)),
+    )
 }
 
 /// Returns the SHA-256 of a certificate, lowercase hex — the value every other tool prints.

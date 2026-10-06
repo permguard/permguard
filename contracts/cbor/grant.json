@@ -1,0 +1,34 @@
+{
+  "artifact": "Grant record and the grant journal's revoke and expire transitions",
+  "authority": "1-architecture/1-architecture-server.md#authorization-store (member names), owner decision of 2026-10-06 (labels, types, cardinalities); crates/permguard-host/src/authz/record.rs (GrantRecord, Transition)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "grant_record": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "grant_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes, a UUID; permanent" },
+        { "label": 2, "name": "principal_id", "type": "text", "occurs": "required", "note": "the authorization_principal, 1 to 512 bytes, byte for byte" },
+        { "label": 3, "name": "operations", "type": "array<text>", "occurs": "required", "note": "at least one registered operation" },
+        { "label": 4, "name": "selector", "type": "text", "occurs": "required", "note": "a resource prefix, optionally ending in /*" },
+        { "label": 5, "name": "resource_types", "type": "array<text>", "occurs": "required", "note": "at least one registered type, or *" },
+        { "label": 6, "name": "constraints", "type": "map<text,text>", "occurs": "required", "note": "empty allowed" },
+        { "label": 7, "name": "revision", "type": "uint", "occurs": "required", "note": "the store revision of the last transition of this grant" },
+        { "label": 8, "name": "status", "type": "text", "occurs": "required", "note": "active, revoked or expired; revoked and expired are terminal" },
+        { "label": 9, "name": "issued_by", "type": "text", "occurs": "required" },
+        { "label": 10, "name": "issued_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 11, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "seconds since the epoch, UTC; absent means never" }
+      ]
+    },
+    "transition": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "grant_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 2, "name": "revision", "type": "uint", "occurs": "required", "note": "the store revision this transition is" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "the principal that revoked, or `expiry`" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["grant_record", "transition"]
+}

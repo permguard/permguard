@@ -2320,6 +2320,7 @@ dependencies = [
  "permguard-core",
  "permguard-decisions",
  "permguard-events",
+ "permguard-host",
  "permguard-languages",
  "permguard-notp",
  "permguard-objects",
@@ -2404,6 +2405,7 @@ dependencies = [
  "permguard-server",
  "permguard-std",
  "permguard-stream",
+ "permguard-transport",
  "prost",
  "ring",
  "serde",
@@ -2450,6 +2452,7 @@ dependencies = [
  "permguard-server",
  "permguard-std",
  "permguard-stream",
+ "permguard-transport",
  "prost",
  "prost-types",
  "regex",
@@ -2500,12 +2503,16 @@ dependencies = [
 name = "permguard-host"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "hmac",
  "permguard-core",
+ "permguard-objects",
  "ring",
  "rustix",
+ "serde_json",
  "sha2",
  "tokio",
+ "tracing",
  "zeroize",
 ]
 

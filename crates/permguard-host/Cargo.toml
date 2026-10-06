@@ -19,6 +19,13 @@ crash-points = []
 
 [dependencies]
 permguard-core.workspace = true
+# The canonical CBOR of the grant record and the bootstrap commitment (`authz`).
+permguard-objects.workspace = true
+# The compact JWS of a bearer token and the JWKS file of a pinned issuer (`authz::oidc`).
+base64.workspace = true
+serde_json.workspace = true
+# The start-up record of grants that allow nothing and of a key set that did not re-read (`authz`).
+tracing.workspace = true
 # The OS CSPRNG, for the volume identity (`storage::volume`).
 ring.workspace = true
 sha2.workspace = true

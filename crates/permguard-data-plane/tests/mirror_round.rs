@@ -92,6 +92,10 @@ mod plane {
         let module = permguard_control_plane::module();
         let registration = permguard_host::composition::Host::builder()
             .ring(permguard_host::composition::CONTROL_ATTEST, keys)
+            // This suite is about mirroring, not about who may read the catalog.
+            .authorization(Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ))
             .build()
             .register(module.declaration(config), None)
             .expect("the control plane registers");
@@ -100,7 +104,12 @@ mod plane {
                 .with_catalog(catalog)
                 .with_plane_handles("control", Arc::new(registration)),
         ));
-        let router = module.http_routes(&PlaneContext::new(server, "control"));
+        // The boundary every served surface has: nobody is anonymous without it (WP-2.4).
+        let router = module
+            .http_routes(&PlaneContext::new(server, "control"))
+            .layer(permguard_transport::ActorLayer::new(Arc::new(
+                permguard_core::NoRules,
+            )));
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

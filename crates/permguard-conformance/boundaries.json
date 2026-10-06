@@ -369,6 +369,56 @@
       "limit": "the records of a batch decoded by `Batch::decode` or `Batch::from_wire_parts`, so the gRPC decoding ceiling, the larger of the NOTP batch floor and `transport.body_bytes` (default 8 MiB)",
       "enforced_at_decoder": false,
       "fuzz": "event_batch"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/record.rs",
+      "item": "GrantRecord::decode",
+      "entry": "permguard_host::authz::record::GrantRecord::decode",
+      "max_input_bytes": 65536,
+      "limit": "`authz::record::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Host's own journal and the offline CLI, never from a peer",
+      "enforced_at_decoder": true,
+      "fuzz": "grant_record"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/record.rs",
+      "item": "Transition::decode",
+      "entry": "permguard_host::authz::record::Transition::decode",
+      "max_input_bytes": 65536,
+      "limit": "`authz::record::MAX_RECORD_BYTES`, checked by the decoder before it parses; read from the Host's own journal only",
+      "enforced_at_decoder": true,
+      "fuzz": "grant_transition"
+    },
+    {
+      "crate": "permguard-core",
+      "source": "crates/permguard-core/src/authz.rs",
+      "item": "Resource::parse",
+      "entry": "permguard_core::authz::Resource::parse",
+      "max_input_bytes": 8388608,
+      "limit": "no length check at the decoder: a component over 128 characters or outside `A-Z a-z 0-9 - _ . :` is refused, and the text arrives from the configuration file, the grant journal (`MAX_RECORD_BYTES`) or the CLI, never from a peer",
+      "enforced_at_decoder": false,
+      "fuzz": "text_tokens"
+    },
+    {
+      "crate": "permguard-core",
+      "source": "crates/permguard-core/src/authz.rs",
+      "item": "Selector::parse",
+      "entry": "permguard_core::authz::Selector::parse",
+      "max_input_bytes": 8388608,
+      "limit": "as `Resource::parse`, which it delegates to after an optional `/*` suffix",
+      "enforced_at_decoder": false,
+      "fuzz": "text_tokens"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/authz/oidc.rs",
+      "item": "Verifier::verify",
+      "entry": "permguard_host::authz::oidc::Verifier::verify",
+      "max_input_bytes": 16384,
+      "limit": "`authz::oidc::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits",
+      "enforced_at_decoder": true,
+      "fuzz": "oidc_token"
     }
   ],
   "trusted": [
@@ -486,6 +536,21 @@
       "source": "crates/permguard-core/src/assurance.rs",
       "item": "AssuranceProfile::from_str",
       "reason": "the assurance profile an operator states; the key that carries it arrives with the Host composition"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/record.rs",
+      "item": "GrantId::from_bytes",
+      "reason": "sixteen bytes already in memory, drawn by this process or decoded by `GrantRecord::decode`, which is the boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/record.rs",
+      "item": "GrantId::parse",
+      "reason": "the grant id an operator types into the offline CLI, 32 hex characters; never read from a peer before the Host API of WP-2.5, which decodes it at its own boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/authz/store.rs",
+      "item": "GrantStore::open",
+      "reason": "the store's own directory on the Host's volume, written by this process; every frame is decoded by `GrantRecord::decode` and `Transition::decode`, the registered boundaries"
     }
   ]
 }

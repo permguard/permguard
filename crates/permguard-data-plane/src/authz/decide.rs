@@ -773,8 +773,21 @@ impl Decider {
         request: &CheckRequest,
         trace: Option<TraceContext>,
     ) -> Result<CheckResponse, ApiError> {
+        self.decide_as(request, trace, None).await
+    }
+
+    /// [`Self::decide`], for a request whose store the authorization gate resolved to
+    /// `authorized` ids (WP-2.4): the mirror evaluated must be that one. A mirror replaced
+    /// between the gate and the load — the names now naming another ledger — is refused rather
+    /// than evaluated under a grant that named the old one.
+    pub async fn decide_as(
+        &self,
+        request: &CheckRequest,
+        trace: Option<TraceContext>,
+        authorized: Option<&(String, String)>,
+    ) -> Result<CheckResponse, ApiError> {
         let started = Instant::now();
-        let outcome = self.answer(request, trace).await;
+        let outcome = self.answer(request, trace, authorized).await;
         self.metrics.observe(
             &super::measure::REQUEST_SECONDS,
             &[],
@@ -789,6 +802,7 @@ impl Decider {
         &self,
         request: &CheckRequest,
         trace: Option<TraceContext>,
+        authorized: Option<&(String, String)>,
     ) -> Result<CheckResponse, ApiError> {
         // The decision's own clock, which the log records: how long the plane
         // took, separate from how long the transport took.
@@ -813,6 +827,19 @@ impl Decider {
         } = self
             .loaded(&resolved.zone, &resolved.ledger, &resolved.profile)
             .await?;
+        if let Some((zone_id, ledger_id)) = authorized
+            && (&mirror.identity.zone_id, &mirror.identity.ledger_id) != (zone_id, ledger_id)
+        {
+            self.metrics.count(
+                &super::measure::REFUSALS,
+                &[(permguard_core::metrics::labels::REASON, "store_changed")],
+            );
+            return Err(ApiError::new(
+                ErrorClass::Unavailable,
+                permguard_core::codes::common::UNAVAILABLE,
+                "the store the request names changed while the request was authorized; retry",
+            ));
+        }
 
         // Off the async worker, and once for the whole batch. Deciding is CPU work — parsing
         // nothing, but running an engine over a policy set — and a Tokio worker inside an engine

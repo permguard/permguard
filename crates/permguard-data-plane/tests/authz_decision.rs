@@ -39,7 +39,62 @@ use permguard_core::{Disclosure, Metrics, Recorder};
 use permguard_data_plane::authz::cache::Cache;
 use permguard_data_plane::authz::decide::{Decider, Warmed};
 use permguard_data_plane::authz::store::{Identity, Mirror};
-use permguard_data_plane::authz::{block, http, wire};
+use permguard_data_plane::authz::{block, wire};
+
+/// The decision routes behind the authentication boundary every served surface has (WP-2.4):
+/// nobody presents a credential here, so every request is anonymous and the permissive
+/// authorization admits it. These tests are about deciding, not about who may ask.
+mod http {
+    pub use permguard_data_plane::authz::http::Surface;
+
+    pub fn routes(surface: Surface) -> axum::Router {
+        permguard_data_plane::authz::http::routes(surface).layer(
+            permguard_transport::ActorLayer::new(std::sync::Arc::new(permguard_core::NoRules)),
+        )
+    }
+}
+
+/// A gRPC request as the boundary would hand it on: anonymous.
+fn anonymous_request<T>(inner: T) -> tonic::Request<T> {
+    let mut request = tonic::Request::new(inner);
+    request
+        .extensions_mut()
+        .insert(std::sync::Arc::new(permguard_core::authz::Actor::Anonymous));
+    request
+}
+
+fn anonymous_interceptor(
+    mut request: tonic::Request<()>,
+) -> Result<tonic::Request<()>, tonic::Status> {
+    request
+        .extensions_mut()
+        .insert(std::sync::Arc::new(permguard_core::authz::Actor::Anonymous));
+    Ok(request)
+}
+
+/// The interceptor a served surface's boundary stands in for.
+type Anonymising = fn(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status>;
+
+/// The decision service behind its boundary.
+type ServedPdp = tonic::service::interceptor::InterceptedService<
+    permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer<
+        permguard_data_plane::authz::grpc::PdpApi,
+    >,
+    Anonymising,
+>;
+
+/// The decision service as a surface serves it: behind the boundary, every request anonymous.
+fn served(api: permguard_data_plane::authz::grpc::PdpApi) -> ServedPdp {
+    permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::with_interceptor(
+        api,
+        anonymous_interceptor as Anonymising,
+    )
+}
+
+/// Everything allowed: these tests are about deciding, not about who may ask.
+fn permissive() -> Arc<permguard_host::composition::Authorization> {
+    Arc::new(permguard_host::composition::Authorization::permissive())
+}
 use permguard_data_plane::decisions::journal::{Epoch, Journal, WhenFull};
 use permguard_decisions::spool::Bounds;
 use permguard_languages::registry;
@@ -1148,6 +1203,7 @@ mod surface {
 
     fn router(root: &Path) -> axum::Router {
         http::routes(http::Surface {
+            authorization: permissive(),
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
@@ -1624,6 +1680,7 @@ mod grpc_socket {
             .expect("the listener goes non-blocking for tokio");
 
         let api = PdpApi {
+            authorization: permissive(),
             decider: decider(root),
             disclosure: Disclosure::Full,
             base_url: format!("http://{address}"),
@@ -1646,9 +1703,7 @@ mod grpc_socket {
                     }
                 };
                 let _ = tonic::transport::Server::builder()
-                    .add_service(
-                        permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(api),
-                    )
+                    .add_service(served(api))
                     .serve_with_incoming(incoming)
                     .await;
             });
@@ -1950,19 +2005,17 @@ mod parity {
         let base_url = "http://127.0.0.1:7443".to_owned();
         let served = serve(
             http::routes(http::Surface {
+                authorization: permissive(),
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
             }),
-            tonic::service::Routes::new(
-                permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(
-                    PdpApi {
-                        decider,
-                        disclosure: Disclosure::Full,
-                        base_url,
-                    },
-                ),
-            ),
+            tonic::service::Routes::new(served(PdpApi {
+                authorization: permissive(),
+                decider,
+                disclosure: Disclosure::Full,
+                base_url,
+            })),
         );
         let over_http = pdp(&served.http);
         let over_grpc = pdp(&served.grpc);
@@ -2030,6 +2083,7 @@ mod parity {
         }
 
         let api = PdpApi {
+            authorization: permissive(),
             decider: decider(&root),
             disclosure: Disclosure::Full,
             base_url: "http://127.0.0.1:7443".to_owned(),
@@ -2049,7 +2103,7 @@ mod parity {
             ),
         ] {
             let refused = api
-                .evaluate(tonic::Request::new(request))
+                .evaluate(anonymous_request(request))
                 .await
                 .expect_err("the case is a refusal");
             let metadata = |key: &str| {
@@ -2403,19 +2457,17 @@ mod indeterminate {
         let base_url = "http://127.0.0.1:7443".to_owned();
         let served = serve(
             http::routes(http::Surface {
+                authorization: permissive(),
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
             }),
-            tonic::service::Routes::new(
-                permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(
-                    PdpApi {
-                        decider,
-                        disclosure: Disclosure::Full,
-                        base_url,
-                    },
-                ),
-            ),
+            tonic::service::Routes::new(served(PdpApi {
+                authorization: permissive(),
+                decider,
+                disclosure: Disclosure::Full,
+                base_url,
+            })),
         );
         let pdp = |url: &str| {
             permguard_control_client::pdp::client(
@@ -2468,19 +2520,17 @@ mod indeterminate {
         let base_url = "http://127.0.0.1:7443".to_owned();
         let served = serve(
             http::routes(http::Surface {
+                authorization: permissive(),
                 decider: decider.clone(),
                 disclosure: Disclosure::Full,
                 base_url: base_url.clone(),
             }),
-            tonic::service::Routes::new(
-                permguard_data_plane::v1::policy_decision_point_server::PolicyDecisionPointServer::new(
-                    PdpApi {
-                        decider,
-                        disclosure: Disclosure::Full,
-                        base_url,
-                    },
-                ),
-            ),
+            tonic::service::Routes::new(served(PdpApi {
+                authorization: permissive(),
+                decider,
+                disclosure: Disclosure::Full,
+                base_url,
+            })),
         );
         let pdp = |url: &str| {
             permguard_control_client::pdp::client(

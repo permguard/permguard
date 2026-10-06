@@ -20,6 +20,7 @@
 pub mod api;
 pub mod assurance;
 pub mod audit;
+pub mod authz;
 pub mod brand;
 pub mod build;
 pub mod catalog;
@@ -57,6 +58,7 @@ pub use api::{
     MUTUAL_TLS_CHALLENGE, StatusTable, WireDenial, WireError,
 };
 pub use audit::{AuditDestination, AuditEvent, AuditSink, Sensitivity, Subject};
+pub use authz::NoRules;
 pub use catalog::{Catalog, CatalogError, Ledger, Selector, Zone};
 pub use config::{BuildSettings, Config, Layers};
 pub use config_file::ConfigFile;

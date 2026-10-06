@@ -38,6 +38,21 @@ experimental:
 
 host:
   addr: 127.0.0.1:5443
+  # Who a caller is (WP-2.4). A certificate whose SAN URI a rule names, or whose subject public
+  # key a rule pins, maps to that principal; CN and DN are labels and map nothing. A credential
+  # no rule maps is unauthenticated. The grants a principal holds are issued offline with
+  # `permguard host grants`, and the first administrator with `host grants bootstrap`.
+  # principals:
+  #   - san_uri: "spiffe://acme/operators/alice"
+  #   - spki: "sha256:<64 hex of the subject public key info>"
+  # What anybody may do without a credential: a development convenience, declared here and
+  # never journaled. A production deployment declares none.
+  authz:
+    public:
+      - operations: [catalog.read, catalog.write, policy.push]
+        selector: "plane/control/*"
+      - operations: [decision.evaluate]
+        selector: "plane/data/*"
   tls:
     cert: tls/server.pem
     key: tls/server.key

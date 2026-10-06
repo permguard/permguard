@@ -46,6 +46,8 @@ pub struct Surface {
     pub disclosure: Disclosure,
     /// The base URL this plane is reached at, for the configuration document.
     pub base_url: String,
+    /// The Host's authorization: `decision.evaluate` on the exact ledger, before any policy runs.
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 /// The routes the decision endpoint answers.
@@ -70,24 +72,27 @@ pub fn routes(surface: Surface) -> Router {
 
 async fn evaluation(
     State(surface): State<Surface>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
     body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
-    answer(&surface, &headers, body).await
+    answer(&surface, &actor, &headers, body).await
 }
 
 /// The boxcarred endpoint. The same handler: a request with no `evaluations[]`
 /// is a single check.
 async fn evaluations(
     State(surface): State<Surface>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     headers: HeaderMap,
     body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
-    answer(&surface, &headers, body).await
+    answer(&surface, &actor, &headers, body).await
 }
 
 async fn answer(
     surface: &Surface,
+    actor: &permguard_core::authz::Actor,
     headers: &HeaderMap,
     body: Result<Json<CheckRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
@@ -129,7 +134,25 @@ async fn answer(
         request.request_id = request_id.clone();
     }
 
-    let response = match surface.decider.decide(&request, trace).await {
+    // Authorization before evaluation, and before the mirror is looked up (WP-2.4, P8).
+    let authorized = match super::gate::evaluation(
+        &surface.authorization,
+        actor,
+        surface.decider.root(),
+        request.zone.as_deref(),
+        request.ledger.as_deref(),
+    ) {
+        Ok(authorized) => authorized,
+        Err(denial) => {
+            return with_request_id(super::gate::http_denial(&denial), request_id.as_deref());
+        }
+    };
+
+    let response = match surface
+        .decider
+        .decide_as(&request, trace, authorized.as_ref())
+        .await
+    {
         Ok(answered) => (StatusCode::OK, Json(answered)).into_response(),
         Err(failed) => error(&failed, surface.disclosure),
     };

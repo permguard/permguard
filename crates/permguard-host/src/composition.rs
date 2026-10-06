@@ -237,6 +237,7 @@ impl std::error::Error for CompositionError {}
 pub struct Host {
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
+    authorization: Option<Arc<Authorization>>,
     claimed: std::sync::Mutex<Claims>,
 }
 
@@ -251,6 +252,7 @@ struct Claims {
 pub struct HostBuilder {
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
+    authorization: Option<Arc<Authorization>>,
 }
 
 impl HostBuilder {
@@ -267,10 +269,18 @@ impl HostBuilder {
     }
 
     /// The Host.
+    /// The authorization every registered Plane decides with. A Host built without one hands
+    /// out [`Authorization::closed`]: nothing is allowed, which is the fail-closed default.
+    pub fn authorization(mut self, authorization: Arc<Authorization>) -> Self {
+        self.authorization = Some(authorization);
+        self
+    }
+
     pub fn build(self) -> Host {
         Host {
             rings: self.rings,
             recorder: self.recorder,
+            authorization: self.authorization,
             claimed: std::sync::Mutex::new(Claims::default()),
         }
     }
@@ -422,6 +432,10 @@ impl Host {
             audit: declaration.audit.iter().map(|(name, _)| *name).collect(),
             recorder: self.recorder.clone(),
             secrets,
+            authorization: self
+                .authorization
+                .clone()
+                .unwrap_or_else(|| Arc::new(Authorization::closed())),
         })
     }
 }
@@ -436,6 +450,7 @@ pub struct Registration {
     audit: Vec<&'static str>,
     recorder: Option<AuditRecorder>,
     secrets: BTreeMap<&'static str, ResolvedSecret>,
+    authorization: Arc<Authorization>,
 }
 
 /// A resolved secret's bytes, shared by the handles made from it, and its version.
@@ -485,6 +500,12 @@ impl Registration {
             recorder,
             schema: PhantomData,
         }))
+    }
+
+    /// The Host's authorization, which every Plane decides with: deny by default, and closed
+    /// when the Host built none.
+    pub fn authorization(&self) -> Arc<Authorization> {
+        Arc::clone(&self.authorization)
     }
 
     /// The secret of purpose `T`, as a handle that never shows its bytes.
@@ -705,11 +726,9 @@ pub struct TaskClient {
     _unbuildable: PhantomData<()>,
 }
 
-/// Authorizes a request against Host grants: built by the authorization model (WP-2.4).
-#[derive(Debug)]
-pub struct Authorization {
-    _unbuildable: PhantomData<()>,
-}
+/// Authorizes a request against Host grants: the handle of [`crate::authz::Authorization`], one
+/// per Host, handed to every registered Plane (WP-2.4).
+pub use crate::authz::Authorization;
 
 #[cfg(test)]
 mod tests {

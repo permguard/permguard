@@ -16,6 +16,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use permguard_core::{ApiError, ErrorClass, codes};
+use permguard_transport::ActorOf;
 
 use super::{CatalogFacade, ledgers, zones};
 use crate::wire;
@@ -116,96 +117,118 @@ fn window_of(query: Option<&str>) -> super::ListWindow {
 fn answer<T: serde::Serialize>(
     facade: &CatalogFacade,
     status: StatusCode,
-    outcome: Result<T, ApiError>,
+    outcome: Result<T, wire::Refusal>,
 ) -> Response {
     match outcome {
         Ok(payload) => (status, Json(payload)).into_response(),
-        Err(error) => wire::http_error(&error, facade.disclosure),
+        Err(refusal) => wire::http_refusal(&refusal, facade.disclosure),
     }
 }
 
-async fn create_zone(State(facade): State<CatalogFacade>, Named(body): Named) -> Response {
-    let outcome = zones::create(&facade, &body.name).await;
+async fn create_zone(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Named(body): Named,
+) -> Response {
+    let outcome = zones::create(&facade, &actor, &body.name).await;
 
     answer(&facade, StatusCode::CREATED, outcome)
 }
 
-async fn list_zones(State(facade): State<CatalogFacade>, RawQuery(query): RawQuery) -> Response {
+async fn list_zones(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
     answer(
         &facade,
         StatusCode::OK,
-        zones::list(&facade, window_of(query.as_deref())),
+        zones::list(&facade, &actor, window_of(query.as_deref())),
     )
 }
 
-async fn get_zone(State(facade): State<CatalogFacade>, Path(zone): Path<String>) -> Response {
-    answer(&facade, StatusCode::OK, zones::get(&facade, &zone))
+async fn get_zone(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path(zone): Path<String>,
+) -> Response {
+    answer(&facade, StatusCode::OK, zones::get(&facade, &actor, &zone))
 }
 
 async fn rename_zone(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path(zone): Path<String>,
     Named(body): Named,
 ) -> Response {
-    let outcome = zones::rename(&facade, &zone, &body.name).await;
+    let outcome = zones::rename(&facade, &actor, &zone, &body.name).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
 
-async fn delete_zone(State(facade): State<CatalogFacade>, Path(zone): Path<String>) -> Response {
-    let outcome = zones::delete(&facade, &zone).await;
+async fn delete_zone(
+    State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
+    Path(zone): Path<String>,
+) -> Response {
+    let outcome = zones::delete(&facade, &actor, &zone).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
 
 async fn create_ledger(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path(zone): Path<String>,
     Named(body): Named,
 ) -> Response {
-    let outcome = ledgers::create(&facade, &zone, &body.name).await;
+    let outcome = ledgers::create(&facade, &actor, &zone, &body.name).await;
 
     answer(&facade, StatusCode::CREATED, outcome)
 }
 
 async fn list_ledgers(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path(zone): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Response {
     answer(
         &facade,
         StatusCode::OK,
-        ledgers::list(&facade, &zone, window_of(query.as_deref())),
+        ledgers::list(&facade, &actor, &zone, window_of(query.as_deref())),
     )
 }
 
 async fn get_ledger(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
 ) -> Response {
     answer(
         &facade,
         StatusCode::OK,
-        ledgers::get(&facade, &zone, &ledger),
+        ledgers::get(&facade, &actor, &zone, &ledger),
     )
 }
 
 async fn rename_ledger(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     Named(body): Named,
 ) -> Response {
-    let outcome = ledgers::rename(&facade, &zone, &ledger, &body.name).await;
+    let outcome = ledgers::rename(&facade, &actor, &zone, &ledger, &body.name).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
 
 async fn delete_ledger(
     State(facade): State<CatalogFacade>,
+    ActorOf(actor): ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
 ) -> Response {
-    let outcome = ledgers::delete(&facade, &zone, &ledger).await;
+    let outcome = ledgers::delete(&facade, &actor, &zone, &ledger).await;
 
     answer(&facade, StatusCode::OK, outcome)
 }
@@ -215,6 +238,14 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// The routes behind the boundary every served surface has (WP-2.4): nobody presents a
+    /// credential here, so every request is anonymous and the permissive authorization admits it.
+    fn routes(facade: CatalogFacade) -> Router {
+        super::routes(facade).layer(permguard_transport::ActorLayer::new(std::sync::Arc::new(
+            permguard_core::NoRules,
+        )))
+    }
     use axum::body::Body;
     use http::Request as HttpRequest;
     use permguard_core::Disclosure;
@@ -236,6 +267,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         routes(CatalogFacade {
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
             catalog: Arc::new(FileCatalog::new(root)),
             recorder: None,
             disclosure,
@@ -413,6 +447,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         let routes = routes(CatalogFacade {
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
             catalog: Arc::new(FileCatalog::new(root)),
             recorder: Some(crate::handles::audit_for_tests(recorder)),
             disclosure: Disclosure::Minimal,

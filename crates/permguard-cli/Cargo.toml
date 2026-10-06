@@ -25,6 +25,8 @@ anyhow.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 permguard-core.workspace = true
+# The grant store of a volume, worked on offline by `host grants` (WP-2.4).
+permguard-host.workspace = true
 # The record, the chain and the signature — so `--verify` checks what the
 # planes compute, with the same code rather than a second implementation.
 permguard-decisions.workspace = true

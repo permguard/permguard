@@ -693,6 +693,58 @@ struct TelemetrySection {
     /// OTLP trace export: off unless the file says otherwise.
     #[serde(default)]
     otel: OtelSection,
+    /// The credential mapper's rules: which certificates and tokens map to which principal
+    /// (WP-2.4). Structured, so carried from the file only; read with [`ConfigFile::host_auth`].
+    #[serde(default)]
+    principals: Vec<PrincipalRuleSection>,
+    /// The grants anybody holds, declared here and never journaled.
+    #[serde(default)]
+    authz: AuthzSection,
+}
+
+/// One `host.principals[]` entry: exactly one of its members is set.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrincipalRuleSection {
+    #[serde(default)]
+    san_uri: Option<String>,
+    #[serde(default)]
+    spki: Option<String>,
+    #[serde(default)]
+    oidc: Option<OidcRuleSection>,
+}
+
+/// The pinned issuer of an OIDC rule.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OidcRuleSection {
+    issuer: String,
+    audience: String,
+    #[serde(default)]
+    algorithms: Vec<String>,
+    #[serde(default)]
+    claim: Option<String>,
+    jwks_file: String,
+    #[serde(default)]
+    max_stale: Option<String>,
+}
+
+/// The `host.authz` block: the public grants.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthzSection {
+    #[serde(default)]
+    public: Vec<PublicGrantSection>,
+}
+
+/// One `host.authz.public[]` entry.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublicGrantSection {
+    operations: Vec<String>,
+    selector: String,
+    #[serde(default)]
+    resource_types: Vec<String>,
 }
 
 /// Where spans go, when they go anywhere.
@@ -1215,6 +1267,107 @@ impl ConfigFile {
 
     /// Returns the `storage` section, validated: every qualified tuple names all four parts and its
     /// evidence, no tuple is listed twice, and the floors read as sizes and counts.
+    /// The `host.principals[]` rules and the `host.authz.public[]` grants, typed and checked:
+    /// a rule sets exactly one member, a public grant names registered operations and types and
+    /// a selector that parses. Who the rules collide with is the Host's to decide, with the
+    /// bootstrap commitment in hand.
+    pub fn host_auth(&self) -> Result<crate::authz::HostAuth> {
+        use crate::authz::{OidcPrincipalRule, PrincipalRule, PublicGrantRule, Selector};
+        use crate::authz::{operations, resource_types};
+
+        let mut principals = Vec::new();
+        for (position, rule) in self.host.principals.iter().enumerate() {
+            let at = format!("host.principals[{position}]");
+            let set = usize::from(rule.san_uri.is_some())
+                + usize::from(rule.spki.is_some())
+                + usize::from(rule.oidc.is_some());
+            if set != 1 {
+                bail!("{at} sets exactly one of san_uri, spki or oidc");
+            }
+            if let Some(uri) = &rule.san_uri {
+                if uri.trim().is_empty() {
+                    bail!("{at}.san_uri is empty");
+                }
+                principals.push(PrincipalRule::SanUri(uri.trim().to_owned()));
+            } else if let Some(spki) = &rule.spki {
+                if spki.trim().is_empty() {
+                    bail!("{at}.spki is empty");
+                }
+                principals.push(PrincipalRule::Spki(spki.trim().to_owned()));
+            } else if let Some(oidc) = &rule.oidc {
+                let max_stale = match oidc.max_stale.as_deref().map(str::trim) {
+                    None | Some("") => std::time::Duration::from_secs(24 * 3600),
+                    Some(text) => crate::config::parse_duration(text)
+                        .with_context(|| format!("reading {at}.oidc.max_stale"))?,
+                };
+                principals.push(PrincipalRule::Oidc(OidcPrincipalRule {
+                    issuer: oidc.issuer.trim().to_owned(),
+                    audience: oidc.audience.trim().to_owned(),
+                    algorithms: if oidc.algorithms.is_empty() {
+                        vec!["RS256".to_owned(), "ES256".to_owned(), "EdDSA".to_owned()]
+                    } else {
+                        oidc.algorithms.clone()
+                    },
+                    claim: oidc
+                        .claim
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|claim| !claim.is_empty())
+                        .unwrap_or("sub")
+                        .to_owned(),
+                    jwks_file: std::path::PathBuf::from(oidc.jwks_file.trim()),
+                    max_stale,
+                }));
+            }
+        }
+        let mut public = Vec::new();
+        for (position, grant) in self.host.authz.public.iter().enumerate() {
+            let at = format!("host.authz.public[{position}]");
+            if grant.operations.is_empty() {
+                bail!("{at}.operations names at least one operation");
+            }
+            if let Some(unknown) = grant
+                .operations
+                .iter()
+                .find(|operation| !operations::is_registered(operation))
+            {
+                bail!(
+                    "{at}.operations names `{unknown}`, which is not a registered operation ({})",
+                    operations::ALL.join(", ")
+                );
+            }
+            if grant
+                .operations
+                .iter()
+                .any(|operation| operation == operations::AUTHZ_ADMIN)
+            {
+                bail!("{at}.operations names `authz.admin`, which is never public");
+            }
+            let resource_types = if grant.resource_types.is_empty() {
+                vec![resource_types::ANY.to_owned()]
+            } else {
+                grant.resource_types.clone()
+            };
+            if let Some(unknown) = resource_types
+                .iter()
+                .find(|resource_type| !resource_types::is_registered(resource_type))
+            {
+                bail!(
+                    "{at}.resource_types names `{unknown}`, which is not a registered type ({})",
+                    resource_types::ALL.join(", ")
+                );
+            }
+            let selector = Selector::parse(grant.selector.trim())
+                .map_err(|error| anyhow::anyhow!("{at}.selector: {error}"))?;
+            public.push(PublicGrantRule {
+                operations: grant.operations.clone(),
+                selector,
+                resource_types,
+            });
+        }
+        Ok(crate::authz::HostAuth { principals, public })
+    }
+
     pub fn volume(&self) -> Result<crate::volume::VolumeConfig> {
         use crate::volume::{Floors, Limit, QualifiedTuple, Quotas, Tuple, VolumeConfig};
 
@@ -1587,6 +1740,37 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn test_host_auth_reads_rules_and_public_grants_and_refuses_what_is_never_public() {
+        let file = ConfigFile::parse(
+            "host:\n  principals:\n    - san_uri: spiffe://acme/alice\n    - spki: \"sha256:ab\"\n  authz:\n    public:\n      - operations: [catalog.read]\n        selector: plane/control/*\n",
+        )
+        .expect("the file parses");
+        let auth = file.host_auth().expect("the auth section reads");
+        assert_eq!(auth.principals.len(), 2);
+        assert_eq!(auth.public.len(), 1);
+        assert_eq!(auth.public[0].resource_types, vec!["*"]);
+
+        let admin = ConfigFile::parse(
+            "host:\n  authz:\n    public:\n      - operations: [authz.admin]\n        selector: host\n",
+        )
+        .expect("the file parses");
+        let error = admin.host_auth().expect_err("never public").to_string();
+        assert!(error.contains("never public"), "{error}");
+
+        let two = ConfigFile::parse(
+            "host:\n  principals:\n    - san_uri: spiffe://acme/alice\n      spki: \"sha256:ab\"\n",
+        )
+        .expect("the file parses");
+        assert!(two.host_auth().is_err(), "exactly one member per rule");
+
+        let unknown = ConfigFile::parse(
+            "host:\n  authz:\n    public:\n      - operations: [catalog.delete]\n        selector: host\n",
+        )
+        .expect("the file parses");
+        assert!(unknown.host_auth().is_err(), "an unregistered operation");
     }
 
     #[test]

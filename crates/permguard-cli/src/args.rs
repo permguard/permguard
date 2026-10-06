@@ -318,6 +318,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Work on a Server Host's volume offline: the grants of its authorization store.
+    Host {
+        #[command(subcommand)]
+        action: HostAction,
+    },
     /// Print shell completions. Add to your shell's config to complete commands and flags.
     #[command(
         after_help = "Examples:\n  permguard completion zsh > \"${fpath[1]}/_permguard\"\n  permguard completion bash >> ~/.bashrc"
@@ -1409,4 +1414,93 @@ mod tests {
             }
         });
     }
+}
+
+/// What `permguard host` works on.
+#[derive(Debug, Subcommand)]
+pub enum HostAction {
+    /// The grants of the Host's authorization store, on the volume, with the server stopped.
+    Grants {
+        #[command(subcommand)]
+        action: GrantsAction,
+    },
+}
+
+/// `permguard host grants …`: the offline grant administration of WP-2.4. The Host API takes
+/// over with the dedicated Host listener.
+#[derive(Debug, Subcommand)]
+pub enum GrantsAction {
+    /// Commit the one recovery administrator, by the SHA-256 fingerprint of its certificate, and
+    /// grant it `authz.admin` on the Host. Written once: a second bootstrap naming the same
+    /// fingerprint is the first, one naming another is refused. A committed administrator whose
+    /// grant was revoked is granted again by this command: physical access to the volume is the
+    /// recovery authority.
+    #[command(
+        after_help = "Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
+    )]
+    Bootstrap {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.
+        #[arg(long)]
+        fingerprint: String,
+    },
+    /// Issue a grant: a direct journal append, until the Host mutation transaction exists.
+    #[command(
+        after_help = "Examples:\n  permguard host grants issue --volume /var/lib/permguard --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard host grants issue --volume ./volume --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
+    )]
+    Issue {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The exact authorization principal, as the credential mapper produces it.
+        #[arg(long)]
+        principal: String,
+        /// The registered operations, comma-separated.
+        #[arg(long, value_delimiter = ',', required = true)]
+        operations: Vec<String>,
+        /// The resource prefix, optionally ending in `/*`.
+        #[arg(long)]
+        selector: String,
+        /// The resource types, comma-separated; `*` when left out.
+        #[arg(long, value_delimiter = ',')]
+        types: Vec<String>,
+        /// When the grant expires, RFC 3339; never when left out.
+        #[arg(long, value_name = "INSTANT")]
+        expires: Option<String>,
+        /// Who issues it, recorded with the grant.
+        #[arg(long, default_value = "operator")]
+        issued_by: String,
+    },
+    /// Revoke a grant: a terminal transition.
+    #[command(
+        after_help = "Examples:\n  permguard host grants revoke --volume /var/lib/permguard --grant-id 0123456789abcdef0123456789abcdef\n  permguard host grants revoke --volume ./volume --grant-id 0123456789abcdef0123456789abcdef --by alice -o json"
+    )]
+    Revoke {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The grant, as `list` prints it.
+        #[arg(long)]
+        grant_id: String,
+        /// Who revokes it, recorded with the transition.
+        #[arg(long, default_value = "operator")]
+        by: String,
+    },
+    /// List the grants the store holds, active and terminal, with the store revision.
+    #[command(
+        after_help = "Examples:\n  permguard host grants list --volume /var/lib/permguard\n  permguard host grants list --volume /var/lib/permguard --principal spiffe://acme/billing -o json"
+    )]
+    List {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// Only this principal's grants.
+        #[arg(long)]
+        principal: Option<String>,
+        /// Only grants with exactly this selector.
+        #[arg(long)]
+        selector: Option<String>,
+    },
 }

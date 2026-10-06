@@ -46,6 +46,8 @@ tracing.workspace = true
 permguard-server.workspace = true
 # The handles this plane declares and gets from the Host (P1).
 permguard-host.workspace = true
+# The actor a request carries, read where a route authorizes (WP-2.4).
+permguard-transport.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 serde_json.workspace = true

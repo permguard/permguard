@@ -41,6 +41,8 @@ permguard-decisions.workspace = true
 # The event record, chain and signed batch contract this store keeps.
 permguard-events.workspace = true
 permguard-host.workspace = true
+# The actor a request carries, read where a route authorizes (WP-2.4).
+permguard-transport.workspace = true
 permguard-stream.workspace = true
 # The randomness a fresh offset-signing key is minted from.
 ring.workspace = true

@@ -42,6 +42,7 @@ pub mod block;
 pub mod cache;
 pub mod configuration;
 pub mod decide;
+pub mod gate;
 pub mod grpc;
 pub mod http;
 pub mod measure;

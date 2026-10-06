@@ -41,6 +41,7 @@
     "digest.STREAM_CURSOR_V2": "permguard.stream.cursor.v2\n",
     "digest.STREAM_FILTERS": "permguard.stream.filters.v1\n",
     "event.DOGWOOD_V1": "permguard.dogwood.event.v1",
+    "format.AUTHZ_SNAPSHOT_V1": "permguard.host.authz.snapshot.v1",
     "format.SEALED_KEY_V1": "permguard.sealed-key.v1",
     "grpc.CONTROL_PLANE": "permguard.control.v1.ControlPlane",
     "grpc.DATA_PLANE": "permguard.data.v1.DataPlane",

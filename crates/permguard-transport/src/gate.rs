@@ -143,7 +143,7 @@ where
 /// and, on a `401`, the `Mutual-TLS` challenge. Over gRPC: a trailers-only answer with the
 /// denial's status and its code in `permguard-error-code`; an access denial has no class, so no
 /// `permguard-error-class` is sent.
-fn refused(denial: AccessDenial, grpc: bool) -> Response<Body> {
+pub(crate) fn refused(denial: AccessDenial, grpc: bool) -> Response<Body> {
     if grpc {
         return refused_in_grpc(&denial);
     }
@@ -206,7 +206,7 @@ fn grpc_message(message: &str) -> String {
 }
 
 /// Whether a request speaks gRPC, by its content type.
-fn speaks_grpc<B>(request: &Request<B>) -> bool {
+pub(crate) fn speaks_grpc<B>(request: &Request<B>) -> bool {
     request
         .headers()
         .get(http::header::CONTENT_TYPE)

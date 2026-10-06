@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use permguard_core::catalog::{Catalog, Selector};
+use permguard_core::catalog::{Catalog, CatalogError, Selector};
 use permguard_core::keys::SigningRing;
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics, SECONDS};
@@ -84,6 +84,11 @@ pub(crate) struct NotpFacade {
     pub(crate) metrics: Metrics,
     /// One store per ledger, shared: the CAS lock must be process-wide.
     stores: Arc<Mutex<HashMap<String, Arc<FileObjectStore>>>>,
+    /// The Host's authorization, before anything is resolved (WP-2.4): `policy.push` on the exact
+    /// ledger for a push, `catalog.read` on it for a ref read, a pull or a fetch until the Host
+    /// task transport of WP-4.x carries pulls for `policy.mirror` members; the key ring stays open,
+    /// being the public keys.
+    pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
 }
 
 impl NotpFacade {
@@ -99,6 +104,7 @@ impl NotpFacade {
         disclosure: Disclosure,
         audit_refusals: bool,
         metrics: Metrics,
+        authorization: Arc<permguard_host::composition::Authorization>,
     ) -> Self {
         Self {
             catalog,
@@ -111,7 +117,86 @@ impl NotpFacade {
             disclosure,
             audit_refusals,
             metrics,
+            authorization,
             stores: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Whether `actor` may read the ledger `zone`/`ledger` names: `catalog.read` on the exact
+    /// ledger, the interim operation for a pull until `policy.mirror` members arrive over the Host
+    /// task transport (WP-4.x; owner decision, 2026-10-06). Two stages, as for a push.
+    fn authorize_read(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(), crate::wire::Refusal> {
+        self.authorize_as(
+            actor,
+            permguard_core::authz::operations::CATALOG_READ,
+            zone,
+            ledger,
+        )
+    }
+
+    /// Whether `actor` may push to the ledger `zone`/`ledger` names, by id or by name: a caller
+    /// with nothing for `policy.push` under this plane is refused before any lookup, the exact
+    /// ledger is authorized once resolved, and a name that resolves to nothing is out of scope
+    /// unless the caller's grants cover the whole plane or zone (owner decision, 2026-10-06).
+    fn authorize_push(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(), crate::wire::Refusal> {
+        self.authorize_as(
+            actor,
+            permguard_core::authz::operations::POLICY_PUSH,
+            zone,
+            ledger,
+        )
+    }
+
+    fn authorize_as(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        operation: &str,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(), crate::wire::Refusal> {
+        use permguard_core::authz::Resource;
+
+        let plane = Resource::plane(crate::service::PLANE);
+        self.authorization.may_act_under(actor, operation, &plane)?;
+        let zone = match self.catalog.get_zone(&Selector::parse(zone)) {
+            Ok(zone) => zone,
+            Err(error @ CatalogError::NotFound { .. }) => {
+                self.authorization
+                    .not_found_or_forbidden(actor, operation, &plane)?;
+                return Err(crate::catalog::api_error(error).into());
+            }
+            Err(error) => return Err(crate::catalog::api_error(error).into()),
+        };
+        let scope = Resource::zone(crate::service::PLANE, &zone.id);
+        self.authorization.may_act_under(actor, operation, &scope)?;
+        match self
+            .catalog
+            .get_ledger(&Selector::Id(zone.id.clone()), &Selector::parse(ledger))
+        {
+            Ok(found) => self
+                .authorization
+                .authorize(
+                    actor,
+                    operation,
+                    &Resource::ledger(crate::service::PLANE, &zone.id, &found.id),
+                )
+                .map_err(Into::into),
+            Err(error @ CatalogError::NotFound { .. }) => {
+                self.authorization
+                    .not_found_or_forbidden(actor, operation, &scope)?;
+                Err(crate::catalog::api_error(error).into())
+            }
+            Err(error) => Err(crate::catalog::api_error(error).into()),
         }
     }
 
@@ -237,10 +322,12 @@ impl NotpFacade {
     #[tracing::instrument(name = "notp.ref", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn get_ref(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         name: &str,
-    ) -> Result<GetRef, ApiError> {
+    ) -> Result<GetRef, crate::wire::Refusal> {
+        self.authorize_read(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
@@ -253,16 +340,18 @@ impl NotpFacade {
                 statement,
             })
         })();
-        self.observed("ref", started, result)
+        self.observed("ref", started, result).map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.push_negotiate", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn negotiate_push(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &NegotiatePushRequest,
-    ) -> Result<NegotiatePushResponse, ApiError> {
+    ) -> Result<NegotiatePushResponse, crate::wire::Refusal> {
+        self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
             Ok((identity, store)) => match self.engine(identity, &store).negotiate_push(request) {
@@ -275,15 +364,18 @@ impl NotpFacade {
             Err(error) => Err(error),
         };
         self.observed("push_negotiate", started, result)
+            .map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.upload", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn upload(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &UploadObjectsRequest,
-    ) -> Result<UploadObjectsResponse, ApiError> {
+    ) -> Result<UploadObjectsResponse, crate::wire::Refusal> {
+        self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
             Ok((identity, store)) => match self.decode_batch(request) {
@@ -304,16 +396,18 @@ impl NotpFacade {
             },
             Err(error) => Err(error),
         };
-        self.observed("upload", started, result)
+        self.observed("upload", started, result).map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.push_commit", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn commit_push(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &CommitPushRequest,
-    ) -> Result<CommitPushResponse, ApiError> {
+    ) -> Result<CommitPushResponse, crate::wire::Refusal> {
+        self.authorize_push(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = match self.resolve(zone, ledger) {
             Ok((identity, store)) => {
@@ -337,15 +431,18 @@ impl NotpFacade {
             Err(error) => Err(error),
         };
         self.observed("push_commit", started, result)
+            .map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.pull_negotiate", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn negotiate_pull(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &NegotiatePullRequest,
-    ) -> Result<NegotiatePullResponse, ApiError> {
+    ) -> Result<NegotiatePullResponse, crate::wire::Refusal> {
+        self.authorize_read(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
@@ -356,15 +453,18 @@ impl NotpFacade {
             Ok(response)
         })();
         self.observed("pull_negotiate", started, result)
+            .map_err(Into::into)
     }
 
     #[tracing::instrument(name = "notp.fetch", skip_all, fields(zone = %zone, ledger = %ledger))]
     pub(crate) async fn fetch(
         &self,
+        actor: &permguard_core::authz::Actor,
         zone: &str,
         ledger: &str,
         request: &FetchObjectsRequest,
-    ) -> Result<FetchObjectsResponse, ApiError> {
+    ) -> Result<FetchObjectsResponse, crate::wire::Refusal> {
+        self.authorize_read(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = (|| {
             let (identity, store) = self.resolve(zone, ledger)?;
@@ -388,7 +488,7 @@ impl NotpFacade {
             );
             Ok(response)
         })();
-        self.observed("fetch", started, result)
+        self.observed("fetch", started, result).map_err(Into::into)
     }
 
     /// The algorithm negotiate responses advertise, when one is on.

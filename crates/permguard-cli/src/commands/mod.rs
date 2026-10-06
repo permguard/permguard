@@ -9,6 +9,7 @@ pub mod check;
 pub mod config;
 pub mod decisions;
 pub mod events;
+pub mod host;
 pub mod inspect;
 pub mod objects;
 pub mod workspace;

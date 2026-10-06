@@ -7,6 +7,7 @@ use libfuzzer_sys::fuzz_target;
 use std::str::FromStr as _;
 
 use permguard_core::ErrorClass;
+use permguard_core::authz;
 use permguard_core::catalog::Selector;
 use permguard_objects::Digest;
 use permguard_objects::manifest::HistoryScope;
@@ -27,5 +28,7 @@ fuzz_target!(|data: &[u8]| {
     let _ = Frontier::decode(text);
     let _ = StreamPosition::parse(text);
     let _ = Selector::parse(text);
+    let _ = authz::Resource::parse(text);
+    let _ = authz::Selector::parse(text);
     let _ = ErrorClass::from_str(text);
 });

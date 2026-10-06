@@ -45,6 +45,8 @@ pub struct PdpApi {
     pub decider: std::sync::Arc<Decider>,
     pub disclosure: Disclosure,
     pub base_url: String,
+    /// The Host's authorization: `decision.evaluate` on the exact ledger, before any policy runs.
+    pub authorization: std::sync::Arc<permguard_host::composition::Authorization>,
 }
 
 #[tonic::async_trait]
@@ -98,6 +100,7 @@ impl PdpApi {
         &self,
         request: Request<EvaluateRequest>,
     ) -> Result<Response<EvaluateResponse>, Status> {
+        let actor = permguard_transport::actor_of(request.extensions());
         // The transport's own request id, when the caller sent one and the
         // payload did not.
         let carried = request
@@ -124,7 +127,21 @@ impl PdpApi {
             wire.request_id = carried;
         }
 
-        match self.decider.decide(&wire, trace).await {
+        // Authorization before evaluation, and before the mirror is looked up (WP-2.4, P8).
+        let authorized = super::gate::evaluation(
+            &self.authorization,
+            &actor,
+            self.decider.root(),
+            wire.zone.as_deref(),
+            wire.ledger.as_deref(),
+        )
+        .map_err(|denial| super::gate::grpc_denial(&denial))?;
+
+        match self
+            .decider
+            .decide_as(&wire, trace, authorized.as_ref())
+            .await
+        {
             Ok(answered) => Ok(Response::new(translate::response_to_proto(answered))),
             Err(failed) => Err(status_of(&failed, self.disclosure)),
         }

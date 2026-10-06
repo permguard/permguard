@@ -65,6 +65,17 @@ fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
 }
 
+/// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the
+/// Host did not register decides with a closed one: nothing is allowed.
+pub(crate) fn authorization(
+    context: &PlaneContext<'_>,
+) -> Arc<permguard_host::composition::Authorization> {
+    registration(context).map_or_else(
+        || Arc::new(permguard_host::composition::Authorization::closed()),
+        |registration| registration.authorization(),
+    )
+}
+
 /// The audit handle, when an audit recorder is composed.
 pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
     registration(context)?

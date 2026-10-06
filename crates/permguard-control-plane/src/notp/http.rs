@@ -93,10 +93,10 @@ async fn declared_notp(
 }
 
 /// Shapes a CBOR answer, or the taxonomy's refusal.
-fn answer(facade: &NotpFacade, outcome: Result<Vec<u8>, ApiError>) -> Response {
+fn answer(facade: &NotpFacade, outcome: Result<Vec<u8>, wire::Refusal>) -> Response {
     match outcome {
         Ok(body) => cbor_response(StatusCode::OK, body),
-        Err(error) => wire::http_error(&error, facade.disclosure),
+        Err(refusal) => wire::http_refusal(&refusal, facade.disclosure),
     }
 }
 
@@ -122,10 +122,11 @@ fn bad_body(detail: impl std::fmt::Display) -> ApiError {
 
 async fn get_ref(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger, name)): Path<(String, String, String)>,
 ) -> Response {
     let outcome = facade
-        .get_ref(&zone, &ledger, &name)
+        .get_ref(&actor, &zone, &ledger, &name)
         .await
         .and_then(|answered| {
             // The advertised ref rides the same framing as everything else.
@@ -143,7 +144,7 @@ async fn get_ref(
                     permguard_objects::cbor::Value::Bytes(answered.statement),
                 ),
             ]))
-            .map_err(unencodable)
+            .map_err(|error| unencodable(error).into())
         });
     answer(&facade, outcome)
 }
@@ -160,75 +161,80 @@ fn unencodable(error: impl std::fmt::Display) -> permguard_core::ApiError {
 
 async fn negotiate_push(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
     let outcome = match NegotiatePushRequest::decode(&body) {
         Ok(request) => facade
-            .negotiate_push(&zone, &ledger, &request)
+            .negotiate_push(&actor, &zone, &ledger, &request)
             .await
-            .and_then(|response| response.encode().map_err(unencodable)),
-        Err(error) => Err(bad_body(error)),
+            .and_then(|response| response.encode().map_err(|error| unencodable(error).into())),
+        Err(error) => Err(bad_body(error).into()),
     };
     answer(&facade, outcome)
 }
 
 async fn upload(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
     let outcome = match UploadObjectsRequest::decode(&body) {
         Ok(request) => facade
-            .upload(&zone, &ledger, &request)
+            .upload(&actor, &zone, &ledger, &request)
             .await
-            .and_then(|response| response.encode().map_err(unencodable)),
-        Err(error) => Err(bad_body(error)),
+            .and_then(|response| response.encode().map_err(|error| unencodable(error).into())),
+        Err(error) => Err(bad_body(error).into()),
     };
     answer(&facade, outcome)
 }
 
 async fn commit_push(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
     let outcome = match CommitPushRequest::decode(&body) {
         Ok(request) => facade
-            .commit_push(&zone, &ledger, &request)
+            .commit_push(&actor, &zone, &ledger, &request)
             .await
-            .and_then(|response| response.encode().map_err(unencodable)),
-        Err(error) => Err(bad_body(error)),
+            .and_then(|response| response.encode().map_err(|error| unencodable(error).into())),
+        Err(error) => Err(bad_body(error).into()),
     };
     answer(&facade, outcome)
 }
 
 async fn negotiate_pull(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
     let outcome = match NegotiatePullRequest::decode(&body) {
         Ok(request) => facade
-            .negotiate_pull(&zone, &ledger, &request)
+            .negotiate_pull(&actor, &zone, &ledger, &request)
             .await
-            .and_then(|response| response.encode().map_err(unencodable)),
-        Err(error) => Err(bad_body(error)),
+            .and_then(|response| response.encode().map_err(|error| unencodable(error).into())),
+        Err(error) => Err(bad_body(error).into()),
     };
     answer(&facade, outcome)
 }
 
 async fn fetch(
     State(facade): State<NotpFacade>,
+    permguard_transport::ActorOf(actor): permguard_transport::ActorOf,
     Path((zone, ledger)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
     let outcome = match FetchObjectsRequest::decode(&body) {
         Ok(request) => facade
-            .fetch(&zone, &ledger, &request)
+            .fetch(&actor, &zone, &ledger, &request)
             .await
-            .and_then(|response| response.encode().map_err(unencodable)),
-        Err(error) => Err(bad_body(error)),
+            .and_then(|response| response.encode().map_err(|error| unencodable(error).into())),
+        Err(error) => Err(bad_body(error).into()),
     };
     answer(&facade, outcome)
 }
@@ -238,6 +244,14 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    /// The routes behind the boundary every served surface has (WP-2.4): every request here is
+    /// anonymous, and the permissive authorization admits it.
+    fn routes(facade: NotpFacade) -> Router {
+        super::routes(facade).layer(permguard_transport::ActorLayer::new(std::sync::Arc::new(
+            permguard_core::NoRules,
+        )))
+    }
     use crate::engine::{
         ANNOTATION_POLICY_ID, ANNOTATION_POLICY_KIND, EngineLimits, MEDIA_TYPE_MANIFEST,
         MEDIA_TYPE_POLICY_CEDAR,
@@ -315,6 +329,7 @@ mod tests {
             Disclosure::Minimal,
             false,
             permguard_core::metrics::Metrics::none(),
+            std::sync::Arc::new(permguard_host::composition::Authorization::permissive()),
         );
 
         (routes(facade), zone.name, ledger.name)

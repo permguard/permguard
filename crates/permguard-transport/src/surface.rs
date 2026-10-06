@@ -69,6 +69,7 @@ pub struct Listener<'a> {
     tls: Option<&'a TlsSettings>,
     limits: Limits,
     metrics: Metrics,
+    authenticator: Option<std::sync::Arc<dyn permguard_core::authz::Authenticator>>,
 }
 
 impl<'a> Listener<'a> {
@@ -93,6 +94,18 @@ impl<'a> Listener<'a> {
         self
     }
 
+    /// The Host's credential mapper: every request this surface answers carries the actor it
+    /// decided, before any handler runs. Without one, `NoRules` decides: nobody is anonymous,
+    /// every credential is unmapped.
+    pub fn authenticator(
+        mut self,
+        authenticator: Option<std::sync::Arc<dyn permguard_core::authz::Authenticator>>,
+    ) -> Self {
+        self.authenticator = authenticator;
+
+        self
+    }
+
     /// Binds the address and starts serving.
     ///
     /// Returns once the socket is bound and the server is running, so a caller that got a [`Surface`]
@@ -105,6 +118,7 @@ impl<'a> Listener<'a> {
             tls,
             limits,
             metrics,
+            authenticator,
         } = self;
 
         let parsed: SocketAddr = address
@@ -156,6 +170,15 @@ impl<'a> Listener<'a> {
             // Innermost first: the body limit sits closest to the handler, the identity outermost so
             // even a request that is refused before reaching a handler is named in the log and in the
             // answer the client gets.
+            // Who the request acts as, decided once for every request this surface answers: the
+            // handlers read the actor and never build one (WP-2.4). Always installed: a surface
+            // given no mapper decides with `NoRules`, which maps no credential, so a composition
+            // that forgot its mapper is closed to credentials rather than open. Applied before
+            // the gate below, which is therefore the outer layer: a peer the allow list refuses is
+            // refused before any token of its is read.
+            let authenticator = authenticator
+                .unwrap_or_else(|| std::sync::Arc::new(permguard_core::authz::NoRules));
+            let router = router.layer(crate::actor::ActorLayer::new(authenticator));
             // Between the handlers and everything else: nothing below this line runs for a peer the
             // list does not name. Applied conditionally because an empty list means the handshake is
             // the whole decision — configurations where that is dangerous are refused by validation,
@@ -277,6 +300,7 @@ impl Surface {
             tls: None,
             limits: Limits::default(),
             metrics: Metrics::none(),
+            authenticator: None,
         }
     }
 

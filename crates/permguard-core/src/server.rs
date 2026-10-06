@@ -200,6 +200,9 @@ pub struct ServerContext<'a> {
     /// The Planes' signing rings, the audit recorder and the secret store are reached only through
     /// them (P1).
     plane_handles: std::collections::BTreeMap<&'static str, Arc<dyn std::any::Any + Send + Sync>>,
+    /// The Host's credential mapper, which every Plane surface decides its actor with (WP-2.4).
+    /// The composition sets it; a Plane never reaches it, its context having no accessor.
+    authenticator: Option<Arc<dyn crate::authz::Authenticator>>,
     services: &'a [Box<dyn Service>],
     health: Health,
     /// Shared rather than borrowed, for the same reason the key ring is: what records a number is
@@ -236,6 +239,7 @@ impl<'a> ServerContext<'a> {
             catalog: None,
             maintained_rings: Vec::new(),
             plane_handles: std::collections::BTreeMap::new(),
+            authenticator: None,
             services: NO_SERVICES,
             health: Health::new(),
             metrics: Metrics::none(),
@@ -300,6 +304,21 @@ impl<'a> ServerContext<'a> {
         self.plane_handles.insert(plane, handles);
 
         self
+    }
+
+    /// Sets the credential mapper every Plane surface decides its actor with.
+    pub fn with_authenticator(
+        mut self,
+        authenticator: Arc<dyn crate::authz::Authenticator>,
+    ) -> Self {
+        self.authenticator = Some(authenticator);
+
+        self
+    }
+
+    /// The credential mapper, when the composition built one; for the surfaces, never a Plane.
+    pub fn authenticator(&self) -> Option<Arc<dyn crate::authz::Authenticator>> {
+        self.authenticator.clone()
     }
 
     /// Adds the services the host is expected to start.

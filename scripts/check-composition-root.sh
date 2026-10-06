@@ -24,8 +24,11 @@ COMPOSITION_ROOTS=(
     "crates/permguard-server/src/plane/factories.rs"
     "crates/permguard-control-plane/src/main.rs"
     "crates/permguard-data-plane/src/main.rs"
+    "crates/permguard-cli/src/commands/host.rs"
+    "crates/permguard-host/src/authz/mapper.rs"
+    "crates/permguard-host/src/authz/oidc.rs"
 )
-CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|FileAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
+CONSTRUCTORS='Host::builder|PlaneContext::new|PlaneHealth::new|GrantStore::open|PrincipalMapper::new|Authorization::new|Authorization::public_only|Authorization::permissive|ActorContext::new|DefaultServerHost::new|FileCatalog::new|MemoryStorage::new|TracingAuditSink::new|RecordingAuditSink::new|FileAuditSink::new|HmacPseudonymizer::new|DirectorySecretStore::new|EnvironmentSecretStore::new|DirectoryKeyManager::new|DirectoryKeyManager::with_clock'
 
 # Code outside test-only items, as `file:line: text`. A `#[cfg(test)]` attribute in column 0 skips
 # the item it marks: a block (`mod tests {`, a function) up to its closing brace in column 0, or a

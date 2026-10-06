@@ -214,6 +214,7 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
             Ok(ExitCode::from(EXIT_READY))
         }
         Command::Config { action } => config_command(&globals, action, &trace),
+        Command::Host { action } => commands::host::host_command(&globals, action, &trace),
         Command::Inspect { timeout } => inspect_command(&globals, timeout, &trace),
         Command::Init { name, language } => {
             let languages: Vec<&str> = language.iter().map(String::as_str).collect();

@@ -229,6 +229,7 @@ impl PlaneModule for DataPlaneModule {
                 decider: authz::decider(context),
                 disclosure: context.config().error_detail(),
                 base_url: authz::base_url(context),
+                authorization: crate::handles::authorization(context),
             }))
             // The temporal interface, when this deployment serves one. Merged rather than always
             // mounted: a plane that keeps no history must not answer a submission route at all,
@@ -313,6 +314,7 @@ impl PlaneModule for DataPlaneModule {
             decider: authz::decider(context),
             disclosure: context.config().error_detail(),
             base_url: authz::base_url(context),
+            authorization: crate::handles::authorization(context),
         }));
         // And the temporal interface, on the same terms and only when it is served.
         if let Some(submitter) = temporal::submitter(context) {

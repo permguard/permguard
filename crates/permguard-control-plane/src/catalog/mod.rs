@@ -121,7 +121,7 @@ use std::sync::Arc;
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics};
-use permguard_core::{ApiError, Disclosure, ErrorClass, Subject, codes};
+use permguard_core::{ApiError, Disclosure, ErrorClass, Ledger, Subject, Zone, codes};
 
 /// Administrative operations answered — `action` is the audit action name
 /// (a fixed set of compile-time literals), `outcome` `ok` or `refused`.
@@ -149,6 +149,116 @@ pub(crate) struct CatalogFacade {
     pub(crate) audit_refusals: bool,
     /// Where the numbers go; a handle that may hold nothing, costing a branch.
     pub(crate) metrics: Metrics,
+    /// The Host's authorization, which every catalog operation decides with before it looks
+    /// anything up (WP-2.4).
+    pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
+}
+
+/// The resource of this plane, and of its zones and ledgers, in the Host's tree.
+pub(crate) fn plane_resource() -> permguard_core::authz::Resource {
+    permguard_core::authz::Resource::plane(crate::service::PLANE)
+}
+
+pub(crate) fn zone_resource(zone_id: &str) -> permguard_core::authz::Resource {
+    permguard_core::authz::Resource::zone(crate::service::PLANE, zone_id)
+}
+
+pub(crate) fn ledger_resource(zone_id: &str, ledger_id: &str) -> permguard_core::authz::Resource {
+    permguard_core::authz::Resource::ledger(crate::service::PLANE, zone_id, ledger_id)
+}
+
+impl CatalogFacade {
+    /// Whether `actor` may do `operation` on exactly `resource`.
+    pub(crate) fn authorize(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        operation: &str,
+        resource: &permguard_core::authz::Resource,
+    ) -> Result<(), crate::wire::Refusal> {
+        self.authorization
+            .authorize(actor, operation, resource)
+            .map_err(Into::into)
+    }
+
+    /// Resolves a zone named by id or name, authorization first (owner decision, 2026-10-06):
+    /// a caller with nothing for `operation` under this plane is refused before any lookup; the
+    /// resolved zone is then authorized exactly, and a name that resolves to nothing is answered
+    /// as out of scope unless the caller's grants cover the whole plane.
+    pub(crate) fn resolve_zone(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        operation: &str,
+        zone: &str,
+    ) -> Result<Zone, crate::wire::Refusal> {
+        let plane = plane_resource();
+        self.authorization.may_act_under(actor, operation, &plane)?;
+        match self.catalog.get_zone(&Selector::parse(zone)) {
+            Ok(found) => {
+                self.authorize(actor, operation, &zone_resource(&found.id))?;
+                Ok(found)
+            }
+            Err(error @ CatalogError::NotFound { .. }) => {
+                self.authorization
+                    .not_found_or_forbidden(actor, operation, &plane)?;
+                Err(api_error(error).into())
+            }
+            Err(error) => Err(api_error(error).into()),
+        }
+    }
+
+    /// Resolves a zone whose children `actor` may reach for `operation`: the zone itself need
+    /// not be granted, a grant on one of its ledgers is enough to name it.
+    pub(crate) fn resolve_zone_for_children(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        operation: &str,
+        zone: &str,
+    ) -> Result<Zone, crate::wire::Refusal> {
+        let plane = plane_resource();
+        self.authorization.may_act_under(actor, operation, &plane)?;
+        match self.catalog.get_zone(&Selector::parse(zone)) {
+            Ok(found) => {
+                self.authorization
+                    .may_act_under(actor, operation, &zone_resource(&found.id))?;
+                Ok(found)
+            }
+            Err(error @ CatalogError::NotFound { .. }) => {
+                self.authorization
+                    .not_found_or_forbidden(actor, operation, &plane)?;
+                Err(api_error(error).into())
+            }
+            Err(error) => Err(api_error(error).into()),
+        }
+    }
+
+    /// Resolves a ledger of a zone, both by id or name, the same way: the exact ledger is
+    /// authorized, and a ledger name that resolves to nothing is out of scope unless the caller
+    /// covers the whole zone.
+    pub(crate) fn resolve_ledger(
+        &self,
+        actor: &permguard_core::authz::Actor,
+        operation: &str,
+        zone: &str,
+        ledger: &str,
+    ) -> Result<(Zone, Ledger), crate::wire::Refusal> {
+        let zone = self.resolve_zone_for_children(actor, operation, zone)?;
+        let scope = zone_resource(&zone.id);
+        match self
+            .catalog
+            .get_ledger(&Selector::Id(zone.id.clone()), &Selector::parse(ledger))
+        {
+            Ok(found) => {
+                self.authorize(actor, operation, &ledger_resource(&zone.id, &found.id))?;
+                Ok((zone, found))
+            }
+            Err(error @ CatalogError::NotFound { .. }) => {
+                self.authorization
+                    .not_found_or_forbidden(actor, operation, &scope)?;
+                Err(api_error(error).into())
+            }
+            Err(error) => Err(api_error(error).into()),
+        }
+    }
 }
 
 impl CatalogFacade {

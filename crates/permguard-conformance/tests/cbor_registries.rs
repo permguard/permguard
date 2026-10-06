@@ -35,7 +35,8 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 7] = [
+const REGISTRIES: [&str; 8] = [
+    "grant.json",
     "head-statement.json",
     "kdf.json",
     "key-set.json",
@@ -596,6 +597,58 @@ fn head_statement_samples() -> Vec<Sample> {
     vec![sample("cose_sign1", envelope, &[], Some(decoder))]
 }
 
+fn grant_samples() -> Vec<Sample> {
+    use permguard_core::authz::{Principal, Selector};
+    use permguard_host::authz::record::{GrantId, GrantRecord, Status, Transition};
+
+    let record = GrantRecord {
+        grant_id: GrantId::from_bytes(HOST_ID),
+        principal_id: Principal::new("spiffe://acme/billing").expect("a principal"),
+        operations: vec!["catalog.read".to_owned(), "policy.push".to_owned()],
+        selector: Selector::parse("plane/control/zone/billing/*").expect("a selector"),
+        resource_types: vec!["*".to_owned()],
+        constraints: std::collections::BTreeMap::from([("note".to_owned(), "billing".to_owned())]),
+        revision: 3,
+        status: Status::Active,
+        issued_by: "cert:sha256:ab".to_owned(),
+        issued_at: 1_759_000_000,
+        expires_at: Some(1_790_000_000),
+    };
+    let mut open_ended = record.clone();
+    open_ended.expires_at = None;
+    open_ended.constraints.clear();
+    let decoder = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| verdict(GrantRecord::decode(bytes))))
+    };
+    vec![
+        sample(
+            "grant_record",
+            record.encode().expect("the record encodes"),
+            &["grant_record.expires_at"],
+            decoder(),
+        ),
+        sample(
+            "grant_record",
+            open_ended.encode().expect("the record encodes"),
+            &[],
+            decoder(),
+        ),
+        sample(
+            "transition",
+            Transition {
+                grant_id: GrantId::from_bytes(HOST_ID),
+                revision: 4,
+                at: 1_759_000_100,
+                by: "cert:sha256:ab".to_owned(),
+            }
+            .encode()
+            .expect("the transition encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
+        ),
+    ]
+}
+
 fn sealed_key_samples() -> Vec<Sample> {
     let nonce = [9u8; seal::NONCE_LEN];
     let kid = thumbprint::kid("host.identity", THUMBPRINT_A);
@@ -979,6 +1032,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "notp.json" => notp_samples(),
         "objects.json" => objects_samples(),
         "sealed-key.json" => sealed_key_samples(),
+        "grant.json" => grant_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -1308,6 +1362,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_grant_record_matches_its_registry() {
+    assert_samples_match("grant.json");
+}
+
+#[test]
+fn test_grant_record_refuses_unknown_labels() {
+    assert_unknown_labels_refused("grant.json");
 }
 
 #[test]
