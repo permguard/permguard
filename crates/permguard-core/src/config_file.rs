@@ -43,10 +43,10 @@ use crate::config::{
     SETTING_PUBLIC_HTTP_ENABLED, SETTING_PUBLIC_PATH_PREFIX, SETTING_PUBLIC_TLS_ALLOW,
     SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA, SETTING_PUBLIC_TLS_CRL,
     SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_SECRETS_DIRECTORY,
-    SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER, SETTING_SHUTDOWN_TIMEOUT,
-    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
-    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TLS_RELOAD,
-    SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
+    SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
+    SETTING_SHUTDOWN_TIMEOUT, SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL,
+    SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION,
+    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -813,6 +813,9 @@ struct SecretsSection {
 struct ShutdownSection {
     #[serde(default)]
     timeout: Option<String>,
+    /// How long the drain may take inside `timeout` (WP-2.7).
+    #[serde(default)]
+    drain_timeout: Option<String>,
 }
 
 /// Contracts whose wire and replication shapes have not yet proven stable, by runtime name.
@@ -1189,6 +1192,10 @@ impl ConfigFile {
             ),
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
             (SETTING_SHUTDOWN_TIMEOUT, self.shutdown.timeout.as_ref()),
+            (
+                SETTING_SHUTDOWN_DRAIN_TIMEOUT,
+                self.shutdown.drain_timeout.as_ref(),
+            ),
             (
                 SETTING_SECRETS_PROVIDER,
                 self.operations.secrets.provider.as_ref(),
@@ -1717,6 +1724,13 @@ mod tests {
         let renamed = settings_of("host:\n  addr: 0.0.0.0:6000\n");
         let dated = settings_of("telemetry:\n  addr: 0.0.0.0:6000\n");
         assert_eq!(renamed, dated);
+    }
+
+    #[test]
+    fn test_the_drain_timeout_is_carried() {
+        let settings = settings_of("shutdown:\n  timeout: 40s\n  drain_timeout: 30s\n");
+        assert!(settings.contains(&(SETTING_SHUTDOWN_DRAIN_TIMEOUT.to_owned(), "30s".to_owned())));
+        assert!(settings.contains(&(SETTING_SHUTDOWN_TIMEOUT.to_owned(), "40s".to_owned())));
     }
 
     #[test]

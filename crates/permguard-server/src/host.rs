@@ -18,16 +18,20 @@
 //!
 //! 1. readiness goes false **first**, before anything is closed, so a load balancer stops routing
 //!    while the process is still able to finish what it already has;
-//! 2. services stop in the reverse of the order they started;
-//! 3. storage is released — it may have buffered writes or a pool to drain;
-//! 4. the audit sink is released **last**, after the final record, because a sink flushed before the
+//! 2. every service stops its intake, in reverse order and without waiting, so no listener still
+//!    accepts while another drains (WP-2.7);
+//! 3. every service drains what it has in flight, in reverse order, within `shutdown.drain_timeout`;
+//!    what is cut at that deadline makes the drain incomplete;
+//! 4. services stop in the reverse of the order they started;
+//! 5. storage is released — it may have buffered writes or a pool to drain;
+//! 6. the audit sink is released **last**, after the final record, because a sink flushed before the
 //!    last write is a trail with a hole in it;
-//! 5. all of it shares one budget, and when the budget runs out the host reports *what* had not
-//!    finished rather than merely that something had not.
+//! 7. all of it shares one budget, `shutdown.timeout`, and when anything did not finish the host
+//!    returns an `IncompleteDrain` naming it, which the process exits with status `75`: never clean.
 
 use std::future::Future;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use tokio::time::{Instant, timeout_at};
 use tracing::{debug, info, warn};
 
@@ -35,6 +39,10 @@ use permguard_core::{BoxFuture, ServerContext, ServerHost, Service, Subject};
 
 /// The storage key under which a run records the host that produced it.
 pub const LAST_START_KEY: &str = "server/last-start";
+
+/// How long past the drain deadline the host waits for a hook that is cutting its own work, so
+/// the hook's reason is the one reported; always inside the total budget.
+const HOOK_CUT_MARGIN: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// The `component` every record of the host itself carries.
 const COMPONENT: &str = "server";
@@ -195,6 +203,62 @@ impl DefaultServerHost {
         }
     }
 
+    /// The drain (WP-2.7): every service stops its intake first, in reverse order and without
+    /// waiting, so no listener still accepts while another drains; then each finishes what it has
+    /// in flight, in reverse order, against the one `deadline`. Returns what did not finish.
+    async fn drain_services(
+        &self,
+        context: &ServerContext<'_>,
+        deadline: Instant,
+        budget: Instant,
+    ) -> Vec<String> {
+        for service in context.services().iter().rev() {
+            service.stop_intake(context);
+        }
+        transition(
+            context,
+            "server.intake_stopped",
+            COMPONENT,
+            "intake stopped",
+        );
+
+        let mut unfinished = Vec::new();
+        for service in context.services().iter().rev() {
+            let hook_deadline =
+                std::time::Instant::now() + deadline.saturating_duration_since(Instant::now());
+            // The hook cuts what is still open at `deadline` itself and says so; the host's own
+            // cut comes a little later, inside the budget, for a hook that does not.
+            let cut = (deadline + HOOK_CUT_MARGIN).min(budget);
+            match within(cut, service.drain(context, hook_deadline)).await {
+                Some(Ok(permguard_core::Drained::Complete)) => {}
+                Some(Ok(permguard_core::Drained::Incomplete(reason))) => {
+                    warn!(
+                        event.name = "service.drain_incomplete",
+                        component = service.name(),
+                        reason = %reason,
+                        "the service did not finish draining"
+                    );
+                    unfinished.push(format!("{}: {reason}", service.name()));
+                }
+                Some(Err(error)) => {
+                    warn!(
+                        event.name = "service.drain_failed",
+                        component = service.name(),
+                        error = %error,
+                        "the service's drain failed"
+                    );
+                    unfinished.push(format!("{}: {error:#}", service.name()));
+                }
+                None => unfinished.push(format!(
+                    "{}: the drain deadline passed before it finished",
+                    service.name()
+                )),
+            }
+        }
+
+        unfinished
+    }
+
     /// Stops every registered service in the reverse of the order it started them.
     ///
     /// Returns the names of whatever did not finish: a service that failed, and every service the
@@ -231,7 +295,10 @@ impl DefaultServerHost {
                     );
                     unfinished.push(service.name().to_owned());
                 }
-                None => unfinished.push(service.name().to_owned()),
+                None => unfinished.push(format!(
+                    "{}: the shutdown budget ran out before it stopped",
+                    service.name()
+                )),
             }
         }
 
@@ -278,9 +345,15 @@ impl ServerHost for DefaultServerHost {
             transition(context, "server.stopping", COMPONENT, "stopping");
 
             // Every Plane drains with the Host; a failed one stays failed, which is terminal.
-            let deadline = Instant::now() + context.config().shutdown_timeout();
+            // One total budget, aligned with the orchestrator's grace; the drain gets the first
+            // `drain_timeout` of it, the release the rest (WP-2.7).
+            let started = Instant::now();
+            let deadline = started + context.config().shutdown_timeout();
+            let drain_deadline =
+                (started + context.config().shutdown_drain_timeout()).min(deadline);
             self.planes_enter(context, permguard_core::lifecycle::Phase::Draining);
-            let mut unfinished = self.stop_services(context, deadline).await;
+            let mut unfinished = self.drain_services(context, drain_deadline, deadline).await;
+            unfinished.extend(self.stop_services(context, deadline).await);
 
             match within(deadline, context.storage().shutdown()).await {
                 Some(Ok(())) => {}
@@ -296,10 +369,15 @@ impl ServerHost for DefaultServerHost {
                 None => unfinished.push(context.storage().name().to_owned()),
             }
 
-            context
+            let stop_recorded = context
                 .record_audit("server.stop", Subject::System(self.name()))
                 .await
-                .context("recording the server stop event")?;
+                .context("recording the server stop event");
+            // An unrecorded stop is something that did not finish, not a different failure: the
+            // run still ends as an incomplete drain, so the exit status says so.
+            if let Err(error) = stop_recorded {
+                unfinished.push(format!("audit: server.stop unrecorded: {error:#}"));
+            }
 
             // Stopped: the services are down and the store released, whatever did not finish in
             // the budget is named below. The Host goes last, after its Planes.
@@ -346,14 +424,64 @@ impl ServerHost for DefaultServerHost {
             }
 
             if unfinished.is_empty() {
+                state(context, "server.drained", COMPONENT, "drained");
                 return Ok(());
             }
 
-            bail!(
-                "the shutdown budget of {:?} ran out with these still to release: {}",
-                context.config().shutdown_timeout(),
-                unfinished.join(", ")
-            )
+            // Never reported clean: the process exits with the incomplete-drain status, and what
+            // did not finish is named (WP-2.7).
+            warn!(
+                event.name = "server.drain_incomplete",
+                component = COMPONENT,
+                unfinished = %unfinished.join("; "),
+                "the drain did not complete within the shutdown budget"
+            );
+            Err(anyhow::Error::new(permguard_core::IncompleteDrain {
+                unfinished,
+            }))
         })
     }
+}
+
+/// Drains `surfaces` whose intake already stopped (WP-2.7): each finishes its open requests
+/// until `deadline`, and a surface that had to cut requests makes the drain incomplete. For the
+/// services that own listeners.
+pub async fn drain_surfaces(
+    component: &str,
+    surfaces: Vec<permguard_transport::Surface>,
+    deadline: std::time::Instant,
+) -> Result<permguard_core::Drained> {
+    let deadline = Instant::now() + deadline.saturating_duration_since(std::time::Instant::now());
+    let mut cut = Vec::new();
+    for surface in surfaces {
+        let (address, complete) = surface
+            .finish(deadline)
+            .await
+            .with_context(|| format!("draining a {component} listener"))?;
+        if complete {
+            info!(
+                event.name = "surface.drained",
+                component = component,
+                address = %address,
+                "drained"
+            );
+        } else {
+            warn!(
+                event.name = "surface.drain_cut",
+                component = component,
+                address = %address,
+                "the drain deadline cut requests still in flight"
+            );
+            cut.push(address.to_string());
+        }
+    }
+
+    Ok(if cut.is_empty() {
+        permguard_core::Drained::Complete
+    } else {
+        permguard_core::Drained::Incomplete(format!(
+            "requests in flight on {} were cut at the drain deadline",
+            cut.join(", ")
+        ))
+    })
 }

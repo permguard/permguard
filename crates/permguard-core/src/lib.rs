@@ -85,7 +85,10 @@ pub use realm::{
 };
 pub use redact::Masked;
 pub use secrets::{Secret, SecretProvider, SecretRef, SecretStore};
-pub use server::{AuditRecorder, Health, ServerContext, ServerHost, Service};
+pub use server::{
+    AuditRecorder, Drained, EXIT_DRAIN_INCOMPLETE, Health, IncompleteDrain, ServerContext,
+    ServerHost, Service,
+};
 pub use storage::Storage;
 pub use time::Date;
 pub use tls::{TlsSettings, TlsVersion};

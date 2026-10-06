@@ -312,6 +312,48 @@ impl Surface {
         self.address
     }
 
+    /// Stops accepting connections, at once, and lets the ones open finish what they carry:
+    /// the first step of a drain (WP-2.7). Nothing waits here; [`Surface::finish`] waits.
+    pub fn stop_intake(&self) {
+        self.handle.graceful_shutdown(None);
+    }
+
+    /// Waits for the connections still open to finish their requests, until `deadline`; what is
+    /// still open then is cut. Returns the address and whether everything finished: `false` means
+    /// requests were cut at the deadline, which makes the drain incomplete. Stops the intake too,
+    /// for a caller that did not.
+    ///
+    /// When the caller gives up on this future (its own deadline passed), the serving task is left
+    /// to end on its own: the intake is already stopped and the process is about to exit.
+    pub async fn finish(self, deadline: tokio::time::Instant) -> Result<(SocketAddr, bool)> {
+        if let Some(watcher) = self.watcher {
+            watcher.abort();
+        }
+        drop(self.material);
+
+        self.handle.graceful_shutdown(None);
+        let mut task = self.task;
+        let complete = match tokio::time::timeout_at(deadline, &mut task).await {
+            Ok(joined) => {
+                joined.with_context(|| {
+                    format!("waiting for the listener on {} to finish", self.address)
+                })?;
+                true
+            }
+            Err(_) => {
+                // The drain deadline passed with requests still open: they are cut, and the
+                // caller reports the drain incomplete.
+                self.handle.shutdown();
+                task.await.with_context(|| {
+                    format!("waiting for the listener on {} to stop", self.address)
+                })?;
+                false
+            }
+        };
+
+        Ok((self.address, complete))
+    }
+
     /// Stops accepting, lets what is in flight finish within `grace`, and waits for it to be over.
     ///
     /// Waiting is the point. Asking a server to stop and returning immediately reports a shutdown

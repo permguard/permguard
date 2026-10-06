@@ -33,6 +33,14 @@ log:
   level: info
   format: json
 
+# Stopping. `timeout` is the one total budget, set to the orchestrator's grace period
+# (Kubernetes `terminationGracePeriodSeconds`, 30 s by default); `drain_timeout` is the part of it
+# in which intake stops and in-flight work finishes, at least one second shorter, the rest sealing
+# the trail and releasing the volume. A drain that does not complete exits 75 and is never reported clean.
+# shutdown:
+#   timeout: "30s"
+#   drain_timeout: "25s"
+
 # Contracts this build carries whose wire and replication shapes have not yet proven stable.
 # A block rather than scattered flags, so what is provisional is visible in one place.
 experimental:

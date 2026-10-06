@@ -189,8 +189,16 @@ impl Service for TelemetryService {
                 return Ok(());
             };
 
+            // Last of all, after the drain: the probes are how an orchestrator sees readiness go
+            // false, so this listener keeps answering through the drain (WP-2.7) and is given
+            // only what is left of the budget, never a whole one of its own.
             let address = surface
-                .stop(context.config().shutdown_timeout())
+                .stop(
+                    context
+                        .config()
+                        .shutdown_timeout()
+                        .saturating_sub(context.config().shutdown_drain_timeout()),
+                )
                 .await
                 .context("waiting for the telemetry surface to finish")?;
 

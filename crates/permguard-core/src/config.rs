@@ -231,6 +231,11 @@ pub const SETTING_LOG_FORMAT: &str = "PERMGUARD_LOG_FORMAT";
 /// Runtime setting key for how long shutdown is given before the process exits anyway.
 pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 
+/// Runtime setting key for how long a drain may take inside the shutdown budget: intake stops,
+/// in-flight requests finish and every service's drain hook reports, within this (WP-2.7, owner
+/// decision of 2026-10-06).
+pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEOUT";
+
 /// Runtime setting key for where secrets are resolved from.
 pub const SETTING_SECRETS_PROVIDER: &str = "PERMGUARD_SECRETS_PROVIDER";
 
@@ -874,6 +879,15 @@ const DEFAULT_AUDIT_SUBDIRECTORY: &str = "operations/audit";
 /// budget here would be a budget the orchestrator never honours.
 const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Five seconds short of the budget: what is left after the drain seals the trail, releases the
+/// store and gives up the volume lock, which a drain that took the whole budget would never reach.
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(25);
+
+/// The least of the budget the drain must leave: sealing the trail, releasing the store and the
+/// volume lock are not instant, and a drain that left nothing would leave them to the orchestrator's
+/// kill.
+const MIN_SHUTDOWN_RELEASE: Duration = Duration::from_secs(1);
+
 /// Where a deployment that says nothing keeps everything.
 ///
 /// Relative on purpose: it resolves beside whatever started the process, which for a developer is the
@@ -1038,6 +1052,7 @@ pub struct Config {
     tls_reload_interval: Duration,
     limits: Limits,
     shutdown_timeout: Duration,
+    shutdown_drain_timeout: Duration,
     secrets_provider: SecretProvider,
     secrets_directory: Option<String>,
     secrets_env_prefix: String,
@@ -1200,6 +1215,7 @@ impl Default for Config {
             tls_reload_interval: DEFAULT_TLS_RELOAD_INTERVAL,
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
+            shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
             secrets_provider: SecretProvider::None,
             secrets_directory: None,
             secrets_env_prefix: "PERMGUARD_SECRET".to_owned(),
@@ -1650,6 +1666,7 @@ produce: use `EdDSA` or `ES256`"
         }
 
         self.validate_development()?;
+        self.validate_shutdown()?;
         self.validate_admin_advertised_url()?;
         self.validate_admin_access()?;
         self.validate_key_lifecycle()?;
@@ -1686,6 +1703,22 @@ produce: use `EdDSA` or `ES256`"
     /// exactly right on a laptop and never right anywhere else, and the difference must not be one
     /// variable away from being wrong — so it takes two, and the second one is the one an operator
     /// reads in the log and in the banner.
+    /// The drain runs inside the shutdown budget and must leave part of it: sealing the trail,
+    /// releasing the store and the volume lock come after it, and a drain allowed the whole budget
+    /// would leave the orchestrator to kill the process before any of that.
+    fn validate_shutdown(&self) -> Result<()> {
+        if self.shutdown_drain_timeout + MIN_SHUTDOWN_RELEASE > self.shutdown_timeout {
+            bail!(
+                "`shutdown.drain_timeout` ({:?}) leaves less than {:?} of `shutdown.timeout` ({:?}): \
+                 the drain runs inside the shutdown budget and has to leave time to seal and release",
+                self.shutdown_drain_timeout,
+                MIN_SHUTDOWN_RELEASE,
+                self.shutdown_timeout
+            );
+        }
+        Ok(())
+    }
+
     fn validate_development(&self) -> Result<()> {
         if self.autogenerate && !self.development_mode {
             bail!(
@@ -2398,9 +2431,16 @@ produce: use `EdDSA` or `ES256`"
         })
     }
 
-    /// Returns how long shutdown is given before the process exits anyway.
+    /// Returns how long shutdown is given before the process exits anyway: the one total budget,
+    /// to be aligned with the orchestrator's grace period.
     pub fn shutdown_timeout(&self) -> Duration {
         self.shutdown_timeout
+    }
+
+    /// Returns how long the drain may take inside [`Config::shutdown_timeout`]: intake stopped,
+    /// in-flight requests finished, every drain hook reported. Strictly shorter than the budget.
+    pub fn shutdown_drain_timeout(&self) -> Duration {
+        self.shutdown_drain_timeout
     }
 
     /// Keeps a parsed section a build added, replacing any section of the same type.
@@ -3451,6 +3491,11 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_TIMEOUT}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
+            self.shutdown_drain_timeout = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
         if let Some(value) = settings.get(SETTING_SECRETS_PROVIDER) {
             self.secrets_provider = value
                 .parse()
@@ -4410,6 +4455,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_SECRETS_DIRECTORY,
     SETTING_SECRETS_ENV_PREFIX,
     SETTING_SECRETS_PROVIDER,
+    SETTING_SHUTDOWN_DRAIN_TIMEOUT,
     SETTING_SHUTDOWN_TIMEOUT,
     SETTING_TELEMETRY_ADDR,
     SETTING_TELEMETRY_ADVERTISED_URL,

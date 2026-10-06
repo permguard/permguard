@@ -429,6 +429,36 @@ impl Service for PlaneService {
         })
     }
 
+    fn stop_intake(&self, _context: &ServerContext<'_>) {
+        if let Ok(running) = self.running.lock() {
+            for surface in running.iter() {
+                surface.stop_intake();
+            }
+        }
+    }
+
+    fn drain<'a>(
+        &'a self,
+        _context: &'a ServerContext<'a>,
+        deadline: std::time::Instant,
+    ) -> BoxFuture<'a, Result<permguard_core::Drained>> {
+        let surfaces = match self.running.lock() {
+            Ok(mut running) => std::mem::take(&mut *running),
+            Err(_) => {
+                return ready(Err(anyhow!(
+                    "the {} surface lock is poisoned",
+                    self.module.description()
+                )));
+            }
+        };
+
+        Box::pin(crate::host::drain_surfaces(
+            self.module.component(),
+            surfaces,
+            deadline,
+        ))
+    }
+
     fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         let surfaces = match self.running.lock() {
             Ok(mut running) => std::mem::take(&mut *running),
@@ -786,6 +816,20 @@ impl Service for SelectedService {
             }
 
             Ok(())
+        })
+    }
+
+    fn drain<'a>(
+        &'a self,
+        context: &'a ServerContext<'a>,
+        deadline: std::time::Instant,
+    ) -> BoxFuture<'a, Result<permguard_core::Drained>> {
+        if !plane_enabled(context.config(), self.plane) {
+            return Box::pin(std::future::ready(Ok(permguard_core::Drained::Complete)));
+        }
+        Box::pin(async move {
+            let plane_context = PlaneContext::new(context, self.plane);
+            self.inner.drain(&plane_context, deadline).await
         })
     }
 

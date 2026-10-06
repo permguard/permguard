@@ -347,6 +347,43 @@ fn test_the_shutdown_budget_defaults_to_what_kubernetes_gives_a_pod() {
 }
 
 #[test]
+fn test_the_drain_takes_part_of_the_budget_and_never_all_of_it() {
+    let defaults = config(&[], &[], &[]);
+    assert_eq!(defaults.shutdown_drain_timeout(), Duration::from_secs(25));
+    assert!(defaults.shutdown_drain_timeout() < defaults.shutdown_timeout());
+
+    let set = config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443"),
+            (SETTING_SHUTDOWN_TIMEOUT, "60s"),
+            (SETTING_SHUTDOWN_DRAIN_TIMEOUT, "50s"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(set.shutdown_drain_timeout(), Duration::from_secs(50));
+    set.validate().expect("a drain inside the budget validates");
+
+    for drain in ["30s", "45s", "29500ms"] {
+        let refused = config(
+            &[
+                (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443"),
+                (SETTING_SHUTDOWN_DRAIN_TIMEOUT, drain),
+            ],
+            &[],
+            &[],
+        );
+        let error = refused
+            .validate()
+            .expect_err("a drain as long as the budget leaves nothing to release with");
+        assert!(
+            format!("{error}").contains("shutdown.drain_timeout"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn test_a_shutdown_budget_is_read_in_seconds_minutes_or_hours() {
     let cases = [("45", 45), ("45s", 45), ("2m", 120), ("1h", 3600)];
 

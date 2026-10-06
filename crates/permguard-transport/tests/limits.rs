@@ -641,3 +641,51 @@ async fn test_a_request_head_over_the_byte_bound_is_refused() {
         .await
         .expect("the surface stops");
 }
+
+/// The first step of a drain (WP-2.7): once the intake stops, a new connection is not served,
+/// while one already carrying a request finishes it before `finish` returns.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_stopped_intake_serves_no_new_connection_and_finishes_the_open_one() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let router = axum::Router::new().route(
+        "/slow",
+        axum::routing::get(|| async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            "done"
+        }),
+    );
+    let surface = permguard_transport::Surface::listener("test", "127.0.0.1:0", router)
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+    let ask = move || async move {
+        let mut stream = tokio::net::TcpStream::connect(address).await?;
+        stream
+            .write_all(b"GET /slow HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await?;
+        let mut said = Vec::new();
+        stream.read_to_end(&mut said).await?;
+        Ok::<_, std::io::Error>(String::from_utf8_lossy(&said).into_owned())
+    };
+
+    let open = tokio::spawn(ask());
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    surface.stop_intake();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let late = ask().await;
+    assert!(
+        late.as_ref().map_or(true, |said| !said.contains("done")),
+        "a connection after the intake stopped is not served: {late:?}"
+    );
+
+    let (_, complete) = surface
+        .finish(tokio::time::Instant::now() + std::time::Duration::from_secs(5))
+        .await
+        .expect("the listener finishes");
+    assert!(complete, "the open request finished within the deadline");
+    let answered = open.await.expect("joined").expect("answered");
+    assert!(answered.ends_with("done"), "{answered}");
+}

@@ -629,7 +629,7 @@ impl App {
             Err(error) => {
                 eprintln!("{}: {error:#}", self.identity.binary_name());
 
-                ExitCode::FAILURE
+                exit_code_of(&error)
             }
         }
     }
@@ -1329,6 +1329,20 @@ impl App {
 
         Ok(())
     }
+}
+
+/// The exit status of a failed run: an incomplete drain is its own status, `75`, so an
+/// orchestrator never reads it as clean and never as an ordinary failure; anything else is `1`.
+pub fn exit_code_of(error: &anyhow::Error) -> ExitCode {
+    if error.chain().any(|cause| {
+        cause
+            .downcast_ref::<permguard_core::IncompleteDrain>()
+            .is_some()
+    }) {
+        return ExitCode::from(permguard_core::EXIT_DRAIN_INCOMPLETE);
+    }
+
+    ExitCode::FAILURE
 }
 
 /// Records a new claim generation on the volume at `root`, as the orchestrator or the operator asks.

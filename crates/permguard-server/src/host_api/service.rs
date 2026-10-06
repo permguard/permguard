@@ -109,6 +109,30 @@ impl Service for HostApiService {
         })
     }
 
+    fn stop_intake(&self, _context: &ServerContext<'_>) {
+        if let Ok(running) = self.running.lock()
+            && let Some(surface) = running.as_ref()
+        {
+            surface.stop_intake();
+        }
+    }
+
+    fn drain<'a>(
+        &'a self,
+        _context: &'a ServerContext<'a>,
+        deadline: std::time::Instant,
+    ) -> BoxFuture<'a, Result<permguard_core::Drained>> {
+        let surface = match self.running.lock() {
+            Ok(mut running) => running.take(),
+            Err(_) => return ready(Err(anyhow!("the Host listener lock is poisoned"))),
+        };
+        Box::pin(crate::host::drain_surfaces(
+            COMPONENT,
+            surface.into_iter().collect(),
+            deadline,
+        ))
+    }
+
     fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         let surface = match self.running.lock() {
             Ok(mut running) => running.take(),

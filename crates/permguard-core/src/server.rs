@@ -474,6 +474,41 @@ impl<'a> ServerContext<'a> {
     }
 }
 
+/// The exit status of a process whose drain did not complete (WP-2.7, owner decision of
+/// 2026-10-06): `EX_TEMPFAIL`, a temporary failure the same identity recovers from on its next
+/// start. A clean drain exits `0`; every other failure of the server keeps `1`.
+pub const EXIT_DRAIN_INCOMPLETE: u8 = 75;
+
+/// What a service's drain hook reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Drained {
+    /// Everything the service held finished within the drain deadline.
+    Complete,
+    /// Something did not: requests cut at the deadline, work left unshipped. The process exits
+    /// with [`EXIT_DRAIN_INCOMPLETE`] and never reports a clean drain.
+    Incomplete(String),
+}
+
+/// The error a host returns when the drain or the release did not complete within the budget:
+/// what the process exit status is chosen from. Every unfinished part is named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncompleteDrain {
+    /// What did not finish, by service or collaborator, with the reason.
+    pub unfinished: Vec<String>,
+}
+
+impl std::fmt::Display for IncompleteDrain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the drain did not complete within the shutdown budget: {}",
+            self.unfinished.join("; ")
+        )
+    }
+}
+
+impl std::error::Error for IncompleteDrain {}
+
 /// One surface the server exposes — an admin API, a discovery endpoint, anything with a lifecycle.
 ///
 /// A service reads its own settings off the context's configuration, so adding one needs no change to
@@ -489,11 +524,33 @@ pub trait Service: Send + Sync {
     /// Brings the service up, or reports why it could not come up.
     fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>>;
 
+    /// Stops taking new work, at once and without waiting: a listener stops accepting
+    /// connections. The host calls it on every service, in reverse order, before any drain waits,
+    /// so no listener still accepts while another drains (WP-2.7). A service with no intake keeps
+    /// the default.
+    fn stop_intake(&self, context: &ServerContext<'_>) {
+        let _ = context;
+    }
+
+    /// Finishes the work in flight before `deadline`, the drain deadline: in-flight requests
+    /// complete, and work cut at the deadline is reported [`Drained::Incomplete`]. Called after
+    /// every service's intake stopped, in reverse order. `TODO(WP-5.8)`: stream producers ship to
+    /// their required subscriptions here and report `unshipped` when they cannot.
+    fn drain<'a>(
+        &'a self,
+        context: &'a ServerContext<'a>,
+        deadline: std::time::Instant,
+    ) -> BoxFuture<'a, Result<Drained>> {
+        let _ = (context, deadline);
+
+        ready(Ok(Drained::Complete))
+    }
+
     /// Takes the service down, or reports why it could not go down cleanly.
     ///
-    /// The host stops services in the reverse of the order it started them, so a service may assume
-    /// everything registered after it is already down. A service with nothing to release keeps the
-    /// default.
+    /// The host stops services in the reverse of the order it started them, after every drain, so
+    /// a service may assume everything registered after it is already down. A service with nothing
+    /// to release keeps the default.
     fn stop<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
         let _ = context;
 
