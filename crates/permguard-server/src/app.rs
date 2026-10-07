@@ -946,6 +946,11 @@ impl App {
             None => config,
         };
 
+        // A `PERMGUARD_*` variable no setting reads is a typo or a retired name: refused by name
+        // rather than ignored (WP-2.9). After the realms, whose secret prefixes it exempts.
+        let names: Vec<String> = env::vars().map(|(name, _)| name).collect();
+        config.check_environment(names.iter().map(String::as_str))?;
+
         for check in &self.startup_checks {
             check(&config)?;
         }
@@ -1267,7 +1272,7 @@ impl App {
                 assurance: Assurance::of(
                     &config.assurance().report(&config.relaxations_in_force()),
                 ),
-                effective: Effective::from_supplied(config.supplied_settings()),
+                effective: Effective::of(config.effective_settings()),
                 trail: audit.name().to_owned(),
                 recorder: Some(self.recorder(&audit, pseudonymizer.as_ref())),
             });

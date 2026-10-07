@@ -23,7 +23,9 @@ is cut.
   The `admin` section, which was read and refused, is now the Host listener: `/host/v1` and `permguard.host.v1` on one port, over TLS, with `admin.tls` and `admin.allow` as before.
   It serves the grants: `GET` and `POST /host/v1/grants`, then the two-step `revoke/plan` and `revoke/run`.
   It serves the key rings (`GET /host/v1/keys`, and the public `GET /host/v1/keys/{ring}`), the lifecycle (`GET /host/v1/status`) and the effective configuration (`GET /host/v1/config/effective`).
-  Identity, ring bindings and the configuration journal answer `not_served_yet` until their packages.
+  `GET /host/v1/config/effective` lists every setting the build reads with the value in force, its origin (`default`, `file`, `environment`, `command_line`) and its class: `startup` for what may differ between replicas sharing one file (binds, the volume and its directories, TLS files, key references, instance ids), `static` for the rest, the experimental switches included.
+  `GET /host/v1/config/revisions` lists the changes the Host's dynamic journals recorded, newest first: the grant journal today.
+  Identity and ring bindings answer `not_served_yet` until their packages.
   Every mutation carries a `request_id`; a retry inside ten minutes returns the stored answer, across a restart, from `host/state/replay/` on the volume.
   Every route decides with the Host's grants, under `authz.admin`, `lifecycle.read`, `keys.read`, `config.read` and `identity.read`.
   The last four operations are new to the grant registry.
@@ -32,6 +34,12 @@ is cut.
 
 ### Changed
 
+- **A `PERMGUARD_*` environment variable no setting reads fails startup.**
+  A typo or a retired name used to be ignored, so the default stayed in force without a word; the server now refuses to start and names the variable.
+  `PERMGUARD_BUILD_*` and `PERMGUARD_COPYRIGHT_*`, read when the binary is built, are exempt, as are the experimental runtime switches and the settings a Plane declares.
+  The variables the `environment` secret provider resolves pass too: anything under `secrets.env_prefix` (`PERMGUARD_SECRET_` by default) or under a realm's prefix.
+  The CLI's own `PERMGUARD_*` variables and the installer's `PERMGUARD_VERIFY` are not server settings: exported where the server starts, they are refused.
+  Variables the lab's compose file and Makefile interpolate on the host (`PERMGUARD_GRAFANA_PORT`, `PERMGUARD_CONTROL_HOST_IP` and the like) never reach the server container; exported in a shell that then runs the server directly, they are refused the same way.
 - **`admin.addr` requires TLS, and a client CA unless it is a loopback bind in development.**
   A configuration that named `admin.addr` without `admin.tls` used to be refused because nothing served it; it is now refused because the Host listener never serves in the clear.
   A bind reachable from outside the host demands `admin.tls.client_ca` whatever `development_mode` says, where a loopback bind alone used to be enough.

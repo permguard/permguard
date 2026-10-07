@@ -415,13 +415,31 @@ message GetEffectiveConfigResponse {
 // One effective setting, its value masked when the key names a secret.
 message Setting {
   string key = 1;
-  string value = 2;
+  // The value in force, the mask for a secret; absent when unset with no default.
+  optional string value = 2;
   bool masked = 3;
-  // `file`, `environment` or `command_line`.
+  // `default` (the image's), `file`, `environment` or `command_line`.
   string origin = 4;
+  // `startup` (varies per instance) or `static` (one file for every instance).
+  string class = 5;
 }
 message ListConfigRevisionsRequest {}
-message ListConfigRevisionsResponse {}
+message ListConfigRevisionsResponse {
+  // Newest first.
+  repeated ConfigRevision revisions = 1;
+}
+
+// One transition of a dynamic Host journal.
+message ConfigRevision {
+  // `grants` today.
+  string journal = 1;
+  uint64 revision = 2;
+  string operation = 3;
+  string target = 4;
+  // RFC 3339.
+  string at = 5;
+  string by = 6;
+}
 message PrepareBackupRequest {}
 message PrepareBackupResponse {}
 message FinalizeBackupRequest {}

@@ -721,8 +721,18 @@
       "get": {
         "operationId": "listConfigRevisions",
         "summary": "The dynamic configuration journal",
-        "description": "Under `config.read` on the Host. Served as `not_served_yet` by this build: the static configuration is revision `0` and nothing changes it at runtime yet.",
+        "description": "Under `config.read` on the Host. The transitions of the Host's dynamic journals, newest first: the grants today, memberships and key actions with their packages (owner decision, 2026-10-07).",
         "responses": {
+          "200": {
+            "description": "The transitions, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigRevisions"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
             "headers": {
@@ -751,7 +761,7 @@
             }
           },
           "503": {
-            "description": "Under `config.read`; the dynamic journal arrives with the configuration packages (`not_served_yet`), or the principal is over its bound.",
+            "description": "No grant store is open, the journal cannot be read (`unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1602,8 +1612,11 @@
             "x-grpc-field": "key"
           },
           "value": {
-            "type": "string",
-            "description": "Its value, or `********` when the key names a secret.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its value in force, or `********` when the key names a secret; `null` when unset with no default.",
             "x-grpc-field": "value"
           },
           "masked": {
@@ -1614,19 +1627,30 @@
           "origin": {
             "type": "string",
             "enum": [
+              "default",
               "file",
               "environment",
               "command_line"
             ],
-            "description": "The layer the value came from.",
+            "description": "The layer the value came from; `default` when no layer supplied it and the image default is in force.",
             "x-grpc-field": "origin"
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "startup",
+              "static"
+            ],
+            "description": "`startup`: varies per instance (binds, volume paths, TLS bootstrap, secret references, instance ids); `static`: one file for every instance (WP-2.9).",
+            "x-grpc-field": "class"
           }
         },
         "required": [
           "key",
           "value",
           "masked",
-          "origin"
+          "origin",
+          "class"
         ],
         "additionalProperties": false,
         "description": "One effective setting with the layer it came from, secrets masked.",
@@ -1646,7 +1670,7 @@
             "items": {
               "$ref": "#/components/schemas/Setting"
             },
-            "description": "Every setting a layer supplied.",
+            "description": "Every setting this build reads, supplied or default, secrets masked.",
             "x-grpc-field": "settings"
           }
         },
@@ -1657,6 +1681,73 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/config/effective` answers.",
         "x-grpc-message": "permguard.host.v1.GetEffectiveConfigResponse"
+      },
+      "ConfigRevision": {
+        "type": "object",
+        "properties": {
+          "journal": {
+            "type": "string",
+            "description": "The dynamic Host journal: `grants` today; memberships and key actions with their packages.",
+            "x-grpc-field": "journal"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The journal revision the transition produced.",
+            "x-grpc-field": "revision"
+          },
+          "operation": {
+            "type": "string",
+            "description": "`issue`, `revoke` or `expire` for the grants.",
+            "x-grpc-field": "operation"
+          },
+          "target": {
+            "type": "string",
+            "description": "What the transition is about: a grant id.",
+            "x-grpc-field": "target"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When, RFC 3339.",
+            "x-grpc-field": "at"
+          },
+          "by": {
+            "type": "string",
+            "description": "Who made it.",
+            "x-grpc-field": "by"
+          }
+        },
+        "required": [
+          "journal",
+          "revision",
+          "operation",
+          "target",
+          "at",
+          "by"
+        ],
+        "additionalProperties": false,
+        "description": "One transition of a dynamic Host journal.",
+        "x-grpc-message": "permguard.host.v1.ConfigRevision"
+      },
+      "ConfigRevisions": {
+        "type": "object",
+        "properties": {
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigRevision"
+            },
+            "description": "Newest first.",
+            "x-grpc-field": "revisions"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/config/revisions` answers: the transitions of the Host's dynamic journals (WP-2.9).",
+        "x-grpc-message": "permguard.host.v1.ListConfigRevisionsResponse"
       }
     }
   },
@@ -1698,12 +1789,7 @@
     },
     {
       "message": "permguard.host.v1.ListConfigRevisionsRequest",
-      "note": "an empty request; the journal is shaped by the configuration packages",
-      "fields": []
-    },
-    {
-      "message": "permguard.host.v1.ListConfigRevisionsResponse",
-      "note": "empty until the configuration packages define the dynamic journal; the rpc answers `not_served_yet`",
+      "note": "an empty request",
       "fields": []
     }
   ]

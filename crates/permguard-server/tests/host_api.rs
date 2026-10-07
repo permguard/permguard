@@ -49,6 +49,9 @@ const MINTED: &[&str] = &[
     "plan_id",
     "plan_digest",
     "expires",
+    // A revision names the grant it is about and the second it happened.
+    "target",
+    "at",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -872,6 +875,7 @@ fn schema_of(case: &str) -> &'static str {
         "read the operations ring" => "KeyRing",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
+        "read the configuration revisions" => "ConfigRevisions",
         other => panic!("`{other}` answered and names no schema"),
     }
 }
@@ -948,7 +952,8 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     .await;
     assert!(conflict.get("revision").is_some(), "{conflict}");
     document.check_json("HostWireError", &conflict);
-    let refused = raw("GET", "/host/v1/config/revisions", Some(ADMIN), None).await;
+    // A `not_served_yet` body: the identity route answers it until WP-2.2.
+    let refused = raw("GET", "/host/v1/identity", Some(ADMIN), None).await;
     document.check_json("HostWireError", &refused);
     let denied = raw("GET", "/host/v1/status", None, None).await;
     common.check_json("WireDenial", &denied);
@@ -1048,9 +1053,14 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         refused("read an unknown ring"),
         ("not_found".to_owned(), host::RING_UNKNOWN.to_owned())
     );
-    assert_eq!(
-        refused("read the configuration revisions"),
-        ("unavailable".to_owned(), host::NOT_SERVED_YET.to_owned())
+    assert!(
+        matches!(
+            steps
+                .iter()
+                .find(|(name, _)| *name == "read the configuration revisions"),
+            Some((_, Outcome::Answered(_)))
+        ),
+        "the revisions are served (WP-2.9)"
     );
     assert_eq!(
         refused("read the identity"),

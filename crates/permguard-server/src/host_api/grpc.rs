@@ -406,6 +406,7 @@ impl OperationsService for Served {
                     value: setting.value,
                     masked: setting.masked,
                     origin: setting.origin,
+                    class: setting.class,
                 })
                 .collect(),
         }))
@@ -416,10 +417,24 @@ impl OperationsService for Served {
         request: Request<v1::ListConfigRevisionsRequest>,
     ) -> Answer<v1::ListConfigRevisionsResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
-        match self.api.config_revisions(&actor) {
-            Ok(never) => match never {},
-            Err(refusal) => Err(self.refuse(refusal)),
-        }
+        let listed = self
+            .api
+            .config_revisions(&actor)
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::ListConfigRevisionsResponse {
+            revisions: listed
+                .revisions
+                .into_iter()
+                .map(|revision| v1::ConfigRevision {
+                    journal: revision.journal,
+                    revision: revision.revision,
+                    operation: revision.operation,
+                    target: revision.target,
+                    at: revision.at,
+                    by: revision.by,
+                })
+                .collect(),
+        }))
     }
 
     async fn prepare_backup(

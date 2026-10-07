@@ -317,6 +317,13 @@ impl PeerBlock {
     }
 }
 
+impl fmt::Display for PeerBlock {
+    /// `address/prefix`, as a configuration writes it.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.address, self.prefix)
+    }
+}
+
 impl FromStr for PeerBlock {
     type Err = InvalidPeerBlock;
 

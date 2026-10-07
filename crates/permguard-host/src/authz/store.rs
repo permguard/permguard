@@ -552,6 +552,70 @@ const fn source_marker() -> [u8; 32] {
     marker
 }
 
+/// One transition of the grant journal, as `GET /host/v1/config/revisions` lists it (WP-2.9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    /// The store revision the transition produced.
+    pub revision: u64,
+    /// `issue`, `revoke` or `expire`.
+    pub operation: &'static str,
+    pub grant_id: GrantId,
+    /// Seconds since the epoch.
+    pub at: u64,
+    /// The principal or process that made it.
+    pub by: String,
+}
+
+impl GrantStore {
+    /// Every transition the journal holds, oldest first: the journal is the truth and holds tens
+    /// of records, so it is read whole from disk, under the journal lock, on every call. A
+    /// `config.read` principal can repeat that at will; cache behind the store revision if a
+    /// journal ever grows past tens.
+    pub fn history(&self) -> Result<Vec<Change>, AuthzError> {
+        let journal = self
+            .journal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let frames = journal.frames()?;
+        drop(journal);
+        let mut changes = Vec::with_capacity(frames.len());
+        for frame in frames {
+            changes.push(match frame.kind {
+                FRAME_ISSUE => {
+                    let record = GrantRecord::decode(&frame.payload)?;
+                    Change {
+                        revision: record.revision,
+                        operation: "issue",
+                        grant_id: record.grant_id,
+                        at: record.issued_at,
+                        by: record.issued_by,
+                    }
+                }
+                FRAME_REVOKE | FRAME_EXPIRE => {
+                    let transition = Transition::decode(&frame.payload)?;
+                    Change {
+                        revision: transition.revision,
+                        operation: if frame.kind == FRAME_REVOKE {
+                            "revoke"
+                        } else {
+                            "expire"
+                        },
+                        grant_id: transition.grant_id,
+                        at: transition.at,
+                        by: transition.by,
+                    }
+                }
+                other => {
+                    return Err(AuthzError::Storage(StorageError::Corruption(format!(
+                        "the grant journal holds a frame of unknown kind {other}"
+                    ))));
+                }
+            });
+        }
+        Ok(changes)
+    }
+}
+
 fn apply(state: &mut State, kind: u16, payload: &[u8]) -> Result<(), AuthzError> {
     match kind {
         FRAME_ISSUE => {

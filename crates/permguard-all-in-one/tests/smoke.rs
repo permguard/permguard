@@ -9,8 +9,16 @@
 
 use std::process::Command;
 
+/// The binary, without the `PERMGUARD_*` variables of the shell that runs the tests: the server
+/// refuses one it does not read (WP-2.9), and a developer's stray export is not what a test tests.
 fn binary() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_permguard-all-in-one"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_permguard-all-in-one"));
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().starts_with("PERMGUARD_") {
+            command.env_remove(name);
+        }
+    }
+    command
 }
 
 #[test]
@@ -41,6 +49,35 @@ fn a_missing_configuration_file_is_a_clean_refusal_not_a_panic() {
     assert!(!output.status.success());
     let text = String::from_utf8_lossy(&output.stderr);
     assert!(!text.contains("panicked"), "{text}");
+}
+
+/// WP-2.9: a `PERMGUARD_*` variable no setting reads — a typo, a retired name — fails startup by
+/// name instead of being ignored.
+#[test]
+fn an_unknown_permguard_variable_fails_startup_by_name() {
+    let dir = std::env::temp_dir().join(format!(
+        "permguard-all-in-one-unknown-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+    std::fs::write(
+        dir.join("config.yml"),
+        "assurance:\n  profile: development\n",
+    )
+    .expect("the configuration is written");
+
+    let output = binary()
+        .arg(dir.join("config.yml"))
+        .env("PERMGUARD_SHUTDOWN_TIMOUT", "10s")
+        .output()
+        .expect("the binary runs");
+
+    assert!(!output.status.success(), "{output:?}");
+    let text = String::from_utf8_lossy(&output.stderr);
+    assert!(text.contains("PERMGUARD_SHUTDOWN_TIMOUT"), "{text}");
+    assert!(!text.contains("panicked"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

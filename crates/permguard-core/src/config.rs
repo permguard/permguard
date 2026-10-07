@@ -1370,7 +1370,10 @@ impl Config {
             (SettingOrigin::CommandLine, layers.command_line),
         ] {
             for (key, value) in &pairs {
-                if !value.is_empty() && is_known_setting(key, &config.declared) {
+                if !value.is_empty()
+                    && (is_known_setting(key, &config.declared)
+                        || experimental_setting_name(key).is_some())
+                {
                     config.origins.insert(key.clone(), (value.clone(), origin));
                 }
             }
@@ -3266,6 +3269,285 @@ produce: use `EdDSA` or `ES256`"
         self.declared.iter().map(String::as_str)
     }
 
+    /// Every setting this build reads, in force (WP-2.9, owner decision of 2026-10-07): a
+    /// supplied one with its value and origin, the others with the image default rendered; a
+    /// setting a build declared and no layer supplied carries no value, its default being the
+    /// declaring crate's. The caller masks what is secret.
+    pub fn effective_settings(&self) -> Vec<EffectiveSetting> {
+        let mut keys: BTreeSet<&str> = CORE_SETTINGS.iter().copied().collect();
+        keys.extend(self.declared.iter().map(String::as_str));
+        keys.extend(self.origins.keys().map(String::as_str));
+        keys.into_iter()
+            .map(|key| {
+                let supplied = self.origins.get(key);
+                EffectiveSetting {
+                    key: key.to_owned(),
+                    value: supplied
+                        .map(|(value, _)| value.clone())
+                        .or_else(|| self.setting_in_force(key)),
+                    origin: supplied.map(|(_, origin)| *origin),
+                    class: setting_class(key),
+                }
+            })
+            .collect()
+    }
+
+    /// The value in force of core setting `key`, rendered as a configuration writes it.
+    fn setting_in_force(&self, key: &str) -> Option<String> {
+        fn b(value: bool) -> Option<String> {
+            Some(value.to_string())
+        }
+        fn n(value: impl ToString) -> Option<String> {
+            Some(value.to_string())
+        }
+        fn d(value: Duration) -> Option<String> {
+            Some(if value.subsec_nanos() == 0 {
+                format!("{}s", value.as_secs())
+            } else {
+                format!("{}ms", value.as_millis())
+            })
+        }
+        fn list(values: impl Iterator<Item = String>) -> Option<String> {
+            let values: Vec<String> = values.collect();
+            (!values.is_empty()).then(|| values.join(","))
+        }
+        // An allow list is one peer per line: a subject's DN carries commas.
+        fn lines(values: impl Iterator<Item = String>) -> Option<String> {
+            let values: Vec<String> = values.collect();
+            (!values.is_empty()).then(|| values.join("\n"))
+        }
+        if let Some(name) = experimental_setting_name(key) {
+            return b(self.experimental_enabled(&name));
+        }
+        match key {
+            SETTING_VERSION => Some(self.version.clone()),
+            SETTING_COPYRIGHT_YEAR => Some(self.copyright_year.clone()),
+            SETTING_COPYRIGHT_HOLDER => Some(self.copyright_holder.clone()),
+            SETTING_WORKING_DIR => Some(self.working_dir().display().to_string()),
+            SETTING_AUTOGENERATE => b(self.autogenerate),
+            SETTING_DEVELOPMENT_MODE => b(self.development_mode),
+            SETTING_ISSUER => self.issuer.clone(),
+            SETTING_PUBLIC_PATH_PREFIX => Some(self.public_path_prefix.clone()),
+            SETTING_PUBLIC_HTTP_ENABLED => b(self.public_http_enabled),
+            SETTING_PUBLIC_HTTP_ADDR => self.public_http_addr.clone(),
+            SETTING_PUBLIC_GRPC_ENABLED => b(self.public_grpc_enabled),
+            SETTING_PUBLIC_GRPC_ADDR => self.public_grpc_addr.clone(),
+            SETTING_TELEMETRY_ADDR => self.telemetry_addr.clone(),
+            SETTING_TELEMETRY_ADVERTISED_URL => self.telemetry_advertised_url.clone(),
+            SETTING_ADMIN_ADDR => self.admin_addr.clone(),
+            SETTING_ADMIN_ADVERTISED_URL => self.admin_advertised_url.clone(),
+            SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
+            SETTING_PUBLIC_DISCLOSE_BUILD => b(self.disclose_build),
+            SETTING_PUBLIC_ERROR_DETAIL => Some(self.error_detail().as_str().to_owned()),
+            SETTING_LOG_LEVEL => Some(self.log_level.as_str().to_owned()),
+            SETTING_LOG_FORMAT => Some(self.log_format.as_str().to_owned()),
+            SETTING_PUBLIC_TLS_CERT => self
+                .public_tls
+                .as_ref()
+                .map(|tls| tls.certificate().display().to_string()),
+            SETTING_PUBLIC_TLS_KEY => self
+                .public_tls
+                .as_ref()
+                .map(|tls| tls.key().display().to_string()),
+            SETTING_PUBLIC_TLS_CLIENT_CA => self
+                .public_tls
+                .as_ref()
+                .and_then(|tls| tls.client_ca().map(|p| p.display().to_string())),
+            SETTING_PUBLIC_TLS_CRL => self
+                .public_tls
+                .as_ref()
+                .and_then(|tls| tls.crl().map(|p| p.display().to_string())),
+            SETTING_PUBLIC_TLS_MIN_VERSION => self
+                .public_tls
+                .as_ref()
+                .map(|tls| tls.min_version().as_str().to_owned()),
+            SETTING_PUBLIC_TLS_ALLOW => self
+                .public_tls
+                .as_ref()
+                .and_then(|tls| lines(tls.allow().iter().map(ToString::to_string))),
+            SETTING_ADMIN_TLS_CERT => self
+                .admin_tls
+                .as_ref()
+                .map(|tls| tls.certificate().display().to_string()),
+            SETTING_ADMIN_TLS_KEY => self
+                .admin_tls
+                .as_ref()
+                .map(|tls| tls.key().display().to_string()),
+            SETTING_ADMIN_TLS_CLIENT_CA => self
+                .admin_tls
+                .as_ref()
+                .and_then(|tls| tls.client_ca().map(|p| p.display().to_string())),
+            SETTING_ADMIN_TLS_CRL => self
+                .admin_tls
+                .as_ref()
+                .and_then(|tls| tls.crl().map(|p| p.display().to_string())),
+            SETTING_ADMIN_TLS_MIN_VERSION => self
+                .admin_tls
+                .as_ref()
+                .map(|tls| tls.min_version().as_str().to_owned()),
+            SETTING_TELEMETRY_TLS_CERT => self
+                .telemetry_tls
+                .as_ref()
+                .map(|tls| tls.certificate().display().to_string()),
+            SETTING_TELEMETRY_TLS_KEY => self
+                .telemetry_tls
+                .as_ref()
+                .map(|tls| tls.key().display().to_string()),
+            SETTING_TELEMETRY_TLS_MIN_VERSION => self
+                .telemetry_tls
+                .as_ref()
+                .map(|tls| tls.min_version().as_str().to_owned()),
+            SETTING_TLS_RELOAD => b(self.tls_reload),
+            SETTING_TLS_RELOAD_INTERVAL => d(self.tls_reload_interval),
+            SETTING_LIMITS_CONNECTIONS => n(self.limits.connections()),
+            SETTING_LIMITS_CONNECTIONS_PER_PEER => n(self.limits.connections_per_peer()),
+            SETTING_LIMITS_PEER_EXEMPT => {
+                list(self.limits.peer_exempt().iter().map(ToString::to_string))
+            }
+            SETTING_LIMITS_CONNECTION_LIFETIME => self.limits.connection_lifetime().and_then(d),
+            SETTING_LIMITS_WRITE_STALL_TIMEOUT => d(self.limits.write_stall_timeout()),
+            SETTING_LIMITS_HEADER_BYTES => n(self.limits.header_bytes()),
+            SETTING_LIMITS_CONCURRENT_REQUESTS => n(self.limits.concurrent_requests()),
+            SETTING_LIMITS_REQUEST_TIMEOUT => d(self.limits.request_timeout()),
+            SETTING_LIMITS_HANDSHAKE_TIMEOUT => d(self.limits.handshake_timeout()),
+            SETTING_LIMITS_HEADER_TIMEOUT => d(self.limits.header_timeout()),
+            SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
+            SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
+            SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_ASSURANCE_PROFILE => Some(self.assurance_profile.as_str().to_owned()),
+            SETTING_ASSURANCE_ADDED_CONTROLS => {
+                list(self.assurance_added.iter().map(ToString::to_string))
+            }
+            SETTING_SECRETS_PROVIDER => Some(self.secrets_provider.as_str().to_owned()),
+            SETTING_SECRETS_DIRECTORY => Some(self.secrets_directory().display().to_string()),
+            SETTING_SECRETS_ENV_PREFIX => Some(self.secrets_env_prefix.clone()),
+            SETTING_AUDIT_PSEUDONYM_ENABLED => b(self.audit_pseudonym_enabled),
+            SETTING_AUDIT_PSEUDONYM_KEY_REF => self
+                .audit_pseudonym_key_ref
+                .as_ref()
+                .map(|r| r.name().to_owned()),
+            SETTING_AUDIT_PSEUDONYM_KEY_VERSION => Some(self.audit_pseudonym_key_version.clone()),
+            SETTING_AUDIT_SINK => Some(self.audit_destination.as_str().to_owned()),
+            SETTING_AUDIT_DIRECTORY => Some(self.audit_directory().display().to_string()),
+            SETTING_AUDIT_RETENTION => d(self.audit_retention),
+            SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
+            SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
+            SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
+            SETTING_NOTP_MAX_PUSH_OBJECTS => n(self.notp_max_push_objects),
+            SETTING_NOTP_MAX_PUSH_BYTES => n(self.notp_max_push_bytes),
+            SETTING_NOTP_LEDGER_QUOTA_BYTES => n(self.notp_ledger_quota_bytes),
+            SETTING_NOTP_COMPRESSION => b(self.notp_compression),
+            SETTING_MIRRORS_ENABLED => b(self.mirrors_enabled),
+            SETTING_MIRRORS_INTERVAL => d(self.mirrors_interval),
+            SETTING_MIRRORS_TIMEOUT => d(self.mirrors_timeout),
+            SETTING_MIRRORS_PARALLELISM => n(self.mirrors_parallelism),
+            SETTING_MIRRORS_JITTER => n(self.mirrors_jitter),
+            SETTING_MIRRORS_STALE_AFTER => self.mirrors_stale_after.and_then(d),
+            SETTING_MIRRORS_EXPIRE_AFTER => self.mirrors_expire_after.and_then(d),
+            SETTING_GC_ENABLED => b(self.gc_enabled),
+            SETTING_GC_INTERVAL => d(self.gc_interval),
+            SETTING_GC_GRACE => d(self.gc_grace),
+            SETTING_AUTHZ_CACHE_PARTITIONS => n(self.authz_cache_partitions),
+            SETTING_AUTHZ_CACHE_BYTES => n(self.authz_cache_bytes),
+            SETTING_AUTHZ_CACHE_ZONE_PARTITIONS => n(self.authz_cache_zone_partitions()),
+            SETTING_AUTHZ_CACHE_ZONE_BYTES => n(self.authz_cache_zone_bytes()),
+            SETTING_AUTHZ_MAX_EVALUATIONS => n(self.authz_max_evaluations),
+            SETTING_MAX_BLOCKING => n(self.max_blocking),
+            SETTING_LOG_ENABLED => b(self.log_enabled),
+            SETTING_LOG_PDP_ID => Some(self.log_pdp_id.clone()),
+            SETTING_LOG_SPOOL_DIRECTORY => Some(self.log_spool_directory.clone()),
+            SETTING_LOG_SPOOL_BYTES => n(self.log_spool_bytes),
+            SETTING_LOG_SPOOL_AGE => d(self.log_spool_age),
+            SETTING_LOG_BATCH_BYTES => n(self.log_batch_bytes),
+            SETTING_LOG_BATCH_INTERVAL => d(self.log_batch_interval),
+            SETTING_LOG_ON_FULL => Some(
+                if self.log_on_full_open {
+                    "open"
+                } else {
+                    "closed"
+                }
+                .to_owned(),
+            ),
+            SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
+            SETTING_LOG_COMMITMENT_KEY_REF => self
+                .log_commitment_key_ref
+                .as_ref()
+                .map(|r| r.name().to_owned()),
+            SETTING_LOG_COMMITMENT_KEY_VERSION => Some(self.log_commitment_key_version.clone()),
+            SETTING_EVENTS_ENABLED => b(self.events_enabled),
+            SETTING_EVENTS_PRODUCER_ID => Some(self.events_producer_id.clone()),
+            SETTING_EVENTS_DIRECTORY => Some(self.events_directory().display().to_string()),
+            SETTING_EVENTS_MAX_BYTES => n(self.events_max_bytes),
+            SETTING_EVENTS_SEGMENT_BYTES => n(self.events_segment_bytes),
+            SETTING_EVENTS_MAX_RECORD_BYTES => n(self.events_max_record_bytes),
+            SETTING_EVENTS_RETENTION_MINIMUM => d(self.events_retention_minimum),
+            SETTING_EVENTS_ALLOWED_LATENESS => d(self.events_allowed_lateness),
+            SETTING_EVENTS_CLOCK_SKEW => d(self.events_clock_skew),
+            SETTING_EVENTS_GROUP_COMMIT_DELAY => d(self.events_group_commit_delay),
+            SETTING_EVENTS_PULL_MODE => Some(self.events_pull_mode.as_str().to_owned()),
+            SETTING_EVENTS_PULL_INTERVAL => d(self.events_pull_interval),
+            SETTING_EVENTS_PULL_MAX_STALENESS => d(self.events_pull_max_staleness),
+            SETTING_EXPERIMENTAL_DOGWOOD => b(self.experimental_dogwood()),
+            SETTING_DECISION_STORE_ENABLED => b(self.decision_store_enabled),
+            SETTING_DECISION_STORE_DIRECTORY => Some(self.decision_store_directory.clone()),
+            SETTING_DECISION_STORE_RETENTION => d(self.decision_store_retention),
+            SETTING_EVENT_STORE_ENABLED => b(self.event_store_enabled),
+            SETTING_EVENT_STORE_DIRECTORY => {
+                Some(self.event_store_directory().display().to_string())
+            }
+            SETTING_EVENT_STORE_RETENTION => d(self.event_store_retention),
+            SETTING_KEYS_ENABLED => b(self.keys_enabled),
+            SETTING_KEYS_DIRECTORY => Some(self.keys_directory().display().to_string()),
+            SETTING_CONTROL_KEYS_ENABLED => b(self.control_signing_keys_enabled()),
+            SETTING_CONTROL_KEYS_DIRECTORY => {
+                Some(self.control_signing_keys_directory().display().to_string())
+            }
+            SETTING_DATA_KEYS_ENABLED => b(self.data_signing_keys_enabled()),
+            SETTING_DATA_KEYS_DIRECTORY => {
+                Some(self.data_signing_keys_directory().display().to_string())
+            }
+            SETTING_KEYS_PUBLISH_AHEAD => d(self.keys_publish_ahead),
+            SETTING_KEYS_ROTATE_EVERY => d(self.keys_rotate_every),
+            SETTING_KEYS_RETAIN => d(self.keys_retain),
+            SETTING_KEYS_MAINTENANCE_INTERVAL => d(self.keys_maintenance_interval),
+            SETTING_OTEL_ENABLED => b(self.otel_enabled),
+            SETTING_OTEL_ENDPOINT => Some(self.otel_endpoint.clone()),
+            SETTING_OTEL_SAMPLE_RATE => n(self.otel_sample_rate),
+            _ => self.declared_values.get(key).cloned(),
+        }
+    }
+
+    /// Refuses an environment variable that looks like a setting and is not one (WP-2.9, owner
+    /// decision of 2026-10-07): a typo or a retired name fails startup by name instead of being
+    /// ignored. The image's build variables are not settings and pass, and so do the variables the
+    /// `environment` secret provider resolves, under the server's prefix or a realm's: call it once
+    /// the realms are attached.
+    pub fn check_environment<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Result<()> {
+        let secret_prefixes: Vec<String> = std::iter::once(self.secrets_env_prefix())
+            .chain(self.realms.iter().map(RealmConfig::secrets_env_prefix))
+            .map(|prefix| format!("{prefix}_"))
+            .collect();
+        for name in names {
+            if !name.starts_with("PERMGUARD_")
+                || BUILD_VARIABLES
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix))
+                || secret_prefixes
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix.as_str()))
+                || experimental_setting_name(name).is_some()
+                || is_known_setting(name, &self.declared)
+            {
+                continue;
+            }
+            bail!(
+                "the environment sets `{name}`, which is not a setting of this build: a misspelt or \
+                 retired name would otherwise be ignored without a word"
+            );
+        }
+        Ok(())
+    }
+
     /// Every setting this build reads that a layer supplied, with the layer it came from: the
     /// effective configuration as the Host API reports it, values included. A pair no setting
     /// reads — the rest of the process environment — is not here. The caller masks what is secret.
@@ -4499,8 +4781,6 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_EVENT_STORE_ENABLED,
     SETTING_EVENT_STORE_RETENTION,
     SETTING_EXPERIMENTAL_DOGWOOD,
-    SETTING_EXPERIMENTAL_PREFIX,
-    SETTING_EXPERIMENTAL_SUFFIX,
     SETTING_GC_ENABLED,
     SETTING_GC_GRACE,
     SETTING_GC_INTERVAL,
@@ -4581,6 +4861,102 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_WORKING_DIR,
 ];
 
+/// The class of a setting (WP-2.9, owner decision of 2026-10-07): what may vary between two
+/// instances that share one static file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingClass {
+    /// Varies per instance at startup: listener binds and advertised addresses, volume paths,
+    /// TLS bootstrap material, secret references and per-instance identifiers.
+    Startup,
+    /// The same for every instance of a deployment: one static file.
+    Static,
+}
+
+impl SettingClass {
+    /// The word `config/effective` publishes.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Startup => "startup",
+            Self::Static => "static",
+        }
+    }
+}
+
+/// The core settings of class [`SettingClass::Startup`].
+const STARTUP_SETTINGS: &[&str] = &[
+    SETTING_WORKING_DIR,
+    SETTING_PUBLIC_HTTP_ADDR,
+    SETTING_PUBLIC_GRPC_ADDR,
+    SETTING_TELEMETRY_ADDR,
+    SETTING_TELEMETRY_ADVERTISED_URL,
+    SETTING_ADMIN_ADDR,
+    SETTING_ADMIN_ADVERTISED_URL,
+    SETTING_AUDIT_DIRECTORY,
+    SETTING_SECRETS_DIRECTORY,
+    SETTING_EVENTS_DIRECTORY,
+    SETTING_EVENT_STORE_DIRECTORY,
+    SETTING_DECISION_STORE_DIRECTORY,
+    SETTING_LOG_SPOOL_DIRECTORY,
+    SETTING_KEYS_DIRECTORY,
+    SETTING_CONTROL_KEYS_DIRECTORY,
+    SETTING_DATA_KEYS_DIRECTORY,
+    SETTING_AUDIT_PSEUDONYM_KEY_REF,
+    SETTING_LOG_COMMITMENT_KEY_REF,
+    SETTING_LOG_PDP_ID,
+    SETTING_EVENTS_PRODUCER_ID,
+    SETTING_PUBLIC_TLS_CERT,
+    SETTING_PUBLIC_TLS_KEY,
+    SETTING_PUBLIC_TLS_CLIENT_CA,
+    SETTING_PUBLIC_TLS_CRL,
+    SETTING_ADMIN_TLS_CERT,
+    SETTING_ADMIN_TLS_KEY,
+    SETTING_ADMIN_TLS_CLIENT_CA,
+    SETTING_ADMIN_TLS_CRL,
+    SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY,
+];
+
+/// The name endings of a startup setting: binds, advertised URLs, paths, key references, TLS
+/// material.
+const STARTUP_SHAPES: &[&str] = &[
+    "_ADDR",
+    "_ADVERTISED_URL",
+    "_DIRECTORY",
+    "_KEY_REF",
+    "_TLS_CERT",
+    "_TLS_KEY",
+    "_TLS_CLIENT_CA",
+    "_TLS_CRL",
+];
+
+/// The class of `key`: a core setting by the list above; a setting a build declares by its
+/// shape (`*_ADDR`, `*_ADVERTISED_URL`, `*_DIRECTORY`, `*_KEY_REF` and TLS material are startup).
+pub fn setting_class(key: &str) -> SettingClass {
+    if STARTUP_SETTINGS.contains(&key)
+        || (!CORE_SETTINGS.contains(&key)
+            && STARTUP_SHAPES.iter().any(|suffix| key.ends_with(suffix)))
+    {
+        SettingClass::Startup
+    } else {
+        SettingClass::Static
+    }
+}
+
+/// The variables of the image's build that share the `PERMGUARD_` prefix and are not settings.
+const BUILD_VARIABLES: &[&str] = &["PERMGUARD_BUILD_", "PERMGUARD_COPYRIGHT_"];
+
+/// One setting in force, as `config/effective` reports it: its value (or the image default
+/// rendered, when no layer supplied it), the layer it came from and its class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveSetting {
+    pub key: String,
+    /// `None` when the setting is unset and has no default: an optional value nobody stated.
+    pub value: Option<String>,
+    /// `None` when no layer supplied it: the image default.
+    pub origin: Option<SettingOrigin>,
+    pub class: SettingClass,
+}
+
 /// Whether `key` is a setting this build reads: one of [`CORE_SETTINGS`] or a declared extra.
 fn is_known_setting(key: &str, declared: &BTreeSet<String>) -> bool {
     key.starts_with("PERMGUARD_") && (CORE_SETTINGS.contains(&key) || declared.contains(key))
@@ -4596,4 +4972,24 @@ fn setting_label(key: &str) -> String {
         .unwrap_or(key)
         .to_ascii_lowercase()
         .replace('_', ".")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The startup list is the registry's, and a core setting shaped like a bind, a path, a
+    /// reference or TLS material is in it: a new one added to [`CORE_SETTINGS`] alone would be
+    /// published as `static` and fail here instead.
+    #[test]
+    fn every_startup_shaped_core_setting_is_listed_as_startup() {
+        for key in STARTUP_SETTINGS {
+            assert!(CORE_SETTINGS.contains(key), "{key} is not a core setting");
+        }
+        for key in CORE_SETTINGS {
+            if STARTUP_SHAPES.iter().any(|suffix| key.ends_with(suffix)) {
+                assert_eq!(setting_class(key), SettingClass::Startup, "{key}");
+            }
+        }
+    }
 }

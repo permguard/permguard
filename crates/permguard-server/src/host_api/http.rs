@@ -195,7 +195,7 @@ async fn effective_config(State(served): State<Served>, ActorOf(actor): ActorOf)
 }
 
 async fn config_revisions(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
-    not_yet(&served, served.api.config_revisions(&actor))
+    answer(&served, StatusCode::OK, served.api.config_revisions(&actor))
 }
 
 /// The values of `names` in `query`, percent-decoded; a name given twice keeps its first value,
