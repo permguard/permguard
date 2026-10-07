@@ -141,6 +141,13 @@ fn config_file(name: &str, contents: &str) -> std::path::PathBuf {
     let path = dir.join(format!("{name}.yml"));
     // Its own volume too: the server holds the volume's lock while it serves, so two tests sharing
     // the default `.volume` would be two processes on one mount.
+    // A test is a developer's machine: the profile says so, as the shipped development files do
+    // (WP-2.8); `production`, the default, would want a volume claim first.
+    let contents = if contents.contains("assurance:") {
+        contents.to_owned()
+    } else {
+        format!("assurance:\n  profile: development\n{contents}")
+    };
     let contents = if contents.contains("working_dir:") {
         contents.to_owned()
     } else {
@@ -335,6 +342,33 @@ async fn test_the_json_format_prints_no_banner_at_all() {
         out.is_empty(),
         "json output belongs to the log pipeline: {out:?}"
     );
+}
+
+/// Checked at start (WP-2.8): `production`, the default, wants the volume claimed by the
+/// orchestrator before anything opens; a development machine says so and starts.
+#[tokio::test]
+async fn test_a_production_host_without_a_volume_claim_does_not_start() {
+    let path = config_file(
+        "production-unclaimed",
+        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("production wants a claimed volume");
+    assert!(
+        format!("{refused:#}").contains("VOLUME-CLAIM"),
+        "{refused:#}"
+    );
+
+    let path = config_file(
+        "development-unclaimed",
+        &format!("assurance:\n  profile: development\n{SERVABLE}"),
+    );
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("a development machine needs no claim");
 }
 
 #[tokio::test]

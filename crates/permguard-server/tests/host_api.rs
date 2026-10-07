@@ -168,9 +168,13 @@ fn facade(tag: &str) -> Arc<HostApi> {
         replay,
         rings: vec![(HOST_OPERATIONS.as_str().to_owned(), Arc::new(Fixed))],
         health: Health::new(),
-        assurance: Assurance {
-            profile: "development".to_owned(),
-        },
+        assurance: Assurance::of(
+            &permguard_core::assurance::Assurance::new(
+                AssuranceProfile::Development,
+                [permguard_core::assurance::Control::Tls13Only],
+            )
+            .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
+        ),
         effective: Effective {
             revision: 0,
             settings: Vec::new(),

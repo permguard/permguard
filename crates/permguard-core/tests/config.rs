@@ -69,7 +69,16 @@ fn declaring(
 }
 
 fn servable() -> Config {
-    config(&[(SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556")], &[], &[])
+    // `development`: the rules these tests reach are not the profile's, and a realm's token ring,
+    // on by default, is plaintext custody that `production` refuses until WP-3.2.
+    config(
+        &[
+            (SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:5556"),
+            (SETTING_ASSURANCE_PROFILE, "development"),
+        ],
+        &[],
+        &[],
+    )
 }
 
 #[test]

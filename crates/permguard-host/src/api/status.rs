@@ -14,12 +14,34 @@ use permguard_core::lifecycle::{ComponentReport, Degraded, HOST};
 
 use super::{HostApi, Refusal};
 
-/// The assurance profile and what it adds or relaxes. The controls and relaxations arrive with
-/// the profile's own package; the profile is reported now.
+/// The assurance block (WP-2.8): the profile, how it is enforced, the higher controls added and
+/// the relaxations in force; the same block the process discovery document publishes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Assurance {
     /// `development`, `production` or `regulated`.
     pub profile: String,
+    /// Always `local`: the Host enforces its profile, it does not attest it.
+    pub enforcement: String,
+    /// Controls of a higher profile the deployment switched on.
+    pub added_controls: Vec<String>,
+    /// Relaxations the values in force amount to, each one the profile permits.
+    pub relaxations: Vec<String>,
+}
+
+impl Assurance {
+    /// The block from the core's report.
+    pub fn of(report: &permguard_core::assurance::AssuranceReport) -> Self {
+        Self {
+            profile: report.profile.to_owned(),
+            enforcement: report.enforcement.to_owned(),
+            added_controls: report
+                .added_controls
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            relaxations: report.relaxations.iter().map(|r| (*r).to_owned()).collect(),
+        }
+    }
 }
 
 /// One capability served without its backing.

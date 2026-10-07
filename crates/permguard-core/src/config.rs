@@ -228,6 +228,14 @@ pub const SETTING_LOG_LEVEL: &str = "PERMGUARD_LOG_LEVEL";
 /// Runtime setting key for the shape records are written in.
 pub const SETTING_LOG_FORMAT: &str = "PERMGUARD_LOG_FORMAT";
 
+/// Runtime setting key for the assurance profile: `development`, `production` or `regulated`
+/// (WP-2.8). Absent means `production` (owner decision, 2026-10-06).
+pub const SETTING_ASSURANCE_PROFILE: &str = "PERMGUARD_ASSURANCE_PROFILE";
+
+/// Runtime setting key for the controls of a higher profile a deployment switches on, by name,
+/// comma- or line-separated (the ratchet: added, never removed).
+pub const SETTING_ASSURANCE_ADDED_CONTROLS: &str = "PERMGUARD_ASSURANCE_ADDED_CONTROLS";
+
 /// Runtime setting key for how long shutdown is given before the process exits anyway.
 pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 
@@ -1053,6 +1061,8 @@ pub struct Config {
     limits: Limits,
     shutdown_timeout: Duration,
     shutdown_drain_timeout: Duration,
+    assurance_profile: crate::assurance::AssuranceProfile,
+    assurance_added: Vec<crate::assurance::Control>,
     secrets_provider: SecretProvider,
     secrets_directory: Option<String>,
     secrets_env_prefix: String,
@@ -1216,6 +1226,8 @@ impl Default for Config {
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
+            assurance_profile: crate::assurance::AssuranceProfile::Production,
+            assurance_added: Vec::new(),
             secrets_provider: SecretProvider::None,
             secrets_directory: None,
             secrets_env_prefix: "PERMGUARD_SECRET".to_owned(),
@@ -1671,6 +1683,9 @@ produce: use `EdDSA` or `ES256`"
         self.validate_admin_access()?;
         self.validate_key_lifecycle()?;
         self.validate_realms()?;
+        // Last of the rules: a configuration a specific rule refuses says that rule's reason first,
+        // and the profile then judges what the remaining values amount to (WP-2.8).
+        self.validate_assurance()?;
 
         // Turning pseudonymisation on and leaving the key out is a misconfiguration, not a reason to
         // record less carefully than the deployment asked for. It stops the start.
@@ -1703,6 +1718,40 @@ produce: use `EdDSA` or `ES256`"
     /// exactly right on a laptop and never right anywhere else, and the difference must not be one
     /// variable away from being wrong — so it takes two, and the second one is the one an operator
     /// reads in the log and in the banner.
+    /// Bootstrap against the assurance profile (WP-2.8): every relaxation the values in force amount
+    /// to must be one the profile permits, and an experimental runtime is never opted into where
+    /// `runtime.experimental_forbidden` is in force. Refused, never warned.
+    fn validate_assurance(&self) -> Result<()> {
+        use crate::assurance::Control;
+
+        let assurance = self.assurance();
+        if let Some(control) = self.assurance_added.iter().find(|control| {
+            !assurance.profile().at_least(control.floor()) && !control.enforceable_when_added()
+        }) {
+            bail!(
+                "`assurance.added_controls` names `{control}`, which this build enforces only from \
+                 the `{}` profile, at {}: it cannot be added below it without being listed as in \
+                 force while nothing enforces it",
+                control.floor(),
+                control.enforced_at()
+            );
+        }
+        assurance
+            .check(&self.relaxations_in_force())
+            .map_err(|refusal| anyhow!(refusal))?;
+        if assurance.requires(Control::RuntimeExperimentalForbidden)
+            && let Some(name) = self.experimental_enabled_names().next()
+        {
+            bail!(
+                "the experimental runtime `{name}` is opted into, and the `{}` assurance profile \
+                 never serves experimental runtimes (`{}` is in force)",
+                assurance.profile(),
+                Control::RuntimeExperimentalForbidden
+            );
+        }
+        Ok(())
+    }
+
     /// The drain runs inside the shutdown budget and must leave part of it: sealing the trail,
     /// releasing the store and the volume lock come after it, and a drain allowed the whole budget
     /// would leave the orchestrator to kill the process before any of that.
@@ -2435,6 +2484,51 @@ produce: use `EdDSA` or `ES256`"
     /// to be aligned with the orchestrator's grace period.
     pub fn shutdown_timeout(&self) -> Duration {
         self.shutdown_timeout
+    }
+
+    /// The assurance profile in force with the controls the deployment added (WP-2.8).
+    pub fn assurance(&self) -> crate::assurance::Assurance {
+        crate::assurance::Assurance::new(self.assurance_profile, self.assurance_added.clone())
+    }
+
+    /// The relaxations the values in force amount to, derived rather than declared (owner
+    /// decision, 2026-10-06): a TLS minimum of 1.2 on any listener is `tls.1_2_compat`; an enabled
+    /// key ring is `custody.plaintext`, every key manager of this build keeping plaintext files
+    /// until the custody providers of WP-3.2. `TODO(WP-3.2)`: a custody provider names its own.
+    /// The evidence modes, the Rego input schema and the gRPC decoders publish theirs with the
+    /// packages that serve them.
+    pub fn relaxations_in_force(&self) -> Vec<crate::assurance::Relaxation> {
+        use crate::assurance::Relaxation;
+        use crate::tls::TlsVersion;
+
+        let mut in_force = Vec::new();
+        let core_tls = [&self.public_tls, &self.admin_tls, &self.telemetry_tls]
+            .into_iter()
+            .flatten()
+            .any(|tls| tls.min_version() == TlsVersion::V1_2);
+        // A declared minimum counts even when its listener's TLS is off: the value is stated, and
+        // reading it as in force errs toward publishing (and refusing) rather than hiding it.
+        let declared_tls = self.declared_values.iter().any(|(key, value)| {
+            key.ends_with("_TLS_MIN_VERSION")
+                && value.parse::<TlsVersion>().ok() == Some(TlsVersion::V1_2)
+        });
+        if core_tls || declared_tls {
+            in_force.push(Relaxation::Tls12Compat);
+        }
+        // Every ring this build can configure: the operations ring, the two Plane signing rings,
+        // and each realm's token and operations rings (a realm's token ring is on by default).
+        let realm_rings = self
+            .realms
+            .iter()
+            .any(|realm| realm.token_keys_enabled || realm.operations_keys_enabled);
+        if self.keys_enabled
+            || self.control_signing_keys_enabled()
+            || self.data_signing_keys_enabled()
+            || realm_rings
+        {
+            in_force.push(Relaxation::CustodyPlaintext);
+        }
+        in_force
     }
 
     /// Returns how long the drain may take inside [`Config::shutdown_timeout`]: intake stopped,
@@ -3491,6 +3585,23 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_TIMEOUT}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_ASSURANCE_PROFILE) {
+            self.assurance_profile = value
+                .parse()
+                .map_err(|error: String| anyhow!(error))
+                .with_context(|| format!("reading {SETTING_ASSURANCE_PROFILE}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_ASSURANCE_ADDED_CONTROLS) {
+            self.assurance_added = value
+                .split([',', '\n'])
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| name.parse().map_err(|error: String| anyhow!(error)))
+                .collect::<Result<_>>()
+                .with_context(|| format!("reading {SETTING_ASSURANCE_ADDED_CONTROLS}"))?;
+        }
+
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
@@ -4346,6 +4457,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_ADMIN_TLS_CRL,
     SETTING_ADMIN_TLS_KEY,
     SETTING_ADMIN_TLS_MIN_VERSION,
+    SETTING_ASSURANCE_ADDED_CONTROLS,
+    SETTING_ASSURANCE_PROFILE,
     SETTING_AUDIT_DIRECTORY,
     SETTING_AUDIT_PSEUDONYM_ENABLED,
     SETTING_AUDIT_PSEUDONYM_KEY_REF,

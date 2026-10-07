@@ -1496,13 +1496,40 @@
             ],
             "description": "`development`, `production` or `regulated`.",
             "x-grpc-field": "profile"
+          },
+          "enforcement": {
+            "type": "string",
+            "enum": [
+              "local"
+            ],
+            "description": "Always `local`: the Host enforces its profile, it never attests it.",
+            "x-grpc-field": "enforcement"
+          },
+          "added_controls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Controls of a higher profile the deployment switched on, by their stable names (`7-architecture-security.md#assurance-profiles`).",
+            "x-grpc-field": "added_controls"
+          },
+          "relaxations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Relaxations the values in force amount to, each one the profile permits; nothing relaxes silently.",
+            "x-grpc-field": "relaxations"
           }
         },
         "required": [
-          "profile"
+          "profile",
+          "enforcement",
+          "added_controls",
+          "relaxations"
         ],
         "additionalProperties": false,
-        "description": "The assurance profile the volume runs under. The controls it adds and the relaxations it allows arrive with the profile's package.",
+        "description": "The assurance block (WP-2.8): the profile in force, how it is enforced, the higher controls added and the relaxations in force; the same block the process discovery document publishes.",
         "x-grpc-message": "permguard.host.v1.Assurance"
       },
       "HostStatus": {

@@ -394,6 +394,12 @@ message HostComponent {
 // The assurance profile the volume runs under.
 message Assurance {
   string profile = 1;
+  // Always `local`: the Host enforces its profile, it does not attest it.
+  string enforcement = 2;
+  // Controls of a higher profile the deployment switched on.
+  repeated string added_controls = 3;
+  // Relaxations the values in force amount to, each one the profile permits.
+  repeated string relaxations = 4;
 }
 message DrainRequest {}
 message DrainResponse {}

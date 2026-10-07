@@ -468,9 +468,13 @@ pub(crate) mod testing {
             replay,
             rings,
             health: Health::new(),
-            assurance: Assurance {
-                profile: "development".to_owned(),
-            },
+            assurance: Assurance::of(
+                &permguard_core::assurance::Assurance::new(
+                    permguard_core::assurance::AssuranceProfile::Development,
+                    [],
+                )
+                .report(&[]),
+            ),
             effective: Effective {
                 revision: 0,
                 settings: Vec::new(),

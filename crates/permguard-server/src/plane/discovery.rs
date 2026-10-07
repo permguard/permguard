@@ -411,6 +411,7 @@ pub fn server_configuration_document(config: &Config) -> String {
                 })
             })
             .flatten(),
+        assurance: config.assurance().report(&config.relaxations_in_force()),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -445,6 +446,10 @@ pub struct PlaneLink {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ServerConfiguration {
     pub planes: std::collections::BTreeMap<String, PlaneLink>,
+    /// The Host's assurance block (WP-2.8): `{profile, enforcement: local, added_controls[],
+    /// relaxations[]}`. Discovery describes; it never grants authority, and the profile is enforced
+    /// locally, never attested.
+    pub assurance: permguard_core::assurance::AssuranceReport,
     /// The operations ring as a JWKS, when this deployment publishes keys at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jwks_uri: Option<String>,
@@ -593,6 +598,47 @@ mod document_tests {
         assert!(
             registry.contains("\"jwks_uri\":\"http://127.0.0.1:5443/server-host/keys\""),
             "{registry}"
+        );
+    }
+
+    #[test]
+    fn the_registry_publishes_the_assurance_block_the_configuration_amounts_to() {
+        // WP-2.8: the profile, `enforcement: local`, the added controls and the relaxations in
+        // force, the same block `GET /host/v1/status` carries.
+        let production = config_with(&[]);
+        let document: serde_json::Value =
+            serde_json::from_str(&server_configuration_document(&production)).expect("JSON");
+        assert_eq!(
+            document["assurance"],
+            serde_json::json!({
+                "profile": "production",
+                "enforcement": "local",
+                "added_controls": [],
+                "relaxations": []
+            })
+        );
+
+        let development = config_with(&[
+            (
+                permguard_core::config::SETTING_ASSURANCE_PROFILE,
+                "development",
+            ),
+            (
+                permguard_core::config::SETTING_ASSURANCE_ADDED_CONTROLS,
+                "tls.1_3_only",
+            ),
+            (permguard_core::config::SETTING_KEYS_ENABLED, "true"),
+        ]);
+        let document: serde_json::Value =
+            serde_json::from_str(&server_configuration_document(&development)).expect("JSON");
+        assert_eq!(
+            document["assurance"],
+            serde_json::json!({
+                "profile": "development",
+                "enforcement": "local",
+                "added_controls": ["tls.1_3_only"],
+                "relaxations": ["custody.plaintext"]
+            })
         );
     }
 

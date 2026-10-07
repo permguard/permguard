@@ -5,6 +5,12 @@
 # listener and one client-authentication policy on that port.
 development_mode: true
 autogenerate: true
+
+# A developer's machine: every relaxation this file amounts to is permitted and published
+# (WP-2.8). A deployment serving real decisions states nothing here, which means `production`.
+assurance:
+  profile: development
+
 working_dir: .volume/all-in-one-mtls
 
 log:

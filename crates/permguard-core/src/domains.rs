@@ -190,6 +190,33 @@ pub mod annotation {
     pub const POLICY_KIND: &str = "permguard.policy.kind";
 }
 
+/// The controls of the assurance profiles and the relaxations a profile may permit, as discovery
+/// and `GET /host/v1/status` publish them (WP-2.8, owner decision of 2026-10-06).
+pub mod assurance {
+    pub const EVIDENCE_REQUIRED: &str = "evidence.required";
+    pub const SCHEMA_PARTITION: &str = "schema.partition";
+    pub const SCHEMA_WARNINGS_AS_ERRORS: &str = "schema.warnings_as_errors";
+    pub const SCHEMA_REGO_INPUT: &str = "schema.rego_input";
+    pub const INTERFACES_EXPLICIT: &str = "interfaces.explicit";
+    pub const ENGINE_BOUNDED: &str = "engine.bounded";
+    pub const RUNTIME_EXPERIMENTAL_GATED: &str = "runtime.experimental_gated";
+    pub const RUNTIME_EXPERIMENTAL_FORBIDDEN: &str = "runtime.experimental_forbidden";
+    pub const PROVIDER_SUPERVISED: &str = "provider.supervised";
+    pub const GRPC_LOSSLESS_SUBSET: &str = "grpc.lossless_subset";
+    pub const GRPC_STRICT_DECODER: &str = "grpc.strict_decoder";
+    pub const CUSTODY_ENCRYPTED: &str = "custody.encrypted";
+    pub const CUSTODY_HSM: &str = "custody.hsm";
+    pub const AUDIT_EXTERNAL_CHECKPOINTS: &str = "audit.external_checkpoints";
+    pub const IDENTITY_WITNESS: &str = "identity.witness";
+    pub const OPERATIONS_DUAL_CONTROL: &str = "operations.dual_control";
+    pub const TLS_1_3_ONLY: &str = "tls.1_3_only";
+    pub const RELAX_EVIDENCE_BEST_EFFORT: &str = "evidence.best_effort";
+    pub const RELAX_SCHEMA_REGO_INPUT_ABSENT: &str = "schema.rego_input_absent";
+    pub const RELAX_GRPC_TRANSPORT_PARITY_PARTIAL: &str = "grpc.transport_parity_partial";
+    pub const RELAX_TLS_1_2_COMPAT: &str = "tls.1_2_compat";
+    pub const RELAX_CUSTODY_PLAINTEXT: &str = "custody.plaintext";
+}
+
 /// Format labels of files the Host writes, bound into their associated data.
 pub mod format {
     /// A private key sealed at rest under envelope encryption.
@@ -390,6 +417,70 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("annotation.POLICY_ID", annotation::POLICY_ID),
         ("annotation.POLICY_ALIAS", annotation::POLICY_ALIAS),
         ("annotation.POLICY_KIND", annotation::POLICY_KIND),
+        ("assurance.EVIDENCE_REQUIRED", assurance::EVIDENCE_REQUIRED),
+        ("assurance.SCHEMA_PARTITION", assurance::SCHEMA_PARTITION),
+        (
+            "assurance.SCHEMA_WARNINGS_AS_ERRORS",
+            assurance::SCHEMA_WARNINGS_AS_ERRORS,
+        ),
+        ("assurance.SCHEMA_REGO_INPUT", assurance::SCHEMA_REGO_INPUT),
+        (
+            "assurance.INTERFACES_EXPLICIT",
+            assurance::INTERFACES_EXPLICIT,
+        ),
+        ("assurance.ENGINE_BOUNDED", assurance::ENGINE_BOUNDED),
+        (
+            "assurance.RUNTIME_EXPERIMENTAL_GATED",
+            assurance::RUNTIME_EXPERIMENTAL_GATED,
+        ),
+        (
+            "assurance.RUNTIME_EXPERIMENTAL_FORBIDDEN",
+            assurance::RUNTIME_EXPERIMENTAL_FORBIDDEN,
+        ),
+        (
+            "assurance.PROVIDER_SUPERVISED",
+            assurance::PROVIDER_SUPERVISED,
+        ),
+        (
+            "assurance.GRPC_LOSSLESS_SUBSET",
+            assurance::GRPC_LOSSLESS_SUBSET,
+        ),
+        (
+            "assurance.GRPC_STRICT_DECODER",
+            assurance::GRPC_STRICT_DECODER,
+        ),
+        ("assurance.CUSTODY_ENCRYPTED", assurance::CUSTODY_ENCRYPTED),
+        ("assurance.CUSTODY_HSM", assurance::CUSTODY_HSM),
+        (
+            "assurance.AUDIT_EXTERNAL_CHECKPOINTS",
+            assurance::AUDIT_EXTERNAL_CHECKPOINTS,
+        ),
+        ("assurance.IDENTITY_WITNESS", assurance::IDENTITY_WITNESS),
+        (
+            "assurance.OPERATIONS_DUAL_CONTROL",
+            assurance::OPERATIONS_DUAL_CONTROL,
+        ),
+        ("assurance.TLS_1_3_ONLY", assurance::TLS_1_3_ONLY),
+        (
+            "assurance.RELAX_EVIDENCE_BEST_EFFORT",
+            assurance::RELAX_EVIDENCE_BEST_EFFORT,
+        ),
+        (
+            "assurance.RELAX_SCHEMA_REGO_INPUT_ABSENT",
+            assurance::RELAX_SCHEMA_REGO_INPUT_ABSENT,
+        ),
+        (
+            "assurance.RELAX_GRPC_TRANSPORT_PARITY_PARTIAL",
+            assurance::RELAX_GRPC_TRANSPORT_PARITY_PARTIAL,
+        ),
+        (
+            "assurance.RELAX_TLS_1_2_COMPAT",
+            assurance::RELAX_TLS_1_2_COMPAT,
+        ),
+        (
+            "assurance.RELAX_CUSTODY_PLAINTEXT",
+            assurance::RELAX_CUSTODY_PLAINTEXT,
+        ),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),
         ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),

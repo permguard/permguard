@@ -535,7 +535,7 @@
     {
       "source": "crates/permguard-core/src/assurance.rs",
       "item": "AssuranceProfile::from_str",
-      "reason": "the assurance profile an operator states; the key that carries it arrives with the Host composition"
+      "reason": "the assurance profile an operator states in `assurance.profile` (WP-2.8): operator configuration, read once at start"
     },
     {
       "source": "crates/permguard-host/src/authz/record.rs",
@@ -556,6 +556,11 @@
       "source": "crates/permguard-host/src/api/replay.rs",
       "item": "Replay::open",
       "reason": "the replay journal's own directory on the Host's volume, written by this process; every frame is JSON this process encoded, read back through the storage library's journal, which checks the frames"
+    },
+    {
+      "source": "crates/permguard-core/src/assurance.rs",
+      "item": "Control::from_str",
+      "reason": "a control name an operator lists in `assurance.added_controls` (WP-2.8): operator configuration, read once at start"
     }
   ]
 }

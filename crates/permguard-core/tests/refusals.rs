@@ -31,7 +31,15 @@ fn config(settings: &[(&str, &str)]) -> Config {
 
 /// The least a configuration needs before any of the rules below are the reason it fails.
 fn serving(extra: &[(&str, &str)]) -> Config {
+    // `development` unless a test states otherwise: the rules below are not about the profile, and
+    // `production` refuses plaintext key custody before a key lifecycle rule is reached (WP-2.8).
+    let stated = extra
+        .iter()
+        .any(|(key, _)| *key == SETTING_ASSURANCE_PROFILE);
     let mut settings = vec![(SETTING_PUBLIC_HTTP_ADDR, "0.0.0.0:6443")];
+    if !stated {
+        settings.push((SETTING_ASSURANCE_PROFILE, "development"));
+    }
     settings.extend_from_slice(extra);
 
     config(&settings)

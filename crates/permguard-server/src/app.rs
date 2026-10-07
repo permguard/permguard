@@ -1118,7 +1118,7 @@ impl App {
         // without a claim is served as under `development`.
         let volume = permguard_host::storage::volume::Volume::claim(
             config.working_dir(),
-            permguard_core::assurance::AssuranceProfile::Development,
+            config.assurance().profile(),
         )
         .with_context(|| format!("claiming the volume at {}", config.working_dir().display()))?;
         tracing::info!(
@@ -1262,13 +1262,11 @@ impl App {
                 replay,
                 rings,
                 health: context.health().clone(),
-                // The configuration states no assurance profile yet (WP-07): the volume is
-                // claimed as under `development` above, and the status says the same.
-                assurance: Assurance {
-                    profile: permguard_core::assurance::AssuranceProfile::Development
-                        .as_str()
-                        .to_owned(),
-                },
+                // The profile in force, the controls added and the relaxations the values amount
+                // to: the block discovery publishes too (WP-2.8).
+                assurance: Assurance::of(
+                    &config.assurance().report(&config.relaxations_in_force()),
+                ),
                 effective: Effective::from_supplied(config.supplied_settings()),
                 trail: audit.name().to_owned(),
                 recorder: Some(self.recorder(&audit, pseudonymizer.as_ref())),

@@ -369,6 +369,9 @@ impl OperationsService for Served {
                 .collect(),
             assurance: Some(v1::Assurance {
                 profile: status.assurance.profile,
+                enforcement: status.assurance.enforcement,
+                added_controls: status.assurance.added_controls,
+                relaxations: status.assurance.relaxations,
             }),
         }))
     }

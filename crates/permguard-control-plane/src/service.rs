@@ -1407,6 +1407,12 @@ mod tests {
             &ServerConfiguration {
                 planes,
                 jwks_uri: Some("http://a/server-host/keys".to_owned()),
+                // Every member of the block filled: a higher control added and a relaxation.
+                assurance: permguard_core::assurance::Assurance::new(
+                    permguard_core::assurance::AssuranceProfile::Development,
+                    [permguard_core::assurance::Control::Tls13Only],
+                )
+                .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
             },
         );
         let written: serde_json::Value = serde_json::from_str(
@@ -1419,6 +1425,11 @@ mod tests {
             &ServerConfiguration {
                 planes: std::collections::BTreeMap::new(),
                 jwks_uri: None,
+                assurance: permguard_core::assurance::Assurance::new(
+                    permguard_core::assurance::AssuranceProfile::Regulated,
+                    [],
+                )
+                .report(&[]),
             },
         );
 

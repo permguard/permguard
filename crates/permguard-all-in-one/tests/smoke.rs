@@ -56,7 +56,7 @@ fn the_composed_runtime_starts_serves_and_stops() {
     std::fs::write(
         dir.join("config.yml"),
         concat!(
-            "development_mode: true\nautogenerate: true\n",
+            "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n",
             "log:\n  level: info\n  format: json\n",
             "telemetry:\n  addr: 127.0.0.1:0\n",
             "controlPlane:\n  public:\n    http: 127.0.0.1:0\n",
@@ -110,7 +110,7 @@ fn a_zero_plane_deployment_serves_the_host_surface_and_nothing_else() {
     std::fs::write(
         dir.join("config.yml"),
         concat!(
-            "development_mode: true\nautogenerate: true\n",
+            "development_mode: true\nautogenerate: true\nassurance:\n  profile: development\n",
             "log:\n  level: info\n  format: json\n",
             "host:\n  addr: 127.0.0.1:0\n",
             "runtime:\n  planes: []\n",

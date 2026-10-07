@@ -4,6 +4,18 @@
 # Permguard data plane configuration template.
 development_mode: false
 autogenerate: false
+
+# The assurance profile (WP-2.8): `development` ⊂ `production` ⊂ `regulated`, every control of
+# the lower profile in force in the higher one. Absent means `production`, the floor for a Host
+# serving real decisions. `added_controls` switches on single controls of a higher profile; a
+# control of the own profile can never be switched off. Relaxations are never declared: they are
+# what the values in force amount to (a TLS minimum of 1.2 is `tls.1_2_compat`, an enabled key
+# ring is `custody.plaintext` until the custody providers), refused at start when the profile does
+# not permit them, and published by discovery and `GET /host/v1/status`.
+# assurance:
+#   profile: production
+#   added_controls: [tls.1_3_only]
+
 # The one root of everything this process keeps: the catalog (data/), the trail, the keys, the
 # generated secrets. Move this and everything moves with it — it is the volume to mount and back up.
 working_dir: /var/lib/permguard/data-plane

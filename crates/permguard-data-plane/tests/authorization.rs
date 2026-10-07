@@ -161,3 +161,39 @@ async fn a_public_grant_under_the_plane_lets_the_request_reach_the_decision_path
     let body: serde_json::Value = serde_json::from_str(&body).expect("JSON");
     assert_eq!(body["class"], "not_found");
 }
+
+/// WP-2.8: the plane's decider loads partitions under the configured assurance profile, which is
+/// `production` when the configuration states none, never the `development` a bare decider has.
+/// One test in this binary touches the plane's decider, which is built once per process.
+#[test]
+fn the_plane_decider_loads_under_the_configured_assurance_profile() {
+    let volume = scratch("assurance-profile");
+    let config: &'static Config = Box::leak(Box::new(
+        Config::from_layers(
+            permguard_core::config::BuildSettings::new(
+                "0.0.0-test",
+                "2022",
+                "Nitro Agility S.r.l.",
+            ),
+            vec![permguard_server::plane::SETTING_DATA_HTTP_ADDR],
+            permguard_core::config::Layers::new().with_environment(vec![(
+                SETTING_WORKING_DIR.to_owned(),
+                volume.to_string_lossy().into_owned(),
+            )]),
+        )
+        .expect("the configuration builds"),
+    ));
+    let storage: &'static MemoryStorage = Box::leak(Box::new(MemoryStorage::new()));
+    let audit: &'static RecordingAuditSink = Box::leak(Box::new(RecordingAuditSink::new()));
+    let server: &'static ServerContext<'static> = Box::leak(Box::new(ServerContext::new(
+        identity(),
+        config,
+        storage,
+        audit,
+    )));
+    let decider = permguard_data_plane::authz::decider(&PlaneContext::new(server, "data"));
+    assert_eq!(
+        decider.profile(),
+        permguard_core::assurance::AssuranceProfile::Production
+    );
+}

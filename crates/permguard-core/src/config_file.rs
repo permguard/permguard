@@ -24,13 +24,13 @@ use crate::config::experimental_setting_key;
 use crate::config::{
     DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ADVERTISED_URL, SETTING_ADMIN_ALLOW,
     SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_CRL,
-    SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION, SETTING_AUDIT_DIRECTORY,
-    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
-    SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
-    SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE, SETTING_ISSUER,
-    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
-    SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
-    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION, SETTING_ASSURANCE_ADDED_CONTROLS,
+    SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED,
+    SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS,
+    SETTING_AUDIT_RETENTION, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
+    SETTING_ISSUER, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
+    SETTING_KEYS_MAINTENANCE_INTERVAL, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
+    SETTING_KEYS_ROTATE_EVERY, SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
@@ -55,7 +55,7 @@ use crate::realm::{
 };
 
 /// The section names this crate parses into typed settings.
-const KNOWN_SECTIONS: [&str; 11] = [
+const KNOWN_SECTIONS: [&str; 12] = [
     "public",
     "host",
     "telemetry",
@@ -64,6 +64,7 @@ const KNOWN_SECTIONS: [&str; 11] = [
     "limits",
     "log",
     "shutdown",
+    "assurance",
     "operations",
     "notp",
     "experimental",
@@ -98,6 +99,9 @@ pub struct ConfigFile {
     log: LogSection,
     #[serde(default)]
     shutdown: ShutdownSection,
+    /// The assurance profile and the higher controls switched on (WP-2.8).
+    #[serde(default)]
+    assurance: AssuranceSection,
     /// The record-keeping subsystem — the keys that seal a trail, the trail itself, and the secret
     /// that pseudonymises it. These are the server's own, and the defaults every realm inherits.
     #[serde(default)]
@@ -807,6 +811,18 @@ struct SecretsSection {
     env_prefix: Option<String>,
 }
 
+/// The assurance profile (WP-2.8).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AssuranceSection {
+    /// `development`, `production` or `regulated`; absent means `production`.
+    #[serde(default)]
+    profile: Option<String>,
+    /// Controls of a higher profile switched on, by name.
+    #[serde(default)]
+    added_controls: Vec<String>,
+}
+
 /// How long the server is given to put itself away.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1023,6 +1039,8 @@ impl ConfigFile {
         // A list is one setting whose value happens to have lines in it, so it travels through the
         // same precedence layers as everything else instead of needing a mechanism of its own.
         let allow = (!self.admin.allow.is_empty()).then(|| self.admin.allow.join("\n"));
+        let added_controls = (!self.assurance.added_controls.is_empty())
+            .then(|| self.assurance.added_controls.join(","));
         let public_allow = self
             .public
             .tls
@@ -1191,6 +1209,8 @@ impl ConfigFile {
                 self.host.tls.min_version.as_ref(),
             ),
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
+            (SETTING_ASSURANCE_PROFILE, self.assurance.profile.as_ref()),
+            (SETTING_ASSURANCE_ADDED_CONTROLS, added_controls.as_ref()),
             (SETTING_SHUTDOWN_TIMEOUT, self.shutdown.timeout.as_ref()),
             (
                 SETTING_SHUTDOWN_DRAIN_TIMEOUT,

@@ -531,11 +531,16 @@ impl Decider {
     }
 
     /// The operator's assurance profile: the floor every partition must meet to be loaded, a
-    /// schema for Cedar from `production` upward among it. A constructor parameter until the Host
-    /// configuration carries the profile (WP-2.8).
+    /// schema for Cedar from `production` upward among it. The composition passes the configured
+    /// one (`assurance.profile`, WP-2.8).
     pub fn with_profile(mut self, profile: permguard_core::assurance::AssuranceProfile) -> Self {
         self.profile = profile;
         self
+    }
+
+    /// The assurance profile this decider loads partitions under.
+    pub fn profile(&self) -> permguard_core::assurance::AssuranceProfile {
+        self.profile
     }
 
     /// The supervised workers a runtime the profile requires isolated runs in.

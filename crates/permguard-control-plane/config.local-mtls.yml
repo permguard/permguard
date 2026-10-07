@@ -5,6 +5,12 @@
 # client-authentication policy; the transport does not invent a second port for the same role.
 development_mode: true
 autogenerate: true
+
+# A developer's machine: every relaxation this file amounts to is permitted and published
+# (WP-2.8). A deployment serving real decisions states nothing here, which means `production`.
+assurance:
+  profile: development
+
 working_dir: .volume/control-plane-mtls
 
 log:
