@@ -561,6 +561,11 @@
       "source": "crates/permguard-core/src/assurance.rs",
       "item": "Control::from_str",
       "reason": "a control name an operator lists in `assurance.added_controls` (WP-2.8): operator configuration, read once at start"
+    },
+    {
+      "source": "crates/permguard-host/src/time.rs",
+      "item": "TimeGuard::open",
+      "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
     }
   ]
 }

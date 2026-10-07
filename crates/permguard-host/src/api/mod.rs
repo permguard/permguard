@@ -198,6 +198,8 @@ pub struct Composition {
     pub trail: String,
     /// The recorder every mutation writes its audit event through, when the composition has one.
     pub recorder: Option<AuditRecorder>,
+    /// The Host's time guard: grant expiry and the times receipts carry (WP-2.12).
+    pub time: Arc<crate::time::TimeGuard>,
 }
 
 /// The Host API facade: one instance per process, shared by both transports.
@@ -213,6 +215,7 @@ pub struct HostApi {
     trail: String,
     /// `pub(crate)` for the tests of the mutations, which compose their own recorder.
     pub(crate) recorder: Option<AuditRecorder>,
+    time: Arc<crate::time::TimeGuard>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -238,6 +241,7 @@ impl HostApi {
             effective: composition.effective,
             trail: composition.trail,
             recorder: composition.recorder,
+            time: composition.time,
         }
     }
 
@@ -481,6 +485,9 @@ pub(crate) mod testing {
             },
             trail: "audit".to_owned(),
             recorder: None,
+            time: Arc::new(crate::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
         });
         (api, store, volume)
     }

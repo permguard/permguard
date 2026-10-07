@@ -1677,3 +1677,29 @@ fn test_a_zone_holds_a_quarter_of_the_cache_unless_told_otherwise() {
         );
     }
 }
+
+/// WP-2.12: the Host's clock bound is read from `time.max_clock_skew`, defaults to thirty seconds,
+/// and is never zero.
+#[test]
+fn test_the_clock_bound_is_read_defaults_to_thirty_seconds_and_is_never_zero() {
+    assert_eq!(
+        config(&[], &[], &[]).time_max_clock_skew(),
+        Duration::from_secs(30)
+    );
+    assert_eq!(
+        config(&[(SETTING_TIME_MAX_CLOCK_SKEW, "2m")], &[], &[]).time_max_clock_skew(),
+        Duration::from_secs(120)
+    );
+    let refused = Config::from_layers(
+        build_settings(),
+        Vec::<String>::new(),
+        Layers::new().with_file(pairs(&[(SETTING_TIME_MAX_CLOCK_SKEW, "0s")])),
+    )
+    .expect_err("zero");
+    assert!(format!("{refused:#}").contains(SETTING_TIME_MAX_CLOCK_SKEW));
+    let file = permguard_core::ConfigFile::parse("time:\n  max_clock_skew: 45s\n").expect("parses");
+    assert!(
+        file.settings()
+            .contains(&(SETTING_TIME_MAX_CLOCK_SKEW.to_owned(), "45s".to_owned()))
+    );
+}

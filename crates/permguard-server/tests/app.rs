@@ -885,3 +885,116 @@ fn test_the_app_hands_back_exactly_the_collaborators_it_was_composed_with() {
     assert!(app.secrets().is_none());
     assert!(app.services().is_empty());
 }
+
+/// Keeps the action of every audit record where the test can read it after the app is gone.
+struct SharedActions(Arc<Mutex<Vec<String>>>);
+
+impl permguard_core::AuditSink for SharedActions {
+    fn name(&self) -> &'static str {
+        "shared"
+    }
+
+    fn record<'a>(
+        &'a self,
+        event: &'a permguard_core::AuditEvent<'a>,
+        _: Option<&'a dyn Pseudonymizer>,
+    ) -> BoxFuture<'a, std::result::Result<(), permguard_core::AuditError>> {
+        if let Ok(mut actions) = self.0.lock() {
+            actions.push(event.action().to_owned());
+        }
+        permguard_core::ready(Ok(()))
+    }
+}
+
+/// Writes down, at start, the capabilities the Host reports degraded.
+struct DegradedAtStart(Journal);
+
+impl Service for DegradedAtStart {
+    fn name(&self) -> &'static str {
+        "degraded-at-start"
+    }
+
+    fn start<'a>(&'a self, context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            for degraded in context
+                .health()
+                .lifecycle()
+                .report(permguard_core::lifecycle::HOST)
+                .degraded
+            {
+                self.0.record(degraded.capability)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn stop<'a>(&'a self, _context: &'a ServerContext<'a>) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+/// WP-2.12: a volume whose clock mark lies an hour ahead of the wall clock — the clock was set
+/// back across the restart — serves with `degraded: time` and records the anomaly.
+#[tokio::test]
+async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() {
+    use permguard_host::time::{ManualMonotonic, SystemClock, TimeGuard};
+
+    let path = config_file("clock-set-back", SERVABLE);
+    let config = fs::read_to_string(&path).expect("the file reads");
+    let volume_root = config
+        .lines()
+        .find_map(|line| line.strip_prefix("working_dir: "))
+        .expect("the fixture names its volume")
+        .to_owned();
+    let _ = fs::remove_dir_all(&volume_root);
+    {
+        // A previous run, an hour in the future: it leaves its high-water mark behind.
+        use permguard_core::time::Clock as _;
+        let volume = permguard_host::storage::volume::Volume::claim(
+            Path::new(&volume_root),
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        TimeGuard::open(
+            &volume,
+            Arc::new(permguard_core::time::ManualClock::at(
+                SystemClock.now() + 3_600,
+            )),
+            Arc::new(ManualMonotonic::default()),
+            std::time::Duration::from_secs(30),
+        )
+        .expect("the mark is written");
+    }
+    let actions = Arc::new(Mutex::new(Vec::new()));
+    let journal = Journal::default();
+    let app = App::new(
+        identity(),
+        BuildSettings::new("9.9.9", "2026", "Test Holder"),
+        Box::new(DefaultServerHost::new()),
+        Box::new(MemoryStorage::new()),
+        Box::new(SharedActions(Arc::clone(&actions))),
+    )
+    .with_shutdown_signal(|| Box::pin(std::future::ready(())))
+    .with_service(Box::new(DegradedAtStart(journal.clone())));
+
+    app.dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("the server serves through the anomaly");
+
+    assert_eq!(journal.entries(), vec!["time"]);
+    for _ in 0..50 {
+        if actions
+            .lock()
+            .expect("held")
+            .iter()
+            .any(|action| action == "host.clock_anomaly")
+        {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!(
+        "the anomaly was not recorded: {:?}",
+        actions.lock().expect("held")
+    );
+}

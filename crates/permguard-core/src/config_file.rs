@@ -46,7 +46,8 @@ use crate::config::{
     SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
     SETTING_SHUTDOWN_TIMEOUT, SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL,
     SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION,
-    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
+    SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL,
+    SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -55,7 +56,7 @@ use crate::realm::{
 };
 
 /// The section names this crate parses into typed settings.
-const KNOWN_SECTIONS: [&str; 12] = [
+const KNOWN_SECTIONS: [&str; 13] = [
     "public",
     "host",
     "telemetry",
@@ -64,6 +65,7 @@ const KNOWN_SECTIONS: [&str; 12] = [
     "limits",
     "log",
     "shutdown",
+    "time",
     "assurance",
     "operations",
     "notp",
@@ -99,6 +101,8 @@ pub struct ConfigFile {
     log: LogSection,
     #[serde(default)]
     shutdown: ShutdownSection,
+    #[serde(default)]
+    time: TimeSection,
     /// The assurance profile and the higher controls switched on (WP-2.8).
     #[serde(default)]
     assurance: AssuranceSection,
@@ -834,6 +838,15 @@ struct ShutdownSection {
     drain_timeout: Option<String>,
 }
 
+/// The Host's clock guard (WP-2.12).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TimeSection {
+    /// The largest backward step of the wall clock tolerated before a clock anomaly.
+    #[serde(default)]
+    max_clock_skew: Option<String>,
+}
+
 /// Contracts whose wire and replication shapes have not yet proven stable, by runtime name.
 ///
 /// A map rather than a field per runtime. Which runtimes are provisional is decided by the
@@ -1215,6 +1228,10 @@ impl ConfigFile {
             (
                 SETTING_SHUTDOWN_DRAIN_TIMEOUT,
                 self.shutdown.drain_timeout.as_ref(),
+            ),
+            (
+                SETTING_TIME_MAX_CLOCK_SKEW,
+                self.time.max_clock_skew.as_ref(),
             ),
             (
                 SETTING_SECRETS_PROVIDER,

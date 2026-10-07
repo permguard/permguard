@@ -21,7 +21,6 @@
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::SystemTime;
 
 use permguard_core::authz::{AllowSet, Principal, Selector, operations, resource_types};
 use permguard_objects::cbor::{self, Value};
@@ -665,12 +664,12 @@ fn fresh_id(held: &BTreeMap<GrantId, GrantRecord>) -> Result<GrantId, AuthzError
     ))
 }
 
-/// Seconds since the epoch, now.
+/// Seconds since the epoch, from the operating system's clock: for offline tools that open the
+/// store with no Host running (`permguard host grants`) and for opening the store at Bootstrap.
+/// A running Host reads its time guard (WP-2.12).
 pub fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|since| since.as_secs())
-        .unwrap_or(0)
+    use permguard_core::time::Clock as _;
+    u64::try_from(permguard_core::time::SystemClock.now()).unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -79,14 +79,16 @@ pub(crate) fn plane_signing_policy(config: &Config) -> KeyPolicy {
 /// blast radius. It signs what the control plane serves: git-like head statements today.
 pub(crate) fn control_signing_keys_for(
     config: &Config,
+    time: &Arc<permguard_host::time::TimeGuard>,
 ) -> anyhow::Result<Option<Arc<dyn KeyManager>>> {
     if !config.control_signing_keys_enabled() {
         return Ok(None);
     }
 
-    Ok(Some(Arc::new(DirectoryKeyManager::new(
+    Ok(Some(Arc::new(DirectoryKeyManager::with_clock(
         config.control_signing_keys_directory(),
         plane_signing_policy(config),
+        Box::new(crate::time::GuardedKeyClock(Arc::clone(time))),
     ))))
 }
 
@@ -95,19 +97,24 @@ pub(crate) fn control_signing_keys_for(
 /// `operations.keys` unless the deployment says otherwise.
 pub(crate) fn data_signing_keys_for(
     config: &Config,
+    time: &Arc<permguard_host::time::TimeGuard>,
 ) -> anyhow::Result<Option<Arc<dyn KeyManager>>> {
     if !config.data_signing_keys_enabled() {
         return Ok(None);
     }
 
-    Ok(Some(Arc::new(DirectoryKeyManager::new(
+    Ok(Some(Arc::new(DirectoryKeyManager::with_clock(
         config.data_signing_keys_directory(),
         plane_signing_policy(config),
+        Box::new(crate::time::GuardedKeyClock(Arc::clone(time))),
     ))))
 }
 
-pub(crate) fn key_manager_for(config: &Config) -> anyhow::Result<Option<Arc<dyn KeyManager>>> {
-    Ok(Some(Arc::new(DirectoryKeyManager::new(
+pub(crate) fn key_manager_for(
+    config: &Config,
+    time: &Arc<permguard_host::time::TimeGuard>,
+) -> anyhow::Result<Option<Arc<dyn KeyManager>>> {
+    Ok(Some(Arc::new(DirectoryKeyManager::with_clock(
         config.operations_keys_directory(),
         KeyPolicy {
             publish_ahead: config.keys_publish_ahead(),
@@ -115,6 +122,7 @@ pub(crate) fn key_manager_for(config: &Config) -> anyhow::Result<Option<Arc<dyn 
             retain: config.keys_retain(),
             verify_retain: config.audit_retention(),
         },
+        Box::new(crate::time::GuardedKeyClock(Arc::clone(time))),
     ))))
 }
 

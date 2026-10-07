@@ -53,6 +53,12 @@ log:
 #   timeout: "30s"
 #   drain_timeout: "25s"
 
+# The Host's clock guard. A backward step of the wall clock larger than this is a clock anomaly:
+# new leases and time-sensitive signatures (NOTP head statements) refuse, and the Host reports
+# `degraded: time`, until the wall clock passes the highest time it had seen.
+# time:
+#   max_clock_skew: "30s"
+
 # Contracts this build carries whose wire and replication shapes have not yet proven stable.
 # A block rather than scattered flags, so what is provisional is visible in one place.
 experimental:

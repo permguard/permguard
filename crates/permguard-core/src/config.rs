@@ -244,6 +244,11 @@ pub const SETTING_SHUTDOWN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_TIMEOUT";
 /// decision of 2026-10-06).
 pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEOUT";
 
+/// Runtime setting key for the largest backward step of the wall clock the Host tolerates: beyond
+/// it the clock is in anomaly, and new leases and time-sensitive signatures refuse until wall time
+/// passes the highest one observed (WP-2.12, owner decisions of 2026-10-07).
+pub const SETTING_TIME_MAX_CLOCK_SKEW: &str = "PERMGUARD_TIME_MAX_CLOCK_SKEW";
+
 /// Runtime setting key for where secrets are resolved from.
 pub const SETTING_SECRETS_PROVIDER: &str = "PERMGUARD_SECRETS_PROVIDER";
 
@@ -891,6 +896,10 @@ const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 /// store and gives up the volume lock, which a drain that took the whole budget would never reach.
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(25);
 
+/// Thirty seconds, as the event journal's own skew allowance: an NTP step stays inside it, a clock
+/// set back by hand does not.
+pub const DEFAULT_TIME_MAX_CLOCK_SKEW: Duration = Duration::from_secs(30);
+
 /// The least of the budget the drain must leave: sealing the trail, releasing the store and the
 /// volume lock are not instant, and a drain that left nothing would leave them to the orchestrator's
 /// kill.
@@ -1061,6 +1070,7 @@ pub struct Config {
     limits: Limits,
     shutdown_timeout: Duration,
     shutdown_drain_timeout: Duration,
+    time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
     assurance_added: Vec<crate::assurance::Control>,
     secrets_provider: SecretProvider,
@@ -1226,6 +1236,7 @@ impl Default for Config {
             limits: Limits::default(),
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
             shutdown_drain_timeout: DEFAULT_SHUTDOWN_DRAIN_TIMEOUT,
+            time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
             assurance_added: Vec::new(),
             secrets_provider: SecretProvider::None,
@@ -2540,6 +2551,12 @@ produce: use `EdDSA` or `ES256`"
         self.shutdown_drain_timeout
     }
 
+    /// Returns the largest backward step of the wall clock the Host tolerates before it declares
+    /// a clock anomaly. Never zero.
+    pub fn time_max_clock_skew(&self) -> Duration {
+        self.time_max_clock_skew
+    }
+
     /// Keeps a parsed section a build added, replacing any section of the same type.
     ///
     /// Validation is the caller's business and happens before this point, so a config that holds a
@@ -3414,6 +3431,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_LIMITS_BODY_BYTES => n(self.limits.body_bytes()),
             SETTING_SHUTDOWN_TIMEOUT => d(self.shutdown_timeout),
             SETTING_SHUTDOWN_DRAIN_TIMEOUT => d(self.shutdown_drain_timeout),
+            SETTING_TIME_MAX_CLOCK_SKEW => d(self.time_max_clock_skew),
             SETTING_ASSURANCE_PROFILE => Some(self.assurance_profile.as_str().to_owned()),
             SETTING_ASSURANCE_ADDED_CONTROLS => {
                 list(self.assurance_added.iter().map(ToString::to_string))
@@ -3887,6 +3905,18 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_TIME_MAX_CLOCK_SKEW) {
+            let skew = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_TIME_MAX_CLOCK_SKEW}"))?;
+            if skew.is_zero() {
+                bail!(
+                    "{SETTING_TIME_MAX_CLOCK_SKEW} is zero: every reading of the wall clock would \
+                     be an anomaly"
+                );
+            }
+            self.time_max_clock_skew = skew;
         }
 
         if let Some(value) = settings.get(SETTING_SECRETS_PROVIDER) {
@@ -4855,6 +4885,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_TELEMETRY_TLS_CERT,
     SETTING_TELEMETRY_TLS_KEY,
     SETTING_TELEMETRY_TLS_MIN_VERSION,
+    SETTING_TIME_MAX_CLOCK_SKEW,
     SETTING_TLS_RELOAD,
     SETTING_TLS_RELOAD_INTERVAL,
     SETTING_VERSION,

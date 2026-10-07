@@ -259,6 +259,13 @@ pub trait Sign: Send + Sync {
 
     /// Signs `payload` under the active key.
     fn sign(&self, payload: &[u8]) -> Result<Signature>;
+
+    /// The wall time an artifact signed now carries, seconds since the epoch. A ring the Host
+    /// hands out reads the Host's time guard (WP-2.12); a bare ring reads the system clock.
+    fn signing_time(&self) -> i64 {
+        use crate::time::Clock as _;
+        crate::time::SystemClock.now()
+    }
 }
 
 /// Reads one ring's public set, and does nothing else: what publishing or verifying needs.

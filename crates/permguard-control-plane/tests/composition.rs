@@ -137,3 +137,63 @@ fn a_declaration_colliding_with_the_control_planes_fails_registration() {
         "{rival}"
     );
 }
+
+/// WP-2.12: with the Host's clock in anomaly the control plane's head statements, which carry
+/// `signed_at`, are not signed; once the wall clock catches up they are again.
+#[test]
+fn a_clock_anomaly_stops_the_control_planes_head_statements() {
+    use permguard_host::time::{ManualClock, ManualMonotonic, TimeGuard};
+    use permguard_objects::digest::Digest;
+    use permguard_objects::statement::{HeadStatement, SignedHead};
+
+    const START: i64 = 1_800_000_000;
+    let wall = Arc::new(ManualClock::at(START));
+    let time = Arc::new(TimeGuard::new(
+        wall.clone(),
+        Arc::new(ManualMonotonic::default()),
+        std::time::Duration::from_secs(30),
+    ));
+    let host = Host::builder()
+        .ring(
+            permguard_host::composition::CONTROL_ATTEST,
+            Arc::new(Ring("control")),
+        )
+        .time(time)
+        .build();
+    let registration = host
+        .register(
+            permguard_control_plane::module().declaration(&config()),
+            None,
+        )
+        .expect("the control plane registers");
+    let signer = registration
+        .signer::<HeadStatementV1>()
+        .expect("declared")
+        .expect("composed");
+    let statement = HeadStatement {
+        zone: "0198f2aa-0000-7000-8000-000000000001".into(),
+        ledger: "0198f3bb-0000-7000-8000-000000000002".into(),
+        r#ref: "main".into(),
+        digest: Digest::compute(b"commit"),
+        counter: 1,
+        signed_at: START,
+    };
+    let sign = |statement: &HeadStatement| {
+        SignedHead::sign_with(statement, b"control", |bytes| {
+            signer
+                .sign(bytes)
+                .map(|signature| signature.bytes().to_vec())
+                .map_err(|error| {
+                    permguard_objects::statement::StatementError::Signer(error.to_string())
+                })
+        })
+    };
+    sign(&statement).expect("a sound clock signs");
+
+    wall.jump(-3_600);
+    let refused = sign(&statement).expect_err("in anomaly");
+    assert!(refused.to_string().contains("anomaly"), "{refused}");
+
+    wall.jump(3_600);
+    sign(&statement).expect("the wall clock caught up");
+}

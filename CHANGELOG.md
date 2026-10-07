@@ -32,6 +32,18 @@ is cut.
   `admin.advertised_url`, optional, names where the listener is reached from outside; the keys redirect and `jwks_uri` use it while the listener serves plain TLS.
   The shipped development configurations bind it on `127.0.0.1:5444`; the container image exposes `5444`.
 
+- **The Host guards its clock: `time.max_clock_skew`.**
+  One time service now serves every Host path that reads the time: token expiry, grant expiry, the replay window, key rotation, and the `signed_at` of head statements and the gate on signing them.
+  When the wall clock steps back by more than `time.max_clock_skew` (`PERMGUARD_TIME_MAX_CLOCK_SKEW`, default `30s`), the Host is in clock anomaly.
+  In anomaly the Control Plane signs no NOTP head statement, since a verifier judges a head by its `signed_at`, and `GET /host/v1/status` lists `degraded: time` with the reason.
+  Expiry keeps being judged at the time the clock was expected at, so setting the clock back never makes an expired token or grant valid again.
+  The process stays ready: decisions, decision and event batches, and the audit trail keep going, ordered by sequence.
+  The anomaly ends on its own once the wall clock passes the time it was expected at; opening and closing are audited as `host.clock_anomaly` and `host.clock_restored`.
+  The highest wall time seen is kept in `host/state/CLOCK` on the volume, so a clock set back across a restart is caught at start.
+  If that mark is itself wrong, left by a run under a clock set ahead, stop the server and remove `host/state/CLOCK`: the next start is a first start.
+  A NOTP push or ref read that needs a fresh head statement during the anomaly is answered `503 unavailable`, to be retried.
+  The OIDC key set's stale window is now measured in monotonic time, so a clock change neither shortens nor stretches it.
+
 ### Changed
 
 - **A `PERMGUARD_*` environment variable no setting reads fails startup.**

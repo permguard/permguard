@@ -27,7 +27,7 @@
 //! library's format, claim generation included.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -155,6 +155,8 @@ pub struct Replay {
     /// same pair while the first is between its lookup and its record is refused, so two
     /// simultaneous retries cannot both apply.
     in_flight: Mutex<BTreeSet<(String, String)>>,
+    /// Where the window is measured from (WP-2.12).
+    time: Arc<crate::time::TimeGuard>,
 }
 
 /// One mutation in flight; dropping it lets the next arrival with the same pair in.
@@ -199,6 +201,9 @@ impl Replay {
             journal: Mutex::new(journal),
             state: Mutex::new(state),
             in_flight: Mutex::new(BTreeSet::new()),
+            time: Arc::new(crate::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
         };
         if dead > 0 {
             replay.compact(&state_dir, options, now)?;
@@ -282,6 +287,12 @@ impl Replay {
         Ok(InFlight { replay: self, key })
     }
 
+    /// Measures the window against `time`, the Host's guard, instead of a guard of its own.
+    pub fn with_time(mut self, time: Arc<crate::time::TimeGuard>) -> Self {
+        self.time = time;
+        self
+    }
+
     /// The stored result of `(principal, request_id)` as `T`, when one is held inside the window
     /// for the same `operation` and the same request `digest`; the same request id under
     /// another operation or request is `request_id_reused`.
@@ -292,7 +303,7 @@ impl Replay {
         operation: &str,
         digest: &str,
     ) -> Result<Option<T>, Refusal> {
-        let now = crate::authz::store::now();
+        let now = self.time.now_secs();
         let mut state = self
             .state
             .lock()
@@ -327,7 +338,7 @@ impl Replay {
         digest: &str,
         result: &T,
     ) -> Result<(), ReplayError> {
-        let now = crate::authz::store::now();
+        let now = self.time.now_secs();
         let stored = StoredResult {
             principal: principal.as_str().to_owned(),
             request_id: request_id.to_owned(),

@@ -83,6 +83,13 @@ pub enum KeyError {
     },
     /// The key store could not be reached or would not answer.
     Unavailable(Cause),
+    /// The artifact carries a time a verifier relies on, and the Host's wall clock stepped back
+    /// beyond its bound (WP-2.12): nothing time-sensitive is signed until wall time passes the
+    /// highest one observed.
+    ClockAnomaly {
+        /// What the guard observed.
+        detail: String,
+    },
     /// Anything else the manager reported.
     Backend(Cause),
 }
@@ -222,16 +229,19 @@ impl KeyError {
 
     /// Reports whether trying again could plausibly succeed.
     ///
-    /// A key ring that is not ready yet becomes ready on its own, which is exactly the case a caller
-    /// should retry rather than fail permanently on.
+    /// A key ring that is not ready yet becomes ready on its own, and so does a clock anomaly once
+    /// wall time catches up: exactly the cases a caller should retry rather than fail permanently on.
     pub fn is_retryable(&self) -> bool {
-        matches!(self, Self::Unavailable(_) | Self::NotReady { .. })
+        matches!(
+            self,
+            Self::Unavailable(_) | Self::NotReady { .. } | Self::ClockAnomaly { .. }
+        )
     }
 
     fn cause(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Unavailable(cause) | Self::Backend(cause) => Some(cause.as_ref()),
-            Self::NotReady { .. } => None,
+            Self::NotReady { .. } | Self::ClockAnomaly { .. } => None,
         }
     }
 }
@@ -239,6 +249,9 @@ impl KeyError {
 typed_error!(KeyError {
     Self::NotReady { detail } => format!("no key is signing yet: {detail}"),
     Self::Unavailable(cause) => format!("the key store is unavailable: {cause}"),
+    Self::ClockAnomaly { detail } => format!(
+        "time-sensitive signatures are unavailable while the clock is in anomaly: {detail}"
+    ),
     Self::Backend(cause) => format!("the key store failed: {cause}"),
 });
 

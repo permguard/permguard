@@ -78,6 +78,8 @@ impl PublicGrant {
 pub struct Authorization {
     store: Option<Arc<GrantStore>>,
     public: AllowSet,
+    /// Where a grant's expiry is compared against (WP-2.12).
+    time: Arc<crate::time::TimeGuard>,
 }
 
 impl std::fmt::Debug for Authorization {
@@ -95,6 +97,9 @@ impl Authorization {
         Self {
             store: Some(store),
             public: public_allows(public),
+            time: Arc::new(crate::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
         }
     }
 
@@ -103,7 +108,16 @@ impl Authorization {
         Self {
             store: None,
             public: public_allows(public),
+            time: Arc::new(crate::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
         }
+    }
+
+    /// Compares grant expiry against `time`, the Host's guard, instead of a guard of its own.
+    pub fn with_time(mut self, time: Arc<crate::time::TimeGuard>) -> Self {
+        self.time = time;
+        self
     }
 
     /// Everything closed: no store, nothing public. The fail-closed default of a composition
@@ -132,7 +146,7 @@ impl Authorization {
     }
 
     fn allows(&self) -> AllowSet {
-        let now = store::now();
+        let now = self.time.now_secs();
         let mut allows = self
             .store
             .as_ref()

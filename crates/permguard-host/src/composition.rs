@@ -40,6 +40,8 @@ use permguard_core::keys::{Jwk, KeyId, KeyManager, Signature};
 use permguard_core::secrets::{SecretRef, SecretStore};
 use permguard_core::server::AuditRecorder;
 use permguard_core::{AuditError, Subject};
+
+use crate::time::TimeGuard;
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
@@ -67,6 +69,9 @@ pub trait Artifact: 'static {
     const TYPE: &'static str;
     /// The ring that signs it.
     const RING: RingId;
+    /// Whether the artifact carries a time a verifier relies on: such an artifact is not signed
+    /// while the Host's clock is in anomaly (WP-2.12). Evidence ordered by sequence is not.
+    const TIME_SENSITIVE: bool;
 }
 
 /// Today's signed NOTP head statement, signed by the Control Plane.
@@ -75,6 +80,8 @@ pub struct HeadStatementV1;
 impl Artifact for HeadStatementV1 {
     const TYPE: &'static str = permguard_core::domains::protected::NOTP_HEAD;
     const RING: RingId = CONTROL_ATTEST;
+    /// `signed_at` is what a verifier judges a head's freshness by.
+    const TIME_SENSITIVE: bool = true;
 }
 
 /// A decision batch, signed by the Data Plane that decided.
@@ -83,6 +90,8 @@ pub struct DecisionBatchV1;
 impl Artifact for DecisionBatchV1 {
     const TYPE: &'static str = permguard_core::domains::protected::DECISION_BATCH;
     const RING: RingId = DATA_ATTEST;
+    /// Evidence: ordered by sequence, it keeps shipping through an anomaly.
+    const TIME_SENSITIVE: bool = false;
 }
 
 /// An event batch, signed by the Data Plane that recorded the history.
@@ -91,6 +100,8 @@ pub struct EventBatchV1;
 impl Artifact for EventBatchV1 {
     const TYPE: &'static str = permguard_core::domains::protected::EVENT_BATCH;
     const RING: RingId = DATA_ATTEST;
+    /// Evidence: ordered by sequence, it keeps shipping through an anomaly.
+    const TIME_SENSITIVE: bool = false;
 }
 
 /// The actions an audit schema lets its holder record.
@@ -238,6 +249,7 @@ pub struct Host {
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
+    time: Arc<TimeGuard>,
     claimed: std::sync::Mutex<Claims>,
 }
 
@@ -253,6 +265,7 @@ pub struct HostBuilder {
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
+    time: Option<Arc<TimeGuard>>,
 }
 
 impl HostBuilder {
@@ -276,11 +289,23 @@ impl HostBuilder {
         self
     }
 
+    /// The time guard every signer of a time-sensitive artifact consults. A Host built without
+    /// one guards with the operating system's clocks and the default bound, kept on no volume.
+    pub fn time(mut self, time: Arc<TimeGuard>) -> Self {
+        self.time = Some(time);
+        self
+    }
+
     pub fn build(self) -> Host {
         Host {
             rings: self.rings,
             recorder: self.recorder,
             authorization: self.authorization,
+            time: self.time.unwrap_or_else(|| {
+                Arc::new(TimeGuard::system(
+                    permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+                ))
+            }),
             claimed: std::sync::Mutex::new(Claims::default()),
         }
     }
@@ -436,6 +461,7 @@ impl Host {
                 .authorization
                 .clone()
                 .unwrap_or_else(|| Arc::new(Authorization::closed())),
+            time: Arc::clone(&self.time),
         })
     }
 }
@@ -451,6 +477,7 @@ pub struct Registration {
     recorder: Option<AuditRecorder>,
     secrets: BTreeMap<&'static str, ResolvedSecret>,
     authorization: Arc<Authorization>,
+    time: Arc<TimeGuard>,
 }
 
 /// A resolved secret's bytes, shared by the handles made from it, and its version.
@@ -476,6 +503,7 @@ impl Registration {
         }
         Ok(self.signers.get(T::TYPE).map(|(_, keys)| Signer {
             keys: Arc::clone(keys),
+            time: Arc::clone(&self.time),
             artifact: PhantomData,
         }))
     }
@@ -532,6 +560,7 @@ impl Registration {
 /// Signs artifact `T`, and nothing else, with the ring `T` names.
 pub struct Signer<T: Artifact> {
     keys: Arc<dyn KeyManager>,
+    time: Arc<TimeGuard>,
     artifact: PhantomData<fn() -> T>,
 }
 
@@ -539,6 +568,7 @@ impl<T: Artifact> Clone for Signer<T> {
     fn clone(&self) -> Self {
         Self {
             keys: Arc::clone(&self.keys),
+            time: Arc::clone(&self.time),
             artifact: PhantomData,
         }
     }
@@ -556,7 +586,18 @@ impl<T: Artifact> permguard_core::keys::Sign for Signer<T> {
     }
 
     fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+        if T::TIME_SENSITIVE
+            && let Err(anomaly) = self.time.trusted_now()
+        {
+            return Err(permguard_core::KeyError::ClockAnomaly {
+                detail: anomaly.to_string(),
+            });
+        }
         self.keys.sign(payload)
+    }
+
+    fn signing_time(&self) -> i64 {
+        self.time.now()
     }
 }
 
@@ -845,6 +886,52 @@ mod tests {
             matches!(refused, CompositionError::Undeclared { .. }),
             "{refused}"
         );
+    }
+
+    /// WP-2.12: a backward jump beyond the bound stops the time-sensitive signatures — a head
+    /// statement's `signed_at` — and leaves evidence signing, which orders by sequence.
+    #[test]
+    fn a_clock_anomaly_stops_time_sensitive_signatures_and_leaves_evidence_signing() {
+        use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
+
+        let wall = Arc::new(ManualClock::at(1_800_000_000));
+        let time = Arc::new(TimeGuard::new(
+            wall.clone(),
+            Arc::new(ManualMonotonic::default()),
+            std::time::Duration::from_secs(30),
+        ));
+        let host = Host::builder()
+            .ring(CONTROL_ATTEST, Arc::new(TaggedRing("control")))
+            .ring(DATA_ATTEST, Arc::new(TaggedRing("data")))
+            .time(time)
+            .build();
+        let control = host
+            .register(Declaration::new("control").signs::<HeadStatementV1>(), None)
+            .expect("registers");
+        let data = host
+            .register(Declaration::new("data").signs::<DecisionBatchV1>(), None)
+            .expect("registers");
+        let heads = control
+            .signer::<HeadStatementV1>()
+            .expect("declared")
+            .expect("composed");
+        let batches = data
+            .signer::<DecisionBatchV1>()
+            .expect("declared")
+            .expect("composed");
+        heads.sign(b"head").expect("a sound clock signs");
+
+        wall.jump(-31);
+        let refused = heads.sign(b"head").expect_err("in anomaly");
+        assert!(
+            matches!(refused, permguard_core::KeyError::ClockAnomaly { .. }),
+            "{refused}"
+        );
+        assert!(refused.is_retryable());
+        batches.sign(b"batch").expect("evidence keeps signing");
+
+        wall.jump(31);
+        heads.sign(b"head").expect("the wall clock caught up");
     }
 
     #[test]

@@ -314,6 +314,32 @@ impl Lifecycle {
         }
     }
 
+    /// Names `capability` of component `name` as unavailable for `reason`, without touching its
+    /// phase or readiness: what serves keeps serving, and the paths that need the capability
+    /// refuse on their own. Replaces an earlier reason for the same capability.
+    pub fn degrade(&self, name: &str, capability: &str, reason: impl Into<String>) {
+        let mut registry = self.lock();
+        if let Some(component) = registry.components.get_mut(name) {
+            component
+                .degraded
+                .retain(|degraded| degraded.capability != capability);
+            component.degraded.push(Degraded {
+                capability: capability.to_owned(),
+                reason: reason.into(),
+            });
+        }
+    }
+
+    /// Withdraws a [`Lifecycle::degrade`]: `capability` of `name` is available again.
+    pub fn restore(&self, name: &str, capability: &str) {
+        let mut registry = self.lock();
+        if let Some(component) = registry.components.get_mut(name) {
+            component
+                .degraded
+                .retain(|degraded| degraded.capability != capability);
+        }
+    }
+
     /// Records that `requirement` of Plane `name` is satisfied; a settled Plane that waits for
     /// nothing else moves on to Ready, or to Serving when the Host already serves.
     pub fn satisfy(&self, name: &str, requirement: &str) {

@@ -95,8 +95,26 @@ impl fmt::Debug for PrincipalMapper {
 
 impl PrincipalMapper {
     /// Builds the mapper from `rules`, plus the bootstrap commitment's fingerprint when the
-    /// store holds one. Every identifier is checked for validity and against every other.
+    /// store holds one. Every identifier is checked for validity and against every other. Token
+    /// expiry reads the operating system's clocks through a guard of its own; a server hands its
+    /// Host's guard with [`PrincipalMapper::with_time`].
     pub fn new(rules: &[Rule], bootstrap_fingerprint: Option<&str>) -> Result<Self, MapperError> {
+        Self::with_time(
+            rules,
+            bootstrap_fingerprint,
+            std::sync::Arc::new(crate::time::TimeGuard::system(
+                permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
+            )),
+        )
+    }
+
+    /// [`PrincipalMapper::new`], with token expiry and key-set staleness read from `time`
+    /// (WP-2.12).
+    pub fn with_time(
+        rules: &[Rule],
+        bootstrap_fingerprint: Option<&str>,
+        time: std::sync::Arc<crate::time::TimeGuard>,
+    ) -> Result<Self, MapperError> {
         let mut seen: BTreeMap<Principal, String> = BTreeMap::new();
         let mut claim = |principal: Principal, rule: String| -> Result<(), MapperError> {
             if principal.as_str() == ANONYMOUS {
@@ -153,7 +171,8 @@ impl PrincipalMapper {
                     spki.insert(hex, principal);
                 }
                 Rule::Oidc(rule) => {
-                    let verifier = Verifier::new(rule.clone(), position)?;
+                    let verifier =
+                        Verifier::new(rule.clone(), position, std::sync::Arc::clone(&time))?;
                     // Every subject of the issuer shares one prefix; two rules on one issuer
                     // and claim would both produce it, so the prefix is what collides.
                     claim(

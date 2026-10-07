@@ -183,3 +183,50 @@ fn the_commitment_key_is_resolved_by_the_host_and_never_shown() {
         .expect_err("a 16-byte key is too short to commit with");
     assert!(matches!(short, CompositionError::Secret { .. }), "{short}");
 }
+
+/// WP-2.12: with the Host's clock in anomaly the data plane's evidence keeps signing — decision and
+/// event batches order by sequence, not by the clock — and the head statements it never signs stay
+/// refused as undeclared.
+#[test]
+fn a_clock_anomaly_leaves_the_data_planes_evidence_signing() {
+    use permguard_host::time::{ManualClock, ManualMonotonic, TimeGuard};
+
+    let wall = Arc::new(ManualClock::at(1_800_000_000));
+    let time = Arc::new(TimeGuard::new(
+        wall.clone(),
+        Arc::new(ManualMonotonic::default()),
+        std::time::Duration::from_secs(30),
+    ));
+    let registration = Host::builder()
+        .ring(DATA_ATTEST, Arc::new(Ring("data")))
+        .time(Arc::clone(&time))
+        .build()
+        .register(
+            permguard_data_plane::module().declaration(&config(&[])),
+            None,
+        )
+        .expect("registers");
+    wall.jump(-3_600);
+    time.tick();
+    assert!(
+        time.anomaly().is_some(),
+        "the anomaly is open before anything signs"
+    );
+    let decisions = registration
+        .signer::<DecisionBatchV1>()
+        .expect("declared")
+        .expect("composed");
+    let events = registration
+        .signer::<EventBatchV1>()
+        .expect("declared")
+        .expect("composed");
+    for sequence in 1..=3u8 {
+        decisions
+            .sign(&[sequence])
+            .expect("decision evidence signs in anomaly");
+        events
+            .sign(&[sequence])
+            .expect("event evidence signs in anomaly");
+    }
+    assert!(time.trusted_now().is_err(), "the anomaly is still in force");
+}

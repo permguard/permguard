@@ -20,6 +20,7 @@ pub mod host_api;
 pub mod logging;
 pub mod plane;
 pub mod signal;
+pub mod time;
 pub mod witness;
 
 pub use app::{App, VerifiedTree};

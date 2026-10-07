@@ -182,7 +182,7 @@ impl HostApi {
             request_id: create.request_id.clone(),
             expected_revision: create.expected_revision,
         };
-        let now = crate::authz::store::now();
+        let now = self.time.now_secs();
         let issue = Issue {
             principal: Principal::new(create.principal.as_str())
                 .map_err(|error| invalid(format!("`principal`: {error}")))?,
@@ -245,7 +245,7 @@ impl HostApi {
             request_id: plan.request_id.clone(),
             expected_revision: plan.expected_revision,
         };
-        let now = crate::authz::store::now();
+        let now = self.time.now_secs();
         let target = (grant_id, &plan);
         let applied = self.mutate(
             &admitted.principal,
@@ -310,7 +310,7 @@ impl HostApi {
             request_id: run.request_id.clone(),
             expected_revision: None,
         };
-        let now = crate::authz::store::now();
+        let now = self.time.now_secs();
         let target = (grant_id, &run);
         let applied = self.mutate(
             &admitted.principal,

@@ -70,6 +70,9 @@ pub enum EngineError {
     NotFound { what: String },
     /// A quota refused the work.
     Unavailable { message: String },
+    /// The head statement cannot be signed now and can later: the Host's clock is in anomaly
+    /// (WP-2.12), or the ring is not ready yet.
+    SigningUnavailable { message: String },
     /// The store or the signer failed.
     Internal { detail: String },
 }
@@ -81,6 +84,9 @@ impl std::fmt::Display for EngineError {
             EngineError::Conflict { .. } => write!(f, "the ref moved: compare-and-swap conflict"),
             EngineError::NotFound { what } => write!(f, "not found: {what}"),
             EngineError::Unavailable { message } => write!(f, "refused by quota: {message}"),
+            EngineError::SigningUnavailable { message } => {
+                write!(f, "signing is unavailable: {message}")
+            }
             EngineError::Internal { detail } => write!(f, "internal: {detail}"),
         }
     }
@@ -177,6 +183,9 @@ pub struct Engine<'a> {
     /// *stored*. A plane that has not enabled a provisional runtime must refuse the push rather
     /// than accept a ledger it will then refuse to serve.
     pub enabled: permguard_languages::registry::Enabled,
+    /// Where a head statement's `signed_at` comes from: the signing ring's time, which for a ring
+    /// the Host hands out is the Host's time guard (WP-2.12).
+    pub clock: &'a dyn permguard_core::time::Clock,
 }
 
 /// What one partition's walk gathers for the set-level semantic check: every
@@ -1270,7 +1279,7 @@ impl Engine<'_> {
             r#ref: name.to_string(),
             digest: state.head.clone(),
             counter: state.counter,
-            signed_at: now(),
+            signed_at: self.clock.now(),
         };
         let envelope = signer(&statement)?;
         self.store.write_signature(name, &envelope)?;
@@ -1289,7 +1298,7 @@ impl Engine<'_> {
             r#ref: name.to_string(),
             digest: state.head.clone(),
             counter: state.counter,
-            signed_at: now(),
+            signed_at: self.clock.now(),
         };
         let envelope = signer(&statement)?;
         self.store.write_signature(name, &envelope)?;
@@ -1340,12 +1349,6 @@ impl Engine<'_> {
             detail: format!("sizing the ledger: {e}"),
         })
     }
-}
-
-fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs() as i64)
 }
 
 #[cfg(test)]

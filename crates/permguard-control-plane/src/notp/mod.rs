@@ -91,6 +91,14 @@ pub(crate) struct NotpFacade {
     pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
 }
 
+/// A head statement's `signed_at` is the signing ring's time: the Host's time guard for the ring
+/// the Host hands out (WP-2.12).
+impl permguard_core::time::Clock for NotpFacade {
+    fn now(&self) -> i64 {
+        self.keys.signing_time()
+    }
+}
+
 impl NotpFacade {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
@@ -279,6 +287,7 @@ impl NotpFacade {
             identity,
             limits: self.limits,
             enabled: self.enabled.clone(),
+            clock: self,
         }
     }
 
@@ -293,8 +302,14 @@ impl NotpFacade {
                 .map_err(|e| EngineError::Internal {
                     detail: format!("resolving the signing key: {e}"),
                 })?;
+            // A refusal that passes on its own — the Host's clock in anomaly (WP-2.12), a ring not
+            // ready yet — is answered `unavailable`, never as a store failure.
+            let unavailable = std::cell::RefCell::new(None::<String>);
             let signed = SignedHead::sign_with(statement, kid.as_str().as_bytes(), |bytes| {
                 let signature = self.keys.sign(bytes).map_err(|e| {
+                    if e.is_retryable() {
+                        *unavailable.borrow_mut() = Some(e.to_string());
+                    }
                     permguard_objects::statement::StatementError::Signer(format!(
                         "signing the head statement: {e}"
                     ))
@@ -308,8 +323,11 @@ impl NotpFacade {
                 }
                 Ok(signature.bytes().to_vec())
             })
-            .map_err(|e| EngineError::Internal {
-                detail: e.to_string(),
+            .map_err(|e| match unavailable.take() {
+                Some(message) => EngineError::SigningUnavailable { message },
+                None => EngineError::Internal {
+                    detail: e.to_string(),
+                },
             })?;
             signed.encode().map_err(|e| EngineError::Internal {
                 detail: e.to_string(),
@@ -638,6 +656,11 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
             permguard_core::codes::stream::QUOTA_EXHAUSTED,
             message,
         ),
+        EngineError::SigningUnavailable { message } => ApiError::new(
+            ErrorClass::Unavailable,
+            permguard_core::codes::common::UNAVAILABLE,
+            format!("the head statement cannot be signed now: {message}"),
+        ),
         EngineError::Internal { detail } => ApiError::new(
             ErrorClass::Internal,
             permguard_core::codes::notp::NOTP_FAILED,
@@ -650,4 +673,120 @@ pub(crate) fn api_error(error: EngineError) -> ApiError {
 /// The engine's codes are compile-time literals already shaped for the wire.
 fn leak_code(code: &'static str) -> &'static str {
     code
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use permguard_core::keys::{Jwk, KeyId, KeyManager, Maintenance, PublicSet, Sign, Signature};
+    use permguard_core::time::Clock as _;
+    use permguard_host::composition::{CONTROL_ATTEST, Declaration, HeadStatementV1, Host};
+    use permguard_host::time::{ManualClock, ManualMonotonic, TimeGuard};
+    use permguard_objects::digest::Digest;
+    use permguard_std::catalog::FileCatalog;
+
+    use super::*;
+
+    struct Ring;
+
+    impl Sign for Ring {
+        fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+            Ok(KeyId::new("control"))
+        }
+        fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+            Ok(Signature::new(
+                KeyId::new("control"),
+                "EdDSA",
+                payload.to_vec(),
+            ))
+        }
+    }
+
+    impl PublicSet for Ring {
+        fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
+            Ok(vec![Jwk::okp("control", "Ed25519", "EdDSA", "x")])
+        }
+    }
+
+    impl KeyManager for Ring {
+        fn name(&self) -> &'static str {
+            "ring"
+        }
+        fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+            Ok(Maintenance::default())
+        }
+    }
+
+    /// WP-2.12: a head statement is stamped with the Host's time and, with the Host's clock in
+    /// anomaly, refused as `unavailable` — something a client retries — never as a store failure.
+    #[test]
+    fn a_clock_anomaly_refuses_a_head_statement_as_unavailable() {
+        const START: i64 = 1_800_000_000;
+        let wall = Arc::new(ManualClock::at(START));
+        let time = Arc::new(TimeGuard::new(
+            wall.clone(),
+            Arc::new(ManualMonotonic::default()),
+            Duration::from_secs(30),
+        ));
+        let signer = Host::builder()
+            .ring(CONTROL_ATTEST, Arc::new(Ring))
+            .time(time)
+            .build()
+            .register(Declaration::new("control").signs::<HeadStatementV1>(), None)
+            .expect("registers")
+            .signer::<HeadStatementV1>()
+            .expect("declared")
+            .expect("composed");
+        let root = std::env::temp_dir().join(format!(
+            "permguard-notp-clock-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let facade = NotpFacade::new(
+            Arc::new(FileCatalog::new(root.join("zones"))),
+            root.join("zones"),
+            Arc::new(signer),
+            EngineLimits {
+                max_batch_bytes: 1024,
+                max_batch_objects: 10,
+                max_push_objects: 10,
+                max_push_bytes: 1024,
+                ledger_quota_bytes: 1024,
+            },
+            permguard_languages::registry::Enabled::everything(),
+            false,
+            None,
+            Disclosure::Minimal,
+            false,
+            permguard_core::metrics::Metrics::none(),
+            Arc::new(permguard_host::composition::Authorization::permissive()),
+        );
+        wall.jump(7);
+        assert_eq!(facade.now(), START + 7, "signed_at is the Host's time");
+        let statement = HeadStatement {
+            zone: "0198f2aa-0000-7000-8000-000000000001".into(),
+            ledger: "0198f3bb-0000-7000-8000-000000000002".into(),
+            r#ref: "main".into(),
+            digest: Digest::compute(b"commit"),
+            counter: 1,
+            signed_at: facade.now(),
+        };
+        facade.signer()(&statement).expect("a sound clock signs");
+
+        wall.jump(-3_600);
+        let refused = facade.signer()(&statement).expect_err("in anomaly");
+        assert!(
+            matches!(refused, EngineError::SigningUnavailable { .. }),
+            "{refused}"
+        );
+        let answer = api_error(refused);
+        assert_eq!(answer.class(), ErrorClass::Unavailable);
+        assert_eq!(answer.code(), permguard_core::codes::common::UNAVAILABLE);
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

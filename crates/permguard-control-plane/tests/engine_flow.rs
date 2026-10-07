@@ -106,6 +106,7 @@ impl Fixture {
             limits: limits(),
             // A test has no deployment to consult: what the build carries is what it sees.
             enabled: permguard_languages::registry::Enabled::everything(),
+            clock: &permguard_core::time::SystemClock,
         }
     }
 

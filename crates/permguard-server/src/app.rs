@@ -60,7 +60,12 @@ struct HostAuthz {
     store: Arc<permguard_host::authz::GrantStore>,
 }
 
-type KeyManagerFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync>;
+/// Builds a key ring; its rotation reads the Host's time guard (WP-2.12).
+type KeyManagerFactory = Box<
+    dyn Fn(&Config, &Arc<permguard_host::time::TimeGuard>) -> Result<Option<Arc<dyn KeyManager>>>
+        + Send
+        + Sync,
+>;
 
 /// Builds the catalog of zones and ledgers a deployment keeps, from its effective configuration.
 type CatalogFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn Catalog>>> + Send + Sync>;
@@ -68,8 +73,11 @@ type CatalogFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn Catalog>>> + 
 /// Builds a plane's signing ring — a separate ring from the one sealing the audit trail, on
 /// purpose. The control plane's signs what it serves (git-like head statements today); the data
 /// plane's will sign the decision responses it returns.
-type PlaneSigningKeysFactory =
-    Box<dyn Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync>;
+type PlaneSigningKeysFactory = Box<
+    dyn Fn(&Config, &Arc<permguard_host::time::TimeGuard>) -> Result<Option<Arc<dyn KeyManager>>>
+        + Send
+        + Sync,
+>;
 
 /// Builds the audit destination the effective configuration names.
 ///
@@ -293,7 +301,13 @@ impl App {
     /// them lives are configuration, and the app is composed before any configuration has been read.
     pub fn with_keys_factory<F>(mut self, factory: F) -> Self
     where
-        F: Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync + 'static,
+        F: Fn(
+                &Config,
+                &Arc<permguard_host::time::TimeGuard>,
+            ) -> Result<Option<Arc<dyn KeyManager>>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.keys_factory = Some(Box::new(factory));
 
@@ -304,7 +318,13 @@ impl App {
     /// Names how the control plane's signing ring is built.
     pub fn with_control_signing_keys_factory<F>(mut self, factory: F) -> Self
     where
-        F: Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync + 'static,
+        F: Fn(
+                &Config,
+                &Arc<permguard_host::time::TimeGuard>,
+            ) -> Result<Option<Arc<dyn KeyManager>>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.control_signing_keys_factory = Some(Box::new(factory));
 
@@ -314,7 +334,13 @@ impl App {
     /// Names how the data plane's signing ring is built.
     pub fn with_data_signing_keys_factory<F>(mut self, factory: F) -> Self
     where
-        F: Fn(&Config) -> Result<Option<Arc<dyn KeyManager>>> + Send + Sync + 'static,
+        F: Fn(
+                &Config,
+                &Arc<permguard_host::time::TimeGuard>,
+            ) -> Result<Option<Arc<dyn KeyManager>>>
+            + Send
+            + Sync
+            + 'static,
     {
         self.data_signing_keys_factory = Some(Box::new(factory));
 
@@ -797,23 +823,35 @@ impl App {
     }
 
     /// Builds the control plane's signing ring, when this build composes one.
-    pub fn control_signing_keys_for(&self, config: &Config) -> Result<Option<Arc<dyn KeyManager>>> {
+    pub fn control_signing_keys_for(
+        &self,
+        config: &Config,
+        time: &Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<Option<Arc<dyn KeyManager>>> {
         match &self.control_signing_keys_factory {
-            Some(factory) => factory(config),
+            Some(factory) => factory(config, time),
             None => Ok(None),
         }
     }
 
     /// Builds the data plane's signing ring, when this build composes one.
-    pub fn data_signing_keys_for(&self, config: &Config) -> Result<Option<Arc<dyn KeyManager>>> {
+    pub fn data_signing_keys_for(
+        &self,
+        config: &Config,
+        time: &Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<Option<Arc<dyn KeyManager>>> {
         match &self.data_signing_keys_factory {
-            Some(factory) => factory(config),
+            Some(factory) => factory(config, time),
             None => Ok(None),
         }
     }
 
     /// Builds the key ring the effective configuration names.
-    pub fn keys_for(&self, config: &Config) -> Result<Option<Arc<dyn KeyManager>>> {
+    pub fn keys_for(
+        &self,
+        config: &Config,
+        time: &Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<Option<Arc<dyn KeyManager>>> {
         if !config.keys_enabled() {
             return Ok(None);
         }
@@ -823,7 +861,7 @@ impl App {
             .as_ref()
             .context("signing keys are enabled but this build composes no key manager")?;
 
-        factory(config)
+        factory(config, time)
     }
 
     /// Builds the registry of realms this deployment hosts.
@@ -968,6 +1006,7 @@ impl App {
         config_file: &Path,
         file: &ConfigFile,
         volume: &permguard_host::storage::volume::Volume,
+        time: &Arc<permguard_host::time::TimeGuard>,
     ) -> Result<HostAuthz> {
         use permguard_host::authz::{
             Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
@@ -983,7 +1022,7 @@ impl App {
             )
         })?;
         let expired = store
-            .expire_due(permguard_host::authz::store::now())
+            .expire_due(time.now_secs())
             .context("writing the expiry of grants past their time")?;
         tracing::info!(
             event.name = "authz.opened",
@@ -1014,9 +1053,10 @@ impl App {
             })
             .collect();
         let bootstrap = store.bootstrap();
-        let mapper = PrincipalMapper::new(
+        let mapper = PrincipalMapper::with_time(
             &rules,
             bootstrap.as_ref().map(|held| held.fingerprint.as_str()),
+            Arc::clone(time),
         )
         .context("building the credential mapper from host.principals")?;
         let public: Vec<PublicGrant> = auth
@@ -1037,7 +1077,8 @@ impl App {
                 "the configuration declares public grants: what they name needs no credential"
             );
         }
-        let authorization = Arc::new(Authorization::new(Arc::clone(&store), &public));
+        let authorization =
+            Arc::new(Authorization::new(Arc::clone(&store), &public).with_time(Arc::clone(time)));
         tracing::info!(
             event.name = "authz.mapper",
             component = "server",
@@ -1133,6 +1174,23 @@ impl App {
             "this process holds the volume"
         );
 
+        // The Host's one time service (WP-2.12), opened against the high-water mark the volume
+        // keeps: a clock set back across a restart is in anomaly from here on.
+        let time = Arc::new(
+            permguard_host::time::TimeGuard::open(
+                &volume,
+                Arc::new(permguard_host::time::SystemClock),
+                Arc::new(permguard_host::time::SystemMonotonic::new()),
+                config.time_max_clock_skew(),
+            )
+            .with_context(|| {
+                format!(
+                    "opening the clock's high-water mark on {}",
+                    volume.host().path().display()
+                )
+            })?,
+        );
+
         if let Some(provisioner) = &self.provisioner {
             provisioner(config).with_context(|| {
                 format!("preparing the volume at {}", config.working_dir().display())
@@ -1163,11 +1221,11 @@ impl App {
         // done by the records made under it.
         witness::check(config, pseudonymizer.as_deref())?;
 
-        let keys = self.keys_for(config)?;
+        let keys = self.keys_for(config, &time)?;
         let audit = self.audit_for(config, keys.as_ref())?;
         let catalog = self.catalog_for(config)?;
-        let control_signing_keys = self.control_signing_keys_for(config)?;
-        let data_signing_keys = self.data_signing_keys_for(config)?;
+        let control_signing_keys = self.control_signing_keys_for(config, &time)?;
+        let data_signing_keys = self.data_signing_keys_for(config, &time)?;
 
         // Every issuer this deployment hosts, each with its own keys and trail, built once here. A
         // plain single-issuer server has none and this is the empty registry.
@@ -1214,7 +1272,7 @@ impl App {
             authorization,
             authenticator,
             store: grants,
-        } = self.authorization_for(config, config_file, &file, &volume)?;
+        } = self.authorization_for(config, config_file, &file, &volume, &time)?;
         context = context.with_authenticator(authenticator);
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
@@ -1224,13 +1282,13 @@ impl App {
         if config.admin_addr().is_some() {
             use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
 
-            let (replay, recovery) = Replay::open(&volume, permguard_host::authz::store::now())
-                .with_context(|| {
-                    format!(
-                        "opening the replay journal on {}",
-                        volume.host().path().display()
-                    )
-                })?;
+            let (replay, recovery) = Replay::open(&volume, time.now_secs()).with_context(|| {
+                format!(
+                    "opening the replay journal on {}",
+                    volume.host().path().display()
+                )
+            })?;
+            let replay = replay.with_time(Arc::clone(&time));
             tracing::info!(
                 event.name = "host_api.replay_opened",
                 component = "server",
@@ -1275,6 +1333,7 @@ impl App {
                 effective: Effective::of(config.effective_settings()),
                 trail: audit.name().to_owned(),
                 recorder: Some(self.recorder(&audit, pseudonymizer.as_ref())),
+                time: Arc::clone(&time),
             });
             context = context.with_host_handles(Arc::new(api));
         }
@@ -1282,9 +1341,17 @@ impl App {
         // The Host: every generic capability once. The Planes' rings, the audit recorder and the
         // secret store reach a Plane only as the handles its declaration grants (P1); the rings are
         // also handed to the Host's own maintenance pass.
+        // Readiness, the log and the trail hear of every clock anomaly, one already found at
+        // Bootstrap included; a periodic pass notices a jump when no request reads the time.
+        time.observe(Arc::new(crate::time::HostClockObserver::new(
+            context.health().clone(),
+            Some(recorder.clone()),
+        )));
+        let _ticking = crate::time::tick(Arc::clone(&time));
         let mut host = permguard_host::composition::Host::builder()
             .audit(recorder)
-            .authorization(authorization);
+            .authorization(authorization)
+            .time(Arc::clone(&time));
         if let Some(keys) = control_signing_keys {
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::CONTROL_ATTEST, keys);

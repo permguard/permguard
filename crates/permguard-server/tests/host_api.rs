@@ -184,6 +184,9 @@ fn facade(tag: &str) -> Arc<HostApi> {
         },
         trail: "recording".to_owned(),
         recorder: None,
+        time: Arc::new(permguard_host::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        )),
     }))
 }
 

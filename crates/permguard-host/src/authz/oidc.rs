@@ -14,7 +14,7 @@
 //! compared with the header's, never obeyed. The principal is `oidc:<issuer>#<claim value>`.
 
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
@@ -53,10 +53,11 @@ enum Key {
 #[derive(Debug, Clone)]
 struct Loaded {
     keys: Vec<(Option<String>, Key)>,
-    /// When the file was last found to say these are the keys: loaded, or seen unchanged.
-    at: SystemTime,
+    /// When the file was last found to say these are the keys, loaded or seen unchanged, as the
+    /// time guard's monotonic reading: the stale window is a duration, never a wall time.
+    at: Duration,
     /// When the file was last looked at, whatever it said: one stat per half-window.
-    checked: SystemTime,
+    checked: Duration,
     modified: Option<SystemTime>,
 }
 
@@ -65,6 +66,7 @@ pub struct Verifier {
     rule: OidcRule,
     position: usize,
     loaded: RwLock<Loaded>,
+    time: Arc<crate::time::TimeGuard>,
 }
 
 impl std::fmt::Debug for Verifier {
@@ -77,7 +79,11 @@ impl std::fmt::Debug for Verifier {
 
 impl Verifier {
     /// Builds the verifier and loads its key set once; a rule that cannot be honoured fails.
-    pub fn new(rule: OidcRule, position: usize) -> Result<Self, MapperError> {
+    pub fn new(
+        rule: OidcRule,
+        position: usize,
+        time: Arc<crate::time::TimeGuard>,
+    ) -> Result<Self, MapperError> {
         let at = format!("host.principals[{position}].oidc");
         if rule.issuer.trim().is_empty() || rule.audience.trim().is_empty() {
             return Err(MapperError::Invalid(format!(
@@ -106,12 +112,13 @@ impl Verifier {
         if rule.max_stale.is_zero() {
             return Err(MapperError::Invalid(format!("{at}: max_stale is positive")));
         }
-        let loaded =
-            load(&rule.jwks_file).map_err(|detail| MapperError::Keys(format!("{at}: {detail}")))?;
+        let loaded = load(&rule.jwks_file, time.elapsed())
+            .map_err(|detail| MapperError::Keys(format!("{at}: {detail}")))?;
         Ok(Self {
             rule,
             position,
             loaded: RwLock::new(loaded),
+            time,
         })
     }
 
@@ -132,7 +139,7 @@ impl Verifier {
     /// an error that leaves the loaded set to age out. `verify` calls it once half the window
     /// has passed; a maintenance pass may call it earlier.
     pub fn refresh(&self) -> Result<bool, String> {
-        let now = SystemTime::now();
+        let now = self.time.elapsed();
         let modified = std::fs::metadata(&self.rule.jwks_file)
             .and_then(|metadata| metadata.modified())
             .map_err(|error| format!("reading {}: {error}", self.rule.jwks_file.display()));
@@ -147,7 +154,7 @@ impl Verifier {
             return Ok(false);
         }
         drop(held);
-        let loaded = load(&self.rule.jwks_file)?;
+        let loaded = load(&self.rule.jwks_file, now)?;
         *self
             .loaded
             .write()
@@ -207,9 +214,7 @@ impl Verifier {
                 .loaded
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            SystemTime::now()
-                .duration_since(held.checked)
-                .is_ok_and(|since| since >= self.rule.max_stale / 2)
+            self.time.elapsed().saturating_sub(held.checked) >= self.rule.max_stale / 2
         };
         if due && let Err(detail) = self.refresh() {
             tracing::warn!(
@@ -225,10 +230,7 @@ impl Verifier {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        if SystemTime::now()
-            .duration_since(loaded.at)
-            .is_ok_and(|age| age > self.rule.max_stale)
-        {
+        if self.time.elapsed().saturating_sub(loaded.at) > self.rule.max_stale {
             return Err(AccessDenial::unauthenticated(
                 "the issuer's verification keys are past their stale window; authentication is \
                  unavailable until they are refreshed",
@@ -256,10 +258,9 @@ impl Verifier {
                 "the token's signature does not verify",
             ));
         }
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|since| since.as_secs())
-            .unwrap_or(0);
+        // Expiry is a wall-time comparison (WP-2.12): read through the guard, which notices a
+        // clock set back.
+        let now = self.time.now_secs();
         match claims.get("exp").and_then(serde_json::Value::as_u64) {
             Some(exp) if exp > now => {}
             _ => {
@@ -333,7 +334,7 @@ fn verify_with(key: &Key, algorithm: &str, signed: &[u8], signature: &[u8]) -> b
     }
 }
 
-fn load(path: &std::path::Path) -> Result<Loaded, String> {
+fn load(path: &std::path::Path, now: Duration) -> Result<Loaded, String> {
     let bytes =
         std::fs::read(path).map_err(|error| format!("reading {}: {error}", path.display()))?;
     let modified = std::fs::metadata(path)
@@ -398,7 +399,6 @@ fn load(path: &std::path::Path) -> Result<Loaded, String> {
     if parsed.is_empty() {
         return Err(format!("{} holds no key", path.display()));
     }
-    let now = SystemTime::now();
     Ok(Loaded {
         keys: parsed,
         at: now,
@@ -413,6 +413,10 @@ mod tests {
 
     use super::*;
     use ring::signature::{Ed25519KeyPair, KeyPair as _};
+
+    fn guard() -> Arc<crate::time::TimeGuard> {
+        Arc::new(crate::time::TimeGuard::system(Duration::from_secs(30)))
+    }
 
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -472,7 +476,7 @@ mod tests {
     fn a_pinned_token_verifies_and_names_the_principal_from_the_claim() {
         let dir = scratch("verifies");
         let (pair, rule) = issuer(&dir);
-        let verifier = Verifier::new(rule, 0).expect("builds");
+        let verifier = Verifier::new(rule, 0, guard()).expect("builds");
         let token = token(
             &pair,
             serde_json::json!({"alg": "EdDSA", "kid": "k1"}),
@@ -494,7 +498,7 @@ mod tests {
      {
         let dir = scratch("refuses");
         let (pair, rule) = issuer(&dir);
-        let verifier = Verifier::new(rule, 0).expect("builds");
+        let verifier = Verifier::new(rule, 0, guard()).expect("builds");
         let other = token(
             &pair,
             serde_json::json!({"alg": "EdDSA"}),
@@ -527,7 +531,11 @@ mod tests {
             serde_json::json!({"alg": "EdDSA"}),
             serde_json::json!({"iss": "https://login.example", "aud": "permguard", "exp": soon(), "sub": "a"}),
         );
-        tampered.replace_range(tampered.len() - 2.., "AA");
+        // One character in the middle of the signature, always changed: replacing the tail with a
+        // fixed value left it as it was whenever the signature already ended that way.
+        let at = tampered.len() - 20;
+        let flipped = if &tampered[at..=at] == "A" { "B" } else { "A" };
+        tampered.replace_range(at..=at, flipped);
         assert!(verifier.verify(&tampered).is_err());
         assert!(verifier.verify("not.a.jws.at.all").is_err());
         let no_subject = token(
@@ -545,7 +553,7 @@ mod tests {
         rule.max_stale = Duration::from_millis(20);
         let file = rule.jwks_file.clone();
         let jwks = std::fs::read(&file).expect("the key set reads");
-        let verifier = Verifier::new(rule, 0).expect("builds");
+        let verifier = Verifier::new(rule, 0, guard()).expect("builds");
         let token = token(
             &pair,
             serde_json::json!({"alg": "EdDSA"}),
@@ -587,6 +595,47 @@ mod tests {
         assert!(verifier.verify(&fresh).expect("verifies").is_some());
     }
 
+    /// WP-2.12: expiry is compared with the guard's wall time, which a clock set back does not
+    /// move back; the stale window is measured in monotonic time, so a wall clock set back does not
+    /// stretch it.
+    #[test]
+    fn expiry_reads_wall_time_and_the_stale_window_reads_monotonic_time() {
+        use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
+
+        const START: i64 = 1_800_000_000;
+        let dir = scratch("guard");
+        let (pair, mut rule) = issuer(&dir);
+        rule.max_stale = Duration::from_secs(3_600);
+        let file = rule.jwks_file.clone();
+        let wall = Arc::new(ManualClock::at(START));
+        let mono = Arc::new(ManualMonotonic::default());
+        let time = Arc::new(TimeGuard::new(
+            wall.clone(),
+            mono.clone(),
+            Duration::from_secs(30),
+        ));
+        let verifier = Verifier::new(rule, 0, time).expect("builds");
+        let token = token(
+            &pair,
+            serde_json::json!({"alg": "EdDSA"}),
+            serde_json::json!({"iss": "https://login.example", "aud": "permguard", "exp": START + 600, "sub": "a"}),
+        );
+        assert!(verifier.verify(&token).expect("verifies").is_some());
+        wall.jump(600);
+        assert!(verifier.verify(&token).is_err(), "expired by wall time");
+        // A clock set back does not bring the token back: in anomaly the guard's time stays where
+        // the wall clock was expected.
+        wall.jump(-600);
+        assert!(verifier.verify(&token).is_err(), "still expired");
+
+        // The file gone and two hours of monotonic time passed: stale, whatever the wall says.
+        std::fs::remove_file(&file).expect("removed");
+        mono.advance(Duration::from_secs(7_200));
+        wall.jump(-7_200);
+        let refused = verifier.verify(&token).expect_err("stale");
+        assert!(refused.message().contains("stale window"), "{refused}");
+    }
+
     #[test]
     fn a_rule_that_cannot_be_honoured_fails_startup() {
         let dir = scratch("rules");
@@ -594,19 +643,19 @@ mod tests {
         let mut no_keys = rule.clone();
         no_keys.jwks_file = dir.join("missing.json");
         assert!(matches!(
-            Verifier::new(no_keys, 0),
+            Verifier::new(no_keys, 0, guard()),
             Err(MapperError::Keys(_))
         ));
         let mut bad_alg = rule.clone();
         bad_alg.algorithms = vec!["HS256".to_owned()];
         assert!(matches!(
-            Verifier::new(bad_alg, 0),
+            Verifier::new(bad_alg, 0, guard()),
             Err(MapperError::Invalid(_))
         ));
         let mut no_claim = rule;
         no_claim.claim = String::new();
         assert!(matches!(
-            Verifier::new(no_claim, 0),
+            Verifier::new(no_claim, 0, guard()),
             Err(MapperError::Invalid(_))
         ));
     }

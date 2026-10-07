@@ -69,6 +69,7 @@ impl EngineRemote {
                 ledger_quota_bytes: 256 * 1024 * 1024,
             },
             enabled: self.enabled.clone(),
+            clock: &permguard_core::time::SystemClock,
         }
     }
 
