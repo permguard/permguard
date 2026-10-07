@@ -61,6 +61,7 @@ pub const UNCLAIMED: u64 = 0;
 /// A claimed volume: the lock is held until this is dropped.
 #[derive(Debug)]
 pub struct Volume {
+    root: std::path::PathBuf,
     host: Dir,
     id: [u8; 16],
     generation: u64,
@@ -124,6 +125,7 @@ impl Volume {
         let generation = read_u64_view(&host, VOLUME_CLAIM)?.unwrap_or(UNCLAIMED);
 
         Ok(Self {
+            root: root.to_path_buf(),
             host,
             id,
             generation,
@@ -144,6 +146,12 @@ impl Volume {
     /// The lease generation this process holds the volume under: every frame it appends carries it.
     pub fn generation(&self) -> u64 {
         self.generation
+    }
+
+    /// The volume's root, the server's working directory: what a subsystem's generation
+    /// directories are named relative to.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     /// The `host` directory.

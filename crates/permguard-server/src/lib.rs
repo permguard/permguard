@@ -25,7 +25,9 @@ pub mod witness;
 
 pub use app::{App, VerifiedTree};
 pub use banner::Banner;
-pub use command::{Action, AuditCommand, Cli, Command, KeysCommand, ServeArgs, VolumeCommand};
+pub use command::{
+    Action, AuditCommand, Cli, Command, KeysCommand, MigrateCommand, ServeArgs, VolumeCommand,
+};
 pub use host::{DefaultServerHost, LAST_START_KEY};
 pub use host_api::HostApiService;
 pub use plane::{PlaneModule, PlaneServer, addresses_for_plane, build_settings};

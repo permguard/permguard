@@ -44,6 +44,14 @@ is cut.
   A NOTP push or ref read that needs a fresh head statement during the anomaly is answered `503 unavailable`, to be retried.
   The OIDC key set's stale window is now measured in monotonic time, so a clock change neither shortens nor stretches it.
 
+- **Subsystem layout migrations: `migrate status`, `recover`, `rollback` and `finalize`.**
+  A subsystem laid out through the storage library keeps a manifest at `host/layout/<subsystem>/MANIFEST`, naming its layout version and generation directory.
+  A migration runs offline, holding the volume: it writes an intent, builds the new generation beside the old one, verifies digests and counts, switches the manifest atomically and writes a commit.
+  Evidence is carried byte for byte and never rewritten; a build that changes it, or writes into the old generation, is refused before the switch.
+  The old generation stays after the commit until `migrate finalize`; `migrate rollback` returns to it, and refuses when the server has since written into the new generation.
+  A server refuses to start while a migration is between two sides, and over a layout version or subsystem it does not read; `migrate recover` lands an interrupted migration on one side.
+  No shipped subsystem is laid out this way yet; the packages that adopt the library bring their migrations.
+
 ### Changed
 
 - **A `PERMGUARD_*` environment variable no setting reads fails startup.**

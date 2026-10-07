@@ -447,9 +447,248 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "tombstone.",
         "failure.",
         "volume.",
+        "migrate.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
     .collect();
     assert_eq!(visited.len(), POINTS.len());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Migration (WP-1.9): the synthetic `notes` subsystem, version 1 to 2.
+
+mod migrating {
+    use super::*;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::storage::migrate::testing::{NotesV2, SUBSYSTEM, write_note};
+    use permguard_host::storage::migrate::{Layout, Phase, Preflight, Reads};
+    use permguard_host::storage::volume::Volume;
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn preflight() -> Preflight {
+        Preflight::new(AssuranceProfile::Development, "data/notes/g2", None, NOW)
+    }
+
+    fn migration() -> NotesV2 {
+        NotesV2 {
+            tamper: false,
+            write_old: false,
+            omit: false,
+        }
+    }
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the directory"))
+    }
+
+    /// Lays `notes` out at version 1 with two notes on a fresh volume at `root`.
+    fn lay_out(root: &Path) {
+        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        layout.declare(1, "data/notes/g1", NOW).expect("declared");
+        let old = layout.active(&Reads::only(1)).expect("active");
+        write_note(&old, "alpha", b"first note");
+        write_note(&old, "beta", b"second note");
+    }
+
+    fn migrated(root: &Path) {
+        lay_out(root);
+        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        Layout::open(&volume, SUBSYSTEM)
+            .expect("opens")
+            .migrate(&migration(), preflight())
+            .expect("migrated");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_migrate() {
+        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        Layout::open(&volume, SUBSYSTEM)
+            .expect("opens")
+            .migrate(&migration(), preflight())
+            .expect("migrated");
+    }
+
+    /// A build refused before the switch leaves the intent; `recover` abandons it.
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_abandon() {
+        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        layout
+            .migrate(
+                &NotesV2 {
+                    tamper: true,
+                    write_old: false,
+                    omit: false,
+                },
+                preflight(),
+            )
+            .expect_err("refused before the switch");
+        layout.recover(NOW + 1).expect("abandoned");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_finalize() {
+        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        Layout::open(&volume, SUBSYSTEM)
+            .expect("opens")
+            .finalize(NOW + 1)
+            .expect("finalized");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_rollback() {
+        let volume = Volume::claim(&root(), AssuranceProfile::Development).expect("claimed");
+        Layout::open(&volume, SUBSYSTEM)
+            .expect("opens")
+            .rollback(NOW + 1)
+            .expect("rolled back");
+    }
+
+    /// What a volume must look like on one side or the other, whatever step the crash hit.
+    fn assert_on_one_side(root: &Path, point: &str, expect_new: bool) {
+        let volume = Volume::claim(root, AssuranceProfile::Development).expect("claimed");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        // Opening already completed a finalize or a rollback in progress; a migration between
+        // its intent and its commit waits for this.
+        let _ = layout.recover(NOW + 2).expect("recovers");
+        let status = layout.status().expect("status").expect("laid out");
+        assert!(
+            status.phase.serves(),
+            "{point}: landed on one side, found {:?}",
+            status.phase
+        );
+        assert_eq!(
+            status.manifest.active.version,
+            if expect_new { 2 } else { 1 },
+            "{point}: the side the protocol had reached"
+        );
+        let old_alpha = root.join("data/notes/g1/alpha");
+        let new_alpha = root.join("data/notes/g2/a/alpha");
+        if expect_new {
+            assert!(new_alpha.is_file(), "{point}: the new generation serves");
+            assert_eq!(
+                std::fs::read(&new_alpha).expect("read"),
+                b"first note",
+                "{point}: evidence carried byte for byte"
+            );
+            assert!(root.join("data/notes/g2/INDEX").is_file(), "{point}");
+        } else {
+            assert!(old_alpha.is_file(), "{point}: the old generation serves");
+            assert_eq!(
+                std::fs::read(&old_alpha).expect("read"),
+                b"first note",
+                "{point}"
+            );
+            assert!(
+                !root.join("data/notes/g2").exists(),
+                "{point}: nothing half-built remains"
+            );
+        }
+        // Whatever side, the old generation's evidence was never rewritten while it existed.
+        if old_alpha.exists() {
+            assert_eq!(
+                std::fs::read(&old_alpha).expect("read"),
+                b"first note",
+                "{point}"
+            );
+        }
+        // Serving is possible again: the next command finds nothing pending.
+        layout
+            .active(&Reads::from(1, 2))
+            .expect("the active generation opens");
+    }
+
+    /// Migration: a crash at any step before the switch lands on the old side, at any step from
+    /// the switch on lands on the new one; evidence is byte for byte on either.
+    #[test]
+    fn every_crash_point_of_a_migration_recovers_to_one_side() {
+        for point in points("migrate.").into_iter().filter(|point| {
+            !point.contains("finalize") && !point.contains("rollback") && !point.contains("abandon")
+        }) {
+            let path = scratch(point);
+            lay_out(&path);
+            assert!(
+                crash("migrating::child_migrate", point, &path),
+                "the child aborted at {point}"
+            );
+            let switched = matches!(point, "migrate.switched" | "migrate.committed");
+            assert_on_one_side(&path, point, switched);
+        }
+    }
+
+    /// Abandon: a crash at any step of removing a refused build still ends on the old side with
+    /// nothing half-built and nothing pending.
+    #[test]
+    fn every_crash_point_of_an_abandon_recovers_to_the_old_generation() {
+        for point in points("migrate.abandon") {
+            let path = scratch(point);
+            lay_out(&path);
+            assert!(
+                crash("migrating::child_abandon", point, &path),
+                "the child aborted at {point}"
+            );
+            assert_on_one_side(&path, point, false);
+        }
+    }
+
+    /// Finalize: a crash at any step still ends with the new generation alone and nothing pending.
+    #[test]
+    fn every_crash_point_of_a_finalize_recovers_to_the_new_generation() {
+        for point in points("migrate.finalize") {
+            let path = scratch(point);
+            migrated(&path);
+            assert!(
+                crash("migrating::child_finalize", point, &path),
+                "the child aborted at {point}"
+            );
+            assert_on_one_side(&path, point, true);
+            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+            // Every finalize point is past the manifest's replacement, so opening the layout
+            // completed what the crash left.
+            let status = layout.status().expect("status").expect("laid out");
+            assert_eq!(status.phase, Phase::Idle, "{point}");
+            assert!(status.manifest.previous.is_none(), "{point}");
+            assert!(
+                !path.join("data/notes/g1").exists(),
+                "{point}: the old generation is gone"
+            );
+        }
+    }
+
+    /// Rollback: a crash at any step still ends with the old generation alone and nothing pending.
+    #[test]
+    fn every_crash_point_of_a_rollback_recovers_to_the_old_generation() {
+        for point in points("migrate.rollback") {
+            let path = scratch(point);
+            migrated(&path);
+            assert!(
+                crash("migrating::child_rollback", point, &path),
+                "the child aborted at {point}"
+            );
+            let volume = Volume::claim(&path, AssuranceProfile::Development).expect("claimed");
+            let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+            // Every rollback point is past the manifest's return, so opening the layout
+            // completed what the crash left.
+            let status = layout.status().expect("status").expect("laid out");
+            assert_eq!(status.phase, Phase::Idle, "{point}");
+            assert_eq!(status.manifest.active.version, 1, "{point}");
+            assert!(
+                !path.join("data/notes/g2").exists(),
+                "{point}: the new generation is gone"
+            );
+            assert_eq!(
+                std::fs::read(path.join("data/notes/g1/alpha")).expect("read"),
+                b"first note",
+                "{point}"
+            );
+        }
+    }
 }

@@ -1,0 +1,59 @@
+{
+  "artifact": "Subsystem layout manifest and the migration intent and commit records",
+  "authority": "1-architecture/8-architecture-storage-operations.md#migration-and-upgrade (the protocol), owner decisions of 2026-10-07 (labels, types, cardinalities); crates/permguard-host/src/storage/migrate.rs (LayoutManifest, MigrationIntent, MigrationCommit)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "layout_manifest": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "subsystem", "type": "text", "occurs": "required", "note": "lowercase ASCII letters and hyphens" },
+        { "label": 2, "name": "version", "type": "uint", "occurs": "required", "note": "the layout version in force, 0 to 65535" },
+        { "label": 3, "name": "generation", "type": "uint", "occurs": "required", "note": "the generation in force; 1 at the first layout, one more per migration" },
+        { "label": 4, "name": "directory", "type": "text", "occurs": "required", "note": "the generation's directory, `/`-separated, relative to the volume root" },
+        { "label": 5, "name": "previous", "type": "map:previous", "occurs": "optional", "note": "the generation a rollback returns to; present from the commit until finalize" },
+        { "label": 6, "name": "switched_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    },
+    "previous": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "version", "type": "uint", "occurs": "required" },
+        { "label": 2, "name": "generation", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "directory", "type": "text", "occurs": "required" }
+      ]
+    },
+    "migration_intent": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "subsystem", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "from_version", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "to_version", "type": "uint", "occurs": "required", "note": "greater than from_version" },
+        { "label": 4, "name": "from_generation", "type": "uint", "occurs": "required" },
+        { "label": 5, "name": "to_generation", "type": "uint", "occurs": "required", "note": "from_generation plus one" },
+        { "label": 6, "name": "to_directory", "type": "text", "occurs": "required", "note": "where the new generation is built, relative to the volume root" },
+        { "label": 7, "name": "old_digests", "type": "map<text,digest>", "occurs": "required", "note": "every file of the old generation by relative path; the rollback point, verified unchanged before the switch" },
+        { "label": 8, "name": "backup", "type": "text", "occurs": "optional", "note": "the external backup the operator declared; required from the production profile upward" },
+        { "label": 9, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 10, "name": "from_directory", "type": "text", "occurs": "required", "note": "the old generation's directory, so recovery and finalize name it without the manifest" }
+      ]
+    },
+    "migration_commit": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "subsystem", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "from_version", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "to_version", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "from_generation", "type": "uint", "occurs": "required" },
+        { "label": 5, "name": "to_generation", "type": "uint", "occurs": "required" },
+        { "label": 6, "name": "to_directory", "type": "text", "occurs": "required" },
+        { "label": 7, "name": "old_digests", "type": "map<text,digest>", "occurs": "required" },
+        { "label": 8, "name": "new_digests", "type": "map<text,digest>", "occurs": "required", "note": "every file of the new generation as it was committed; a rollback refuses a generation that no longer matches" },
+        { "label": 9, "name": "backup", "type": "text", "occurs": "optional" },
+        { "label": 10, "name": "committed_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 11, "name": "from_directory", "type": "text", "occurs": "required" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["layout_manifest", "migration_intent", "migration_commit"]
+}

@@ -129,6 +129,59 @@ pub enum Command {
         #[command(subcommand)]
         what: VolumeCommand,
     },
+    /// Work with the layout migrations of the volume's subsystems.
+    Migrate {
+        /// What to do with them.
+        #[command(subcommand)]
+        what: MigrateCommand,
+    },
+}
+
+/// What can be asked of the subsystem layouts from the command line (WP-1.9). Every command runs
+/// offline: it takes the volume's lock, so it fails while a server holds the volume, and the
+/// server refuses to start while a migration is between two sides.
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum MigrateCommand {
+    /// List every subsystem laid out on the volume: its version, generation and where its
+    /// migration stands.
+    Status {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+    },
+    /// Land a migration a crash interrupted: before the switch the new generation is abandoned,
+    /// after it the commit is written, a finalize or a rollback in progress is completed.
+    Recover {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The subsystem.
+        #[arg(long, value_name = "NAME")]
+        subsystem: String,
+    },
+    /// Return a committed migration to its old generation, when the new one is as the commit
+    /// left it; a generation the server has since written into is never discarded.
+    Rollback {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The subsystem.
+        #[arg(long, value_name = "NAME")]
+        subsystem: String,
+    },
+    /// Remove the old generation of a committed migration: the rollback horizon ends here, and
+    /// only here.
+    Finalize {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The subsystem.
+        #[arg(long, value_name = "NAME")]
+        subsystem: String,
+    },
 }
 
 /// What can be asked of a volume's ownership from the command line.

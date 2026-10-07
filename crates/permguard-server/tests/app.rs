@@ -998,3 +998,139 @@ async fn test_a_clock_set_back_across_a_restart_degrades_time_and_is_recorded() 
         actions.lock().expect("held")
     );
 }
+
+/// WP-1.9: the `migrate` commands run offline on a held volume, and a server refuses to start
+/// while a migration is between two sides or over a layout it does not read.
+#[tokio::test]
+async fn test_migrate_commands_land_a_migration_and_a_pending_one_stops_the_server() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::storage::migrate::testing::{NotesV2, SUBSYSTEM, write_note};
+    use permguard_host::storage::migrate::{Layout, Phase, Preflight, Reads};
+    use permguard_host::storage::volume::Volume;
+
+    const NOW: u64 = 1_800_000_000;
+    let path = config_file("migrate", SERVABLE);
+    let config = fs::read_to_string(&path).expect("the file reads");
+    let volume_root = config
+        .lines()
+        .find_map(|line| line.strip_prefix("working_dir: "))
+        .expect("the fixture names its volume")
+        .to_owned();
+    let _ = fs::remove_dir_all(&volume_root);
+    let command = |words: &[&str]| {
+        let mut argv = vec!["demo-x", "migrate"];
+        argv.extend_from_slice(words);
+        argv.extend_from_slice(&["--volume", &volume_root]);
+        Cli::try_parse_from(argv)
+            .expect("the command parses")
+            .action()
+            .expect("the invocation resolves to an action")
+    };
+    let migrated = |interrupt: bool| {
+        let volume =
+            Volume::claim(Path::new(&volume_root), AssuranceProfile::Development).expect("claimed");
+        let layout = Layout::open(&volume, SUBSYSTEM).expect("opens");
+        if layout.manifest().expect("read").is_none() {
+            layout.declare(1, "data/notes/g1", NOW).expect("declared");
+            let old = layout.active(&Reads::only(1)).expect("active");
+            write_note(&old, "alpha", b"first note");
+        }
+        layout
+            .migrate(
+                &NotesV2 {
+                    tamper: false,
+                    write_old: false,
+                    omit: false,
+                },
+                Preflight::new(AssuranceProfile::Development, "data/notes/g2", None, NOW),
+            )
+            .expect("migrated");
+        if interrupt {
+            // As a crash between the switch and the commit leaves it.
+            fs::remove_file(Path::new(&volume_root).join("host/layout/notes/COMMIT"))
+                .expect("the commit is gone");
+        }
+    };
+
+    // A volume with nothing laid out yet: status says so.
+    drop(Volume::claim(Path::new(&volume_root), AssuranceProfile::Development).expect("created"));
+    let out = output_of(&app(), &command(&["status"])).await;
+    assert!(out.contains("no subsystem is laid out"), "{out}");
+
+    // A migration committed and left between two sides: the server refuses, status names it,
+    // recover lands it forward.
+    migrated(true);
+    let mut sink = Vec::new();
+    let refused = app()
+        .with_layouts(vec![(SUBSYSTEM, Reads::from(1, 2))])
+        .dispatch_to(&serve_action(&path), &mut sink)
+        .await
+        .expect_err("a pending migration");
+    assert!(
+        format!("{refused:#}").contains("migrate status"),
+        "{refused:#}"
+    );
+    let out = output_of(&app(), &command(&["status"])).await;
+    assert!(
+        out.contains("notes: version 2 generation 2 in data/notes/g2 (switched"),
+        "{out}"
+    );
+    let out = output_of(&app(), &command(&["recover", "--subsystem", "notes"])).await;
+    assert!(out.contains("found switched, now committed"), "{out}");
+
+    // Committed: a build that does not read version 2 refuses, one that does serves.
+    let refused = app()
+        .with_layouts(vec![(SUBSYSTEM, Reads::only(1))])
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a layout this build does not read");
+    assert!(
+        format!("{refused:#}").contains("reads versions 1 to 1"),
+        "{refused:#}"
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("a subsystem this build does not know");
+    assert!(
+        format!("{refused:#}").contains("does not know"),
+        "{refused:#}"
+    );
+    app()
+        .with_layouts(vec![(SUBSYSTEM, Reads::from(1, 2))])
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("a committed migration serves");
+
+    // Rollback, then finalize after migrating again.
+    let out = output_of(&app(), &command(&["rollback", "--subsystem", "notes"])).await;
+    assert!(out.contains("rolled back"), "{out}");
+    assert!(!Path::new(&volume_root).join("data/notes/g2").exists());
+    migrated(false);
+    let out = output_of(&app(), &command(&["finalize", "--subsystem", "notes"])).await;
+    assert!(out.contains("finalized"), "{out}");
+    assert!(!Path::new(&volume_root).join("data/notes/g1").exists());
+    {
+        let volume =
+            Volume::claim(Path::new(&volume_root), AssuranceProfile::Development).expect("claimed");
+        let status = Layout::open(&volume, SUBSYSTEM)
+            .expect("opens")
+            .status()
+            .expect("status")
+            .expect("laid out");
+        assert_eq!(status.phase, Phase::Idle);
+        assert_eq!(status.manifest.active.version, 2);
+    }
+    let refused = app()
+        .dispatch_to(
+            &command(&["finalize", "--subsystem", "notes"]),
+            &mut Vec::new(),
+        )
+        .await
+        .expect_err("nothing to finalize");
+    assert!(
+        format!("{refused:#}").contains("no committed migration"),
+        "{refused:#}"
+    );
+    let _ = fs::remove_dir_all(&volume_root);
+}

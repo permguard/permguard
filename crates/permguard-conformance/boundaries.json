@@ -566,6 +566,26 @@
       "source": "crates/permguard-host/src/time.rs",
       "item": "TimeGuard::open",
       "reason": "the clock's high-water mark, `host/state/CLOCK` on the Host's own volume (WP-2.12): eight bytes this process wrote, read back through the storage library's view, which checks its checksum; any other length is corruption and fails the start"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/migrate.rs",
+      "item": "Layout::open",
+      "reason": "a subsystem's layout records, `host/layout/<subsystem>/{MANIFEST,INTENT,COMMIT}` on the Host's own volume (WP-1.9), written by the migration framework in this binary or an older one and read back through the storage library's view, which checks the checksum; a record that does not decode is corruption and refuses the subsystem"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/migrate.rs",
+      "item": "LayoutManifest::decode",
+      "reason": "the body of `host/layout/<subsystem>/MANIFEST` (WP-1.9): canonical CBOR this binary or an older one wrote, closed labels, read only through `Layout`"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/migrate.rs",
+      "item": "MigrationIntent::decode",
+      "reason": "the body of `host/layout/<subsystem>/INTENT` (WP-1.9): canonical CBOR a migration of this binary or an older one wrote, closed labels, read only through `Layout`"
+    },
+    {
+      "source": "crates/permguard-host/src/storage/migrate.rs",
+      "item": "MigrationCommit::decode",
+      "reason": "the body of `host/layout/<subsystem>/COMMIT` (WP-1.9): canonical CBOR a migration of this binary or an older one wrote, closed labels, read only through `Layout`"
     }
   ]
 }

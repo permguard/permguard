@@ -46,6 +46,19 @@ pub const POINTS: &[&str] = &[
     "failure.record_removed",
     "volume.id_written",
     "volume.format_written",
+    "migrate.intent_written",
+    "migrate.built",
+    "migrate.verified",
+    "migrate.switched",
+    "migrate.committed",
+    "migrate.finalize_manifest",
+    "migrate.finalize_old_removed",
+    "migrate.finalize_records_removed",
+    "migrate.rollback_switched",
+    "migrate.rollback_new_removed",
+    "migrate.rollback_records_removed",
+    "migrate.abandon_new_removed",
+    "migrate.abandon_intent_removed",
 ];
 
 /// The crash point `name`: aborts here when this process was told to.

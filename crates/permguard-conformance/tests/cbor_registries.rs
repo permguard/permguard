@@ -35,11 +35,12 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 8] = [
+const REGISTRIES: [&str; 9] = [
     "grant.json",
     "head-statement.json",
     "kdf.json",
     "key-set.json",
+    "layout.json",
     "manifest.json",
     "notp.json",
     "objects.json",
@@ -1033,8 +1034,120 @@ fn samples(file: &str) -> Vec<Sample> {
         "objects.json" => objects_samples(),
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
+        "layout.json" => layout_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
+}
+
+fn layout_samples() -> Vec<Sample> {
+    use permguard_host::storage::migrate::{
+        Generation, LayoutManifest, MigrationCommit, MigrationIntent,
+    };
+    use permguard_objects::digest::Digest;
+
+    let old = Generation {
+        version: 1,
+        generation: 1,
+        directory: "data/notes/g1".to_owned(),
+    };
+    let new = Generation {
+        version: 2,
+        generation: 2,
+        directory: "data/notes/g2".to_owned(),
+    };
+    let old_digests = std::collections::BTreeMap::from([
+        ("alpha".to_owned(), Digest::compute(b"first note")),
+        ("beta".to_owned(), Digest::compute(b"second note")),
+    ]);
+    let new_digests = std::collections::BTreeMap::from([
+        ("a/alpha".to_owned(), Digest::compute(b"first note")),
+        ("b/beta".to_owned(), Digest::compute(b"second note")),
+        ("INDEX".to_owned(), Digest::compute(b"alpha\nbeta\n")),
+    ]);
+    let committed = LayoutManifest {
+        subsystem: "notes".to_owned(),
+        active: new.clone(),
+        previous: Some(old.clone()),
+        switched_at: 1_800_000_000,
+    };
+    let finalized = LayoutManifest {
+        previous: None,
+        ..committed.clone()
+    };
+    let intent = MigrationIntent {
+        subsystem: "notes".to_owned(),
+        from: old.clone(),
+        to: new.clone(),
+        old_digests: old_digests.clone(),
+        backup: Some("s3://backups/notes/2026-10-07".to_owned()),
+        at: 1_800_000_000,
+    };
+    let mut no_backup = intent.clone();
+    no_backup.backup = None;
+    let commit = MigrationCommit {
+        subsystem: "notes".to_owned(),
+        from: old,
+        to: new,
+        old_digests,
+        new_digests,
+        backup: Some("s3://backups/notes/2026-10-07".to_owned()),
+        committed_at: 1_800_000_000,
+    };
+    let mut commit_no_backup = commit.clone();
+    commit_no_backup.backup = None;
+    let manifests = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(LayoutManifest::decode(bytes))
+        }))
+    };
+    let intents = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(MigrationIntent::decode(bytes))
+        }))
+    };
+    let commits = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(MigrationCommit::decode(bytes))
+        }))
+    };
+    vec![
+        sample(
+            "layout_manifest",
+            committed.encode().expect("encodes"),
+            &["layout_manifest.previous"],
+            manifests(),
+        ),
+        sample(
+            "layout_manifest",
+            finalized.encode().expect("encodes"),
+            &[],
+            manifests(),
+        ),
+        sample(
+            "migration_intent",
+            intent.encode().expect("encodes"),
+            &["migration_intent.backup"],
+            intents(),
+        ),
+        sample(
+            "migration_intent",
+            no_backup.encode().expect("encodes"),
+            &[],
+            intents(),
+        ),
+        sample(
+            "migration_commit",
+            commit.encode().expect("encodes"),
+            &["migration_commit.backup"],
+            commits(),
+        ),
+        sample(
+            "migration_commit",
+            commit_no_backup.encode().expect("encodes"),
+            &[],
+            commits(),
+        ),
+    ]
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1362,6 +1475,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_layout_records_match_their_registry() {
+    assert_samples_match("layout.json");
+}
+
+#[test]
+fn test_layout_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("layout.json");
 }
 
 #[test]

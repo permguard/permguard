@@ -8,7 +8,7 @@
 //! that is not there, a file that cannot be read, and a name that is trying to leave the directory.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use permguard_core::{Secret, SecretError, SecretRef, SecretStore};
 use permguard_std::secrets::{DirectorySecretStore, EnvironmentSecretStore, InMemorySecretStore};
@@ -37,10 +37,23 @@ fn directory(name: &str) -> PathBuf {
     path
 }
 
+/// Writes a secret with permissions that the directory store accepts independently of the umask.
+fn write_secret(path: &Path, material: &str) {
+    fs::write(path, material).expect("writing the secret");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .expect("restricting the secret permissions");
+    }
+}
+
 #[test]
 fn test_a_secret_on_disk_resolves_to_its_contents() {
     let path = directory("present");
-    fs::write(path.join("audit-pseudonym"), "0123456789abcdef").expect("writing the secret");
+    write_secret(&path.join("audit-pseudonym"), "0123456789abcdef");
 
     let secret = DirectorySecretStore::new(&path)
         .resolve(&SecretRef::new("audit-pseudonym"))
@@ -52,7 +65,7 @@ fn test_a_secret_on_disk_resolves_to_its_contents() {
 #[test]
 fn test_the_newline_an_editor_adds_is_not_part_of_the_key() {
     let path = directory("newline");
-    fs::write(path.join("key"), "0123456789abcdef\n").expect("writing the secret");
+    write_secret(&path.join("key"), "0123456789abcdef\n");
 
     let secret = DirectorySecretStore::new(&path)
         .resolve(&SecretRef::new("key"))

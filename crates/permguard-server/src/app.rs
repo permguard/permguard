@@ -23,7 +23,9 @@ use permguard_core::{
 };
 
 use crate::banner::Banner;
-use crate::command::{Action, AuditCommand, Cli, Command, KeysCommand, VolumeCommand};
+use crate::command::{
+    Action, AuditCommand, Cli, Command, KeysCommand, MigrateCommand, VolumeCommand,
+};
 use crate::signal::ReloadHandler;
 use crate::{logging, signal, witness};
 
@@ -181,6 +183,9 @@ pub struct App {
     realm_factory: Option<RealmFactory>,
     audit_verifier: Option<AuditVerifier>,
     verified_trees: Vec<VerifiedTree>,
+    /// Every subsystem laid out by the storage library this build reads, and at which versions
+    /// (WP-1.9): what a volume's manifests are checked against before the server serves.
+    layouts: Vec<(&'static str, permguard_host::storage::migrate::Reads)>,
     plane_declarations: Vec<PlaneDeclarationFactory>,
     keys_exporter: Option<KeysExporter>,
     reload_handler: Option<ReloadHandler>,
@@ -224,6 +229,7 @@ impl App {
             realm_factory: None,
             audit_verifier: None,
             verified_trees: Vec::new(),
+            layouts: Vec::new(),
             plane_declarations: Vec::new(),
             keys_exporter: None,
             reload_handler: None,
@@ -410,6 +416,17 @@ impl App {
     {
         self.plane_declarations.push(Box::new(declare));
 
+        self
+    }
+
+    /// Names the subsystems this build lays out through the storage library, with the layout
+    /// versions it reads for each (WP-1.9). A volume laying out anything else, or a version
+    /// outside the set, is refused at start.
+    pub fn with_layouts(
+        mut self,
+        layouts: Vec<(&'static str, permguard_host::storage::migrate::Reads)>,
+    ) -> Self {
+        self.layouts = layouts;
         self
     }
 
@@ -718,6 +735,7 @@ impl App {
             Action::Named(Command::Volume {
                 what: VolumeCommand::Verify { volume, sample },
             }) => verify_volume(volume, *sample, &self.verified_trees, out),
+            Action::Named(Command::Migrate { what }) => migrate(what, out),
         }
     }
 
@@ -1174,6 +1192,13 @@ impl App {
             "this process holds the volume"
         );
 
+        // No subsystem is served while a migration is between two sides, and no layout this build
+        // does not read is served at all (WP-1.9): an interrupted migration is landed by its
+        // command, a downgrade is possible only where every active layout is understood.
+        permguard_host::storage::migrate::check_servable(&volume, &self.layouts).with_context(
+            || format!("checking the layouts on {}", config.working_dir().display()),
+        )?;
+
         // The Host's one time service (WP-2.12), opened against the high-water mark the volume
         // keeps: a clock set back across a restart is in anomaly from here on.
         let time = Arc::new(
@@ -1413,6 +1438,93 @@ pub fn exit_code_of(error: &anyhow::Error) -> ExitCode {
     }
 
     ExitCode::FAILURE
+}
+
+/// Runs one `migrate` command offline, holding the volume (WP-1.9).
+fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
+    use permguard_host::storage::migrate::{self, Layout};
+    use permguard_host::storage::volume::hold;
+
+    let now = permguard_host::authz::store::now();
+    let (volume_root, subsystem) = match what {
+        MigrateCommand::Status { volume } => (volume, None),
+        MigrateCommand::Recover { volume, subsystem }
+        | MigrateCommand::Rollback { volume, subsystem }
+        | MigrateCommand::Finalize { volume, subsystem } => (volume, Some(subsystem.as_str())),
+    };
+    let volume = hold(volume_root)
+        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    match (what, subsystem) {
+        (MigrateCommand::Status { .. }, _) => {
+            let all = migrate::status(&volume).context("reading the layouts")?;
+            if all.is_empty() {
+                writeln!(out, "no subsystem is laid out on {}", volume_root.display())
+                    .context("writing the result")?;
+            }
+            for status in all {
+                let previous = status
+                    .manifest
+                    .previous
+                    .as_ref()
+                    .map(|p| format!(", previous version {} in {}", p.version, p.directory))
+                    .unwrap_or_default();
+                let kept = status
+                    .commit
+                    .as_ref()
+                    .map(|commit| {
+                        format!(
+                            ", old generation kept for {}s",
+                            now.saturating_sub(commit.committed_at)
+                        )
+                    })
+                    .unwrap_or_default();
+                writeln!(
+                    out,
+                    "{}: version {} generation {} in {} ({}{previous}{kept})",
+                    status.manifest.subsystem,
+                    status.manifest.active.version,
+                    status.manifest.active.generation,
+                    status.manifest.active.directory,
+                    status.phase.as_str()
+                )
+                .context("writing the result")?;
+            }
+        }
+        (MigrateCommand::Recover { .. }, Some(subsystem)) => {
+            let layout = Layout::open(&volume, subsystem)
+                .with_context(|| format!("opening the layout of {subsystem}"))?;
+            let found = layout
+                .recover(now)
+                .with_context(|| format!("recovering the migration of {subsystem}"))?;
+            writeln!(
+                out,
+                "{subsystem}: found {}, now {}",
+                found.as_str(),
+                layout
+                    .status()?
+                    .map_or("not laid out", |status| status.phase.as_str())
+            )
+            .context("writing the result")?;
+        }
+        (MigrateCommand::Rollback { .. }, Some(subsystem)) => {
+            Layout::open(&volume, subsystem)
+                .with_context(|| format!("opening the layout of {subsystem}"))?
+                .rollback(now)
+                .with_context(|| format!("rolling back the migration of {subsystem}"))?;
+            writeln!(out, "{subsystem}: rolled back to the previous generation")
+                .context("writing the result")?;
+        }
+        (MigrateCommand::Finalize { .. }, Some(subsystem)) => {
+            Layout::open(&volume, subsystem)
+                .with_context(|| format!("opening the layout of {subsystem}"))?
+                .finalize(now)
+                .with_context(|| format!("finalizing the migration of {subsystem}"))?;
+            writeln!(out, "{subsystem}: finalized; the old generation is removed")
+                .context("writing the result")?;
+        }
+        _ => unreachable!("every command names its subsystem or needs none"),
+    }
+    Ok(())
 }
 
 /// Records a new claim generation on the volume at `root`, as the orchestrator or the operator asks.
