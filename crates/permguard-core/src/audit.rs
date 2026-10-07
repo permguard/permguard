@@ -208,6 +208,61 @@ pub struct AuditEvent<'a> {
     target: Option<&'a str>,
     continuity_id: Option<&'a str>,
     continuity_position: Option<u64>,
+    resource: Option<&'a str>,
+    outcome: Option<AuditOutcome>,
+    facts: &'a [(&'a str, Fact<'a>)],
+    operation: Option<(&'a [u8; 16], AuditPhase)>,
+}
+
+/// How the recorded action ended (WP-3.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditOutcome {
+    Ok,
+    Refused,
+    Failed,
+    Indeterminate,
+}
+
+impl AuditOutcome {
+    /// The name a record carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Refused => "refused",
+            Self::Failed => "failed",
+            Self::Indeterminate => "indeterminate",
+        }
+    }
+}
+
+/// Where a mutation stands, for the actions whose schema requires phases (WP-3.5, WP-3.6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditPhase {
+    Intent,
+    Applied,
+    Failed,
+    Reconciled,
+}
+
+impl AuditPhase {
+    /// The name a record carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Intent => "intent",
+            Self::Applied => "applied",
+            Self::Failed => "failed",
+            Self::Reconciled => "reconciled",
+        }
+    }
+}
+
+/// One bounded fact an action's schema declares (WP-3.5): never a payload, a credential, a token, a
+/// proof, raw policy, a private key or a secret reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fact<'a> {
+    Text(&'a str),
+    Uint(u64),
+    Bool(bool),
 }
 
 impl<'a> AuditEvent<'a> {
@@ -219,7 +274,61 @@ impl<'a> AuditEvent<'a> {
             target: None,
             continuity_id: None,
             continuity_position: None,
+            resource: None,
+            outcome: None,
+            facts: &[],
+            operation: None,
         }
+    }
+
+    /// Narrows the resource the event concerns below the one the Host assigns its recorder: a
+    /// Plane's zone or ledger below the Plane. Never a resource outside it (WP-3.5).
+    pub fn in_resource(mut self, resource: &'a str) -> Self {
+        self.resource = Some(resource);
+
+        self
+    }
+
+    /// States how the action ended; without it a record reads `ok`, or `refused` for an action
+    /// whose name ends in `.refused`.
+    pub fn with_outcome(mut self, outcome: AuditOutcome) -> Self {
+        self.outcome = Some(outcome);
+
+        self
+    }
+
+    /// Adds the bounded facts the action's schema declares.
+    pub fn with_facts(mut self, facts: &'a [(&'a str, Fact<'a>)]) -> Self {
+        self.facts = facts;
+
+        self
+    }
+
+    /// Names the mutation this record belongs to and its phase.
+    pub fn in_operation(mut self, operation_id: &'a [u8; 16], phase: AuditPhase) -> Self {
+        self.operation = Some((operation_id, phase));
+
+        self
+    }
+
+    /// The resource the caller narrowed to, when it did.
+    pub fn resource(&self) -> Option<&'a str> {
+        self.resource
+    }
+
+    /// How the action ended, when the caller said.
+    pub fn outcome(&self) -> Option<AuditOutcome> {
+        self.outcome
+    }
+
+    /// The facts.
+    pub fn facts(&self) -> &'a [(&'a str, Fact<'a>)] {
+        self.facts
+    }
+
+    /// The mutation and its phase, when the record belongs to one.
+    pub fn operation(&self) -> Option<(&'a [u8; 16], AuditPhase)> {
+        self.operation
     }
 
     /// Names what the action was done to.

@@ -1,0 +1,161 @@
+{
+  "artifact": "Audit record and a trail's META.cbor",
+  "authority": "1-architecture/5-architecture-server-host-audit.md#record (the fields), owner decisions of 2026-10-07 (labels, types, cardinalities); crates/permguard-host/src/audit/record.rs (AuditRecord, TrailMeta)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "audit_record": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "trail",
+          "type": "text",
+          "occurs": "required",
+          "note": "`<class>:<resource>`"
+        },
+        {
+          "label": 2,
+          "name": "seq",
+          "type": "uint",
+          "occurs": "required",
+          "note": "per trail, from 0, never reused"
+        },
+        {
+          "label": 3,
+          "name": "operation_id",
+          "type": "bytes",
+          "occurs": "optional",
+          "note": "16 bytes; present exactly when the action requires phases"
+        },
+        {
+          "label": 4,
+          "name": "phase",
+          "type": "text",
+          "occurs": "optional",
+          "note": "intent, applied, failed or reconciled; present with operation_id"
+        },
+        {
+          "label": 5,
+          "name": "host_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the volume's identity"
+        },
+        {
+          "label": 6,
+          "name": "boot_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, drawn at each start"
+        },
+        {
+          "label": 7,
+          "name": "component",
+          "type": "text",
+          "occurs": "required",
+          "note": "host, control-plane or data-plane, derived by the Host"
+        },
+        {
+          "label": 8,
+          "name": "action",
+          "type": "text",
+          "occurs": "required",
+          "note": "a registered `<domain>.<verb>`"
+        },
+        {
+          "label": 9,
+          "name": "principal",
+          "type": "text",
+          "occurs": "required",
+          "note": "rendered under the privacy policy"
+        },
+        {
+          "label": 10,
+          "name": "resource",
+          "type": "text",
+          "occurs": "required",
+          "note": "the action's root or a resource below it"
+        },
+        {
+          "label": 11,
+          "name": "target",
+          "type": "text",
+          "occurs": "optional",
+          "note": "never a person"
+        },
+        {
+          "label": 12,
+          "name": "outcome",
+          "type": "text",
+          "occurs": "required",
+          "note": "ok, refused, failed or indeterminate"
+        },
+        {
+          "label": 13,
+          "name": "facts",
+          "type": "map<text,scalar>",
+          "occurs": "required",
+          "note": "only the facts the action's schema declares; each text, an unsigned integer or a boolean; empty allowed"
+        },
+        {
+          "label": 14,
+          "name": "build",
+          "type": "text",
+          "occurs": "required"
+        },
+        {
+          "label": 15,
+          "name": "config_revision",
+          "type": "digest",
+          "occurs": "required",
+          "note": "the digest of the effective settings"
+        },
+        {
+          "label": 16,
+          "name": "at",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch, from the Host's time guard"
+        },
+        {
+          "label": 17,
+          "name": "monotonic_offset",
+          "type": "uint",
+          "occurs": "required",
+          "note": "nanoseconds since the process started"
+        },
+        {
+          "label": 18,
+          "name": "previous",
+          "type": "digest",
+          "occurs": "required",
+          "note": "the digest of the trail's previous record, `sha256:` and 64 zeros for the first; a record's digest is SHA-256(`permguard.audit.record.v1\\n` ‖ its canonical bytes), never stored"
+        }
+      ]
+    },
+    "trail_meta": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "class",
+          "type": "text",
+          "occurs": "required",
+          "note": "security, operations or access"
+        },
+        {
+          "label": 2,
+          "name": "resource",
+          "type": "text",
+          "occurs": "required",
+          "note": "the resource whose SHA-256 names the trail's directory"
+        }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": [
+    "audit_record",
+    "trail_meta"
+  ]
+}

@@ -908,6 +908,35 @@ impl App {
         Ok(Realms::new(realms))
     }
 
+    /// The resource-derived pseudonyms of the audit engine (WP-3.5): HKDF from the same
+    /// `audit.pseudonym` root and version the pseudonymiser uses, when pseudonymisation is on.
+    fn audit_pseudonyms_for(
+        &self,
+        config: &Config,
+        secrets: Option<&dyn SecretStore>,
+    ) -> Result<Option<permguard_host::audit::pseudonym::ResourcePseudonyms>> {
+        if !config.audit_pseudonym_enabled() {
+            return Ok(None);
+        }
+        let (Some(reference), Some(secrets)) = (config.audit_pseudonym_key_ref(), secrets) else {
+            // `pseudonymizer_for` refuses this configuration with its reason, before this runs.
+            return Ok(None);
+        };
+        let key = secrets.resolve(reference).with_context(|| {
+            format!(
+                "resolving the audit pseudonymisation key `{}` from the {} secret store",
+                reference.name(),
+                secrets.name()
+            )
+        })?;
+        Ok(Some(
+            permguard_host::audit::pseudonym::ResourcePseudonyms::new(
+                key.expose(),
+                config.audit_pseudonym_key_version(),
+            ),
+        ))
+    }
+
     /// Builds the privacy policy the effective configuration asks for.
     ///
     /// Returns nothing when pseudonymisation is off, which is the default: principals then reach a
@@ -1247,7 +1276,45 @@ impl App {
         witness::check(config, pseudonymizer.as_deref())?;
 
         let keys = self.keys_for(config, &time)?;
-        let audit = self.audit_for(config, keys.as_ref())?;
+        let destination = self.audit_for(config, keys.as_ref())?;
+        // The audit engine (WP-3.5): every record of the process in a trail per (class,
+        // resource) under `host/audit/trails`, whatever `audit.destination` says; the sink the
+        // destination chose sees every record too, the log stream by default, nothing under
+        // `file` (owner decisions of 2026-10-07).
+        let audit_engine = {
+            use permguard_host::audit::{Engine, Stamp, config_revision};
+
+            let settings = config.effective_settings();
+            let revision = config_revision(
+                settings
+                    .iter()
+                    .map(|setting| (setting.key.as_str(), setting.value.as_deref())),
+            );
+            let stamp = Stamp::draw(volume.id(), config.version(), revision)
+                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            let pseudonyms = self.audit_pseudonyms_for(config, secrets)?;
+            Arc::new(
+                Engine::open(&volume, stamp, Arc::clone(&time), pseudonyms)
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+                    .with_context(|| {
+                        format!(
+                            "opening the audit trails on {}",
+                            volume.host().path().display()
+                        )
+                    })?,
+            )
+        };
+        // `access` and `operations` day files older than `audit.retention` go; `security` ones
+        // stay until WP-3.7's checkpoints (owner decision of 2026-10-07).
+        audit_engine.retain_for(config.audit_retention());
+        let also = match config.audit_destination() {
+            permguard_core::AuditDestination::Tracing => Some(destination),
+            permguard_core::AuditDestination::File => None,
+        };
+        let audit: Arc<dyn AuditSink> = Arc::new(permguard_host::audit::HostAuditSink::new(
+            Arc::clone(&audit_engine),
+            also,
+        ));
         let catalog = self.catalog_for(config)?;
         let control_signing_keys = self.control_signing_keys_for(config, &time)?;
         let data_signing_keys = self.data_signing_keys_for(config, &time)?;
@@ -1277,6 +1344,8 @@ impl App {
             .context(config, pseudonymizer.as_deref(), keys)
             .with_audit(audit.as_ref())
             .with_realms(realms);
+        // An `operations` record the engine could not write degrades the Host's readiness.
+        audit_engine.observe(context.health().clone());
 
         if let Some(catalog) = catalog {
             context = context.with_catalog(catalog);

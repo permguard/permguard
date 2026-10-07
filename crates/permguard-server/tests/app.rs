@@ -1134,3 +1134,53 @@ async fn test_migrate_commands_land_a_migration_and_a_pending_one_stops_the_serv
     );
     let _ = fs::remove_dir_all(&volume_root);
 }
+
+/// WP-3.5: a server run leaves its records in the engine's trails on the volume, whatever the
+/// destination: the lifecycle in `operations:host`, chained and verifiable.
+#[tokio::test]
+async fn test_a_run_leaves_its_records_in_verified_trails_on_the_volume() {
+    use permguard_host::audit::trail;
+
+    let path = config_file("audit-trails", SERVABLE);
+    let config = fs::read_to_string(&path).expect("the file reads");
+    let volume_root = config
+        .lines()
+        .find_map(|line| line.strip_prefix("working_dir: "))
+        .expect("the fixture names its volume")
+        .to_owned();
+    let _ = fs::remove_dir_all(&volume_root);
+    let actions = Arc::new(Mutex::new(Vec::new()));
+    let app = App::new(
+        identity(),
+        BuildSettings::new("9.9.9", "2026", "Test Holder"),
+        Box::new(DefaultServerHost::new()),
+        Box::new(MemoryStorage::new()),
+        Box::new(SharedActions(Arc::clone(&actions))),
+    )
+    .with_shutdown_signal(|| Box::pin(std::future::ready(())));
+    app.dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("the server serves");
+
+    let operations = Path::new(&volume_root)
+        .join("host/audit/trails/operations")
+        .join(trail::resource_digest(permguard_host::audit::HOST));
+    let dir = permguard_host::storage::Dir::open(&operations).expect("the trail exists");
+    let checked = trail::verify(&dir).expect("the trail verifies");
+    assert!(
+        checked >= 2,
+        "server.start and server.stop at least: {checked}"
+    );
+    let records: Vec<String> = trail::days(&dir)
+        .expect("listed")
+        .iter()
+        .flat_map(|day| trail::read_day(&dir, day).expect("read"))
+        .map(|record| record.action)
+        .collect();
+    assert!(records.contains(&"server.start".to_owned()), "{records:?}");
+    assert!(records.contains(&"server.stop".to_owned()), "{records:?}");
+    // The destination saw them too: the log stream by default.
+    let seen = actions.lock().expect("held").clone();
+    assert!(seen.contains(&"server.start".to_owned()), "{seen:?}");
+    let _ = fs::remove_dir_all(&volume_root);
+}

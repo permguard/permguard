@@ -132,6 +132,26 @@ fn test_a_seeded_violation_is_found_however_it_is_named() {
     assert!(!judged.iter().any(|v| v.primitive == "copy"));
 }
 
+/// A test module kept in a file of its own is test code too: `#[cfg(test)] mod tests;` names it.
+#[test]
+fn test_a_test_module_in_its_own_file_is_found() {
+    use permguard_conformance::durability::test_module_files;
+    let parent = std::path::Path::new("crates/x/src/audit/mod.rs");
+    let found = test_module_files(parent, "#[cfg(test)]\nmod tests;\nmod real;\n");
+    assert_eq!(
+        found,
+        vec![
+            std::path::PathBuf::from("crates/x/src/audit/tests.rs"),
+            std::path::PathBuf::from("crates/x/src/audit/tests/mod.rs"),
+        ]
+    );
+    let leaf = std::path::Path::new("crates/x/src/store.rs");
+    assert_eq!(
+        test_module_files(leaf, "#[cfg(test)]\nmod tests;\n")[0],
+        std::path::PathBuf::from("crates/x/src/store/tests.rs")
+    );
+}
+
 /// A file the parser does not read is reported, never skipped.
 #[test]
 fn test_a_file_that_does_not_parse_is_a_violation_of_its_own() {

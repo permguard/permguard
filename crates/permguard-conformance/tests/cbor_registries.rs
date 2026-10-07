@@ -35,7 +35,8 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 9] = [
+const REGISTRIES: [&str; 10] = [
+    "audit.json",
     "grant.json",
     "head-statement.json",
     "kdf.json",
@@ -196,6 +197,10 @@ impl<'a> Walk<'a> {
             "text" => matches!(value, Value::Text(_)),
             "bytes" => matches!(value, Value::Bytes(_)),
             "bool" => matches!(value, Value::Bool(_)),
+            "scalar" => {
+                matches!(value, Value::Text(_) | Value::Bool(_))
+                    || matches!(value, Value::Int(n) if *n >= 0)
+            }
             "digest" => matches!(value, Value::Text(t) if Digest::parse(t).is_ok()),
             _ => {
                 if let Some(expected) = ty.strip_prefix("const:") {
@@ -1035,8 +1040,78 @@ fn samples(file: &str) -> Vec<Sample> {
         "sealed-key.json" => sealed_key_samples(),
         "grant.json" => grant_samples(),
         "layout.json" => layout_samples(),
+        "audit.json" => audit_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
+}
+
+fn audit_samples() -> Vec<Sample> {
+    use permguard_host::audit::record::{AuditRecord, FactValue, TrailMeta, genesis};
+    use permguard_objects::digest::Digest;
+
+    let full = AuditRecord {
+        trail: "security:host".to_owned(),
+        seq: 4,
+        operation_id: Some([7; 16]),
+        phase: Some("applied".to_owned()),
+        host_id: HOST_ID,
+        boot_id: ZONE_ID,
+        component: "host".to_owned(),
+        action: "host.grant.issued".to_owned(),
+        principal: "v1:2dbdd0064034d27f36f3e44f4e8466b2".to_owned(),
+        resource: "host".to_owned(),
+        target: Some("grant/0198f4cc".to_owned()),
+        outcome: "ok".to_owned(),
+        facts: std::collections::BTreeMap::from([
+            ("count".to_owned(), FactValue::Uint(3)),
+            ("forced".to_owned(), FactValue::Bool(false)),
+            ("reason".to_owned(), FactValue::Text("quota".to_owned())),
+        ]),
+        build: "9.9.9".to_owned(),
+        config_revision: Digest::compute(b"settings"),
+        at: 1_800_000_000,
+        monotonic_offset: 1_500,
+        previous: genesis(),
+    };
+    let simple = AuditRecord {
+        operation_id: None,
+        phase: None,
+        target: None,
+        facts: std::collections::BTreeMap::new(),
+        ..full.clone()
+    };
+    let records = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| verdict(AuditRecord::decode(bytes))))
+    };
+    vec![
+        sample(
+            "audit_record",
+            full.encode().expect("encodes"),
+            &[
+                "audit_record.operation_id",
+                "audit_record.phase",
+                "audit_record.target",
+            ],
+            records(),
+        ),
+        sample(
+            "audit_record",
+            simple.encode().expect("encodes"),
+            &[],
+            records(),
+        ),
+        sample(
+            "trail_meta",
+            TrailMeta {
+                class: "security".to_owned(),
+                resource: "plane/control/zone/z1".to_owned(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(TrailMeta::decode(bytes)))),
+        ),
+    ]
 }
 
 fn layout_samples() -> Vec<Sample> {
@@ -1445,7 +1520,7 @@ fn test_every_registry_is_well_formed() {
 
 fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
     match ty {
-        "uint" | "int" | "text" | "bytes" | "bool" | "digest" => {}
+        "uint" | "int" | "text" | "bytes" | "bool" | "digest" | "scalar" => {}
         _ => {
             if let Some(constant) = ty.strip_prefix("const:") {
                 let constant: Json = serde_json::from_str(constant)
@@ -1475,6 +1550,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_audit_records_match_their_registry() {
+    assert_samples_match("audit.json");
+}
+
+#[test]
+fn test_audit_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("audit.json");
 }
 
 #[test]

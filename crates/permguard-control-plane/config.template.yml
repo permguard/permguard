@@ -215,8 +215,11 @@ operations:
                                # below (audit-pseudonym, decision-commitment, …) must exist
                                # there before a production plane will start.
   audit:
-    sink: file
-    retention: 90d
+    sink: file               # the trails under <volume>/host/audit/trails are always written;
+                             # "tracing" also emits every record into the log stream, "file"
+                             # does not.
+    retention: 90d           # access and operations days older than this are dropped; security
+                             # days are kept until checkpoints exist.
     # refusals: "false"      # "true": denied operations (name taken, not found, invalid name) are
     #                        # recorded on the trail as <operation>.refused — for a compliance
     #                        # regime that wants denied attempts on the record. Internal faults

@@ -586,6 +586,36 @@
       "source": "crates/permguard-host/src/storage/migrate.rs",
       "item": "MigrationCommit::decode",
       "reason": "the body of `host/layout/<subsystem>/COMMIT` (WP-1.9): canonical CBOR a migration of this binary or an older one wrote, closed labels, read only through `Layout`"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/mod.rs",
+      "item": "Class::parse",
+      "reason": "an audit class name this process wrote into a record's `trail` field or a trail's `META.cbor` (WP-3.5): one of three words, anything else refused"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/mod.rs",
+      "item": "Engine::open",
+      "reason": "the audit trails directory on the Host's own volume, `host/audit/trails/` (WP-3.5): it only creates the directory, and each trail is read when it is first written, through `Trail::open`"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/record.rs",
+      "item": "AuditRecord::decode",
+      "reason": "one audit record from a day file on the Host's own volume (WP-3.5): canonical CBOR this process or an earlier one appended, closed labels; the encoder refuses a record over 64 KiB, and the reader takes the bytes as the file holds them"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/record.rs",
+      "item": "TrailMeta::decode",
+      "reason": "a trail's `META.cbor` on the Host's own volume (WP-3.5): two labels this process published once, closed"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/trail.rs",
+      "item": "Trail::open",
+      "reason": "a trail directory on the Host's own volume (WP-3.5): `META.cbor`, and its day files from the newest back to the last record, read as CBOR sequences; a final item of the newest day shorter than any record is cut as torn, anything else that does not read is corruption and the trail refuses"
+    },
+    {
+      "source": "crates/permguard-host/src/audit/trail.rs",
+      "item": "verify",
+      "reason": "every day file of a trail on the Host's own volume (WP-3.5), read as a CBOR sequence to check its sequence and chain; nothing it reads is acted on but the verdict"
     }
   ]
 }

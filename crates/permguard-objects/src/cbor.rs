@@ -183,6 +183,24 @@ pub fn decode_canonical(input: &[u8]) -> Result<Value, CborError> {
     Ok(value)
 }
 
+/// Decode the one value `input` starts with, answering it and the bytes it took: how a CBOR
+/// sequence (RFC 8742) is read item by item. The item must be in its canonical form; what follows
+/// it is the caller's. An input that ends inside the item is [`CborError::Truncated`], which is how
+/// a reader tells a torn final item from a damaged one.
+pub fn decode_canonical_prefix(input: &[u8]) -> Result<(Value, usize), CborError> {
+    let mut cursor = Cursor {
+        input,
+        pos: 0,
+        depth: 0,
+    };
+    let value = cursor.decode_value()?;
+    let taken = cursor.pos;
+    if encode(&value)? != input[..taken] {
+        return Err(CborError::NotCanonical);
+    }
+    Ok((value, taken))
+}
+
 struct Cursor<'a> {
     input: &'a [u8],
     pos: usize,

@@ -127,3 +127,23 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
 pub(crate) fn commitment(context: &PlaneContext<'_>) -> Option<SecretHandle<DecisionCommitment>> {
     registration(context)?.secret::<DecisionCommitment>().ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use permguard_host::audit::{DATA, REGISTRY};
+    use permguard_host::composition::AuditSchema as _;
+
+    use super::DataPlaneAudit;
+
+    /// The Host refuses an action its registry does not name, which would fail the Plane's call.
+    #[test]
+    fn every_action_of_the_schema_is_registered_with_the_host_under_this_plane() {
+        for action in DataPlaneAudit::ACTIONS {
+            let schema = REGISTRY
+                .iter()
+                .find(|schema| schema.action == *action)
+                .unwrap_or_else(|| panic!("`{action}` is not registered with the Host"));
+            assert_eq!(schema.root, DATA, "{action}");
+        }
+    }
+}

@@ -49,6 +49,7 @@ A new file in this directory must be wired into that test, or the test fails.
 | `array:<name>` | the registered tuple `<name>` of the same file               |
 | `cbor:<T>`     | a byte string holding the canonical encoding of a `T`        |
 | `const:<json>` | exactly this JSON value: a text, an integer or a boolean     |
+| `scalar`       | a text, an unsigned integer or a boolean                     |
 
 ## Compatibility rule
 
@@ -67,15 +68,18 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 
 ## Frozen registries
 
-| File                  | Artifact                                        | Roots                                                |
-| --------------------- | ----------------------------------------------- | ---------------------------------------------------- |
-| `objects.json`        | blob, tree and commit                           | `blob`, `tree`, `commit`                             |
-| `manifest.json`       | ledger manifest blob payload                    | `manifest`                                           |
-| `head-statement.json` | today's signed head statement                   | `cose_sign1`                                         |
-| `notp.json`           | NOTP bodies and the `GET ref` answer            | one per message                                      |
-| `sealed-key.json`     | sealed private key and its two sealing contexts | `sealed_key`, `content_context`, `wrap_context`      |
-| `key-set.json`        | key-set digest input                            | `key_set`                                            |
-| `kdf.json`            | HKDF `info` tuples                              | `host_local_info`, `zone_root_info`, `zone_use_info` |
+| File                  | Artifact                                        | Roots                                                     |
+| --------------------- | ----------------------------------------------- | --------------------------------------------------------- |
+| `objects.json`        | blob, tree and commit                           | `blob`, `tree`, `commit`                                  |
+| `manifest.json`       | ledger manifest blob payload                    | `manifest`                                                |
+| `head-statement.json` | today's signed head statement                   | `cose_sign1`                                              |
+| `notp.json`           | NOTP bodies and the `GET ref` answer            | one per message                                           |
+| `sealed-key.json`     | sealed private key and its two sealing contexts | `sealed_key`, `content_context`, `wrap_context`           |
+| `key-set.json`        | key-set digest input                            | `key_set`                                                 |
+| `kdf.json`            | HKDF `info` tuples                              | `host_local_info`, `zone_root_info`, `zone_use_info`      |
+| `grant.json`          | Host API grant record and its transitions       | `grant_record`, `transition`                              |
+| `layout.json`         | layout manifest, migration intent and commit    | `layout_manifest`, `migration_intent`, `migration_commit` |
+| `audit.json`          | audit record and trail metadata                 | `audit_record`, `trail_meta`                              |
 
 `notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body that the control plane writes inline and the client reads with a private closed decoder.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.

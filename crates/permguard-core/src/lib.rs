@@ -57,7 +57,9 @@ pub use api::{
     AccessDenial, ApiError, Disclosure, ErrorClass, GRPC_ERROR_CLASS, GRPC_ERROR_CODE, GrpcCode,
     MUTUAL_TLS_CHALLENGE, StatusTable, WireDenial, WireError,
 };
-pub use audit::{AuditDestination, AuditEvent, AuditSink, Sensitivity, Subject};
+pub use audit::{
+    AuditDestination, AuditEvent, AuditOutcome, AuditPhase, AuditSink, Fact, Sensitivity, Subject,
+};
 pub use authz::NoRules;
 pub use catalog::{Catalog, CatalogError, Ledger, Selector, Zone};
 pub use config::{BuildSettings, Config, Layers};

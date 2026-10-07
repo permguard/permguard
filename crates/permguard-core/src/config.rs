@@ -279,7 +279,8 @@ pub const SETTING_AUDIT_SINK: &str = "PERMGUARD_AUDIT_SINK";
 /// Runtime setting key for the directory the file sink writes to.
 pub const SETTING_AUDIT_DIRECTORY: &str = "PERMGUARD_AUDIT_DIRECTORY";
 
-/// Runtime setting key for how long the file sink keeps a day of records.
+/// Runtime setting key for how long a day of `access` and `operations` audit records is kept;
+/// `security` days are kept until checkpoints exist (WP-3.5).
 pub const SETTING_AUDIT_RETENTION: &str = "PERMGUARD_AUDIT_RETENTION";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///

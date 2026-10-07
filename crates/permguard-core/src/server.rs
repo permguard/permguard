@@ -99,6 +99,15 @@ impl AuditRecorder {
             self.sink.record(&event, self.policy.as_deref()).await
         })
     }
+
+    /// Records an event built in full: a resource narrowed below the caller's root, an outcome,
+    /// facts or an operation's phase.
+    pub fn record_event<'a>(
+        &'a self,
+        event: &'a AuditEvent<'a>,
+    ) -> BoxFuture<'a, std::result::Result<(), crate::error::AuditError>> {
+        self.sink.record(event, self.policy.as_deref())
+    }
 }
 
 impl std::fmt::Debug for AuditRecorder {

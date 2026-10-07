@@ -12,7 +12,6 @@ use permguard_core::{
     AuditDestination, AuditSink, BuildSettings, Config, KeyManager, SecretProvider, SecretStore,
     brand, build,
 };
-use permguard_std::audit::FileAuditSink;
 use permguard_std::catalog::FileCatalog;
 use permguard_std::keys::{DirectoryKeyManager, KeyPolicy};
 use permguard_std::secrets::{DirectorySecretStore, EnvironmentSecretStore};
@@ -32,24 +31,13 @@ pub(crate) fn audit_sink_for(
     config: &Config,
     keys: Option<&Arc<dyn KeyManager>>,
 ) -> anyhow::Result<Option<Arc<dyn AuditSink>>> {
+    // The audit engine writes every record to its trails on the volume whatever the destination
+    // (WP-3.5, owner decision of 2026-10-07): `tracing` also emits each one into the log stream
+    // through the build's default sink, and `file`, whose JSON-lines sink the engine replaced,
+    // adds nothing. Trails the JSON sink wrote stay readable by `audit verify`.
+    let _ = (binary_name, keys);
     match config.audit_destination() {
-        AuditDestination::Tracing => Ok(None),
-        AuditDestination::File => {
-            let mut sink = FileAuditSink::new(
-                config.audit_directory(),
-                binary_name,
-                config.version(),
-                config.audit_retention(),
-            );
-
-            if let Some(keys) = keys {
-                sink = sink.sealed_by(Arc::clone(keys));
-            }
-
-            sink.prepare()?;
-
-            Ok(Some(Arc::new(sink)))
-        }
+        AuditDestination::Tracing | AuditDestination::File => Ok(None),
     }
 }
 

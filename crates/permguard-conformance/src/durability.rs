@@ -114,7 +114,18 @@ fn collect(dir: &Path, into: &mut Vec<PathBuf>) {
 /// allow-list entries that cover nothing (a stale entry is a violation too).
 pub fn check(root: &Path, allowlist: &Allowlist) -> Vec<Violation> {
     let mut found = Vec::new();
-    for path in sources(root) {
+    let sources = sources(root);
+    // A `#[cfg(test)] mod name;` makes the file it names test code, wherever it lives.
+    let mut test_files = BTreeSet::new();
+    for path in &sources {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            test_files.extend(test_module_files(path, &text));
+        }
+    }
+    for path in sources {
+        if test_files.contains(&path) {
+            continue;
+        }
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
@@ -162,6 +173,41 @@ pub fn judge(found: Vec<Violation>, allowlist: &Allowlist) -> Vec<Violation> {
     }
     remaining.sort();
     remaining
+}
+
+/// The files that the `#[cfg(test)] mod name;` items of `path` load: `name.rs` or
+/// `name/mod.rs` in the directory the module's children live in.
+pub fn test_module_files(path: &Path, text: &str) -> Vec<PathBuf> {
+    let Ok(file) = syn::parse_file(text) else {
+        return Vec::new();
+    };
+    let Some(parent) = path.parent() else {
+        return Vec::new();
+    };
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    let children = if matches!(stem, "mod" | "lib" | "main") {
+        parent.to_path_buf()
+    } else {
+        parent.join(stem)
+    };
+    file.items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Mod(module) if module.content.is_none() && is_test_gated(&module.attrs) => {
+                Some(module.ident.to_string())
+            }
+            _ => None,
+        })
+        .flat_map(|name| {
+            [
+                children.join(format!("{name}.rs")),
+                children.join(&name).join("mod.rs"),
+            ]
+        })
+        .collect()
 }
 
 /// The primitives in one file's source.

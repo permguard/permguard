@@ -39,7 +39,7 @@ use permguard_core::keys::Sign as _;
 use permguard_core::keys::{Jwk, KeyId, KeyManager, Signature};
 use permguard_core::secrets::{SecretRef, SecretStore};
 use permguard_core::server::AuditRecorder;
-use permguard_core::{AuditError, Subject};
+use permguard_core::{AuditError, AuditEvent, Subject};
 
 use crate::time::TimeGuard;
 use sha2::Sha256;
@@ -713,6 +713,16 @@ impl<T: AuditSchema> AuditHandle<T> {
             .await
             .map_err(AuditRefusal::Sink)
     }
+
+    /// Records `event`, whose action is one of the schema's, as built: a resource narrowed below
+    /// the root the Host assigns the Plane, an outcome, facts or an operation's phase.
+    pub async fn record_event(&self, event: &AuditEvent<'_>) -> Result<(), AuditRefusal> {
+        Self::check(event.action())?;
+        self.recorder
+            .record_event(event)
+            .await
+            .map_err(AuditRefusal::Sink)
+    }
 }
 
 /// The secret of purpose `T`, usable only to compute an HMAC under it; its bytes are never shown.
@@ -1030,6 +1040,70 @@ mod tests {
             matches!(refused, AuditRefusal::Undeclared { .. }),
             "{refused}"
         );
+    }
+
+    /// A Plane narrows its records below the root the Host assigns it, through its handle, and the
+    /// engine writes them in the narrowed resource's own trail (WP-3.5).
+    #[tokio::test]
+    async fn a_plane_narrows_its_resource_through_its_handle() {
+        use crate::audit::{Class, Engine, HostAuditSink, Stamp, trail};
+        use crate::time::{ManualClock, ManualMonotonic, TimeGuard};
+        use permguard_core::assurance::AssuranceProfile;
+
+        let root = std::env::temp_dir().join(format!(
+            "permguard-host-composition-narrow-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let volume = crate::storage::volume::Volume::claim(&root, AssuranceProfile::Development)
+            .expect("claimed");
+        let time = Arc::new(TimeGuard::new(
+            Arc::new(ManualClock::at(1_800_000_000)),
+            Arc::new(ManualMonotonic::default()),
+            std::time::Duration::from_secs(30),
+        ));
+        let stamp = Stamp {
+            host_id: [1; 16],
+            boot_id: [2; 16],
+            build: "9.9.9".to_owned(),
+            config_revision: permguard_objects::digest::Digest::compute(b"settings"),
+        };
+        let engine = Arc::new(Engine::open(&volume, stamp, time, None).expect("opens"));
+        let sink = Arc::new(HostAuditSink::new(Arc::clone(&engine), None));
+        let host = Host::builder().audit(AuditRecorder::new(sink)).build();
+        let audit = host
+            .register(Declaration::new("control").audits::<CatalogActions>(), None)
+            .expect("registers")
+            .audit::<CatalogActions>()
+            .expect("declared")
+            .expect("composed");
+        audit
+            .record_event(
+                &AuditEvent::new("zone.created", Subject::System("catalog"))
+                    .in_resource("plane/control/zone/z1"),
+            )
+            .await
+            .expect("narrowed below the Plane's root");
+        let narrowed = engine
+            .trail_dir(Class::Security, "plane/control/zone/z1")
+            .expect("its own trail");
+        assert_eq!(trail::verify(&narrowed).expect("verifies"), 1);
+        let refused = audit
+            .record_event(
+                &AuditEvent::new("zone.created", Subject::System("catalog")).in_resource("host"),
+            )
+            .await
+            .expect_err("not below the Plane's root");
+        assert!(refused.to_string().contains("not below it"), "{refused}");
+        let refused = audit
+            .record_event(&AuditEvent::new("key.exported", Subject::System("catalog")))
+            .await
+            .expect_err("not in the schema");
+        assert!(
+            matches!(refused, AuditRefusal::Undeclared { .. }),
+            "{refused}"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

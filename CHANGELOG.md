@@ -60,7 +60,22 @@ is cut.
   Where a store wrote a temporary and renamed it, flushed a segment or cut a torn tail by itself, the library now does it, with at least the flushes it had and the same fault handling everywhere.
   A structural check, `task check:durability`, reads every crate's syntax tree and fails on a durability primitive outside the library, however it is imported, aliased, pointed at or named inside a macro; the few uses it allows are listed with their reasons.
 
+- **The audit engine: trails per class and resource under `host/audit/trails`.**
+  Every audit record the server writes now lands in a trail of its class (`security`, `operations`, `access`) and its resource, `host/audit/trails/<class>/<SHA-256 of the resource>/`, one CBOR sequence per UTC day, each record chained to the one before it.
+  Every action is registered with its class, its facts and its size; an unregistered action, an undeclared fact, a fact shaped like a token or a key, and a resource outside the action's root are refused before anything is written.
+  A `security` record that cannot be written is answered as a failure to the code that recorded it: a Host API grant then fails, while the catalog and NOTP still report success until WP-3.6 makes their mutations wait for the record.
+  An `operations` record that cannot be written is counted and the Host reports `degraded: audit`; `access` records go through a bounded queue whose drops are counted and marked by an `audit.access_dropped` record in the trail that has the gap.
+  With `audit.pseudonym` on, a principal is pseudonymised per resource: the Control Plane's and the Data Plane's trails do not correlate, but every tenant of one Plane shares its root until a Plane narrows its records to a tenant's resource.
+  With it off, a principal is masked in the trail, as in every other sink.
+  `access` and `operations` day files older than `audit.retention` are dropped; `security` ones are kept until checkpoints exist.
+  The new trails carry no signed seal or checkpoint yet (WP-3.7), and `audit verify` does not read them yet.
+
 ### Changed
+
+- **`audit.destination` no longer decides whether there is an audit trail.**
+  The engine writes its trails on the volume whatever the setting; `tracing`, the default, also emits every record into the log stream, as before.
+  `file` no longer writes the JSON-lines trail in `audit.directory`: trails written there before stay as they are, and `audit verify` still reads them.
+  Those old trails are no longer sealed or swept by retention: nothing writes them any more.
 
 - **A `PERMGUARD_*` environment variable no setting reads fails startup.**
   A typo or a retired name used to be ignored, so the default stayed in force without a word; the server now refuses to start and names the variable.

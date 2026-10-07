@@ -26,9 +26,9 @@ use crate::authz::{AuthzError, GrantId, GrantRecord, Issue, Status};
 /// The operation a plan of a revocation names.
 const REVOKE: &str = "grants.revoke";
 /// The audit actions the mutations record.
-const AUDIT_ISSUED: &str = "host.grant.issued";
-const AUDIT_REVOKE_PLANNED: &str = "host.grant.revoke_planned";
-const AUDIT_REVOKED: &str = "host.grant.revoked";
+pub(crate) const AUDIT_ISSUED: &str = "host.grant.issued";
+pub(crate) const AUDIT_REVOKE_PLANNED: &str = "host.grant.revoke_planned";
+pub(crate) const AUDIT_REVOKED: &str = "host.grant.revoked";
 
 /// One grant, as the API shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
