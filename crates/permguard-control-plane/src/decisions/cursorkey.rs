@@ -26,7 +26,7 @@
 //! both files are read, and only the first is ever written to.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use permguard_stream::CursorKey;
@@ -76,7 +76,7 @@ pub fn load(directory: &Path) -> Result<CursorKey> {
 }
 
 /// Writes a fresh key, readable by its owner and nobody else.
-fn mint(path: &PathBuf) -> Result<Vec<u8>> {
+fn mint(path: &Path) -> Result<Vec<u8>> {
     use ring::rand::SecureRandom as _;
 
     let mut bytes = vec![0u8; KEY_BYTES];
@@ -84,12 +84,19 @@ fn mint(path: &PathBuf) -> Result<Vec<u8>> {
         .fill(&mut bytes)
         .map_err(|_| anyhow::anyhow!("this system has no source of randomness"))?;
 
-    // Written to a temporary name and renamed, so a reader never sees a half-written key — and a
-    // crash between the two leaves the store with no key rather than a short one.
-    let temporary = path.with_extension("writing");
-    fs::write(&temporary, &bytes).with_context(|| format!("writing {}", temporary.display()))?;
-    restrict(&temporary)?;
-    fs::rename(&temporary, path).with_context(|| format!("writing {}", path.display()))?;
+    // Written to a temporary and renamed through the storage library (WP-1.11), so a reader never
+    // sees a half-written key and a crash between the two leaves the store with no key rather
+    // than a short one. The temporary is created readable by its owner alone; the published key
+    // is restricted again, as it was.
+    let (parent, name) = path
+        .parent()
+        .zip(path.file_name().and_then(|name| name.to_str()))
+        .ok_or_else(|| anyhow::anyhow!("{} has no portable file name", path.display()))?;
+    let dir = permguard_host::storage::Dir::create_root(parent)
+        .with_context(|| format!("opening {}", parent.display()))?;
+    permguard_host::storage::write::replace_bytes(&dir, name, &bytes)
+        .with_context(|| format!("writing {}", path.display()))?;
+    restrict(path)?;
 
     Ok(bytes)
 }
@@ -114,6 +121,8 @@ fn restrict(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::unwrap_used)]
+
+    use std::path::PathBuf;
 
     use super::*;
     use permguard_stream::{Cursor, CursorError};

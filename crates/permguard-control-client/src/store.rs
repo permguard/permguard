@@ -152,10 +152,16 @@ impl Store for FsStore {
     fn write(&self, path: &str, bytes: &[u8]) -> Result<(), String> {
         let resolved = self.resolve(path)?;
         self.refuse_links(path)?;
-        if let Some(parent) = resolved.parent() {
-            fs::create_dir_all(parent).map_err(|error| format!("creating {path}: {error}"))?;
-        }
-        fs::write(&resolved, bytes).map_err(|error| format!("writing {path}: {error}"))
+        // Through the storage library (WP-1.11): a flushed temporary renamed over the file, the
+        // directory flushed; a ref is whole or unchanged, never torn.
+        let (parent, name) = resolved
+            .parent()
+            .zip(resolved.file_name().and_then(|name| name.to_str()))
+            .ok_or_else(|| format!("{path} names no file"))?;
+        let dir = permguard_host::storage::Dir::create_root(parent)
+            .map_err(|error| format!("creating {path}: {error}"))?;
+        permguard_host::storage::write::replace_bytes(&dir, name, bytes)
+            .map_err(|error| format!("writing {path}: {error}"))
     }
 
     /// Through the storage library (H-06): a flushed temporary hard-linked to the name, which

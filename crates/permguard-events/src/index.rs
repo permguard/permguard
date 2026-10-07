@@ -37,6 +37,8 @@
 //! in a segment but not in the index would be invisible to the policy that needed it — which is a
 //! wrong answer, not a slow one.
 
+use permguard_host::storage::Dir;
+use permguard_host::storage::write::replace_bytes;
 use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead as _, BufReader, Write as _};
@@ -230,11 +232,9 @@ impl Index {
         if !path.exists() {
             return Ok(());
         }
-        let file = OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .map_err(|error| JournalError::Io(error.to_string()))?;
-        fault::sync(&self.directory, || file.sync_all())
+        // Flushed by name through the storage library (WP-1.11).
+        Dir::open(&self.directory)
+            .and_then(|dir| dir.sync_file(INDEX_FILE))
             .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())
@@ -319,23 +319,18 @@ impl Index {
     }
 
     fn persist(&self) -> Result<(), JournalError> {
-        let path = self.directory.join(INDEX_FILE);
-        let temporary = self.directory.join(format!("{INDEX_FILE}.tmp"));
-        {
-            let mut file =
-                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            for (key, located) in &self.entries {
-                let line = serde_json::to_vec(&(key, located))
-                    .map_err(|error| JournalError::Malformed(error.to_string()))?;
-                file.write_all(&line)
-                    .map_err(|error| JournalError::Io(error.to_string()))?;
-                file.write_all(b"\n")
-                    .map_err(|error| JournalError::Io(error.to_string()))?;
-            }
-            file.sync_all()
-                .map_err(|error| JournalError::Io(error.to_string()))?;
+        let mut bytes = Vec::new();
+        for (key, located) in &self.entries {
+            let line = serde_json::to_vec(&(key, located))
+                .map_err(|error| JournalError::Malformed(error.to_string()))?;
+            bytes.extend_from_slice(&line);
+            bytes.push(b'\n');
         }
-        fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
+        // The storage library's replacement (WP-1.11): a flushed temporary renamed over the
+        // index, and the directory flushed; the lines are the same as before.
+        Dir::open(&self.directory)
+            .and_then(|dir| replace_bytes(&dir, INDEX_FILE, &bytes))
+            .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())
     }

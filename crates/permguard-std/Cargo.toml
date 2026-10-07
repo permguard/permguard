@@ -21,11 +21,11 @@ publish = false
 # certificate authority, and a build should have to write it down rather than inherit it.
 [features]
 default = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage"]
-audit = ["dep:serde", "dep:serde_json", "dep:sha2"]
-catalog = ["dep:ring", "dep:serde", "dep:serde_json"]
-keys = ["dep:ring", "dep:serde", "dep:serde_json", "dep:tokio", "dep:zeroize"]
+audit = ["dep:serde", "dep:serde_json", "dep:sha2", "dep:permguard-host"]
+catalog = ["dep:ring", "dep:serde", "dep:serde_json", "dep:permguard-host"]
+keys = ["dep:ring", "dep:serde", "dep:serde_json", "dep:tokio", "dep:zeroize", "dep:permguard-host"]
 metrics = []
-provision = ["dep:rcgen", "dep:ring"]
+provision = ["dep:rcgen", "dep:ring", "dep:permguard-host"]
 pseudonym = ["dep:hmac", "dep:sha2", "dep:zeroize"]
 secrets = []
 storage = []
@@ -33,6 +33,9 @@ storage = []
 [dependencies]
 anyhow.workspace = true
 permguard-core.workspace = true
+# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
+# The storage library, for the stores behind `audit`, `catalog`, `keys` and `provision` (WP-1.11).
+permguard-host = { workspace = true, optional = true }
 tracing.workspace = true
 
 hmac = { workspace = true, optional = true }

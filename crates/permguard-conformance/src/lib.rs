@@ -19,6 +19,7 @@
 
 pub mod boundaries;
 pub mod contracts;
+pub mod durability;
 pub mod fault;
 pub mod parity;
 pub mod schema;

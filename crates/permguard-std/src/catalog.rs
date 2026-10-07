@@ -39,6 +39,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use permguard_host::storage::Dir;
+use permguard_host::storage::write::replace_bytes;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -188,12 +191,14 @@ impl FileCatalog {
 
         let text = serde_json::to_string_pretty(index)
             .map_err(|error| CatalogError::backend(format!("describing the index: {error}")))?;
-        let staged = path.with_extension("json.tmp");
-
-        fs::write(&staged, text.as_bytes()).map_err(|error| {
-            CatalogError::backend(format!("writing {}: {error}", staged.display()))
+        // The storage library's replacement (WP-1.11): a flushed temporary renamed over the
+        // index, the directory flushed; the bytes are the same JSON as before.
+        let (directory, name) = split(path)
+            .ok_or_else(|| CatalogError::backend(format!("{} names no file", path.display())))?;
+        let dir = Dir::open(directory).map_err(|error| {
+            CatalogError::backend(format!("opening {}: {error}", directory.display()))
         })?;
-        fs::rename(&staged, path).map_err(|error| {
+        replace_bytes(&dir, name, text.as_bytes()).map_err(|error| {
             CatalogError::backend(format!("replacing {}: {error}", path.display()))
         })
     }
@@ -546,4 +551,9 @@ impl Catalog for FileCatalog {
 
         Ok(found)
     }
+}
+
+/// A path as the storage library addresses it: its directory and its file name.
+fn split(path: &Path) -> Option<(&Path, &str)> {
+    Some((path.parent()?, path.file_name()?.to_str()?))
 }

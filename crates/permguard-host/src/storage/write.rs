@@ -145,7 +145,18 @@ fn judge(
 
 /// Replaces the view `name` below `dir` with `body`, atomically, as a whole file of `format`.
 pub fn replace_view(dir: &Dir, name: &str, format: Format, body: &[u8]) -> Result<()> {
-    let bytes = format::encode_file(format, 0, body);
+    replace_through(dir, name, format::encode_file(format, 0, body))
+}
+
+/// Replaces the file `name` below `dir` with exactly `bytes`, atomically, with no header of this
+/// library's: the same temporary, flush, rename and directory flush as a view, for a store whose
+/// bytes on disk are fixed by a layout older than the library (WP-1.11). A reader sees the old
+/// file or the new one, never a mixture.
+pub fn replace_bytes(dir: &Dir, name: &str, bytes: &[u8]) -> Result<()> {
+    replace_through(dir, name, bytes.to_vec())
+}
+
+fn replace_through(dir: &Dir, name: &str, bytes: Vec<u8>) -> Result<()> {
     let temp = temp_name();
     let outcome = (|| {
         let path = dir.child_path(&temp);
@@ -167,6 +178,32 @@ pub fn replace_view(dir: &Dir, name: &str, format: Format, body: &[u8]) -> Resul
         let _ = dir.unlink(&temp);
     }
     outcome
+}
+
+/// Flushes `file`, an open regular file `name` below `dir`, through the fault shim: what a store
+/// that appends to a file of its own format calls after each record, instead of a flush of its
+/// own (WP-1.11). The file's data and its length reach the medium before this returns.
+pub fn flush(dir: &Dir, name: &str, file: &std::fs::File) -> Result<()> {
+    let path = dir.child_path(name);
+    permguard_core::fault::sync(&path, || file.sync_all())
+        .map_err(durability(format!("flushing {}", path.display())))
+}
+
+/// Cuts `file`, an open regular file `name` below `dir`, to `keep` bytes and flushes it: how a
+/// store of its own format removes a torn tail its reader found (WP-1.11). Which bytes are the
+/// tail is the format's judgement; cutting them durably is the library's.
+pub fn truncate(dir: &Dir, name: &str, file: &std::fs::File, keep: u64) -> Result<()> {
+    set_length(dir, name, file, keep)
+}
+
+/// Sets `file`, an open regular file `name` below `dir`, to exactly `length` bytes and flushes
+/// it: shorter cuts the tail, longer extends it with zeros, as a reserve a store keeps aside is
+/// sized (WP-1.11).
+pub fn set_length(dir: &Dir, name: &str, file: &std::fs::File, length: u64) -> Result<()> {
+    let path = dir.child_path(name);
+    file.set_len(length)
+        .map_err(io(format!("sizing {} to {length} bytes", path.display())))?;
+    flush(dir, name, file)
 }
 
 /// [`publish_immutable`], charged to `scope`: the content's bytes and one file are reserved before

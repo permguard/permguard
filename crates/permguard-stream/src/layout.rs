@@ -23,8 +23,9 @@
 //! bump relocates silently; when those streams move, they move by an explicit migration that
 //! says so. What the versioned layout owns today is every stream that did not exist yet.
 
+use permguard_host::storage::write::publish_immutable;
+use permguard_host::storage::{Dir, StorageError};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::descriptor::{Role, StreamIdentity};
 
@@ -33,8 +34,6 @@ pub const LAYOUT_VERSION: &str = "v1";
 
 /// The marker file's name, directly under the streams root.
 pub const LAYOUT_MARKER: &str = "LAYOUT";
-
-static CLAIM_NONCE: AtomicU64 = AtomicU64::new(0);
 
 /// The directory every versioned stream lives under.
 pub fn streams_root(data_root: &Path) -> PathBuf {
@@ -69,39 +68,20 @@ pub fn claim(data_root: &Path) -> std::io::Result<String> {
     match std::fs::read_to_string(&marker) {
         Ok(held) => agreed(&root, &held),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            std::fs::create_dir_all(&root)?;
-            // Staged and linked into place without replacement. `rename` would overwrite a marker
-            // another process won the race to publish, including one for a newer layout.
-            let staged = root.join(format!(
-                ".{LAYOUT_MARKER}.next-{}-{}",
-                std::process::id(),
-                CLAIM_NONCE.fetch_add(1, Ordering::Relaxed)
-            ));
-            {
-                use std::io::Write as _;
-
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&staged)?;
-                file.write_all(format!("{LAYOUT_VERSION}\n").as_bytes())?;
-                file.sync_all()?;
-            }
-            match std::fs::hard_link(&staged, &marker) {
-                Ok(()) => {
-                    let _ = std::fs::remove_file(&staged);
-                    std::fs::File::open(&root)?.sync_all()?;
-                    Ok(LAYOUT_VERSION.to_owned())
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let _ = std::fs::remove_file(&staged);
+            // Published without replacement through the storage library (WP-1.11): a flushed
+            // temporary hard-linked to the marker's name. A marker another process won the race
+            // to publish is never overwritten, including one for a newer layout; the same bytes
+            // are a success, other bytes are read and judged as a marker.
+            let dir = Dir::create_root(&root).map_err(std::io::Error::other)?;
+            let body = format!("{LAYOUT_VERSION}\n");
+            let same = |held: &[u8]| held == body.as_bytes();
+            match publish_immutable(&dir, LAYOUT_MARKER, body.as_bytes(), &same, &same) {
+                Ok(_) => Ok(LAYOUT_VERSION.to_owned()),
+                Err(StorageError::Corruption(_)) => {
                     let held = std::fs::read_to_string(&marker)?;
                     agreed(&root, &held)
                 }
-                Err(error) => {
-                    let _ = std::fs::remove_file(&staged);
-                    Err(error)
-                }
+                Err(error) => Err(std::io::Error::other(error)),
             }
         }
         Err(error) => Err(error),
@@ -158,9 +138,9 @@ mod tests {
     #[test]
     fn concurrent_claims_never_replace_the_winner() {
         let root = std::env::temp_dir().join(format!(
-            "layout-race-test-{}-{}",
+            "layout-race-test-{}-{:?}",
             std::process::id(),
-            CLAIM_NONCE.fetch_add(1, Ordering::Relaxed)
+            std::thread::current().id()
         ));
         let _ = std::fs::remove_dir_all(&root);
         let root = std::sync::Arc::new(root);

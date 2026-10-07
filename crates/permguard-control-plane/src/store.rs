@@ -27,7 +27,6 @@
 //! wants replicas arbitrates behind a store that can.
 
 use std::fs;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -601,26 +600,8 @@ fn write_durable(root: &Path, relative: &str, bytes: &[u8]) -> Result<()> {
             .subdir(parent, true)
             .map_err(|error| storage("opening directory", error))?;
     }
-    let temp = permguard_host::storage::dir::temp_name();
-    let staged = dir.child_path(&temp);
-    let written = (|| {
-        let mut file = dir
-            .create_exclusive(&temp)
-            .map_err(|error| storage("staging write", error))?;
-        permguard_core::fault::write(&staged, bytes.len(), || file.write_all(bytes))
-            .map_err(|e| backend("staging write", e))?;
-        permguard_core::fault::sync(&staged, || file.sync_all())
-            .map_err(|e| backend("fsync of staged file", e))?;
-        drop(file);
-        dir.rename(&temp, name)
-            .map_err(|error| storage("atomic replace", error))?;
-        dir.sync()
-            .map_err(|error| storage("flushing the directory", error))
-    })();
-    if written.is_err() {
-        let _ = dir.unlink(&temp);
-    }
-    written
+    permguard_host::storage::write::replace_bytes(&dir, name, bytes)
+        .map_err(|error| storage("atomic replace", error))
 }
 
 /// Removes the temporaries below `dir`, in it and in every subdirectory, older than `older_than`:

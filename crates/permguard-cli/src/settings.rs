@@ -298,10 +298,28 @@ impl Store {
             body
         };
 
-        fs::write(&self.path, format!("{FILE_HEADER}{body}")).map_err(|source| Error::Write {
-            path: self.path.clone(),
-            source,
-        })
+        // Through the storage library (WP-1.11): whole and flushed, so a settings file is never
+        // left half-written.
+        let (directory, name) = self
+            .path
+            .parent()
+            .zip(self.path.file_name().and_then(|name| name.to_str()))
+            .ok_or_else(|| Error::Write {
+                path: self.path.clone(),
+                source: std::io::Error::other("the settings path names no file"),
+            })?;
+        permguard_host::storage::Dir::open(directory)
+            .and_then(|dir| {
+                permguard_host::storage::write::replace_bytes(
+                    &dir,
+                    name,
+                    format!("{FILE_HEADER}{body}").as_bytes(),
+                )
+            })
+            .map_err(|source| Error::Write {
+                path: self.path.clone(),
+                source: std::io::Error::other(source),
+            })
     }
 }
 

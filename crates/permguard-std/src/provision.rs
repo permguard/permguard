@@ -407,15 +407,30 @@ fn create_directory(path: &Path) -> Result<()> {
     restrict(path, 0o700)
 }
 
-/// Writes material only this user may read.
+/// Writes material only this user may read: whole and flushed, through the storage library
+/// (WP-1.11), and readable by its owner alone.
 fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
-    fs::write(path, contents).with_context(|| format!("writing {}", path.display()))?;
+    write_whole(path, contents)?;
     restrict(path, 0o600)
 }
 
-/// Writes material that is meant to be readable — a certificate is public by definition.
+/// Writes material that is meant to be readable — a certificate is public by definition. The
+/// library creates it readable by its owner alone; it is opened up afterwards.
 fn write_public(path: &Path, contents: &[u8]) -> Result<()> {
-    fs::write(path, contents).with_context(|| format!("writing {}", path.display()))
+    write_whole(path, contents)?;
+    restrict(path, 0o644)
+}
+
+/// A flushed temporary renamed into place: a crash leaves the previous file or the new one.
+fn write_whole(path: &Path, contents: &[u8]) -> Result<()> {
+    let (parent, name) = path
+        .parent()
+        .zip(path.file_name().and_then(|name| name.to_str()))
+        .ok_or_else(|| anyhow::anyhow!("{} names no file", path.display()))?;
+    let dir = permguard_host::storage::Dir::create_root(parent)
+        .with_context(|| format!("opening {}", parent.display()))?;
+    permguard_host::storage::write::replace_bytes(&dir, name, contents)
+        .with_context(|| format!("writing {}", path.display()))
 }
 
 /// Narrows permissions where the platform has them.

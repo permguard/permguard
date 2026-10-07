@@ -333,7 +333,12 @@ impl FileAuditSink {
         let text = serde_json::to_string_pretty(&seal)
             .map_err(|error| AuditError::backend(format!("describing a seal: {error}")))?;
 
-        fs::write(&path, text.as_bytes())
+        // Through the storage library (WP-1.11): atomic and flushed, the same JSON as before.
+        let name = format!("{PREFIX}{}{SEAL_SUFFIX}", civil::date_of(day).to_iso());
+        permguard_host::storage::Dir::open(&self.directory)
+            .and_then(|dir| {
+                permguard_host::storage::write::replace_bytes(&dir, &name, text.as_bytes())
+            })
             .map_err(|error| AuditError::backend(format!("writing {}: {error}", path.display())))?;
         restrict(&path, 0o600)?;
 
@@ -439,6 +444,17 @@ impl FileAuditSink {
             .join(format!("{PREFIX}{}{SUFFIX}", civil::date_of(day).to_iso()))
     }
 
+    /// Flushes the open day file through the storage library: its data and its length reach the
+    /// medium before this returns.
+    fn flush(
+        &self,
+        current: &Open,
+    ) -> std::result::Result<(), permguard_host::storage::StorageError> {
+        let name = format!("{PREFIX}{}{SUFFIX}", civil::date_of(current.day).to_iso());
+        let dir = permguard_host::storage::Dir::open(&self.directory)?;
+        permguard_host::storage::write::flush(&dir, &name, &current.file)
+    }
+
     fn seal_path(&self, day: i64) -> PathBuf {
         self.directory.join(format!(
             "{PREFIX}{}{SEAL_SUFFIX}",
@@ -520,9 +536,8 @@ impl AuditSink for FileAuditSink {
 
             writeln!(current.file, "{line}")
                 .map_err(|error| AuditError::backend(format!("appending a record: {error}")))?;
-            current
-                .file
-                .sync_data()
+            // Flushed through the storage library (WP-1.11), by the day file's name.
+            self.flush(current)
                 .map_err(|error| AuditError::backend(format!("flushing a record: {error}")))?;
 
             current.seq += 1;
@@ -540,9 +555,7 @@ impl AuditSink for FileAuditSink {
                 .map_err(|_| AuditError::backend("the audit file lock is poisoned"))?;
 
             if let Some(current) = open.as_mut() {
-                current
-                    .file
-                    .sync_all()
+                self.flush(current)
                     .map_err(|error| AuditError::backend(format!("closing the trail: {error}")))?;
 
                 let (day, records, head) = (current.day, current.seq, current.previous.clone());

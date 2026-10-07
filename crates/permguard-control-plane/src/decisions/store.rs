@@ -49,7 +49,8 @@
 //! into every view of their stream, and a view opened later is back-filled
 //! from `EPOCHS.jsonl` before it takes its first record.
 
-use std::fs::{self, File, OpenOptions};
+use permguard_host::storage::Dir;
+use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -126,6 +127,8 @@ impl DecisionStore {
         fs::create_dir_all(root.join("streams")).context("creating the decision store")?;
         fs::create_dir_all(root.join("views")).context("creating the decision store")?;
         fs::create_dir_all(root.join(KEYS_DIRECTORY)).context("creating the decision store")?;
+        // The temporaries a crashed replacement left below the store are never records.
+        sweep_temporaries(&root)?;
 
         Ok(Self {
             root,
@@ -722,54 +725,46 @@ fn fingerprint_hex(bytes: &[u8]) -> String {
 }
 
 fn write_durable(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).context("creating a directory")?;
-    }
-    // The staging name is unique per writer: streams hold their own gates, but two first-time
-    // ingests under one key share this file's *target*, and a fixed `.next` would let one
-    // writer's rename race the other's half-written staging into place.
-    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let unique = format!(
-        "next-{}-{}",
-        std::process::id(),
-        NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    );
-    let temporary = path.with_extension(unique);
-    {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .context("writing")?;
-        file.write_all(bytes).context("writing")?;
-        file.sync_all().context("flushing")?;
-    }
-    fs::rename(&temporary, path).context("replacing")?;
-    if let Some(parent) = path.parent()
-        && let Ok(handle) = File::open(parent)
-    {
-        let _ = handle.sync_all();
-    }
-
-    Ok(())
+    let (parent, name) = path
+        .parent()
+        .zip(path.file_name().and_then(|name| name.to_str()))
+        .ok_or_else(|| anyhow::anyhow!("{} has no portable file name", path.display()))?;
+    // The storage library's replacement (WP-1.11): a flushed temporary with a name unique per
+    // writer, renamed over the file, and the directory flushed, so two first-time ingests under
+    // one key never race each other's staging into place.
+    let dir = Dir::create_root(parent).context("creating a directory")?;
+    permguard_host::storage::write::replace_bytes(&dir, name, bytes).context("replacing")
 }
 
-/// Flushes every file of a directory tree, so a restart finds them.
-fn flush_tree(directory: &Path) -> Result<()> {
-    let Ok(entries) = fs::read_dir(directory) else {
-        return Ok(());
-    };
-    for entry in entries {
-        let entry = entry.context("flushing a scope")?;
-        if entry.path().is_file()
-            && let Ok(file) = File::open(entry.path())
-        {
-            file.sync_all().context("flushing a segment")?;
+/// Sweeps the storage library's temporaries below `root`, in every directory: what a crash
+/// between a temporary and its rename left behind.
+fn sweep_temporaries(root: &Path) -> Result<()> {
+    fn sweep(dir: &Dir) -> Result<()> {
+        dir.sweep_temps().context("sweeping temporaries")?;
+        for name in dir.subdirs().context("sweeping temporaries")? {
+            sweep(&dir.subdir(&name, false).context("sweeping temporaries")?)?;
         }
+        Ok(())
     }
-    if let Ok(handle) = File::open(directory) {
-        let _ = handle.sync_all();
+    sweep(&Dir::open(root).context("sweeping temporaries")?)
+}
+
+/// Flushes every file of a directory, and the directory, so a restart finds them: through the
+/// storage library (WP-1.11). A directory that is not there has nothing to flush.
+fn flush_tree(directory: &Path) -> Result<()> {
+    let dir = match Dir::open(directory) {
+        Ok(dir) => dir,
+        Err(permguard_host::storage::StorageError::Io { source, .. })
+            if source.kind() == std::io::ErrorKind::NotFound =>
+        {
+            return Ok(());
+        }
+        Err(error) => return Err(error).context("flushing a scope"),
+    };
+    for name in dir.names().context("flushing a scope")? {
+        dir.sync_file(&name).context("flushing a segment")?;
     }
+    dir.sync().context("flushing a scope")?;
 
     Ok(())
 }

@@ -1041,7 +1041,7 @@ fn flush_loop(spool: &Mutex<Spool>, group: &GroupCommit) {
         };
         match token {
             Ok(Some((covered, handle))) => {
-                let outcome = handle.sync_data().map_err(|error| error.to_string());
+                let outcome = handle.settle().map_err(|error| error.to_string());
                 if outcome.is_ok() {
                     // The disk took them, so the keys they carry may now answer
                     // a retry. Taken back under the lock, and only for what the

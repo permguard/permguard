@@ -470,6 +470,27 @@ mod platform {
             })
         }
 
+        /// Moves `from` below this directory to `to` below `into`, replacing `to` when it exists:
+        /// how a file of a layout before the library is adopted into the layout after it
+        /// (WP-1.11). Both directories are flushed, so the move survives a crash whole.
+        pub fn move_to(&self, from: &str, into: &Dir, to: &str) -> Result<()> {
+            let (from, to) = (component(from)?, component(to)?);
+            rustix::fs::renameat(&self.fd, from, &into.fd, to).map_err(|error| {
+                StorageError::Io {
+                    what: format!(
+                        "moving {} to {}",
+                        self.child_path(from).display(),
+                        into.child_path(to).display()
+                    ),
+                    source: os(error),
+                }
+            })?;
+            crate::storage::crash::point("move.renamed");
+            into.sync()?;
+            crate::storage::crash::point("move.target_flushed");
+            self.sync()
+        }
+
         /// Unlinks `name`; `false` when it was already gone.
         pub fn unlink(&self, name: &str) -> Result<bool> {
             let name = component(name)?;
@@ -789,6 +810,24 @@ mod platform {
                 self.child_path(component(to)?),
             );
             std::fs::rename(&from, &to).map_err(io(format!("replacing {}", to.display())))
+        }
+
+        /// Moves `from` below this directory to `to` below `into`, replacing `to` when it exists
+        /// (WP-1.11); both directories are flushed.
+        pub fn move_to(&self, from: &str, into: &Dir, to: &str) -> Result<()> {
+            let (from, to) = (
+                self.child_path(component(from)?),
+                into.child_path(component(to)?),
+            );
+            std::fs::rename(&from, &to).map_err(io(format!(
+                "moving {} to {}",
+                from.display(),
+                to.display()
+            )))?;
+            crate::storage::crash::point("move.renamed");
+            into.sync()?;
+            crate::storage::crash::point("move.target_flushed");
+            self.sync()
         }
 
         /// Unlinks `name`; `false` when it was already gone.

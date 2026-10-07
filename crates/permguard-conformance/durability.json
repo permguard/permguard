@@ -1,0 +1,29 @@
+{
+  "note": "Every use of a durability primitive outside crates/permguard-host/src/storage/ (WP-1.11): exact file, enclosing item, primitive and why the library cannot be used there. crates/permguard-conformance/tests/durability.rs keeps this list equal to the code: a use not listed fails, and so does an entry nothing needs. One entry covers every use of that primitive in that item.",
+  "allowed": [
+    {
+      "source": "crates/permguard-host/src/api/replay.rs",
+      "item": "COMPACTING",
+      "primitive": "temporary",
+      "reason": "`replay.new`, the replay journal's compaction directory: a name, not a publication; the directory is created and swapped into place through `Dir`"
+    },
+    {
+      "source": "crates/permguard-control-client/src/objects.rs",
+      "item": "sweep_temporaries",
+      "primitive": "temporary",
+      "reason": "recognises the `*.tmp` temporaries of the mirror layout before the library, to sweep them; nothing is published under the name"
+    },
+    {
+      "source": "crates/permguard-control-plane/src/store.rs",
+      "item": "sweep_tree",
+      "primitive": "temporary",
+      "reason": "recognises the `*.tmp` temporaries of the object store layout before the library, to sweep them; nothing is published under the name"
+    },
+    {
+      "source": "crates/permguard-data-plane/src/authz/store.rs",
+      "item": "touch_synced",
+      "primitive": "write",
+      "reason": "`SYNCED`, the mirror's freshness marker: its modification time is the datum and its content is empty, so an in-place write is the cheapest way to move the time and a torn one cannot exist (owner decision of 2026-10-07)"
+    }
+  ]
+}

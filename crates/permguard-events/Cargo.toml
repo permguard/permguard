@@ -14,6 +14,8 @@ publish = false
 
 [dependencies]
 permguard-core.workspace = true
+# The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
+permguard-host.workspace = true
 # The two primitives that are genuinely domain-agnostic: JCS canonicalization and the per-batch
 # Merkle tree operate on bytes and digest strings, and live in the stream foundation.
 # Everything that carries a *domain* — the record digest, the chain, the signed envelope's type —

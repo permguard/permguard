@@ -32,9 +32,10 @@
 //! to the new key rather than refused, which would stall the shipper forever on a rotation that
 //! landed between two attempts at the same batch.
 
+use permguard_host::storage::Dir;
+use permguard_host::storage::write::replace_bytes;
 use std::fmt;
 use std::fs;
-use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -233,18 +234,14 @@ impl Signers {
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         let rendered = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
 
-        let staged = path.with_extension("json.next");
-        {
-            let mut file = fs::File::create(&staged)?;
-            file.write_all(&rendered)?;
-            file.sync_all()?;
-        }
-        fs::rename(&staged, path)?;
-
-        if let Some(directory) = path.parent() {
-            // The rename itself must survive the crash, and that is the directory's business.
-            fs::File::open(directory)?.sync_all()?;
-        }
+        // The storage library's replacement (WP-1.11): a flushed temporary renamed over the
+        // manifest, and the directory flushed, so the rename itself survives a crash.
+        let (directory, name) = path
+            .parent()
+            .zip(path.file_name().and_then(|name| name.to_str()))
+            .ok_or_else(|| std::io::Error::other(format!("{} names no file", path.display())))?;
+        let dir = Dir::open(directory).map_err(std::io::Error::other)?;
+        replace_bytes(&dir, name, &rendered).map_err(std::io::Error::other)?;
 
         Ok(())
     }

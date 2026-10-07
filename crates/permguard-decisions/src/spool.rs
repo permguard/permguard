@@ -69,6 +69,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use permguard_core::fault;
+use permguard_host::storage::{Dir, StorageError, write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -210,8 +211,37 @@ pub enum Already {
 
 struct Segment {
     first_seq: u64,
+    /// The file's name below the spool directory, for the library's flush.
+    name: String,
     file: File,
     bytes: u64,
+}
+
+/// A segment handle the flusher settles outside the spool's lock: the group-commit flush, made
+/// through the storage library (WP-1.11).
+pub struct FlushHandle {
+    dir: Dir,
+    name: String,
+    file: File,
+}
+
+impl FlushHandle {
+    /// Flushes the segment: every record appended before the token was issued is durable once
+    /// this returns.
+    pub fn settle(&self) -> Result<(), SpoolError> {
+        write::flush(&self.dir, &self.name, &self.file)
+            .map_err(|error| storage("flushing a segment", error))
+    }
+}
+
+/// The storage library's error as this spool reports it.
+fn storage(what: &'static str, error: StorageError) -> SpoolError {
+    SpoolError::io(what, std::io::Error::other(error))
+}
+
+/// The spool directory, as the storage library addresses it.
+fn dir_of(directory: &Path) -> Result<Dir, SpoolError> {
+    Dir::open(directory).map_err(|error| storage("opening the spool directory", error))
 }
 
 impl Spool {
@@ -240,6 +270,10 @@ impl Spool {
             .map_err(|error| SpoolError::io("creating the spool", error))?;
 
         let lock = claim_lock(&directory)?;
+        // A temporary a crashed replacement left is never a record: swept under the lock.
+        dir_of(&directory)?
+            .sweep_temps()
+            .map_err(|error| storage("sweeping the spool", error))?;
         reserve(&directory)?;
 
         let state = match read_state(&directory)? {
@@ -502,11 +536,12 @@ impl Spool {
     pub fn close_finished(&mut self) -> Result<(), SpoolError> {
         if self.state.closing.take().is_some() {
             write_state(&self.directory, &self.state)?;
-            // The reserve goes back to being reserve.
-            let _ = fs::write(
-                self.directory.join(RESERVE_FILE),
-                vec![0u8; RESERVE_BYTES as usize],
-            );
+            // The reserve goes back to being reserve: best effort, as before, through the storage
+            // library (WP-1.11).
+            let _ = dir_of(&self.directory).and_then(|dir| {
+                write::replace_bytes(&dir, RESERVE_FILE, &vec![0u8; RESERVE_BYTES as usize])
+                    .map_err(|error| storage("resetting the reserve", error))
+            });
         }
 
         Ok(())
@@ -609,8 +644,8 @@ impl Spool {
             .map_err(|error| SpoolError::io("rewinding the reserve", error))?;
         fault::write(&self.directory, padded.len(), || file.write_all(&padded))
             .map_err(|error| SpoolError::io("writing the terminal record", error))?;
-        fault::sync(&self.directory, || file.sync_all())
-            .map_err(|error| SpoolError::io("flushing the terminal record", error))?;
+        write::flush(&dir_of(&self.directory)?, RESERVE_FILE, &file)
+            .map_err(|error| storage("flushing the terminal record", error))?;
 
         // 3. The old stream is closed, and 4. the successor becomes live.
         let closed = self.state.instance.clone();
@@ -657,9 +692,8 @@ impl Spool {
             // it, nothing will hold its handle, and unsynced bytes in a closed
             // file are bytes a crash may take with it.
             self.sync_open()?;
-            let path = self
-                .directory
-                .join(format!("{SEGMENT_PREFIX}{seq:020}{SEGMENT_SUFFIX}"));
+            let name = format!("{SEGMENT_PREFIX}{seq:020}{SEGMENT_SUFFIX}");
+            let path = self.directory.join(&name);
             let file = OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -667,6 +701,7 @@ impl Spool {
                 .map_err(|error| SpoolError::io("opening a segment", error))?;
             self.open = Some(Segment {
                 first_seq: seq,
+                name,
                 file,
                 bytes: 0,
             });
@@ -689,8 +724,8 @@ impl Spool {
     /// wrote it. A spool with nothing open has nothing to settle.
     pub fn sync_open(&mut self) -> Result<(), SpoolError> {
         if let Some(segment) = &self.open {
-            fault::sync(&self.directory, || segment.file.sync_data())
-                .map_err(|error| SpoolError::io("flushing a segment", error))?;
+            write::flush(&dir_of(&self.directory)?, &segment.name, &segment.file)
+                .map_err(|error| storage("flushing a segment", error))?;
         }
         self.promote_through(self.seq);
 
@@ -733,16 +768,23 @@ impl Spool {
     /// durable too, but a later group is the one that claims them. If a
     /// rotation happens after the token is issued, it flushes the old segment
     /// on its way out.
-    pub fn flush_token(&self) -> Result<Option<(u64, File)>, SpoolError> {
+    pub fn flush_token(&self) -> Result<Option<(u64, FlushHandle)>, SpoolError> {
         let Some(segment) = &self.open else {
             return Ok(None);
         };
-        let handle = segment
+        let file = segment
             .file
             .try_clone()
             .map_err(|error| SpoolError::io("cloning a segment handle", error))?;
 
-        Ok(Some((self.seq, handle)))
+        Ok(Some((
+            self.seq,
+            FlushHandle {
+                dir: dir_of(&self.directory)?,
+                name: segment.name.clone(),
+                file,
+            },
+        )))
     }
 
     fn segments(&self) -> Result<Vec<(u64, PathBuf)>, SpoolError> {
@@ -975,11 +1017,10 @@ fn reserve(directory: &Path) -> Result<(), SpoolError> {
     if fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0) >= RESERVE_BYTES {
         return Ok(());
     }
-    // Written, not merely declared: a hole in a sparse file is not space.
-    fs::write(&path, vec![b'\n'; RESERVE_BYTES as usize])
-        .map_err(|error| SpoolError::NoReserve(error.to_string()))?;
-    File::open(&path)
-        .and_then(|file| file.sync_all())
+    // Written, not merely declared: a hole in a sparse file is not space. Through the storage
+    // library (WP-1.11): whole and flushed before it counts.
+    let dir = dir_of(directory).map_err(|error| SpoolError::NoReserve(error.to_string()))?;
+    write::replace_bytes(&dir, RESERVE_FILE, &vec![b'\n'; RESERVE_BYTES as usize])
         .map_err(|error| SpoolError::NoReserve(error.to_string()))?;
 
     Ok(())
@@ -996,30 +1037,13 @@ fn read_state(directory: &Path) -> Result<Option<State>, SpoolError> {
 }
 
 fn write_state(directory: &Path, state: &State) -> Result<(), SpoolError> {
-    let temporary = directory.join(format!("{STATE_FILE}.next"));
     let bytes = serde_json::to_vec(state)
         .map_err(|error| SpoolError::Malformed(format!("the spool state: {error}")))?;
-    {
-        let mut file = File::create(&temporary)
-            .map_err(|error| SpoolError::io("writing the spool state", error))?;
-        fault::write(directory, bytes.len(), || file.write_all(&bytes))
-            .map_err(|error| SpoolError::io("writing the spool state", error))?;
-        fault::sync(directory, || file.sync_all())
-            .map_err(|error| SpoolError::io("flushing the spool state", error))?;
-    }
-    // Rename is the atomic step: a reader sees the old state or the new one,
-    // never half of either.
-    fs::rename(&temporary, directory.join(STATE_FILE))
-        .map_err(|error| SpoolError::io("replacing the spool state", error))?;
-    // The rename is only durable once the *directory* is. Discarding this made the atomic step
-    // atomic in memory and optional on disk: a power loss between the two leaves a spool whose
-    // state file is the old one, which is a stream that resumes from a position it already used.
-    let handle = File::open(directory)
-        .map_err(|error| SpoolError::io("opening the spool directory to flush it", error))?;
-    fault::sync(directory, || handle.sync_all())
-        .map_err(|error| SpoolError::io("flushing the spool directory", error))?;
-
-    Ok(())
+    // The storage library's replacement (WP-1.11): a flushed temporary renamed over the state,
+    // and the directory flushed, so a reader sees the old state or the new one and a power loss
+    // between the rename and the directory's flush cannot leave the old one in place.
+    write::replace_bytes(&dir_of(directory)?, STATE_FILE, &bytes)
+        .map_err(|error| storage("replacing the spool state", error))
 }
 
 /// Finds where the stream stands, truncating a torn trailing line.
@@ -1045,16 +1069,19 @@ fn recover(
             None => 0,
         };
         if complete != bytes.len() {
-            let file = OpenOptions::new()
-                .write(true)
-                .open(path)
-                .map_err(|error| SpoolError::io("truncating a torn record", error))?;
-            file.set_len(complete as u64)
-                .map_err(|error| SpoolError::io("truncating a torn record", error))?;
-            // A truncation that is not durable is a torn record that comes back: the next open
-            // reads the same tail, truncates again, and every recovery believes it is the first.
-            file.sync_all()
-                .map_err(|error| SpoolError::io("flushing a truncated segment", error))?;
+            // Which bytes are the tail is this format's judgement; cutting them durably is the
+            // storage library's (WP-1.11): a truncation that is not durable is a torn record
+            // that comes back at the next open.
+            let dir = dir_of(directory)?;
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| SpoolError::Malformed("a segment without a name".to_owned()))?;
+            let file = dir
+                .open_write(name)
+                .map_err(|error| storage("truncating a torn record", error))?;
+            write::truncate(&dir, name, &file, complete as u64)
+                .map_err(|error| storage("truncating a torn record", error))?;
         }
         for line in bytes[..complete].split(|byte| *byte == b'\n') {
             if line.is_empty() {

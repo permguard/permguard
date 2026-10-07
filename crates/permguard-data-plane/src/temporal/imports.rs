@@ -29,8 +29,9 @@
 //! The two are separate because collapsing them would be wrong in both directions: two records at
 //! one origin position is a fork, and one occurrence at two origin positions is normal.
 
+use permguard_host::storage::Dir;
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -490,8 +491,10 @@ impl Imports {
         let length = line.len() as u64 + 1;
         writeln!(file, "{line}").context("writing an imported record")?;
         // Durable before the cursor moves past it: a crash the other way round would lose a record
-        // the cursor claimed to have passed.
-        file.sync_all().context("flushing the import store")?;
+        // the cursor claimed to have passed. Flushed through the storage library (WP-1.11).
+        Dir::open(&directory)
+            .and_then(|dir| permguard_host::storage::write::flush(&dir, RECORDS_FILE, &file))
+            .context("flushing the import store")?;
         // And the index after the record, never before: an entry durable ahead of what it points
         // at would survive a crash the record did not, and a scan would then read a hole.
         self.index_one(zone, ledger, record, offset, length)?;
@@ -814,22 +817,16 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
-    let temporary = directory.join(format!(".{name}.writing"));
-    let mut file =
-        File::create(&temporary).with_context(|| format!("opening {}", temporary.display()))?;
-    file.write_all(bytes)
-        .with_context(|| format!("writing {}", temporary.display()))?;
-    file.sync_all()
-        .with_context(|| format!("flushing {}", temporary.display()))?;
-    drop(file);
-    fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
-    sync_directory(directory)
+    // The storage library's replacement (WP-1.11): a flushed temporary renamed over the cursor,
+    // and the directory flushed.
+    let dir = Dir::open(directory).with_context(|| format!("opening {}", directory.display()))?;
+    permguard_host::storage::write::replace_bytes(&dir, name, bytes)
+        .with_context(|| format!("replacing {}", path.display()))
 }
 
 fn sync_directory(directory: &Path) -> Result<()> {
-    File::open(directory)
-        .with_context(|| format!("opening directory {}", directory.display()))?
-        .sync_all()
+    Dir::open(directory)
+        .and_then(|dir| dir.sync())
         .with_context(|| format!("flushing directory {}", directory.display()))
 }
 

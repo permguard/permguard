@@ -136,7 +136,16 @@ fn append(path: &Path, version: &str, witness: &str) -> Result<()> {
 
     text.push_str(&format!("{version}\t{witness}\n"));
 
-    fs::write(path, text).with_context(|| format!("writing {}", path.display()))?;
+    // Through the storage library (WP-1.11): atomic and flushed, so a crash never leaves a
+    // half-written witness that the next start would read as a key change.
+    let (parent, name) = path
+        .parent()
+        .zip(path.file_name().and_then(|name| name.to_str()))
+        .ok_or_else(|| anyhow::anyhow!("{} names no file", path.display()))?;
+    let dir = permguard_host::storage::Dir::create_root(parent)
+        .with_context(|| format!("opening {}", parent.display()))?;
+    permguard_host::storage::write::replace_bytes(&dir, name, text.as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
     restrict(path, 0o600)
 }
 

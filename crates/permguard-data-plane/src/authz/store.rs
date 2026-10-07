@@ -77,7 +77,10 @@ pub fn record(mirror_path: &Path, identity: &Identity) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(identity)
         .map_err(|error| format!("describing the ledger identity: {error}"))?;
 
-    std::fs::write(mirror_path.join(IDENTITY_FILE), bytes)
+    // Through the storage library (WP-1.11): atomic and flushed, so a crash never leaves a
+    // torn identity for the next start to read.
+    permguard_host::storage::Dir::open(mirror_path)
+        .and_then(|dir| permguard_host::storage::write::replace_bytes(&dir, IDENTITY_FILE, &bytes))
         .map_err(|error| format!("writing the ledger identity: {error}"))
 }
 

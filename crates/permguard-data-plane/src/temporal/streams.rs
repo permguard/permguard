@@ -861,13 +861,26 @@ impl Streams {
                 JournalError::Io(format!("preparing {}: {error}", parent.display()))
             })?;
         }
-        std::fs::rename(&legacy, &target).map_err(|error| {
+        // Moved through the storage library (WP-1.11): both directories flushed, so the adoption
+        // survives a crash whole.
+        let adopting = |error: permguard_host::storage::StorageError| {
             JournalError::Io(format!(
                 "adopting {} as {}: {error}",
                 legacy.display(),
                 target.display()
             ))
-        })?;
+        };
+        let (from_dir, from) = legacy
+            .parent()
+            .zip(legacy.file_name().and_then(|name| name.to_str()))
+            .ok_or_else(|| JournalError::Io(format!("{} has no name", legacy.display())))?;
+        let (into_dir, to) = target
+            .parent()
+            .zip(target.file_name().and_then(|name| name.to_str()))
+            .ok_or_else(|| JournalError::Io(format!("{} has no name", target.display())))?;
+        let source = permguard_host::storage::Dir::open(from_dir).map_err(adopting)?;
+        let into = permguard_host::storage::Dir::open(into_dir).map_err(adopting)?;
+        source.move_to(from, &into, to).map_err(adopting)?;
         tracing::info!(
             event.name = "temporal.journal_adopted",
             component = "temporal",

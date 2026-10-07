@@ -52,6 +52,14 @@ is cut.
   A server refuses to start while a migration is between two sides, and over a layout version or subsystem it does not read; `migrate recover` lands an interrupted migration on one side.
   No shipped subsystem is laid out this way yet; the packages that adopt the library bring their migrations.
 
+- **One durability implementation.**
+  Every store writes through the storage library: the decision spool, the event journals and indexes, the stream layout and signer manifests, the Control Plane's stores and cursor key, the Data Plane's temporal imports, the audit trail, the catalog and the key rings.
+  No byte on disk changes: the formats are what they were, and existing volumes read as before.
+  Every file the library replaces is created readable by its owner alone (`0600`), where it used to take the process umask: a backup or export user that read a state file, an index, a manifest or a key ring through a group permission now needs the owner's.
+  The audit day seal, the private key files, a mirror's `IDENTITY` and `BLOCK`, a client store's refs and the server's key witness are written whole and flushed, where they used to be written in place: a crash no longer leaves a torn one.
+  Where a store wrote a temporary and renamed it, flushed a segment or cut a torn tail by itself, the library now does it, with at least the flushes it had and the same fault handling everywhere.
+  A structural check, `task check:durability`, reads every crate's syntax tree and fails on a durability primitive outside the library, however it is imported, aliased, pointed at or named inside a macro; the few uses it allows are listed with their reasons.
+
 ### Changed
 
 - **A `PERMGUARD_*` environment variable no setting reads fails startup.**

@@ -73,7 +73,10 @@ pub fn write(mirror: &Path, commit: &str, reason: &str) {
     let Ok(bytes) = serde_json::to_vec_pretty(&block) else {
         return;
     };
-    let _ = std::fs::write(mirror.join(BLOCK_FILE), bytes);
+    // Best effort, as before, and through the storage library (WP-1.11): a block is read back and
+    // judged, so a torn one must never be what the next start finds.
+    let _ = permguard_host::storage::Dir::open(mirror)
+        .and_then(|dir| permguard_host::storage::write::replace_bytes(&dir, BLOCK_FILE, &bytes));
 }
 
 /// Reads the block, when there is one.

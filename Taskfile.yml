@@ -106,6 +106,7 @@ tasks:
       - task: check:headers
       - task: check:notices
       - task: check:boundaries
+      - task: check:durability
       - task: test
 
   coverage:
@@ -134,6 +135,11 @@ tasks:
     desc: Check that every untrusted decoder is registered, bounded and fuzzed.
     cmds:
       - cargo test -p permguard-conformance --test boundaries --locked
+
+  check:durability:
+    desc: Check that every durability primitive lives in the storage library or is allow-listed.
+    cmds:
+      - cargo test -p permguard-conformance --test durability --locked
 
   fuzz:
     desc: Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).

@@ -43,6 +43,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use permguard_host::storage::Dir;
+use permguard_host::storage::write::replace_bytes;
+
 use ring::rand::SystemRandom;
 use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, Ed25519KeyPair, KeyPair};
 use serde::{Deserialize, Serialize};
@@ -327,11 +330,16 @@ impl DirectoryKeyManager {
             .map_err(|error| KeyError::backend(format!("describing the key ring: {error}")))?;
 
         let path = self.ring_path();
-        let staged = path.with_extension("json.tmp");
-
-        fs::write(&staged, text.as_bytes())
-            .map_err(|error| KeyError::backend(format!("writing {}: {error}", staged.display())))?;
-        fs::rename(&staged, &path)
+        // The storage library's replacement (WP-1.11): a flushed temporary renamed over the ring,
+        // the directory flushed; the bytes are the same JSON as before.
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| KeyError::backend(format!("{} names no file", path.display())))?;
+        let dir = Dir::open(&self.directory).map_err(|error| {
+            KeyError::backend(format!("opening {}: {error}", self.directory.display()))
+        })?;
+        replace_bytes(&dir, name, text.as_bytes())
             .map_err(|error| KeyError::backend(format!("replacing {}: {error}", path.display())))?;
 
         Ok(())
@@ -360,7 +368,16 @@ impl DirectoryKeyManager {
         let kid = thumbprint(self.algorithm, &public_key);
 
         let path = self.key_path(&kid);
-        fs::write(&path, encoding::pem(PEM_LABEL, &pkcs8).as_bytes())
+        // Through the storage library (WP-1.11): a flushed temporary, created readable by its
+        // owner alone, renamed into place; the same PEM as before.
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| KeyError::backend(format!("{} names no file", path.display())))?;
+        let dir = Dir::open(&self.directory).map_err(|error| {
+            KeyError::backend(format!("opening {}: {error}", self.directory.display()))
+        })?;
+        replace_bytes(&dir, name, encoding::pem(PEM_LABEL, &pkcs8).as_bytes())
             .map_err(|error| KeyError::backend(format!("writing {}: {error}", path.display())))?;
         restrict(&path, 0o600)?;
 

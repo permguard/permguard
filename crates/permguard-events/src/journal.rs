@@ -46,6 +46,9 @@
 //! The segments are the authority for what was written; `STATE` is the authority for what was
 //! acknowledged, signed and retained. Splitting it that way is what makes recovery unambiguous.
 
+use permguard_host::storage::dir::temp_name;
+use permguard_host::storage::write::{self, replace_bytes};
+use permguard_host::storage::{Dir, StorageError};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, Write as _};
@@ -260,6 +263,10 @@ impl Journal {
         fs::create_dir_all(&directory).map_err(|error| JournalError::Io(error.to_string()))?;
 
         let lock = lock_exclusively(&directory.join(LOCK_FILE))?;
+        // A temporary a crashed replacement left is never a record: swept under the lock.
+        Dir::open(&directory)
+            .and_then(|dir| dir.sweep_temps())
+            .map_err(|error| JournalError::Io(error.to_string()))?;
         reserve(&directory)?;
 
         let state_path = directory.join(STATE_FILE);
@@ -408,10 +415,11 @@ impl Journal {
 
     /// Flushes and `fsync`s the open segment, then records the new durable watermark.
     pub fn sync(&mut self) -> Result<(), JournalError> {
-        if let Some((_, file)) = &mut self.open_segment {
-            file.flush()
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-            fault::sync(&self.directory, || file.sync_all())
+        if let Some((first, file)) = &self.open_segment {
+            // Flushed by name through the storage library (WP-1.11).
+            let name = format!("{SEGMENT_PREFIX}{first:020}{SEGMENT_SUFFIX}");
+            self.dir()
+                .and_then(|dir| write::flush(&dir, &name, file))
                 .map_err(|error| JournalError::Io(error.to_string()))?;
         }
         // After the segment, never before: an index entry durable ahead of the record it points at
@@ -450,21 +458,10 @@ impl Journal {
             });
         }
         let name = format!("{CHECKPOINT_PREFIX}{first_seq:020}{CHECKPOINT_SUFFIX}");
-        let path = self.directory.join(&name);
-        let temporary = self.directory.join(format!("{name}.tmp"));
-        {
-            let mut file =
-                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            file.write_all(jws.as_bytes())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-            file.sync_all()
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-        }
-        // Atomically named, so a reader finds a whole checkpoint or none — never the prefix of one.
-        fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
-        // And the directory entry itself, or a crash could lose the name while keeping the bytes.
-        File::open(&self.directory)
-            .and_then(|directory| directory.sync_all())
+        // Atomically named through the storage library (WP-1.11), so a reader finds a whole
+        // checkpoint or none, and the directory entry is flushed with it.
+        self.dir()
+            .and_then(|dir| replace_bytes(&dir, &name, jws.as_bytes()))
             .map_err(|error| JournalError::Io(error.to_string()))?;
 
         self.mark_signed(last_seq)
@@ -552,22 +549,27 @@ impl Journal {
                 "an occurrence has no directory".to_owned(),
             ));
         };
-        fs::create_dir_all(directory).map_err(|error| JournalError::Io(error.to_string()))?;
-        let temporary = directory.join(format!("{}.tmp", known.seq));
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| JournalError::Io("an occurrence has no name".to_owned()))?;
         let bytes = serde_json::to_vec(known)
             .map_err(|error| JournalError::Malformed(error.to_string()))?;
-        {
-            let mut file =
-                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            file.write_all(&bytes)
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-        }
         // Renamed, not flushed. Flushing here would put an `fsync` on every record inside a batch
         // that exists to pay one for all of them — group commit would amortise the journal's flush
         // and then lose it again to this. [`Journal::sync_occurrences`] pays it once, and the
         // caller runs it alongside the journal's own flush, before anybody in the batch is
-        // answered.
-        fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
+        // answered. The temporary and the rename are the storage library's (WP-1.11); only the
+        // flush is deferred.
+        let io = |error: StorageError| JournalError::Io(error.to_string());
+        let dir = Dir::create_root(directory).map_err(io)?;
+        let temporary = temp_name();
+        {
+            let mut file = dir.create_exclusive(&temporary).map_err(io)?;
+            file.write_all(&bytes)
+                .map_err(|error| JournalError::Io(error.to_string()))?;
+        }
+        dir.rename(&temporary, name).map_err(io)?;
         match self.pending_occurrences.lock() {
             Ok(mut pending) => {
                 pending.insert(known.seq, path);
@@ -590,24 +592,27 @@ impl Journal {
             Ok(pending) => pending.clone(),
             Err(poisoned) => poisoned.into_inner().clone(),
         };
+        // Every file, then every directory that names one, then the root: through the storage
+        // library (WP-1.11), by name.
+        let io = |error: StorageError| JournalError::Io(error.to_string());
         let mut directories = BTreeSet::new();
         for path in pending.values() {
-            File::open(path)
-                .and_then(|file| file.sync_all())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-            if let Some(directory) = path.parent() {
-                directories.insert(directory.to_path_buf());
-            }
+            let (directory, name) = path
+                .parent()
+                .zip(path.file_name().and_then(|name| name.to_str()))
+                .ok_or_else(|| JournalError::Io("an occurrence has no directory".to_owned()))?;
+            Dir::open(directory)
+                .and_then(|dir| dir.sync_file(name))
+                .map_err(io)?;
+            directories.insert(directory.to_path_buf());
         }
         for directory in directories {
-            File::open(directory)
-                .and_then(|held| held.sync_all())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
+            Dir::open(&directory)
+                .and_then(|dir| dir.sync())
+                .map_err(io)?;
         }
         if root.exists() {
-            File::open(&root)
-                .and_then(|held| held.sync_all())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
+            Dir::open(&root).and_then(|dir| dir.sync()).map_err(io)?;
         }
 
         // Coverage is a contiguous prefix, never merely the largest sequence flushed. If one
@@ -624,20 +629,11 @@ impl Journal {
             covered = seq;
         }
 
-        let state = self.directory.join(OCCURRENCES_STATE_FILE);
-        let temporary = self.directory.join(format!("{OCCURRENCES_STATE_FILE}.tmp"));
-        {
-            let mut file =
-                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            file.write_all(covered.to_string().as_bytes())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-            file.sync_all()
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-        }
-        fs::rename(&temporary, &state).map_err(|error| JournalError::Io(error.to_string()))?;
-        File::open(&self.directory)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| JournalError::Io(error.to_string()))?;
+        self.dir()
+            .and_then(|dir| {
+                replace_bytes(&dir, OCCURRENCES_STATE_FILE, covered.to_string().as_bytes())
+            })
+            .map_err(io)?;
         match self.pending_occurrences.lock() {
             Ok(mut held) => held.retain(|seq, path| pending.get(seq) != Some(path)),
             Err(poisoned) => poisoned
@@ -1118,14 +1114,16 @@ impl Journal {
             }
 
             if complete_len < bytes.len() {
-                let file = OpenOptions::new()
-                    .write(true)
-                    .open(path)
-                    .map_err(|error| JournalError::Io(error.to_string()))?;
-                file.set_len(complete_len as u64)
-                    .map_err(|error| JournalError::Io(error.to_string()))?;
-                file.sync_all()
-                    .map_err(|error| JournalError::Io(error.to_string()))?;
+                // Which bytes are the torn tail is this format's judgement; cutting them durably
+                // is the storage library's (WP-1.11).
+                let io = |error: StorageError| JournalError::Io(error.to_string());
+                let (directory, name) = path
+                    .parent()
+                    .zip(path.file_name().and_then(|name| name.to_str()))
+                    .ok_or_else(|| JournalError::Io("a segment has no name".to_owned()))?;
+                let dir = Dir::open(directory).map_err(io)?;
+                let file = dir.open_write(name).map_err(io)?;
+                write::truncate(&dir, name, &file, complete_len as u64).map_err(io)?;
             }
 
             if last.is_some() {
@@ -1170,27 +1168,20 @@ impl Journal {
     }
 
     fn persist_state(&self) -> Result<(), JournalError> {
-        let path = self.directory.join(STATE_FILE);
-        let temporary = self.directory.join(format!("{STATE_FILE}.tmp"));
         let bytes = serde_json::to_vec(&self.state)
             .map_err(|error| JournalError::Malformed(error.to_string()))?;
-        {
-            let mut file =
-                File::create(&temporary).map_err(|error| JournalError::Io(error.to_string()))?;
-            fault::write(&self.directory, bytes.len(), || file.write_all(&bytes))
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-            fault::sync(&self.directory, || file.sync_all())
-                .map_err(|error| JournalError::Io(error.to_string()))?;
-        }
-        // Atomically replaced: a reader either sees the old state or the new one, never a
-        // half-written file.
-        fs::rename(&temporary, &path).map_err(|error| JournalError::Io(error.to_string()))?;
-        fault::sync(&self.directory, || {
-            File::open(&self.directory).and_then(|directory| directory.sync_all())
-        })
-        .map_err(|error| JournalError::Io(error.to_string()))?;
+        // Atomically replaced through the storage library (WP-1.11): a reader sees the old state
+        // or the new one, and the directory is flushed after the rename.
+        self.dir()
+            .and_then(|dir| replace_bytes(&dir, STATE_FILE, &bytes))
+            .map_err(|error| JournalError::Io(error.to_string()))?;
 
         Ok(())
+    }
+
+    /// The journal directory, as the storage library addresses it.
+    fn dir(&self) -> Result<Dir, StorageError> {
+        Dir::open(&self.directory)
     }
 }
 
@@ -1229,9 +1220,9 @@ fn reserve(directory: &Path) -> Result<(), JournalError> {
         .map_err(|error| JournalError::Io(error.to_string()))?
         .len();
     if held < RESERVE_BYTES {
-        file.set_len(RESERVE_BYTES)
-            .map_err(|error| JournalError::Io(error.to_string()))?;
-        file.sync_all()
+        // Sized and flushed through the storage library (WP-1.11).
+        Dir::open(directory)
+            .and_then(|dir| write::set_length(&dir, RESERVE_FILE, &file, RESERVE_BYTES))
             .map_err(|error| JournalError::Io(error.to_string()))?;
     }
 

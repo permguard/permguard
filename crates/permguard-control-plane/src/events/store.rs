@@ -27,8 +27,9 @@
 //! the line within it. Sequential to append, sequential to scan, and a corrupt or missing index
 //! costs a rebuild rather than an answer.
 
+use permguard_host::storage::Dir;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -240,6 +241,8 @@ impl EventStore {
             fs::create_dir_all(root.join(held)).context("creating the event store")?;
         }
         let lock = lock_exclusively(&root.join(LOCK_FILE))?;
+        // The temporaries a crashed replacement left below the store are never records.
+        sweep_temporaries(&root)?;
         recover_torn_segments(&root)?;
         recover_views(&root)?;
         let stream_index = discover_streams(&root)?;
@@ -1012,17 +1015,21 @@ fn recover_torn_segment(path: &Path) -> Result<bool> {
         return Ok(false);
     }
 
-    let file = OpenOptions::new()
-        .write(true)
-        .open(path)
+    // Which bytes are the torn tail is this format's judgement; cutting them durably is the
+    // storage library's (WP-1.11).
+    let (directory, name) = path
+        .parent()
+        .zip(path.file_name().and_then(|name| name.to_str()))
+        .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
+    let dir = Dir::open(directory)
+        .with_context(|| format!("opening {} for crash recovery", directory.display()))?;
+    let file = dir
+        .open_write(name)
         .with_context(|| format!("opening {} for crash recovery", path.display()))?;
-    file.set_len(complete as u64)
+    permguard_host::storage::write::truncate(&dir, name, &file, complete as u64)
         .with_context(|| format!("truncating a torn record from {}", path.display()))?;
-    file.sync_all()
-        .with_context(|| format!("flushing recovered segment {}", path.display()))?;
-    if let Some(directory) = path.parent() {
-        sync_directory(directory)?;
-    }
+    dir.sync()
+        .with_context(|| format!("flushing {}", directory.display()))?;
 
     Ok(true)
 }
@@ -1668,59 +1675,52 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow!("{} has no portable file name", path.display()))?;
-    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let temporary = parent.join(format!(
-        ".{name}.writing-{}-{}",
-        std::process::id(),
-        NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .with_context(|| format!("opening {}", temporary.display()))?;
-    file.write_all(bytes)
-        .with_context(|| format!("writing {}", temporary.display()))?;
-    file.sync_all()
-        .with_context(|| format!("flushing {}", temporary.display()))?;
-    drop(file);
-    fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
-    sync_directory(parent)
+    // The storage library's replacement (WP-1.11): a flushed temporary of its own naming, renamed
+    // over the file, and the directory flushed.
+    let dir = Dir::open(parent).with_context(|| format!("opening {}", parent.display()))?;
+    permguard_host::storage::write::replace_bytes(&dir, name, bytes)
+        .with_context(|| format!("replacing {}", path.display()))
 }
 
 pub(crate) fn sync_directory(directory: &Path) -> Result<()> {
-    File::open(directory)
-        .with_context(|| format!("opening directory {}", directory.display()))?
-        .sync_all()
+    Dir::open(directory)
+        .and_then(|dir| dir.sync())
         .with_context(|| format!("flushing directory {}", directory.display()))
 }
 
-/// `fsync`s every file of a directory, and the directory itself.
+/// Sweeps the storage library's temporaries below `root`, in every directory: what a crash
+/// between a temporary and its rename left behind.
+fn sweep_temporaries(root: &Path) -> Result<()> {
+    fn sweep(dir: &Dir) -> Result<()> {
+        dir.sweep_temps().context("sweeping temporaries")?;
+        for name in dir.subdirs().context("sweeping temporaries")? {
+            sweep(&dir.subdir(&name, false).context("sweeping temporaries")?)?;
+        }
+        Ok(())
+    }
+    sweep(&Dir::open(root).context("sweeping temporaries")?)
+}
+
+/// `fsync`s every file of a directory, and the directory itself, through the storage library
+/// (WP-1.11).
 fn flush_tree(directory: &Path) -> Result<()> {
-    let entries = fs::read_dir(directory)
-        .with_context(|| format!("listing {} before flushing it", directory.display()))?;
-    for entry in entries {
-        let entry = entry.with_context(|| format!("listing {}", directory.display()))?;
-        let path = entry.path();
-        let kind = entry
-            .file_type()
-            .with_context(|| format!("reading the type of {}", path.display()))?;
-        if kind.is_dir() {
-            flush_tree(&path)?;
-            continue;
-        }
-        if kind.is_file() {
-            fs::File::open(&path)
-                .with_context(|| format!("opening {} before flushing it", path.display()))?
-                .sync_all()
-                .with_context(|| format!("flushing {}", path.display()))?;
-        }
+    let dir = Dir::open(directory)
+        .with_context(|| format!("opening {} before flushing it", directory.display()))?;
+    flush_dir(&dir)
+}
+
+fn flush_dir(dir: &Dir) -> Result<()> {
+    for name in dir.names()? {
+        dir.sync_file(&name)
+            .with_context(|| format!("flushing {}", dir.child_path(&name).display()))?;
+    }
+    for name in dir.subdirs()? {
+        flush_dir(&dir.subdir(&name, false)?)?;
     }
     // A directory `fsync` is what makes a *newly created* file survive: the file's own flush does
     // not persist the entry that names it.
-    sync_directory(directory)?;
-
-    Ok(())
+    dir.sync()
+        .with_context(|| format!("flushing directory {}", dir.path().display()))
 }
 
 /// Reads up to `limit` records of a segment, from `position`.
