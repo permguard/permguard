@@ -7,7 +7,7 @@
       "keys": "int",
       "fields": [
         { "label": 1, "name": "seq", "type": "uint", "occurs": "required", "note": "from 1, one more than the entry before it" },
-        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "prepublished, activated, retired, revoked, archived, destroyed or bound" },
+        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "prepublished, activated, retired, revoked, archived, destroyed, bound, sealed or rewrapped (WP-3.2)" },
         { "label": 3, "name": "kid", "type": "text", "occurs": "required", "note": "<ring>:<thumbprint>; on bound, the host.identity kid of the key that signed the binding" },
         { "label": 4, "name": "epoch", "type": "uint", "occurs": "required", "note": "the ring epoch once the entry applies: one more on prepublished, archived and a revocation out of the published set" },
         { "label": 5, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },

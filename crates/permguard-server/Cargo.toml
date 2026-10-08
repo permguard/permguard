@@ -39,6 +39,14 @@ tonic-prost.workspace = true
 futures-core.workspace = true
 # The initiator's one connection, handed to the gRPC client as it is (WP-2.3).
 hyper-util.workspace = true
+hyper.workspace = true
+ring.workspace = true
+rustls-native-certs.workspace = true
+zeroize.workspace = true
+cryptoki = { workspace = true, optional = true }
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
 # `service_fn`, the connector that hands that connection over once.
 tower = { workspace = true, features = ["util"] }
 rustls.workspace = true
@@ -56,6 +64,10 @@ opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
 tracing-opentelemetry.workspace = true
+
+[features]
+# The PKCS#11 custody of the Host's keys (WP-3.2): loads the token's module at runtime.
+pkcs11 = ["dep:cryptoki"]
 
 [build-dependencies]
 tonic-prost-build.workspace = true

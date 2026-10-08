@@ -153,6 +153,31 @@ impl Suite {
     }
 }
 
+impl Suite {
+    /// A signature a signer outside this crate made — a token, a KMS — in the one encoding
+    /// [`Suite::verify`] accepts: exactly [`Suite::SIGNATURE_LEN`] bytes, a P-256 `s` above `n / 2`
+    /// replaced by its low-s twin `n − s`, as [`SigningKey::sign`] does for its own.
+    pub fn canonical_signature(
+        self,
+        signature: &[u8],
+    ) -> Result<[u8; Self::SIGNATURE_LEN], SignatureError> {
+        let mut out: [u8; Self::SIGNATURE_LEN] =
+            signature.try_into().map_err(|_| SignatureError::Length {
+                expected: Self::SIGNATURE_LEN,
+                actual: signature.len(),
+            })?;
+        if self == Self::P256Sha256V1 && !is_low_s(&out[32..]) {
+            // An `s` at or above the order is no signature at all, and has no twin.
+            if out[32..] >= P256_ORDER[..] {
+                return Err(SignatureError::Invalid);
+            }
+            let negated = negate_s(&out[32..]);
+            out[32..].copy_from_slice(&negated);
+        }
+        Ok(out)
+    }
+}
+
 impl fmt::Display for Suite {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.name())
@@ -477,6 +502,37 @@ mod tests {
                 Err(SignatureError::HighS)
             );
         }
+    }
+
+    #[test]
+    fn test_a_signature_made_elsewhere_is_brought_to_its_low_s_encoding() {
+        let suite = Suite::P256Sha256V1;
+        let key =
+            SigningKey::from_pkcs8(suite, &SigningKey::generate_pkcs8(suite).unwrap()).unwrap();
+        let signature = key.sign(b"message").unwrap();
+        let mut twin = signature;
+        twin[32..].copy_from_slice(&negate_s(&signature[32..]));
+
+        assert_eq!(suite.canonical_signature(&twin), Ok(signature));
+        assert_eq!(suite.canonical_signature(&signature), Ok(signature));
+        let mut beyond = signature;
+        beyond[32..].copy_from_slice(&P256_ORDER);
+        assert_eq!(
+            suite.canonical_signature(&beyond),
+            Err(SignatureError::Invalid)
+        );
+        assert_eq!(
+            Suite::Ed25519Sha256V1.canonical_signature(&twin),
+            Ok(twin),
+            "an Ed25519 signature has no twin to choose between"
+        );
+        assert_eq!(
+            suite.canonical_signature(&signature[..63]),
+            Err(SignatureError::Length {
+                expected: 64,
+                actual: 63
+            })
+        );
     }
 
     #[test]

@@ -186,7 +186,7 @@ fn pair(tag: &str, bounds: Bounds) -> Pair {
     let shipper = Shipper::new(
         Arc::clone(&journal),
         Box::new(Shared(Arc::clone(&sink))),
-        keys,
+        Arc::new(permguard_decisions::envelope::RingSigner(keys)),
         256 * 1024,
         "1.0",
         Metrics::none(),

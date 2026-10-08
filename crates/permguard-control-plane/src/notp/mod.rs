@@ -13,12 +13,12 @@
 pub(crate) mod grpc;
 pub(crate) mod http;
 
+use permguard_core::keys::PublicSet as _;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use permguard_core::catalog::{Catalog, CatalogError, Selector};
-use permguard_core::keys::SigningRing;
 use permguard_core::metrics::labels;
 use permguard_core::metrics::{Metric, Metrics, SECONDS};
 use permguard_core::{ApiError, Disclosure, ErrorClass, Subject};
@@ -26,7 +26,7 @@ use permguard_core::{ApiError, Disclosure, ErrorClass, Subject};
 use crate::engine::{Engine, EngineError, EngineLimits, LedgerIdentity};
 use crate::store::FileObjectStore;
 use permguard_notp::*;
-use permguard_objects::statement::{HeadStatement, SignedHead};
+use permguard_objects::statement::HeadStatement;
 use permguard_objects::{compress, limits};
 
 /// NOTP operations answered — `op` is one of the six verbs, `outcome` is the
@@ -70,7 +70,8 @@ pub(crate) struct NotpFacade {
     pub(crate) zones_root: PathBuf,
     /// The ring that signs head statements — the git-like ring, never the
     /// one sealing the audit trail.
-    pub(crate) keys: Arc<dyn SigningRing>,
+    pub(crate) keys:
+        permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
     pub(crate) limits: EngineLimits,
     /// What this deployment has opted into among the provisional contracts, for the ingest gate.
     pub(crate) enabled: permguard_languages::registry::Enabled,
@@ -104,7 +105,7 @@ impl NotpFacade {
     pub(crate) fn new(
         catalog: Arc<dyn Catalog>,
         zones_root: PathBuf,
-        keys: Arc<dyn SigningRing>,
+        keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
         limits: EngineLimits,
         enabled: permguard_languages::registry::Enabled,
         compression: bool,
@@ -296,41 +297,19 @@ impl NotpFacade {
     /// the COSE structure this closure never sees.
     fn signer(&self) -> impl Fn(&HeadStatement) -> Result<Vec<u8>, EngineError> + '_ {
         move |statement| {
-            let kid = self
-                .keys
-                .active_key_id()
-                .map_err(|e| EngineError::Internal {
-                    detail: format!("resolving the signing key: {e}"),
-                })?;
-            // A refusal that passes on its own — the Host's clock in anomaly (WP-2.12), a ring not
-            // ready yet — is answered `unavailable`, never as a store failure.
-            let unavailable = std::cell::RefCell::new(None::<String>);
-            let signed = SignedHead::sign_with(statement, kid.as_str().as_bytes(), |bytes| {
-                let signature = self.keys.sign(bytes).map_err(|e| {
-                    if e.is_retryable() {
-                        *unavailable.borrow_mut() = Some(e.to_string());
+            // The typed signer of the Host (WP-3.2): the statement, never bytes of this plane's.
+            // A refusal that passes on its own — the Host's clock in anomaly (WP-2.12), a ring
+            // not ready yet — is answered `unavailable`, never as a store failure.
+            self.keys.sign(statement).map_err(|error| {
+                if error.is_retryable() {
+                    EngineError::SigningUnavailable {
+                        message: error.to_string(),
                     }
-                    permguard_objects::statement::StatementError::Signer(format!(
-                        "signing the head statement: {e}"
-                    ))
-                })?;
-                if signature.key_id() != &kid {
-                    // The ring rotated between naming the key and signing:
-                    // refuse rather than emit a kid the signature disowns.
-                    return Err(permguard_objects::statement::StatementError::Signer(
-                        "the signing key rotated mid-signature".to_string(),
-                    ));
+                } else {
+                    EngineError::Internal {
+                        detail: format!("signing the head statement: {error}"),
+                    }
                 }
-                Ok(signature.bytes().to_vec())
-            })
-            .map_err(|e| match unavailable.take() {
-                Some(message) => EngineError::SigningUnavailable { message },
-                None => EngineError::Internal {
-                    detail: e.to_string(),
-                },
-            })?;
-            signed.encode().map_err(|e| EngineError::Internal {
-                detail: e.to_string(),
             })
         }
     }
@@ -754,7 +733,7 @@ mod tests {
         let facade = NotpFacade::new(
             Arc::new(FileCatalog::new(root.join("zones"))),
             root.join("zones"),
-            Arc::new(signer),
+            signer,
             EngineLimits {
                 max_batch_bytes: 1024,
                 max_batch_objects: 10,

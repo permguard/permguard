@@ -519,6 +519,11 @@ impl Materialized {
                     return wrong("still in use or destroyed already");
                 }
             }
+            Kind::Sealed | Kind::Rewrapped => {
+                if position.is_none() || self.destroyed.contains(&entry.kid) {
+                    return wrong("unknown or destroyed");
+                }
+            }
             Kind::Bound => {
                 if thumbprint::split_kid(&entry.kid).map(|(owner, _)| owner) != Some(HOST_IDENTITY)
                 {
@@ -685,6 +690,22 @@ impl Ring {
         policy: Policy,
         time: Arc<TimeGuard>,
     ) -> Result<Self, RingError> {
+        let opened = Self::open_unchecked(dir, public, provider, ring, suite, policy, time)?;
+        opened.check_held()?;
+        Ok(opened)
+    }
+
+    /// Opens without checking the keys the provider holds: the custody journals what it is
+    /// about to do before it does it, then [`Ring::check_held`] runs (WP-3.2).
+    pub(crate) fn open_unchecked(
+        dir: Dir,
+        public: Dir,
+        provider: Arc<dyn KeyProvider>,
+        ring: &'static str,
+        suite: Suite,
+        policy: Policy,
+        time: Arc<TimeGuard>,
+    ) -> Result<Self, RingError> {
         let journal = sequence::recover(&dir, JOURNAL, MAX_ENTRY_BYTES)?;
         let mut state = Materialized::default();
         for item in journal.items {
@@ -723,7 +744,6 @@ impl Ring {
             serial: Mutex::new(()),
             stopped: AtomicBool::new(false),
         };
-        opened.check_held()?;
         Ok(opened)
     }
 
@@ -950,21 +970,36 @@ impl Ring {
         Ok(())
     }
 
-    /// Refuses a ring whose prepublished or active key has lost its private half, and rebuilds
-    /// `ring.cbor` from the journal.
-    fn check_held(&self) -> Result<(), RingError> {
+    /// Refuses a ring whose prepublished or active key has lost its private half, or holds
+    /// another key than the one it published, and rebuilds `ring.cbor` from the journal. The
+    /// provider opens every such key here: a sealed key the KEK does not open, or a remote key the
+    /// custody no longer reaches, fails the start rather than the first signature (WP-3.2).
+    pub(crate) fn check_held(&self) -> Result<(), RingError> {
         let state = self.read().clone();
         let held: BTreeSet<String> = self.provider.slots()?.into_iter().collect();
         for key in &state.keys {
-            if matches!(key.state, State::Prepublished | State::Active)
-                && !held.contains(&thumbprint_of(&key.kid)?)
-            {
+            if !matches!(key.state, State::Prepublished | State::Active) {
+                continue;
+            }
+            let slot = thumbprint_of(&key.kid)?;
+            if !held.contains(&slot) {
                 return Err(RingError::Corrupt(format!(
                     "the ring `{}` names `{}` {} and its private half is not held: a lost key is \
                      never replaced silently",
                     self.id,
                     key.kid,
                     key.state.as_str()
+                )));
+            }
+            let published: Jwk = serde_json::from_str(&key.jwk)
+                .map_err(|error| RingError::Corrupt(format!("`{}`: {error}", key.kid)))?;
+            let opened = jwk_of(&key.kid, &self.provider.public(&slot, self.suite)?);
+            if (opened.x.as_str(), opened.y.as_deref())
+                != (published.x.as_str(), published.y.as_deref())
+            {
+                return Err(RingError::Corrupt(format!(
+                    "the ring `{}` published `{}` and its custody holds another key under it",
+                    self.id, key.kid
                 )));
             }
         }
@@ -1325,6 +1360,27 @@ impl Ring {
         })
     }
 
+    /// Journals what the custody did to private halves at Bootstrap (WP-3.2): each slot in
+    /// `slots`, sealed in place or rewrapped, an entry of `kind`.
+    pub fn note_custody(&self, kind: Kind, slots: &[String]) -> Result<(), RingError> {
+        let _serial = self.serial();
+        let now = self.time.now_secs();
+        for slot in slots {
+            let kid = thumbprint::kid(self.id, slot);
+            // A key the journal never named — generated before a crash, before its entry — is
+            // not the ring's yet: the first maintenance completes or removes it.
+            let known = {
+                let state = self.read();
+                state.key(&kid).is_some() && !state.destroyed.contains(&kid)
+            };
+            if !known {
+                continue;
+            }
+            self.commit(self.entry(kind, &kid, 0, now))?;
+        }
+        Ok(())
+    }
+
     /// The binding a mutation's new epoch needs: a failure is logged and left to maintenance,
     /// the mutation having applied.
     fn bind_after_mutation(&self, now: u64) {
@@ -1427,6 +1483,38 @@ pub fn check_history(ring: &str, entries: &[Entry]) -> Result<(), String> {
         return Err(format!("the ring `{ring}` would have no active key"));
     }
     Ok(())
+}
+
+/// The stored public keys of a ring, `public/<thumbprint>.jwk` below `public`: what a sealed
+/// private half must open as (WP-3.2).
+pub fn stored_public(public: Dir) -> super::custody::StoredPublic {
+    Box::new(move |slot, suite| {
+        let Some(bytes) = public.read(&format!("{slot}.jwk"))? else {
+            return Ok(None);
+        };
+        let jwk: Jwk = serde_json::from_slice(&bytes)
+            .map_err(|error| ProviderError::Malformed(format!("`{slot}.jwk`: {error}")))?;
+        let decode = |text: &str| {
+            B64.decode(text)
+                .map_err(|error| ProviderError::Malformed(format!("`{slot}.jwk`: {error}")))
+        };
+        let mut public = decode(&jwk.x)?;
+        if let Some(y) = jwk.y.as_deref() {
+            public.insert(0, 0x04);
+            public.extend(decode(y)?);
+        }
+        // The file is named by its key's thumbprint: one copied over another slot's is refused.
+        let key = PublicKey {
+            suite,
+            bytes: public,
+        };
+        if super::thumbprint_of(&key)? != slot {
+            return Err(ProviderError::Malformed(format!(
+                "`{slot}.jwk` holds another key than its name"
+            )));
+        }
+        Ok(Some(key.bytes))
+    })
 }
 
 /// Decodes `journal.cborseq`'s entries, for the tests and an offline reader.

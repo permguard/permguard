@@ -315,6 +315,7 @@ mod tests {
         ));
         keys.maintain().expect("the ring publishes");
         keys.maintain().expect("the ring activates");
+        let keys = crate::handles::head_signer_for_tests(keys);
 
         let facade = NotpFacade::new(
             catalog,

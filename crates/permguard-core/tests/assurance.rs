@@ -32,6 +32,26 @@ fn config(settings: &[(&str, &str)]) -> Config {
     .expect("the layers build a config")
 }
 
+/// What `regulated` keeps the identity and operations keys in (WP-3.2): a PKCS#11 token.
+const IN_A_TOKEN: &[(&str, &str)] = &[
+    (SETTING_KEYS_IDENTITY_CUSTODY, "pkcs11"),
+    (SETTING_KEYS_OPERATIONS_CUSTODY, "pkcs11"),
+    (
+        SETTING_KEYS_PKCS11_MODULE,
+        "/usr/lib/softhsm/libsofthsm2.so",
+    ),
+    (SETTING_KEYS_PKCS11_TOKEN_LABEL, "permguard"),
+    (SETTING_KEYS_PKCS11_PIN_REF, "hsm-pin"),
+];
+
+/// `settings` under `regulated`, its keys in a token.
+fn regulated(settings: &[(&str, &str)]) -> Config {
+    let mut all = vec![(SETTING_ASSURANCE_PROFILE, "regulated")];
+    all.extend_from_slice(IN_A_TOKEN);
+    all.extend_from_slice(settings);
+    config(&all)
+}
+
 fn refusal(config: &Config) -> String {
     format!("{:#}", config.validate().expect_err("refused at Bootstrap"))
 }
@@ -83,23 +103,27 @@ fn a_tls_1_2_minimum_is_a_published_relaxation_below_regulated_and_refused_at_it
             ("PERMGUARD_DATA_HTTP_TLS_MIN_VERSION", "1.2"),
         ]);
         relaxed.validate().expect("permitted");
-        assert_eq!(
-            relaxed.relaxations_in_force(),
-            vec![Relaxation::Tls12Compat]
-        );
+        // Under `development` the identity key is plaintext too (WP-3.2): its custody defaults
+        // to `development` there.
+        let (expected, published) = if profile == "development" {
+            (
+                vec![Relaxation::Tls12Compat, Relaxation::CustodyPlaintext],
+                vec!["custody.plaintext", "tls.1_2_compat"],
+            )
+        } else {
+            (vec![Relaxation::Tls12Compat], vec!["tls.1_2_compat"])
+        };
+        assert_eq!(relaxed.relaxations_in_force(), expected);
         assert_eq!(
             relaxed
                 .assurance()
                 .report(&relaxed.relaxations_in_force())
                 .relaxations,
-            vec!["tls.1_2_compat"],
+            published,
             "published under {profile}"
         );
     }
-    let regulated = config(&[
-        (SETTING_ASSURANCE_PROFILE, "regulated"),
-        ("PERMGUARD_DATA_HTTP_TLS_MIN_VERSION", "1.2"),
-    ]);
+    let regulated = regulated(&[("PERMGUARD_DATA_HTTP_TLS_MIN_VERSION", "1.2")]);
     let why = refusal(&regulated);
     assert!(
         why.contains("tls.1_2_compat") && why.contains("tls.1_3_only"),
@@ -135,8 +159,10 @@ fn plaintext_key_custody_is_published_in_development_and_refused_from_production
             "{ring}"
         );
         for profile in ["production", "regulated"] {
+            // Stated: outside development the custody defaults to `file` (WP-3.2).
             let why = refusal(&config(&[
                 (SETTING_ASSURANCE_PROFILE, profile),
+                (SETTING_KEYS_CUSTODY, "development"),
                 (ring, "true"),
             ]));
             assert!(
@@ -191,10 +217,7 @@ fn an_experimental_runtime_is_never_opted_into_under_regulated() {
     ])
     .validate()
     .expect("the language gate decides below regulated");
-    let why = refusal(&config(&[
-        (SETTING_ASSURANCE_PROFILE, "regulated"),
-        (key.as_str(), "true"),
-    ]));
+    let why = refusal(&regulated(&[(key.as_str(), "true")]));
     assert!(
         why.contains("dogwood") && why.contains("runtime.experimental_forbidden"),
         "{why}"
@@ -252,12 +275,9 @@ fn a_control_enforced_only_at_its_floor_cannot_be_added_below_it() {
         assert!(why.contains(control) && why.contains("regulated"), "{why}");
     }
     // At its own floor it is in force anyway, so naming it changes nothing and is accepted.
-    config(&[
-        (SETTING_ASSURANCE_PROFILE, "regulated"),
-        (SETTING_ASSURANCE_ADDED_CONTROLS, "custody.hsm"),
-    ])
-    .validate()
-    .expect("a control of the own profile");
+    regulated(&[(SETTING_ASSURANCE_ADDED_CONTROLS, "custody.hsm")])
+        .validate()
+        .expect("a control of the own profile");
     // `custody.encrypted` is enforced at Bootstrap, so a development machine may add it.
     let why = refusal(&config(&[
         (SETTING_ASSURANCE_PROFILE, "development"),

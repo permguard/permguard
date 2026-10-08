@@ -240,6 +240,15 @@ pub mod format {
     pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
     /// The source marker of the grant store's snapshot (`permguard_host::authz::store`).
     pub const AUTHZ_SNAPSHOT_V1: &str = "permguard.host.authz.snapshot.v1";
+    /// The wrapping algorithm of a key-encryption key held in the secret store (WP-3.2):
+    /// AES-256-GCM, `nonce ‖ ciphertext ‖ tag`, the wrap context as associated data.
+    pub const SECRET_KEK_WRAP_V1: &str = "permguard.local-kek.aes-256-gcm.v1";
+    /// The wrapping algorithm of a key-encryption key in Vault Transit (WP-3.2): the Transit
+    /// ciphertext of a derived key, the wrap context as its derivation context.
+    pub const TRANSIT_KEK_WRAP_V1: &str = "permguard.vault-transit.v1";
+    /// The wrapping algorithm of a key-encryption key in a PKCS#11 token (WP-3.2): AES-GCM in
+    /// the token, `iv ‖ ciphertext ‖ tag`, the wrap context as associated data.
+    pub const PKCS11_KEK_WRAP_V1: &str = "permguard.pkcs11-aes-gcm.v1";
 }
 
 /// The 8-byte magics opening every file the storage library writes (`permguard_host::storage`).
@@ -518,6 +527,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),
+        ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
+        ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
+        ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),
         ("magic.JOURNAL_SEGMENT", magic::JOURNAL_SEGMENT),
         ("magic.SNAPSHOT", magic::SNAPSHOT),
         ("magic.TOMBSTONE", magic::TOMBSTONE),

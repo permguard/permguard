@@ -74,6 +74,121 @@ fn resolve_root(
         })
 }
 
+/// The PKCS#11 token of the `pkcs11` custody (WP-3.2), when this build has the `pkcs11` feature.
+#[cfg(feature = "pkcs11")]
+struct Token(Arc<crate::custody::pkcs11::Hsm>);
+
+#[cfg(feature = "pkcs11")]
+impl Token {
+    fn remote(&self) -> Arc<dyn permguard_host::keys::custody::Remote> {
+        Arc::new(crate::custody::pkcs11::SharedHsm(Arc::clone(&self.0)))
+    }
+
+    fn kek(
+        &self,
+        label: &str,
+        version: u64,
+    ) -> Result<Arc<dyn permguard_host::keys::custody::Wrap>> {
+        Ok(Arc::new(crate::custody::pkcs11::HsmKek::open(
+            Arc::clone(&self.0),
+            label,
+            version,
+        )?))
+    }
+}
+
+#[cfg(feature = "pkcs11")]
+fn token_for(config: &Config, secrets: Option<&dyn SecretStore>) -> Result<Token> {
+    let module = config
+        .keys_pkcs11_module()
+        .context("the `pkcs11` custody needs `operations.keys.pkcs11.module`")?;
+    let label = config
+        .keys_pkcs11_token_label()
+        .context("the `pkcs11` custody needs `operations.keys.pkcs11.token_label`")?;
+    let reference = config
+        .keys_pkcs11_pin_ref()
+        .context("the `pkcs11` custody needs `operations.keys.pkcs11.pin_ref`")?;
+    let secrets = secrets.context(
+        "the token PIN is resolved from the secret store, and this build resolved none: set \
+         `operations.secrets.provider`",
+    )?;
+    let pin = secrets
+        .resolve(reference)
+        .with_context(|| format!("resolving the token PIN `{}`", reference.name()))?;
+    let pin = zeroize::Zeroizing::new(
+        std::str::from_utf8(pin.expose())
+            .context("the token PIN is text")?
+            .trim()
+            .to_owned(),
+    );
+    Ok(Token(crate::custody::pkcs11::Hsm::open(
+        crate::custody::pkcs11::Token {
+            module: std::path::PathBuf::from(module),
+            label: label.to_owned(),
+            pin,
+        },
+    )?))
+}
+
+/// Without the `pkcs11` feature, no token: the custody is refused by name.
+#[cfg(not(feature = "pkcs11"))]
+struct Token;
+
+#[cfg(not(feature = "pkcs11"))]
+impl Token {
+    fn remote(&self) -> Arc<dyn permguard_host::keys::custody::Remote> {
+        unreachable!("no token is ever opened without the `pkcs11` feature")
+    }
+
+    fn kek(
+        &self,
+        _label: &str,
+        _version: u64,
+    ) -> Result<Arc<dyn permguard_host::keys::custody::Wrap>> {
+        unreachable!("no token is ever opened without the `pkcs11` feature")
+    }
+}
+
+#[cfg(not(feature = "pkcs11"))]
+fn token_for(_config: &Config, _secrets: Option<&dyn SecretStore>) -> Result<Token> {
+    bail!(
+        "the `pkcs11` custody needs a build with the `pkcs11` feature; this one was built without \
+         it"
+    )
+}
+
+/// The Vault Transit client of the `kms` custody (WP-3.2): its token from the secret store.
+fn transit_for(
+    config: &Config,
+    secrets: Option<&dyn SecretStore>,
+) -> Result<Arc<crate::custody::Transit>> {
+    let address = config.keys_kms_address().context(
+        "the `kms` custody reaches a Vault, and `operations.keys.kms.address` names none",
+    )?;
+    let reference = config
+        .keys_kms_token_ref()
+        .context("the `kms` custody authenticates with `operations.keys.kms.token_ref`")?;
+    let secrets = secrets.context(
+        "the KMS token is resolved from the secret store, and this build resolved none: set \
+         `operations.secrets.provider`",
+    )?;
+    let token = secrets
+        .resolve(reference)
+        .with_context(|| format!("resolving the KMS token `{}`", reference.name()))?;
+    let token = zeroize::Zeroizing::new(
+        std::str::from_utf8(token.expose())
+            .context("the KMS token is text")?
+            .trim()
+            .to_owned(),
+    );
+    crate::custody::Transit::start(crate::custody::Endpoint {
+        address: address.to_owned(),
+        mount: config.keys_kms_mount().to_owned(),
+        token,
+        ca: config.keys_kms_ca(),
+    })
+}
+
 /// What `authorization_for` opens on the volume (WP-2.4, WP-2.5): the authorization every Plane
 /// and the Host listener decide with, the credential mapper, and the grant store the Host API
 /// mutates.
@@ -901,10 +1016,17 @@ impl App {
         config: &Config,
         volume: &permguard_host::storage::volume::Volume,
         time: &Arc<permguard_host::time::TimeGuard>,
-    ) -> Result<(Arc<permguard_host::identity::Identity>, bool, Config)> {
-        use permguard_core::assurance::{AssuranceProfile, Control, Relaxation};
-        use permguard_host::identity::{self, Identity};
-        use permguard_host::keys::Custody;
+        custodian: &permguard_host::keys::custody::Custodian,
+    ) -> Result<(
+        Arc<permguard_host::identity::Identity>,
+        bool,
+        Config,
+        permguard_host::keys::custody::Prepared,
+    )> {
+        use permguard_core::assurance::Relaxation;
+        use permguard_core::config::KeyCustody;
+        use permguard_host::identity::{self, Identity, IdentityError};
+        use permguard_host::keys::ring::HOST_IDENTITY;
 
         let (_, keys) = identity::directories(volume).with_context(|| {
             format!(
@@ -912,53 +1034,44 @@ impl App {
                 volume.host().path().display()
             )
         })?;
-        let provider: Arc<dyn permguard_host::keys::KeyProvider> =
-            Arc::new(permguard_host::keys::FileKeyProvider::new(keys));
-        let assurance = config.assurance();
-        let witness = identity::witness_of(volume)
-            .map_err(|error| anyhow::anyhow!("{error}"))
-            .context("reading the Host identity's INIT")?;
-        if witness.is_none() && assurance.profile() != AssuranceProfile::Development {
-            bail!(
-                "the Host identity is not provisioned on {}: under the `{}` profile it is \
-                 created by `permguard host identity provision --volume <path>` before the first \
-                 start, which prints the witness to keep outside the volume",
-                volume.root().display(),
-                assurance.profile()
-            );
-        }
+        let witness = identity_witness_checked(config, volume)?;
         // Before anything is written to the identity: its custody, a relaxation of the Host the
         // profile may forbid (owner decision of 2026-10-08, until the custody providers of
         // WP-3.2), and its witness, which a replaced or rolled-back volume fails.
-        let config = match provider.custody() {
-            Custody::Plaintext => config
+        let config = match custodian.custody_of(HOST_IDENTITY) {
+            KeyCustody::Development => config
                 .clone()
                 .with_host_relaxation(Relaxation::CustodyPlaintext),
+            KeyCustody::File | KeyCustody::Pkcs11 | KeyCustody::Kms => config.clone(),
         };
         config
             .assurance()
             .check(&config.relaxations_in_force())
             .map_err(|refused| {
                 anyhow::anyhow!(
-                    "{refused}; the Host identity key is held in plaintext on the volume until \
-                     the custody providers (WP-3.2) land"
+                    "{refused}; keys held in plaintext are the `development` custody: set \
+                     `operations.keys.custody` to `file`, `pkcs11` or `kms`"
                 )
             })?;
-        match (config.host_identity_witness(), &witness) {
-            (Some(expected), Some(held)) if expected != held => bail!(
-                "`host.identity.witness` does not match this volume's identity: the volume was \
-                 replaced or rolled back, or the witness is another Host's"
-            ),
-            // The value is not printed here: a witness copied from the volume it is meant to check
-            // checks nothing. It is the one recorded at provisioning, outside the volume.
-            (None, Some(_)) if assurance.requires(Control::IdentityWitness) => bail!(
-                "the `{}` profile requires `host.identity.witness`, the value `permguard host \
-                 identity provision` printed and the operator kept outside the volume",
-                assurance.profile()
-            ),
-            _ => {}
-        }
+        // The identity's keys through its custody's provider (WP-3.2): a `file` custody seals a
+        // key it finds in plaintext, and rewraps one the previous KEK wrapped, before it opens.
+        let stored = identity::stored_public(
+            permguard_host::storage::Dir::open(keys.path())
+                .context("opening the identity's keys")?,
+        );
+        let mut prepared = permguard_host::keys::custody::Prepared::default();
         let (opened, provisioned) = if witness.is_some() {
+            let host_id = identity::host_id_of(volume)
+                .map_err(|error| anyhow::anyhow!("{error}"))?
+                .context("the identity's INIT names no Host")?;
+            let suite = identity::suite_of(volume)
+                .map_err(|error| anyhow::anyhow!("{error}"))?
+                .unwrap_or(identity::Suite::Ed25519Sha256V1);
+            let (provider, done) = custodian
+                .provider(HOST_IDENTITY, host_id, keys, stored, suite)
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("preparing the custody of the Host identity's keys")?;
+            prepared = done;
             (Identity::open(volume, provider), false)
         } else {
             let suite = config
@@ -967,7 +1080,18 @@ impl App {
                 .unwrap_or(identity::Suite::Ed25519Sha256V1);
             let now = time.now_secs();
             (
-                Identity::provision(volume, provider, suite, now, now.saturating_mul(1000)),
+                Identity::provision_with(
+                    volume,
+                    |host_id| {
+                        custodian
+                            .provider(HOST_IDENTITY, *host_id, keys, stored, suite)
+                            .map(|(provider, _)| provider)
+                            .map_err(IdentityError::from)
+                    },
+                    suite,
+                    now,
+                    now.saturating_mul(1000),
+                ),
                 true,
             )
         };
@@ -985,7 +1109,7 @@ impl App {
         {
             bail!("`host.identity.witness` names another identity than the one just provisioned");
         }
-        Ok((Arc::new(opened), provisioned, config))
+        Ok((Arc::new(opened), provisioned, config, prepared))
     }
 
     /// The Host-local `audit.pseudonym` root (WP-3.3), when pseudonymisation is on: resolved
@@ -1362,10 +1486,19 @@ impl App {
             )
         })?;
 
+        // The store is built first: everything that needs a secret needs it to exist, the
+        // key-encryption key of the `file` custody included (WP-3.2).
+        let resolved = self.secrets_for(config)?;
+        let secrets = resolved.as_deref().or(self.secrets.as_deref());
+        // The identity's witness before the custody writes the key-encryption key's.
+        identity_witness_checked(config, &volume)?;
+        // Each ring's provider, from its custody (WP-3.2): the identity's first.
+        let custodian = custodian_for(config, secrets, &volume)?;
+
         // The Host identity (WP-2.2), before anything is recorded under it: opened and verified,
         // or provisioned when the profile allows it, and matched to its external witness.
-        let (host_identity, provisioned, config) =
-            self.host_identity_for(config, &volume, &time)?;
+        let (host_identity, provisioned, config, identity_custody) =
+            self.host_identity_for(config, &volume, &time, &custodian)?;
         let config = &config;
 
         tracing::info!(
@@ -1385,9 +1518,6 @@ impl App {
             out.flush().context("flushing the startup banner")?;
         }
 
-        // The store is built first: everything that needs a secret needs it to exist.
-        let resolved = self.secrets_for(config)?;
-        let secrets = resolved.as_deref().or(self.secrets.as_deref());
         // The Host-local pseudonym root (WP-3.3): the sinks' policy for the resource `host`, and
         // the audit engine's per-resource pseudonyms below.
         let pseudonym_root =
@@ -1485,6 +1615,35 @@ impl App {
                 .map_err(|error| anyhow::anyhow!("{error}"))
                 .context("recording the identity's provisioning")?;
         }
+        // What the identity's custody did at this start: its keys sealed in place or rewrapped.
+        for (kind, slots) in [
+            (
+                permguard_host::keys::record::Kind::Sealed,
+                &identity_custody.sealed,
+            ),
+            (
+                permguard_host::keys::record::Kind::Rewrapped,
+                &identity_custody.rewrapped,
+            ),
+        ] {
+            for slot in slots {
+                permguard_host::keys::ring::Recorder::record(
+                    audit_engine.as_ref(),
+                    permguard_host::keys::ring::HOST_IDENTITY,
+                    &permguard_host::keys::record::Entry {
+                        seq: 0,
+                        kind,
+                        kid: format!("{}:epoch-{slot}", permguard_host::keys::ring::HOST_IDENTITY),
+                        epoch: host_identity.epoch(),
+                        at: time.now_secs(),
+                        operation_id: None,
+                        reason: None,
+                        jwk: None,
+                        compromised_at: None,
+                    },
+                );
+            }
+        }
         let audit: Arc<dyn AuditSink> = Arc::new(permguard_host::audit::HostAuditSink::new(
             Arc::clone(&audit_engine),
             also,
@@ -1495,6 +1654,8 @@ impl App {
         // audit engine; an operator's rotation or revocation a crash left open resolved now.
         let opener = permguard_host::keys::registry::Opener {
             volume: &volume,
+            host_id: host_identity.host_id(),
+            custodian: Arc::clone(&custodian),
             time: Arc::clone(&time),
             binder: Some(Arc::clone(&host_identity) as Arc<dyn permguard_host::keys::ring::Binder>),
             recorder: Some(
@@ -1717,6 +1878,199 @@ impl App {
 
         Ok(())
     }
+}
+
+/// The Host identity's witness on `volume`, checked against `config` before anything is written
+/// to the volume — the key-encryption key's witness included (WP-3.2): a replaced or rolled-back
+/// volume, or one never provisioned where the profile requires it, is refused first.
+fn identity_witness_checked(
+    config: &Config,
+    volume: &permguard_host::storage::volume::Volume,
+) -> Result<Option<String>> {
+    use permguard_core::assurance::{AssuranceProfile, Control};
+
+    let assurance = config.assurance();
+    let witness = permguard_host::identity::witness_of(volume)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .context("reading the Host identity's INIT")?;
+    if witness.is_none() && assurance.profile() != AssuranceProfile::Development {
+        bail!(
+            "the Host identity is not provisioned on {}: under the `{}` profile it is \
+             created by `permguard host identity provision --volume <path>` before the first \
+             start, which prints the witness to keep outside the volume",
+            volume.root().display(),
+            assurance.profile()
+        );
+    }
+    match (config.host_identity_witness(), &witness) {
+        (Some(expected), Some(held)) if expected != held => bail!(
+            "`host.identity.witness` does not match this volume's identity: the volume was \
+             replaced or rolled back, or the witness is another Host's"
+        ),
+        // The value is not printed here: a witness copied from the volume it is meant to check
+        // checks nothing. It is the one recorded at provisioning, outside the volume.
+        (None, Some(_)) if assurance.requires(Control::IdentityWitness) => bail!(
+            "the `{}` profile requires `host.identity.witness`, the value `permguard host \
+             identity provision` printed and the operator kept outside the volume",
+            assurance.profile()
+        ),
+        _ => {}
+    }
+    Ok(witness)
+}
+
+/// Each ring's provider from its custody (WP-3.2, owner decisions of 2026-10-08): the
+/// key-encryption key of the `file` custody resolved from the secret store and witnessed,
+/// with the previous one a rotation leaves behind.
+pub(crate) fn custodian_for(
+    config: &Config,
+    secrets: Option<&dyn SecretStore>,
+    volume: &permguard_host::storage::volume::Volume,
+) -> Result<Arc<permguard_host::keys::custody::Custodian>> {
+    use permguard_core::config::KeyCustody;
+    use permguard_host::keys::ring::{CONTROL_ATTEST, DATA_ATTEST, HOST_IDENTITY, HOST_OPERATIONS};
+
+    let custodies: Vec<(&'static str, KeyCustody)> =
+        [HOST_IDENTITY, HOST_OPERATIONS, CONTROL_ATTEST, DATA_ATTEST]
+            .into_iter()
+            .map(|ring| (ring, config.keys_custody_of(ring)))
+            .collect();
+    let uses = |wanted: KeyCustody| {
+        config
+            .keys_custodies()
+            .iter()
+            .any(|(_, custody)| *custody == wanted)
+    };
+    // The KMS, when a ring or the KEK lives there: one client for both.
+    let kms = if uses(KeyCustody::Kms)
+        || (uses(KeyCustody::File)
+            && config.keys_kek_provider() == permguard_core::config::KekProvider::Kms)
+    {
+        Some(transit_for(config, secrets)?)
+    } else {
+        None
+    };
+    // The PKCS#11 token, when a ring or the KEK lives there.
+    let hsm = if uses(KeyCustody::Pkcs11)
+        || (uses(KeyCustody::File)
+            && config.keys_kek_provider() == permguard_core::config::KekProvider::Pkcs11)
+    {
+        Some(token_for(config, secrets)?)
+    } else {
+        None
+    };
+    let keks = if uses(KeyCustody::File) {
+        keks_for(config, secrets, volume, kms.as_ref(), hsm.as_ref())
+            .map(Some)
+            .map_err(|error| format!("{error:#}"))
+    } else {
+        Ok(None)
+    };
+    let mut custodian = permguard_host::keys::custody::Custodian::new(
+        move |ring| {
+            custodies
+                .iter()
+                .find(|(held, _)| *held == ring)
+                .map_or(KeyCustody::Development, |(_, custody)| *custody)
+        },
+        keks,
+    );
+    if let Some(kms) = kms {
+        custodian = custodian.with_kms(kms);
+    }
+    if let Some(hsm) = hsm {
+        custodian = custodian.with_hsm(hsm.remote());
+    }
+    Ok(Arc::new(custodian))
+}
+
+/// The key-encryption key of the `file` custody, and the previous one.
+fn keks_for(
+    config: &Config,
+    secrets: Option<&dyn SecretStore>,
+    volume: &permguard_host::storage::volume::Volume,
+    kms: Option<&Arc<crate::custody::Transit>>,
+    hsm: Option<&Token>,
+) -> Result<permguard_host::keys::custody::Keks> {
+    use permguard_core::config::KekProvider;
+    use permguard_host::keys::custody::Wrap as KeyWrap;
+    use permguard_host::keys::custody::{Keks, SecretKek};
+
+    match config.keys_kek_provider() {
+        KekProvider::Secret => {}
+        KekProvider::Kms => {
+            let transit = kms.context("the KEK is in the KMS, and no KMS is configured")?;
+            let version = |text: &str| -> Result<u64> {
+                text.parse::<permguard_host::secrets::KeyVersion>()
+                    .map(|version| version.get())
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+            };
+            let reference = config.keys_kek_ref().context(
+                "the KEK in the KMS is the Transit key `operations.keys.kek_ref` names, and it \
+                 names none",
+            )?;
+            let current: Arc<dyn KeyWrap> = Arc::new(crate::custody::TransitKek::open(
+                Arc::clone(transit),
+                reference.name(),
+                version(config.keys_kek_version())?,
+            )?);
+            let previous = match config.keys_previous_kek() {
+                Some((reference, previous)) => Some(Arc::new(crate::custody::TransitKek::open(
+                    Arc::clone(transit),
+                    reference.name(),
+                    version(previous)?,
+                )?) as Arc<dyn KeyWrap>),
+                None => None,
+            };
+            return Ok(Keks { current, previous });
+        }
+        KekProvider::Pkcs11 => {
+            let token = hsm.context("the KEK is in a PKCS#11 token, and none is configured")?;
+            let reference = config.keys_kek_ref().context(
+                "the KEK in the token is the AES key `operations.keys.kek_ref` labels, and it \
+                 names none",
+            )?;
+            let version = |text: &str| -> Result<u64> {
+                text.parse::<permguard_host::secrets::KeyVersion>()
+                    .map(|version| version.get())
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+            };
+            let current = token.kek(reference.name(), version(config.keys_kek_version())?)?;
+            let previous = match config.keys_previous_kek() {
+                Some((reference, previous)) => {
+                    Some(token.kek(reference.name(), version(previous)?)?)
+                }
+                None => None,
+            };
+            return Ok(Keks { current, previous });
+        }
+    }
+    let secrets = secrets.context(
+        "the `file` custody resolves its key-encryption key from the secret store, and this \
+         build resolved none: set `operations.secrets.provider`",
+    )?;
+    let reference = config.keys_kek_ref().context(
+        "the `file` custody seals every private key under a key-encryption key, and \
+         `operations.keys.kek_ref` names none",
+    )?;
+    let kek = |reference: &permguard_core::SecretRef, version: &str, what: &str| {
+        let root = resolve_root(secrets, volume, reference, version, what, "key-encryption")?;
+        let kek = SecretKek::from_root(reference.name(), &root)
+            .map_err(|error| anyhow::anyhow!("{error}"))?;
+        Ok::<Arc<dyn KeyWrap>, anyhow::Error>(Arc::new(kek))
+    };
+    let current = kek(
+        reference,
+        config.keys_kek_version(),
+        "the key-encryption key",
+    )?;
+    let previous = match config.keys_previous_kek() {
+        Some((reference, version)) => {
+            Some(kek(reference, version, "the previous key-encryption key")?)
+        }
+        None => None,
+    };
+    Ok(Keks { current, previous })
 }
 
 /// The exit status of a failed run: an incomplete drain is its own status, `75`, so an

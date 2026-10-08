@@ -704,6 +704,105 @@ pub const SETTING_KEYS_RETAIN: &str = "PERMGUARD_KEYS_RETAIN";
 /// only acts when it runs. A minute in production; development lowers it to watch a rotation happen.
 pub const SETTING_KEYS_MAINTENANCE_INTERVAL: &str = "PERMGUARD_KEYS_MAINTENANCE_INTERVAL";
 
+/// Runtime setting key for where the Host keeps its rings' private keys (WP-3.2):
+/// `development`, `file`, `pkcs11` or `kms`; `development` under the development profile and
+/// `file` otherwise when absent.
+pub const SETTING_KEYS_CUSTODY: &str = "PERMGUARD_KEYS_CUSTODY";
+/// Runtime setting key for the custody of the `host.identity` ring, when it differs.
+pub const SETTING_KEYS_IDENTITY_CUSTODY: &str = "PERMGUARD_KEYS_IDENTITY_CUSTODY";
+/// Runtime setting key for the custody of the `host.operations` ring, when it differs.
+pub const SETTING_KEYS_OPERATIONS_CUSTODY: &str = "PERMGUARD_KEYS_OPERATIONS_CUSTODY";
+/// Runtime setting key for what holds the key-encryption key of the `file` custody: `secret`
+/// (the secret store), `pkcs11` or `kms`.
+pub const SETTING_KEYS_KEK_PROVIDER: &str = "PERMGUARD_KEYS_KEK_PROVIDER";
+/// Runtime setting key for the reference of the key-encryption key.
+pub const SETTING_KEYS_KEK_REF: &str = "PERMGUARD_KEYS_KEK_REF";
+/// Runtime setting key for the version of the key-encryption key, `vN`.
+pub const SETTING_KEYS_KEK_VERSION: &str = "PERMGUARD_KEYS_KEK_VERSION";
+/// Runtime setting key for the key-encryption key a rotation leaves behind: blobs under it are
+/// rewrapped at the start.
+pub const SETTING_KEYS_PREVIOUS_KEK_REF: &str = "PERMGUARD_KEYS_PREVIOUS_KEK_REF";
+/// Runtime setting key for the version of the previous key-encryption key, `vN`.
+pub const SETTING_KEYS_PREVIOUS_KEK_VERSION: &str = "PERMGUARD_KEYS_PREVIOUS_KEK_VERSION";
+/// Runtime setting key for the Vault (or OpenBao) the `kms` custody reaches, `https://…`.
+pub const SETTING_KEYS_KMS_ADDRESS: &str = "PERMGUARD_KEYS_KMS_ADDRESS";
+/// Runtime setting key for the Transit mount, `transit` when absent.
+pub const SETTING_KEYS_KMS_MOUNT: &str = "PERMGUARD_KEYS_KMS_MOUNT";
+/// Runtime setting key for the reference of the Vault token in the secret store.
+pub const SETTING_KEYS_KMS_TOKEN_REF: &str = "PERMGUARD_KEYS_KMS_TOKEN_REF";
+/// Runtime setting key for the CA bundle the Vault's certificate is checked against.
+pub const SETTING_KEYS_KMS_CA: &str = "PERMGUARD_KEYS_KMS_CA";
+/// Runtime setting key for the PKCS#11 module, the library's path.
+pub const SETTING_KEYS_PKCS11_MODULE: &str = "PERMGUARD_KEYS_PKCS11_MODULE";
+/// Runtime setting key for the label of the PKCS#11 token.
+pub const SETTING_KEYS_PKCS11_TOKEN_LABEL: &str = "PERMGUARD_KEYS_PKCS11_TOKEN_LABEL";
+/// Runtime setting key for the reference of the token PIN in the secret store.
+pub const SETTING_KEYS_PKCS11_PIN_REF: &str = "PERMGUARD_KEYS_PKCS11_PIN_REF";
+
+/// Where a ring's private keys are held (WP-3.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyCustody {
+    /// Plaintext files on the volume: the `custody.plaintext` relaxation.
+    Development,
+    /// Envelope-encrypted files on the volume, one DEK per blob under the KEK.
+    File,
+    /// Non-exportable keys in a PKCS#11 token.
+    Pkcs11,
+    /// Non-exportable keys in a remote KMS (Vault Transit).
+    Kms,
+}
+
+impl KeyCustody {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Development => "development",
+            Self::File => "file",
+            Self::Pkcs11 => "pkcs11",
+            Self::Kms => "kms",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text.trim() {
+            "development" => Self::Development,
+            "file" => Self::File,
+            "pkcs11" => Self::Pkcs11,
+            "kms" => Self::Kms,
+            _ => return None,
+        })
+    }
+}
+
+/// What holds the key-encryption key of the `file` custody (WP-3.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KekProvider {
+    /// A 32-byte secret in the secret store, wrapping with AES-256-GCM.
+    Secret,
+    /// A non-extractable AES key in the PKCS#11 token.
+    Pkcs11,
+    /// A Transit key in the KMS.
+    Kms,
+}
+
+impl KekProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Secret => "secret",
+            Self::Pkcs11 => "pkcs11",
+            Self::Kms => "kms",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text.trim() {
+            "secret" => Self::Secret,
+            "pkcs11" => Self::Pkcs11,
+            "kms" => Self::Kms,
+            _ => return None,
+        })
+    }
+}
+
 /// The key version a deployment that never rotated is on.
 const DEFAULT_KEY_VERSION: &str = "v1";
 
@@ -1197,6 +1296,21 @@ pub struct Config {
     keys_rotate_every: Duration,
     keys_retain: Duration,
     keys_maintenance_interval: Duration,
+    keys_custody: Option<KeyCustody>,
+    keys_identity_custody: Option<KeyCustody>,
+    keys_operations_custody: Option<KeyCustody>,
+    keys_kek_provider: KekProvider,
+    keys_kek_ref: Option<SecretRef>,
+    keys_kek_version: String,
+    keys_previous_kek_ref: Option<SecretRef>,
+    keys_previous_kek_version: Option<String>,
+    keys_kms_address: Option<String>,
+    keys_kms_mount: String,
+    keys_kms_token_ref: Option<SecretRef>,
+    keys_kms_ca: Option<String>,
+    keys_pkcs11_module: Option<String>,
+    keys_pkcs11_token_label: Option<String>,
+    keys_pkcs11_pin_ref: Option<SecretRef>,
     // The operations-keys lifecycle settings some layer explicitly declared, as opposed to defaulted.
     // Signing policy is security: `validate` refuses an enabled ring whose lifecycle was only defaulted,
     // and the typed `keys_*` fields alone cannot tell a stated value apart from the default it matches.
@@ -1358,6 +1472,21 @@ impl Default for Config {
             keys_rotate_every: DEFAULT_KEYS_ROTATE_EVERY,
             keys_retain: DEFAULT_KEYS_RETAIN,
             keys_maintenance_interval: DEFAULT_KEYS_MAINTENANCE_INTERVAL,
+            keys_custody: None,
+            keys_identity_custody: None,
+            keys_operations_custody: None,
+            keys_kek_provider: KekProvider::Secret,
+            keys_kek_ref: None,
+            keys_kek_version: DEFAULT_KEY_VERSION.to_owned(),
+            keys_previous_kek_ref: None,
+            keys_previous_kek_version: None,
+            keys_kms_address: None,
+            keys_kms_mount: "transit".to_owned(),
+            keys_kms_token_ref: None,
+            keys_kms_ca: None,
+            keys_pkcs11_module: None,
+            keys_pkcs11_token_label: None,
+            keys_pkcs11_pin_ref: None,
             keys_lifecycle_declared: BTreeSet::new(),
             realms: Vec::new(),
             declared: BTreeSet::new(),
@@ -1742,6 +1871,7 @@ produce: use `EdDSA` or `ES256`"
         self.validate_host_identity()?;
         self.validate_admin_access()?;
         self.validate_key_lifecycle()?;
+        self.validate_custody()?;
         self.validate_realms()?;
         // Last of the rules: a configuration a specific rule refuses says that rule's reason first,
         // and the profile then judges what the remaining values amount to (WP-2.8).
@@ -2027,6 +2157,106 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        Ok(())
+    }
+
+    /// The custody rules (WP-3.2, owner decisions of 2026-10-08): what each custody needs stated,
+    /// remote KMS kept off the decision path, and `regulated` keeping the identity and operations
+    /// keys in a token or a KMS.
+    fn validate_custody(&self) -> Result<()> {
+        let custodies = self.keys_custodies();
+        let uses = |custody: KeyCustody| custodies.iter().any(|(_, held)| *held == custody);
+        // The Planes' rings sign while a request waits — a decision batch, a head statement — and
+        // a call to a remote KMS would hold a request worker for as long as the KMS takes.
+        if let Some((ring, _)) = custodies.iter().find(|(ring, custody)| {
+            matches!(*ring, "data.attest" | "control.attest") && *custody == KeyCustody::Kms
+        }) {
+            bail!(
+                "`{ring}` signs while a request waits, and a remote KMS is not allowed there: \
+                 keep it `file` or `pkcs11` ({SETTING_KEYS_CUSTODY}), and put `host.identity` or \
+                 `host.operations` on `kms` alone"
+            );
+        }
+        if self.assurance_profile == crate::assurance::AssuranceProfile::Regulated {
+            for ring in ["host.identity", "host.operations"] {
+                let custody = self.keys_custody_of(ring);
+                // `development` is the plaintext relaxation, which the profile refuses by name.
+                if custody == KeyCustody::File {
+                    bail!(
+                        "the `regulated` profile keeps `{ring}` in a PKCS#11 token or a KMS, and \
+                         its custody is `{}`",
+                        custody.as_str()
+                    );
+                }
+            }
+        }
+        let wraps_with =
+            |provider: KekProvider| uses(KeyCustody::File) && self.keys_kek_provider == provider;
+        // The key-encryption key itself is resolved at Bootstrap, which refuses the start without
+        // one: a configuration is checked for its shape here.
+        if !is_key_version(&self.keys_kek_version) {
+            bail!(
+                "{SETTING_KEYS_KEK_VERSION} is `vN`: `{}` is not",
+                self.keys_kek_version
+            );
+        }
+        match (&self.keys_previous_kek_ref, &self.keys_previous_kek_version) {
+            (None, None) => {}
+            (Some(_), Some(version)) if is_key_version(version) => {
+                if self.keys_previous_kek_ref == self.keys_kek_ref
+                    && Some(version) == Some(&self.keys_kek_version)
+                {
+                    bail!("the previous key-encryption key is the current one");
+                }
+            }
+            _ => bail!(
+                "a key-encryption key rotation states both {SETTING_KEYS_PREVIOUS_KEK_REF} and \
+                 {SETTING_KEYS_PREVIOUS_KEK_VERSION} (`vN`)"
+            ),
+        }
+        if uses(KeyCustody::Kms) || wraps_with(KekProvider::Kms) {
+            let Some(address) = &self.keys_kms_address else {
+                bail!(
+                    "the `kms` custody reaches a Vault, and {SETTING_KEYS_KMS_ADDRESS} names none"
+                );
+            };
+            if !address.starts_with("https://")
+                && !(self.development_mode && address.starts_with("http://"))
+            {
+                bail!(
+                    "{SETTING_KEYS_KMS_ADDRESS} is `https://`: a token and wrapped keys never cross \
+                     plain HTTP outside development"
+                );
+            }
+            if self.keys_kms_token_ref.is_none() {
+                bail!(
+                    "the `kms` custody authenticates with a token, and {SETTING_KEYS_KMS_TOKEN_REF} names none"
+                );
+            }
+            if self.keys_kms_mount.is_empty() || self.keys_kms_mount.contains(['/', '?', '#']) {
+                bail!("{SETTING_KEYS_KMS_MOUNT} is one path segment");
+            }
+        }
+        if uses(KeyCustody::Pkcs11) || wraps_with(KekProvider::Pkcs11) {
+            for (setting, value) in [
+                (
+                    SETTING_KEYS_PKCS11_MODULE,
+                    self.keys_pkcs11_module.is_some(),
+                ),
+                (
+                    SETTING_KEYS_PKCS11_TOKEN_LABEL,
+                    self.keys_pkcs11_token_label.is_some(),
+                ),
+                (
+                    SETTING_KEYS_PKCS11_PIN_REF,
+                    self.keys_pkcs11_pin_ref.is_some(),
+                ),
+            ] {
+                if !value {
+                    bail!("the PKCS#11 custody needs {setting}");
+                }
+            }
+        }
         Ok(())
     }
 
@@ -2713,11 +2943,13 @@ produce: use `EdDSA` or `ES256`"
             .realms
             .iter()
             .any(|realm| realm.token_keys_enabled || realm.operations_keys_enabled);
-        if self.keys_enabled
-            || self.control_signing_keys_enabled()
-            || self.data_signing_keys_enabled()
-            || realm_rings
-        {
+        // A Host ring under the `development` custody, or a realm's ring, which keeps its keys
+        // in plaintext files (WP-3.2).
+        let plaintext_ring = self
+            .keys_custodies()
+            .iter()
+            .any(|(_, custody)| *custody == KeyCustody::Development);
+        if plaintext_ring || realm_rings {
             in_force.push(Relaxation::CustodyPlaintext);
         }
         // What the Host's own state imposes rather than any setting: the identity key's custody.
@@ -3454,6 +3686,101 @@ produce: use `EdDSA` or `ES256`"
         self.keys_maintenance_interval
     }
 
+    /// The custody of the Host's rings (WP-3.2): the stated one, or `development` under the
+    /// development profile and `file` otherwise.
+    pub fn keys_custody(&self) -> KeyCustody {
+        self.keys_custody.unwrap_or(
+            if self.assurance_profile == crate::assurance::AssuranceProfile::Development {
+                KeyCustody::Development
+            } else {
+                KeyCustody::File
+            },
+        )
+    }
+
+    /// The custody of `ring`: `host.identity` and `host.operations` may override the Host's.
+    pub fn keys_custody_of(&self, ring: &str) -> KeyCustody {
+        let overridden = match ring {
+            "host.identity" => self.keys_identity_custody,
+            "host.operations" => self.keys_operations_custody,
+            _ => None,
+        };
+        overridden.unwrap_or_else(|| self.keys_custody())
+    }
+
+    /// What holds the key-encryption key of the `file` custody.
+    pub fn keys_kek_provider(&self) -> KekProvider {
+        self.keys_kek_provider
+    }
+
+    /// The key-encryption key's reference, when one is stated.
+    pub fn keys_kek_ref(&self) -> Option<&SecretRef> {
+        self.keys_kek_ref.as_ref()
+    }
+
+    /// The key-encryption key's version, `vN`.
+    pub fn keys_kek_version(&self) -> &str {
+        &self.keys_kek_version
+    }
+
+    /// The key-encryption key a rotation leaves behind, with its version.
+    pub fn keys_previous_kek(&self) -> Option<(&SecretRef, &str)> {
+        self.keys_previous_kek_ref
+            .as_ref()
+            .zip(self.keys_previous_kek_version.as_deref())
+    }
+
+    /// The Vault the `kms` custody reaches.
+    pub fn keys_kms_address(&self) -> Option<&str> {
+        self.keys_kms_address.as_deref()
+    }
+
+    /// The Transit mount.
+    pub fn keys_kms_mount(&self) -> &str {
+        &self.keys_kms_mount
+    }
+
+    /// The Vault token's reference.
+    pub fn keys_kms_token_ref(&self) -> Option<&SecretRef> {
+        self.keys_kms_token_ref.as_ref()
+    }
+
+    /// The CA bundle the Vault is checked against, resolved against the working directory.
+    pub fn keys_kms_ca(&self) -> Option<PathBuf> {
+        self.keys_kms_ca.as_deref().map(|path| self.resolve(path))
+    }
+
+    /// The PKCS#11 module's path.
+    pub fn keys_pkcs11_module(&self) -> Option<&str> {
+        self.keys_pkcs11_module.as_deref()
+    }
+
+    /// The PKCS#11 token's label.
+    pub fn keys_pkcs11_token_label(&self) -> Option<&str> {
+        self.keys_pkcs11_token_label.as_deref()
+    }
+
+    /// The token PIN's reference.
+    pub fn keys_pkcs11_pin_ref(&self) -> Option<&SecretRef> {
+        self.keys_pkcs11_pin_ref.as_ref()
+    }
+
+    /// The Host rings this configuration holds keys for, with their custody: what discovery and
+    /// `host status` publish (WP-3.2).
+    pub fn keys_custodies(&self) -> Vec<(&'static str, KeyCustody)> {
+        let mut rings = vec![("host.identity", self.keys_custody_of("host.identity"))];
+        if self.keys_enabled {
+            rings.push(("host.operations", self.keys_custody_of("host.operations")));
+        }
+        if self.control_signing_keys_enabled() {
+            rings.push(("control.attest", self.keys_custody_of("control.attest")));
+        }
+        if self.data_signing_keys_enabled() {
+            rings.push(("data.attest", self.keys_custody_of("data.attest")));
+        }
+        rings
+    }
+
     /// Returns the effective value of a declared setting, when any layer supplied one.
     ///
     /// A key this build never declared reads back as `None` even when the environment defines it.
@@ -3712,6 +4039,34 @@ produce: use `EdDSA` or `ES256`"
             SETTING_KEYS_ROTATE_EVERY => d(self.keys_rotate_every),
             SETTING_KEYS_RETAIN => d(self.keys_retain),
             SETTING_KEYS_MAINTENANCE_INTERVAL => d(self.keys_maintenance_interval),
+            SETTING_KEYS_CUSTODY => Some(self.keys_custody().as_str().to_owned()),
+            SETTING_KEYS_IDENTITY_CUSTODY => {
+                Some(self.keys_custody_of("host.identity").as_str().to_owned())
+            }
+            SETTING_KEYS_OPERATIONS_CUSTODY => {
+                Some(self.keys_custody_of("host.operations").as_str().to_owned())
+            }
+            SETTING_KEYS_KEK_PROVIDER => Some(self.keys_kek_provider.as_str().to_owned()),
+            SETTING_KEYS_KEK_REF => self.keys_kek_ref.as_ref().map(|r| r.name().to_owned()),
+            SETTING_KEYS_KEK_VERSION => Some(self.keys_kek_version.clone()),
+            SETTING_KEYS_PREVIOUS_KEK_REF => self
+                .keys_previous_kek_ref
+                .as_ref()
+                .map(|r| r.name().to_owned()),
+            SETTING_KEYS_PREVIOUS_KEK_VERSION => self.keys_previous_kek_version.clone(),
+            SETTING_KEYS_KMS_ADDRESS => self.keys_kms_address.clone(),
+            SETTING_KEYS_KMS_MOUNT => Some(self.keys_kms_mount.clone()),
+            SETTING_KEYS_KMS_TOKEN_REF => self
+                .keys_kms_token_ref
+                .as_ref()
+                .map(|r| r.name().to_owned()),
+            SETTING_KEYS_KMS_CA => self.keys_kms_ca().map(|path| path.display().to_string()),
+            SETTING_KEYS_PKCS11_MODULE => self.keys_pkcs11_module.clone(),
+            SETTING_KEYS_PKCS11_TOKEN_LABEL => self.keys_pkcs11_token_label.clone(),
+            SETTING_KEYS_PKCS11_PIN_REF => self
+                .keys_pkcs11_pin_ref
+                .as_ref()
+                .map(|r| r.name().to_owned()),
             SETTING_OTEL_ENABLED => b(self.otel_enabled),
             SETTING_OTEL_ENDPOINT => Some(self.otel_endpoint.clone()),
             SETTING_OTEL_SAMPLE_RATE => n(self.otel_sample_rate),
@@ -4730,6 +5085,68 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_KEYS_MAINTENANCE_INTERVAL}"))?;
         }
 
+        for (setting, field) in [
+            (SETTING_KEYS_CUSTODY, &mut self.keys_custody),
+            (
+                SETTING_KEYS_IDENTITY_CUSTODY,
+                &mut self.keys_identity_custody,
+            ),
+            (
+                SETTING_KEYS_OPERATIONS_CUSTODY,
+                &mut self.keys_operations_custody,
+            ),
+        ] {
+            if let Some(value) = settings.get(setting) {
+                *field = Some(KeyCustody::parse(value).with_context(|| {
+                    format!(
+                        "reading {setting}: `{value}` is not `development`, `file`, `pkcs11` or `kms`"
+                    )
+                })?);
+            }
+        }
+        if let Some(value) = settings.get(SETTING_KEYS_KEK_PROVIDER) {
+            self.keys_kek_provider = KekProvider::parse(value).with_context(|| {
+                format!(
+                    "reading {SETTING_KEYS_KEK_PROVIDER}: `{value}` is not `secret`, `pkcs11` or `kms`"
+                )
+            })?;
+        }
+        for (setting, field) in [
+            (SETTING_KEYS_KEK_REF, &mut self.keys_kek_ref),
+            (
+                SETTING_KEYS_PREVIOUS_KEK_REF,
+                &mut self.keys_previous_kek_ref,
+            ),
+            (SETTING_KEYS_KMS_TOKEN_REF, &mut self.keys_kms_token_ref),
+            (SETTING_KEYS_PKCS11_PIN_REF, &mut self.keys_pkcs11_pin_ref),
+        ] {
+            if let Some(value) = settings.get(setting) {
+                *field = Some(SecretRef::new(value.clone()));
+            }
+        }
+        if let Some(value) = settings.get(SETTING_KEYS_KEK_VERSION) {
+            self.keys_kek_version = value.trim().to_owned();
+        }
+        if let Some(value) = settings.get(SETTING_KEYS_PREVIOUS_KEK_VERSION) {
+            self.keys_previous_kek_version = Some(value.trim().to_owned());
+        }
+        if let Some(value) = settings.get(SETTING_KEYS_KMS_MOUNT) {
+            self.keys_kms_mount = value.trim().to_owned();
+        }
+        for (setting, field) in [
+            (SETTING_KEYS_KMS_ADDRESS, &mut self.keys_kms_address),
+            (SETTING_KEYS_KMS_CA, &mut self.keys_kms_ca),
+            (SETTING_KEYS_PKCS11_MODULE, &mut self.keys_pkcs11_module),
+            (
+                SETTING_KEYS_PKCS11_TOKEN_LABEL,
+                &mut self.keys_pkcs11_token_label,
+            ),
+        ] {
+            if let Some(value) = settings.get(setting) {
+                *field = Some(value.trim().to_owned());
+            }
+        }
+
         for key in &self.declared {
             if let Some(value) = settings.get(key) {
                 self.declared_values.insert(key.clone(), value.clone());
@@ -5053,9 +5470,24 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_GC_GRACE,
     SETTING_GC_INTERVAL,
     SETTING_ISSUER,
+    SETTING_KEYS_CUSTODY,
     SETTING_KEYS_DIRECTORY,
     SETTING_KEYS_ENABLED,
+    SETTING_KEYS_IDENTITY_CUSTODY,
+    SETTING_KEYS_KEK_PROVIDER,
+    SETTING_KEYS_KEK_REF,
+    SETTING_KEYS_KEK_VERSION,
+    SETTING_KEYS_KMS_ADDRESS,
+    SETTING_KEYS_KMS_CA,
+    SETTING_KEYS_KMS_MOUNT,
+    SETTING_KEYS_KMS_TOKEN_REF,
     SETTING_KEYS_MAINTENANCE_INTERVAL,
+    SETTING_KEYS_OPERATIONS_CUSTODY,
+    SETTING_KEYS_PKCS11_MODULE,
+    SETTING_KEYS_PKCS11_PIN_REF,
+    SETTING_KEYS_PKCS11_TOKEN_LABEL,
+    SETTING_KEYS_PREVIOUS_KEK_REF,
+    SETTING_KEYS_PREVIOUS_KEK_VERSION,
     SETTING_KEYS_PUBLISH_AHEAD,
     SETTING_KEYS_RETAIN,
     SETTING_KEYS_ROTATE_EVERY,
@@ -5173,6 +5605,12 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_DATA_KEYS_DIRECTORY,
     SETTING_AUDIT_PSEUDONYM_KEY_REF,
     SETTING_SECRETS_COORDINATOR_ROOT_REF,
+    SETTING_KEYS_KEK_REF,
+    SETTING_KEYS_PREVIOUS_KEK_REF,
+    SETTING_KEYS_KMS_TOKEN_REF,
+    SETTING_KEYS_KMS_CA,
+    SETTING_KEYS_PKCS11_MODULE,
+    SETTING_KEYS_PKCS11_PIN_REF,
     SETTING_LOG_PDP_ID,
     SETTING_EVENTS_PRODUCER_ID,
     SETTING_PUBLIC_TLS_CERT,

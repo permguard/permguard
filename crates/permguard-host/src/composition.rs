@@ -34,8 +34,8 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 #[cfg(test)]
-use permguard_core::keys::Sign as _;
-use permguard_core::keys::{Jwk, KeyId, KeyManager, Signature};
+use permguard_core::keys::Signature;
+use permguard_core::keys::{Jwk, KeyId, KeyManager, SigningRing};
 use permguard_core::server::AuditRecorder;
 use permguard_core::{AuditError, AuditEvent, Subject};
 
@@ -575,12 +575,51 @@ impl<T: Artifact> std::fmt::Debug for Signer<T> {
     }
 }
 
-impl<T: Artifact> permguard_core::keys::Sign for Signer<T> {
-    fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
-        self.keys.active_key_id()
-    }
+mod sealed {
+    /// Only the Host implements [`super::Payload`]: what reaches a ring is framed here.
+    pub trait Sealed {}
+}
 
-    fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+/// What a typed signer signs: an artifact's payload, in the canonical form its format fixes
+/// (WP-3.2, owner decision of 2026-10-08). A Plane holds a [`Signer<T>`] and hands it a payload;
+/// it never reaches a `sign(bytes)`. Sealed: the Host writes every signing input — the head
+/// statement's COSE structure, a batch's protected header — so no implementation outside it can
+/// hand a ring bytes of its own choosing.
+///
+/// ```compile_fail
+/// use permguard_host::composition::{DecisionBatchV1, Payload};
+///
+/// struct Forged;
+///
+/// impl Payload for Forged {
+///     type Artifact = DecisionBatchV1;
+///     type Signed = ();
+///
+///     fn sign_with(
+///         &self,
+///         _: &dyn permguard_core::keys::SigningRing,
+///     ) -> permguard_core::keys::Result<()> {
+///         Ok(())
+///     }
+/// }
+/// ```
+pub trait Payload: sealed::Sealed {
+    /// The artifact the payload is the content of: a `Signer<Self::Artifact>` signs it.
+    type Artifact: Artifact;
+    /// The signed artifact, as its format writes it.
+    type Signed;
+    /// Signs `self` with `keys`, the ring of [`Self::Artifact`], as the artifact's format does:
+    /// the protected header naming the ring's active key, the canonical signing input.
+    fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Self::Signed>;
+}
+
+impl<T: Artifact> Signer<T> {
+    /// Signs `payload`, a payload of `T` and of nothing else; refused while the Host's clock is in
+    /// anomaly for an artifact that carries a time (WP-2.12).
+    pub fn sign<P: Payload<Artifact = T>>(
+        &self,
+        payload: &P,
+    ) -> permguard_core::keys::Result<P::Signed> {
         if T::TIME_SENSITIVE
             && let Err(anomaly) = self.time.trusted_now()
         {
@@ -588,11 +627,190 @@ impl<T: Artifact> permguard_core::keys::Sign for Signer<T> {
                 detail: anomaly.to_string(),
             });
         }
-        self.keys.sign(payload)
+        payload.sign_with(self.keys.as_ref())
     }
 
-    fn signing_time(&self) -> i64 {
+    /// The key that signs now.
+    pub fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+        self.keys.active_key_id()
+    }
+
+    /// The time an artifact signed now carries: the Host's time guard (WP-2.12).
+    pub fn signing_time(&self) -> i64 {
         self.time.now()
+    }
+}
+
+/// A NOTP head statement is the payload of [`HeadStatementV1`]: a COSE_Sign1 under the ring's
+/// active key, its `kid` the key's, refused when the ring rotated mid-signature.
+impl sealed::Sealed for permguard_objects::statement::HeadStatement {}
+
+impl Payload for permguard_objects::statement::HeadStatement {
+    type Artifact = HeadStatementV1;
+    type Signed = Vec<u8>;
+
+    fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Vec<u8>> {
+        let kid = keys.active_key_id()?;
+        let failed = std::cell::RefCell::new(None::<permguard_core::KeyError>);
+        let signed = permguard_objects::statement::SignedHead::sign_with(
+            self,
+            kid.as_str().as_bytes(),
+            |bytes| {
+                let signature = keys.sign(bytes).map_err(|error| {
+                    let detail = error.to_string();
+                    *failed.borrow_mut() = Some(error);
+                    permguard_objects::statement::StatementError::Signer(detail)
+                })?;
+                if signature.key_id() != &kid {
+                    return Err(permguard_objects::statement::StatementError::Signer(
+                        "the signing key rotated mid-signature".to_owned(),
+                    ));
+                }
+                Ok(signature.bytes().to_vec())
+            },
+        )
+        .map_err(|error| {
+            failed.take().unwrap_or_else(|| {
+                permguard_core::KeyError::backend(format!("signing the head statement: {error}"))
+            })
+        })?;
+        signed.encode().map_err(|error| {
+            permguard_core::KeyError::backend(format!("encoding the head statement: {error}"))
+        })
+    }
+}
+
+/// An artifact signed as a JWS whose protected header the Host writes (WP-3.2). Sealed: the
+/// framings are the Host's, so no Plane makes a JWS of its own on its ring.
+pub trait JwsArtifact: Artifact + sealed::Sealed {
+    /// The algorithm the header declares, and the only one the signature may be made with.
+    const ALGORITHM: &'static str;
+    /// Whether the header declares [`Artifact::TYPE`] as its `typ`.
+    const DECLARES_TYPE: bool;
+}
+
+impl sealed::Sealed for DecisionBatchV1 {}
+impl sealed::Sealed for EventBatchV1 {}
+
+/// A decision batch's header is `{"alg","kid"}`.
+impl JwsArtifact for DecisionBatchV1 {
+    const ALGORITHM: &'static str = "EdDSA";
+    const DECLARES_TYPE: bool = false;
+}
+
+/// An event batch's header is `{"alg","typ","kid"}`.
+impl JwsArtifact for EventBatchV1 {
+    const ALGORITHM: &'static str = "EdDSA";
+    const DECLARES_TYPE: bool = true;
+}
+
+/// A JWS payload of `T`: the canonical bytes its format fixes. The Host writes the protected
+/// header and the signing input `protected || "." || payload`.
+pub struct Jws<'a, T> {
+    payload: &'a [u8],
+    artifact: PhantomData<T>,
+}
+
+impl<'a, T: JwsArtifact> Jws<'a, T> {
+    /// The payload `bytes`, to be signed as `T`.
+    pub fn new(payload: &'a [u8]) -> Self {
+        Self {
+            payload,
+            artifact: PhantomData,
+        }
+    }
+}
+
+/// A signed JWS's three parts, base64url.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JwsParts {
+    /// The protected header the Host wrote.
+    pub protected: String,
+    /// The payload.
+    pub payload: String,
+    /// The signature over `protected || "." || payload`.
+    pub signature: String,
+}
+
+/// Why a JWS was not signed.
+#[derive(Debug)]
+pub enum JwsError {
+    /// The ring did not sign.
+    Key(permguard_core::KeyError),
+    /// The ring signed with an algorithm the artifact's header does not declare.
+    Algorithm(String),
+}
+
+impl std::fmt::Display for JwsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Key(error) => write!(f, "{error}"),
+            Self::Algorithm(found) => write!(f, "the ring signed with `{found}`"),
+        }
+    }
+}
+
+impl std::error::Error for JwsError {}
+
+#[derive(serde::Serialize)]
+struct JwsHeader<'a> {
+    alg: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    typ: Option<&'a str>,
+    kid: &'a str,
+}
+
+/// Signs `payload` as a JWS of `T` under `keys`' active key: the one framing of a batch, used by
+/// the Host's [`Signer<T>`] and by a tool that holds a ring itself.
+pub fn sign_jws<T: JwsArtifact>(
+    payload: &[u8],
+    keys: &dyn permguard_core::keys::Sign,
+) -> Result<JwsParts, JwsError> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+
+    let kid = keys.active_key_id().map_err(JwsError::Key)?;
+    let header = serde_json::to_vec(&JwsHeader {
+        alg: T::ALGORITHM,
+        typ: T::DECLARES_TYPE.then_some(T::TYPE),
+        kid: kid.as_str(),
+    })
+    .map_err(|error| {
+        JwsError::Key(permguard_core::KeyError::backend(format!(
+            "writing the protected header: {error}"
+        )))
+    })?;
+    let protected = B64.encode(header);
+    let payload = B64.encode(payload);
+    let signature = keys
+        .sign(format!("{protected}.{payload}").as_bytes())
+        .map_err(JwsError::Key)?;
+    if signature.algorithm() != T::ALGORITHM {
+        return Err(JwsError::Algorithm(signature.algorithm().to_owned()));
+    }
+    if signature.key_id() != &kid {
+        return Err(JwsError::Key(permguard_core::KeyError::backend(
+            "the signing key rotated mid-signature",
+        )));
+    }
+    Ok(JwsParts {
+        protected,
+        payload,
+        signature: B64.encode(signature.bytes()),
+    })
+}
+
+impl<T: JwsArtifact> sealed::Sealed for Jws<'_, T> {}
+
+impl<T: JwsArtifact> Payload for Jws<'_, T> {
+    type Artifact = T;
+    type Signed = JwsParts;
+
+    fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<JwsParts> {
+        sign_jws::<T>(self.payload, keys).map_err(|error| match error {
+            JwsError::Key(error) => error,
+            JwsError::Algorithm(_) => permguard_core::KeyError::backend(error.to_string()),
+        })
     }
 }
 
@@ -772,6 +990,51 @@ mod tests {
             Ok(vec![Jwk::okp(self.0, "Ed25519", "EdDSA", "x")])
         }
     }
+    /// A payload of `T` whose signed form is the raw signature over its bytes, for the tests.
+    struct Probe<T>(&'static [u8], PhantomData<T>);
+
+    impl<T> Probe<T> {
+        fn new(bytes: &'static [u8]) -> Self {
+            Self(bytes, PhantomData)
+        }
+    }
+
+    impl<T> sealed::Sealed for Probe<T> {}
+
+    impl<T: Artifact> Payload for Probe<T> {
+        type Artifact = T;
+        type Signed = Signature;
+
+        fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Signature> {
+            keys.sign(self.0)
+        }
+    }
+
+    /// WP-3.2: a Plane's signer signs payloads only. Resolved by autoref: the method of the
+    /// `Sign` probe wins only where the type implements `Sign`.
+    #[test]
+    fn a_plane_signer_has_no_signature_over_bytes() {
+        struct Probe<T>(PhantomData<T>);
+        trait ViaSign {
+            fn signs_bytes(&self) -> bool {
+                true
+            }
+        }
+        impl<T: permguard_core::keys::Sign> ViaSign for Probe<T> {}
+        trait Otherwise {
+            fn signs_bytes(&self) -> bool {
+                false
+            }
+        }
+        impl<T> Otherwise for &Probe<T> {}
+
+        assert!(!(&Probe::<Signer<HeadStatementV1>>(PhantomData)).signs_bytes());
+        assert!(!(&Probe::<Signer<DecisionBatchV1>>(PhantomData)).signs_bytes());
+        assert!(!(&Probe::<Signer<EventBatchV1>>(PhantomData)).signs_bytes());
+        // The probe tells: a ring does sign bytes.
+        assert!(Probe::<TaggedRing>(PhantomData).signs_bytes());
+    }
+
     struct Discard;
 
     impl permguard_core::AuditSink for Discard {
@@ -801,6 +1064,68 @@ mod tests {
             .build()
     }
 
+    /// WP-3.2: the Host writes a batch's protected header and signing input; the Plane supplies
+    /// the payload only, and a ring signing with another algorithm is refused.
+    #[test]
+    fn the_host_frames_a_batch_and_the_plane_supplies_its_payload() {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+
+        let registration = host()
+            .register(
+                Declaration::new("data")
+                    .signs::<DecisionBatchV1>()
+                    .signs::<EventBatchV1>(),
+            )
+            .expect("registers");
+        let events = registration
+            .signer::<EventBatchV1>()
+            .expect("declared")
+            .expect("composed");
+        let decisions = registration
+            .signer::<DecisionBatchV1>()
+            .expect("declared")
+            .expect("composed");
+
+        let event = events
+            .sign(&Jws::<EventBatchV1>::new(b"{}"))
+            .expect("signs");
+        assert_eq!(
+            B64.decode(&event.protected).expect("base64url"),
+            br#"{"alg":"EdDSA","typ":"permguard.event.batch.v1","kid":"data"}"#
+        );
+        assert_eq!(event.payload, B64.encode(b"{}"));
+        assert_eq!(
+            B64.decode(&event.signature).expect("base64url"),
+            format!("data{}.{}", event.protected, event.payload).into_bytes()
+        );
+        let decision = decisions
+            .sign(&Jws::<DecisionBatchV1>::new(b"{}"))
+            .expect("signs");
+        assert_eq!(
+            B64.decode(&decision.protected).expect("base64url"),
+            br#"{"alg":"EdDSA","kid":"data"}"#
+        );
+
+        struct Es256;
+        impl permguard_core::keys::Sign for Es256 {
+            fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+                Ok(KeyId::new("p256"))
+            }
+            fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+                Ok(Signature::new(
+                    KeyId::new("p256"),
+                    "ES256",
+                    payload.to_vec(),
+                ))
+            }
+        }
+        assert!(matches!(
+            sign_jws::<DecisionBatchV1>(b"{}", &Es256),
+            Err(JwsError::Algorithm(found)) if found == "ES256"
+        ));
+    }
+
     #[test]
     fn a_plane_signs_what_it_declared_with_the_ring_the_artifact_names() {
         let host = host();
@@ -817,7 +1142,7 @@ mod tests {
             .expect("the ring is composed");
         assert!(
             signer
-                .sign(b"x")
+                .sign(&Probe::<DecisionBatchV1>::new(b"x"))
                 .expect("signs")
                 .bytes()
                 .starts_with(b"data")
@@ -865,19 +1190,21 @@ mod tests {
             .signer::<DecisionBatchV1>()
             .expect("declared")
             .expect("composed");
-        heads.sign(b"head").expect("a sound clock signs");
+        let head = Probe::<HeadStatementV1>::new(b"head");
+        let batch = Probe::<DecisionBatchV1>::new(b"batch");
+        heads.sign(&head).expect("a sound clock signs");
 
         wall.jump(-31);
-        let refused = heads.sign(b"head").expect_err("in anomaly");
+        let refused = heads.sign(&head).expect_err("in anomaly");
         assert!(
             matches!(refused, permguard_core::KeyError::ClockAnomaly { .. }),
             "{refused}"
         );
         assert!(refused.is_retryable());
-        batches.sign(b"batch").expect("evidence keeps signing");
+        batches.sign(&batch).expect("evidence keeps signing");
 
         wall.jump(31);
-        heads.sign(b"head").expect("the wall clock caught up");
+        heads.sign(&head).expect("the wall clock caught up");
     }
 
     #[test]

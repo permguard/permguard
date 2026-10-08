@@ -209,6 +209,33 @@ pub fn witness_of(volume: &Volume) -> Result<Option<String>, IdentityError> {
     )))
 }
 
+/// The `host_id` `INIT` names, when the identity is provisioned: what the provider of its keys
+/// binds them to before the identity opens (WP-3.2).
+pub fn host_id_of(volume: &Volume) -> Result<Option<[u8; 16]>, IdentityError> {
+    let (dir, _) = directories(volume)?;
+    let Some(bytes) = dir.read(INIT)? else {
+        return Ok(None);
+    };
+    Ok(Some(Init::decode(&bytes)?.host_id))
+}
+
+/// The suite of the current identity document, read without verifying it: which suite the keys
+/// on the volume are, before a provider seals them (WP-3.2). The open verifies the document.
+pub fn suite_of(volume: &Volume) -> Result<Option<Suite>, IdentityError> {
+    let (dir, _) = directories(volume)?;
+    let Some(bytes) = dir.read(DOCUMENT)? else {
+        return Ok(None);
+    };
+    let envelope = Sign1::decode(&bytes).map_err(|error| corrupt(error.to_string()))?;
+    Ok(Some(Document::decode(envelope.payload_unverified())?.suite))
+}
+
+/// The stored public keys of the identity, `<epoch>.pub` below `keys`: what a sealed identity
+/// key must open as (WP-3.2).
+pub fn stored_public(keys: Dir) -> crate::keys::custody::StoredPublic {
+    Box::new(move |slot, _suite| Ok(keys.read(&format!("{slot}.pub"))?))
+}
+
 /// The most succession records a published identity may carry: a bound on the work a peer's
 /// presentation costs (WP-2.3), far above any real rotation history.
 pub const MAX_SUCCESSIONS: usize = 1024;
@@ -338,6 +365,18 @@ impl Identity {
         now: u64,
         now_millis: u64,
     ) -> Result<Self, IdentityError> {
+        Self::provision_with(volume, |_| Ok(provider), suite, now, now_millis)
+    }
+
+    /// [`Identity::provision`] with the provider made for the `host_id` just minted: a sealing
+    /// provider binds every key to its Host (WP-3.2).
+    pub fn provision_with(
+        volume: &Volume,
+        provider: impl FnOnce(&[u8; 16]) -> Result<Arc<dyn KeyProvider>, IdentityError>,
+        suite: Suite,
+        now: u64,
+        now_millis: u64,
+    ) -> Result<Self, IdentityError> {
         let (dir, keys) = directories(volume)?;
         dir.sweep_temps()?;
         tombstone::complete(&dir)?;
@@ -372,6 +411,7 @@ impl Identity {
             tombstone::delete(&keys, &name)?;
         }
         let host_id = record::uuid_v7(now_millis, random()?);
+        let provider = provider(&host_id)?;
         let public = provider.generate(&slot(1), suite)?;
         publish_public(&keys, 1, &public.bytes)?;
         // The self-test: the key signs a fresh challenge and its public half verifies it.

@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use permguard_core::keys::{PublicSet, SigningRing};
+use permguard_core::keys::PublicSet;
 use permguard_core::{Config, PlaneContext};
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DecisionBatchV1, Declaration, EventBatchV1, Registration,
@@ -77,7 +77,9 @@ pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
 }
 
 /// The decision batch signer, when the plane's signing ring is composed.
-pub(crate) fn decision_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
+pub(crate) fn decision_signer(
+    context: &PlaneContext<'_>,
+) -> Option<Arc<dyn permguard_decisions::envelope::BatchSigner>> {
     let signer = registration(context)?
         .signer::<DecisionBatchV1>()
         .ok()
@@ -86,7 +88,9 @@ pub(crate) fn decision_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn Sign
 }
 
 /// The event batch signer, when the plane's signing ring is composed.
-pub(crate) fn event_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
+pub(crate) fn event_signer(
+    context: &PlaneContext<'_>,
+) -> Option<Arc<dyn permguard_events::envelope::BatchSigner>> {
     let signer = registration(context)?
         .signer::<EventBatchV1>()
         .ok()

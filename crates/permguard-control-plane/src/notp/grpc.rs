@@ -258,6 +258,7 @@ mod tests {
         ));
         keys.maintain().expect("the ring publishes");
         keys.maintain().expect("the ring activates");
+        let keys = crate::handles::head_signer_for_tests(keys);
         NotpFacade::new(
             Arc::new(FileCatalog::new(root.join("zones"))),
             root.join("zones"),

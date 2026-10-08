@@ -15,9 +15,11 @@
 pub mod app;
 pub mod banner;
 pub mod command;
+pub mod custody;
 pub mod host;
 pub mod host_api;
 pub mod logging;
+pub mod offline;
 pub mod plane;
 pub mod signal;
 pub mod time;

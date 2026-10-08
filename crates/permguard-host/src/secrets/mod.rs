@@ -222,6 +222,12 @@ impl Root {
         self.version
     }
 
+    /// The material, for a key-encryption key the Host holds as a root (WP-3.2): never displayed,
+    /// never returned past the crate.
+    pub(crate) fn material(&self) -> &[u8] {
+        &self.material
+    }
+
     /// A root from material already in hand: for the cursor key a store generates itself, and
     /// for tests. Refused under 256 bits.
     pub fn from_material(material: &[u8], version: KeyVersion) -> Result<Self, SecretsError> {

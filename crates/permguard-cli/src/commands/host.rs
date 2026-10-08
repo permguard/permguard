@@ -15,6 +15,7 @@
 //! their initiator, `cli`; a mutation a crash left open is resolved before anything else.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::process::ExitCode;
 
 use serde::Serialize;
@@ -22,6 +23,8 @@ use serde::Serialize;
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::{Principal, Selector};
 use permguard_host::authz::{AuthzError, GrantId, GrantRecord, GrantStore, Issue};
+use permguard_host::keys::custody::Custodian;
+use permguard_host::keys::ring::HOST_IDENTITY;
 use permguard_host::operations::grants;
 use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::{MutationError, Mutations};
@@ -36,23 +39,29 @@ use crate::trace::Trace;
 /// Runs one `host …` command.
 pub fn host_command(
     globals: &Globals,
+    server_config: Option<&Path>,
     action: HostAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
     match action {
-        HostAction::Grants { action } => grants(globals, action, trace),
-        HostAction::Identity { action } => identity(globals, action, trace),
+        HostAction::Grants { action } => grants(globals, server_config, action, trace),
+        HostAction::Identity { action } => identity(globals, server_config, action, trace),
     }
 }
 
-fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<ExitCode, Failure> {
+fn grants(
+    globals: &Globals,
+    server_config: Option<&Path>,
+    action: GrantsAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
     let now = permguard_host::authz::store::now();
     match action {
         GrantsAction::Bootstrap {
             volume,
             fingerprint,
         } => {
-            let (store, mutations) = open_mutable(&volume, trace)?;
+            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let (commitment, grant) =
                 grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
             render(
@@ -78,7 +87,7 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             expires,
             issued_by,
         } => {
-            let (store, mutations) = open_mutable(&volume, trace)?;
+            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let expires_at = match expires {
                 Some(text) => Some(
                     permguard_core::time::from_rfc3339(&text)
@@ -118,7 +127,7 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             grant_id,
             by,
         } => {
-            let (store, mutations) = open_mutable(&volume, trace)?;
+            let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let id =
                 GrantId::parse(&grant_id).map_err(|error| Failure::usage(error.to_string()))?;
             let record = grants::revoke(
@@ -172,11 +181,12 @@ const INITIATOR: &str = "cli";
 /// Opens the grant store and the mutation journal of `volume`, resolving any grant mutation a
 /// crash left open: what a command that mutates needs.
 fn open_mutable(
-    volume: &std::path::Path,
+    volume: &Path,
+    server_config: Option<&Path>,
     trace: &Trace,
 ) -> Result<(std::sync::Arc<GrantStore>, Mutations), Failure> {
     let (store, held) = open(volume, trace)?;
-    let mutations = offline_engine(&held, trace)?;
+    let mutations = offline_engine(&held, server_config, trace)?;
     let recovered = mutations
         .recover(&grants::Grants(&store))
         .map_err(|error| Failure::unavailable(format!("recovering grant mutations: {error}")))?;
@@ -359,11 +369,15 @@ impl Report for BootstrapReport {
 
 /// The mutation engine of a volume opened offline, its records stamped with the volume's
 /// identity when it has one.
-fn offline_engine(held: &Volume, trace: &Trace) -> Result<Mutations, Failure> {
+fn offline_engine(
+    held: &Volume,
+    server_config: Option<&Path>,
+    trace: &Trace,
+) -> Result<Mutations, Failure> {
     let identity = if permguard_host::identity::is_provisioned(held)
         .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
     {
-        Some(open_identity(held)?)
+        Some(open_identity(held, server_config)?)
     } else {
         trace.say("the volume holds no Host identity yet; records name its volume id".to_owned());
         None
@@ -372,22 +386,80 @@ fn offline_engine(held: &Volume, trace: &Trace) -> Result<Mutations, Failure> {
         .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))
 }
 
-fn open_identity(held: &Volume) -> Result<permguard_host::identity::Identity, Failure> {
-    let (_, keys) = permguard_host::identity::directories(held)
+/// The custody `serve` keeps the volume's keys in (WP-3.2, owner decision of 2026-10-08): read
+/// from the server's configuration and the environment, as `serve` reads them. Without
+/// `--server-config` the keys are the `development` custody's plaintext files.
+fn custodian(
+    held: &Volume,
+    server_config: Option<&Path>,
+) -> Result<std::sync::Arc<Custodian>, Failure> {
+    let Some(file) = server_config else {
+        return Ok(std::sync::Arc::new(Custodian::development()));
+    };
+    let config = permguard_server::offline::config(env!("CARGO_PKG_VERSION"), Some(file))
+        .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+    permguard_server::offline::custodian(&config, held)
+        .map_err(|error| Failure::unavailable(format!("the custody of the keys: {error:#}")))
+}
+
+/// What a failure to reach the identity's keys says when no configuration named their custody.
+fn without_custody(server_config: Option<&Path>, error: impl std::fmt::Display) -> String {
+    match server_config {
+        Some(_) => error.to_string(),
+        None => format!(
+            "{error}: a volume whose keys are sealed or in a token or a KMS is opened with the \
+             server's configuration, `--server-config <file>`"
+        ),
+    }
+}
+
+fn open_identity(
+    held: &Volume,
+    server_config: Option<&Path>,
+) -> Result<permguard_host::identity::Identity, Failure> {
+    use permguard_host::identity::{self, Identity, IdentityError};
+
+    let not_provisioned = || {
+        Failure::usage(format!(
+            "{}: run `permguard host identity provision --volume <path>` first",
+            IdentityError::NotProvisioned
+        ))
+    };
+    let (_, keys) = identity::directories(held)
         .map_err(|error| Failure::unavailable(format!("the identity directory: {error}")))?;
-    permguard_host::identity::Identity::open(
-        held,
-        std::sync::Arc::new(permguard_host::keys::FileKeyProvider::new(keys)),
-    )
-    .map_err(|error| match error {
-        permguard_host::identity::IdentityError::NotProvisioned => Failure::usage(format!(
-            "{error}: run `permguard host identity provision --volume <path>` first"
-        )),
-        other => Failure::internal(other),
+    let host_id = identity::host_id_of(held)
+        .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
+        .ok_or_else(not_provisioned)?;
+    let suite = identity::suite_of(held)
+        .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
+        .unwrap_or(identity::Suite::Ed25519Sha256V1);
+    let stored = identity::stored_public(
+        permguard_host::storage::Dir::open(keys.path())
+            .map_err(|error| Failure::unavailable(format!("the identity's keys: {error}")))?,
+    );
+    let custodied = custodian(held, server_config)?
+        .plan(HOST_IDENTITY, host_id, keys, stored, suite)
+        .map_err(|error| Failure::unavailable(without_custody(server_config, error)))?;
+    // Sealing and rewrapping are the start's, which records them in the operations audit.
+    if !custodied.plan.sealed.is_empty() || !custodied.plan.rewrapped.is_empty() {
+        return Err(Failure::usage(
+            "the identity's keys are still to be sealed, or rewrapped under the current \
+             key-encryption key: the server does it at its start and records it, so start it \
+             once before working on the volume offline",
+        ));
+    }
+    Identity::open(held, custodied.provider).map_err(|error| match error {
+        IdentityError::NotProvisioned => not_provisioned(),
+        other => Failure::unavailable(without_custody(server_config, other)),
     })
 }
 
-fn identity(globals: &Globals, action: IdentityAction, trace: &Trace) -> Result<ExitCode, Failure> {
+fn identity(
+    globals: &Globals,
+    server_config: Option<&Path>,
+    action: IdentityAction,
+    trace: &Trace,
+) -> Result<ExitCode, Failure> {
     use permguard_host::identity::{self, Identity, Suite};
 
     let now = permguard_host::authz::store::now();
@@ -405,9 +477,20 @@ fn identity(globals: &Globals, action: IdentityAction, trace: &Trace) -> Result<
             let (_, keys) = identity::directories(&held).map_err(|error| {
                 Failure::unavailable(format!("the identity directory: {error}"))
             })?;
-            let opened = Identity::provision(
+            let stored =
+                identity::stored_public(permguard_host::storage::Dir::open(keys.path()).map_err(
+                    |error| Failure::unavailable(format!("the identity's keys: {error}")),
+                )?);
+            // Generated where `serve` keeps it: sealed under `file`, in the token, in the KMS.
+            let custodian = custodian(&held, server_config)?;
+            let opened = Identity::provision_with(
                 &held,
-                std::sync::Arc::new(permguard_host::keys::FileKeyProvider::new(keys)),
+                |host_id| {
+                    custodian
+                        .provider(HOST_IDENTITY, *host_id, keys, stored, suite)
+                        .map(|(provider, _)| provider)
+                        .map_err(identity::IdentityError::from)
+                },
                 suite,
                 now,
                 now.saturating_mul(1000),
@@ -429,20 +512,36 @@ fn identity(globals: &Globals, action: IdentityAction, trace: &Trace) -> Result<
                 .map_err(|error| {
                     Failure::unavailable(format!("recording the provisioning: {error}"))
                 })?;
-            render(&identity_report(&opened, true), globals.output, trace)?;
+            let custody = custodian.custody_of(HOST_IDENTITY).as_str();
+            if server_config.is_none() {
+                trace.say(
+                    "no --server-config: the key is a plaintext file of the `development` custody, \
+                     which a server on `pkcs11` or `kms` refuses"
+                        .to_owned(),
+                );
+            }
+            render(
+                &identity_report(&opened, true, Some(custody)),
+                globals.output,
+                trace,
+            )?;
             std::mem::forget(held);
         }
         IdentityAction::Show { volume } => {
             let (_store, held) = open(&volume, trace)?;
-            let opened = open_identity(&held)?;
-            render(&identity_report(&opened, false), globals.output, trace)?;
+            let opened = open_identity(&held, server_config)?;
+            render(
+                &identity_report(&opened, false, None),
+                globals.output,
+                trace,
+            )?;
         }
         IdentityAction::Rotate {
             volume,
             expected_epoch,
         } => {
             let (_store, held) = open(&volume, trace)?;
-            let opened = open_identity(&held)?;
+            let opened = open_identity(&held, server_config)?;
             let mutations =
                 Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
                     .map_err(|error| {
@@ -467,7 +566,11 @@ fn identity(globals: &Globals, action: IdentityAction, trace: &Trace) -> Result<
                 }
                 other => Failure::internal(other),
             })?;
-            render(&identity_report(&opened, false), globals.output, trace)?;
+            render(
+                &identity_report(&opened, false, None),
+                globals.output,
+                trace,
+            )?;
             std::mem::forget(held);
         }
     }
@@ -508,6 +611,10 @@ struct IdentityReport {
     /// checks nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     witness: Option<String>,
+    /// Printed at provisioning: the custody the key was generated under, which the server's must
+    /// be (WP-3.2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custody: Option<&'static str>,
     #[serde(skip)]
     provisioned: bool,
 }
@@ -515,6 +622,7 @@ struct IdentityReport {
 fn identity_report(
     identity: &permguard_host::identity::Identity,
     provisioned: bool,
+    custody: Option<&'static str>,
 ) -> IdentityReport {
     IdentityReport {
         host_id: identity.host_id_text(),
@@ -524,6 +632,7 @@ fn identity_report(
         fingerprint: identity.fingerprint(),
         first_fingerprint: identity.first_fingerprint().to_owned(),
         witness: provisioned.then(|| identity.witness()),
+        custody,
         provisioned,
     }
 }
@@ -541,6 +650,9 @@ impl Report for IdentityReport {
         writeln!(out, "first fingerprint {}", self.first_fingerprint)?;
         if let Some(witness) = &self.witness {
             writeln!(out, "witness           {witness}")?;
+        }
+        if let Some(custody) = self.custody {
+            writeln!(out, "custody           {custody}")?;
         }
         if self.provisioned {
             writeln!(out)?;

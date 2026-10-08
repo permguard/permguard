@@ -141,7 +141,7 @@ fn a_declaration_colliding_with_the_control_planes_fails_registration() {
 fn a_clock_anomaly_stops_the_control_planes_head_statements() {
     use permguard_host::time::{ManualClock, ManualMonotonic, TimeGuard};
     use permguard_objects::digest::Digest;
-    use permguard_objects::statement::{HeadStatement, SignedHead};
+    use permguard_objects::statement::HeadStatement;
 
     const START: i64 = 1_800_000_000;
     let wall = Arc::new(ManualClock::at(START));
@@ -172,16 +172,8 @@ fn a_clock_anomaly_stops_the_control_planes_head_statements() {
         counter: 1,
         signed_at: START,
     };
-    let sign = |statement: &HeadStatement| {
-        SignedHead::sign_with(statement, b"control", |bytes| {
-            signer
-                .sign(bytes)
-                .map(|signature| signature.bytes().to_vec())
-                .map_err(|error| {
-                    permguard_objects::statement::StatementError::Signer(error.to_string())
-                })
-        })
-    };
+    // The typed signer signs the statement, never bytes (WP-3.2).
+    let sign = |statement: &HeadStatement| signer.sign(statement);
     sign(&statement).expect("a sound clock signs");
 
     wall.jump(-3_600);

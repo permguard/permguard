@@ -801,6 +801,16 @@
       "source": "crates/permguard-host/src/keys/registry.rs",
       "item": "Opener::open",
       "reason": "lays a ring out and opens it on the Host's own volume (WP-3.1): the legacy `ring.json` the directory key manager wrote, migrated through the WP-1.9 framework, then `Ring::open`"
+    },
+    {
+      "source": "crates/permguard-core/src/config.rs",
+      "item": "KeyCustody::parse",
+      "reason": "a configuration value the operator sets: the custody of the Host's keys (WP-3.2)"
+    },
+    {
+      "source": "crates/permguard-core/src/config.rs",
+      "item": "KekProvider::parse",
+      "reason": "a configuration value the operator sets: the custody of the Host's keys (WP-3.2)"
     }
   ]
 }

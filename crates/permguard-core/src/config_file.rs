@@ -30,9 +30,14 @@ use crate::config::{
     SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
     SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
     SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_PEERS, SETTING_ISSUER,
-    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
-    SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
-    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    SETTING_KEYS_CUSTODY, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
+    SETTING_KEYS_IDENTITY_CUSTODY, SETTING_KEYS_KEK_PROVIDER, SETTING_KEYS_KEK_REF,
+    SETTING_KEYS_KEK_VERSION, SETTING_KEYS_KMS_ADDRESS, SETTING_KEYS_KMS_CA,
+    SETTING_KEYS_KMS_MOUNT, SETTING_KEYS_KMS_TOKEN_REF, SETTING_KEYS_MAINTENANCE_INTERVAL,
+    SETTING_KEYS_OPERATIONS_CUSTODY, SETTING_KEYS_PKCS11_MODULE, SETTING_KEYS_PKCS11_PIN_REF,
+    SETTING_KEYS_PKCS11_TOKEN_LABEL, SETTING_KEYS_PREVIOUS_KEK_REF,
+    SETTING_KEYS_PREVIOUS_KEK_VERSION, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
+    SETTING_KEYS_ROTATE_EVERY, SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
@@ -676,6 +681,71 @@ struct KeysSection {
     retain: Option<String>,
     #[serde(default)]
     maintenance_interval: Option<String>,
+    /// Where the rings' private keys are held (WP-3.2).
+    #[serde(default)]
+    custody: Option<String>,
+    /// What holds the key-encryption key of the `file` custody.
+    #[serde(default)]
+    kek_provider: Option<String>,
+    #[serde(default)]
+    kek_ref: Option<String>,
+    #[serde(default)]
+    kek_version: Option<String>,
+    #[serde(default)]
+    previous_kek_ref: Option<String>,
+    #[serde(default)]
+    previous_kek_version: Option<String>,
+    /// A ring's custody when it differs: `host.identity` and `host.operations`.
+    #[serde(default)]
+    rings: RingsSection,
+    #[serde(default)]
+    kms: KmsSection,
+    #[serde(default)]
+    pkcs11: Pkcs11Section,
+}
+
+/// The rings whose custody may differ from the Host's (WP-3.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RingsSection {
+    #[serde(default, rename = "host.identity")]
+    identity: RingCustodySection,
+    #[serde(default, rename = "host.operations")]
+    operations: RingCustodySection,
+}
+
+/// One ring's custody.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RingCustodySection {
+    #[serde(default)]
+    custody: Option<String>,
+}
+
+/// The Vault Transit the `kms` custody reaches (WP-3.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KmsSection {
+    #[serde(default)]
+    address: Option<String>,
+    #[serde(default)]
+    mount: Option<String>,
+    #[serde(default)]
+    token_ref: Option<String>,
+    #[serde(default)]
+    ca: Option<String>,
+}
+
+/// The PKCS#11 token the `pkcs11` custody uses (WP-3.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Pkcs11Section {
+    #[serde(default)]
+    module: Option<String>,
+    #[serde(default)]
+    token_label: Option<String>,
+    #[serde(default)]
+    pin_ref: Option<String>,
 }
 
 /// The certificate the telemetry surface presents. No client authority, on purpose.
@@ -1232,6 +1302,57 @@ impl ConfigFile {
             (
                 SETTING_KEYS_MAINTENANCE_INTERVAL,
                 self.operations.keys.maintenance_interval.as_ref(),
+            ),
+            (SETTING_KEYS_CUSTODY, self.operations.keys.custody.as_ref()),
+            (
+                SETTING_KEYS_IDENTITY_CUSTODY,
+                self.operations.keys.rings.identity.custody.as_ref(),
+            ),
+            (
+                SETTING_KEYS_OPERATIONS_CUSTODY,
+                self.operations.keys.rings.operations.custody.as_ref(),
+            ),
+            (
+                SETTING_KEYS_KEK_PROVIDER,
+                self.operations.keys.kek_provider.as_ref(),
+            ),
+            (SETTING_KEYS_KEK_REF, self.operations.keys.kek_ref.as_ref()),
+            (
+                SETTING_KEYS_KEK_VERSION,
+                self.operations.keys.kek_version.as_ref(),
+            ),
+            (
+                SETTING_KEYS_PREVIOUS_KEK_REF,
+                self.operations.keys.previous_kek_ref.as_ref(),
+            ),
+            (
+                SETTING_KEYS_PREVIOUS_KEK_VERSION,
+                self.operations.keys.previous_kek_version.as_ref(),
+            ),
+            (
+                SETTING_KEYS_KMS_ADDRESS,
+                self.operations.keys.kms.address.as_ref(),
+            ),
+            (
+                SETTING_KEYS_KMS_MOUNT,
+                self.operations.keys.kms.mount.as_ref(),
+            ),
+            (
+                SETTING_KEYS_KMS_TOKEN_REF,
+                self.operations.keys.kms.token_ref.as_ref(),
+            ),
+            (SETTING_KEYS_KMS_CA, self.operations.keys.kms.ca.as_ref()),
+            (
+                SETTING_KEYS_PKCS11_MODULE,
+                self.operations.keys.pkcs11.module.as_ref(),
+            ),
+            (
+                SETTING_KEYS_PKCS11_TOKEN_LABEL,
+                self.operations.keys.pkcs11.token_label.as_ref(),
+            ),
+            (
+                SETTING_KEYS_PKCS11_PIN_REF,
+                self.operations.keys.pkcs11.pin_ref.as_ref(),
             ),
             (SETTING_PUBLIC_PATH_PREFIX, self.public.path_prefix.as_ref()),
             (SETTING_TELEMETRY_ADDR, self.host.addr.as_ref()),

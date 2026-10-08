@@ -19,7 +19,7 @@ says so and its repository is the authority.
 
 ## Packages
 
-451 packages.
+455 packages.
 
 | Package | Version | Licence | Source |
 | ------- | ------- | ------- | ------ |
@@ -96,6 +96,8 @@ says so and its repository is the authority.
 | `crunchy` | 0.2.4 | MIT | https://github.com/eira-fransham/crunchy |
 | `crypto-common` | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | `crypto-common` | 0.2.2 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
+| `cryptoki` | 0.12.1 | Apache-2.0 | https://github.com/parallaxsecond/rust-cryptoki |
+| `cryptoki-sys` | 0.5.0 | Apache-2.0 | https://github.com/parallaxsecond/rust-cryptoki |
 | `ctutils` | 0.4.2 | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | `darling` | 0.24.1 | MIT | https://github.com/TedDriggs/darling |
 | `darling_core` | 0.24.1 | MIT | https://github.com/TedDriggs/darling |
@@ -197,6 +199,7 @@ says so and its repository is the authority.
 | `lalrpop-util` | 0.22.2 | Apache-2.0 OR MIT | https://github.com/lalrpop/lalrpop |
 | `lazy_static` | 1.5.1 | MIT OR Apache-2.0 | https://github.com/rust-lang-nursery/lazy-static.rs |
 | `libc` | 0.2.190 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
+| `libloading` | 0.8.9 | ISC | https://github.com/nagisa/rust_libloading/ |
 | `libyaml-rs` | 0.3.0 | MIT | https://github.com/yaml/libyaml-rs |
 | `linked-hash-map` | 0.5.6 | MIT/Apache-2.0 | https://github.com/contain-rs/linked-hash-map |
 | `linked_hash_set` | 0.1.6 | Apache-2.0 | https://github.com/alexheretic/linked-hash-set |
@@ -320,6 +323,7 @@ says so and its repository is the authority.
 | `schemars` | 0.9.0 | MIT | https://github.com/GREsau/schemars |
 | `schemars` | 1.2.2 | MIT | https://github.com/GREsau/schemars |
 | `scopeguard` | 1.2.0 | MIT OR Apache-2.0 | https://github.com/bluss/scopeguard |
+| `secrecy` | 0.10.3 | Apache-2.0 OR MIT | https://github.com/iqlusioninc/crates/tree/main/secrecy |
 | `security-framework` | 3.7.0 | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
 | `security-framework-sys` | 2.17.0 | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
 | `semver` | 1.0.28 | MIT OR Apache-2.0 | https://github.com/dtolnay/semver |

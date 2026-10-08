@@ -32,9 +32,10 @@
 use std::sync::Arc;
 
 use permguard_control_client::events::{EventSink, ShipError, Shipped};
-use permguard_core::{Metrics, SigningRing};
+use permguard_core::Metrics;
 use permguard_events::chain;
-use permguard_events::envelope::{Envelope, Signed};
+use permguard_events::envelope::BatchSigner;
+use permguard_events::envelope::Envelope;
 use serde_json::Value;
 use tracing::{error, info, warn};
 
@@ -76,7 +77,7 @@ pub enum Round {
 pub struct Shipper {
     streams: Arc<Streams>,
     sink: Box<dyn EventSink>,
-    keys: Arc<dyn SigningRing>,
+    keys: Arc<dyn BatchSigner>,
     /// The most bytes one batch carries.
     max_bytes: u64,
     metrics: Metrics,
@@ -87,7 +88,7 @@ impl Shipper {
     pub fn new(
         streams: Arc<Streams>,
         sink: Box<dyn EventSink>,
-        keys: Arc<dyn SigningRing>,
+        keys: Arc<dyn BatchSigner>,
         max_bytes: u64,
         metrics: Metrics,
     ) -> Self {
@@ -355,7 +356,7 @@ impl Shipper {
             .protected()
             .map_err(|error| error.to_string())?
             .kid;
-        let published = self.keys.public_keys().map_err(|error| error.to_string())?;
+        let published = self.keys.published().map_err(|error| error.to_string())?;
         let jwk = published
             .into_iter()
             .find(|key| key.kid == kid)
@@ -412,7 +413,9 @@ impl Shipper {
         };
 
         Ok(permguard_events::Batch {
-            signature: Signed::create(&envelope, self.keys.as_ref())
+            signature: self
+                .keys
+                .sign_batch(&envelope)
                 .map_err(|error| error.to_string())?,
             records: records.to_vec(),
         })

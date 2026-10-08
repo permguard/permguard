@@ -14,9 +14,9 @@
 use std::sync::Arc;
 
 use permguard_core::PlaneContext;
-use permguard_core::keys::{PublicSet, SigningRing};
+use permguard_core::keys::PublicSet;
 use permguard_host::composition::{
-    AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, Registration,
+    AuditHandle, AuditSchema, DATA_ATTEST, Declaration, HeadStatementV1, Registration, Signer,
 };
 
 use crate::service::PLANE;
@@ -87,13 +87,29 @@ pub(crate) fn audit(context: &PlaneContext<'_>) -> Option<Audit> {
         .flatten()
 }
 
-/// The head statement signer, when the plane's signing ring is composed.
-pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Arc<dyn SigningRing>> {
-    let signer = registration(context)?
+/// The head statement signer, when the plane's signing ring is composed: typed, it signs head
+/// statements and nothing else (WP-3.2).
+pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Signer<HeadStatementV1>> {
+    registration(context)?
         .signer::<HeadStatementV1>()
         .ok()
-        .flatten()?;
-    Some(Arc::new(signer))
+        .flatten()
+}
+
+/// A ring a test holds itself.
+#[cfg(test)]
+type TestRing = Arc<dyn permguard_core::KeyManager>;
+
+/// A head statement signer over `keys`, for a test that holds a ring of its own.
+#[cfg(test)]
+pub(crate) fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
+    permguard_host::composition::Host::builder()
+        .ring(permguard_host::composition::CONTROL_ATTEST, keys)
+        .build()
+        .register(Declaration::new(PLANE).signs::<HeadStatementV1>())
+        .ok()
+        .and_then(|registration| registration.signer::<HeadStatementV1>().ok().flatten())
+        .unwrap_or_else(|| unreachable!("a declared signer over a composed ring"))
 }
 
 /// This plane's own public set, to publish, when its signing ring is composed.

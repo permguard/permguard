@@ -320,6 +320,11 @@ pub enum Command {
     },
     /// Work on a Server Host's volume offline: the grants of its authorization store.
     Host {
+        /// The server's configuration file, read with the environment as the server reads them:
+        /// where the volume's keys are kept and how they are opened. Without it they are the
+        /// `development` custody's plaintext files.
+        #[arg(long, global = true, value_name = "FILE")]
+        server_config: Option<PathBuf>,
         #[command(subcommand)]
         action: HostAction,
     },

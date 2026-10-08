@@ -41,6 +41,12 @@ pub enum Kind {
     Destroyed,
     /// A ring binding was issued for the epoch: `kid` names the identity key that signed it.
     Bound,
+    /// The private half, held in plaintext, is sealed in place under the KEK (WP-3.2). Journaled
+    /// before the sealing: a crash between the two journals it again at the next start.
+    Sealed,
+    /// The private half's DEK is rewrapped under the current KEK, the ciphertext unchanged;
+    /// journaled before, as `Sealed`.
+    Rewrapped,
 }
 
 impl Kind {
@@ -53,6 +59,8 @@ impl Kind {
             Self::Archived => "archived",
             Self::Destroyed => "destroyed",
             Self::Bound => "bound",
+            Self::Sealed => "sealed",
+            Self::Rewrapped => "rewrapped",
         }
     }
 
@@ -65,6 +73,8 @@ impl Kind {
             "archived" => Self::Archived,
             "destroyed" => Self::Destroyed,
             "bound" => Self::Bound,
+            "sealed" => Self::Sealed,
+            "rewrapped" => Self::Rewrapped,
             _ => return None,
         })
     }

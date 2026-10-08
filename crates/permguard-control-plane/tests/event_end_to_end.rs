@@ -340,7 +340,9 @@ fn what_one_plane_recorded_is_what_the_other_holds_byte_for_byte() {
     let shipper = Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        Arc::new(permguard_events::envelope::RingSigner(
+            Arc::clone(&keys) as Arc<dyn KeyManager>
+        )),
         1024 * 1024,
         Metrics::none(),
     );
@@ -405,7 +407,9 @@ fn a_control_plane_that_is_down_defers_and_the_history_stays() {
     let shipper = Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        Arc::new(permguard_events::envelope::RingSigner(
+            Arc::clone(&keys) as Arc<dyn KeyManager>
+        )),
         1024 * 1024,
         Metrics::none(),
     );
@@ -452,7 +456,9 @@ fn the_signed_checkpoint_is_written_before_the_batch_is_shipped() {
     let shipper = Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        Arc::new(permguard_events::envelope::RingSigner(
+            Arc::clone(&keys) as Arc<dyn KeyManager>
+        )),
         1024 * 1024,
         Metrics::none(),
     );
@@ -499,7 +505,9 @@ fn an_imported_record_is_verified_before_it_is_applied_and_never_re_signed() {
     Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        Arc::new(permguard_events::envelope::RingSigner(
+            Arc::clone(&keys) as Arc<dyn KeyManager>
+        )),
         1024 * 1024,
         Metrics::none(),
     )
@@ -845,7 +853,9 @@ mod two_planes {
             Shipper::new(
                 Arc::clone(&journals_a),
                 Box::new(Handed(Arc::clone(&wire))),
-                Arc::clone(&keys) as Arc<dyn KeyManager>,
+                Arc::new(permguard_events::envelope::RingSigner(
+                    Arc::clone(&keys) as Arc<dyn KeyManager>
+                )),
                 1024 * 1024,
                 Metrics::none(),
             )
@@ -999,7 +1009,9 @@ fn the_signer_manifest_travels_with_the_stream_on_both_sides() {
     let shipper = Shipper::new(
         Arc::clone(&streams),
         Box::new(Handed(Arc::clone(&wire))),
-        Arc::clone(&keys) as Arc<dyn KeyManager>,
+        Arc::new(permguard_events::envelope::RingSigner(
+            Arc::clone(&keys) as Arc<dyn KeyManager>
+        )),
         1024 * 1024,
         Metrics::none(),
     );

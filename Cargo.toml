@@ -82,6 +82,12 @@ hmac = "0.13"
 http = "1"
 http-body-util = "0.1"
 hyper-util = { version = "0.1", default-features = false, features = ["tokio", "client-legacy", "http1"] }
+# The Vault Transit client of the `kms` custody (WP-3.2): one HTTP/1.1 request per connection.
+hyper = { version = "1", default-features = false, features = ["client", "http1"] }
+bytes = "1"
+# The PKCS#11 custody (WP-3.2), behind the server's `pkcs11` feature: loads the token's module at
+# runtime.
+cryptoki = "0.12"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "trace"] }
 opentelemetry_sdk = "0.32"

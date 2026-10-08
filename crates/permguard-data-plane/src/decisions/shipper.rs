@@ -33,9 +33,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use permguard_control_client::decisions::{DecisionLog, ShipError, Shipped};
+use permguard_core::Metrics;
 use permguard_core::metrics::labels;
-use permguard_core::{Metrics, SigningRing};
-use permguard_decisions::envelope::{Batch, Envelope, Signed};
+use permguard_decisions::envelope::BatchSigner;
+use permguard_decisions::envelope::{Batch, Envelope};
 use permguard_decisions::record::Sampling;
 use permguard_decisions::{chain, merkle, record};
 use serde_json::Value;
@@ -76,7 +77,7 @@ pub enum Round {
 pub struct Shipper {
     journal: Arc<Journal>,
     sink: Box<dyn DecisionLog>,
-    keys: Arc<dyn SigningRing>,
+    keys: Arc<dyn BatchSigner>,
     /// The most records one batch carries.
     max_records: usize,
     /// The most bytes one batch carries.
@@ -90,7 +91,7 @@ impl Shipper {
     pub fn new(
         journal: Arc<Journal>,
         sink: Box<dyn DecisionLog>,
-        keys: Arc<dyn SigningRing>,
+        keys: Arc<dyn BatchSigner>,
         max_bytes: u64,
         sampling: impl Into<String>,
         metrics: Metrics,
@@ -276,7 +277,7 @@ impl Shipper {
             .signature
             .envelope()
             .map_err(|error| error.to_string())?;
-        let published = self.keys.public_keys().map_err(|error| error.to_string())?;
+        let published = self.keys.published().map_err(|error| error.to_string())?;
         let jwk = published
             .into_iter()
             .find(|key| key.kid == kid)
@@ -315,7 +316,9 @@ impl Shipper {
         };
 
         Ok(Batch {
-            signature: Signed::create(&envelope, self.keys.as_ref())
+            signature: self
+                .keys
+                .sign_batch(&envelope)
                 .map_err(|error| error.to_string())?,
             records: records.to_vec(),
         })

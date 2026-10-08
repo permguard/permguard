@@ -143,31 +143,18 @@ impl Signed {
     /// Signs `envelope` under the manager's active key.
     pub fn create(envelope: &Envelope, keys: &dyn Sign) -> Result<Self, EnvelopeError> {
         envelope.check_shape()?;
-        let payload = B64.encode(envelope.signed_bytes()?);
-        let key_id = keys
-            .active_key_id()
-            .map_err(|error| EnvelopeError::Signing(error.to_string()))?;
-        let protected = B64.encode(
-            serde_json::to_vec(&Protected {
-                alg: ALGORITHM.to_owned(),
-                kid: key_id.as_str().to_owned(),
-            })
-            .map_err(|error| EnvelopeError::Shape(error.to_string()))?,
-        );
-
-        let signing_input = format!("{protected}.{payload}");
-        let signature = keys
-            .sign(signing_input.as_bytes())
-            .map_err(|error| EnvelopeError::Signing(error.to_string()))?;
-        if signature.algorithm() != ALGORITHM {
-            return Err(EnvelopeError::Algorithm(signature.algorithm().to_owned()));
-        }
-
-        Ok(Self {
-            protected,
-            payload,
-            signature: B64.encode(signature.bytes()),
-        })
+        let parts = permguard_host::composition::sign_jws::<
+            permguard_host::composition::DecisionBatchV1,
+        >(&envelope.signed_bytes()?, keys)
+        .map_err(|error| match error {
+            permguard_host::composition::JwsError::Algorithm(found) => {
+                EnvelopeError::Algorithm(found)
+            }
+            permguard_host::composition::JwsError::Key(error) => {
+                EnvelopeError::Signing(error.to_string())
+            }
+        })?;
+        Ok(Self::from(parts))
     }
 
     /// The header, decoded under the canonical JSON profile.
@@ -288,6 +275,57 @@ impl fmt::Display for EnvelopeError {
 }
 
 impl std::error::Error for EnvelopeError {}
+
+/// The parts the Host's framing wrote (WP-3.2).
+impl From<permguard_host::composition::JwsParts> for Signed {
+    fn from(parts: permguard_host::composition::JwsParts) -> Self {
+        Self {
+            protected: parts.protected,
+            payload: parts.payload,
+            signature: parts.signature,
+        }
+    }
+}
+
+/// What signs batches: the Host's typed signer for this artifact, or [`RingSigner`] over a
+/// ring a test or an offline tool holds itself.
+pub trait BatchSigner: Send + Sync {
+    /// Signs `envelope`.
+    fn sign_batch(&self, envelope: &Envelope) -> Result<Signed, EnvelopeError>;
+    /// The published set the signatures verify against.
+    fn published(&self) -> permguard_core::keys::Result<Vec<permguard_core::keys::Jwk>>;
+}
+
+impl BatchSigner
+    for permguard_host::composition::Signer<permguard_host::composition::DecisionBatchV1>
+{
+    fn sign_batch(&self, envelope: &Envelope) -> Result<Signed, EnvelopeError> {
+        envelope.check_shape()?;
+        let bytes = envelope.signed_bytes()?;
+        self.sign(&permguard_host::composition::Jws::<
+            permguard_host::composition::DecisionBatchV1,
+        >::new(&bytes))
+            .map(Signed::from)
+            .map_err(|error| EnvelopeError::Signing(error.to_string()))
+    }
+
+    fn published(&self) -> permguard_core::keys::Result<Vec<permguard_core::keys::Jwk>> {
+        permguard_core::keys::PublicSet::public_keys(self)
+    }
+}
+
+/// A ring held directly: for tests and offline tools, never a Plane's handle.
+pub struct RingSigner(pub std::sync::Arc<dyn permguard_core::keys::SigningRing>);
+
+impl BatchSigner for RingSigner {
+    fn sign_batch(&self, envelope: &Envelope) -> Result<Signed, EnvelopeError> {
+        Signed::create(envelope, self.0.as_ref())
+    }
+
+    fn published(&self) -> permguard_core::keys::Result<Vec<permguard_core::keys::Jwk>> {
+        self.0.public_keys()
+    }
+}
 
 #[cfg(test)]
 mod tests {

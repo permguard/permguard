@@ -238,12 +238,13 @@ fn a_clock_anomaly_leaves_the_data_planes_evidence_signing() {
         .signer::<EventBatchV1>()
         .expect("declared")
         .expect("composed");
+    use permguard_host::composition::Jws;
     for sequence in 1..=3u8 {
         decisions
-            .sign(&[sequence])
+            .sign(&Jws::<DecisionBatchV1>::new(&[sequence]))
             .expect("decision evidence signs in anomaly");
         events
-            .sign(&[sequence])
+            .sign(&Jws::<EventBatchV1>::new(&[sequence]))
             .expect("event evidence signs in anomaly");
     }
     assert!(time.trusted_now().is_err(), "the anomaly is still in force");

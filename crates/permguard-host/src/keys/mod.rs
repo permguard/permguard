@@ -15,6 +15,7 @@
 //! RFC 7638 thumbprint ([`KeyProvider::generate_addressed`]), so the slot cannot name other
 //! material.
 
+pub mod custody;
 pub mod migration;
 pub mod record;
 pub mod registry;
@@ -26,7 +27,7 @@ use permguard_objects::crypto::suite::{SigningKey, Suite};
 use permguard_objects::crypto::thumbprint;
 use permguard_objects::digest::Digest;
 
-pub use permguard_objects::crypto::thumbprint::selects;
+pub use permguard_objects::crypto::thumbprint::{is_thumbprint, selects};
 
 use crate::storage::write::{Published, publish_immutable};
 use crate::storage::{Dir, StorageError, tombstone};
@@ -36,6 +37,12 @@ use crate::storage::{Dir, StorageError, tombstone};
 pub enum Custody {
     /// The private bytes are on the volume in the clear: the `custody.plaintext` relaxation.
     Plaintext,
+    /// Envelope-encrypted on the volume, one DEK per blob under a key-encryption key (WP-3.2).
+    Encrypted,
+    /// Non-exportable keys in a PKCS#11 token (WP-3.2).
+    Hsm,
+    /// Non-exportable keys in a remote KMS (WP-3.2).
+    Kms,
 }
 
 /// A public key and its suite.
@@ -87,6 +94,12 @@ impl From<StorageError> for KeyError {
     }
 }
 
+/// The RFC 7638 thumbprint of `public`: the slot a ring's key is named by.
+pub fn thumbprint_of(public: &PublicKey) -> Result<String, KeyError> {
+    thumbprint::jwk_thumbprint(public.suite, &public.bytes)
+        .map_err(|error| KeyError::Malformed(error.to_string()))
+}
+
 /// Where a Host's private keys live.
 pub trait KeyProvider: Send + Sync {
     /// The provider's name, for the log and the status.
@@ -129,7 +142,7 @@ impl FileKeyProvider {
 
     /// A slot is letters, digits, `-` and `_`: an identity epoch, a ring key's base64url
     /// thumbprint (owner decision of 2026-10-08).
-    fn name_of(slot: &str) -> Result<String, KeyError> {
+    pub(crate) fn name_of(slot: &str) -> Result<String, KeyError> {
         if slot.is_empty()
             || !slot
                 .bytes()

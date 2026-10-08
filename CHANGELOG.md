@@ -123,6 +123,10 @@ is cut.
   New signatures name `<ring>:<thumbprint>`; Permguard's verifiers still accept an artifact naming the bare thumbprint of a key of the ring, so nothing signed before needs re-signing.
   A verifier outside Permguard that matches the `kid` exactly must accept both forms for artifacts signed before the upgrade.
 
+- **A Plane signs payloads, never bytes.**
+  The Host's signer handle signs a head statement, a decision batch or an event batch as its format writes it, and nothing else; a build composing its own Planes signs through `Signer<T>::sign(&payload)`, and a test signing with a ring of its own wraps it in `RingSigner`.
+  `Payload` is sealed: the Host writes every signing input, the batch's protected header included, and a Plane hands it the batch's canonical bytes through `Jws::new`.
+
 - **A key lifecycle covers the clock skew and the audit retention.**
   `operations.keys.publish_ahead` must be at least the key-set cache age (300 s) plus `time.max_clock_skew`, and outside development `operations.keys.retain` must be at least `audit.retention`, so a seal never outlives the published key that verifies it.
 
@@ -142,9 +146,22 @@ is cut.
 - **A Plane holds no secret: `Declaration::uses_secret` and `SecretHandle` are removed.**
   A Plane MACs only under the zone keys it declares (`Declaration::uses_zone_key`, `Registration::zone_key`), and `Host::register` takes the declaration alone.
 
-- **A `production` deployment does not start until the custody providers land (WP-3.2).**
-  The Host identity key is held in plaintext on the volume, which is the `custody.plaintext` relaxation: discovery and `host status` publish it, and the `production` and `regulated` profiles refuse to start with a message naming WP-3.2.
-  Deployments that must run before then state `assurance.profile: development`.
+- **Private keys are held by a custody: plaintext only under `development`.**
+  `operations.keys.custody` (`PERMGUARD_KEYS_CUSTODY`) is `development`, `file`, `pkcs11` or `kms`; it defaults to `development` under the development profile and to `file` otherwise.
+  `host.identity` and `host.operations` may take another with `operations.keys.rings."host.identity".custody` and `…"host.operations".custody`.
+  `development` keeps PKCS#8 files in the clear, the `custody.plaintext` relaxation that discovery and `host status` publish and `production` and `regulated` refuse.
+  `file` seals each private key at rest (`permguard.sealed-key.v1`): a fresh data key per key, wrapped by a key-encryption key, bound to the Host, ring, key and suite, so a blob copied under another key or to another Host does not open.
+  The key-encryption key is `operations.keys.kek_ref` at `operations.keys.kek_version` (`vN`) in the secret store, exactly 32 bytes and witnessed like every root; `operations.keys.kek_provider` keeps it in a PKCS#11 token or the KMS instead.
+  At the first start under `file`, keys found in plaintext (the identity's, the rings') are sealed in place; a start without its key-encryption key refuses and replaces nothing.
+  To rotate the key-encryption key, set the new one and keep the old as `operations.keys.previous_kek_ref`/`previous_kek_version` for one start: every key's data key is rewrapped and its ciphertext is unchanged; then remove the previous one.
+  `pkcs11` keeps keys non-extractable in a token (`operations.keys.pkcs11.module`, `token_label`, the PIN from `pin_ref`), in builds with the `pkcs11` feature; `kms` keeps them in Vault or OpenBao Transit (`operations.keys.kms.address`, `mount`, the token from `token_ref`, an optional `ca`).
+  `data.attest` and `control.attest` sign while a request waits and are never on `kms`; `regulated` keeps `host.identity` and `host.operations` on `pkcs11` or `kms`.
+  A `kms` key-encryption key is a Transit `aes256-gcm96` key created `derived`, without export or plaintext backup, and a `pkcs11` one a 256-bit AES key, always sensitive and never extractable: any other is refused at the start.
+  A ring or identity on `pkcs11` or `kms` that still holds key files is refused: a key is never moved into a token or a KMS.
+  Every seal and rewrap of a ring's key is a ring journal entry (`sealed`, `rewrapped`), written before the key is sealed, and an operations record; the identity's is an operations record.
+  The start opens every key a ring signs with, so a key the key-encryption key does not open, or a public key that is not its private half's, fails the start rather than the first signature.
+  The rings of a realm stay in plaintext on their directory manager, so a deployment with realms keeps the `custody.plaintext` relaxation.
+  The offline `permguard host` commands take `--server-config <file>`, read it with the environment as the server does, and open, provision and rotate the identity through its custody; without it the custody is `development`, and `provision` prints the custody it used.
 
 - **A security mutation is refused while the audit trail cannot record it.**
   A grant mutation whose intent record cannot be written applies nothing and answers `audit_unavailable` (503).

@@ -510,3 +510,115 @@ fn test_the_volume_is_where_everything_the_configuration_names_resolves() {
         std::path::Path::new("/var/lib/permguard/tls/server.pem")
     );
 }
+
+#[test]
+fn test_the_custody_rules_refuse_what_cannot_hold_a_key() {
+    // WP-3.2: a remote KMS never signs while a request waits, on either Plane's ring.
+    let kms = [
+        (SETTING_KEYS_KMS_ADDRESS, "https://vault.example:8200"),
+        (SETTING_KEYS_KMS_TOKEN_REF, "vault-token"),
+    ];
+    for plane in [SETTING_DATA_KEYS_ENABLED, SETTING_CONTROL_KEYS_ENABLED] {
+        let mut remote = vec![(SETTING_KEYS_CUSTODY, "kms"), (plane, "true")];
+        remote.extend_from_slice(&kms);
+        assert!(
+            refusal(&serving(&remote)).contains("signs while a request waits"),
+            "{plane}"
+        );
+    }
+    // The identity and operations rings may be remote; data.attest stays local.
+    let mut split = vec![
+        (SETTING_KEYS_CUSTODY, "file"),
+        (SETTING_KEYS_IDENTITY_CUSTODY, "kms"),
+        (SETTING_KEYS_OPERATIONS_CUSTODY, "kms"),
+        (SETTING_DATA_KEYS_ENABLED, "true"),
+    ];
+    split.extend_from_slice(&kms);
+    let config = serving(&split);
+    config.validate().expect("remote off the request path");
+    assert_eq!(config.keys_custody_of("host.identity"), KeyCustody::Kms);
+    assert_eq!(config.keys_custody_of("data.attest"), KeyCustody::File);
+
+    for (name, settings, says) in [
+        (
+            "a kms without its address",
+            vec![
+                (SETTING_KEYS_IDENTITY_CUSTODY, "kms"),
+                (SETTING_KEYS_KMS_TOKEN_REF, "t"),
+            ],
+            SETTING_KEYS_KMS_ADDRESS,
+        ),
+        (
+            "a kms over plain HTTP",
+            vec![
+                (SETTING_KEYS_IDENTITY_CUSTODY, "kms"),
+                (SETTING_KEYS_KMS_ADDRESS, "http://vault:8200"),
+                (SETTING_KEYS_KMS_TOKEN_REF, "t"),
+            ],
+            "https",
+        ),
+        (
+            "a kms without a token",
+            vec![
+                (SETTING_KEYS_IDENTITY_CUSTODY, "kms"),
+                (SETTING_KEYS_KMS_ADDRESS, "https://vault:8200"),
+            ],
+            SETTING_KEYS_KMS_TOKEN_REF,
+        ),
+        (
+            "a token without its module",
+            vec![(SETTING_KEYS_IDENTITY_CUSTODY, "pkcs11")],
+            SETTING_KEYS_PKCS11_MODULE,
+        ),
+        (
+            "a KEK version that is not vN",
+            vec![(SETTING_KEYS_KEK_VERSION, "2")],
+            "vN",
+        ),
+        (
+            "half a KEK rotation",
+            vec![(SETTING_KEYS_PREVIOUS_KEK_REF, "old")],
+            SETTING_KEYS_PREVIOUS_KEK_VERSION,
+        ),
+        (
+            "a rotation to the same KEK",
+            vec![
+                (SETTING_KEYS_KEK_REF, "kek"),
+                (SETTING_KEYS_PREVIOUS_KEK_REF, "kek"),
+                (SETTING_KEYS_PREVIOUS_KEK_VERSION, "v1"),
+            ],
+            "is the current one",
+        ),
+        (
+            "regulated keys in files",
+            vec![(SETTING_ASSURANCE_PROFILE, "regulated")],
+            "PKCS#11 token or a KMS",
+        ),
+    ] {
+        let why = format!(
+            "{:#}",
+            serving(&settings)
+                .validate()
+                .expect_err(&format!("{name} is refused"))
+        );
+        assert!(why.contains(says), "{name}: {why}");
+    }
+    let unknown = Config::from_layers(
+        BuildSettings::new("1.2.3", "2026", "Build Holder"),
+        NO_DECLARED,
+        Layers::new().with_file(vec![(SETTING_KEYS_CUSTODY.to_owned(), "vault".to_owned())]),
+    )
+    .expect_err("not a custody");
+    assert!(format!("{unknown:#}").contains("pkcs11"));
+}
+
+#[test]
+fn test_the_custody_defaults_follow_the_profile() {
+    let development = serving(&[]);
+    assert_eq!(development.keys_custody(), KeyCustody::Development);
+    let production = serving(&[(SETTING_ASSURANCE_PROFILE, "production")]);
+    assert_eq!(production.keys_custody(), KeyCustody::File);
+    assert_eq!(production.keys_kek_provider(), KekProvider::Secret);
+    assert_eq!(production.keys_kek_version(), "v1");
+    assert_eq!(production.keys_kms_mount(), "transit");
+}

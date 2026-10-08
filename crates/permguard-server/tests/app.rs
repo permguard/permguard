@@ -1346,7 +1346,7 @@ async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints
 }
 
 #[tokio::test]
-async fn test_a_production_volume_refuses_a_plaintext_identity_key_until_the_custody_providers() {
+async fn test_a_production_volume_holds_no_plaintext_identity_key() {
     use permguard_host::identity::{self, Identity, Suite};
 
     let path = config_file(
@@ -1380,15 +1380,35 @@ async fn test_a_production_volume_refuses_a_plaintext_identity_key_until_the_cus
             volume.display()
         ),
     );
+    // WP-3.2: production defaults to the `file` custody, which seals the plaintext key under a
+    // key-encryption key; without one it refuses and leaves the key as it was.
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("no key-encryption key");
+    let message = format!("{refused:#}");
+    assert!(message.contains("key-encryption key"), "{message}");
+    let key = fs::read(volume.join("host/identity/keys/1.key")).expect("the key is kept");
+    assert_eq!(
+        key.first(),
+        Some(&0x30),
+        "left in plaintext, not half-sealed"
+    );
+
+    // Stating the `development` custody is the plaintext relaxation, refused by name.
+    let path = config_file(
+        "identity-production-plaintext",
+        &format!(
+            "assurance:\n  profile: production\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\noperations:\n  keys:\n    custody: development\n{SERVABLE}",
+            volume.display()
+        ),
+    );
     let refused = app()
         .dispatch_to(&serve_action(&path), &mut Vec::new())
         .await
         .expect_err("plaintext custody is not production's");
     let message = format!("{refused:#}");
-    assert!(
-        message.contains("custody.plaintext") && message.contains("WP-3.2"),
-        "{message}"
-    );
+    assert!(message.contains("custody.plaintext"), "{message}");
 }
 
 #[tokio::test]
@@ -1446,5 +1466,48 @@ async fn test_a_witness_required_by_an_added_control_must_be_given() {
     assert!(
         !message.contains("sha256:"),
         "the witness is never printed: {message}"
+    );
+}
+
+/// WP-3.2: under the `file` custody the Host identity's key is sealed at rest under the KEK the
+/// secret store holds, and the Host opens with it at the next start.
+#[tokio::test]
+async fn test_the_file_custody_seals_the_identity_key_under_the_kek() {
+    // SAFETY of the test: nextest runs each test in a process of its own.
+    unsafe { std::env::set_var("KEKTEST_HOST_KEK", "0123456789abcdef0123456789abcdef") };
+    let path = config_file(
+        "custody-file",
+        "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    env_prefix: KEKTEST\n  keys:\n    custody: file\n    kek_ref: host-kek\n",
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    let custodied = || {
+        app().with_secrets(Box::new(
+            permguard_std::secrets::EnvironmentSecretStore::new("KEKTEST"),
+        ))
+    };
+    for _ in 0..2 {
+        custodied()
+            .dispatch_to(&serve_action(&path), &mut Vec::new())
+            .await
+            .expect("the server serves under the file custody");
+    }
+    let key = fs::read(volume.join("host/identity/keys/1.key")).expect("the identity key");
+    assert_ne!(key.first(), Some(&0x30), "never PKCS#8 at rest");
+    permguard_host::keys::custody::Sealed::decode(&key).expect("a sealed key");
+
+    // Another KEK under the same version is refused by its witness, and nothing is replaced.
+    unsafe { std::env::set_var("KEKTEST_HOST_KEK", "fedcba9876543210fedcba9876543210") };
+    let refused = custodied()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("another KEK under v1");
+    assert!(
+        format!("{refused:#}").contains("key-encryption"),
+        "{refused:#}"
+    );
+    assert_eq!(
+        fs::read(volume.join("host/identity/keys/1.key")).expect("kept"),
+        key
     );
 }

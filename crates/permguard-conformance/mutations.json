@@ -50,6 +50,10 @@
           "reason": "creates the identity before INIT exists: nothing is an identity until INIT is written, and the operation journal opens after it"
         },
         {
+          "item": "provision_with",
+          "reason": "`provision` with the provider made for the host_id just minted (WP-3.2): creates the identity before INIT exists, as `provision` does"
+        },
+        {
           "item": "open",
           "reason": "completes a rotation whose succession is durable, removes keys no document named, and writes this start's BOOT; never a new epoch"
         }
