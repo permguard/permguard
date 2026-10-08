@@ -25,7 +25,6 @@ is cut.
   It serves the key rings (`GET /host/v1/keys`, and the public `GET /host/v1/keys/{ring}`), the lifecycle (`GET /host/v1/status`) and the effective configuration (`GET /host/v1/config/effective`).
   `GET /host/v1/config/effective` lists every setting the build reads with the value in force, its origin (`default`, `file`, `environment`, `command_line`) and its class: `startup` for what may differ between replicas sharing one file (binds, the volume and its directories, TLS files, key references, instance ids), `static` for the rest, the experimental switches included.
   `GET /host/v1/config/revisions` lists the changes the Host's dynamic journals recorded, newest first: the grant journal today.
-  Identity and ring bindings answer `not_served_yet` until their packages.
   Every mutation carries a `request_id`; a retry inside ten minutes returns the stored answer, across a restart, from `host/state/replay/` on the volume.
   Every route decides with the Host's grants, under `authz.admin`, `lifecycle.read`, `keys.read`, `config.read` and `identity.read`.
   The last four operations are new to the grant registry.
@@ -50,7 +49,7 @@ is cut.
   Evidence is carried byte for byte and never rewritten; a build that changes it, or writes into the old generation, is refused before the switch.
   The old generation stays after the commit until `migrate finalize`; `migrate rollback` returns to it, and refuses when the server has since written into the new generation.
   A server refuses to start while a migration is between two sides, and over a layout version or subsystem it does not read; `migrate recover` lands an interrupted migration on one side.
-  No shipped subsystem is laid out this way yet; the packages that adopt the library bring their migrations.
+  The key rings are the first subsystems laid out this way: `keys-host-operations`, `keys-control-attest` and `keys-data-attest`.
 
 - **One durability implementation.**
   Every store writes through the storage library: the decision spool, the event journals and indexes, the stream layout and signer manifests, the Control Plane's stores and cursor key, the Data Plane's temporal imports, the audit trail, the catalog and the key rings.
@@ -107,7 +106,25 @@ is cut.
   `operations.secrets.coordinator_root_ref` (`PERMGUARD_SECRETS_COORDINATOR_ROOT_REF`) names the root this Host derives zone keys from, at `operations.secrets.zone_key_version` (`PERMGUARD_SECRETS_ZONE_KEY_VERSION`, default `v1`); the development provisioner generates it when it is named.
   Decision input tags are keyed per ledger, and decision subjects are pseudonymised per zone, under keys derived from it, so every replica of a zone writes the same tags and tokens without holding the zone's root; a member's delivered keys are kept in `host/zone-use/` and arrive with memberships.
 
+- **The Host's key rings: `host/keys/<ring>`.**
+  The operations ring (`host.operations`), the Control Plane's (`control.attest`) and the Data Plane's (`data.attest`) are kept by the Host under `host/keys/<ring>/`: a journal of every transition, `ring.cbor` rebuilt from it, `public/<thumbprint>.jwk` kept for good, and each private key in `private/<thumbprint>.key` (`0600`, the `custody.plaintext` relaxation until WP-3.2).
+  A key is prepublished, active, retired-public or revoked; exactly one is active, the private half is destroyed as soon as the key stops signing and the signings in flight end, and a retired key stays in the published set for `operations.keys.retain`, then leaves it.
+  Every published set has an epoch, rising at every change of the set, and a key-set digest; the Host identity signs a binding of each epoch (`permguard.host.ring-binding.v1`, valid 30 days, issued again before it ends).
+  `GET /host/v1/keys/{ring}` answers the epoch, the digest and the binding; `GET /host/v1/ring-bindings` lists the bindings under `identity.read`; `host.identity` is listed too, the identity's current key, and is never in a Plane's key set.
+  `POST /host/v1/keys/{ring}/rotate` prepublishes a successor, and `POST /host/v1/keys/{ring}/revoke/plan` then `revoke/run` revoke a key at once, with its reason and compromise time, under the new operation `keys.admin`, each a security mutation; `host.identity` rotates through `POST /host/v1/identity/rotate` only.
+  Every transition is also a `host.keys.transition` record in the operations trail.
+
 ### Changed
+
+- **Ring keys are named `<ring>:<thumbprint>`, and the legacy key directories migrate once.**
+  At the first start, the `ring.json` directory of each ring (`operations/keys/{operations,control,data}` on the volume, or the configured one) is migrated into `host/keys/<ring>` through the layout migration framework; its keys keep their material, and the old directory, with the private halves of the keys that had stopped signing, stays until `permguard migrate finalize --subsystem keys-<ring>` (`keys-host-operations`, `keys-control-attest`, `keys-data-attest`).
+  A legacy directory outside the volume refuses the start.
+  From the `production` profile upward the server does not migrate by itself: it refuses to start and names `permguard migrate keys --volume <dir> --backup <reference>`, run with the server stopped.
+  New signatures name `<ring>:<thumbprint>`; Permguard's verifiers still accept an artifact naming the bare thumbprint of a key of the ring, so nothing signed before needs re-signing.
+  A verifier outside Permguard that matches the `kid` exactly must accept both forms for artifacts signed before the upgrade.
+
+- **A key lifecycle covers the clock skew and the audit retention.**
+  `operations.keys.publish_ahead` must be at least the key-set cache age (300 s) plus `time.max_clock_skew`, and outside development `operations.keys.retain` must be at least `audit.retention`, so a seal never outlives the published key that verifies it.
 
 - **The decision log needs `operations.secrets.coordinator_root_ref`; `decisions.log.commitment` is retired.**
   A configuration still setting `decisions.log.commitment.key_ref` or `key_version` is refused with a message naming the new settings.

@@ -374,6 +374,49 @@ fn test_an_enabled_ring_whose_lifecycle_was_never_stated_is_refused() {
 }
 
 #[test]
+fn test_a_key_published_inside_the_cache_age_and_the_clock_skew_is_refused() {
+    // WP-3.1: 300 s of key-set cache and 30 s of clock skew; a key published 320 s ahead starts
+    // signing while a verifier whose clock runs behind still holds a set without it.
+    let early = serving(&[
+        (SETTING_KEYS_ENABLED, "true"),
+        (SETTING_KEYS_PUBLISH_AHEAD, "320s"),
+        (SETTING_KEYS_ROTATE_EVERY, "30d"),
+        (SETTING_KEYS_RETAIN, "365d"),
+    ]);
+    assert!(
+        refusal(&early).contains("clocks may differ"),
+        "{}",
+        refusal(&early)
+    );
+    serving(&[
+        (SETTING_KEYS_ENABLED, "true"),
+        (SETTING_KEYS_PUBLISH_AHEAD, "330s"),
+        (SETTING_KEYS_ROTATE_EVERY, "30d"),
+        (SETTING_KEYS_RETAIN, "365d"),
+    ])
+    .validate()
+    .expect("the cache age and the skew are covered");
+}
+
+#[test]
+fn test_a_key_retention_shorter_than_the_audit_retention_is_refused() {
+    // WP-3.1: a retired key leaves the published set after `retain`; a seal kept for longer would
+    // outlive the key that verifies it.
+    let short = serving(&[
+        (SETTING_KEYS_ENABLED, "true"),
+        (SETTING_KEYS_PUBLISH_AHEAD, "1h"),
+        (SETTING_KEYS_ROTATE_EVERY, "30d"),
+        (SETTING_KEYS_RETAIN, "60d"),
+        (SETTING_AUDIT_RETENTION, "90d"),
+    ]);
+    assert!(
+        refusal(&short).contains("outlive the key"),
+        "{}",
+        refusal(&short)
+    );
+}
+
+#[test]
 fn test_a_sound_key_lifecycle_is_accepted() {
     serving(&[
         (SETTING_KEYS_ENABLED, "true"),

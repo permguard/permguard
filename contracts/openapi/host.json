@@ -166,8 +166,18 @@
       "get": {
         "operationId": "listRingBindings",
         "summary": "The signed ring bindings",
-        "description": "Under `identity.read` on the Host. Served as `not_served_yet` by this build.",
+        "description": "Under `identity.read` on the Host: the identity-signed binding of every ring's current epoch (WP-3.1). `host.identity` has none: its chain authenticates it.",
         "responses": {
+          "200": {
+            "description": "Every binding held, one per ring that has keys of its own.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RingBindings"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
             "headers": {
@@ -196,7 +206,7 @@
             }
           },
           "503": {
-            "description": "Under `identity.read`; the bindings arrive with WP-3.1 (`not_served_yet`), or the principal is over its bound.",
+            "description": "A ring could not be read (`ring_unreadable`), or the principal is over its bound (`principal_bound_exceeded`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -736,7 +746,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`.",
+            "description": "The ring id: `host.identity`, `host.operations`, `control.attest` or `data.attest`.",
             "x-grpc-field": "ring"
           }
         ],
@@ -781,6 +791,366 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyRing"
+      }
+    },
+    "/host/v1/keys/{ring}/rotate": {
+      "post": {
+        "operationId": "rotateKeyRing",
+        "summary": "Rotate a key ring",
+        "description": "Under `keys.admin` on the Host (WP-3.1). A security mutation of the domain `keys`: a successor is prepublished now, the epoch rises, and it signs once `publish_ahead` has passed. A retry with the same request id answers the stored receipt.",
+        "parameters": [
+          {
+            "name": "ring",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`; `host.identity` rotates through `POST /host/v1/identity/rotate` (`ring_not_mutable`).",
+            "x-grpc-field": "ring"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and the epoch the caller read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateRingBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated; a retry with the same request id answers the stored receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RingRotated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); `host.identity` named (`ring_not_mutable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No ring of that name is composed (`ring_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected epoch is not the ring's (`revision_mismatch`, `revision` carried), a successor waits already (`key_rotation_pending`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/RotateKeyRing"
+      }
+    },
+    "/host/v1/keys/{ring}/revoke/plan": {
+      "post": {
+        "operationId": "planKeyRevoke",
+        "summary": "Plan the revocation of a key",
+        "description": "Under `keys.admin` on the Host (WP-3.1). The first step of a revocation: the plan, bound to the key, the reason and the compromise time, is held by the server and consumed once by the run.",
+        "parameters": [
+          {
+            "name": "ring",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`; `host.identity` rotates through `POST /host/v1/identity/rotate` (`ring_not_mutable`).",
+            "x-grpc-field": "ring"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the key, the reason and, optionally, the compromise time and the epoch the caller read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanKeyRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan, to present to the run step within its lifetime; a retry with the same request id answers the same plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyRevokePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason or the time is malformed (`invalid_argument`); `host.identity` named (`ring_not_mutable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No ring of that name is composed (`ring_unknown`), or it holds no such key (`key_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key is revoked already (`key_revoked`), the expected epoch is not the ring's (`revision_mismatch`, `revision` carried), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/PlanKeyRevoke"
+      }
+    },
+    "/host/v1/keys/{ring}/revoke/run": {
+      "post": {
+        "operationId": "runKeyRevoke",
+        "summary": "Run the planned revocation of a key",
+        "description": "Under `keys.admin` on the Host (WP-3.1). Presents the plan the plan step answered; the plan is consumed, the key leaves the published set at once with the epoch rising, its private half is destroyed, an active key is replaced at once, and a receipt answered.",
+        "parameters": [
+          {
+            "name": "ring",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`; `host.identity` rotates through `POST /host/v1/identity/rotate` (`ring_not_mutable`).",
+            "x-grpc-field": "ring"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, and the plan as answered.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunKeyRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The key is revoked; a retry with the same request id answers the stored receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`); `host.identity` named (`ring_not_mutable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No ring of that name is composed (`ring_unknown`), or no plan of that id is held for it (`plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The key is revoked already (`key_revoked`), the ring moved since the plan (`revision_mismatch`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A ring could not be read (`ring_unreadable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/RunKeyRevoke"
       }
     },
     "/host/v1/status": {
@@ -1407,7 +1777,7 @@
         "properties": {
           "ring": {
             "type": "string",
-            "description": "The ring id: `host.operations`, `control.attest` or `data.attest`.",
+            "description": "The ring id: `host.identity`, `host.operations`, `control.attest` or `data.attest`.",
             "x-grpc-field": "ring"
           },
           "keys": {
@@ -1418,14 +1788,21 @@
           },
           "digest": {
             "type": "string",
-            "description": "SHA-256 over its public set as published, hex.",
+            "description": "The key-set digest of its published set, hex (WP-3.1).",
             "x-grpc-field": "digest"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ring epoch: it rises at every change of the published set (WP-3.1).",
+            "x-grpc-field": "epoch"
           }
         },
         "required": [
           "ring",
           "keys",
-          "digest"
+          "digest",
+          "epoch"
         ],
         "additionalProperties": false,
         "description": "One ring in the list.",
@@ -1521,12 +1898,12 @@
               "integer",
               "null"
             ],
-            "description": "The ring epoch; `null` until the ring bindings carry one (WP-3.1).",
+            "description": "The ring epoch: it rises at every change of the published set. Always present since WP-3.1; the null stays admitted.",
             "x-grpc-field": "epoch"
           },
           "digest": {
             "type": "string",
-            "description": "SHA-256 over the public set as published, hex: what a cache compares.",
+            "description": "The key-set digest of the published set, hex: `SHA-256(\"permguard.key-set.v1\\n\" || canonical-CBOR({ring, epoch, algorithm, keys_by_thumbprint[]}))`, what a peer persists with the epoch.",
             "x-grpc-field": "digest"
           },
           "binding": {
@@ -1534,7 +1911,7 @@
               "string",
               "null"
             ],
-            "description": "The signed binding of this ring to the Host identity; `null` until WP-3.1.",
+            "description": "The identity-signed binding of this epoch, COSE_Sign1 `permguard.host.ring-binding.v1`, base64url without padding; `null` for `host.identity`, which its chain authenticates, and until the identity signed one.",
             "x-grpc-field": "binding"
           },
           "cache_max_age": {
@@ -1548,7 +1925,7 @@
             "items": {
               "$ref": "#/components/schemas/HostJwk"
             },
-            "description": "Every key a client may need to verify with.",
+            "description": "The published set: prepublished, active and retired-public keys, each `kid` `<ring>:<thumbprint>`. A revoked or archived key is not in it.",
             "x-grpc-field": "keys"
           }
         },
@@ -2050,6 +2427,251 @@
         "additionalProperties": false,
         "description": "What a rotation answers.",
         "x-grpc-message": "permguard.host.v1.RotateIdentityResponse"
+      },
+      "RingBinding": {
+        "type": "object",
+        "properties": {
+          "ring": {
+            "type": "string",
+            "description": "The ring id.",
+            "x-grpc-field": "ring"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The epoch the binding is for.",
+            "x-grpc-field": "epoch"
+          },
+          "binding": {
+            "type": "string",
+            "description": "COSE_Sign1 `permguard.host.ring-binding.v1` by the identity key over {1 host_id, 2 ring, 3 epoch, 4 key_set_digest, 5 suite, 6 not_before, 7 not_after}, base64url without padding.",
+            "x-grpc-field": "binding"
+          }
+        },
+        "required": [
+          "ring",
+          "epoch",
+          "binding"
+        ],
+        "additionalProperties": false,
+        "description": "One identity-signed ring binding.",
+        "x-grpc-message": "permguard.host.v1.RingBinding"
+      },
+      "RingBindings": {
+        "type": "object",
+        "properties": {
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RingBinding"
+            },
+            "description": "One per ring with keys of its own.",
+            "x-grpc-field": "bindings"
+          }
+        },
+        "required": [
+          "bindings"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/ring-bindings` answers.",
+        "x-grpc-message": "permguard.host.v1.ListRingBindingsResponse"
+      },
+      "RotateRingBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the stored receipt.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ring epoch the caller read; the rotation produces the next one.",
+            "x-grpc-field": "expected_epoch"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_epoch"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/keys/{ring}/rotate` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RotateKeyRingRequest",
+        "x-grpc-only": [
+          "ring"
+        ],
+        "x-grpc-note": "`ring` travels in the path on REST."
+      },
+      "RingRotated": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the new epoch.",
+            "x-grpc-field": "receipt"
+          },
+          "kid": {
+            "type": "string",
+            "description": "The successor prepublished: it signs once `publish_ahead` has passed.",
+            "x-grpc-field": "kid"
+          }
+        },
+        "required": [
+          "receipt",
+          "kid"
+        ],
+        "additionalProperties": false,
+        "description": "What a ring rotation answers.",
+        "x-grpc-message": "permguard.host.v1.RotateKeyRingResponse"
+      },
+      "PlanKeyRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id"
+          },
+          "kid": {
+            "type": "string",
+            "description": "The key to revoke, `<ring>:<thumbprint>`.",
+            "x-grpc-field": "kid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Why, printable: kept in the ring's journal and the audit.",
+            "x-grpc-field": "reason"
+          },
+          "compromised_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the key is known or believed compromised, RFC 3339. Optional; `null` is absent.",
+            "x-grpc-field": "compromised_at"
+          },
+          "expected_epoch": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The ring epoch the caller read; a different one is a `conflict` carrying the current. Optional; `null` is absent.",
+            "x-grpc-field": "expected_epoch"
+          }
+        },
+        "required": [
+          "request_id",
+          "kid",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/keys/{ring}/revoke/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanKeyRevokeRequest",
+        "x-grpc-only": [
+          "ring"
+        ],
+        "x-grpc-note": "`ring` travels in the path on REST."
+      },
+      "KeyRevokePlan": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "The server-held plan's id.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ring epoch the plan was made against; the run is a `conflict` when it moved.",
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "What a key revocation plan answers: a server-held plan bound to the key, the reason and the compromise time, consumed once by its run.",
+        "x-grpc-message": "permguard.host.v1.PlanKeyRevokeResponse"
+      },
+      "RunKeyRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the stored receipt.",
+            "x-grpc-field": "request_id"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the plan step answered.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Its digest, as answered.",
+            "x-grpc-field": "plan_digest"
+          }
+        },
+        "required": [
+          "request_id",
+          "plan_id",
+          "plan_digest"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/keys/{ring}/revoke/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunKeyRevokeRequest",
+        "x-grpc-only": [
+          "ring"
+        ],
+        "x-grpc-note": "`ring` travels in the path on REST."
+      },
+      "KeyRevoked": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the ring epoch once the key left the set.",
+            "x-grpc-field": "receipt"
+          },
+          "kid": {
+            "type": "string",
+            "description": "The key revoked.",
+            "x-grpc-field": "kid"
+          }
+        },
+        "required": [
+          "receipt",
+          "kid"
+        ],
+        "additionalProperties": false,
+        "description": "What a key revocation answers.",
+        "x-grpc-message": "permguard.host.v1.RunKeyRevokeResponse"
       }
     }
   },
@@ -2061,12 +2683,7 @@
     },
     {
       "message": "permguard.host.v1.ListRingBindingsRequest",
-      "note": "an empty request; the bindings are shaped by WP-3.1",
-      "fields": []
-    },
-    {
-      "message": "permguard.host.v1.ListRingBindingsResponse",
-      "note": "empty until WP-3.1 defines the signed bindings; the rpc answers `not_served_yet`",
+      "note": "an empty request: every binding held is listed",
       "fields": []
     },
     {

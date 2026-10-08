@@ -58,7 +58,21 @@ pub fn verify_statement(
     let key = ring
         .keys
         .iter()
-        .find(|key| key.kid == kid)
+        .find(|key| {
+            // The kid the key is published under, or the bare thumbprint of exactly this key
+            // that a statement signed before the rings names (WP-3.1).
+            key.kid == kid
+                || (key.kty == "OKP"
+                    && permguard_objects::crypto::thumbprint::selects(
+                        &permguard_core::Jwk::okp(
+                            &key.kid,
+                            key.crv.as_deref().unwrap_or_default(),
+                            &key.alg,
+                            &key.x,
+                        ),
+                        &kid,
+                    ))
+        })
         .ok_or_else(|| format!("the ring has no key `{kid}`"))?;
     if key.kty != "OKP" || key.crv.as_deref() != Some("Ed25519") || key.alg != "EdDSA" {
         return Err(format!("key `{kid}` is not the pinned Ed25519 profile"));

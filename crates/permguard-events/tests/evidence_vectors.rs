@@ -154,3 +154,21 @@ fn todays_event_batch_is_reproduced_byte_for_byte_and_verifies() {
         .expect("the signature verifies");
     assert_eq!(verified, envelope);
 }
+
+/// WP-3.1: today's batch, signed under the bare thumbprint, verifies against the set published
+/// as `<ring>:<thumbprint>`, and not under that kid over other material.
+#[test]
+fn todays_event_batch_verifies_against_the_ring_prefixed_set() {
+    let vectors = vectors();
+    let batch = &vectors["event_batch"];
+    let key = VectorKey::new(&vectors);
+    let read = Signed::from_compact(text(batch, "compact")).expect("the compact form reads");
+    let mut published = key.public_keys().expect("keys");
+    let bare = published[0].kid.clone();
+    published[0].kid = format!("data.attest:{bare}");
+    read.verify(&published)
+        .expect("the legacy kid selects the key it is the thumbprint of");
+
+    published[0].x = B64.encode([7u8; 32]);
+    assert!(read.verify(&published).is_err());
+}

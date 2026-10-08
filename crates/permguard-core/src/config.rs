@@ -2012,7 +2012,22 @@ produce: use `EdDSA` or `ES256`"
             self.keys_rotate_every,
             self.keys_retain,
             "the server",
-        )
+        )?;
+
+        // The Host's rings keep a retired key in the published set for `retain`, then archive it
+        // out of every key set (WP-3.1, owner decision of 2026-10-08): `retain` has to cover the
+        // longest retention, or a sealed record outlives the published key that verifies it.
+        if self.keys_retain < self.audit_retention && !self.development_mode {
+            bail!(
+                "a retired key leaves the published set after `operations.keys.retain` \
+                 ({:?}), but the audit trail is kept for `audit.retention` ({:?}): a seal would \
+                 outlive the key that verifies it. Keep keys at least as long as the trail",
+                self.keys_retain,
+                self.audit_retention
+            );
+        }
+
+        Ok(())
     }
 
     /// The overlap rules a key lifecycle has to satisfy, for whoever owns it — the server or a realm.
@@ -2045,12 +2060,16 @@ produce: use `EdDSA` or `ES256`"
         // `KEY_SET_MAX_AGE`, so a key that starts signing sooner than that is verified against a set
         // that does not contain it. Development wants short windows to watch a rotation happen, and
         // has no verifiers to break.
-        if publish_ahead < KEY_SET_MAX_AGE && !self.development_mode {
+        // A verifier's clock may also run `time.max_clock_skew` behind (WP-3.1): the window is
+        // the cache horizon plus the skew.
+        let horizon = KEY_SET_MAX_AGE.saturating_add(self.time_max_clock_skew);
+        if publish_ahead < horizon && !self.development_mode {
             bail!(
                 "for {who}, a key would start signing {publish_ahead:?} after it is published, but \
-                 the key set is served with a cache of {KEY_SET_MAX_AGE:?}: every verifier holding a \
-                 cached copy would reject the signatures made in between. Publish it at least \
-                 {KEY_SET_MAX_AGE:?} ahead"
+                 the key set is served with a cache of {KEY_SET_MAX_AGE:?} and clocks may differ by \
+                 {:?}: every verifier holding a cached copy would reject the signatures made in \
+                 between. Publish it at least {horizon:?} ahead",
+                self.time_max_clock_skew
             );
         }
 

@@ -83,9 +83,14 @@ struct HostAuthz {
     store: Arc<permguard_host::authz::GrantStore>,
 }
 
-/// Builds a key ring; its rotation reads the Host's time guard (WP-2.12).
-type KeyManagerFactory = Box<
-    dyn Fn(&Config, &Arc<permguard_host::time::TimeGuard>) -> Result<Option<Arc<dyn KeyManager>>>
+/// Builds one of the Host's rings (WP-3.1): laid out on the volume, a legacy ring migrated
+/// first, opened, bound by the identity and recorded by the audit; its rotation reads the Host's
+/// time guard (WP-2.12).
+type RingFactory = Box<
+    dyn Fn(
+            &Config,
+            &permguard_host::keys::registry::Opener<'_>,
+        ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>>
         + Send
         + Sync,
 >;
@@ -93,27 +98,14 @@ type KeyManagerFactory = Box<
 /// Builds the catalog of zones and ledgers a deployment keeps, from its effective configuration.
 type CatalogFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn Catalog>>> + Send + Sync>;
 
-/// Builds a plane's signing ring — a separate ring from the one sealing the audit trail, on
-/// purpose. The control plane's signs what it serves (git-like head statements today); the data
-/// plane's will sign the decision responses it returns.
-type PlaneSigningKeysFactory = Box<
-    dyn Fn(&Config, &Arc<permguard_host::time::TimeGuard>) -> Result<Option<Arc<dyn KeyManager>>>
-        + Send
-        + Sync,
->;
-
 /// Builds the audit destination the effective configuration names.
 ///
 /// Returning nothing means "the one this app was composed with", so a build that offers a choice of
 /// destinations and a build that has exactly one are the same code path.
 ///
-/// It is handed the key ring because a destination may want to sign what it writes — the file trail
-/// seals its head with it — and the ring is composed by the same pass.
-type AuditSinkFactory = Box<
-    dyn Fn(&Config, Option<&Arc<dyn KeyManager>>) -> Result<Option<Arc<dyn AuditSink>>>
-        + Send
-        + Sync,
->;
+/// The Host's rings are composed after the audit engine, which records their transitions
+/// (WP-3.1): a destination is built before them and is handed none.
+type AuditSinkFactory = Box<dyn Fn(&Config) -> Result<Option<Arc<dyn AuditSink>>> + Send + Sync>;
 
 /// Builds one realm — its keys, its trail, its pseudonymisation — from its resolved configuration.
 ///
@@ -188,10 +180,10 @@ pub struct App {
     startup_checks: Vec<StartupCheck>,
     shutdown_factory: Option<ShutdownFactory>,
     secrets_factory: Option<SecretStoreFactory>,
-    keys_factory: Option<KeyManagerFactory>,
+    keys_factory: Option<RingFactory>,
     catalog_factory: Option<CatalogFactory>,
-    control_signing_keys_factory: Option<PlaneSigningKeysFactory>,
-    data_signing_keys_factory: Option<PlaneSigningKeysFactory>,
+    control_signing_keys_factory: Option<RingFactory>,
+    data_signing_keys_factory: Option<RingFactory>,
     audit_factory: Option<AuditSinkFactory>,
     realm_factory: Option<RealmFactory>,
     audit_verifier: Option<AuditVerifier>,
@@ -308,8 +300,8 @@ impl App {
     where
         F: Fn(
                 &Config,
-                &Arc<permguard_host::time::TimeGuard>,
-            ) -> Result<Option<Arc<dyn KeyManager>>>
+                &permguard_host::keys::registry::Opener<'_>,
+            ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>>
             + Send
             + Sync
             + 'static,
@@ -325,8 +317,8 @@ impl App {
     where
         F: Fn(
                 &Config,
-                &Arc<permguard_host::time::TimeGuard>,
-            ) -> Result<Option<Arc<dyn KeyManager>>>
+                &permguard_host::keys::registry::Opener<'_>,
+            ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>>
             + Send
             + Sync
             + 'static,
@@ -341,8 +333,8 @@ impl App {
     where
         F: Fn(
                 &Config,
-                &Arc<permguard_host::time::TimeGuard>,
-            ) -> Result<Option<Arc<dyn KeyManager>>>
+                &permguard_host::keys::registry::Opener<'_>,
+            ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>>
             + Send
             + Sync
             + 'static,
@@ -367,10 +359,7 @@ impl App {
     /// with a single destination needs none of this.
     pub fn with_audit_factory<F>(mut self, factory: F) -> Self
     where
-        F: Fn(&Config, Option<&Arc<dyn KeyManager>>) -> Result<Option<Arc<dyn AuditSink>>>
-            + Send
-            + Sync
-            + 'static,
+        F: Fn(&Config) -> Result<Option<Arc<dyn AuditSink>>> + Send + Sync + 'static,
     {
         self.audit_factory = Some(Box::new(factory));
 
@@ -818,13 +807,9 @@ impl App {
     }
 
     /// Builds the audit destination the effective configuration names.
-    pub fn audit_for(
-        &self,
-        config: &Config,
-        keys: Option<&Arc<dyn KeyManager>>,
-    ) -> Result<Arc<dyn AuditSink>> {
+    pub fn audit_for(&self, config: &Config) -> Result<Arc<dyn AuditSink>> {
         let chosen = match &self.audit_factory {
-            Some(factory) => factory(config, keys)?,
+            Some(factory) => factory(config)?,
             None => None,
         };
 
@@ -839,36 +824,36 @@ impl App {
         }
     }
 
-    /// Builds the control plane's signing ring, when this build composes one.
+    /// Builds the control plane's signing ring, `control.attest`, when this build composes one.
     pub fn control_signing_keys_for(
         &self,
         config: &Config,
-        time: &Arc<permguard_host::time::TimeGuard>,
-    ) -> Result<Option<Arc<dyn KeyManager>>> {
+        rings: &permguard_host::keys::registry::Opener<'_>,
+    ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>> {
         match &self.control_signing_keys_factory {
-            Some(factory) => factory(config, time),
+            Some(factory) => factory(config, rings),
             None => Ok(None),
         }
     }
 
-    /// Builds the data plane's signing ring, when this build composes one.
+    /// Builds the data plane's signing ring, `data.attest`, when this build composes one.
     pub fn data_signing_keys_for(
         &self,
         config: &Config,
-        time: &Arc<permguard_host::time::TimeGuard>,
-    ) -> Result<Option<Arc<dyn KeyManager>>> {
+        rings: &permguard_host::keys::registry::Opener<'_>,
+    ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>> {
         match &self.data_signing_keys_factory {
-            Some(factory) => factory(config, time),
+            Some(factory) => factory(config, rings),
             None => Ok(None),
         }
     }
 
-    /// Builds the key ring the effective configuration names.
+    /// Builds the Host's operations ring, `host.operations`, when the configuration enables it.
     pub fn keys_for(
         &self,
         config: &Config,
-        time: &Arc<permguard_host::time::TimeGuard>,
-    ) -> Result<Option<Arc<dyn KeyManager>>> {
+        rings: &permguard_host::keys::registry::Opener<'_>,
+    ) -> Result<Option<Arc<permguard_host::keys::ring::Ring>>> {
         if !config.keys_enabled() {
             return Ok(None);
         }
@@ -878,7 +863,7 @@ impl App {
             .as_ref()
             .context("signing keys are enabled but this build composes no key manager")?;
 
-        factory(config, time)
+        factory(config, rings)
     }
 
     /// Builds the registry of realms this deployment hosts.
@@ -1340,9 +1325,12 @@ impl App {
         // No subsystem is served while a migration is between two sides, and no layout this build
         // does not read is served at all (WP-1.9): an interrupted migration is landed by its
         // command, a downgrade is possible only where every active layout is understood.
-        permguard_host::storage::migrate::check_servable(&volume, &self.layouts).with_context(
-            || format!("checking the layouts on {}", config.working_dir().display()),
-        )?;
+        // The rings' own layouts are always read here: this build lays them out (WP-3.1).
+        let mut layouts = self.layouts.clone();
+        layouts.extend(permguard_host::keys::migration::layouts());
+        permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
+            format!("checking the layouts on {}", config.working_dir().display())
+        })?;
 
         // The Host's one time service (WP-2.12), opened against the high-water mark the volume
         // keeps: a clock set back across a restart is in anomaly from here on.
@@ -1420,8 +1408,7 @@ impl App {
         // done by the records made under it.
         witness::check(config, pseudonymizer.as_deref())?;
 
-        let keys = self.keys_for(config, &time)?;
-        let destination = self.audit_for(config, keys.as_ref())?;
+        let destination = self.audit_for(config)?;
         // The audit engine (WP-3.5): every record of the process in a trail per (class,
         // resource) under `host/audit/trails`, whatever `audit.destination` says; the sink the
         // destination chose sees every record too, the log stream by default, nothing under
@@ -1503,8 +1490,39 @@ impl App {
             also,
         ));
         let catalog = self.catalog_for(config)?;
-        let control_signing_keys = self.control_signing_keys_for(config, &time)?;
-        let data_signing_keys = self.data_signing_keys_for(config, &time)?;
+        // The Host's rings (WP-3.1): laid out under `host/keys`, a legacy `ring.json` directory
+        // migrated first, every set bound by the identity and every transition recorded by the
+        // audit engine; an operator's rotation or revocation a crash left open resolved now.
+        let opener = permguard_host::keys::registry::Opener {
+            volume: &volume,
+            time: Arc::clone(&time),
+            binder: Some(Arc::clone(&host_identity) as Arc<dyn permguard_host::keys::ring::Binder>),
+            recorder: Some(
+                Arc::clone(&audit_engine) as Arc<dyn permguard_host::keys::ring::Recorder>
+            ),
+            profile: config.assurance().profile(),
+        };
+        let keys = self
+            .keys_for(config, &opener)
+            .context("opening the host.operations key ring")?;
+        let control_signing_keys = self
+            .control_signing_keys_for(config, &opener)
+            .context("opening the control.attest key ring")?;
+        let data_signing_keys = self
+            .data_signing_keys_for(config, &opener)
+            .context("opening the data.attest key ring")?;
+        let key_registry = Arc::new(permguard_host::keys::registry::Registry::new(
+            Some(Arc::clone(&host_identity)),
+            [&keys, &control_signing_keys, &data_signing_keys]
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect(),
+        ));
+        mutations
+            .recover(key_registry.as_ref())
+            .context("recovering the key ring mutations a crash left open")?;
+        let keys: Option<Arc<dyn KeyManager>> = keys.map(|ring| ring as Arc<dyn KeyManager>);
 
         // Every issuer this deployment hosts, each with its own keys and trail, built once here. A
         // plain single-issuer server has none and this is the empty registry.
@@ -1578,34 +1596,11 @@ impl App {
                 recovered_truncated_bytes = recovery.truncated_bytes,
                 "the replay journal is open"
             );
-            let mut rings: Vec<(String, Arc<dyn KeyManager>)> = Vec::new();
-            if let Some(keys) = context.keys() {
-                rings.push((
-                    permguard_host::composition::HOST_OPERATIONS
-                        .as_str()
-                        .to_owned(),
-                    Arc::clone(keys),
-                ));
-            }
-            if let Some(keys) = &control_signing_keys {
-                rings.push((
-                    permguard_host::composition::CONTROL_ATTEST
-                        .as_str()
-                        .to_owned(),
-                    Arc::clone(keys),
-                ));
-            }
-            if let Some(keys) = &data_signing_keys {
-                rings.push((
-                    permguard_host::composition::DATA_ATTEST.as_str().to_owned(),
-                    Arc::clone(keys),
-                ));
-            }
             let api = HostApi::new(Composition {
                 authorization: Arc::clone(&authorization),
                 store: Some(grants),
                 replay,
-                rings,
+                keys: Arc::clone(&key_registry),
                 health: context.health().clone(),
                 // The profile in force, the controls added and the relaxations the values amount
                 // to: the block discovery publishes too (WP-2.8).
@@ -1674,10 +1669,12 @@ impl App {
                 ));
         }
         if let Some(keys) = control_signing_keys {
+            let keys: Arc<dyn KeyManager> = keys;
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::CONTROL_ATTEST, keys);
         }
         if let Some(keys) = data_signing_keys {
+            let keys: Arc<dyn KeyManager> = keys;
             context = context.with_maintained_ring("data-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::DATA_ATTEST, keys);
         }
@@ -1736,6 +1733,71 @@ pub fn exit_code_of(error: &anyhow::Error) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// `migrate keys` (WP-3.1): every legacy ring with a `ring.json` migrated into `host/keys/<ring>`
+/// with the backup declared, offline, holding the volume.
+fn migrate_keys(
+    volume_root: &std::path::Path,
+    backup: &str,
+    overrides: &[String],
+    out: &mut dyn Write,
+) -> Result<()> {
+    use permguard_host::keys::migration::{lay_out, needs_migration};
+    use permguard_host::keys::ring::{CONTROL_ATTEST, DATA_ATTEST, HOST_OPERATIONS};
+    use permguard_host::storage::volume::hold;
+
+    if backup.trim().is_empty() {
+        anyhow::bail!("`--backup` names the external backup taken before the migration");
+    }
+    let mut directories = vec![
+        (
+            HOST_OPERATIONS,
+            volume_root.join("operations/keys/operations"),
+        ),
+        (CONTROL_ATTEST, volume_root.join("operations/keys/control")),
+        (DATA_ATTEST, volume_root.join("operations/keys/data")),
+    ];
+    for given in overrides {
+        let (ring, directory) = given
+            .split_once('=')
+            .with_context(|| format!("`--legacy {given}` is not `<ring>=<directory>`"))?;
+        let held = directories
+            .iter_mut()
+            .find(|(name, _)| *name == ring)
+            .with_context(|| format!("`{ring}` is not a ring with a legacy directory"))?;
+        held.1 = std::path::PathBuf::from(directory);
+    }
+    let volume = hold(volume_root)
+        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    let now = permguard_host::authz::store::now();
+    for (ring, directory) in directories {
+        if !needs_migration(&volume, ring, Some(&directory))
+            .with_context(|| format!("reading the layout of {ring}"))?
+        {
+            writeln!(out, "{ring}: nothing to migrate at {}", directory.display())
+                .context("writing the result")?;
+            continue;
+        }
+        lay_out(
+            &volume,
+            ring,
+            Some(&directory),
+            permguard_core::assurance::AssuranceProfile::Production,
+            Some(backup.to_owned()),
+            now,
+        )
+        .with_context(|| format!("migrating the legacy ring of {ring}"))?;
+        writeln!(
+            out,
+            "{ring}: migrated from {} into host/keys/{ring}; the private halves of its retired \
+             keys stay in the old directory until `migrate finalize --subsystem {}` removes it",
+            directory.display(),
+            permguard_host::keys::migration::subsystem(ring)
+        )
+        .context("writing the result")?;
+    }
+    Ok(())
+}
+
 /// Runs one `migrate` command offline, holding the volume (WP-1.9).
 fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
     use permguard_host::storage::migrate::{self, Layout};
@@ -1747,6 +1809,11 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
         MigrateCommand::Recover { volume, subsystem }
         | MigrateCommand::Rollback { volume, subsystem }
         | MigrateCommand::Finalize { volume, subsystem } => (volume, Some(subsystem.as_str())),
+        MigrateCommand::Keys {
+            volume,
+            backup,
+            legacy,
+        } => return migrate_keys(volume, backup, legacy, out),
     };
     let volume = hold(volume_root)
         .with_context(|| format!("holding the volume at {}", volume_root.display()))?;

@@ -131,6 +131,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "ring_binding"
+path = "fuzz_targets/ring_binding.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "grant_transition"
 path = "fuzz_targets/grant_transition.rs"
 test = false

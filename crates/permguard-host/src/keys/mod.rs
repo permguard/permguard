@@ -3,20 +3,30 @@
 
 //! The common key provider port (WP-2.2): every private key the Host holds is generated, used
 //! and destroyed through a [`KeyProvider`], so no part of the server or a Plane keeps a key
-//! store of its own. The Host identity is its first user; the rings (WP-3.1) and the custody
-//! providers (WP-3.2) follow.
+//! store of its own. The Host identity is its first user; the [`ring`] registry (WP-3.1) its
+//! second; the custody providers (WP-3.2) follow.
 //!
 //! | Provider            | Custody                                                                      |
 //! | ------------------- | ---------------------------------------------------------------------------- |
 //! | [`FileKeyProvider`] | PKCS#8 in `<slot>.key`, `0600`, below a `0700` directory: plaintext custody  |
 //!
 //! A slot names one key; the private bytes never leave the provider, and a slot once generated
-//! is never generated again: a lost key is not silently replaced.
+//! is never generated again: a lost key is not silently replaced. A ring's slot is the key's own
+//! RFC 7638 thumbprint ([`KeyProvider::generate_addressed`]), so the slot cannot name other
+//! material.
+
+pub mod migration;
+pub mod record;
+pub mod registry;
+pub mod ring;
 
 use std::fmt;
 
 use permguard_objects::crypto::suite::{SigningKey, Suite};
+use permguard_objects::crypto::thumbprint;
 use permguard_objects::digest::Digest;
+
+pub use permguard_objects::crypto::thumbprint::selects;
 
 use crate::storage::write::{Published, publish_immutable};
 use crate::storage::{Dir, StorageError, tombstone};
@@ -85,6 +95,11 @@ pub trait KeyProvider: Send + Sync {
     fn custody(&self) -> Custody;
     /// Generates a key of `suite` in `slot`, which must be empty, and answers its public half.
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError>;
+    /// Generates a key of `suite` in the slot named by its RFC 7638 thumbprint, and answers the
+    /// slot and the public half: a ring's key (WP-3.1).
+    fn generate_addressed(&self, suite: Suite) -> Result<(String, PublicKey), KeyError>;
+    /// The slots the provider holds a key in.
+    fn slots(&self) -> Result<Vec<String>, KeyError>;
     /// The public half of the key in `slot`, read as `suite`.
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError>;
     /// Signs `message` with the key in `slot`, read as `suite`.
@@ -112,18 +127,46 @@ impl FileKeyProvider {
         Self { dir }
     }
 
+    /// A slot is letters, digits, `-` and `_`: an identity epoch, a ring key's base64url
+    /// thumbprint (owner decision of 2026-10-08).
     fn name_of(slot: &str) -> Result<String, KeyError> {
         if slot.is_empty()
             || !slot
                 .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
-            || slot.starts_with('.')
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         {
             return Err(KeyError::Malformed(format!(
-                "`{slot}` is not a key slot: lowercase letters, digits, `-` and `.`"
+                "`{slot}` is not a key slot: letters, digits, `-` and `_`"
             )));
         }
         Ok(format!("{slot}.key"))
+    }
+
+    /// Takes over a key held before the rings (WP-3.1): `pkcs8` of `suite` lands in the slot named
+    /// by its thumbprint, which is answered with the public half. The migration of a legacy ring
+    /// is its only caller; a key is still never generated twice.
+    pub fn import(&self, suite: Suite, pkcs8: &[u8]) -> Result<(String, PublicKey), KeyError> {
+        let key = SigningKey::from_pkcs8(suite, pkcs8)
+            .map_err(|error| KeyError::Malformed(format!("reading a {suite} key: {error:?}")))?;
+        let slot = thumbprint::jwk_thumbprint(suite, key.public_key())
+            .map_err(|error| KeyError::Malformed(error.to_string()))?;
+        self.publish(&slot, suite, pkcs8)?;
+        let public = self.public(&slot, suite)?;
+        Ok((slot, public))
+    }
+
+    /// Publishes `pkcs8` as `slot`, which must hold nothing yet.
+    fn publish(&self, slot: &str, suite: Suite, pkcs8: &[u8]) -> Result<(), KeyError> {
+        let name = Self::name_of(slot)?;
+        if self.dir.read(&name)?.is_some() {
+            return Err(KeyError::Exists(slot.to_owned()));
+        }
+        let readable = |bytes: &[u8]| SigningKey::from_pkcs8(suite, bytes).is_ok();
+        let same = |bytes: &[u8]| bytes == pkcs8;
+        match publish_immutable(&self.dir, &name, pkcs8, &readable, &same)? {
+            Published::Written => Ok(()),
+            Published::AlreadyThere => Err(KeyError::Exists(slot.to_owned())),
+        }
     }
 
     fn load(&self, slot: &str, suite: Suite) -> Result<SigningKey, KeyError> {
@@ -152,19 +195,37 @@ impl KeyProvider for FileKeyProvider {
     }
 
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
-        let name = Self::name_of(slot)?;
-        if self.dir.read(&name)?.is_some() {
-            return Err(KeyError::Exists(slot.to_owned()));
-        }
-        let pkcs8 = SigningKey::generate_pkcs8(suite)
-            .map_err(|error| KeyError::Malformed(format!("generating a {suite} key: {error:?}")))?;
-        let readable = |bytes: &[u8]| SigningKey::from_pkcs8(suite, bytes).is_ok();
-        let same = |bytes: &[u8]| bytes == pkcs8.as_slice();
-        match publish_immutable(&self.dir, &name, &pkcs8, &readable, &same)? {
-            Published::Written => {}
-            Published::AlreadyThere => return Err(KeyError::Exists(slot.to_owned())),
-        }
+        Self::name_of(slot)?;
+        let pkcs8 =
+            zeroize::Zeroizing::new(SigningKey::generate_pkcs8(suite).map_err(|error| {
+                KeyError::Malformed(format!("generating a {suite} key: {error:?}"))
+            })?);
+        self.publish(slot, suite, &pkcs8)?;
         self.public(slot, suite)
+    }
+
+    fn generate_addressed(&self, suite: Suite) -> Result<(String, PublicKey), KeyError> {
+        let pkcs8 =
+            zeroize::Zeroizing::new(SigningKey::generate_pkcs8(suite).map_err(|error| {
+                KeyError::Malformed(format!("generating a {suite} key: {error:?}"))
+            })?);
+        let key = SigningKey::from_pkcs8(suite, &pkcs8)
+            .map_err(|error| KeyError::Malformed(format!("reading a {suite} key: {error:?}")))?;
+        let slot = thumbprint::jwk_thumbprint(suite, key.public_key())
+            .map_err(|error| KeyError::Malformed(error.to_string()))?;
+        self.publish(&slot, suite, &pkcs8)?;
+        let public = self.public(&slot, suite)?;
+        Ok((slot, public))
+    }
+
+    fn slots(&self) -> Result<Vec<String>, KeyError> {
+        Ok(self
+            .dir
+            .names()?
+            .into_iter()
+            .filter_map(|name| name.strip_suffix(".key").map(str::to_owned))
+            .filter(|slot| Self::name_of(slot).is_ok())
+            .collect())
     }
 
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
@@ -232,6 +293,18 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600, "owner only");
         }
+        let (slot, public) = provider
+            .generate_addressed(Suite::Ed25519Sha256V1)
+            .expect("generated under its thumbprint");
+        assert_eq!(
+            slot,
+            thumbprint::jwk_thumbprint(Suite::Ed25519Sha256V1, &public.bytes).expect("thumbprint")
+        );
+        let mut slots = provider.slots().expect("listed");
+        slots.sort();
+        let mut expected = vec!["1".to_owned(), "2".to_owned(), slot];
+        expected.sort();
+        assert_eq!(slots, expected);
         provider.destroy("1").expect("destroyed");
         assert!(matches!(
             provider.sign("1", Suite::Ed25519Sha256V1, b"m"),

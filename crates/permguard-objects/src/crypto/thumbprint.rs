@@ -119,6 +119,39 @@ pub fn split_kid(kid: &str) -> Option<(&str, &str)> {
     (!ring.is_empty() && is_thumbprint(thumbprint)).then_some((ring, thumbprint))
 }
 
+/// The RFC 7638 thumbprint of a published key, from the members its JWK spells: `crv`, `kty`, `x`
+/// and, for a NIST curve, `y`. `None` for a key type or curve this profile does not publish, or a
+/// coordinate that is not unpadded base64url of the curve's length.
+pub fn jwk_thumbprint_of(jwk: &permguard_core::keys::Jwk) -> Option<String> {
+    let suite = match (jwk.kty.as_str(), jwk.crv.as_deref(), jwk.y.as_deref()) {
+        ("OKP", Some("Ed25519"), None) => Suite::Ed25519Sha256V1,
+        ("EC", Some("P-256"), Some(_)) => Suite::P256Sha256V1,
+        _ => return None,
+    };
+    let mut public = B64.decode(&jwk.x).ok()?;
+    if let Some(y) = jwk.y.as_deref() {
+        public.insert(0, 0x04);
+        public.extend(B64.decode(y).ok()?);
+    }
+    jwk_thumbprint(suite, &public).ok()
+}
+
+/// Whether the `kid` an artifact names selects the published key `jwk` (WP-3.1).
+///
+/// Either the kid the key is published under, or the bare thumbprint an artifact signed before
+/// kids carried their ring names: accepted only when the key is published as
+/// `<ring>:<thumbprint>` and that thumbprint is the key's own, so a legacy kid stays bound to the
+/// material it names (owner decision of 2026-10-08).
+pub fn selects(jwk: &permguard_core::keys::Jwk, kid: &str) -> bool {
+    if jwk.kid == kid {
+        return true;
+    }
+    let Some((_, published)) = split_kid(&jwk.kid) else {
+        return false;
+    };
+    published == kid && jwk_thumbprint_of(jwk).as_deref() == Some(kid)
+}
+
 /// Whether `value` is an RFC 7638 SHA-256 thumbprint in its only encoding: 43 characters of
 /// unpadded base64url that decode to 32 bytes and encode back to themselves.
 pub fn is_thumbprint(value: &str) -> bool {
@@ -335,6 +368,41 @@ mod tests {
             jwk_thumbprint(Suite::P256Sha256V1, &[0u8; 65]),
             Err(ThumbprintError::KeyMalformed { .. })
         ));
+    }
+
+    #[test]
+    fn test_a_legacy_kid_selects_only_the_key_whose_thumbprint_it_is() {
+        use permguard_core::keys::Jwk;
+
+        for suite in Suite::ALL {
+            let key =
+                SigningKey::from_pkcs8(suite, &SigningKey::generate_pkcs8(suite).unwrap()).unwrap();
+            let thumbprint = jwk_thumbprint(suite, key.public_key()).unwrap();
+            let canonical = kid("data.attest", &thumbprint);
+            let public = key.public_key();
+            let jwk = |kid: &str| match suite {
+                Suite::Ed25519Sha256V1 => Jwk::okp(kid, "Ed25519", "EdDSA", B64.encode(public)),
+                Suite::P256Sha256V1 => Jwk::ec(
+                    kid,
+                    "P-256",
+                    "ES256",
+                    B64.encode(&public[1..33]),
+                    B64.encode(&public[33..65]),
+                ),
+            };
+            let published = jwk(&canonical);
+            assert_eq!(jwk_thumbprint_of(&published), Some(thumbprint.clone()));
+            assert!(selects(&published, &canonical));
+            assert!(selects(&published, &thumbprint), "the legacy alias");
+            assert!(!selects(&published, &kid("control.attest", &thumbprint)));
+            // A bare kid naming another key's thumbprint never selects this one, nor does the
+            // alias apply to a key published under a bare kid of its own.
+            let other =
+                SigningKey::from_pkcs8(suite, &SigningKey::generate_pkcs8(suite).unwrap()).unwrap();
+            let foreign = jwk_thumbprint(suite, other.public_key()).unwrap();
+            assert!(!selects(&jwk(&kid("data.attest", &foreign)), &foreign));
+            assert!(!selects(&jwk("label"), &thumbprint));
+        }
     }
 
     const A: &str = "FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk";

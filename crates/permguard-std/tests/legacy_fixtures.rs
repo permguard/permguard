@@ -258,3 +258,114 @@ fn from_hex(text: &str) -> Vec<u8> {
         .map(|at| u8::from_str_radix(&text[at..at + 2], 16).expect("hex"))
         .collect()
 }
+
+/// WP-3.1: the v1 key ring fixture and the audit fixture's sealing ring migrate once through the
+/// WP-1.9 framework into `host/keys/host.operations`; the carried key signs with the same
+/// material under its ring-prefixed kid, and the seal made under the bare thumbprint still
+/// verifies against the migrated ring through the legacy alias.
+#[test]
+fn test_the_v1_key_rings_migrate_to_the_host_ring_and_old_seals_keep_verifying() {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::keys::migration::{Laid, lay_out};
+    use permguard_host::keys::ring::{HOST_OPERATIONS, Policy, Ring};
+    use permguard_host::keys::selects;
+    use permguard_host::storage::volume::Volume;
+
+    let ring_policy = Policy {
+        publish_ahead: Duration::from_secs(600),
+        rotate_every: Duration::from_secs(30 * 86_400),
+        retain: Duration::from_secs(365 * 86_400),
+    };
+    let time = || {
+        Arc::new(permguard_host::time::TimeGuard::system(
+            Duration::from_secs(30),
+        ))
+    };
+
+    // The keys fixture: the active key is carried and signs as before.
+    let root = scratch("keys-migrated");
+    let legacy = root.join("operations/keys/operations");
+    copy_dir(&Path::new(FIXTURES).join("keys"), &legacy);
+    let captured = captured_kid(&legacy.join("ring.json"));
+    {
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        assert_eq!(
+            lay_out(
+                &volume,
+                HOST_OPERATIONS,
+                Some(&legacy),
+                AssuranceProfile::Development,
+                None,
+                1_759_276_900,
+            )
+            .expect("migrated"),
+            Laid::Migrated
+        );
+        let ring = Ring::open(
+            &volume,
+            HOST_OPERATIONS,
+            permguard_host::identity::Suite::Ed25519Sha256V1,
+            ring_policy,
+            time(),
+        )
+        .expect("the migrated ring opens");
+        let keys = ring.public_keys().expect("published");
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].kid, format!("{HOST_OPERATIONS}:{captured}"));
+        assert!(selects(&keys[0], &captured), "the legacy kid selects it");
+        let signature = ring.sign(b"after the migration").expect("signs");
+        assert_eq!(signature.key_id().as_str(), keys[0].kid);
+        assert!(verify_signature(
+            &keys[0],
+            b"after the migration",
+            signature.bytes()
+        ));
+        assert!(
+            legacy.join("ring.json").exists(),
+            "the old generation is kept"
+        );
+    }
+    let _ = fs::remove_dir_all(&root);
+
+    // The audit fixture: its seal names the bare thumbprint and verifies after the migration.
+    let root = scratch("seal-migrated");
+    let fixture = Path::new(FIXTURES).join("audit");
+    copy_dir(&fixture, &root.join("trail-fixture"));
+    let legacy = root.join("operations/keys/operations");
+    copy_dir(&fixture.join("keys"), &legacy);
+    let verification = verify(&root.join("trail-fixture").join("trail")).expect("verifies");
+    let seal = &verification.seals[0];
+    let sealer = seal.kid.clone().expect("the seal names its key");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    lay_out(
+        &volume,
+        HOST_OPERATIONS,
+        Some(&legacy),
+        AssuranceProfile::Development,
+        None,
+        1_759_276_900,
+    )
+    .expect("migrated");
+    let keys = Ring::open(
+        &volume,
+        HOST_OPERATIONS,
+        permguard_host::identity::Suite::Ed25519Sha256V1,
+        ring_policy,
+        time(),
+    )
+    .expect("opens")
+    .public_keys()
+    .expect("published");
+    let jwk = keys
+        .iter()
+        .find(|key| selects(key, &sealer))
+        .expect("the sealing key is selected by its bare thumbprint");
+    assert_ne!(jwk.kid, sealer, "published under its ring-prefixed kid");
+    assert!(verify_signature(
+        jwk,
+        &seal.signed_bytes().expect("the seal body encodes"),
+        &from_hex(seal.signature.as_deref().expect("the seal is signed"))
+    ));
+    drop(volume);
+    let _ = fs::remove_dir_all(&root);
+}

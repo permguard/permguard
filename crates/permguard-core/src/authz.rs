@@ -64,6 +64,9 @@ pub mod operations {
     /// Rotate the Host identity, and reset it when the memberships exist: the "identity grant"
     /// of the blueprint, granted only explicitly (WP-2.2, owner decision of 2026-10-08).
     pub const IDENTITY_ADMIN: &str = "identity.admin";
+    /// Rotate and revoke the Host's key rings, `host.identity` excepted: the "key grant" of the
+    /// blueprint, granted only explicitly (WP-3.1, owner decision of 2026-10-08).
+    pub const KEYS_ADMIN: &str = "keys.admin";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -78,6 +81,7 @@ pub mod operations {
         CONFIG_READ,
         IDENTITY_READ,
         IDENTITY_ADMIN,
+        KEYS_ADMIN,
     ];
 
     /// Whether `operation` is registered.

@@ -163,7 +163,7 @@ impl Host {
             authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
             store: Some(store),
             replay,
-            rings: Vec::new(),
+            keys: Arc::new(permguard_host::keys::registry::Registry::default()),
             health: Health::new(),
             assurance: Assurance::of(
                 &permguard_core::assurance::Assurance::new(AssuranceProfile::Development, [])

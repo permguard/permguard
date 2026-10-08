@@ -22,7 +22,6 @@ use permguard_core::config::{
     SETTING_ADMIN_ADDR, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_KEY, SETTING_AUTOGENERATE,
     SETTING_DEVELOPMENT_MODE, SETTING_WORKING_DIR,
 };
-use permguard_core::keys::{Jwk, KeyId, KeyManager, Maintenance, PublicSet, Sign};
 use permguard_core::{
     AccessDenial, BuildSettings, Config, Disclosure, Health, Layers, PeerIdentity, ProductIdentity,
     ServerContext, Service as _,
@@ -56,6 +55,11 @@ const MINTED: &[&str] = &[
     "document",
     "successions",
     "first_public_key",
+    // The ring keys each facade generated, and what names and binds them (WP-3.1).
+    "kid",
+    "x",
+    "digest",
+    "binding",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -67,35 +71,6 @@ fn scratch(tag: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&path);
     std::fs::create_dir_all(&path).expect("the scratch directory is created");
     path
-}
-
-/// A ring with one fixed public key: the Host API never signs or maintains.
-struct Fixed;
-
-impl Sign for Fixed {
-    fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
-        unreachable!("the Host API never signs")
-    }
-
-    fn sign(&self, _: &[u8]) -> permguard_core::keys::Result<permguard_core::keys::Signature> {
-        unreachable!("the Host API never signs")
-    }
-}
-
-impl PublicSet for Fixed {
-    fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
-        Ok(vec![Jwk::okp("k1", "Ed25519", "EdDSA", "AAAA")])
-    }
-}
-
-impl KeyManager for Fixed {
-    fn name(&self) -> &'static str {
-        "fixed"
-    }
-
-    fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
-        unreachable!("the Host API never maintains")
-    }
 }
 
 /// The credential mapper of these tests: `Bearer <name>` is the principal `<name>`, so a vector
@@ -181,6 +156,29 @@ fn facade(tag: &str) -> Arc<HostApi> {
     .expect("the administrator is issued");
     let (replay, _) =
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay opens");
+    // The operations ring, on the volume and bound by the identity (WP-3.1).
+    let ring = Arc::new(
+        permguard_host::keys::ring::Ring::open(
+            &volume,
+            HOST_OPERATIONS.as_str(),
+            permguard_host::identity::Suite::Ed25519Sha256V1,
+            permguard_host::keys::ring::Policy {
+                publish_ahead: std::time::Duration::from_secs(600),
+                rotate_every: std::time::Duration::from_secs(3600),
+                retain: std::time::Duration::from_secs(7200),
+            },
+            Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+        )
+        .expect("the ring opens")
+        .with_binder(identity.clone()),
+    );
+    permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
+    let keys = Arc::new(permguard_host::keys::registry::Registry::new(
+        Some(Arc::clone(&identity)),
+        vec![ring],
+    ));
     // The volume stays claimed for the life of the test process: the store holds its directory.
     std::mem::forget(volume);
     Arc::new(HostApi::new(Composition {
@@ -193,7 +191,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
         )),
         store: Some(store),
         replay,
-        rings: vec![(HOST_OPERATIONS.as_str().to_owned(), Arc::new(Fixed))],
+        keys,
         health: Health::new(),
         assurance: Assurance::of(
             &permguard_core::assurance::Assurance::new(
@@ -580,6 +578,118 @@ impl Transport {
         }
     }
 
+    async fn rotate_ring(
+        &self,
+        who: Option<&str>,
+        ring: &str,
+        request_id: &str,
+        expected_epoch: u64,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/keys/{ring}/rotate"),
+                    who,
+                    Some(json!({ "request_id": request_id, "expected_epoch": expected_epoch })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.keys()
+                    .await
+                    .rotate_key_ring(Self::grpc_request(
+                        who,
+                        host_v1::RotateKeyRingRequest {
+                            ring: ring.to_owned(),
+                            request_id: request_id.to_owned(),
+                            expected_epoch,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn plan_key_revoke(
+        &self,
+        who: Option<&str>,
+        ring: &str,
+        request_id: &str,
+        kid: &str,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/keys/{ring}/revoke/plan"),
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "kid": kid,
+                        "reason": "key-compromise",
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.keys()
+                    .await
+                    .plan_key_revoke(Self::grpc_request(
+                        who,
+                        host_v1::PlanKeyRevokeRequest {
+                            ring: ring.to_owned(),
+                            request_id: request_id.to_owned(),
+                            kid: kid.to_owned(),
+                            reason: "key-compromise".to_owned(),
+                            compromised_at: None,
+                            expected_epoch: None,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn run_key_revoke(
+        &self,
+        who: Option<&str>,
+        ring: &str,
+        request_id: &str,
+        plan_id: &str,
+        plan_digest: &str,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/keys/{ring}/revoke/run"),
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "plan_id": plan_id,
+                        "plan_digest": plan_digest,
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.keys()
+                    .await
+                    .run_key_revoke(Self::grpc_request(
+                        who,
+                        host_v1::RunKeyRevokeRequest {
+                            ring: ring.to_owned(),
+                            request_id: request_id.to_owned(),
+                            plan_id: plan_id.to_owned(),
+                            plan_digest: plan_digest.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn status(&self, who: Option<&str>) -> Outcome {
         match self {
             Self::Rest(_) => self.rest("GET", "/host/v1/status", who, None).await,
@@ -842,8 +952,54 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "read the ring bindings",
         transport.ring_bindings(admin).await,
     ));
+
+    // The key ring mutations (WP-3.1), on the operations ring of each facade.
+    let ring = HOST_OPERATIONS.as_str();
+    let read = transport.ring(ring).await;
+    let Outcome::Answered(view) = &read else {
+        panic!("the ring reads: {read:?}")
+    };
+    let first = view["keys"][0]["kid"]
+        .as_str()
+        .expect("a kid")
+        .to_owned();
+    steps.push((
+        "rotate a ring as a stranger",
+        transport.rotate_ring(Some(STRANGER), ring, "k0", 1).await,
+    ));
+    steps.push((
+        "rotate the identity ring",
+        transport.rotate_ring(admin, "host.identity", "k0", 1).await,
+    ));
+    steps.push((
+        "rotate the operations ring",
+        transport.rotate_ring(admin, ring, "k1", 1).await,
+    ));
+    steps.push((
+        "rotate the operations ring again",
+        transport.rotate_ring(admin, ring, "k1", 1).await,
+    ));
+    steps.push((
+        "rotate while a successor waits",
+        transport.rotate_ring(admin, ring, "k2", 2).await,
+    ));
+    let planned = transport.plan_key_revoke(admin, ring, "kp1", &first).await;
+    let plan_id = member(&planned, &["plan_id"]).to_owned();
+    let plan_digest = member(&planned, &["plan_digest"]).to_owned();
+    steps.push(("plan a key revocation", planned));
+    steps.push((
+        "run the key revocation",
+        transport
+            .run_key_revoke(admin, ring, "kr1", &plan_id, &plan_digest)
+            .await,
+    ));
+    steps.push((
+        "plan the revocation of a revoked key",
+        transport.plan_key_revoke(admin, ring, "kp2", &first).await,
+    ));
     steps
 }
+
 
 /// The vectors of the common envelope: the same script, once per transport, every step the same
 /// outcome. Each transport has its own facade, since a mutation mints what cannot be shared.
@@ -906,6 +1062,10 @@ fn schema_of(case: &str) -> &'static str {
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
         "read the identity" => "HostIdentity",
+        "read the ring bindings" => "RingBindings",
+        "rotate the operations ring" | "rotate the operations ring again" => "RingRotated",
+        "plan a key revocation" => "KeyRevokePlan",
+        "run the key revocation" => "KeyRevoked",
         other => panic!("`{other}` answered and names no schema"),
     }
 }
@@ -982,9 +1142,10 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     .await;
     assert!(conflict.get("revision").is_some(), "{conflict}");
     document.check_json("HostWireError", &conflict);
-    // A `not_served_yet` body: the ring bindings answer it until WP-3.1.
-    let refused = raw("GET", "/host/v1/ring-bindings", Some(ADMIN), None).await;
-    document.check_json("HostWireError", &refused);
+    // The identity's own ring: a view, never bound (WP-3.1).
+    let identity_ring = raw("GET", "/host/v1/keys/host.identity", None, None).await;
+    document.check_json("KeyRing", &identity_ring);
+    assert!(identity_ring["binding"].is_null(), "{identity_ring}");
     // A rotation's body and answer (WP-2.2): the stale epoch is a conflict with the current one.
     let stale = raw(
         "POST",
@@ -1125,9 +1286,30 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         refused("read the identity as nobody"),
         (String::new(), common::UNAUTHENTICATED.to_owned())
     );
+    assert!(
+        matches!(
+            steps
+                .iter()
+                .find(|(name, _)| *name == "read the ring bindings"),
+            Some((_, Outcome::Answered(_)))
+        ),
+        "the ring bindings are served (WP-3.1)"
+    );
     assert_eq!(
-        refused("read the ring bindings"),
-        ("unavailable".to_owned(), host::NOT_SERVED_YET.to_owned())
+        refused("rotate a ring as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("rotate the identity ring"),
+        ("validation".to_owned(), host::RING_NOT_MUTABLE.to_owned())
+    );
+    assert_eq!(
+        refused("rotate while a successor waits"),
+        ("conflict".to_owned(), host::KEY_ROTATION_PENDING.to_owned())
+    );
+    assert_eq!(
+        refused("plan the revocation of a revoked key"),
+        ("conflict".to_owned(), host::KEY_REVOKED.to_owned())
     );
     assert_eq!(
         refused("create a grant with an expiry in the past"),
@@ -1257,8 +1439,16 @@ async fn the_rest_binding_carries_the_revision_the_cache_policy_and_refuses_an_o
             .and_then(|value| value.to_str().ok()),
         Some("max-age=300")
     );
-    assert_eq!(body["keys"][0]["kid"], "k1");
-    assert!(body["epoch"].is_null() && body["binding"].is_null());
+    // The ring's own key under `<ring>:<thumbprint>`, its epoch and its identity binding
+    // (WP-3.1).
+    assert!(
+        body["keys"][0]["kid"]
+            .as_str()
+            .is_some_and(|kid| kid.starts_with("host.operations:")),
+        "{body}"
+    );
+    assert_eq!(body["epoch"], 1, "{body}");
+    assert!(body["binding"].is_string(), "{body}");
 
     let (status, headers, body) = send("GET", "/host/v1/status".to_owned(), None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");

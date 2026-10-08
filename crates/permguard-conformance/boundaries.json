@@ -499,6 +499,16 @@
       "limit": "a peer's succession record inside its presentation frame (`session::record::MAX_FRAME_BYTES`, at most `identity::MAX_SUCCESSIONS` records), verified under the previous epoch's key before it is read",
       "enforced_at_decoder": false,
       "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/keys/record.rs",
+      "item": "Binding::decode",
+      "entry": "permguard_host::keys::record::Binding::decode",
+      "max_input_bytes": 4096,
+      "limit": "`keys::record::MAX_BINDING_BYTES`, checked by the decoder before it parses: the payload of a ring binding a peer presents (WP-3.1, read by peers from WP-11), and the Host's own `binding.cose`",
+      "enforced_at_decoder": true,
+      "fuzz": "ring_binding"
     }
   ],
   "trusted": [
@@ -771,6 +781,26 @@
       "source": "crates/permguard-host/src/secrets/mod.rs",
       "item": "ZoneKeys::open",
       "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/record.rs",
+      "item": "Entry::decode",
+      "reason": "an item of the ring's own `journal.cborseq` on the Host's volume (WP-3.1), already bounded by `keys::record::MAX_ENTRY_BYTES` when the storage library reads the sequence"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/record.rs",
+      "item": "View::decode",
+      "reason": "`ring.cbor` on the Host's own volume (WP-3.1): a view this process wrote and rebuilds from the journal; the ring never reads its state back from it"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/ring.rs",
+      "item": "Ring::open",
+      "reason": "a ring's directory on the Host's own volume (WP-3.1): the journal replayed under the history it allows, anything else refusing the open"
+    },
+    {
+      "source": "crates/permguard-host/src/keys/registry.rs",
+      "item": "Opener::open",
+      "reason": "lays a ring out and opens it on the Host's own volume (WP-3.1): the legacy `ring.json` the directory key manager wrote, migrated through the WP-1.9 framework, then `Ring::open`"
     }
   ]
 }

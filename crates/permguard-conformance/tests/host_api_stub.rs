@@ -59,6 +59,14 @@ const SHAPED: &[&str] = &[
     "PeerFrame",
     "PeerRefusal",
     "PeerSessions",
+    "ListRingBindingsResponse",
+    "RingBinding",
+    "RotateKeyRingRequest",
+    "RotateKeyRingResponse",
+    "PlanKeyRevokeRequest",
+    "PlanKeyRevokeResponse",
+    "RunKeyRevokeRequest",
+    "RunKeyRevokeResponse",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

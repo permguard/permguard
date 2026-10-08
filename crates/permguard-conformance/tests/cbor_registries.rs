@@ -35,13 +35,14 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 13] = [
+const REGISTRIES: [&str; 14] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
     "identity.json",
     "kdf.json",
     "key-set.json",
+    "keys.json",
     "layout.json",
     "manifest.json",
     "mutation.json",
@@ -757,6 +758,130 @@ fn identity_samples() -> Vec<Sample> {
     ]
 }
 
+fn keys_samples() -> Vec<Sample> {
+    use permguard_host::keys::record::{Binding, Entry, KeyView, Kind, State, View};
+    use permguard_objects::crypto::suite::Suite;
+
+    let kid = "data.attest:FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk";
+    let entry = |kind: Kind| Entry {
+        seq: 1,
+        kind,
+        kid: kid.to_owned(),
+        epoch: 1,
+        at: 1_800_000_000,
+        operation_id: None,
+        reason: None,
+        jwk: None,
+        compromised_at: None,
+    };
+    let entries = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            let value = cbor::decode_canonical(bytes).map_err(|error| format!("{error:?}"))?;
+            verdict(Entry::decode(value))
+        }))
+    };
+    vec![
+        sample(
+            "journal_entry",
+            Entry {
+                jwk: Some("{}".to_owned()),
+                ..entry(Kind::Prepublished)
+            }
+            .encode()
+            .expect("encodes"),
+            &["journal_entry.jwk"],
+            entries(),
+        ),
+        sample(
+            "journal_entry",
+            Entry {
+                operation_id: Some([7; 16]),
+                reason: Some("key-compromise".to_owned()),
+                compromised_at: Some(1_799_999_000),
+                ..entry(Kind::Revoked)
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "journal_entry.operation_id",
+                "journal_entry.reason",
+                "journal_entry.compromised_at",
+            ],
+            entries(),
+        ),
+        sample(
+            "journal_entry",
+            entry(Kind::Bound).encode().expect("encodes"),
+            &[],
+            entries(),
+        ),
+        sample(
+            "ring_view",
+            View {
+                ring: "data.attest".to_owned(),
+                suite: Suite::Ed25519Sha256V1,
+                epoch: 2,
+                key_set_digest: [9; 32],
+                keys: vec![KeyView {
+                    kid: kid.to_owned(),
+                    state: State::Revoked,
+                    jwk: "{}".to_owned(),
+                    prepublished_at: 1,
+                    activated_at: Some(2),
+                    retired_at: Some(3),
+                    revoked_at: Some(4),
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "ring_key.activated_at",
+                "ring_key.retired_at",
+                "ring_key.revoked_at",
+            ],
+            Some(Box::new(|bytes: &[u8]| verdict(View::decode(bytes)))),
+        ),
+        sample(
+            "ring_view",
+            View {
+                ring: "data.attest".to_owned(),
+                suite: Suite::Ed25519Sha256V1,
+                epoch: 1,
+                key_set_digest: [9; 32],
+                keys: vec![KeyView {
+                    kid: kid.to_owned(),
+                    state: State::Prepublished,
+                    jwk: "{}".to_owned(),
+                    prepublished_at: 1,
+                    activated_at: None,
+                    retired_at: None,
+                    revoked_at: None,
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(View::decode(bytes)))),
+        ),
+        sample(
+            "ring_binding",
+            Binding {
+                host_id: HOST_ID,
+                ring: "data.attest".to_owned(),
+                epoch: 2,
+                key_set_digest: [9; 32],
+                suite: Suite::Ed25519Sha256V1,
+                not_before: 1_800_000_000,
+                not_after: 1_802_592_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Binding::decode(bytes)))),
+        ),
+    ]
+}
+
 fn session_samples() -> Vec<Sample> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_host::session::peers::Seen;
@@ -1366,6 +1491,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
         "session.json" => session_samples(),
+        "keys.json" => keys_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -1885,6 +2011,16 @@ fn test_identity_records_match_their_registry() {
 #[test]
 fn test_identity_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("identity.json");
+}
+
+#[test]
+fn test_key_ring_records_match_their_registry() {
+    assert_samples_match("keys.json");
+}
+
+#[test]
+fn test_key_ring_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("keys.json");
 }
 
 #[test]

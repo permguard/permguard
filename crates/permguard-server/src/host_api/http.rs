@@ -14,7 +14,10 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
-use permguard_host::api::{CreateGrant, HostApi, PlanRevoke, Refusal, RotateIdentity, RunRevoke};
+use permguard_host::api::{
+    CreateGrant, HostApi, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity, RotateRing,
+    RunKeyRevoke, RunRevoke,
+};
 use permguard_transport::ActorOf;
 
 use super::wire;
@@ -45,6 +48,9 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/grants/{id}/revoke/run", post(run_revoke))
         .route("/host/v1/keys", get(list_rings))
         .route("/host/v1/keys/{ring}", get(get_ring))
+        .route("/host/v1/keys/{ring}/rotate", post(rotate_ring))
+        .route("/host/v1/keys/{ring}/revoke/plan", post(plan_key_revoke))
+        .route("/host/v1/keys/{ring}/revoke/run", post(run_key_revoke))
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
@@ -102,15 +108,6 @@ fn answer<T: serde::Serialize>(
     }
 }
 
-/// A route the facade authorizes and does not serve yet: there is no answer to render, only
-/// the refusal, which the type says.
-fn not_yet(served: &Served, result: Result<std::convert::Infallible, Refusal>) -> Response {
-    match result {
-        Ok(never) => match never {},
-        Err(refusal) => served.refuse(&refusal),
-    }
-}
-
 /// Peer sessions are never separate requests: refused whoever asks, before any body is read
 /// (WP-2.3).
 async fn session_over_rest(State(served): State<Served>) -> Response {
@@ -134,7 +131,7 @@ async fn rotate_identity(
 }
 
 async fn ring_bindings(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
-    not_yet(&served, served.api.ring_bindings(&actor))
+    answer(&served, StatusCode::OK, served.api.ring_bindings(&actor))
 }
 
 async fn list_grants(
@@ -205,6 +202,45 @@ async fn get_ring(State(served): State<Served>, Path(ring): Path<String>) -> Res
         }
         Err(refusal) => served.refuse(&refusal),
     }
+}
+
+async fn rotate_ring(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(ring): Path<String>,
+    Closed(rotate): Closed<RotateRing>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.rotate_ring(&actor, &ring, rotate).await,
+    )
+}
+
+async fn plan_key_revoke(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(ring): Path<String>,
+    Closed(plan): Closed<PlanKeyRevoke>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.plan_key_revoke(&actor, &ring, plan).await,
+    )
+}
+
+async fn run_key_revoke(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(ring): Path<String>,
+    Closed(run): Closed<RunKeyRevoke>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.run_key_revoke(&actor, &ring, run).await,
+    )
 }
 
 async fn status(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {

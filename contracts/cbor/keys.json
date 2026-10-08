@@ -1,0 +1,57 @@
+{
+  "artifact": "Key ring journal entry, the materialized ring view and the ring binding payload; the binding is a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the Host identity key, content type permguard.host.ring-binding.v1, its kid the identity epoch in decimal ASCII",
+  "authority": "1-architecture/4-architecture-server-host-keys.md#lifecycle and #files-on-disk, 1-architecture/2-architecture-server-host-identity.md (ring binding members), owner decisions of 2026-10-08 (labels, types, cardinalities); crates/permguard-host/src/keys/record.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "journal_entry": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "seq", "type": "uint", "occurs": "required", "note": "from 1, one more than the entry before it" },
+        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "prepublished, activated, retired, revoked, archived, destroyed or bound" },
+        { "label": 3, "name": "kid", "type": "text", "occurs": "required", "note": "<ring>:<thumbprint>; on bound, the host.identity kid of the key that signed the binding" },
+        { "label": 4, "name": "epoch", "type": "uint", "occurs": "required", "note": "the ring epoch once the entry applies: one more on prepublished, archived and a revocation out of the published set" },
+        { "label": 5, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 6, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "16 bytes: the security mutation of an operator's rotation or revocation" },
+        { "label": 7, "name": "reason", "type": "text", "occurs": "optional", "note": "on revoked only, and required there: 1 to 256 bytes" },
+        { "label": 8, "name": "jwk", "type": "text", "occurs": "optional", "note": "on prepublished only, and required there: the RFC 7517 JSON of the public key as published" },
+        { "label": 9, "name": "compromised_at", "type": "uint", "occurs": "optional", "note": "on revoked only: when the key is known or believed compromised" }
+      ]
+    },
+    "ring_view": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ring", "type": "text", "occurs": "required", "note": "host.operations, control.attest or data.attest" },
+        { "label": 2, "name": "suite", "type": "text", "occurs": "required", "note": "pg-ed25519-sha256-v1 or pg-p256-sha256-v1" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "key_set_digest", "type": "bytes", "occurs": "required", "note": "32 bytes, the digest key-set.json registers the input of" },
+        { "label": 5, "name": "keys", "type": "array<map:ring_key>", "occurs": "required", "note": "every key the ring ever held, in the order it was prepublished" }
+      ]
+    },
+    "ring_key": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kid", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "state", "type": "text", "occurs": "required", "note": "prepublished, active, retired-public, revoked or archived" },
+        { "label": 3, "name": "jwk", "type": "text", "occurs": "required", "note": "the RFC 7517 JSON of the public key as published" },
+        { "label": 4, "name": "prepublished_at", "type": "uint", "occurs": "required" },
+        { "label": 5, "name": "activated_at", "type": "uint", "occurs": "optional" },
+        { "label": 6, "name": "retired_at", "type": "uint", "occurs": "optional" },
+        { "label": 7, "name": "revoked_at", "type": "uint", "occurs": "optional" }
+      ]
+    },
+    "ring_binding": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "key_set_digest", "type": "bytes", "occurs": "required", "note": "32 bytes" },
+        { "label": 5, "name": "suite", "type": "text", "occurs": "required", "note": "the ring's suite" },
+        { "label": 6, "name": "not_before", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 7, "name": "not_after", "type": "uint", "occurs": "required", "note": "not_before + 30 days; after not_before" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["journal_entry", "ring_view", "ring_binding"]
+}

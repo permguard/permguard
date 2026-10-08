@@ -151,6 +151,24 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
     action("host.identity.provisioned", Class::Security, HOST),
     mutation("host.identity.rotated", HOST),
+    // The key rings (WP-3.1): every journal entry an `operations` record, an operator's
+    // rotation and revocation each a mutation.
+    ActionSchema {
+        action: "host.keys.transition",
+        class: Class::Operations,
+        root: HOST,
+        facts: &[
+            ("ring", FactType::Text(32)),
+            ("kind", FactType::Text(16)),
+            ("epoch", FactType::Uint),
+            ("reason", FactType::Text(256)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    mutation("host.keys.rotated", HOST),
+    mutation("host.keys.revoke_planned", HOST),
+    mutation("host.keys.revoked", HOST),
     // Peer Host sessions (WP-2.3): each one established or refused.
     ActionSchema {
         action: "host.session.established",

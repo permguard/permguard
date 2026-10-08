@@ -459,9 +459,10 @@ impl<'a> Layout<'a> {
         }
         let to = preflight.to_directory.as_str();
         let active = manifest.active.directory.as_str();
+        let under_host =
+            to == super::volume::HOST || to.starts_with(&format!("{}/", super::volume::HOST));
         if components(to).is_err()
-            || to == super::volume::HOST
-            || to.starts_with(&format!("{}/", super::volume::HOST))
+            || (under_host && !host_target_admitted(&self.subsystem, to))
             || to == active
             || to.starts_with(&format!("{active}/"))
             || active.starts_with(&format!("{to}/"))
@@ -889,6 +890,17 @@ fn root_has(root: &Dir, path: &str) -> Result<bool> {
         None => Dir::open(root.path())?,
     };
     Ok(parent.subdirs()?.iter().any(|held| held == name) || parent.exists(name)?)
+}
+
+/// The one generation a migration may build under `host/`: a key ring's directory,
+/// `host/keys/<ring>`, for its own subsystem `keys-<ring>` with the ring's dots as hyphens (WP-3.1,
+/// owner decision of 2026-10-08). The target must still be free, as every target must.
+pub fn host_target_admitted(subsystem: &str, to: &str) -> bool {
+    to.strip_prefix("host/keys/").is_some_and(|ring| {
+        !ring.is_empty()
+            && !ring.contains('/')
+            && subsystem == format!("keys-{}", ring.replace('.', "-"))
+    })
 }
 
 fn components(path: &str) -> Result<Vec<&str>> {

@@ -174,10 +174,23 @@ impl IdentityService for Served {
         request: Request<v1::ListRingBindingsRequest>,
     ) -> Answer<v1::ListRingBindingsResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
-        match self.api.ring_bindings(&actor) {
-            Ok(never) => match never {},
-            Err(refusal) => Err(self.refuse(refusal)),
-        }
+        let bindings = self
+            .api
+            .ring_bindings(&actor)
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::ListRingBindingsResponse {
+            bindings: bindings
+                .bindings
+                .into_iter()
+                .map(|binding| {
+                    Ok(v1::RingBinding {
+                        binding: raw(&binding.binding)?,
+                        ring: binding.ring,
+                        epoch: binding.epoch,
+                    })
+                })
+                .collect::<Result<_, Status>>()?,
+        }))
     }
 }
 
@@ -303,6 +316,7 @@ impl KeyService for Served {
                     ring: ring.ring,
                     keys: ring.keys,
                     digest: ring.digest,
+                    epoch: ring.epoch,
                 })
                 .collect(),
         }))
@@ -320,7 +334,7 @@ impl KeyService for Served {
             ring: view.ring,
             epoch: view.epoch,
             digest: view.digest,
-            binding: view.binding,
+            binding: view.binding.as_deref().map(raw).transpose()?,
             cache_max_age: view.cache_max_age,
             keys: view
                 .keys
@@ -340,23 +354,80 @@ impl KeyService for Served {
 
     async fn rotate_key_ring(
         &self,
-        _request: Request<v1::RotateKeyRingRequest>,
+        request: Request<v1::RotateKeyRingRequest>,
     ) -> Answer<v1::RotateKeyRingResponse> {
-        Err(unimplemented("key rotation"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let rotated = self
+            .api
+            .rotate_ring(
+                &actor,
+                &asked.ring,
+                api::RotateRing {
+                    request_id: asked.request_id,
+                    expected_epoch: asked.expected_epoch,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::RotateKeyRingResponse {
+            receipt: Some(receipt(rotated.receipt)),
+            kid: rotated.kid,
+        }))
     }
 
     async fn plan_key_revoke(
         &self,
-        _request: Request<v1::PlanKeyRevokeRequest>,
+        request: Request<v1::PlanKeyRevokeRequest>,
     ) -> Answer<v1::PlanKeyRevokeResponse> {
-        Err(unimplemented("key revocation"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let planned = self
+            .api
+            .plan_key_revoke(
+                &actor,
+                &asked.ring,
+                api::PlanKeyRevoke {
+                    request_id: asked.request_id,
+                    kid: asked.kid,
+                    reason: asked.reason,
+                    compromised_at: asked.compromised_at,
+                    expected_epoch: asked.expected_epoch,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::PlanKeyRevokeResponse {
+            plan_id: planned.plan_id,
+            plan_digest: planned.plan_digest,
+            expires: planned.expires,
+            revision: planned.revision,
+        }))
     }
 
     async fn run_key_revoke(
         &self,
-        _request: Request<v1::RunKeyRevokeRequest>,
+        request: Request<v1::RunKeyRevokeRequest>,
     ) -> Answer<v1::RunKeyRevokeResponse> {
-        Err(unimplemented("key revocation"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let revoked = self
+            .api
+            .run_key_revoke(
+                &actor,
+                &asked.ring,
+                api::RunKeyRevoke {
+                    request_id: asked.request_id,
+                    plan_id: asked.plan_id,
+                    plan_digest: asked.plan_digest,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::RunKeyRevokeResponse {
+            receipt: Some(receipt(revoked.receipt)),
+            kid: revoked.kid,
+        }))
     }
 
     async fn get_key_bundle(

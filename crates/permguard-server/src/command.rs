@@ -182,6 +182,23 @@ pub enum MigrateCommand {
         #[arg(long, value_name = "NAME")]
         subsystem: String,
     },
+    /// Migrate the legacy `ring.json` key rings into `host/keys/<ring>` with an external backup
+    /// declared (WP-3.1): what a server under the production profile asks for before it starts.
+    /// A ring whose legacy directory holds no `ring.json` is left for the server to lay out.
+    Keys {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The external backup taken before the migration, as the operator names it.
+        #[arg(long, value_name = "REFERENCE")]
+        backup: String,
+
+        /// A ring kept outside its default legacy directory, as `<ring>=<directory>`;
+        /// `operations/keys/{operations,control,data}` below the volume otherwise.
+        #[arg(long = "legacy", value_name = "RING=DIRECTORY")]
+        legacy: Vec<String>,
+    },
 }
 
 /// What can be asked of a volume's ownership from the command line.

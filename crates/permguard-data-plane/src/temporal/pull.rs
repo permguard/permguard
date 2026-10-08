@@ -431,7 +431,10 @@ impl Puller {
             let held: Signed = serde_json::from_value(envelope.clone()).ok()?;
             let protected = held.protected().ok()?;
             keys.iter()
-                .filter(|trust| trust.key.kid == protected.kid && trust.authorizes(&stream))
+                .filter(|trust| {
+                    permguard_objects::crypto::thumbprint::selects(&trust.key, &protected.kid)
+                        && trust.authorizes(&stream)
+                })
                 .find_map(|trust| {
                     let verified = held.verify(std::slice::from_ref(&trust.key)).ok()?;
                     (verified.merkle_root == root).then_some(verified)

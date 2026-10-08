@@ -278,6 +278,11 @@ impl Labelled {
     pub(crate) fn read(bytes: &[u8], what: &'static str) -> Result<Self, RecordError> {
         let value = cbor::decode_canonical(bytes)
             .map_err(|error| RecordError(format!("{what} is not canonical CBOR: {error}")))?;
+        Self::from_value(value, what)
+    }
+
+    /// A map already decoded, as an array item is.
+    pub(crate) fn from_value(value: Value, what: &'static str) -> Result<Self, RecordError> {
         let Value::Map(pairs) = value else {
             return Err(RecordError(format!("{what} is a map")));
         };
@@ -333,7 +338,36 @@ impl Labelled {
         }
     }
 
-    fn suite(&mut self, label: i64) -> Result<Suite, RecordError> {
+    /// An optional unsigned integer: absent is `None`, never null.
+    pub(crate) fn optional_uint(&mut self, label: i64) -> Result<Option<u64>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.uint(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// An optional byte string of exactly `N` bytes.
+    pub(crate) fn optional_fixed<const N: usize>(
+        &mut self,
+        label: i64,
+    ) -> Result<Option<[u8; N]>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.fixed(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// An array, its items still to be read.
+    pub(crate) fn array(&mut self, label: i64) -> Result<Vec<Value>, RecordError> {
+        match self.take(label)? {
+            Value::Array(items) => Ok(items),
+            _ => Err(self.error(format!("label {label} is an array"))),
+        }
+    }
+
+    pub(crate) fn suite(&mut self, label: i64) -> Result<Suite, RecordError> {
         let name = self.text(label)?;
         Suite::from_name(&name).ok_or_else(|| self.error(format!("`{name}` is not a suite")))
     }

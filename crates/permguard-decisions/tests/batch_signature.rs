@@ -216,3 +216,27 @@ fn continuity_between_batches_is_checkable_and_not_merely_asserted() {
         "and the records themselves continue where the previous batch stopped"
     );
 }
+
+/// WP-3.1: a batch signed under the bare thumbprint, before kids carried their ring, verifies
+/// against the set published as `<ring>:<thumbprint>`, and only under the key whose thumbprint
+/// it names.
+#[test]
+fn a_batch_signed_under_a_bare_thumbprint_verifies_against_the_ring_prefixed_set() {
+    let keys = ring("legacy-kid");
+    let records = run(3);
+    let signed = Signed::create(&envelope_for(&records, GENESIS), &keys).expect("it signs");
+    let published = keys.public_keys().expect("published");
+    let bare = published[0].kid.clone();
+
+    let mut prefixed = published.clone();
+    prefixed[0].kid = format!("data.attest:{bare}");
+    signed
+        .verify(&prefixed)
+        .expect("the legacy kid selects the key it is the thumbprint of");
+
+    // The same thumbprint published over another key's material selects nothing.
+    let other = ring("legacy-kid-other");
+    let mut foreign = other.public_keys().expect("published");
+    foreign[0].kid = format!("data.attest:{bare}");
+    assert!(signed.verify(&foreign).is_err());
+}

@@ -216,8 +216,19 @@ message PlanIdentityResetRequest {}
 message PlanIdentityResetResponse {}
 message RunIdentityResetRequest {}
 message RunIdentityResetResponse {}
+// `GET /host/v1/ring-bindings` (WP-3.1), under `identity.read`.
 message ListRingBindingsRequest {}
-message ListRingBindingsResponse {}
+message ListRingBindingsResponse {
+  repeated RingBinding bindings = 1;
+}
+
+// One identity-signed ring binding.
+message RingBinding {
+  string ring = 1;
+  uint64 epoch = 2;
+  // COSE_Sign1 `permguard.host.ring-binding.v1`.
+  bytes binding = 3;
+}
 message CreateInviteRequest {}
 message CreateInviteResponse {}
 message ListInvitesRequest {}
@@ -336,7 +347,10 @@ message ListKeyRingsResponse {
 message KeyRingSummary {
   string ring = 1;
   uint32 keys = 2;
+  // The key-set digest of the published set, hex.
   string digest = 3;
+  // The ring epoch (WP-3.1).
+  uint64 epoch = 4;
 }
 // `GET /host/v1/keys/{ring}`: public, no grant is checked.
 message GetKeyRingRequest {
@@ -344,12 +358,12 @@ message GetKeyRingRequest {
 }
 message GetKeyRingResponse {
   string ring = 1;
-  // The ring epoch, once the bindings carry one (WP-3.1).
+  // The ring epoch (WP-3.1).
   optional uint64 epoch = 2;
-  // SHA-256 over the public set as published, hex.
+  // The key-set digest of the published set, hex: what a peer persists with the epoch.
   string digest = 3;
-  // The signed binding of this ring to the Host identity (WP-3.1).
-  optional string binding = 4;
+  // The identity-signed binding of this epoch, COSE_Sign1; absent for `host.identity`.
+  optional bytes binding = 4;
   // How long a client may cache the set, in seconds.
   uint32 cache_max_age = 5;
   repeated Jwk keys = 6;
@@ -365,12 +379,46 @@ message Jwk {
   string alg = 6;
   string use = 7;
 }
-message RotateKeyRingRequest {}
-message RotateKeyRingResponse {}
-message PlanKeyRevokeRequest {}
-message PlanKeyRevokeResponse {}
-message RunKeyRevokeRequest {}
-message RunKeyRevokeResponse {}
+// `POST /host/v1/keys/{ring}/rotate` (WP-3.1), under `keys.admin`.
+message RotateKeyRingRequest {
+  string ring = 1;
+  string request_id = 2;
+  uint64 expected_epoch = 3;
+}
+message RotateKeyRingResponse {
+  Receipt receipt = 1;
+  // The successor prepublished.
+  string kid = 2;
+}
+// `POST /host/v1/keys/{ring}/revoke/plan` (WP-3.1), under `keys.admin`.
+message PlanKeyRevokeRequest {
+  string ring = 1;
+  string request_id = 2;
+  string kid = 3;
+  string reason = 4;
+  // RFC 3339.
+  optional string compromised_at = 5;
+  optional uint64 expected_epoch = 6;
+}
+message PlanKeyRevokeResponse {
+  string plan_id = 1;
+  string plan_digest = 2;
+  // RFC 3339: when the plan can no longer be run.
+  string expires = 3;
+  // The ring epoch the plan was made against.
+  uint64 revision = 4;
+}
+// `POST /host/v1/keys/{ring}/revoke/run` (WP-3.1), under `keys.admin`.
+message RunKeyRevokeRequest {
+  string ring = 1;
+  string request_id = 2;
+  string plan_id = 3;
+  string plan_digest = 4;
+}
+message RunKeyRevokeResponse {
+  Receipt receipt = 1;
+  string kid = 2;
+}
 message GetKeyBundleRequest {}
 message GetKeyBundleResponse {}
 message ListSecretsRequest {}

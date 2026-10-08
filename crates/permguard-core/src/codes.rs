@@ -357,6 +357,16 @@ pub mod host {
     pub const RING_UNKNOWN: &str = "ring_unknown";
     /// The ring named could not be read.
     pub const RING_UNREADABLE: &str = "ring_unreadable";
+    /// The ring named is not rotated or revoked through the key routes: `host.identity` rotates
+    /// through the identity routes (WP-3.1).
+    pub const RING_NOT_MUTABLE: &str = "ring_not_mutable";
+    /// The ring holds no key of the `kid` named (WP-3.1).
+    pub const KEY_UNKNOWN: &str = "key_unknown";
+    /// The key named is revoked already: a terminal state (WP-3.1).
+    pub const KEY_REVOKED: &str = "key_revoked";
+    /// A successor is prepublished already and takes over once `publish_ahead` has passed: a
+    /// second rotation waits for it (WP-3.1).
+    pub const KEY_ROTATION_PENDING: &str = "key_rotation_pending";
     /// The route exists in the contract and a later package serves it.
     pub const NOT_SERVED_YET: &str = "not_served_yet";
     /// This listener cannot serve peer Host sessions (WP-2.3): `admin.peer_sessions` is
@@ -632,6 +642,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::IDENTITY_UNAVAILABLE,
         host::RING_UNKNOWN,
         host::RING_UNREADABLE,
+        host::RING_NOT_MUTABLE,
+        host::KEY_UNKNOWN,
+        host::KEY_REVOKED,
+        host::KEY_ROTATION_PENDING,
         host::NOT_SERVED_YET,
         host::PEER_SESSIONS_UNSERVEABLE,
         host::SESSION_REFUSED,

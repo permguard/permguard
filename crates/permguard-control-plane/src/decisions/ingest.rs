@@ -127,7 +127,7 @@ pub fn accept(
     let mut wrong_scope = false;
     for producer in producers
         .iter()
-        .filter(|held| held.key.kid == protected.kid)
+        .filter(|held| permguard_objects::crypto::thumbprint::selects(&held.key, &protected.kid))
     {
         let Ok(envelope) = batch.signature.verify(std::slice::from_ref(&producer.key)) else {
             continue;

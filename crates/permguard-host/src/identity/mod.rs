@@ -646,6 +646,11 @@ impl Identity {
         self.read().public.fingerprint()
     }
 
+    /// The current epoch's public key: what the `host.identity` ring publishes (WP-3.1).
+    pub fn public_key(&self) -> PublicKey {
+        self.read().public.clone()
+    }
+
     /// The fingerprint `INIT` pins: the first epoch's.
     pub fn first_fingerprint(&self) -> &str {
         &self.init.fingerprint

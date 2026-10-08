@@ -29,6 +29,9 @@ Its `refused` cases are proofs a verifier must refuse against the transcript it 
 `secrets.json` freezes the secrets and zone derivations (WP-3.3): a root's witness, a Host-local key and audit pseudonym, a cursor key, a zone root, the distributed keys of a zone, and the shared pseudonym and input tag under them.
 `secrets.py` computes them with the standard library alone, HKDF-SHA256 over the closed CBOR tuples of the keys architecture; `crates/permguard-host/tests/secrets_vectors.rs` reproduces them.
 
+`keys.json` freezes a key ring's records (WP-3.1): a ring key's RFC 7638 thumbprint, its `<ring>:<thumbprint>` kid and published JWK, the key-set statement and digest, the `prepublished` and `activated` journal entries, `ring.cbor`, and the identity-signed ring binding.
+`keys.py` computes them under the owner decisions of 2026-10-08, the identity signing with the RFC 8032 section 7.1 test 1 key at epoch 1 and the ring holding the test 2 key; `crates/permguard-host/tests/keys_vectors.rs` reproduces them and verifies the binding.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.

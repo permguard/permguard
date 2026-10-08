@@ -418,7 +418,7 @@ fn reconciled_grant(target: Option<&str>) -> Result<GrantId, Refusal> {
 
 /// The refusal of a reconciled operation whose answer cannot be rebuilt: said as applied, so the
 /// caller reads before it retries.
-fn unreachable_reconciliation(operation: &str) -> Refusal {
+pub(super) fn unreachable_reconciliation(operation: &str) -> Refusal {
     Refusal::new(
         ErrorClass::Internal,
         codes::host::MUTATION_UNRECORDED,
@@ -472,7 +472,7 @@ fn bounded(create: &CreateGrant) -> Result<(), Refusal> {
 }
 
 /// The digest of a plan: what the run step must present back.
-fn plan_digest(
+pub(super) fn plan_digest(
     plan_id: &str,
     operation: &str,
     target: &str,
@@ -568,7 +568,7 @@ fn refusal_of(error: AuthzError) -> Refusal {
     }
 }
 
-fn rfc3339(seconds: u64) -> String {
+pub(super) fn rfc3339(seconds: u64) -> String {
     permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX))
 }
 

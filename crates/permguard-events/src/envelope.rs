@@ -294,7 +294,7 @@ impl Signed {
         }
         let key = keys
             .iter()
-            .find(|candidate| candidate.kid == header.kid)
+            .find(|candidate| permguard_host::keys::selects(candidate, &header.kid))
             .ok_or_else(|| EnvelopeError::UnknownKey(header.kid.clone()))?;
         let public = B64
             .decode(&key.x)

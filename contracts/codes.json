@@ -414,6 +414,30 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.RING_NOT_MUTABLE": {
+      "code": "ring_not_mutable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.KEY_UNKNOWN": {
+      "code": "key_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.KEY_REVOKED": {
+      "code": "key_revoked",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.KEY_ROTATION_PENDING": {
+      "code": "key_rotation_pending",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.SESSION_REFUSED": {
       "code": "session_refused",
       "contract": "6-contracts/8-contract-host-api.md",

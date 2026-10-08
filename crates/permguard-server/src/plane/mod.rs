@@ -602,7 +602,7 @@ impl PlaneServer {
         .with_metrics(Metrics::new(Arc::new(Registry::new())))
         .with_provisioner(permguard_std::provision::prepare)
         .with_secrets_factory(secret_store_for)
-        .with_audit_factory(move |config, keys| audit_sink_for(binary_name, config, keys))
+        .with_audit_factory(move |config| audit_sink_for(binary_name, config))
         .with_keys_factory(key_manager_for)
         .with_catalog_factory(catalog_for)
         .with_control_signing_keys_factory(control_signing_keys_for)

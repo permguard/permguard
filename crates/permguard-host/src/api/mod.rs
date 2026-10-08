@@ -34,8 +34,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use permguard_core::authz::{Actor, Principal, Resource, operations};
-use permguard_core::keys::KeyManager;
+use permguard_core::authz::{Actor, Principal, Resource};
 use permguard_core::{AccessDenial, ApiError, ErrorClass, Health, codes};
 
 use crate::authz::{Authorization, GrantStore};
@@ -48,7 +47,10 @@ pub use bounds::Bounds;
 pub use config::{Effective, Setting};
 pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 pub use identity::{IdentityRotated, IdentityView, RotateIdentity};
-pub use keys::{RingSummary, RingView, Rings};
+pub use keys::{
+    KeyRevoked, PlanKeyRevoke, RingBinding, RingBindings, RingRotated, RingSummary, RingView,
+    Rings, RotateRing, RunKeyRevoke,
+};
 pub use replay::Replay;
 pub use status::{Assurance, ComponentView, DegradedView, StatusView};
 
@@ -193,8 +195,9 @@ pub struct Composition {
     pub store: Option<Arc<GrantStore>>,
     /// The durable request-id replay window and the server-held plans.
     pub replay: Replay,
-    /// The key rings this process composes, by their ring id.
-    pub rings: Vec<(String, Arc<dyn KeyManager>)>,
+    /// The key rings this process composes, `host.identity` among them when the identity is
+    /// open (WP-3.1).
+    pub keys: Arc<crate::keys::registry::Registry>,
     /// The lifecycle the status route reports.
     pub health: Health,
     /// The assurance profile the volume runs under.
@@ -220,7 +223,7 @@ pub struct HostApi {
     store: Option<Arc<GrantStore>>,
     replay: Replay,
     bounds: Bounds,
-    rings: Vec<(String, Arc<dyn KeyManager>)>,
+    keys: Arc<crate::keys::registry::Registry>,
     health: Health,
     assurance: Assurance,
     effective: Effective,
@@ -235,7 +238,7 @@ impl std::fmt::Debug for HostApi {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HostApi")
             .field("store", &self.store.is_some())
-            .field("rings", &self.rings.len())
+            .field("rings", &self.keys.ids())
             .finish_non_exhaustive()
     }
 }
@@ -248,7 +251,7 @@ impl HostApi {
             store: composition.store,
             replay: composition.replay,
             bounds: Bounds::default(),
-            rings: composition.rings,
+            keys: composition.keys,
             health: composition.health,
             assurance: composition.assurance,
             effective: composition.effective,
@@ -271,12 +274,6 @@ impl HostApi {
             principal,
             _permit: permit,
         })
-    }
-
-    /// `GET /host/v1/ring-bindings`: the signed bindings arrive with the rings, WP-3.1.
-    pub fn ring_bindings(&self, actor: &Actor) -> Result<std::convert::Infallible, Refusal> {
-        let _admitted = self.admit(actor, operations::IDENTITY_READ)?;
-        Err(Refusal::not_served_yet("the ring bindings", "WP-3.1"))
     }
 
     /// The grant store, or the refusal a mutation without one answers.
@@ -474,7 +471,7 @@ pub(crate) mod testing {
     use std::sync::Arc;
 
     use permguard_core::assurance::AssuranceProfile;
-    use permguard_core::authz::{ActorContext, Credential, Selector};
+    use permguard_core::authz::{ActorContext, Credential, Selector, operations};
 
     use super::*;
     use crate::authz::{GrantStore, Issue, PublicGrant};
@@ -564,7 +561,7 @@ pub(crate) mod testing {
         facade_with(tag, Vec::new())
     }
 
-    pub(crate) fn facade_with(tag: &str, rings: Vec<(String, Arc<dyn KeyManager>)>) -> HostApi {
+    pub(crate) fn facade_with(tag: &str, rings: Vec<&'static str>) -> HostApi {
         let root = scratch(tag);
         let (api, _, volume) = reopen(&root, rings);
         std::mem::forget(volume);
@@ -575,7 +572,7 @@ pub(crate) mod testing {
     /// volume is handed back, and dropping it releases the lock for the next open.
     pub(crate) fn reopen(
         root: &std::path::Path,
-        rings: Vec<(String, Arc<dyn KeyManager>)>,
+        rings: Vec<&'static str>,
     ) -> (HostApi, Arc<GrantStore>, Volume) {
         reopen_with(root, rings, Arc::new(Recording::default()))
     }
@@ -583,7 +580,7 @@ pub(crate) mod testing {
     /// [`reopen`], recording the audit trail in `trail`.
     pub(crate) fn reopen_with(
         root: &std::path::Path,
-        rings: Vec<(String, Arc<dyn KeyManager>)>,
+        rings: Vec<&'static str>,
         trail: Arc<Recording>,
     ) -> (HostApi, Arc<GrantStore>, Volume) {
         let volume =
@@ -621,6 +618,34 @@ pub(crate) mod testing {
         mutations
             .recover(&crate::identity::Identities(&identity))
             .expect("the identity recovers");
+        // The rings a test asks for, each on the volume and bound by the identity (WP-3.1).
+        let rings: Vec<Arc<crate::keys::ring::Ring>> = rings
+            .into_iter()
+            .map(|id| {
+                let ring = Arc::new(
+                    crate::keys::ring::Ring::open(
+                        &volume,
+                        id,
+                        crate::identity::Suite::Ed25519Sha256V1,
+                        crate::keys::ring::Policy {
+                            publish_ahead: std::time::Duration::from_secs(600),
+                            rotate_every: std::time::Duration::from_secs(3600),
+                            retain: std::time::Duration::from_secs(7200),
+                        },
+                        Arc::clone(&time),
+                    )
+                    .expect("the ring opens")
+                    .with_binder(identity.clone()),
+                );
+                permguard_core::KeyManager::maintain(ring.as_ref())
+                    .expect("the ring is maintained");
+                ring
+            })
+            .collect();
+        let registry = crate::keys::registry::Registry::new(Some(Arc::clone(&identity)), rings);
+        mutations
+            .recover(&registry)
+            .expect("the key mutations recover");
         let admin = Principal::new(ADMIN).expect("a principal");
         if !store
             .records()
@@ -660,7 +685,7 @@ pub(crate) mod testing {
             authorization,
             store: Some(Arc::clone(&store)),
             replay,
-            rings,
+            keys: Arc::new(registry),
             health: Health::new(),
             assurance: Assurance::of(
                 &permguard_core::assurance::Assurance::new(
@@ -691,7 +716,7 @@ pub(crate) mod testing {
 mod tests {
     #![allow(clippy::expect_used)]
 
-    use super::testing::{actor, admin, facade};
+    use super::testing::{actor, admin, facade_with};
     use super::*;
 
     #[test]
@@ -719,18 +744,17 @@ mod tests {
     }
 
     #[test]
-    fn the_stubs_authorize_before_they_say_they_are_not_served() {
-        let api = facade("stubs");
+    fn the_ring_bindings_are_read_under_identity_read() {
+        let api = facade_with("bindings", vec![crate::keys::ring::DATA_ATTEST]);
         let refused = api
             .ring_bindings(&actor("spiffe://acme/nobody"))
             .expect_err("no grant");
         assert!(matches!(refused, Refusal::Denied(denial) if denial.http_status() == 403));
         let refused = api.ring_bindings(&Actor::Anonymous).expect_err("nobody");
         assert!(matches!(refused, Refusal::Denied(denial) if denial.http_status() == 401));
-        let bindings = api.ring_bindings(&admin()).expect_err("not served yet");
-        assert_eq!(
-            bindings.error().expect("a domain refusal").code(),
-            codes::host::NOT_SERVED_YET
-        );
+        let bindings = api.ring_bindings(&admin()).expect("served");
+        assert_eq!(bindings.bindings.len(), 1);
+        assert_eq!(bindings.bindings[0].ring, crate::keys::ring::DATA_ATTEST);
+        assert_eq!(bindings.bindings[0].epoch, 1);
     }
 }

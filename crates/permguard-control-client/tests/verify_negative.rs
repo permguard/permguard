@@ -244,3 +244,23 @@ fn malformed_inputs_are_parse_errors_never_panics() {
     let error = refused(&jwks_for("k1", &key), &envelope, Some(&corrupt));
     assert!(error.contains("checkpoint is corrupt"), "{error}");
 }
+
+/// WP-3.1: a statement signed under the bare thumbprint verifies against the ring published as
+/// `control.attest:<thumbprint>`, and only under the key that thumbprint names.
+#[test]
+fn a_bare_thumbprint_kid_selects_only_the_key_it_is_the_thumbprint_of() {
+    let key = keypair();
+    let thumbprint = permguard_objects::crypto::thumbprint::jwk_thumbprint(
+        permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+        key.public_key().as_ref(),
+    )
+    .expect("a thumbprint");
+    let envelope = signed(&statement(1, b"new"), thumbprint.as_bytes(), &key);
+    let prefixed = format!("control.attest:{thumbprint}");
+    verify_statement(&jwks_for(&prefixed, &key), &envelope, ZONE, LEDGER, REF, None)
+        .expect("the legacy kid selects its key");
+
+    let other = keypair();
+    let error = refused(&jwks_for(&prefixed, &other), &envelope, None);
+    assert!(error.contains("has no key"), "{error}");
+}

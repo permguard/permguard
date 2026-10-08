@@ -82,6 +82,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `audit.json`          | audit record and trail metadata                    | `audit_record`, `trail_meta`                                                                       |
 | `mutation.json`       | security mutation journal entries and snapshot     | `mutation_intent`, `mutation_commit`, `mutation_failed`, `mutation_projected`, `mutation_snapshot` |
 | `identity.json`       | Host identity document, succession, `INIT`, `BOOT` | `identity_document`, `succession_record`, `init`, `boot`                                           |
+| `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |
 
 `notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body that the control plane writes inline and the client reads with a private closed decoder.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.
@@ -94,7 +95,6 @@ Each one is owned by the phase that designs it, and WP-0.7 writes no golden vect
 | Artifact                                          | Open question                                                                                                                                                                        |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Host proof transcript `permguard.host.session.v1` | member names only (`1-architecture/2-architecture-server-host-identity.md`); no labels, types or cardinalities, and `membership_id?` and `task?` have no stated encoding when absent |
-| ring binding                                      | no byte shape                                                                                                                                                                        |
 | membership manifest                               | no byte shape                                                                                                                                                                        |
 | lease                                             | no byte shape                                                                                                                                                                        |
 | grant record                                      | member names only (`GrantRecord` in `1-architecture/1-architecture-server.md`); no labels, types, cardinalities or encoding of `selector` and `constraints`                          |

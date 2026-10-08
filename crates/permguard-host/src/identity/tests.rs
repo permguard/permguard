@@ -519,6 +519,12 @@ impl KeyProvider for Failing {
     fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
         self.inner.generate(slot, suite)
     }
+    fn generate_addressed(&self, suite: Suite) -> Result<(String, PublicKey), KeyError> {
+        self.inner.generate_addressed(suite)
+    }
+    fn slots(&self) -> Result<Vec<String>, KeyError> {
+        self.inner.slots()
+    }
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
         self.inner.public(slot, suite)
     }
