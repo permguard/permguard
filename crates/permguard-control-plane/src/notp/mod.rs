@@ -432,17 +432,16 @@ impl NotpFacade {
                 let ledger_id = identity.ledger_id.clone();
                 let signer = self.signer();
                 match self.engine(identity, &store).commit_push(request, &signer) {
-                    Ok(response) => {
-                        self.record(
+                    Ok(response) => self
+                        .record(
                             "ledger.pushed",
                             &format!(
                                 "{ledger_id} {} {} #{}",
                                 request.r#ref, response.head, response.counter
                             ),
                         )
-                        .await;
-                        Ok(response)
-                    }
+                        .await
+                        .map(|()| response),
                     Err(error) => Err(self.refused("notp.push.commit.refused", error).await),
                 }
             }
@@ -578,22 +577,26 @@ impl NotpFacade {
 
     // ---- auditing, the catalog's discipline verbatim ----
 
-    async fn record(&self, action: &'static str, target: &str) {
+    /// A failed record does not undo the push, and is answered `mutation_unrecorded` rather than
+    /// success (owner decision of 2026-10-07). `TODO(WP-15)`: the push becomes an operation of
+    /// the Host's security-mutation transaction (WP-3.6).
+    async fn record(&self, action: &'static str, target: &str) -> Result<(), ApiError> {
         let Some(recorder) = &self.recorder else {
-            return;
+            return Ok(());
         };
-        if let Err(error) = recorder
+        recorder
             .record_on(action, Subject::System("control-plane"), target)
             .await
-        {
-            tracing::warn!(
-                event.name = "notp.audit_failed",
-                component = "control-plane",
-                action = action,
-                error = %error,
-                "the ledger change was made and its audit record was not"
-            );
-        }
+            .map_err(|error| {
+                tracing::error!(
+                    event.name = "notp.audit_failed",
+                    component = "control-plane",
+                    action = action,
+                    error = %error,
+                    "the ledger change was made and its audit record was not"
+                );
+                crate::unrecorded(error)
+            })
     }
 
     async fn refused(&self, operation: &'static str, error: EngineError) -> ApiError {
@@ -604,7 +607,8 @@ impl NotpFacade {
                 ErrorClass::Validation | ErrorClass::Conflict | ErrorClass::NotFound
             )
         {
-            self.record(operation, error.code()).await;
+            // A refusal changed nothing: its record failing is said in the log, not answered.
+            let _ = self.record(operation, error.code()).await;
         }
         error
     }

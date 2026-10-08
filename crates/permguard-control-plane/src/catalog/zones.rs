@@ -30,7 +30,7 @@ pub(crate) async fn create(
         Err(error) => return Err(facade.refused("zone.create.refused", error).await.into()),
     };
 
-    facade.record("zone.created", &zone.id).await;
+    facade.record("zone.created", &zone.id).await?;
 
     Ok(zone)
 }
@@ -77,7 +77,7 @@ pub(crate) async fn rename(
         Err(error) => return Err(facade.refused("zone.rename.refused", error).await.into()),
     };
 
-    facade.record("zone.renamed", &zone.id).await;
+    facade.record("zone.renamed", &zone.id).await?;
 
     Ok(zone)
 }
@@ -94,7 +94,7 @@ pub(crate) async fn delete(
         Err(error) => return Err(facade.refused("zone.delete.refused", error).await.into()),
     };
 
-    facade.record("zone.deleted", &zone.id).await;
+    facade.record("zone.deleted", &zone.id).await?;
 
     Ok(zone)
 }

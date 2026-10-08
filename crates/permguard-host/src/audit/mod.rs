@@ -125,6 +125,14 @@ const fn action(action: &'static str, class: Class, root: &'static str) -> Actio
     }
 }
 
+/// A `security` action recorded at each phase of a mutation transaction (WP-3.6).
+const fn mutation(action: &'static str, root: &'static str) -> ActionSchema {
+    ActionSchema {
+        phases: true,
+        ..self::action(action, Class::Security, root)
+    }
+}
+
 /// Every action the process records, with its class (owner decisions of 2026-10-07).
 pub const REGISTRY: &[ActionSchema] = &[
     // The Host's lifecycle and services.
@@ -135,10 +143,11 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Host's time guard (WP-2.12).
     action("host.clock_anomaly", Class::Security, HOST),
     action("host.clock_restored", Class::Security, HOST),
-    // The Host API's grants (WP-2.5): the actions `api::grants` records.
-    action("host.grant.issued", Class::Security, HOST),
-    action("host.grant.revoke_planned", Class::Security, HOST),
-    action("host.grant.revoked", Class::Security, HOST),
+    // The grants (WP-2.5), each a phase of one mutation transaction (WP-3.6).
+    mutation("host.grant.issued", HOST),
+    mutation("host.grant.revoke_planned", HOST),
+    mutation("host.grant.revoked", HOST),
+    mutation("host.grant.expired", HOST),
     // The Control Plane: catalog, NOTP and its sweep.
     action("zone.created", Class::Security, CONTROL),
     action("zone.renamed", Class::Security, CONTROL),

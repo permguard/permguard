@@ -23,3 +23,16 @@ pub mod verify;
 mod wire;
 
 pub use service::{ControlPlaneModule, module};
+
+/// The refusal of a catalog or ledger change that was made and whose `security` audit record
+/// could not be written: never answered as success, never undone (WP-3.6, owner decision of
+/// 2026-10-07). The caller reads the state before it retries.
+pub(crate) fn unrecorded(error: impl std::fmt::Display) -> permguard_core::ApiError {
+    permguard_core::ApiError::new(
+        permguard_core::ErrorClass::Internal,
+        permguard_core::codes::host::MUTATION_UNRECORDED,
+        "the change was made and its audit record could not be written: read the current state \
+         before retrying",
+    )
+    .with_internal(error.to_string())
+}

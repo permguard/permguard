@@ -1,0 +1,68 @@
+{
+  "artifact": "Security mutation journal entries and snapshot: host/audit/mutations/{journal.cborseq, snapshot.cbor}",
+  "authority": "1-architecture/5-architecture-server-host-audit.md#security-mutation-transaction (the steps and their recovery), owner decision of 2026-10-07 (labels, types, cardinalities); crates/permguard-host/src/operations/journal.rs (Entry, encode_snapshot)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "mutation_intent": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "`intent`" },
+        { "label": 2, "name": "operation_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes, from the OS random source" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "domain", "type": "text", "occurs": "required", "note": "the domain that applies it: `grants`" },
+        { "label": 5, "name": "operation", "type": "text", "occurs": "required", "note": "`grants.create`, `grants.revoke.plan`, `grants.revoke.run`, `grants.revoke`, `grants.expire`, `grants.bootstrap`" },
+        { "label": 6, "name": "action", "type": "text", "occurs": "required", "note": "the registered security audit action its records carry" },
+        { "label": 7, "name": "initiator_kind", "type": "text", "occurs": "required", "note": "`principal` or `system`" },
+        { "label": 8, "name": "initiator", "type": "text", "occurs": "required", "note": "the authorization principal, or the Host process: `expiry`, `bootstrap`, `cli`" },
+        { "label": 9, "name": "request_id", "type": "text", "occurs": "optional", "note": "the caller's idempotency key; present with label 10" },
+        { "label": 10, "name": "request_digest", "type": "text", "occurs": "optional", "note": "SHA-256 of the request, hex; present with label 9" },
+        { "label": 11, "name": "target", "type": "text", "occurs": "optional", "note": "what it is done to, when known before it is applied" }
+      ]
+    },
+    "mutation_commit": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "`commit`" },
+        { "label": 2, "name": "operation_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "revision", "type": "uint", "occurs": "required", "note": "the revision the domain mutation produced" },
+        { "label": 5, "name": "target", "type": "text", "occurs": "optional", "note": "what it changed" },
+        { "label": 6, "name": "result", "type": "bytes", "occurs": "optional", "note": "the answer a retry learns, as its domain wrote it; absent when recovery wrote the commit" },
+        { "label": 7, "name": "reconciled", "type": "bool", "occurs": "required", "note": "true when recovery wrote the commit from what the domain shows" }
+      ]
+    },
+    "mutation_failed": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "`failed`" },
+        { "label": 2, "name": "operation_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 4, "name": "reason", "type": "text", "occurs": "required", "note": "why nothing was applied" }
+      ]
+    },
+    "mutation_projected": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "`projected`: the audit record of the outcome is durable" },
+        { "label": 2, "name": "operation_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    },
+    "mutation_snapshot": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "kind", "type": "text", "occurs": "required", "note": "`snapshot`" },
+        { "label": 2, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 3, "name": "entries", "type": "array<bytes>", "occurs": "required", "note": "the canonical bytes of the entries that rebuild the live operations" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": [
+    "mutation_intent",
+    "mutation_commit",
+    "mutation_failed",
+    "mutation_projected",
+    "mutation_snapshot"
+  ]
+}

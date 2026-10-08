@@ -448,6 +448,7 @@ fn every_named_crash_point_belongs_to_a_tested_protocol() {
         "failure.",
         "volume.",
         "migrate.",
+        "mutation.",
     ]
     .iter()
     .flat_map(|prefix| points(prefix))
@@ -690,5 +691,194 @@ mod migrating {
                 "{point}"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The security-mutation transaction (WP-3.6): a grant issued through the engine.
+
+mod mutating {
+    use super::*;
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::authz::{Principal, Selector};
+    use permguard_host::audit::{Class, HOST, trail};
+    use permguard_host::authz::{GrantStore, Issue};
+    use permguard_host::operations::grants::{self, Grants, failure};
+    use permguard_host::operations::journal::{Initiator, RequestKey};
+    use permguard_host::operations::mutation::{Applied, Begin, MutationError, Mutations, Outcome};
+    use permguard_host::storage::volume::Volume;
+
+    const NOW: u64 = 1_800_000_000;
+
+    fn root() -> PathBuf {
+        PathBuf::from(std::env::var(DIRECTORY).expect("the parent names the directory"))
+    }
+
+    fn issue() -> Issue {
+        Issue {
+            principal: Principal::new("spiffe://acme/billing").expect("a principal"),
+            operations: vec!["catalog.read".to_owned()],
+            selector: Selector::parse("plane/control/*").expect("a selector"),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            issued_by: "test".to_owned(),
+            expires_at: None,
+        }
+    }
+
+    fn begin() -> Begin {
+        Begin {
+            domain: grants::DOMAIN,
+            operation: grants::CREATE,
+            action: grants::AUDIT_ISSUED,
+            initiator: Initiator::Principal("spiffe://acme/operators/root".to_owned()),
+            request: Some(RequestKey {
+                request_id: "r-1".to_owned(),
+                digest: "d".to_owned(),
+            }),
+            target: None,
+        }
+    }
+
+    /// Issues the grant as the operation of request `r-1`, answering its id.
+    fn create(
+        mutations: &Mutations,
+        store: &GrantStore,
+    ) -> Result<Outcome<String>, MutationError<String>> {
+        mutations.run(begin(), |applying| {
+            let record = store
+                .issue(applying, issue(), NOW, None)
+                .map_err(|error| failure(error, |error| error.to_string()))?;
+            Ok(Applied {
+                revision: record.revision,
+                target: Some(record.grant_id.to_string()),
+                value: record.grant_id.to_string(),
+            })
+        })
+    }
+
+    fn reopen(path: &Path) -> (Volume, std::sync::Arc<GrantStore>, Mutations) {
+        let volume = Volume::claim(path, AssuranceProfile::Development).expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("the store opens");
+        let mutations = Mutations::open_offline(&volume, "test").expect("the journal opens");
+        (volume, store, mutations)
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_issue() {
+        let (_volume, store, mutations) = reopen(&root());
+        create(&mutations, &store).expect("issued");
+    }
+
+    #[test]
+    #[ignore = "started by its parent, with a crash point"]
+    fn child_open() {
+        // Opening folds the journal into the snapshot.
+        let (_volume, _store, _mutations) = reopen(&root());
+    }
+
+    /// The phases the Host trail recorded, in order.
+    fn phases(volume: &Volume) -> Vec<String> {
+        let trails = volume
+            .host()
+            .subdir(permguard_host::audit::DIRECTORY, false)
+            .and_then(|dir| dir.subdir(permguard_host::audit::TRAILS, false))
+            .expect("the trails");
+        let Ok(dir) = trail::directory(&trails, Class::Security, HOST, false) else {
+            return Vec::new();
+        };
+        trail::verify(&dir).expect("the trail verifies");
+        trail::days(&dir)
+            .expect("listed")
+            .iter()
+            .flat_map(|day| trail::read_day(&dir, day).expect("read"))
+            .filter_map(|record| record.phase)
+            .collect()
+    }
+
+    /// A crash at any step leaves either no grant and a failed operation, or the grant and an
+    /// operation committed; every outcome is recorded once the journal is recovered, at least
+    /// once (owner decision); and a retry of the request learns the durable result.
+    #[test]
+    fn every_crash_point_of_a_mutation_recovers_to_one_outcome() {
+        for point in points("mutation.")
+            .into_iter()
+            .filter(|point| *point != "mutation.snapshot_written")
+        {
+            let path = scratch(point);
+            assert!(
+                crash("mutating::child_issue", point, &path),
+                "{point}: the child died of the abort there"
+            );
+            let (volume, store, mutations) = reopen(&path);
+            let recovered = mutations.recover(&Grants(&store)).expect("recovers");
+            assert!(mutations.open_intents().is_empty(), "{point}");
+            assert_eq!(mutations.pending(), 0, "{point}: every outcome recorded");
+            let applied = !matches!(point, "mutation.intent_written" | "mutation.intent_audited");
+            assert_eq!(store.records().len(), usize::from(applied), "{point}");
+            match point {
+                "mutation.intent_written" | "mutation.intent_audited" => {
+                    assert_eq!(recovered.failed.len(), 1, "{point}");
+                }
+                "mutation.applied" => assert_eq!(recovered.reconciled.len(), 1, "{point}"),
+                _ => assert!(
+                    recovered.failed.is_empty() && recovered.reconciled.is_empty(),
+                    "{point}: committed before the crash"
+                ),
+            }
+            let expected: &[&str] = match point {
+                "mutation.intent_written" => &["failed"],
+                "mutation.intent_audited" => &["intent", "failed"],
+                "mutation.applied" => &["intent", "reconciled"],
+                // Written to the trail and not yet marked: written again, at least once.
+                "mutation.applied_audited" => &["intent", "applied", "applied"],
+                _ => &["intent", "applied"],
+            };
+            assert_eq!(phases(&volume), expected, "{point}");
+            // The caller lost the answer: a retry of the same request learns the result.
+            let retried = create(&mutations, &store).expect("the retry answers");
+            match (point, retried) {
+                ("mutation.intent_written" | "mutation.intent_audited", Outcome::Applied(_)) => {
+                    assert_eq!(store.records().len(), 1, "{point}: applied anew, once")
+                }
+                ("mutation.applied", Outcome::Reconciled { target, .. }) => assert_eq!(
+                    target,
+                    Some(store.records()[0].grant_id.to_string()),
+                    "{point}"
+                ),
+                (_, Outcome::Replayed(grant_id)) if applied && point != "mutation.applied" => {
+                    assert_eq!(grant_id, store.records()[0].grant_id.to_string(), "{point}")
+                }
+                (_, other) => panic!("{point}: {other:?}"),
+            }
+            assert_eq!(store.records().len(), 1, "{point}: never two grants");
+            drop(mutations);
+            drop(store);
+            drop(volume);
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
+
+    /// A crash between the snapshot and the journal's rewrite folds to the same state: the
+    /// answer a retry needs is still there.
+    #[test]
+    fn a_crash_mid_fold_keeps_every_answer() {
+        let point = "mutation.snapshot_written";
+        let path = scratch(point);
+        {
+            let (_volume, store, mutations) = reopen(&path);
+            create(&mutations, &store).expect("issued");
+        }
+        assert!(
+            crash("mutating::child_open", point, &path),
+            "{point}: the child died of the abort there"
+        );
+        let (_volume, store, mutations) = reopen(&path);
+        mutations.recover(&Grants(&store)).expect("recovers");
+        let retried = create(&mutations, &store).expect("the retry answers");
+        assert!(matches!(retried, Outcome::Replayed(_)), "{retried:?}");
+        assert_eq!(store.records().len(), 1);
+        let _ = std::fs::remove_dir_all(path);
     }
 }

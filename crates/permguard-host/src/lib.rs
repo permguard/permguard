@@ -18,5 +18,6 @@ pub mod api;
 pub mod audit;
 pub mod authz;
 pub mod composition;
+pub mod operations;
 pub mod storage;
 pub mod time;

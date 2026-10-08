@@ -34,9 +34,13 @@ use serde::{Deserialize, Serialize};
 
 use permguard_core::authz::{Actor, Principal, Resource, operations};
 use permguard_core::keys::KeyManager;
-use permguard_core::{AccessDenial, ApiError, AuditRecorder, ErrorClass, Health, codes};
+use permguard_core::{AccessDenial, ApiError, ErrorClass, Health, codes};
 
 use crate::authz::{Authorization, GrantStore};
+use crate::operations::journal::{Initiator, OperationId, RequestKey};
+use crate::operations::mutation::{
+    self, Applying, Begin, Failure, MutationError, Mutations, Outcome,
+};
 
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
@@ -196,8 +200,9 @@ pub struct Composition {
     pub effective: Effective,
     /// The name of the audit trail receipts point at.
     pub trail: String,
-    /// The recorder every mutation writes its audit event through, when the composition has one.
-    pub recorder: Option<AuditRecorder>,
+    /// The security-mutation engine every mutation runs through (WP-3.6): its journal, its
+    /// audit records and its idempotent answers. Without it the mutations are refused.
+    pub mutations: Option<Arc<Mutations>>,
     /// The Host's time guard: grant expiry and the times receipts carry (WP-2.12).
     pub time: Arc<crate::time::TimeGuard>,
 }
@@ -213,8 +218,7 @@ pub struct HostApi {
     assurance: Assurance,
     effective: Effective,
     trail: String,
-    /// `pub(crate)` for the tests of the mutations, which compose their own recorder.
-    pub(crate) recorder: Option<AuditRecorder>,
+    mutations: Option<Arc<Mutations>>,
     time: Arc<crate::time::TimeGuard>,
 }
 
@@ -240,7 +244,7 @@ impl HostApi {
             assurance: composition.assurance,
             effective: composition.effective,
             trail: composition.trail,
-            recorder: composition.recorder,
+            mutations: composition.mutations,
             time: composition.time,
         }
     }
@@ -282,55 +286,91 @@ impl HostApi {
         })
     }
 
-    /// Runs `apply` once per `(principal, request id)` inside the replay window: a retry with
-    /// the same operation and the same request is answered with what the first attempt
-    /// answered, across a restart; the same request id under another request is refused.
-    fn mutate<T, R>(
+    /// The mutation engine, or the refusal a mutation without one answers.
+    fn mutations(&self) -> Result<&Arc<Mutations>, Refusal> {
+        self.mutations.as_ref().ok_or_else(|| {
+            Refusal::new(
+                ErrorClass::Unavailable,
+                codes::host::REPLAY_UNAVAILABLE,
+                "no mutation journal is open on this process: nothing was applied",
+            )
+        })
+    }
+
+    /// Runs one grant mutation of `principal` through the transaction (WP-3.6): once per
+    /// `(principal, request id)` inside the window, the same request answered with what the
+    /// first attempt committed, across a restart; the same request id under another request
+    /// refused. `check` validates against the current state once a retry is answered and before
+    /// the intent; `apply` is the domain mutation; `reconciled` rebuilds the answer of an
+    /// operation recovery committed without one, from the domain's state.
+    #[allow(clippy::too_many_arguments)]
+    fn transact<T, R>(
         &self,
         principal: &Principal,
         operation: &'static str,
+        action: &'static str,
         mutation: &Mutation,
         request: &R,
-        apply: impl FnOnce(&str) -> Result<T, Refusal>,
-    ) -> Result<Applied<T>, Refusal>
+        target: Option<String>,
+        check: impl FnOnce() -> Result<(), Refusal>,
+        apply: impl FnOnce(&Applying<'_>) -> Result<mutation::Applied<T>, Failure<Refusal>>,
+        reconciled: impl FnOnce(OperationId, u64, Option<String>) -> Result<T, Refusal>,
+    ) -> Result<T, Refusal>
     where
         T: Serialize + serde::de::DeserializeOwned,
         R: Serialize,
     {
+        let mutations = self.mutations()?;
         let request_id = mutation.validated()?;
         let digest = replay::digest_of(request)?;
-        // Held from here to the record: two simultaneous retries cannot both miss the window
-        // and both apply; the second is refused and retries once the first has answered.
+        // Held from here to the answer, across both windows.
         let _in_flight = self.replay.begin(principal, request_id)?;
+        // An answer the replay journal recorded before WP-3.6 answers until its window ends.
         if let Some(stored) = self
             .replay
             .lookup::<T>(principal, request_id, operation, &digest)?
         {
-            tracing::debug!(
-                event.name = "host.replayed",
-                component = COMPONENT,
-                operation = operation,
-                "a retried mutation was answered from the replay window"
-            );
-            return Ok(Applied {
-                value: stored,
-                fresh: false,
-            });
+            return Ok(stored);
         }
-        // The operation id is minted before anything is applied, so the one refusal minting can
-        // produce comes while "not applied" is still true.
-        let operation_id = replay::mint_id()?;
-        let value = apply(&operation_id)?;
-        self.replay
-            .record(principal, request_id, operation, &digest, &value)
-            .map_err(|error| unrecorded(operation, error))?;
-        Ok(Applied { value, fresh: true })
+        let outcome = mutations.run_checked(
+            Begin {
+                domain: crate::operations::grants::DOMAIN,
+                operation,
+                action,
+                initiator: Initiator::Principal(principal.as_str().to_owned()),
+                request: Some(RequestKey {
+                    request_id: request_id.to_owned(),
+                    digest,
+                }),
+                target,
+            },
+            check,
+            apply,
+        );
+        match outcome {
+            Ok(Outcome::Applied(value)) => Ok(value),
+            Ok(Outcome::Replayed(value)) => {
+                tracing::debug!(
+                    event.name = "host.replayed",
+                    component = COMPONENT,
+                    operation = operation,
+                    "a retried mutation was answered from the replay window"
+                );
+                Ok(value)
+            }
+            Ok(Outcome::Reconciled {
+                operation_id,
+                revision,
+                target,
+            }) => reconciled(operation_id, revision, target),
+            Err(error) => Err(refusal_of_mutation(operation, error)),
+        }
     }
 
-    /// Mints the receipt of a mutation that produced `revision`.
-    fn receipt(&self, operation_id: &str, revision: u64) -> Receipt {
+    /// Mints the receipt of the operation `operation_id`, which produced `revision`.
+    fn receipt(&self, operation_id: OperationId, revision: u64) -> Receipt {
         Receipt {
-            operation_id: operation_id.to_owned(),
+            operation_id: operation_id.to_string(),
             revision,
             audit: AuditReference {
                 trail: self.trail.clone(),
@@ -341,33 +381,78 @@ impl HostApi {
     }
 }
 
-/// The refusal of a mutation that is applied and could not be recorded for replay: said as
-/// such, never as "not applied", so a caller reads before it retries. `TODO(WP-3.6)`: the
-/// mutation transaction makes the record and the mutation one durable step.
-pub(crate) fn unrecorded(operation: &str, error: replay::ReplayError) -> Refusal {
-    tracing::error!(
-        event.name = "host.mutation_unrecorded",
-        component = COMPONENT,
-        operation = operation,
-        error = %error,
-        "a Host mutation was applied and the replay journal could not record it"
-    );
-    Refusal::Api(
-        ApiError::new(
-            ErrorClass::Internal,
-            codes::host::MUTATION_UNRECORDED,
-            "the mutation was applied and could not be recorded for replay: read the current \
-             state before retrying, since a retry with this request id is not answered from the \
-             window",
-        )
-        .with_internal(error.to_string()),
-    )
-}
-
-/// What a mutation produced, and whether this call applied it or replayed it.
-struct Applied<T> {
-    value: T,
-    fresh: bool,
+/// The refusal of a mutation the engine did not end applied.
+fn refusal_of_mutation(operation: &str, error: MutationError<Refusal>) -> Refusal {
+    match error {
+        MutationError::Refused(refusal) => refusal,
+        MutationError::RequestIdReused(detail) => {
+            Refusal::new(ErrorClass::Conflict, codes::host::REQUEST_ID_REUSED, detail)
+        }
+        MutationError::AuditUnavailable(detail) => {
+            tracing::error!(
+                event.name = "host.audit_unavailable",
+                component = COMPONENT,
+                operation = operation,
+                error = %detail,
+                "a security mutation was refused: the audit trail cannot record it"
+            );
+            Refusal::Api(
+                ApiError::new(
+                    ErrorClass::Unavailable,
+                    codes::host::AUDIT_UNAVAILABLE,
+                    "the audit trail cannot record security mutations: nothing was applied",
+                )
+                .with_internal(detail),
+            )
+        }
+        MutationError::Unrecorded(detail) => {
+            tracing::error!(
+                event.name = "host.mutation_unrecorded",
+                component = COMPONENT,
+                operation = operation,
+                error = %detail,
+                "a Host mutation was applied and its record could not be written"
+            );
+            Refusal::Api(
+                ApiError::new(
+                    ErrorClass::Internal,
+                    codes::host::MUTATION_UNRECORDED,
+                    "the mutation may have been applied and its record could not be written: read \
+                     the current state before retrying",
+                )
+                .with_internal(detail),
+            )
+        }
+        MutationError::Indeterminate(refusal) => {
+            let detail = refusal
+                .error()
+                .map_or_else(|| format!("{refusal:?}"), ToString::to_string);
+            tracing::error!(
+                event.name = "host.mutation_indeterminate",
+                component = COMPONENT,
+                operation = operation,
+                error = %detail,
+                "a Host mutation may have been applied; the next start resolves it"
+            );
+            Refusal::Api(
+                ApiError::new(
+                    ErrorClass::Internal,
+                    codes::host::MUTATION_UNRECORDED,
+                    "the mutation may have been applied and could not be recorded: read the \
+                     current state before retrying",
+                )
+                .with_internal(detail),
+            )
+        }
+        MutationError::Unavailable(detail) => Refusal::Api(
+            ApiError::new(
+                ErrorClass::Unavailable,
+                codes::host::REPLAY_UNAVAILABLE,
+                "the mutation journal is unavailable before the mutation: nothing was applied",
+            )
+            .with_internal(detail),
+        ),
+    }
 }
 
 /// An admitted caller: the principal it acts as, holding its concurrency permit.
@@ -388,7 +473,64 @@ pub(crate) mod testing {
 
     use super::*;
     use crate::authz::{GrantStore, Issue, PublicGrant};
+    use crate::operations::grants::Grants;
+    use crate::operations::mutation::Projection;
     use crate::storage::volume::Volume;
+
+    /// One audit record as the facade's tests read it: action, subject, target and phase.
+    pub(crate) type Recorded = (String, String, Option<String>, Option<&'static str>);
+
+    /// The audit trail of the facade's tests: remembers every record, or refuses them all.
+    #[derive(Default)]
+    pub(crate) struct Recording {
+        pub(crate) events: std::sync::Mutex<Vec<Recorded>>,
+        /// Every record refused.
+        pub(crate) refuse: std::sync::atomic::AtomicBool,
+        /// The records of this phase refused.
+        pub(crate) refuse_phase: std::sync::Mutex<Option<&'static str>>,
+        /// Run once, when the next intent record is written: how a test fails a later step.
+        #[allow(clippy::type_complexity)]
+        pub(crate) on_intent: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    }
+
+    impl Projection for Recording {
+        fn project(&self, event: &permguard_core::AuditEvent<'_>) -> Result<(), String> {
+            let phase = event.operation().map(|(_, phase)| phase.as_str());
+            let refused_phase = *self
+                .refuse_phase
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if self.refuse.load(std::sync::atomic::Ordering::SeqCst)
+                || (refused_phase.is_some() && refused_phase == phase)
+            {
+                return Err("the trail is full".to_owned());
+            }
+            if phase == Some("intent")
+                && let Some(hook) = self
+                    .on_intent
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+            {
+                hook();
+            }
+            let subject = match event.subject() {
+                permguard_core::Subject::Principal(principal) => format!("principal:{principal}"),
+                permguard_core::Subject::System(system) => format!("system:{system}"),
+                other => other.to_string(),
+            };
+            self.events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((
+                    event.action().to_owned(),
+                    subject,
+                    event.target().map(str::to_owned),
+                    phase,
+                ));
+            Ok(())
+        }
+    }
 
     pub(crate) fn scratch(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -430,32 +572,52 @@ pub(crate) mod testing {
         root: &std::path::Path,
         rings: Vec<(String, Arc<dyn KeyManager>)>,
     ) -> (HostApi, Arc<GrantStore>, Volume) {
+        reopen_with(root, rings, Arc::new(Recording::default()))
+    }
+
+    /// [`reopen`], recording the audit trail in `trail`.
+    pub(crate) fn reopen_with(
+        root: &std::path::Path,
+        rings: Vec<(String, Arc<dyn KeyManager>)>,
+        trail: Arc<Recording>,
+    ) -> (HostApi, Arc<GrantStore>, Volume) {
         let volume =
             Volume::claim(root, AssuranceProfile::Development).expect("the volume is claimed");
         let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
+        let time = Arc::new(crate::time::TimeGuard::system(
+            std::time::Duration::from_secs(30),
+        ));
+        let mutations = Arc::new(
+            Mutations::open(&volume, trail, Arc::clone(&time)).expect("the mutation journal opens"),
+        );
+        mutations
+            .recover(&Grants(&store))
+            .expect("the mutation journal recovers");
         let admin = Principal::new(ADMIN).expect("a principal");
         if !store
             .records()
             .iter()
             .any(|record| record.principal_id == admin)
         {
-            store
-                .issue(
-                    Issue {
-                        principal: admin,
-                        operations: operations::ALL
-                            .iter()
-                            .map(|operation| (*operation).to_owned())
-                            .collect(),
-                        selector: Selector::under(Resource::host()),
-                        resource_types: vec!["*".to_owned()],
-                        constraints: Default::default(),
-                        issued_by: "test".to_owned(),
-                        expires_at: None,
-                    },
-                    crate::authz::store::now(),
-                )
-                .expect("the administrator is issued");
+            crate::operations::grants::issue(
+                &mutations,
+                &store,
+                Initiator::System("test".to_owned()),
+                Issue {
+                    principal: admin,
+                    operations: operations::ALL
+                        .iter()
+                        .map(|operation| (*operation).to_owned())
+                        .collect(),
+                    selector: Selector::under(Resource::host()),
+                    resource_types: vec!["*".to_owned()],
+                    constraints: Default::default(),
+                    issued_by: "test".to_owned(),
+                    expires_at: None,
+                },
+                crate::authz::store::now(),
+            )
+            .expect("the administrator is issued");
         }
         let (replay, _) =
             Replay::open(&volume, crate::authz::store::now()).expect("the replay journal opens");
@@ -484,10 +646,8 @@ pub(crate) mod testing {
                 settings: Vec::new(),
             },
             trail: "audit".to_owned(),
-            recorder: None,
-            time: Arc::new(crate::time::TimeGuard::system(
-                std::time::Duration::from_secs(30),
-            )),
+            mutations: Some(mutations),
+            time,
         });
         (api, store, volume)
     }

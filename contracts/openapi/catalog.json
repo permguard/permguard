@@ -161,7 +161,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -336,7 +336,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -413,7 +413,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -612,7 +612,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -797,7 +797,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {
@@ -864,7 +864,7 @@
             }
           },
           "500": {
-            "description": "The catalog store failed (`catalog_failed`).",
+            "description": "The catalog store failed (`catalog_failed`), or the change was made and its audit record could not be written (`mutation_unrecorded`): read the current state before retrying.",
             "content": {
               "application/json": {
                 "schema": {

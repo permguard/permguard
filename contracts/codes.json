@@ -306,6 +306,12 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.AUDIT_UNAVAILABLE": {
+      "code": "audit_unavailable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "host.GRANT_STORE_UNAVAILABLE": {
       "code": "grant_store_unavailable",
       "contract": "6-contracts/8-contract-host-api.md",

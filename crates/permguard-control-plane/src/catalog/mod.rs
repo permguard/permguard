@@ -288,10 +288,11 @@ impl CatalogFacade {
 
     /// Records one administrative action against the trail, when the build keeps one.
     ///
-    /// A failed record is reported and does not undo the mutation: the catalog write is the fact,
-    /// and refusing to have done what was already done helps nobody. The trail's own chain makes a
-    /// gap detectable.
-    pub(crate) async fn record(&self, action: &'static str, target: &str) {
+    /// A failed record does not undo the mutation, which is already the fact, and is not answered
+    /// as a success either: the caller is told `mutation_unrecorded` and reads the state before it
+    /// retries (owner decision of 2026-10-07). `TODO(WP-17)`: the catalog's mutations become
+    /// operations of the Host's security-mutation transaction (WP-3.6).
+    pub(crate) async fn record(&self, action: &'static str, target: &str) -> Result<(), ApiError> {
         // Every record is a mutation that happened: count it and refresh the
         // holdings gauges here, the one place all mutations pass through.
         // A refusal put on the trail (`audit.refusals`) arrives here too,
@@ -305,21 +306,22 @@ impl CatalogFacade {
         }
 
         let Some(recorder) = &self.recorder else {
-            return;
+            return Ok(());
         };
 
-        if let Err(error) = recorder
+        recorder
             .record_on(action, Subject::System("control-plane"), target)
             .await
-        {
-            tracing::warn!(
-                event.name = "catalog.audit_failed",
-                component = "control-plane",
-                action = action,
-                error = %error,
-                "the catalog change was made and its audit record was not"
-            );
-        }
+            .map_err(|error| {
+                tracing::error!(
+                    event.name = "catalog.audit_failed",
+                    component = "control-plane",
+                    action = action,
+                    error = %error,
+                    "the catalog change was made and its audit record was not"
+                );
+                crate::unrecorded(error)
+            })
     }
 }
 
@@ -343,7 +345,8 @@ impl CatalogFacade {
                 ErrorClass::Validation | ErrorClass::Conflict | ErrorClass::NotFound
             )
         {
-            self.record(operation, error.code()).await;
+            // A refusal changed nothing: its record failing is said in the log, not answered.
+            let _ = self.record(operation, error.code()).await;
         }
 
         error

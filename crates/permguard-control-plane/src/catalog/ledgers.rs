@@ -28,7 +28,7 @@ pub(crate) async fn create(
         Err(error) => return Err(facade.refused("ledger.create.refused", error).await.into()),
     };
 
-    facade.record("ledger.created", &ledger.id).await;
+    facade.record("ledger.created", &ledger.id).await?;
 
     Ok(ledger)
 }
@@ -90,7 +90,7 @@ pub(crate) async fn rename(
             Err(error) => return Err(facade.refused("ledger.rename.refused", error).await.into()),
         };
 
-    facade.record("ledger.renamed", &ledger.id).await;
+    facade.record("ledger.renamed", &ledger.id).await?;
 
     Ok(ledger)
 }
@@ -111,7 +111,7 @@ pub(crate) async fn delete(
         Err(error) => return Err(facade.refused("ledger.delete.refused", error).await.into()),
     };
 
-    facade.record("ledger.deleted", &ledger.id).await;
+    facade.record("ledger.deleted", &ledger.id).await?;
 
     Ok(ledger)
 }

@@ -11,6 +11,7 @@
 //! | segment roll             | [`journal`]   | flush old segment → create and flush new header → flush directory                            |
 //! | deletion                 | [`tombstone`] | durable tombstone first → unlink → flush parent → remove tombstone → flush parent            |
 //! | snapshot cache           | [`snapshot`]  | built from the authoritative journal → atomic replace; revision and digest inside            |
+//! | CBOR sequence file       | [`sequence`]  | canonical item appended → flush; a torn final item cut at open, anything else corruption     |
 //!
 //! Every open below a [`Dir`] is relative to that directory and never follows a symbolic link (on
 //! Unix); every format begins with the header of [`format`]; every write and flush goes through
@@ -37,6 +38,7 @@ pub mod migrate;
 pub mod probe;
 pub mod qualify;
 pub mod quota;
+pub mod sequence;
 pub mod snapshot;
 pub mod testing;
 pub mod tombstone;

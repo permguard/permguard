@@ -15,9 +15,11 @@
 //! after every mutation and checked against the replay at open. Grant ids are permanent, a
 //! revocation is a terminal transition, and an expiry is written as one when it is noticed.
 //!
-//! Mutations append directly to the journal. `TODO(WP-3.6)`: once the Host security-mutation
-//! transaction exists, issue and revoke go through it, with compare-and-swap on the revision,
-//! idempotency and the operation receipt the Host API promises.
+//! Every mutation is one operation of the Host's security-mutation transaction (WP-3.6): issue,
+//! revoke and expire take the [`Applying`] only `operations::mutation` builds, write its
+//! operation id into the frame, and compare the revision the caller expects under the journal
+//! lock. Recovery of the mutation journal asks [`GrantStore::operation`] whether an operation
+//! reached the journal.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -28,6 +30,8 @@ use permguard_objects::cbor::{self, Value};
 use super::record::{
     FRAME_EXPIRE, FRAME_ISSUE, FRAME_REVOKE, GrantId, GrantRecord, RecordError, Status, Transition,
 };
+use crate::operations::journal::OperationId;
+use crate::operations::mutation::Applying;
 use crate::storage::dir::Dir;
 use crate::storage::journal::{Journal, Options, Recovery};
 use crate::storage::volume::Volume;
@@ -64,6 +68,8 @@ pub enum AuthzError {
     Unknown(GrantId),
     /// A transition the grant's state does not allow: revoking what is already terminal.
     Terminal(GrantId, Status),
+    /// The revision the caller expected is not the current one.
+    Conflict { expected: u64, current: u64 },
     /// The journal or the snapshot could not be read or written.
     Storage(StorageError),
     /// A frame that does not decode: the journal is damaged, and the store does not guess.
@@ -78,6 +84,10 @@ impl std::fmt::Display for AuthzError {
             Self::Terminal(id, status) => {
                 write!(f, "grant `{id}` is {}, which is terminal", status.as_str())
             }
+            Self::Conflict { expected, current } => write!(
+                f,
+                "the mutation expected revision {expected}, the current one is {current}"
+            ),
             Self::Storage(error) => write!(f, "{error}"),
             Self::Record(error) => write!(f, "{error}"),
         }
@@ -160,6 +170,8 @@ impl Bootstrap {
 struct State {
     records: BTreeMap<GrantId, GrantRecord>,
     revision: u64,
+    /// Every operation the journal names, with the revision it produced and its grant.
+    operations: BTreeMap<OperationId, (u64, GrantId)>,
 }
 
 /// The grant store of one volume: the journal, replayed, and what it holds.
@@ -188,6 +200,7 @@ impl GrantStore {
         let mut state = State {
             records: BTreeMap::new(),
             revision: 0,
+            operations: BTreeMap::new(),
         };
         for frame in journal.frames()? {
             apply(&mut state, frame.kind, &frame.payload)?;
@@ -282,50 +295,26 @@ impl GrantStore {
         AllowSet::new(allows, state.revision)
     }
 
-    /// Issues a grant: a direct journal append. `TODO(WP-3.6)`: the security-mutation transaction.
-    pub fn issue(&self, issue: Issue, now: u64) -> Result<GrantRecord, AuthzError> {
-        if issue.principal.is_anonymous() {
-            return Err(AuthzError::Invalid(format!(
-                "`{}` is the reserved public principal: what anybody may do is declared in the \
-                 configuration's `host.authz.public`, never journaled",
-                permguard_core::authz::ANONYMOUS
-            )));
-        }
-        if issue.operations.is_empty() {
-            return Err(AuthzError::Invalid(
-                "a grant names at least one operation".to_owned(),
-            ));
-        }
-        if let Some(unknown) = issue
+    /// The revision `operation_id` produced and the grant it changed, when the journal holds it.
+    pub fn operation(&self, operation_id: &OperationId) -> Option<(u64, GrantId)> {
+        self.state
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .operations
-            .iter()
-            .find(|operation| !operations::is_registered(operation))
-        {
-            return Err(AuthzError::Invalid(format!(
-                "`{unknown}` is not a registered operation; the registry is {}",
-                operations::ALL.join(", ")
-            )));
-        }
-        if issue.resource_types.is_empty() {
-            return Err(AuthzError::Invalid(
-                "a grant names at least one resource type".to_owned(),
-            ));
-        }
-        if let Some(unknown) = issue
-            .resource_types
-            .iter()
-            .find(|resource_type| !resource_types::is_registered(resource_type))
-        {
-            return Err(AuthzError::Invalid(format!(
-                "`{unknown}` is not a registered resource type; the registry is {}",
-                resource_types::ALL.join(", ")
-            )));
-        }
-        if issue.expires_at.is_some_and(|until| until <= now) {
-            return Err(AuthzError::Invalid(
-                "the grant would expire before it is issued".to_owned(),
-            ));
-        }
+            .get(operation_id)
+            .copied()
+    }
+
+    /// Issues a grant, inside the operation `applying` names: refused when `expected_revision`
+    /// is not the store's revision.
+    pub fn issue(
+        &self,
+        applying: &Applying<'_>,
+        issue: Issue,
+        now: u64,
+        expected_revision: Option<u64>,
+    ) -> Result<GrantRecord, AuthzError> {
+        validate_issue(&issue, now)?;
         let mut journal = self
             .journal
             .lock()
@@ -334,6 +323,15 @@ impl GrantStore {
             .state
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(expected) = expected_revision
+            && expected != state.revision
+        {
+            return Err(AuthzError::Conflict {
+                expected,
+                current: state.revision,
+            });
+        }
+        refuse_reuse(&state, applying)?;
         let record = GrantRecord {
             grant_id: fresh_id(&state.records)?,
             principal_id: issue.principal,
@@ -346,25 +344,63 @@ impl GrantStore {
             issued_by: issue.issued_by,
             issued_at: now,
             expires_at: issue.expires_at,
+            operation_id: Some(applying.operation_id()),
         };
         journal.append(FRAME_ISSUE, &record.encode()?)?;
         state.revision += 1;
+        state
+            .operations
+            .insert(applying.operation_id(), (record.revision, record.grant_id));
         state.records.insert(record.grant_id, record.clone());
         drop(state);
         drop(journal);
-        self.write_snapshot()?;
+        self.refresh_snapshot();
         Ok(record)
     }
 
-    /// Revokes a grant: terminal. `TODO(WP-3.6)`: the security-mutation transaction.
-    pub fn revoke(&self, grant_id: GrantId, by: &str, now: u64) -> Result<GrantRecord, AuthzError> {
-        self.transition(FRAME_REVOKE, Status::Revoked, grant_id, by, now)
+    /// Revokes a grant, terminally, inside the operation `applying` names: refused when
+    /// `expected_revision` is not the grant's revision.
+    pub fn revoke(
+        &self,
+        applying: &Applying<'_>,
+        grant_id: GrantId,
+        by: &str,
+        now: u64,
+        expected_revision: Option<u64>,
+    ) -> Result<GrantRecord, AuthzError> {
+        self.transition(
+            applying,
+            FRAME_REVOKE,
+            Status::Revoked,
+            grant_id,
+            by,
+            now,
+            expected_revision,
+        )
     }
 
-    /// Writes an expire transition for every active grant past its expiry at `now`.
-    pub fn expire_due(&self, now: u64) -> Result<Vec<GrantId>, AuthzError> {
-        let due: Vec<GrantId> = self
-            .state
+    /// Writes the expiry of one grant past its time, inside the operation `applying` names.
+    pub fn expire(
+        &self,
+        applying: &Applying<'_>,
+        grant_id: GrantId,
+        now: u64,
+    ) -> Result<GrantRecord, AuthzError> {
+        self.transition(
+            applying,
+            FRAME_EXPIRE,
+            Status::Expired,
+            grant_id,
+            "expiry",
+            now,
+            None,
+        )
+    }
+
+    /// The active grants past their expiry at `now`: what `operations::grants::expire_due`
+    /// writes the expiry of.
+    pub fn due(&self, now: u64) -> Vec<GrantId> {
+        self.state
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .records
@@ -374,21 +410,18 @@ impl GrantStore {
                     && record.expires_at.is_some_and(|until| now >= until)
             })
             .map(|record| record.grant_id)
-            .collect();
-        for grant_id in &due {
-            self.transition(FRAME_EXPIRE, Status::Expired, *grant_id, "expiry", now)?;
-        }
-        Ok(due)
+            .collect()
     }
 
-    /// Writes the bootstrap commitment once and issues the recovery administrator's grant:
-    /// `authz.admin` on `host`. A second bootstrap naming the same fingerprint is the first; one
-    /// naming another is refused, the file being immutable.
-    pub fn bootstrap_recovery_administrator(
+    /// Writes the bootstrap commitment once, inside the operation `applying` names: a second
+    /// bootstrap naming the same fingerprint is the first; one naming another is refused, the
+    /// file being immutable. Answers the commitment held and whether this call wrote it.
+    pub fn commit_bootstrap(
         &self,
+        _applying: &Applying<'_>,
         fingerprint: &str,
         now: u64,
-    ) -> Result<(Bootstrap, Option<GrantRecord>), AuthzError> {
+    ) -> Result<(Bootstrap, bool), AuthzError> {
         let principal = bootstrap_principal(fingerprint)?;
         let commitment = Bootstrap {
             principal: principal.clone(),
@@ -423,51 +456,42 @@ impl GrantStore {
             .bootstrap
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(held.clone());
-        // The grant follows the commitment; a crash between the two leaves a committed principal
-        // with no grant, so the grant is issued whenever the committed principal holds none.
-        let committed = held.principal.clone();
+        Ok((held, matches!(published, Published::Written)))
+    }
+
+    /// The recovery administrator's grant, `authz.admin` on `host`, when the committed principal
+    /// holds none at `now`: a crash between the commitment and the grant leaves a committed
+    /// principal with no grant, so the grant is asked for whenever it is missing.
+    pub fn recovery_issue(&self, bootstrap: &Bootstrap, now: u64) -> Option<Issue> {
         let holds_admin = self.allows_at(now).permits(
-            &committed,
+            &bootstrap.principal,
             operations::AUTHZ_ADMIN,
             &permguard_core::authz::Resource::host(),
         );
-        let grant = if holds_admin {
-            None
-        } else {
-            Some(self.issue(
-                Issue {
-                    principal: committed,
-                    operations: vec![operations::AUTHZ_ADMIN.to_owned()],
-                    selector: Selector::exactly(permguard_core::authz::Resource::host()),
-                    resource_types: vec![resource_types::HOST.to_owned()],
-                    constraints: BTreeMap::from([(
-                        "bootstrap".to_owned(),
-                        "recovery administrator".to_owned(),
-                    )]),
-                    issued_by: "bootstrap".to_owned(),
-                    expires_at: None,
-                },
-                now,
-            )?)
-        };
-        tracing::info!(
-            event.name = "authz.bootstrap",
-            component = "host",
-            fingerprint = %held.fingerprint,
-            written = matches!(published, Published::Written),
-            granted = grant.is_some(),
-            "the recovery administrator is committed"
-        );
-        Ok((held, grant))
+        (!holds_admin).then(|| Issue {
+            principal: bootstrap.principal.clone(),
+            operations: vec![operations::AUTHZ_ADMIN.to_owned()],
+            selector: Selector::exactly(permguard_core::authz::Resource::host()),
+            resource_types: vec![resource_types::HOST.to_owned()],
+            constraints: BTreeMap::from([(
+                "bootstrap".to_owned(),
+                "recovery administrator".to_owned(),
+            )]),
+            issued_by: "bootstrap".to_owned(),
+            expires_at: None,
+        })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn transition(
         &self,
+        applying: &Applying<'_>,
         kind: u16,
         to: Status,
         grant_id: GrantId,
         by: &str,
         now: u64,
+        expected_revision: Option<u64>,
     ) -> Result<GrantRecord, AuthzError> {
         let mut journal = self
             .journal
@@ -484,15 +508,28 @@ impl GrantStore {
         if current.status != Status::Active {
             return Err(AuthzError::Terminal(grant_id, current.status));
         }
+        if let Some(expected) = expected_revision
+            && expected != current.revision
+        {
+            return Err(AuthzError::Conflict {
+                expected,
+                current: current.revision,
+            });
+        }
+        refuse_reuse(&state, applying)?;
         let transition = Transition {
             grant_id,
             revision: state.revision + 1,
             at: now,
             by: by.to_owned(),
+            operation_id: Some(applying.operation_id()),
         };
         journal.append(kind, &transition.encode()?)?;
         state.revision += 1;
         let revision = state.revision;
+        state
+            .operations
+            .insert(applying.operation_id(), (revision, grant_id));
         let record = state
             .records
             .get_mut(&grant_id)
@@ -502,8 +539,21 @@ impl GrantStore {
         let record = record.clone();
         drop(state);
         drop(journal);
-        self.write_snapshot()?;
+        self.refresh_snapshot();
         Ok(record)
+    }
+
+    /// Rewrites the snapshot after a mutation the journal already holds: a failure is said and
+    /// not answered, since the mutation is durable and the snapshot is rebuilt at open.
+    fn refresh_snapshot(&self) {
+        if let Err(error) = self.write_snapshot() {
+            tracing::warn!(
+                event.name = "authz.snapshot_unwritten",
+                component = "host",
+                error = %error,
+                "the grant snapshot could not be rewritten; it is rebuilt at the next open"
+            );
+        }
     }
 
     fn snapshot_body(&self) -> Result<(u64, Vec<u8>), AuthzError> {
@@ -615,15 +665,85 @@ impl GrantStore {
     }
 }
 
+/// Refuses an issue the store would never write: the reserved public principal, no operation
+/// or type, one outside the registries, an expiry already past at `now`. Checked before a
+/// mutation begins, and again by [`GrantStore::issue`].
+pub fn validate_issue(issue: &Issue, now: u64) -> Result<(), AuthzError> {
+    if issue.principal.is_anonymous() {
+        return Err(AuthzError::Invalid(format!(
+            "`{}` is the reserved public principal: what anybody may do is declared in the \
+             configuration's `host.authz.public`, never journaled",
+            permguard_core::authz::ANONYMOUS
+        )));
+    }
+    if issue.operations.is_empty() {
+        return Err(AuthzError::Invalid(
+            "a grant names at least one operation".to_owned(),
+        ));
+    }
+    if let Some(unknown) = issue
+        .operations
+        .iter()
+        .find(|operation| !operations::is_registered(operation))
+    {
+        return Err(AuthzError::Invalid(format!(
+            "`{unknown}` is not a registered operation; the registry is {}",
+            operations::ALL.join(", ")
+        )));
+    }
+    if issue.resource_types.is_empty() {
+        return Err(AuthzError::Invalid(
+            "a grant names at least one resource type".to_owned(),
+        ));
+    }
+    if let Some(unknown) = issue
+        .resource_types
+        .iter()
+        .find(|resource_type| !resource_types::is_registered(resource_type))
+    {
+        return Err(AuthzError::Invalid(format!(
+            "`{unknown}` is not a registered resource type; the registry is {}",
+            resource_types::ALL.join(", ")
+        )));
+    }
+    if issue.expires_at.is_some_and(|until| until <= now) {
+        return Err(AuthzError::Invalid(
+            "the grant would expire before it is issued".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// One operation writes the journal once: the operation id is how recovery finds its revision.
+fn refuse_reuse(state: &State, applying: &Applying<'_>) -> Result<(), AuthzError> {
+    if state.operations.contains_key(&applying.operation_id()) {
+        return Err(AuthzError::Invalid(format!(
+            "the operation {} already wrote the grant journal; one operation writes it once",
+            applying.operation_id()
+        )));
+    }
+    Ok(())
+}
+
 fn apply(state: &mut State, kind: u16, payload: &[u8]) -> Result<(), AuthzError> {
     match kind {
         FRAME_ISSUE => {
             let record = GrantRecord::decode(payload)?;
             state.revision = state.revision.max(record.revision);
+            if let Some(operation_id) = record.operation_id {
+                state
+                    .operations
+                    .insert(operation_id, (record.revision, record.grant_id));
+            }
             state.records.insert(record.grant_id, record);
         }
         FRAME_REVOKE | FRAME_EXPIRE => {
             let transition = Transition::decode(payload)?;
+            if let Some(operation_id) = transition.operation_id {
+                state
+                    .operations
+                    .insert(operation_id, (transition.revision, transition.grant_id));
+            }
             let record = state
                 .records
                 .get_mut(&transition.grant_id)
@@ -710,20 +830,26 @@ mod tests {
         let (store, _) = GrantStore::open(&volume).expect("opens");
         let billing = store
             .issue(
+                &Applying::for_tests(1),
                 issue("billing", "catalog.read", "plane/control/zone/billing/*"),
                 100,
+                None,
             )
             .expect("issued");
         let people = store
             .issue(
+                &Applying::for_tests(5),
                 issue("people", "catalog.read", "plane/control/zone/people/*"),
                 101,
+                None,
             )
             .expect("issued");
         assert_eq!(store.revision(), 2);
-        store.revoke(people.grant_id, "test", 102).expect("revoked");
+        store
+            .revoke(&Applying::for_tests(3), people.grant_id, "test", 102, None)
+            .expect("revoked");
         assert!(matches!(
-            store.revoke(people.grant_id, "test", 103),
+            store.revoke(&Applying::for_tests(4), people.grant_id, "test", 103, None),
             Err(AuthzError::Terminal(_, Status::Revoked))
         ));
         drop(store);
@@ -759,20 +885,23 @@ mod tests {
         let (store, _) = GrantStore::open(&volume).expect("opens");
         let mut short = issue("ops", "catalog.write", "plane/control");
         short.expires_at = Some(500);
-        let record = store.issue(short, 100).expect("issued");
+        let record = store
+            .issue(&Applying::for_tests(1), short, 100, None)
+            .expect("issued");
         let plane = Resource::plane("control");
         let ops = Principal::new("ops").expect("p");
         assert!(store.allows_at(499).permits(&ops, "catalog.write", &plane));
         assert!(!store.allows_at(500).permits(&ops, "catalog.write", &plane));
-        assert_eq!(
-            store.expire_due(600).expect("expired"),
-            vec![record.grant_id]
-        );
+        assert_eq!(store.due(600), vec![record.grant_id]);
+        store
+            .expire(&Applying::for_tests(2), record.grant_id, 600)
+            .expect("expired");
+        assert!(store.due(600).is_empty());
         assert_eq!(store.records()[0].status, Status::Expired);
         let mut late = issue("ops", "catalog.write", "plane/control");
         late.expires_at = Some(50);
         assert!(matches!(
-            store.issue(late, 100),
+            store.issue(&Applying::for_tests(2), late, 100, None),
             Err(AuthzError::Invalid(_))
         ));
     }
@@ -783,7 +912,12 @@ mod tests {
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
         let (store, _) = GrantStore::open(&volume).expect("opens");
         assert!(matches!(
-            store.issue(issue("anonymous", "catalog.read", "plane/control/*"), 1),
+            store.issue(
+                &Applying::for_tests(1),
+                issue("anonymous", "catalog.read", "plane/control/*"),
+                1,
+                None
+            ),
             Err(AuthzError::Invalid(_))
         ));
         assert_eq!(store.revision(), 0);
@@ -795,51 +929,119 @@ mod tests {
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
         let (store, _) = GrantStore::open(&volume).expect("opens");
         assert!(matches!(
-            store.issue(issue("x", "catalog.delete", "plane/control"), 1),
+            store.issue(
+                &Applying::for_tests(1),
+                issue("x", "catalog.delete", "plane/control"),
+                1,
+                None
+            ),
             Err(AuthzError::Invalid(_))
         ));
         let mut typed = issue("x", "catalog.read", "plane/control");
         typed.resource_types = vec!["realm".to_owned()];
-        assert!(matches!(store.issue(typed, 1), Err(AuthzError::Invalid(_))));
+        assert!(matches!(
+            store.issue(&Applying::for_tests(1), typed, 1, None),
+            Err(AuthzError::Invalid(_))
+        ));
         assert_eq!(store.revision(), 0, "nothing was written");
     }
 
     #[test]
-    fn the_bootstrap_is_written_once_and_grants_authz_admin_on_the_host() {
+    fn the_bootstrap_is_written_once_and_asks_for_authz_admin_on_the_host_while_it_is_missing() {
         let root = scratch("bootstrap");
         let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
         let (store, _) = GrantStore::open(&volume).expect("opens");
         let fingerprint = "AB".repeat(32);
-        let (commitment, grant) = store
-            .bootstrap_recovery_administrator(&fingerprint, 10)
-            .expect("bootstrapped");
+        let (commitment, written) = store
+            .commit_bootstrap(&Applying::for_tests(1), &fingerprint, 10)
+            .expect("committed");
+        assert!(written);
         assert_eq!(
             commitment.principal.as_str(),
             format!("cert:sha256:{}", "ab".repeat(32))
         );
-        let grant = grant.expect("the first bootstrap issues the grant");
-        assert_eq!(grant.operations, vec!["authz.admin"]);
+        let wanted = store
+            .recovery_issue(&commitment, 10)
+            .expect("the grant is missing");
+        assert_eq!(wanted.operations, vec!["authz.admin"]);
+        store
+            .issue(&Applying::for_tests(1), wanted, 10, None)
+            .expect("issued");
         assert!(store.allows_at(11).permits(
             &commitment.principal,
             "authz.admin",
             &Resource::host()
         ));
-        // The same fingerprint again: the same commitment, no second grant.
-        let (again, none) = store
-            .bootstrap_recovery_administrator(&format!("sha256:{fingerprint}"), 20)
+        assert!(store.recovery_issue(&commitment, 11).is_none(), "held now");
+        // The same fingerprint again: the same commitment, not written again.
+        let (again, written) = store
+            .commit_bootstrap(
+                &Applying::for_tests(2),
+                &format!("sha256:{fingerprint}"),
+                20,
+            )
             .expect("idempotent");
         assert_eq!(again, commitment);
-        assert!(none.is_none());
+        assert!(!written);
         // Another fingerprint: refused, the file is immutable.
         assert!(matches!(
-            store.bootstrap_recovery_administrator(&"cd".repeat(32), 30),
+            store.commit_bootstrap(&Applying::for_tests(3), &"cd".repeat(32), 30),
             Err(AuthzError::Invalid(_))
         ));
         assert!(matches!(
-            store.bootstrap_recovery_administrator("nonsense", 30),
+            store.commit_bootstrap(&Applying::for_tests(4), "nonsense", 30),
             Err(AuthzError::Invalid(_))
         ));
         assert_eq!(store.bootstrap(), Some(commitment));
+    }
+
+    #[test]
+    fn a_mutation_names_its_operation_and_compares_the_revision_it_expects() {
+        let root = scratch("operations");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("opens");
+        let record = store
+            .issue(
+                &Applying::for_tests(7),
+                issue("billing", "catalog.read", "plane/control/*"),
+                1,
+                Some(0),
+            )
+            .expect("issued at revision 0");
+        assert!(matches!(
+            store.issue(
+                &Applying::for_tests(8),
+                issue("people", "catalog.read", "plane/control/*"),
+                1,
+                Some(0)
+            ),
+            Err(AuthzError::Conflict {
+                expected: 0,
+                current: 1
+            })
+        ));
+        assert!(matches!(
+            store.revoke(&Applying::for_tests(9), record.grant_id, "t", 2, Some(5)),
+            Err(AuthzError::Conflict {
+                expected: 5,
+                current: 1
+            })
+        ));
+        store
+            .revoke(&Applying::for_tests(9), record.grant_id, "t", 2, Some(1))
+            .expect("revoked at the grant's revision");
+        let seven = OperationId::from_bytes([7; 16]);
+        let nine = OperationId::from_bytes([9; 16]);
+        assert_eq!(store.operation(&seven), Some((1, record.grant_id)));
+        assert_eq!(store.operation(&nine), Some((2, record.grant_id)));
+        assert_eq!(store.operation(&OperationId::from_bytes([8; 16])), None);
+        drop(store);
+        drop(volume);
+        // The journal carries them: a reopened store still shows both.
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let (store, _) = GrantStore::open(&volume).expect("reopens");
+        assert_eq!(store.operation(&seven), Some((1, record.grant_id)));
+        assert_eq!(store.operation(&nine), Some((2, record.grant_id)));
     }
 
     #[test]
@@ -849,8 +1051,10 @@ mod tests {
         let (store, _) = GrantStore::open(&volume).expect("opens");
         store
             .issue(
+                &Applying::for_tests(1),
                 issue("billing", "catalog.read", "plane/control/zone/billing/*"),
                 1,
+                None,
             )
             .expect("issued");
         let path = root.join("host").join(DIRECTORY).join(SNAPSHOT);

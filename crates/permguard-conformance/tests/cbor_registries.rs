@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 10] = [
+const REGISTRIES: [&str; 11] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -43,6 +43,7 @@ const REGISTRIES: [&str; 10] = [
     "key-set.json",
     "layout.json",
     "manifest.json",
+    "mutation.json",
     "notp.json",
     "objects.json",
     "sealed-key.json",
@@ -606,6 +607,7 @@ fn head_statement_samples() -> Vec<Sample> {
 fn grant_samples() -> Vec<Sample> {
     use permguard_core::authz::{Principal, Selector};
     use permguard_host::authz::record::{GrantId, GrantRecord, Status, Transition};
+    use permguard_host::operations::journal::OperationId;
 
     let record = GrantRecord {
         grant_id: GrantId::from_bytes(HOST_ID),
@@ -619,9 +621,11 @@ fn grant_samples() -> Vec<Sample> {
         issued_by: "cert:sha256:ab".to_owned(),
         issued_at: 1_759_000_000,
         expires_at: Some(1_790_000_000),
+        operation_id: Some(OperationId::from_bytes(ZONE_ID)),
     };
     let mut open_ended = record.clone();
     open_ended.expires_at = None;
+    open_ended.operation_id = None;
     open_ended.constraints.clear();
     let decoder = || -> Option<Decoder> {
         Some(Box::new(|bytes: &[u8]| verdict(GrantRecord::decode(bytes))))
@@ -630,7 +634,7 @@ fn grant_samples() -> Vec<Sample> {
         sample(
             "grant_record",
             record.encode().expect("the record encodes"),
-            &["grant_record.expires_at"],
+            &["grant_record.expires_at", "grant_record.operation_id"],
             decoder(),
         ),
         sample(
@@ -646,11 +650,132 @@ fn grant_samples() -> Vec<Sample> {
                 revision: 4,
                 at: 1_759_000_100,
                 by: "cert:sha256:ab".to_owned(),
+                operation_id: None,
             }
             .encode()
             .expect("the transition encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
+        ),
+        sample(
+            "transition",
+            Transition {
+                grant_id: GrantId::from_bytes(HOST_ID),
+                revision: 5,
+                at: 1_759_000_200,
+                by: "expiry".to_owned(),
+                operation_id: Some(OperationId::from_bytes(ZONE_ID)),
+            }
+            .encode()
+            .expect("the transition encodes"),
+            &["transition.operation_id"],
+            Some(Box::new(|bytes: &[u8]| verdict(Transition::decode(bytes)))),
+        ),
+    ]
+}
+
+fn mutation_samples() -> Vec<Sample> {
+    use permguard_host::operations::journal::{
+        Commit, Entry, Initiator, Intent, OperationId, RequestKey, decode_snapshot, encode_snapshot,
+    };
+
+    let id = OperationId::from_bytes(ZONE_ID);
+    let intent = Entry::Intent(Intent {
+        operation_id: id,
+        at: 1_800_000_000,
+        domain: "grants".to_owned(),
+        operation: "grants.revoke.run".to_owned(),
+        action: "host.grant.revoked".to_owned(),
+        initiator: Initiator::Principal("spiffe://acme/operators/root".to_owned()),
+        request: Some(RequestKey {
+            request_id: "r-1".to_owned(),
+            digest: "ab".repeat(32),
+        }),
+        target: Some("0198f4cc".repeat(4)),
+    });
+    let system = Entry::Intent(Intent {
+        operation_id: id,
+        at: 1_800_000_000,
+        domain: "grants".to_owned(),
+        operation: "grants.expire".to_owned(),
+        action: "host.grant.expired".to_owned(),
+        initiator: Initiator::System("expiry".to_owned()),
+        request: None,
+        target: None,
+    });
+    let commit = Entry::Commit(Commit {
+        operation_id: id,
+        at: 1_800_000_001,
+        revision: 7,
+        target: Some("0198f4cc".repeat(4)),
+        result: Some(b"{\"revision\":7}".to_vec()),
+        reconciled: false,
+    });
+    let reconciled = Entry::Commit(Commit {
+        operation_id: id,
+        at: 1_800_000_002,
+        revision: 7,
+        target: None,
+        result: None,
+        reconciled: true,
+    });
+    let failed = Entry::Failed {
+        operation_id: id,
+        at: 1_800_000_003,
+        reason: "refused by the domain".to_owned(),
+    };
+    let projected = Entry::Projected {
+        operation_id: id,
+        at: 1_800_000_004,
+    };
+    let entries =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Entry::decode(bytes)))) };
+    vec![
+        sample(
+            "mutation_intent",
+            intent.encode().expect("encodes"),
+            &[
+                "mutation_intent.request_id",
+                "mutation_intent.request_digest",
+                "mutation_intent.target",
+            ],
+            entries(),
+        ),
+        sample(
+            "mutation_intent",
+            system.encode().expect("encodes"),
+            &[],
+            entries(),
+        ),
+        sample(
+            "mutation_commit",
+            commit.encode().expect("encodes"),
+            &["mutation_commit.target", "mutation_commit.result"],
+            entries(),
+        ),
+        sample(
+            "mutation_commit",
+            reconciled.encode().expect("encodes"),
+            &[],
+            entries(),
+        ),
+        sample(
+            "mutation_failed",
+            failed.encode().expect("encodes"),
+            &[],
+            entries(),
+        ),
+        sample(
+            "mutation_projected",
+            projected.encode().expect("encodes"),
+            &[],
+            entries(),
+        ),
+        sample(
+            "mutation_snapshot",
+            encode_snapshot(1_800_000_005, &[intent, commit, projected]).expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(decode_snapshot(bytes)))),
         ),
     ]
 }
@@ -1041,6 +1166,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "grant.json" => grant_samples(),
         "layout.json" => layout_samples(),
         "audit.json" => audit_samples(),
+        "mutation.json" => mutation_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -1550,6 +1676,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_mutation_entries_match_their_registry() {
+    assert_samples_match("mutation.json");
+}
+
+#[test]
+fn test_mutation_entries_refuse_unknown_labels() {
+    assert_unknown_labels_refused("mutation.json");
 }
 
 #[test]

@@ -21,7 +21,7 @@ REPO_DIR := $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 profile = $(if $(RELEASE),--release)
 scope = $(if $(PKG),-p $(PKG),--workspace)
 
-.PHONY: check-boundaries check-durability fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
+.PHONY: check-boundaries check-durability check-mutations fuzz clean coverage coverage-html coverage-lcov bench-decide bench-grafana bench-temporal bench-grpc bench-hold lab-clean bench-ladder bench-peak bench-server bench-server-shed bench-shed bench-tls build check check-core-deps check-headers check-notices check-seams check-systems check-vectors notices cli cp-basics cp-dogwood cp-rspipe help lab-all lab-down lab-logs lab-observability lab-up lab-where lint plane-run prepare-release run-all run-as-mtls-all run-as-mtls-control run-as-mtls-data run-as-tls-all run-as-tls-control run-as-tls-data run-control run-data run-experimental run-experimental-control run-experimental-data test version-control llm-init
 
 build: ## Build every Permguard crate.
 	cargo build $(scope) $(profile) $(ARGS)
@@ -35,6 +35,7 @@ check: ## Run lint, structural checks, and tests.
 	$(MAKE) check-notices
 	$(MAKE) check-boundaries
 	$(MAKE) check-durability
+	$(MAKE) check-mutations
 	$(MAKE) test
 
 coverage: ## Measure test coverage and enforce the 60% per-crate line floor.
@@ -195,6 +196,9 @@ check-boundaries: ## Check that every untrusted decoder is registered, bounded a
 
 check-durability: ## Check that every durability primitive lives in the storage library or is allow-listed.
 	cargo test -p permguard-conformance --test durability --locked
+
+check-mutations: ## Check that security state is written only through the mutation engine.
+	cargo test -p permguard-conformance --test mutations --locked
 
 fuzz: ## Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).
 	./scripts/fuzz.sh $(or $(SECONDS),30)

@@ -1,6 +1,6 @@
 {
   "artifact": "Grant record and the grant journal's revoke and expire transitions",
-  "authority": "1-architecture/1-architecture-server.md#authorization-store (member names), owner decision of 2026-10-06 (labels, types, cardinalities); crates/permguard-host/src/authz/record.rs (GrantRecord, Transition)",
+  "authority": "1-architecture/1-architecture-server.md#authorization-store (member names), owner decision of 2026-10-06 (labels, types, cardinalities), owner decision of 2026-10-07 (the optional operation_id); crates/permguard-host/src/authz/record.rs (GrantRecord, Transition)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "grant_record": {
@@ -16,7 +16,8 @@
         { "label": 8, "name": "status", "type": "text", "occurs": "required", "note": "active, revoked or expired; revoked and expired are terminal" },
         { "label": 9, "name": "issued_by", "type": "text", "occurs": "required" },
         { "label": 10, "name": "issued_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
-        { "label": 11, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "seconds since the epoch, UTC; absent means never" }
+        { "label": 11, "name": "expires_at", "type": "uint", "occurs": "optional", "note": "seconds since the epoch, UTC; absent means never" },
+        { "label": 12, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "exactly 16 bytes: the security mutation that issued it (WP-3.6); absent on a grant issued before" }
       ]
     },
     "transition": {
@@ -25,7 +26,8 @@
         { "label": 1, "name": "grant_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
         { "label": 2, "name": "revision", "type": "uint", "occurs": "required", "note": "the store revision this transition is" },
         { "label": 3, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
-        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "the principal that revoked, or `expiry`" }
+        { "label": 4, "name": "by", "type": "text", "occurs": "required", "note": "the principal that revoked, or `expiry`" },
+        { "label": 5, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "exactly 16 bytes: the security mutation that made it (WP-3.6); absent on a transition written before" }
       ]
     }
   },

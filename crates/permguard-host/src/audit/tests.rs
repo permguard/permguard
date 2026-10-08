@@ -104,16 +104,23 @@ fn the_registry_is_well_formed_and_refuses_a_forbidden_fact() {
 /// the Host API's grants record is registered, as a `security` action of the Host.
 #[test]
 fn every_action_the_host_records_is_registered() {
-    use crate::api::grants::{AUDIT_ISSUED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED};
-    for action in [AUDIT_ISSUED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED] {
+    use crate::operations::grants::{
+        AUDIT_EXPIRED, AUDIT_ISSUED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED,
+    };
+    for action in [
+        AUDIT_ISSUED,
+        AUDIT_REVOKE_PLANNED,
+        AUDIT_REVOKED,
+        AUDIT_EXPIRED,
+    ] {
         let schema = REGISTRY
             .iter()
             .find(|schema| schema.action == action)
             .unwrap_or_else(|| panic!("`{action}` is not registered"));
         assert_eq!(
-            (schema.class, schema.root),
-            (Class::Security, HOST),
-            "{action}"
+            (schema.class, schema.root, schema.phases),
+            (Class::Security, HOST, true),
+            "{action}: a security mutation, recorded at each phase"
         );
     }
     for action in [

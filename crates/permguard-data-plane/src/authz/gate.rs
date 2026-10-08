@@ -256,21 +256,23 @@ mod tests {
             )
             .expect("claimed");
             let (store, _) = permguard_host::authz::GrantStore::open(&volume).expect("opens");
-            store
-                .issue(
-                    permguard_host::authz::Issue {
-                        principal: Principal::new("spiffe://acme/billing").expect("p"),
-                        operations: vec![operations::DECISION_EVALUATE.to_owned()],
-                        selector: Selector::parse("plane/data/zone/billing-id/*")
-                            .expect("a selector"),
-                        resource_types: vec!["*".to_owned()],
-                        constraints: Default::default(),
-                        issued_by: "test".to_owned(),
-                        expires_at: None,
-                    },
-                    1,
-                )
-                .expect("issued");
+            permguard_host::operations::grants::issue(
+                &permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
+                    .expect("the mutation journal opens"),
+                &store,
+                permguard_host::operations::journal::Initiator::System("test".to_owned()),
+                permguard_host::authz::Issue {
+                    principal: Principal::new("spiffe://acme/billing").expect("p"),
+                    operations: vec![operations::DECISION_EVALUATE.to_owned()],
+                    selector: Selector::parse("plane/data/zone/billing-id/*").expect("a selector"),
+                    resource_types: vec!["*".to_owned()],
+                    constraints: Default::default(),
+                    issued_by: "test".to_owned(),
+                    expires_at: None,
+                },
+                1,
+            )
+            .expect("issued");
             std::mem::forget(volume);
             store
         };

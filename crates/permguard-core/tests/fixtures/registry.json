@@ -179,6 +179,7 @@
     "common.ROUTE_UNKNOWN": "route_unknown",
     "common.UNAUTHENTICATED": "unauthenticated",
     "common.UNAVAILABLE": "unavailable",
+    "host.AUDIT_UNAVAILABLE": "audit_unavailable",
     "host.GRANT_STORE_UNAVAILABLE": "grant_store_unavailable",
     "host.GRANT_TERMINAL": "grant_terminal",
     "host.GRANT_UNKNOWN": "grant_unknown",

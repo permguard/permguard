@@ -19,8 +19,11 @@
 //!
 //! A plan of a two-step mutation (`revoke/plan`, then `revoke/run`) lives in the same journal:
 //! the plan step writes `{plan_id, operation, target, revision, digest, expires, principal}`, the
-//! run step consumes it once. `TODO(WP-3.9)`: the client-held COSE plan receipt replaces the
-//! server-held plan; `TODO(WP-3.6)`: the mutation transaction records the run.
+//! run step consumes it once, each inside its operation of the security-mutation transaction
+//! (WP-3.6). `TODO(WP-3.9)`: the client-held COSE plan receipt replaces the server-held plan.
+//!
+//! Since WP-3.6 the answers a retry learns are the mutation journal's commits; the results this
+//! journal holds from before answer until their window ends, and no new one is written.
 //!
 //! The payloads are JSON: the stored result is the answer the transports render, and nothing
 //! outside this process ever reads these frames. The journal frames themselves are the storage
@@ -37,6 +40,7 @@ use permguard_core::authz::Principal;
 use permguard_core::{ErrorClass, codes};
 
 use super::Refusal;
+use crate::operations::mutation::Applying;
 use crate::storage::StorageError;
 use crate::storage::dir::Dir;
 use crate::storage::journal::{Journal, Options, Recovery};
@@ -328,9 +332,11 @@ impl Replay {
         Ok(Some(result))
     }
 
-    /// Records the `result` of `(principal, request_id)`, durably, before it is answered. The
-    /// caller decides what a failure here means: the mutation is already applied.
-    pub fn record<T: Serialize>(
+    /// Records the `result` of `(principal, request_id)`, durably: what the Host API did before
+    /// WP-3.6, whose answers now live in the mutation journal's commits. Kept for the tests of
+    /// the results such a journal still holds, which answer until their window ends.
+    #[cfg(test)]
+    pub(crate) fn record<T: Serialize>(
         &self,
         principal: &Principal,
         request_id: &str,
@@ -367,8 +373,8 @@ impl Replay {
         Ok(())
     }
 
-    /// Writes a plan, durably.
-    pub fn plan(&self, plan: Plan) -> Result<(), Refusal> {
+    /// Writes a plan, durably, inside the operation `applying` names (WP-3.6).
+    pub fn plan(&self, _applying: &Applying<'_>, plan: Plan) -> Result<(), Refusal> {
         let bytes = encode(&plan)?;
         let mut journal = self
             .journal
@@ -420,9 +426,15 @@ impl Replay {
         Ok(plan.clone())
     }
 
-    /// Consumes `plan_id` of `principal`, durably: a second run finds it `plan_expired`. The
-    /// caller decides what a failure here means: the plan's mutation is already applied.
-    pub fn consume(&self, principal: &Principal, plan_id: &str) -> Result<(), ReplayError> {
+    /// Consumes `plan_id` of `principal`, durably, inside the run's operation: a second run finds
+    /// it `plan_expired`. The caller decides what a failure here means: the plan's mutation is
+    /// already applied.
+    pub fn consume(
+        &self,
+        _applying: &Applying<'_>,
+        principal: &Principal,
+        plan_id: &str,
+    ) -> Result<(), ReplayError> {
         let key = (principal.as_str().to_owned(), plan_id.to_owned());
         let expires = self
             .state
@@ -774,7 +786,9 @@ mod tests {
             expires: 2_000,
             principal: "alice".to_owned(),
         };
-        replay.plan(plan.clone()).expect("planned");
+        replay
+            .plan(&Applying::for_tests(1), plan.clone())
+            .expect("planned");
         assert_eq!(replay.plan_of(&alice, "p1", 1_500).expect("held"), plan);
         let expired = replay.plan_of(&alice, "p1", 2_000).expect_err("expired");
         assert_eq!(
@@ -788,7 +802,9 @@ mod tests {
             unknown.error().expect("refusal").code(),
             codes::host::PLAN_UNKNOWN
         );
-        replay.consume(&alice, "p1").expect("consumed");
+        replay
+            .consume(&Applying::for_tests(2), &alice, "p1")
+            .expect("consumed");
         let again = replay.plan_of(&alice, "p1", 1_500).expect_err("consumed");
         assert_eq!(
             again.error().expect("refusal").code(),
@@ -822,8 +838,10 @@ mod tests {
         {
             let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
             let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
-            replay.plan(plan).expect("planned");
-            replay.consume(&alice, "p1").expect("consumed");
+            replay.plan(&Applying::for_tests(1), plan).expect("planned");
+            replay
+                .consume(&Applying::for_tests(2), &alice, "p1")
+                .expect("consumed");
             // An expired result, so the next open compacts.
             replay
                 .record(&alice, "old", "op", "d", &1u8)

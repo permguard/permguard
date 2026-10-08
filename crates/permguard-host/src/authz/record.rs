@@ -18,9 +18,13 @@
 //! | 9     | `issued_by`      | text                     |
 //! | 10    | `issued_at`      | uint, seconds UTC        |
 //! | 11    | `expires_at`     | uint, seconds UTC, optional |
+//! | 12    | `operation_id`   | bytes, 16, optional: the mutation that issued it (WP-3.6) |
 //!
 //! The journal carries three frame kinds: `1` issue, whose payload is the record; `2` revoke and
-//! `3` expire, whose payload is a [`Transition`]: `{1: grant_id, 2: revision, 3: at, 4: by}`.
+//! `3` expire, whose payload is a [`Transition`]: `{1: grant_id, 2: revision, 3: at, 4: by,
+//! 5?: operation_id}`. The operation id is how recovery of the mutation journal learns that a
+//! grant mutation was applied (owner decision of 2026-10-07); a frame written before WP-3.6 has
+//! none and reads as before.
 //! `contracts/cbor/grant.json` registers both maps; a label, once registered, keeps its meaning.
 
 use std::collections::BTreeMap;
@@ -28,6 +32,8 @@ use std::fmt;
 
 use permguard_core::authz::{Allow, Principal, Selector};
 use permguard_objects::cbor::{self, Value};
+
+use crate::operations::journal::OperationId;
 
 /// A grant record larger than this is refused before it is parsed: the longest record a
 /// deployment can write is a few kilobytes of operations and types.
@@ -127,6 +133,8 @@ pub struct GrantRecord {
     pub issued_by: String,
     pub issued_at: u64,
     pub expires_at: Option<u64>,
+    /// The mutation that issued it; absent on a grant issued before WP-3.6.
+    pub operation_id: Option<OperationId>,
 }
 
 impl GrantRecord {
@@ -179,6 +187,12 @@ impl GrantRecord {
         if let Some(until) = self.expires_at {
             pairs.push((Value::Int(11), uint(until)?));
         }
+        if let Some(operation_id) = self.operation_id {
+            pairs.push((
+                Value::Int(12),
+                Value::Bytes(operation_id.as_bytes().to_vec()),
+            ));
+        }
         cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError::Cbor(error.to_string()))
     }
 
@@ -190,7 +204,7 @@ impl GrantRecord {
         }
         let value =
             cbor::decode_canonical(bytes).map_err(|error| RecordError::Cbor(error.to_string()))?;
-        let mut map = Labelled::new(value, 11)?;
+        let mut map = Labelled::new(value, 12)?;
         let grant_id = map.bytes(1)?;
         let grant_id: [u8; 16] = grant_id
             .as_slice()
@@ -208,6 +222,7 @@ impl GrantRecord {
         let issued_by = map.text(9)?;
         let issued_at = map.uint(10)?;
         let expires_at = map.optional_uint(11)?;
+        let operation_id = map.optional_operation_id(12)?;
         map.finish()?;
         if operations.is_empty() || resource_types.is_empty() {
             return Err(RecordError::Malformed(
@@ -226,6 +241,7 @@ impl GrantRecord {
             issued_by,
             issued_at,
             expires_at,
+            operation_id,
         })
     }
 }
@@ -237,18 +253,26 @@ pub struct Transition {
     pub revision: u64,
     pub at: u64,
     pub by: String,
+    /// The mutation that made it; absent on a transition written before WP-3.6.
+    pub operation_id: Option<OperationId>,
 }
 
 impl Transition {
     /// The canonical bytes.
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
-        cbor::encode(&Value::Map(vec![
+        let mut pairs = vec![
             (Value::Int(1), Value::Bytes(self.grant_id.0.to_vec())),
             (Value::Int(2), uint(self.revision)?),
             (Value::Int(3), uint(self.at)?),
             (Value::Int(4), Value::Text(self.by.clone())),
-        ]))
-        .map_err(|error| RecordError::Cbor(error.to_string()))
+        ];
+        if let Some(operation_id) = self.operation_id {
+            pairs.push((
+                Value::Int(5),
+                Value::Bytes(operation_id.as_bytes().to_vec()),
+            ));
+        }
+        cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError::Cbor(error.to_string()))
     }
 
     /// Reads the canonical bytes.
@@ -258,7 +282,7 @@ impl Transition {
         }
         let value =
             cbor::decode_canonical(bytes).map_err(|error| RecordError::Cbor(error.to_string()))?;
-        let mut map = Labelled::new(value, 4)?;
+        let mut map = Labelled::new(value, 5)?;
         let grant_id: [u8; 16] = map
             .bytes(1)?
             .as_slice()
@@ -269,6 +293,7 @@ impl Transition {
             revision: map.uint(2)?,
             at: map.uint(3)?,
             by: map.text(4)?,
+            operation_id: map.optional_operation_id(5)?,
         };
         map.finish()?;
         Ok(transition)
@@ -375,6 +400,18 @@ impl Labelled {
         }
     }
 
+    fn optional_operation_id(&mut self, label: i64) -> Result<Option<OperationId>, RecordError> {
+        match self.pairs.remove(&label) {
+            None => Ok(None),
+            Some(Value::Bytes(bytes)) => bytes
+                .as_slice()
+                .try_into()
+                .map(|bytes| Some(OperationId::from_bytes(bytes)))
+                .map_err(|_| RecordError::Malformed(format!("label {label} is 16 bytes"))),
+            Some(_) => Err(RecordError::Malformed(format!("label {label} is bytes"))),
+        }
+    }
+
     fn texts(&mut self, label: i64) -> Result<Vec<String>, RecordError> {
         match self.take(label)? {
             Value::Array(items) => items
@@ -432,6 +469,7 @@ mod tests {
             issued_by: "cert:sha256:ab".to_owned(),
             issued_at: 1_759_000_000,
             expires_at: Some(1_790_000_000),
+            operation_id: Some(OperationId::from_bytes([5; 16])),
         }
     }
 
@@ -442,6 +480,7 @@ mod tests {
         assert_eq!(GrantRecord::decode(&bytes).expect("decodes"), record);
         let mut open_ended = record;
         open_ended.expires_at = None;
+        open_ended.operation_id = None;
         let bytes = open_ended.encode().expect("encodes");
         assert_eq!(GrantRecord::decode(&bytes).expect("decodes"), open_ended);
         assert_eq!(
@@ -459,7 +498,7 @@ mod tests {
             panic!("a map");
         };
         let mut extra = pairs.clone();
-        extra.push((Value::Int(12), Value::Text("x".to_owned())));
+        extra.push((Value::Int(13), Value::Text("x".to_owned())));
         assert!(GrantRecord::decode(&cbor::encode(&Value::Map(extra)).expect("encodes")).is_err());
         let missing: Vec<_> = pairs
             .iter()
@@ -497,13 +536,23 @@ mod tests {
             revision: 9,
             at: 1_759_000_100,
             by: "cert:sha256:ab".to_owned(),
+            operation_id: Some(OperationId::from_bytes([6; 16])),
         };
         let bytes = transition.encode().expect("encodes");
         assert_eq!(Transition::decode(&bytes).expect("decodes"), transition);
+        let older = Transition {
+            operation_id: None,
+            ..transition.clone()
+        };
+        assert_eq!(
+            Transition::decode(&older.encode().expect("encodes")).expect("decodes"),
+            older,
+            "a transition written before WP-3.6 reads as before"
+        );
         let Value::Map(mut pairs) = cbor::decode_canonical(&bytes).expect("canonical") else {
             panic!("a map");
         };
-        pairs.push((Value::Int(5), Value::Int(1)));
+        pairs.push((Value::Int(6), Value::Int(1)));
         assert!(Transition::decode(&cbor::encode(&Value::Map(pairs)).expect("encodes")).is_err());
     }
 

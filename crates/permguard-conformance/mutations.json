@@ -1,0 +1,30 @@
+{
+  "engine": "crates/permguard-host/src/operations/mutation.rs",
+  "token": "Applying",
+  "guarded": [
+    {
+      "source": "crates/permguard-host/src/authz/store.rs",
+      "calls": ["append", "publish_immutable"],
+      "fields": ["journal"],
+      "exempt": [
+        {
+          "item": "history",
+          "reason": "reads the journal's frames for the revision list (WP-2.9) and writes nothing"
+        }
+      ],
+      "state": "the grant journal and the bootstrap commitment"
+    },
+    {
+      "source": "crates/permguard-host/src/api/replay.rs",
+      "calls": ["append"],
+      "fields": ["journal"],
+      "exempt": [
+        {
+          "item": "compact",
+          "reason": "rewrites the entries still live into a fresh journal at open: nothing new is written"
+        }
+      ],
+      "state": "the server-held revocation plans and their consumption"
+    }
+  ]
+}

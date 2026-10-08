@@ -9,7 +9,10 @@
 //! process lock refuses a volume another process holds. `bootstrap` writes the one recovery
 //! administrator's commitment, once; `issue`, `revoke` and `list` append to and read the journal.
 //!
-//! `TODO(WP-3.6)`: issue and revoke become the Host security-mutation transaction.
+//! Bootstrap, issue and revoke are operations of the Host's security-mutation transaction
+//! (WP-3.6), as the Host API's are: an intent in `host/audit/mutations/`, a `security` record of
+//! each phase in the volume's audit trail, the grant written with its operation id. The CLI is
+//! their initiator, `cli`; a mutation a crash left open is resolved before anything else.
 
 use std::collections::BTreeMap;
 use std::process::ExitCode;
@@ -19,6 +22,9 @@ use serde::Serialize;
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::{Principal, Selector};
 use permguard_host::authz::{AuthzError, GrantId, GrantRecord, GrantStore, Issue};
+use permguard_host::operations::grants;
+use permguard_host::operations::journal::Initiator;
+use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
 use crate::args::{Globals, GrantsAction, HostAction};
@@ -45,10 +51,9 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             volume,
             fingerprint,
         } => {
-            let store = open(&volume, trace)?;
-            let (commitment, grant) = store
-                .bootstrap_recovery_administrator(&fingerprint, now)
-                .map_err(failure)?;
+            let (store, mutations) = open_mutable(&volume, trace)?;
+            let (commitment, grant) =
+                grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
             render(
                 &BootstrapReport {
                     principal: commitment.principal.to_string(),
@@ -72,7 +77,7 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             expires,
             issued_by,
         } => {
-            let store = open(&volume, trace)?;
+            let (store, mutations) = open_mutable(&volume, trace)?;
             let expires_at = match expires {
                 Some(text) => Some(
                     permguard_core::time::from_rfc3339(&text)
@@ -83,26 +88,28 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
                 ),
                 None => None,
             };
-            let record = store
-                .issue(
-                    Issue {
-                        principal: Principal::new(principal)
-                            .map_err(|error| Failure::usage(format!("--principal: {error}")))?,
-                        operations,
-                        selector: Selector::parse(&selector)
-                            .map_err(|error| Failure::usage(format!("--selector: {error}")))?,
-                        resource_types: if types.is_empty() {
-                            vec!["*".to_owned()]
-                        } else {
-                            types
-                        },
-                        constraints: BTreeMap::new(),
-                        issued_by,
-                        expires_at,
+            let record = grants::issue(
+                &mutations,
+                &store,
+                Initiator::System(INITIATOR.to_owned()),
+                Issue {
+                    principal: Principal::new(principal)
+                        .map_err(|error| Failure::usage(format!("--principal: {error}")))?,
+                    operations,
+                    selector: Selector::parse(&selector)
+                        .map_err(|error| Failure::usage(format!("--selector: {error}")))?,
+                    resource_types: if types.is_empty() {
+                        vec!["*".to_owned()]
+                    } else {
+                        types
                     },
-                    now,
-                )
-                .map_err(failure)?;
+                    constraints: BTreeMap::new(),
+                    issued_by,
+                    expires_at,
+                },
+                now,
+            )
+            .map_err(refused)?;
             render(&grant_report(&record), globals.output, trace)?;
         }
         GrantsAction::Revoke {
@@ -110,10 +117,18 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             grant_id,
             by,
         } => {
-            let store = open(&volume, trace)?;
+            let (store, mutations) = open_mutable(&volume, trace)?;
             let id =
                 GrantId::parse(&grant_id).map_err(|error| Failure::usage(error.to_string()))?;
-            let record = store.revoke(id, &by, now).map_err(failure)?;
+            let record = grants::revoke(
+                &mutations,
+                &store,
+                Initiator::System(INITIATOR.to_owned()),
+                id,
+                &by,
+                now,
+            )
+            .map_err(refused)?;
             render(&grant_report(&record), globals.output, trace)?;
         }
         GrantsAction::List {
@@ -121,7 +136,7 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
             principal,
             selector,
         } => {
-            let store = open(&volume, trace)?;
+            let (store, _held) = open(&volume, trace)?;
             let grants: Vec<GrantReportBody> = store
                 .records()
                 .iter()
@@ -150,7 +165,38 @@ fn grants(globals: &Globals, action: GrantsAction, trace: &Trace) -> Result<Exit
     Ok(ExitCode::from(EXIT_READY))
 }
 
-fn open(volume: &std::path::Path, trace: &Trace) -> Result<std::sync::Arc<GrantStore>, Failure> {
+/// The initiator the CLI's operations name in the mutation journal and the audit trail.
+const INITIATOR: &str = "cli";
+
+/// Opens the grant store and the mutation journal of `volume`, resolving any grant mutation a
+/// crash left open: what a command that mutates needs.
+fn open_mutable(
+    volume: &std::path::Path,
+    trace: &Trace,
+) -> Result<(std::sync::Arc<GrantStore>, Mutations), Failure> {
+    let (store, held) = open(volume, trace)?;
+    let mutations = Mutations::open_offline(&held, env!("CARGO_PKG_VERSION"))
+        .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))?;
+    let recovered = mutations
+        .recover(&grants::Grants(&store))
+        .map_err(|error| Failure::unavailable(format!("recovering grant mutations: {error}")))?;
+    if !recovered.reconciled.is_empty() || !recovered.failed.is_empty() {
+        trace.say(format!(
+            "grant mutations left open by a crash: {} committed, {} failed",
+            recovered.reconciled.len(),
+            recovered.failed.len()
+        ));
+    }
+    // The lock lives as long as the volume; it is held until the process exits.
+    std::mem::forget(held);
+    Ok((store, mutations))
+}
+
+/// Opens the grant store of `volume`, writing nothing but what the store's own open repairs.
+fn open(
+    volume: &std::path::Path,
+    trace: &Trace,
+) -> Result<(std::sync::Arc<GrantStore>, Volume), Failure> {
     trace.say(format!("volume: {}", volume.display()));
     // An existing volume only: a mistyped path must not become a fresh volume holding grants the
     // server never sees. The volume's own layout marker is what says it is one.
@@ -172,16 +218,28 @@ fn open(volume: &std::path::Path, trace: &Trace) -> Result<std::sync::Arc<GrantS
             recovery.truncated_bytes
         ));
     }
-    // The lock lives as long as the volume; it is held until the process exits.
-    std::mem::forget(held);
-    Ok(store)
+    Ok((store, held))
+}
+
+fn refused(error: MutationError<AuthzError>) -> Failure {
+    match error {
+        MutationError::Refused(error) => failure(error),
+        MutationError::RequestIdReused(detail) => Failure::usage(detail),
+        other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
+            Failure::unavailable(other)
+        }
+        other @ (MutationError::Unrecorded(_) | MutationError::Indeterminate(_)) => {
+            Failure::internal(other)
+        }
+    }
 }
 
 fn failure(error: AuthzError) -> Failure {
     match error {
-        AuthzError::Invalid(_) | AuthzError::Unknown(_) | AuthzError::Terminal(..) => {
-            Failure::usage(error)
-        }
+        AuthzError::Invalid(_)
+        | AuthzError::Unknown(_)
+        | AuthzError::Terminal(..)
+        | AuthzError::Conflict { .. } => Failure::usage(error),
         AuthzError::Storage(_) => Failure::unavailable(error),
         AuthzError::Record(_) => Failure::internal(error),
     }

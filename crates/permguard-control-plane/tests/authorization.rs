@@ -114,24 +114,27 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
     )
     .expect("the volume is claimed");
     let (store, _) = GrantStore::open(&held).expect("the grant store opens");
-    store
-        .issue(
-            Issue {
-                principal: Principal::new(BILLING).expect("a principal"),
-                operations: vec![
-                    operations::CATALOG_READ.to_owned(),
-                    operations::POLICY_PUSH.to_owned(),
-                ],
-                selector: Selector::parse(&format!("plane/control/zone/{}/*", billing_zone.id))
-                    .expect("a selector"),
-                resource_types: vec!["*".to_owned()],
-                constraints: Default::default(),
-                issued_by: "test".to_owned(),
-                expires_at: None,
-            },
-            1,
-        )
-        .expect("issued");
+    permguard_host::operations::grants::issue(
+        &permguard_host::operations::mutation::Mutations::open_offline(&held, "test")
+            .expect("the mutation journal opens"),
+        &store,
+        permguard_host::operations::journal::Initiator::System("test".to_owned()),
+        Issue {
+            principal: Principal::new(BILLING).expect("a principal"),
+            operations: vec![
+                operations::CATALOG_READ.to_owned(),
+                operations::POLICY_PUSH.to_owned(),
+            ],
+            selector: Selector::parse(&format!("plane/control/zone/{}/*", billing_zone.id))
+                .expect("a selector"),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            issued_by: "test".to_owned(),
+            expires_at: None,
+        },
+        1,
+    )
+    .expect("issued");
     std::mem::forget(held);
 
     let module = permguard_control_plane::module();

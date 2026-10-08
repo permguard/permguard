@@ -7,9 +7,9 @@
 //! The plan step writes a server-held plan into the replay journal and answers its id and
 //! digest; the run step presents both, and the plan is consumed once (owner decision,
 //! 2026-10-06). `TODO(WP-3.9)`: the client-held COSE_Sign1 plan receipt and dual control.
-//! `TODO(WP-3.6)`: the security-mutation transaction, which makes the grant journal append, the
-//! audit record and the replay record one durable step; until then they are three appends in
-//! that order, and the revision check before an issue is a comparison, not a lock.
+//! Every mutation is one operation of the security-mutation transaction (WP-3.6): its intent,
+//! its audit records and the answer a retry learns live in `host/audit/mutations/`, and the
+//! revision a caller expects is compared under the grant journal's lock.
 
 use std::collections::BTreeMap;
 
@@ -17,18 +17,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::{Actor, Principal, Selector, operations};
-use permguard_core::{ErrorClass, Subject, codes};
+use permguard_core::{ErrorClass, codes};
 
 use super::replay::{PLAN_LIFETIME, Plan, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::authz::{AuthzError, GrantId, GrantRecord, Issue, Status};
+use crate::operations::grants::{
+    AUDIT_ISSUED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, CREATE, REVOKE_PLAN, REVOKE_RUN, failure,
+};
+use crate::operations::mutation::{Applied, Failure};
 
 /// The operation a plan of a revocation names.
 const REVOKE: &str = "grants.revoke";
-/// The audit actions the mutations record.
-pub(crate) const AUDIT_ISSUED: &str = "host.grant.issued";
-pub(crate) const AUDIT_REVOKE_PLANNED: &str = "host.grant.revoke_planned";
-pub(crate) const AUDIT_REVOKED: &str = "host.grant.revoked";
 
 /// One grant, as the API shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,34 +201,37 @@ impl HostApi {
                 None => None,
             },
         };
-        let applied = self.mutate(
+        // What the store would never write is refused before the operation begins (step 1).
+        let checked = issue.clone();
+        self.transact(
             &admitted.principal,
-            "grants.create",
+            CREATE,
+            AUDIT_ISSUED,
             &mutation,
             &create,
-            |operation_id| {
-                if let Some(expected) = mutation.expected_revision {
-                    let current = store.revision();
-                    if expected != current {
-                        return Err(Refusal::revision_mismatch(expected, current));
-                    }
-                }
-                let record = store.issue(issue, now).map_err(refusal_of)?;
+            None,
+            || crate::authz::validate_issue(&checked, now).map_err(refusal_of),
+            |applying| {
+                let record = store
+                    .issue(applying, issue, now, mutation.expected_revision)
+                    .map_err(|error| failure(error, refusal_of))?;
+                Ok(Applied {
+                    revision: record.revision,
+                    target: Some(record.grant_id.to_string()),
+                    value: Created {
+                        receipt: self.receipt(applying.operation_id(), record.revision),
+                        grant: record.into(),
+                    },
+                })
+            },
+            |operation_id, revision, target| {
+                let record = grant_of(store, reconciled_grant(target.as_deref())?)?;
                 Ok(Created {
-                    receipt: self.receipt(operation_id, record.revision),
+                    receipt: self.receipt(operation_id, revision),
                     grant: record.into(),
                 })
             },
-        )?;
-        if applied.fresh {
-            self.audit(
-                AUDIT_ISSUED,
-                &admitted.principal,
-                &applied.value.grant.grant_id,
-            )
-            .await?;
-        }
-        Ok(applied.value)
+        )
     }
 
     /// `POST /host/v1/grants/{id}/revoke/plan`.
@@ -247,23 +250,32 @@ impl HostApi {
         };
         let now = self.time.now_secs();
         let target = (grant_id, &plan);
-        let applied = self.mutate(
+        // Read before the operation begins (step 1): a grant unknown, terminal or changed since
+        // the caller read it is refused without an intent.
+        let current = || -> Result<GrantRecord, Refusal> {
+            let record = grant_of(store, id)?;
+            if record.status != Status::Active {
+                return Err(terminal(&record));
+            }
+            if let Some(expected) = mutation.expected_revision
+                && expected != record.revision
+            {
+                return Err(Refusal::revision_mismatch(expected, record.revision));
+            }
+            Ok(record)
+        };
+        self.transact(
             &admitted.principal,
-            "grants.revoke.plan",
+            REVOKE_PLAN,
+            AUDIT_REVOKE_PLANNED,
             &mutation,
             &target,
-            |_| {
-                let record = grant_of(store, id)?;
-                if record.status != Status::Active {
-                    return Err(terminal(&record));
-                }
-                if let Some(expected) = mutation.expected_revision
-                    && expected != record.revision
-                {
-                    return Err(Refusal::revision_mismatch(expected, record.revision));
-                }
+            Some(id.to_string()),
+            || current().map(|_| ()),
+            |applying| {
+                let record = current().map_err(Failure::Refused)?;
                 let expires = now.saturating_add(PLAN_LIFETIME.as_secs());
-                let plan_id = mint_id()?;
+                let plan_id = mint_id().map_err(Failure::Refused)?;
                 let digest = plan_digest(
                     &plan_id,
                     REVOKE,
@@ -272,28 +284,35 @@ impl HostApi {
                     admitted.principal.as_str(),
                     expires,
                 );
-                self.replay.plan(Plan {
-                    plan_id: plan_id.clone(),
-                    operation: REVOKE.to_owned(),
-                    target: record.grant_id.to_string(),
+                self.replay
+                    .plan(
+                        applying,
+                        Plan {
+                            plan_id: plan_id.clone(),
+                            operation: REVOKE.to_owned(),
+                            target: record.grant_id.to_string(),
+                            revision: record.revision,
+                            digest: digest.clone(),
+                            expires,
+                            principal: admitted.principal.as_str().to_owned(),
+                        },
+                    )
+                    .map_err(Failure::Refused)?;
+                Ok(Applied {
                     revision: record.revision,
-                    digest: digest.clone(),
-                    expires,
-                    principal: admitted.principal.as_str().to_owned(),
-                })?;
-                Ok(Planned {
-                    plan_id,
-                    plan_digest: digest,
-                    expires: rfc3339(expires),
-                    revision: record.revision,
+                    target: Some(record.grant_id.to_string()),
+                    value: Planned {
+                        plan_id,
+                        plan_digest: digest,
+                        expires: rfc3339(expires),
+                        revision: record.revision,
+                    },
                 })
             },
-        )?;
-        if applied.fresh {
-            self.audit(AUDIT_REVOKE_PLANNED, &admitted.principal, grant_id)
-                .await?;
-        }
-        Ok(applied.value)
+            // A plan leaves no trace in the grant store, so recovery never commits one: it is
+            // marked failed, and the plan, which nobody was answered, expires unused.
+            |_, _, _| Err(unreachable_reconciliation(REVOKE_PLAN)),
+        )
     }
 
     /// `POST /host/v1/grants/{id}/revoke/run`.
@@ -312,93 +331,99 @@ impl HostApi {
         };
         let now = self.time.now_secs();
         let target = (grant_id, &run);
-        let applied = self.mutate(
+        // The plan is read and checked before the operation begins (step 1).
+        let presented = || -> Result<Plan, Refusal> {
+            let plan = self
+                .replay
+                .plan_of(&admitted.principal, &run.plan_id, now)?;
+            if plan.operation != REVOKE || plan.target != id.to_string() {
+                return Err(Refusal::new(
+                    ErrorClass::NotFound,
+                    codes::host::PLAN_UNKNOWN,
+                    "no plan of that id is held for this grant",
+                ));
+            }
+            if plan.digest != run.plan_digest {
+                return Err(Refusal::new(
+                    ErrorClass::Validation,
+                    codes::host::PLAN_DIGEST_MISMATCH,
+                    "the plan digest presented is not the one the plan step answered",
+                ));
+            }
+            Ok(plan)
+        };
+        self.transact(
             &admitted.principal,
-            "grants.revoke.run",
+            REVOKE_RUN,
+            AUDIT_REVOKED,
             &mutation,
             &target,
-            |operation_id| {
-                let plan = self
-                    .replay
-                    .plan_of(&admitted.principal, &run.plan_id, now)?;
-                if plan.operation != REVOKE || plan.target != id.to_string() {
-                    return Err(Refusal::new(
-                        ErrorClass::NotFound,
-                        codes::host::PLAN_UNKNOWN,
-                        "no plan of that id is held for this grant",
-                    ));
-                }
-                if plan.digest != run.plan_digest {
-                    return Err(Refusal::new(
-                        ErrorClass::Validation,
-                        codes::host::PLAN_DIGEST_MISMATCH,
-                        "the plan digest presented is not the one the plan step answered",
-                    ));
-                }
-                let record = grant_of(store, id)?;
-                if record.status != Status::Active {
-                    return Err(terminal(&record));
-                }
-                if record.revision != plan.revision {
-                    return Err(Refusal::revision_mismatch(plan.revision, record.revision));
-                }
+            Some(id.to_string()),
+            || presented().map(|_| ()),
+            |applying| {
+                let plan = presented().map_err(Failure::Refused)?;
+                // The grant's revision is compared under the journal lock: a grant changed since
+                // the plan is refused with its current revision.
                 let revoked = store
-                    .revoke(id, admitted.principal.as_str(), now)
-                    .map_err(refusal_of)?;
-                self.replay
-                    .consume(&admitted.principal, &run.plan_id)
-                    .map_err(|error| super::unrecorded("grants.revoke.run", error))?;
-                Ok(Revoked {
-                    receipt: self.receipt(operation_id, revoked.revision),
-                    grant: revoked.into(),
+                    .revoke(
+                        applying,
+                        id,
+                        admitted.principal.as_str(),
+                        now,
+                        Some(plan.revision),
+                    )
+                    .map_err(|error| failure(error, refusal_of))?;
+                // The grant is terminal now, so a plan left unconsumed can never run again; its
+                // marker only spares the caller a `grant_terminal` for `plan_expired`.
+                if let Err(error) = self
+                    .replay
+                    .consume(applying, &admitted.principal, &run.plan_id)
+                {
+                    tracing::warn!(
+                        event.name = "host.plan_unconsumed",
+                        component = super::COMPONENT,
+                        error = %error,
+                        "a run plan could not be marked consumed; its grant is revoked"
+                    );
+                }
+                Ok(Applied {
+                    revision: revoked.revision,
+                    target: Some(revoked.grant_id.to_string()),
+                    value: Revoked {
+                        receipt: self.receipt(applying.operation_id(), revoked.revision),
+                        grant: revoked.into(),
+                    },
                 })
             },
-        )?;
-        if applied.fresh {
-            self.audit(AUDIT_REVOKED, &admitted.principal, grant_id)
-                .await?;
-        }
-        Ok(applied.value)
+            |operation_id, revision, _| {
+                let record = grant_of(store, id)?;
+                Ok(Revoked {
+                    receipt: self.receipt(operation_id, revision),
+                    grant: record.into(),
+                })
+            },
+        )
     }
+}
 
-    /// Records `action` on `target` by `principal` in the audit trail receipts name. A record
-    /// that fails refuses the answer as `mutation_unrecorded` (owner decision, 2026-10-06, after
-    /// the second review): the mutation is already durable in its journal and replayed from the
-    /// window, and a *fresh* success is answered only when the audit record is durable too. A
-    /// retry inside the window is answered from the stored result and is not audited again, so a
-    /// mutation whose record failed stays unaudited until `TODO(WP-3.6)`: the mutation
-    /// transaction makes the journal append, the audit record and the replay record one step.
-    async fn audit(
-        &self,
-        action: &str,
-        principal: &Principal,
-        target: &str,
-    ) -> Result<(), Refusal> {
-        let Some(recorder) = &self.recorder else {
-            return Ok(());
-        };
-        recorder
-            .record_on(action, Subject::Principal(principal.as_str()), target)
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    event.name = "host.audit.unrecorded",
-                    component = super::COMPONENT,
-                    action = action,
-                    error = %error,
-                    "a Host mutation was applied and its audit record failed"
-                );
-                Refusal::Api(
-                    permguard_core::ApiError::new(
-                        ErrorClass::Internal,
-                        codes::host::MUTATION_UNRECORDED,
-                        "the mutation was applied and its audit record could not be written: \
-                         read the current state before retrying",
-                    )
-                    .with_internal(error.to_string()),
-                )
-            })
-    }
+/// The grant a reconciled create names.
+fn reconciled_grant(target: Option<&str>) -> Result<GrantId, Refusal> {
+    target
+        .and_then(|text| GrantId::parse(text).ok())
+        .ok_or_else(|| unreachable_reconciliation(CREATE))
+}
+
+/// The refusal of a reconciled operation whose answer cannot be rebuilt: said as applied, so the
+/// caller reads before it retries.
+fn unreachable_reconciliation(operation: &str) -> Refusal {
+    Refusal::new(
+        ErrorClass::Internal,
+        codes::host::MUTATION_UNRECORDED,
+        format!(
+            "`{operation}` was applied before a restart and its answer cannot be rebuilt: read \
+             the current state before retrying"
+        ),
+    )
 }
 
 /// The most members a grant's lists may carry: a bound checked before the journal is asked, so
@@ -528,6 +553,7 @@ fn refusal_of(error: AuthzError) -> Refusal {
             codes::host::GRANT_TERMINAL,
             format!("grant `{id}` is {}, which is terminal", status.as_str()),
         ),
+        AuthzError::Conflict { expected, current } => Refusal::revision_mismatch(expected, current),
         other @ (AuthzError::Storage(_) | AuthzError::Record(_)) => Refusal::Api(
             permguard_core::ApiError::new(
                 ErrorClass::Unavailable,
@@ -548,7 +574,9 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::api::testing::{ADMIN, actor, admin, facade, reopen, scratch};
+    use crate::api::testing::{
+        ADMIN, Recording, actor, admin, facade, reopen, reopen_with, scratch,
+    };
 
     fn create(request_id: &str, principal: &str) -> CreateGrant {
         CreateGrant {
@@ -849,58 +877,29 @@ mod tests {
         );
     }
 
-    /// An audit sink that remembers, or refuses, every record.
-    struct Sink {
-        events: std::sync::Mutex<Vec<(String, String, Option<String>)>>,
-        refuse: bool,
-    }
-
-    impl permguard_core::AuditSink for Sink {
-        fn name(&self) -> &'static str {
-            "test"
-        }
-
-        fn record<'a>(
-            &'a self,
-            event: &'a permguard_core::AuditEvent<'a>,
-            policy: Option<&'a dyn permguard_core::Pseudonymizer>,
-        ) -> permguard_core::BoxFuture<'a, Result<(), permguard_core::AuditError>> {
-            Box::pin(async move {
-                if self.refuse {
-                    return Err(permguard_core::AuditError::Unavailable(
-                        "the trail is full".into(),
-                    ));
-                }
-                // The subject as the sink sees it, before rendering: rendered without a
-                // pseudonymizer a principal is masked, as the audit rules want.
-                let subject = match event.subject() {
-                    Subject::Principal(principal) => format!("principal:{principal}"),
-                    other => other.render(policy),
-                };
-                self.events.lock().expect("lock").push((
-                    event.action().to_owned(),
-                    subject,
-                    event.target().map(str::to_owned),
-                ));
-                Ok(())
-            })
-        }
-    }
-
-    fn facade_auditing(tag: &str, refuse: bool) -> (HostApi, std::sync::Arc<Sink>) {
-        let sink = std::sync::Arc::new(Sink {
-            events: std::sync::Mutex::new(Vec::new()),
-            refuse,
-        });
-        let (mut api, _, volume) = reopen(&scratch(tag), Vec::new());
+    fn facade_auditing(tag: &str) -> (HostApi, std::sync::Arc<Recording>, std::path::PathBuf) {
+        let trail = std::sync::Arc::new(Recording::default());
+        let root = scratch(tag);
+        let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
         std::mem::forget(volume);
-        api.recorder = Some(permguard_core::AuditRecorder::new(sink.clone()));
-        (api, sink)
+        (api, trail, root)
+    }
+
+    /// The records of the administrator's operations, the test's own seed left out.
+    fn administrator_records(trail: &Recording) -> Vec<crate::api::testing::Recorded> {
+        trail
+            .events
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter(|(_, subject, ..)| *subject == format!("principal:{ADMIN}"))
+            .cloned()
+            .collect()
     }
 
     #[tokio::test]
-    async fn every_mutation_is_recorded_in_the_audit_trail_with_its_principal_and_target() {
-        let (api, sink) = facade_auditing("grants-audit", false);
+    async fn every_mutation_records_its_intent_and_its_outcome_with_principal_and_target() {
+        let (api, trail, _) = facade_auditing("grants-audit");
         let created = api
             .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
             .await
@@ -932,49 +931,327 @@ mod tests {
         )
         .await
         .expect("revoked");
-        let events = sink.events.lock().expect("lock").clone();
+        let principal = format!("principal:{ADMIN}");
+        let record = |action: &str, target: Option<&String>, phase: &'static str| {
+            (
+                action.to_owned(),
+                principal.clone(),
+                target.cloned(),
+                Some(phase),
+            )
+        };
         assert_eq!(
-            events,
+            administrator_records(&trail),
             vec![
-                (
-                    AUDIT_ISSUED.to_owned(),
-                    format!("principal:{ADMIN}"),
-                    Some(grant_id.clone())
-                ),
-                (
-                    AUDIT_REVOKE_PLANNED.to_owned(),
-                    format!("principal:{ADMIN}"),
-                    Some(grant_id.clone())
-                ),
-                (
-                    AUDIT_REVOKED.to_owned(),
-                    format!("principal:{ADMIN}"),
-                    Some(grant_id)
-                ),
+                record(AUDIT_ISSUED, None, "intent"),
+                record(AUDIT_ISSUED, Some(&grant_id), "applied"),
+                record(AUDIT_REVOKE_PLANNED, Some(&grant_id), "intent"),
+                record(AUDIT_REVOKE_PLANNED, Some(&grant_id), "applied"),
+                record(AUDIT_REVOKED, Some(&grant_id), "intent"),
+                record(AUDIT_REVOKED, Some(&grant_id), "applied"),
             ]
         );
     }
 
     #[tokio::test]
-    async fn an_audit_record_that_fails_refuses_the_answer_and_the_mutation_stands() {
-        let (api, _) = facade_auditing("grants-audit-fails", true);
+    async fn an_audit_intent_that_fails_applies_nothing_and_a_retry_applies_once_it_is_back() {
+        let (api, trail, _) = facade_auditing("grants-audit-intent");
+        trail
+            .refuse
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let refused = api
             .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
             .await
             .expect_err("the trail refused");
         let error = refused.error().expect("a domain refusal");
+        assert_eq!(error.code(), codes::host::AUDIT_UNAVAILABLE);
+        assert_eq!(error.http_status(), 503);
+        assert!(
+            api.grants(&admin(), Some("spiffe://acme/alice"), None)
+                .expect("listed")
+                .grants
+                .is_empty(),
+            "nothing applied"
+        );
+        // Still down: every security mutation is refused, the failure record still pending.
+        let refused = api
+            .create_grant(&admin(), create("c2", "spiffe://acme/bob"))
+            .await
+            .expect_err("still refused");
+        assert_eq!(
+            refused.error().expect("refusal").code(),
+            codes::host::AUDIT_UNAVAILABLE
+        );
+        trail
+            .refuse
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let created = api
+            .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+            .await
+            .expect("applied now, under a new operation");
+        let records = administrator_records(&trail);
+        assert_eq!(
+            records.first().map(|record| record.3),
+            Some(Some("failed")),
+            "the failed attempt's outcome is recorded first: {records:?}"
+        );
+        assert_eq!(
+            api.grants(&admin(), Some("spiffe://acme/alice"), None)
+                .expect("listed")
+                .grants
+                .len(),
+            1
+        );
+        assert_eq!(created.grant.principal, "spiffe://acme/alice");
+    }
+
+    #[tokio::test]
+    async fn an_outcome_record_that_fails_is_unrecorded_the_mutation_stands_and_is_replayed_once_written()
+     {
+        let (api, trail, _) = facade_auditing("grants-audit-outcome");
+        *trail.refuse_phase.lock().expect("lock") = Some("applied");
+        let refused = api
+            .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+            .await
+            .expect_err("the outcome record failed");
+        let error = refused.error().expect("a domain refusal");
         assert_eq!(error.code(), codes::host::MUTATION_UNRECORDED);
         assert_eq!(error.http_status(), 500);
-        // Applied, and replayed as applied: the caller reads before it retries.
         let listed = api
             .grants(&admin(), Some("spiffe://acme/alice"), None)
             .expect("listed");
-        assert_eq!(listed.grants.len(), 1);
+        assert_eq!(listed.grants.len(), 1, "never rolled back");
+        // While the record waits, a retry is not answered success and a new mutation is refused.
+        let retried = api
+            .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+            .await
+            .expect_err("not a success yet");
+        assert_eq!(
+            retried.error().expect("refusal").code(),
+            codes::host::MUTATION_UNRECORDED
+        );
+        let refused = api
+            .create_grant(&admin(), create("c2", "spiffe://acme/bob"))
+            .await
+            .expect_err("refused while a record waits");
+        assert_eq!(
+            refused.error().expect("refusal").code(),
+            codes::host::AUDIT_UNAVAILABLE
+        );
+        *trail.refuse_phase.lock().expect("lock") = None;
         let replayed = api
             .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
             .await
-            .expect("the stored success is replayed");
+            .expect("the committed answer, its record now written");
         assert_eq!(replayed.grant.grant_id, listed.grants[0].grant_id);
+        let applied: Vec<_> = administrator_records(&trail)
+            .into_iter()
+            .filter(|record| record.3 == Some("applied"))
+            .collect();
+        assert_eq!(applied.len(), 1, "written once");
+    }
+
+    #[tokio::test]
+    async fn a_commit_that_fails_is_unrecorded_and_a_restart_reconciles_what_the_store_shows() {
+        use permguard_core::fault::{Fault, inject};
+
+        let trail = std::sync::Arc::new(Recording::default());
+        let root = scratch("grants-commit-fails");
+        let journal = {
+            let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+            let journal = volume
+                .host()
+                .path()
+                .join(crate::audit::DIRECTORY)
+                .join(crate::operations::mutation::DIRECTORY);
+            // The intent is written; from its audit record on, the journal refuses every write.
+            let armed = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let holder = std::sync::Arc::clone(&armed);
+            let path = journal.clone();
+            *trail.on_intent.lock().expect("lock") = Some(Box::new(move || {
+                *holder.lock().expect("lock") = Some(inject(&path, Fault::WriteFails));
+            }));
+            let refused = api
+                .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+                .await
+                .expect_err("the commit could not be written");
+            assert_eq!(
+                refused.error().expect("refusal").code(),
+                codes::host::MUTATION_UNRECORDED
+            );
+            drop(armed.lock().expect("lock").take());
+            journal
+        };
+        assert!(journal.is_dir());
+        // A restart: the intent is open, the store shows its operation, recovery commits it.
+        let (api, store, _volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+        let alice: Vec<_> = store
+            .records()
+            .into_iter()
+            .filter(|record| record.principal_id.as_str() == "spiffe://acme/alice")
+            .collect();
+        assert_eq!(alice.len(), 1);
+        let replayed = api
+            .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+            .await
+            .expect("the retry learns the durable result");
+        assert_eq!(replayed.grant.grant_id, alice[0].grant_id.to_string());
+        assert_eq!(
+            replayed.receipt.operation_id,
+            alice[0]
+                .operation_id
+                .expect("issued by an operation")
+                .to_string()
+        );
+        assert!(
+            administrator_records(&trail)
+                .iter()
+                .any(|record| record.3 == Some("reconciled")),
+            "recovery records the reconciliation"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_request_the_store_would_refuse_leaves_no_intent_and_no_record() {
+        let (api, trail, _) = facade_auditing("grants-validate-first");
+        let mut bad = create("v1", "spiffe://acme/alice");
+        bad.operations = vec!["nope.read".to_owned()];
+        api.create_grant(&admin(), bad)
+            .await
+            .expect_err("unregistered");
+        let created = api
+            .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+            .await
+            .expect("created");
+        let stale = api
+            .plan_revoke(
+                &admin(),
+                &created.grant.grant_id,
+                PlanRevoke {
+                    request_id: "p1".to_owned(),
+                    expected_revision: Some(created.grant.revision + 9),
+                },
+            )
+            .await
+            .expect_err("stale");
+        assert!(matches!(stale, Refusal::Conflict { .. }));
+        let phases: Vec<_> = administrator_records(&trail)
+            .into_iter()
+            .map(|record| record.3)
+            .collect();
+        assert_eq!(
+            phases,
+            vec![Some("intent"), Some("applied")],
+            "only the create that applied is on the trail"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_answer_the_replay_journal_recorded_before_wp_3_6_still_answers() {
+        let api = facade("grants-legacy");
+        let request = create("legacy", "spiffe://acme/alice");
+        let principal = Principal::new(ADMIN).expect("a principal");
+        let stored = Created {
+            receipt: Receipt {
+                operation_id: "ab".repeat(16),
+                revision: 7,
+                audit: crate::api::AuditReference {
+                    trail: "audit".to_owned(),
+                    seq: None,
+                    digest: None,
+                },
+            },
+            grant: api
+                .grants(&admin(), None, None)
+                .expect("listed")
+                .grants
+                .remove(0),
+        };
+        api.replay
+            .record(
+                &principal,
+                "legacy",
+                CREATE,
+                &crate::api::replay::digest_of(&request).expect("a digest"),
+                &stored,
+            )
+            .expect("recorded");
+        let answered = api
+            .create_grant(&admin(), request)
+            .await
+            .expect("the stored answer");
+        assert_eq!(answered, stored);
+        assert!(
+            api.grants(&admin(), Some("spiffe://acme/alice"), None)
+                .expect("listed")
+                .grants
+                .is_empty(),
+            "nothing applied again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_revocation_whose_commit_failed_is_rebuilt_from_the_store_after_a_restart() {
+        use permguard_core::fault::{Fault, inject};
+
+        let trail = std::sync::Arc::new(Recording::default());
+        let root = scratch("grants-run-reconciled");
+        let run = {
+            let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+            let journal = volume
+                .host()
+                .path()
+                .join(crate::audit::DIRECTORY)
+                .join(crate::operations::mutation::DIRECTORY);
+            let created = api
+                .create_grant(&admin(), create("c1", "spiffe://acme/alice"))
+                .await
+                .expect("created");
+            let planned = api
+                .plan_revoke(
+                    &admin(),
+                    &created.grant.grant_id,
+                    PlanRevoke {
+                        request_id: "p1".to_owned(),
+                        expected_revision: None,
+                    },
+                )
+                .await
+                .expect("planned");
+            let run = RunRevoke {
+                request_id: "r1".to_owned(),
+                plan_id: planned.plan_id,
+                plan_digest: planned.plan_digest,
+            };
+            let armed = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let holder = std::sync::Arc::clone(&armed);
+            *trail.on_intent.lock().expect("lock") = Some(Box::new(move || {
+                *holder.lock().expect("lock") = Some(inject(&journal, Fault::WriteFails));
+            }));
+            let refused = api
+                .run_revoke(&admin(), &created.grant.grant_id, run.clone())
+                .await
+                .expect_err("the commit could not be written");
+            assert_eq!(
+                refused.error().expect("refusal").code(),
+                codes::host::MUTATION_UNRECORDED
+            );
+            drop(armed.lock().expect("lock").take());
+            (created.grant.grant_id, run)
+        };
+        let (grant_id, run) = run;
+        let (api, store, _volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+        let revoked = api
+            .run_revoke(&admin(), &grant_id, run)
+            .await
+            .expect("the retry learns the revocation");
+        assert_eq!(revoked.grant.status, "revoked");
+        let record = store
+            .records()
+            .into_iter()
+            .find(|record| record.grant_id.to_string() == grant_id)
+            .expect("the grant");
+        assert_eq!(revoked.receipt.revision, record.revision);
     }
 
     #[tokio::test]
@@ -1004,38 +1281,6 @@ mod tests {
         long.constraints = BTreeMap::from([("k".to_owned(), "v".repeat(MAX_CONSTRAINT_BYTES + 1))]);
         assert!(api.create_grant(&admin(), long).await.is_err());
         assert_eq!(api.grants(&admin(), None, None).expect("l").grants.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn a_replay_record_that_fails_after_the_mutation_is_said_as_unrecorded() {
-        use permguard_core::fault::{Fault, inject};
-
-        let root = scratch("grants-unrecorded");
-        let (api, _, volume) = reopen(&root, Vec::new());
-        let replay_dir = volume
-            .host()
-            .path()
-            .join(crate::api::replay::DIRECTORY)
-            .join(crate::api::replay::JOURNAL);
-        std::mem::forget(volume);
-        let failing = inject(&replay_dir, Fault::WriteFails);
-        let refused = api
-            .create_grant(&admin(), create("u1", "spiffe://acme/alice"))
-            .await
-            .expect_err("the replay journal could not record");
-        let error = refused.error().expect("a domain refusal");
-        assert_eq!(error.code(), codes::host::MUTATION_UNRECORDED);
-        assert_eq!(error.http_status(), 500);
-        // The grant is issued: a retry is not replayed and would issue another, which is why
-        // the refusal says to read first.
-        assert_eq!(
-            api.grants(&admin(), Some("spiffe://acme/alice"), None)
-                .expect("listed")
-                .grants
-                .len(),
-            1
-        );
-        drop(failing);
     }
 
     #[test]

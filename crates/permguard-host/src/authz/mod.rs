@@ -30,7 +30,7 @@ use permguard_core::authz::{Actor, Allow, AllowSet, Principal, Resource, Selecto
 pub use mapper::{MapperError, PrincipalMapper, Rule};
 pub use oidc::OidcRule;
 pub use record::{GrantId, GrantRecord, Status};
-pub use store::{AuthzError, Bootstrap, Change, GrantStore, Issue};
+pub use store::{AuthzError, Bootstrap, Change, GrantStore, Issue, validate_issue};
 
 /// One `host.authz.public[]` entry: what anybody may do, declared in the configuration and
 /// never journaled (owner decision, 2026-10-06).

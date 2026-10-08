@@ -59,6 +59,13 @@ pub const POINTS: &[&str] = &[
     "migrate.rollback_records_removed",
     "migrate.abandon_new_removed",
     "migrate.abandon_intent_removed",
+    "mutation.intent_written",
+    "mutation.intent_audited",
+    "mutation.applied",
+    "mutation.committed",
+    "mutation.applied_audited",
+    "mutation.projected",
+    "mutation.snapshot_written",
 ];
 
 /// The crash point `name`: aborts here when this process was told to.

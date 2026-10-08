@@ -63,14 +63,36 @@ is cut.
 - **The audit engine: trails per class and resource under `host/audit/trails`.**
   Every audit record the server writes now lands in a trail of its class (`security`, `operations`, `access`) and its resource, `host/audit/trails/<class>/<SHA-256 of the resource>/`, one CBOR sequence per UTC day, each record chained to the one before it.
   Every action is registered with its class, its facts and its size; an unregistered action, an undeclared fact, a fact shaped like a token or a key, and a resource outside the action's root are refused before anything is written.
-  A `security` record that cannot be written is answered as a failure to the code that recorded it: a Host API grant then fails, while the catalog and NOTP still report success until WP-3.6 makes their mutations wait for the record.
+  A `security` record that cannot be written is answered as a failure to the code that recorded it.
   An `operations` record that cannot be written is counted and the Host reports `degraded: audit`; `access` records go through a bounded queue whose drops are counted and marked by an `audit.access_dropped` record in the trail that has the gap.
   With `audit.pseudonym` on, a principal is pseudonymised per resource: the Control Plane's and the Data Plane's trails do not correlate, but every tenant of one Plane shares its root until a Plane narrows its records to a tenant's resource.
   With it off, a principal is masked in the trail, as in every other sink.
   `access` and `operations` day files older than `audit.retention` are dropped; `security` ones are kept until checkpoints exist.
   The new trails carry no signed seal or checkpoint yet (WP-3.7), and `audit verify` does not read them yet.
 
+- **Grant mutations are one transaction with their audit records.**
+  Every grant issue, revocation plan and run, expiry and bootstrap — from the Host API, the offline `permguard host grants`, or the Host itself — is an operation of the security-mutation journal in `host/audit/mutations/`.
+  Its intent is flushed first and recorded in the `security` audit trail, the grant is written carrying the operation id, the commit and its answer follow, and the outcome is recorded with the same operation id.
+  A crash at any step is resolved at the next start: an operation the grant journal shows is committed and recorded as `reconciled`, one it does not show is marked failed.
+  An outcome record a crash interrupts before it is marked written is written again at the next start, so the trail can hold it twice under the same operation id and phase.
+  A request the grant store would refuse — an unregistered operation, a stale revision, a plan that does not match — is refused before the operation begins and leaves no audit record.
+  A retry with the same request id inside ten minutes learns the committed answer, across a restart, after a crash too.
+  A grant's revision is now compared under the journal's lock, so two concurrent writers cannot both win a race.
+  A structural check, `task check:mutations`, reads every crate's syntax tree and fails on a write to the grant journal outside a function holding the engine's token, or on the token built anywhere but the engine.
+
 ### Changed
+
+- **A security mutation is refused while the audit trail cannot record it.**
+  A grant mutation whose intent record cannot be written applies nothing and answers `audit_unavailable` (503).
+  One whose outcome record cannot be written stands and answers `mutation_unrecorded` (500); the record is written again before the next mutation and at the next start, and until it is, new grant mutations are refused and the Host reports `degraded: security_mutations`.
+  A write to the mutation journal that fails stops it until the next start, which resolves what it left open; meanwhile a retry is answered `mutation_unrecorded` and new grant mutations `replay_unavailable`.
+  The server starts all the same when the expiry of grants past their time cannot be written: such grants allow nothing either way.
+  Reads and decisions are not affected.
+
+- **A catalog or NOTP change whose audit record fails is no longer answered as a success.**
+  The zone, ledger or push stands, as before, and the answer is `mutation_unrecorded` (500): read the state before retrying.
+  It used to be a success with a warning in the log.
+  A refusal whose record fails is still the refusal.
 
 - **`audit.destination` no longer decides whether there is an audit trail.**
   The engine writes its trails on the volume whatever the setting; `tracing`, the default, also emits every record into the log stream, as before.

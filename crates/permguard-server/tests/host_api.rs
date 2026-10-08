@@ -138,23 +138,29 @@ fn facade(tag: &str) -> Arc<HostApi> {
     let root = scratch(tag);
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
     let (store, _) = GrantStore::open(&volume).expect("the grant store opens");
-    store
-        .issue(
-            Issue {
-                principal: Principal::new(ADMIN).expect("a principal"),
-                operations: operations::ALL
-                    .iter()
-                    .map(|operation| (*operation).to_owned())
-                    .collect(),
-                selector: Selector::under(Resource::host()),
-                resource_types: vec!["*".to_owned()],
-                constraints: Default::default(),
-                issued_by: "test".to_owned(),
-                expires_at: None,
-            },
-            permguard_host::authz::store::now(),
-        )
-        .expect("the administrator is issued");
+    let mutations = Arc::new(
+        permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
+            .expect("the mutation journal opens"),
+    );
+    permguard_host::operations::grants::issue(
+        &mutations,
+        &store,
+        permguard_host::operations::journal::Initiator::System("test".to_owned()),
+        Issue {
+            principal: Principal::new(ADMIN).expect("a principal"),
+            operations: operations::ALL
+                .iter()
+                .map(|operation| (*operation).to_owned())
+                .collect(),
+            selector: Selector::under(Resource::host()),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            issued_by: "test".to_owned(),
+            expires_at: None,
+        },
+        permguard_host::authz::store::now(),
+    )
+    .expect("the administrator is issued");
     let (replay, _) =
         Replay::open(&volume, permguard_host::authz::store::now()).expect("the replay opens");
     // The volume stays claimed for the life of the test process: the store holds its directory.
@@ -183,7 +189,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             settings: Vec::new(),
         },
         trail: "recording".to_owned(),
-        recorder: None,
+        mutations: Some(mutations),
         time: Arc::new(permguard_host::time::TimeGuard::system(
             std::time::Duration::from_secs(30),
         )),

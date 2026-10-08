@@ -107,6 +107,7 @@ tasks:
       - task: check:notices
       - task: check:boundaries
       - task: check:durability
+      - task: check:mutations
       - task: test
 
   coverage:
@@ -140,6 +141,11 @@ tasks:
     desc: Check that every durability primitive lives in the storage library or is allow-listed.
     cmds:
       - cargo test -p permguard-conformance --test durability --locked
+
+  check:mutations:
+    desc: Check that security state is written only through the mutation engine.
+    cmds:
+      - cargo test -p permguard-conformance --test mutations --locked
 
   fuzz:
     desc: Run every fuzz target for SECONDS each (nightly toolchain and cargo-fuzz).

@@ -280,6 +280,10 @@ mod tests {
     use tower::util::ServiceExt;
 
     fn testing_routes() -> (Router, String, String) {
+        testing_routes_with(None)
+    }
+
+    fn testing_routes_with(recorder: Option<crate::handles::Audit>) -> (Router, String, String) {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -325,7 +329,7 @@ mod tests {
             },
             permguard_languages::registry::Enabled::everything(),
             true,
-            None,
+            recorder,
             Disclosure::Minimal,
             false,
             permguard_core::metrics::Metrics::none(),
@@ -665,6 +669,88 @@ mod tests {
 
         // The key ring publishes the key the statement names (the HTTP
         // route lives on the plane's discovery surface, /control/keys).
+    }
+
+    /// A push whose `security` record fails is committed and answered `mutation_unrecorded`,
+    /// never success (WP-3.6, owner decision): the ref moved, and the caller reads it.
+    #[tokio::test]
+    async fn test_a_push_whose_record_fails_is_unrecorded_and_stands() {
+        use permguard_core::{AuditEvent, AuditRecorder, AuditSink, BoxFuture};
+
+        /// A sink that refuses every record.
+        struct Refusing;
+
+        impl AuditSink for Refusing {
+            fn name(&self) -> &'static str {
+                "refusing"
+            }
+
+            fn record<'a>(
+                &'a self,
+                _event: &'a AuditEvent<'_>,
+                _policy: Option<&'a dyn permguard_core::Pseudonymizer>,
+            ) -> BoxFuture<'a, Result<(), permguard_core::error::AuditError>> {
+                Box::pin(async move {
+                    Err(permguard_core::error::AuditError::unavailable(
+                        "the trail is full",
+                    ))
+                })
+            }
+        }
+
+        let (routes, zone, ledger) = testing_routes_with(Some(crate::handles::audit_for_tests(
+            AuditRecorder::new(Arc::new(Refusing)),
+        )));
+        let base = format!("/v1/zones/{zone}/ledgers/{ledger}");
+        let (objects, head) = build_commit();
+        let upload = UploadObjectsRequest {
+            objects,
+            compression: None,
+        };
+        let (status, _) = post(
+            &routes,
+            &format!("{base}/notp/objects"),
+            upload.encode().expect("it encodes"),
+        )
+        .await;
+        assert_eq!(status, 200);
+        let commit = CommitPushRequest {
+            r#ref: "main".into(),
+            new_head: head.clone(),
+            expected_old: None,
+        };
+        let (status, body) = post(
+            &routes,
+            &format!("{base}/notp/push/commit"),
+            commit.encode().expect("it encodes"),
+        )
+        .await;
+        let body = String::from_utf8_lossy(&body);
+        assert_eq!(status, 500, "{body}");
+        assert!(body.contains("mutation_unrecorded"), "{body}");
+        let request = HttpRequest::builder()
+            .method("GET")
+            .uri(format!("{base}/refs/main"))
+            .body(Body::empty())
+            .expect("a request builds");
+        let answer = routes.clone().oneshot(request).await.expect("answers");
+        assert_eq!(answer.status().as_u16(), 200, "the push stands");
+        let bytes = axum::body::to_bytes(answer.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+        let permguard_objects::cbor::Value::Map(pairs) =
+            permguard_objects::cbor::decode_canonical(&bytes).expect("canonical")
+        else {
+            panic!("a map");
+        };
+        assert_eq!(
+            pairs[0],
+            (
+                permguard_objects::cbor::Value::Int(1),
+                permguard_objects::cbor::Value::Text(head.to_string())
+            ),
+            "the ref names the pushed head"
+        );
     }
 
     /// Refusals speak the shared taxonomy: unknown ledger, malformed body.

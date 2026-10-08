@@ -1054,6 +1054,7 @@ impl App {
         file: &ConfigFile,
         volume: &permguard_host::storage::volume::Volume,
         time: &Arc<permguard_host::time::TimeGuard>,
+        mutations: &permguard_host::operations::mutation::Mutations,
     ) -> Result<HostAuthz> {
         use permguard_host::authz::{
             Authorization, GrantStore, PrincipalMapper, PublicGrant, Rule,
@@ -1068,15 +1069,24 @@ impl App {
                 volume.host().path().display()
             )
         })?;
-        let expired = store
-            .expire_due(time.now_secs())
-            .context("writing the expiry of grants past their time")?;
+        // A grant mutation a crash left open is committed or failed before anything reads the
+        // store; then the expiry of grants past their time, each one operation (WP-3.6).
+        let recovered = mutations
+            .recover(&permguard_host::operations::grants::Grants(&store))
+            .context("recovering the grant mutations a crash left open")?;
+        // An expiry that cannot be written does not stop the start: a grant past its time allows
+        // nothing all the same, and the Host reports `degraded: security_mutations` meanwhile.
+        let expiry =
+            permguard_host::operations::grants::expire_due(mutations, &store, time.now_secs());
         tracing::info!(
             event.name = "authz.opened",
             component = "server",
             grants = store.records().len(),
             revision = store.revision(),
-            expired = expired.len(),
+            expired = expiry.expired.len(),
+            expiry_unwritten = expiry.unwritten.len(),
+            reconciled = recovered.reconciled.len(),
+            failed = recovered.failed.len(),
             recovered_truncated_bytes = recovery.truncated_bytes,
             bootstrap = store.bootstrap().is_some(),
             "the grant store is open"
@@ -1311,6 +1321,26 @@ impl App {
             permguard_core::AuditDestination::Tracing => Some(destination),
             permguard_core::AuditDestination::File => None,
         };
+        // The security-mutation journal (WP-3.6), its records written as every other record is:
+        // the audit engine under the privacy policy, and the destination too. Its open intents
+        // are resolved once each domain is open, the grants just below.
+        let mutations = Arc::new(
+            permguard_host::operations::mutation::Mutations::open(
+                &volume,
+                Arc::new(permguard_host::operations::mutation::HostProjection::new(
+                    Arc::clone(&audit_engine),
+                    pseudonymizer.clone(),
+                    also.clone(),
+                )),
+                Arc::clone(&time),
+            )
+            .with_context(|| {
+                format!(
+                    "opening the mutation journal on {}",
+                    volume.host().path().display()
+                )
+            })?,
+        );
         let audit: Arc<dyn AuditSink> = Arc::new(permguard_host::audit::HostAuditSink::new(
             Arc::clone(&audit_engine),
             also,
@@ -1346,6 +1376,7 @@ impl App {
             .with_realms(realms);
         // An `operations` record the engine could not write degrades the Host's readiness.
         audit_engine.observe(context.health().clone());
+        mutations.observe(context.health().clone());
 
         if let Some(catalog) = catalog {
             context = context.with_catalog(catalog);
@@ -1366,7 +1397,7 @@ impl App {
             authorization,
             authenticator,
             store: grants,
-        } = self.authorization_for(config, config_file, &file, &volume, &time)?;
+        } = self.authorization_for(config, config_file, &file, &volume, &time, &mutations)?;
         context = context.with_authenticator(authenticator);
 
         // The Host API facade (WP-2.5), when the deployment has a Host listener: the replay
@@ -1426,7 +1457,7 @@ impl App {
                 ),
                 effective: Effective::of(config.effective_settings()),
                 trail: audit.name().to_owned(),
-                recorder: Some(self.recorder(&audit, pseudonymizer.as_ref())),
+                mutations: Some(Arc::clone(&mutations)),
                 time: Arc::clone(&time),
             });
             context = context.with_host_handles(Arc::new(api));

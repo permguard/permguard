@@ -377,8 +377,9 @@ fn is_std_fs(prefix: &[String]) -> bool {
 }
 
 /// Whether an item is compiled only for tests: `#[cfg(test)]`, or `all(..)`/`any(..)` with
-/// `test` as a direct leaf. `not(test)` and a feature whose name contains `test` are production.
-fn is_test_gated(attrs: &[syn::Attribute]) -> bool {
+/// `test`, or `all`/`any` over it as [`cfg_is_test`] reads them. `not(test)` and a feature whose
+/// name contains `test` are production.
+pub(crate) fn is_test_gated(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path().is_ident("cfg")
             && attr
@@ -387,14 +388,24 @@ fn is_test_gated(attrs: &[syn::Attribute]) -> bool {
     })
 }
 
+/// Whether `meta` holds only when testing: `test`; `all(…)` with a leaf that does; `any(…)`
+/// only when every leaf does, since `any(test, feature = "x")` compiles in production under the
+/// feature.
 fn cfg_is_test(meta: &syn::Meta) -> bool {
+    let leaves = |list: &syn::MetaList| {
+        list.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        )
+        .ok()
+    };
     match meta {
         syn::Meta::Path(path) => path.is_ident("test"),
-        syn::Meta::List(list) if list.path.is_ident("all") || list.path.is_ident("any") => list
-            .parse_args_with(
-                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-            )
-            .is_ok_and(|leaves| leaves.iter().any(cfg_is_test)),
+        syn::Meta::List(list) if list.path.is_ident("all") => {
+            leaves(list).is_some_and(|leaves| leaves.iter().any(cfg_is_test))
+        }
+        syn::Meta::List(list) if list.path.is_ident("any") => {
+            leaves(list).is_some_and(|leaves| !leaves.is_empty() && leaves.iter().all(cfg_is_test))
+        }
         _ => false,
     }
 }

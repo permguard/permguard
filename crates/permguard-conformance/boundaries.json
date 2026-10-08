@@ -608,6 +608,21 @@
       "reason": "a trail's `META.cbor` on the Host's own volume (WP-3.5): two labels this process published once, closed"
     },
     {
+      "source": "crates/permguard-host/src/operations/journal.rs",
+      "item": "Entry::decode",
+      "reason": "one entry of the security-mutation journal on the Host's own volume (WP-3.6), `host/audit/mutations/`: canonical CBOR this process or an earlier one appended, closed labels per kind, at most 256 KiB, checked before it parses"
+    },
+    {
+      "source": "crates/permguard-host/src/operations/journal.rs",
+      "item": "OperationId::from_bytes",
+      "reason": "sixteen bytes already in memory, drawn by this process or decoded by `Entry::decode` or a grant record, which are the boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/operations/mutation.rs",
+      "item": "Mutations::open",
+      "reason": "the security-mutation journal on the Host's own volume (WP-3.6): `snapshot.cbor` and `journal.cborseq`, written by this process or an earlier one; a torn final entry is cut, anything else that does not read is corruption and the journal refuses to open"
+    },
+    {
       "source": "crates/permguard-host/src/audit/trail.rs",
       "item": "Trail::open",
       "reason": "a trail directory on the Host's own volume (WP-3.5): `META.cbor`, and its day files from the newest back to the last record, read as CBOR sequences; a final item of the newest day shorter than any record is cut as torn, anything else that does not read is corruption and the trail refuses"

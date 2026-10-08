@@ -394,7 +394,7 @@
             }
           },
           "500": {
-            "description": "An answer this plane could not encode.",
+            "description": "An answer this plane could not encode, or the push was committed and its audit record could not be written (`mutation_unrecorded`): read the ref before retrying.",
             "content": {
               "application/json": {
                 "schema": {

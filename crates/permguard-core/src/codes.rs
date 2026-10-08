@@ -344,9 +344,13 @@ pub mod host {
     pub const GRANT_STORE_UNAVAILABLE: &str = "grant_store_unavailable";
     /// The replay journal could not be read before the mutation: nothing is applied.
     pub const REPLAY_UNAVAILABLE: &str = "replay_unavailable";
-    /// The mutation is applied and the replay journal could not record it: a retry with the same
-    /// request id is not answered from the window, so the caller reads before it retries.
+    /// The mutation was applied, or may have been, and its commit or its audit record could not
+    /// be written (WP-3.6): the caller reads the state before it retries. The catalog and NOTP
+    /// answer it too, for a change whose `security` record failed.
     pub const MUTATION_UNRECORDED: &str = "mutation_unrecorded";
+    /// The audit trail cannot record a security mutation (WP-3.6): its intent record failed, or
+    /// the outcome record of an earlier mutation still waits for the trail. Nothing is applied.
+    pub const AUDIT_UNAVAILABLE: &str = "audit_unavailable";
     /// No key ring of that name is composed in this process.
     pub const RING_UNKNOWN: &str = "ring_unknown";
     /// The ring named could not be read.
@@ -614,6 +618,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::GRANT_STORE_UNAVAILABLE,
         host::REPLAY_UNAVAILABLE,
         host::MUTATION_UNRECORDED,
+        host::AUDIT_UNAVAILABLE,
         host::RING_UNKNOWN,
         host::RING_UNREADABLE,
         host::NOT_SERVED_YET,

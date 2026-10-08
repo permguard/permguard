@@ -485,6 +485,65 @@ mod tests {
         );
     }
 
+    /// A zone whose `security` record fails is created and answered `mutation_unrecorded`, never
+    /// success; a refusal whose record fails is still the refusal (WP-3.6, owner decision).
+    #[tokio::test]
+    async fn test_a_change_whose_record_fails_is_unrecorded_and_stands() {
+        use permguard_core::{AuditEvent, AuditRecorder, AuditSink, BoxFuture};
+
+        /// A sink that refuses every record.
+        struct Refusing;
+
+        impl AuditSink for Refusing {
+            fn name(&self) -> &'static str {
+                "refusing"
+            }
+
+            fn record<'a>(
+                &'a self,
+                _event: &'a AuditEvent<'_>,
+                _policy: Option<&'a dyn permguard_core::Pseudonymizer>,
+            ) -> BoxFuture<'a, Result<(), permguard_core::error::AuditError>> {
+                Box::pin(async move {
+                    Err(permguard_core::error::AuditError::unavailable(
+                        "the trail is full",
+                    ))
+                })
+            }
+        }
+
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(2000);
+        let root = std::env::temp_dir().join(format!(
+            "permguard-catalog-unrecorded-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let routes = routes(CatalogFacade {
+            authorization: std::sync::Arc::new(
+                permguard_host::composition::Authorization::permissive(),
+            ),
+            catalog: Arc::new(FileCatalog::new(root)),
+            recorder: Some(crate::handles::audit_for_tests(AuditRecorder::new(
+                std::sync::Arc::new(Refusing),
+            ))),
+            disclosure: Disclosure::Minimal,
+            audit_refusals: true,
+            metrics: permguard_core::metrics::Metrics::none(),
+        });
+
+        let (status, body) =
+            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        assert_eq!(status, 500, "{body}");
+        assert!(body.contains(r#""code":"mutation_unrecorded""#), "{body}");
+        let (status, body) = send(&routes, "GET", "/v1/zones/delivery", None).await;
+        assert_eq!(status, 200, "the zone stands: {body}");
+        let (status, body) =
+            send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        assert_eq!(status, 409, "a refusal stays a refusal: {body}");
+    }
+
     /// Off — the default — the trail carries mutations only, exactly as before the switch existed.
     #[tokio::test]
     async fn test_refusals_stay_off_the_trail_by_default() {

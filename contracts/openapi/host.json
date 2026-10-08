@@ -252,8 +252,18 @@
               }
             }
           },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "No grant store is open (`grant_store_unavailable`), the replay journal cannot record (`replay_unavailable`, nothing applied), or the principal is over its bound (`principal_bound_exceeded`).",
+            "description": "No grant store is open (`grant_store_unavailable`), the mutation journal cannot record (`replay_unavailable`, nothing applied), the audit trail cannot record security mutations (`audit_unavailable`, nothing applied), or the principal is over its bound (`principal_bound_exceeded`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -362,8 +372,18 @@
               }
             }
           },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "No grant store is open, the replay journal cannot record, or the principal is over its bound.",
+            "description": "No grant store is open, the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
             "content": {
               "application/json": {
                 "schema": {
@@ -472,8 +492,18 @@
               }
             }
           },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "No grant store is open, the replay journal cannot record, or the principal is over its bound.",
+            "description": "No grant store is open, the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
             "content": {
               "application/json": {
                 "schema": {
