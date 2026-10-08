@@ -959,10 +959,7 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     let Outcome::Answered(view) = &read else {
         panic!("the ring reads: {read:?}")
     };
-    let first = view["keys"][0]["kid"]
-        .as_str()
-        .expect("a kid")
-        .to_owned();
+    let first = view["keys"][0]["kid"].as_str().expect("a kid").to_owned();
     steps.push((
         "rotate a ring as a stranger",
         transport.rotate_ring(Some(STRANGER), ring, "k0", 1).await,
@@ -999,7 +996,6 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     ));
     steps
 }
-
 
 /// The vectors of the common envelope: the same script, once per transport, every step the same
 /// outcome. Each transport has its own facade, since a mutation mints what cannot be shared.

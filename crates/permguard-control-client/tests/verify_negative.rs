@@ -257,8 +257,15 @@ fn a_bare_thumbprint_kid_selects_only_the_key_it_is_the_thumbprint_of() {
     .expect("a thumbprint");
     let envelope = signed(&statement(1, b"new"), thumbprint.as_bytes(), &key);
     let prefixed = format!("control.attest:{thumbprint}");
-    verify_statement(&jwks_for(&prefixed, &key), &envelope, ZONE, LEDGER, REF, None)
-        .expect("the legacy kid selects its key");
+    verify_statement(
+        &jwks_for(&prefixed, &key),
+        &envelope,
+        ZONE,
+        LEDGER,
+        REF,
+        None,
+    )
+    .expect("the legacy kid selects its key");
 
     let other = keypair();
     let error = refused(&jwks_for(&prefixed, &other), &envelope, None);

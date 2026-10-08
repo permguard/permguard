@@ -1308,9 +1308,11 @@ impl Ring {
         self.commit_all(entries)?;
         // From here the revocation is in the journal: a later failure leaves the ring changed,
         // and maintenance finishes it.
-        let unfinished = |error: RingError| RingError::Unfinished(format!(
-            "`{kid}` is revoked and the revocation did not finish: {error}"
-        ));
+        let unfinished = |error: RingError| {
+            RingError::Unfinished(format!(
+                "`{kid}` is revoked and the revocation did not finish: {error}"
+            ))
+        };
         // A key that stopped signing earlier was destroyed when it did.
         if !destroyed {
             self.destroy(kid, now).map_err(unfinished)?;

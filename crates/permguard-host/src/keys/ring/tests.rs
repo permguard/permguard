@@ -961,7 +961,11 @@ fn a_binding_is_issued_again_after_the_identity_rotates_or_the_file_changes() {
         )
         .expect("the identity rotates");
     ring.maintain().expect("rebound");
-    assert_eq!(bound(&ring), 2, "the old identity key's binding is replaced");
+    assert_eq!(
+        bound(&ring),
+        2,
+        "the old identity key's binding is replaced"
+    );
     let public = identity.public_key();
     verify_binding(
         &ring.statement().expect("statement").binding.expect("bound"),
@@ -1022,21 +1026,24 @@ fn every_history_the_ring_does_not_allow_is_refused() {
                 },
             ],
         ),
-        (
-            "another ring's prefix",
-            {
-                // The jwk names the same kid, so only the prefix is wrong.
-                let kid = first.kid.replace("data.attest:", "control.attest:");
-                let mut jwk: Jwk =
-                    serde_json::from_str(first.jwk.as_deref().expect("a jwk")).expect("json");
-                jwk.kid = kid.clone();
-                vec![Entry {
-                    kid,
+        ("another ring's prefix", {
+            // The jwk names the same kid, so only the prefix is wrong.
+            let kid = first.kid.replace("data.attest:", "control.attest:");
+            let mut jwk: Jwk =
+                serde_json::from_str(first.jwk.as_deref().expect("a jwk")).expect("json");
+            jwk.kid = kid.clone();
+            vec![
+                Entry {
+                    kid: kid.clone(),
                     jwk: Some(serde_json::to_string(&jwk).expect("json")),
                     ..first.clone()
-                }]
-            },
-        ),
+                },
+                Entry {
+                    kid,
+                    ..good[1].clone()
+                },
+            ]
+        }),
         (
             "a thumbprint of other material",
             vec![Entry {
@@ -1046,7 +1053,13 @@ fn every_history_the_ring_does_not_allow_is_refused() {
         ),
         (
             "a gap in seq",
-            vec![first.clone(), Entry { seq: 3, ..good[1].clone() }],
+            vec![
+                first.clone(),
+                Entry {
+                    seq: 3,
+                    ..good[1].clone()
+                },
+            ],
         ),
         (
             "destroyed while active",
@@ -1075,7 +1088,14 @@ fn every_history_the_ring_does_not_allow_is_refused() {
         ),
         (
             "an epoch that did not rise",
-            vec![first.clone(), good[1].clone(), Entry { epoch: 1, ..second.clone() }],
+            vec![
+                first.clone(),
+                good[1].clone(),
+                Entry {
+                    epoch: 1,
+                    ..second.clone()
+                },
+            ],
         ),
     ];
     for (name, entries) in cases {
@@ -1129,10 +1149,7 @@ fn no_transition_shows_the_ring_without_an_active_key() {
         seen: Mutex::new(Vec::new()),
     });
     let ring = Arc::new(fixture.ring().with_recorder(watching.clone()));
-    watching
-        .ring
-        .set(Arc::downgrade(&ring))
-        .expect("set once");
+    watching.ring.set(Arc::downgrade(&ring)).expect("set once");
     ring.maintain().expect("first");
     fixture.advance(ROTATE);
     ring.maintain().expect("successor");

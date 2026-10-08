@@ -355,10 +355,19 @@ fn a_migration_a_crash_left_between_its_declaration_and_its_intent_is_carried_ou
         .expect("declared");
     assert!(needs_migration(&volume, DATA_ATTEST, Some(&legacy)).expect("read"));
     assert_eq!(
-        lay_out(&volume, DATA_ATTEST, Some(&legacy), AssuranceProfile::Development, None, NOW)
-            .expect("migrated"),
+        lay_out(
+            &volume,
+            DATA_ATTEST,
+            Some(&legacy),
+            AssuranceProfile::Development,
+            None,
+            NOW
+        )
+        .expect("migrated"),
         Laid::Migrated
     );
-    ring(&volume).active_key_id().expect("the carried key is active");
+    ring(&volume)
+        .active_key_id()
+        .expect("the carried key is active");
     let _ = std::fs::remove_dir_all(root);
 }
