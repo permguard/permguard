@@ -54,6 +54,8 @@
     "digest.EVENT_HISTORY": "permguard.event.history.v1\n",
     "digest.EVENT_OCCURRENCE": "permguard.event.occurrence.v1\n",
     "digest.EVENT_RECORD": "permguard.event.record.v1\n",
+    "digest.HOST_IDENTITY_WITNESS": "permguard.host.identity.witness.v1\n",
+    "digest.HOST_SUCCESSION": "permguard.host.succession.v1\n",
     "digest.INPUT_TAG": "permguard.input.v1\n",
     "digest.KEY_SET": "permguard.key-set.v1\n",
     "digest.LANGUAGE_DESCRIPTOR": "permguard.language.descriptor.v1\n",
@@ -125,7 +127,8 @@
     "protected.SNAPSHOT_MANIFEST": "permguard.snapshot.manifest.v1",
     "protected.STREAM_RUN": "permguard.stream.run.v1",
     "record.DECISION_V1": "permguard.decision.v1",
-    "record.EVENT_V1": "permguard.event.record.v1"
+    "record.EVENT_V1": "permguard.event.record.v1",
+    "subject.HOST_V1_PREFIX": "urn:permguard:host:v1:"
   },
   "codes": {
     "catalog.CATALOG_FAILED": "catalog_failed",
@@ -183,6 +186,7 @@
     "host.GRANT_STORE_UNAVAILABLE": "grant_store_unavailable",
     "host.GRANT_TERMINAL": "grant_terminal",
     "host.GRANT_UNKNOWN": "grant_unknown",
+    "host.IDENTITY_UNAVAILABLE": "identity_unavailable",
     "host.MUTATION_UNRECORDED": "mutation_unrecorded",
     "host.NOT_SERVED_YET": "not_served_yet",
     "host.PLAN_DIGEST_MISMATCH": "plan_digest_mismatch",

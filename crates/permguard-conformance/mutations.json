@@ -4,8 +4,13 @@
   "guarded": [
     {
       "source": "crates/permguard-host/src/authz/store.rs",
-      "calls": ["append", "publish_immutable"],
-      "fields": ["journal"],
+      "calls": [
+        "append",
+        "publish_immutable"
+      ],
+      "fields": [
+        "journal"
+      ],
       "exempt": [
         {
           "item": "history",
@@ -16,8 +21,12 @@
     },
     {
       "source": "crates/permguard-host/src/api/replay.rs",
-      "calls": ["append"],
-      "fields": ["journal"],
+      "calls": [
+        "append"
+      ],
+      "fields": [
+        "journal"
+      ],
       "exempt": [
         {
           "item": "compact",
@@ -25,6 +34,27 @@
         }
       ],
       "state": "the server-held revocation plans and their consumption"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/mod.rs",
+      "calls": [
+        "append",
+        "replace_bytes",
+        "generate",
+        "destroy"
+      ],
+      "fields": [],
+      "exempt": [
+        {
+          "item": "provision",
+          "reason": "creates the identity before INIT exists: nothing is an identity until INIT is written, and the operation journal opens after it"
+        },
+        {
+          "item": "open",
+          "reason": "completes a rotation whose succession is durable, removes keys no document named, and writes this start's BOOT; never a new epoch"
+        }
+      ],
+      "state": "the Host identity: its keys, its document and its succession records"
     }
   ]
 }

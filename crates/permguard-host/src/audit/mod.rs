@@ -148,6 +148,9 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.grant.revoke_planned", HOST),
     mutation("host.grant.revoked", HOST),
     mutation("host.grant.expired", HOST),
+    // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
+    action("host.identity.provisioned", Class::Security, HOST),
+    mutation("host.identity.rotated", HOST),
     // The Control Plane: catalog, NOTP and its sweep.
     action("zone.created", Class::Security, CONTROL),
     action("zone.renamed", Class::Security, CONTROL),

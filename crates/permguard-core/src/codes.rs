@@ -351,6 +351,8 @@ pub mod host {
     /// The audit trail cannot record a security mutation (WP-3.6): its intent record failed, or
     /// the outcome record of an earlier mutation still waits for the trail. Nothing is applied.
     pub const AUDIT_UNAVAILABLE: &str = "audit_unavailable";
+    /// No Host identity is open on this process, or it could not rotate (WP-2.2).
+    pub const IDENTITY_UNAVAILABLE: &str = "identity_unavailable";
     /// No key ring of that name is composed in this process.
     pub const RING_UNKNOWN: &str = "ring_unknown";
     /// The ring named could not be read.
@@ -619,6 +621,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::REPLAY_UNAVAILABLE,
         host::MUTATION_UNRECORDED,
         host::AUDIT_UNAVAILABLE,
+        host::IDENTITY_UNAVAILABLE,
         host::RING_UNKNOWN,
         host::RING_UNREADABLE,
         host::NOT_SERVED_YET,

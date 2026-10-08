@@ -97,6 +97,8 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_ASSURANCE_ADDED_CONTROLS,
             SETTING_AUDIT_PSEUDONYM_KEY_REF,
             SETTING_LOG_COMMITMENT_KEY_REF,
+            SETTING_HOST_IDENTITY_SUITE,
+            SETTING_HOST_IDENTITY_WITNESS,
             SETTING_ISSUER,
             SETTING_LIMITS_CONNECTION_LIFETIME,
             SETTING_LIMITS_PEER_EXEMPT,

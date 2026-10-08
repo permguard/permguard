@@ -1424,6 +1424,52 @@ pub enum HostAction {
         #[command(subcommand)]
         action: GrantsAction,
     },
+    /// The Host identity on the volume, with the server stopped (WP-2.2).
+    Identity {
+        #[command(subcommand)]
+        action: IdentityAction,
+    },
+}
+
+/// `permguard host identity …`: the Host identity, offline.
+#[derive(Debug, Subcommand)]
+pub enum IdentityAction {
+    /// Provision the Host identity: required before the first start from the `production`
+    /// profile up. Prints the witness to keep outside the volume and give the server as
+    /// `host.identity.witness`. Written once; a volume already provisioned is refused.
+    #[command(
+        after_help = "Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json"
+    )]
+    Provision {
+        /// The Host's volume (its `working_dir`); created when empty.
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The identity key's suite.
+        #[arg(long, default_value = "pg-ed25519-sha256-v1")]
+        suite: String,
+    },
+    /// Print the Host identity: its id, subject, epoch and fingerprints. The witness is printed
+    /// at provisioning only, never read back from the volume it is meant to check.
+    #[command(
+        after_help = "Examples:\n  permguard host identity show --volume /var/lib/permguard\n  permguard host identity show --volume ./volume -o json"
+    )]
+    Show {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+    },
+    /// Rotate the identity key to the next epoch: the current key signs the succession.
+    #[command(
+        after_help = "Examples:\n  permguard host identity rotate --volume /var/lib/permguard --expected-epoch 1\n  permguard host identity rotate --volume ./volume --expected-epoch 3 -o json"
+    )]
+    Rotate {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The epoch `show` printed: a rotation from another is refused.
+        #[arg(long)]
+        expected_epoch: u64,
+    },
 }
 
 /// `permguard host grants …`: the offline grant administration of WP-2.4. The Host API takes
@@ -1446,7 +1492,8 @@ pub enum GrantsAction {
         #[arg(long)]
         fingerprint: String,
     },
-    /// Issue a grant: a direct journal append, until the Host mutation transaction exists.
+    /// Issue a grant: an operation of the Host's security-mutation transaction, recorded in the
+    /// volume's audit trail.
     #[command(
         after_help = "Examples:\n  permguard host grants issue --volume /var/lib/permguard --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard host grants issue --volume ./volume --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
     )]

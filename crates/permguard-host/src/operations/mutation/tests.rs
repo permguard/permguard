@@ -83,7 +83,7 @@ impl Domain for Ledger {
         "ledger"
     }
 
-    fn observe(&self, operation_id: &OperationId) -> Option<Observed> {
+    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
         self.applied
             .lock()
             .expect("lock")
@@ -171,7 +171,7 @@ fn an_operation_runs_every_step_under_one_operation_id() {
         "the outcome names the target"
     );
     let id = OperationId::from_bytes(records[0].1);
-    assert!(ledger.observe(&id).is_some(), "the domain carries it");
+    assert!(ledger.observe(&id, None).is_some(), "the domain carries it");
     let journal = entries(&volume);
     assert!(matches!(
         &journal[..],

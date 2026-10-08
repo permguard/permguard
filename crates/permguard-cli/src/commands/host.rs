@@ -27,7 +27,7 @@ use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
-use crate::args::{Globals, GrantsAction, HostAction};
+use crate::args::{Globals, GrantsAction, HostAction, IdentityAction};
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
 use crate::session::render;
@@ -41,6 +41,7 @@ pub fn host_command(
 ) -> Result<ExitCode, Failure> {
     match action {
         HostAction::Grants { action } => grants(globals, action, trace),
+        HostAction::Identity { action } => identity(globals, action, trace),
     }
 }
 
@@ -175,8 +176,7 @@ fn open_mutable(
     trace: &Trace,
 ) -> Result<(std::sync::Arc<GrantStore>, Mutations), Failure> {
     let (store, held) = open(volume, trace)?;
-    let mutations = Mutations::open_offline(&held, env!("CARGO_PKG_VERSION"))
-        .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))?;
+    let mutations = offline_engine(&held, trace)?;
     let recovered = mutations
         .recover(&grants::Grants(&store))
         .map_err(|error| Failure::unavailable(format!("recovering grant mutations: {error}")))?;
@@ -352,6 +352,204 @@ impl Report for BootstrapReport {
         if let Some(grant) = &self.grant {
             writeln!(out)?;
             grant.render_terminal(out)?;
+        }
+        Ok(())
+    }
+}
+
+/// The mutation engine of a volume opened offline, its records stamped with the volume's
+/// identity when it has one.
+fn offline_engine(held: &Volume, trace: &Trace) -> Result<Mutations, Failure> {
+    let identity = if permguard_host::identity::is_provisioned(held)
+        .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
+    {
+        Some(open_identity(held)?)
+    } else {
+        trace.say("the volume holds no Host identity yet; records name its volume id".to_owned());
+        None
+    };
+    Mutations::open_offline_as(held, env!("CARGO_PKG_VERSION"), identity.as_ref())
+        .map_err(|error| Failure::unavailable(format!("opening the mutation journal: {error}")))
+}
+
+fn open_identity(held: &Volume) -> Result<permguard_host::identity::Identity, Failure> {
+    let (_, keys) = permguard_host::identity::directories(held)
+        .map_err(|error| Failure::unavailable(format!("the identity directory: {error}")))?;
+    permguard_host::identity::Identity::open(
+        held,
+        std::sync::Arc::new(permguard_host::keys::FileKeyProvider::new(keys)),
+    )
+    .map_err(|error| match error {
+        permguard_host::identity::IdentityError::NotProvisioned => Failure::usage(format!(
+            "{error}: run `permguard host identity provision --volume <path>` first"
+        )),
+        other => Failure::internal(other),
+    })
+}
+
+fn identity(globals: &Globals, action: IdentityAction, trace: &Trace) -> Result<ExitCode, Failure> {
+    use permguard_host::identity::{self, Identity, Suite};
+
+    let now = permguard_host::authz::store::now();
+    match action {
+        IdentityAction::Provision { volume, suite } => {
+            let suite = Suite::from_name(&suite).ok_or_else(|| {
+                Failure::usage(format!(
+                    "`{suite}` is not a suite: pg-ed25519-sha256-v1 or pg-p256-sha256-v1"
+                ))
+            })?;
+            trace.say(format!("volume: {}", volume.display()));
+            // Provisioning comes before the first start, so the volume may be created here.
+            let held = Volume::claim(&volume, AssuranceProfile::Development)
+                .map_err(|error| Failure::unavailable(format!("claiming the volume: {error}")))?;
+            let (_, keys) = identity::directories(&held).map_err(|error| {
+                Failure::unavailable(format!("the identity directory: {error}"))
+            })?;
+            let opened = Identity::provision(
+                &held,
+                std::sync::Arc::new(permguard_host::keys::FileKeyProvider::new(keys)),
+                suite,
+                now,
+                now.saturating_mul(1000),
+            )
+            .map_err(|error| match error {
+                identity::IdentityError::Provisioned => Failure::usage(error),
+                other => Failure::unavailable(other),
+            })?;
+            let audit = audit_offline(&held, &opened)?;
+            audit
+                .append(
+                    &permguard_core::AuditEvent::new(
+                        identity::AUDIT_PROVISIONED,
+                        permguard_core::Subject::System(INITIATOR),
+                    )
+                    .on(&opened.host_id_text()),
+                    None,
+                )
+                .map_err(|error| {
+                    Failure::unavailable(format!("recording the provisioning: {error}"))
+                })?;
+            render(&identity_report(&opened, true), globals.output, trace)?;
+            std::mem::forget(held);
+        }
+        IdentityAction::Show { volume } => {
+            let (_store, held) = open(&volume, trace)?;
+            let opened = open_identity(&held)?;
+            render(&identity_report(&opened, false), globals.output, trace)?;
+        }
+        IdentityAction::Rotate {
+            volume,
+            expected_epoch,
+        } => {
+            let (_store, held) = open(&volume, trace)?;
+            let opened = open_identity(&held)?;
+            let mutations =
+                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
+                    .map_err(|error| {
+                        Failure::unavailable(format!("opening the mutation journal: {error}"))
+                    })?;
+            mutations
+                .recover(&identity::Identities(&opened))
+                .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
+            identity::rotate(
+                &mutations,
+                &opened,
+                Initiator::System(INITIATOR.to_owned()),
+                expected_epoch,
+                now,
+            )
+            .map_err(|error| match error {
+                MutationError::Refused(identity::IdentityError::Conflict { .. }) => {
+                    Failure::usage(error)
+                }
+                other @ (MutationError::AuditUnavailable(_) | MutationError::Unavailable(_)) => {
+                    Failure::unavailable(other)
+                }
+                other => Failure::internal(other),
+            })?;
+            render(&identity_report(&opened, false), globals.output, trace)?;
+            std::mem::forget(held);
+        }
+    }
+    Ok(ExitCode::from(EXIT_READY))
+}
+
+/// An audit engine on `held`, stamped with `identity`.
+fn audit_offline(
+    held: &Volume,
+    identity: &permguard_host::identity::Identity,
+) -> Result<permguard_host::audit::Engine, Failure> {
+    let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+        std::time::Duration::from_secs(30),
+    ));
+    permguard_host::audit::Engine::open(
+        held,
+        permguard_host::audit::Stamp {
+            host_id: identity.host_id(),
+            boot_id: identity.boot_id(),
+            build: env!("CARGO_PKG_VERSION").to_owned(),
+            config_revision: permguard_host::audit::config_revision(std::iter::empty()),
+        },
+        time,
+        None,
+    )
+    .map_err(|error| Failure::unavailable(format!("opening the audit trails: {error}")))
+}
+
+#[derive(Serialize)]
+struct IdentityReport {
+    host_id: String,
+    subject: String,
+    epoch: u64,
+    suite: &'static str,
+    fingerprint: String,
+    first_fingerprint: String,
+    /// Printed at provisioning only: a witness read back from the volume it is meant to check
+    /// checks nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    witness: Option<String>,
+    #[serde(skip)]
+    provisioned: bool,
+}
+
+fn identity_report(
+    identity: &permguard_host::identity::Identity,
+    provisioned: bool,
+) -> IdentityReport {
+    IdentityReport {
+        host_id: identity.host_id_text(),
+        subject: identity.subject(),
+        epoch: identity.epoch(),
+        suite: identity.suite().name(),
+        fingerprint: identity.fingerprint(),
+        first_fingerprint: identity.first_fingerprint().to_owned(),
+        witness: provisioned.then(|| identity.witness()),
+        provisioned,
+    }
+}
+
+impl Report for IdentityReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        if self.provisioned {
+            writeln!(out, "Host identity provisioned")?;
+        }
+        writeln!(out, "host_id           {}", self.host_id)?;
+        writeln!(out, "subject           {}", self.subject)?;
+        writeln!(out, "epoch             {}", self.epoch)?;
+        writeln!(out, "suite             {}", self.suite)?;
+        writeln!(out, "fingerprint       {}", self.fingerprint)?;
+        writeln!(out, "first fingerprint {}", self.first_fingerprint)?;
+        if let Some(witness) = &self.witness {
+            writeln!(out, "witness           {witness}")?;
+        }
+        if self.provisioned {
+            writeln!(out)?;
+            writeln!(
+                out,
+                "Keep the witness outside this volume and give it to the server as \
+                 `host.identity.witness`: from the `production` profile up it is required, and a \
+                 volume whose witness differs is refused."
+            )?;
         }
         Ok(())
     }

@@ -80,7 +80,20 @@ is cut.
   A grant's revision is now compared under the journal's lock, so two concurrent writers cannot both win a race.
   A structural check, `task check:mutations`, reads every crate's syntax tree and fails on a write to the grant journal outside a function holding the engine's token, or on the token built anywhere but the engine.
 
+- **The Host identity: `host/identity/` on the volume.**
+  A Host now has a stable `host_id` (a UUIDv7, `urn:permguard:host:v1:<host_id>` as its subject), an identity key numbered by epoch, a signed identity document and a chain of succession records, and a fresh `boot_id` at every start, kept in `host/identity/BOOT`.
+  `INIT` marks the installation as existing; with it on the volume, missing or damaged identity state refuses the start, and no replacement key is ever generated.
+  A copied volume is the same Host with a new `boot_id`.
+  Under the `development` profile the first start provisions the identity; from `production` up the server refuses to start until `permguard host identity provision --volume <path>` ran, which prints the external witness to keep outside the volume and give as `host.identity.witness`, required from `production` up and compared whenever it is set.
+  `host.identity.suite` chooses the key's suite at provisioning: `pg-ed25519-sha256-v1` (the default) or `pg-p256-sha256-v1`.
+  `GET /host/v1/identity` answers the document, the successions, the epoch-1 public key and the protocol versions under `identity.read`; `POST /host/v1/identity/rotate` rotates the key under the new operation `identity.admin`, as a security mutation; `permguard host identity show` and `rotate` do the same offline.
+  Audit records now name the identity's `host_id` and `boot_id`; trails written before keep the volume id they named.
+
 ### Changed
+
+- **A `production` deployment does not start until the custody providers land (WP-3.2).**
+  The Host identity key is held in plaintext on the volume, which is the `custody.plaintext` relaxation: discovery and `host status` publish it, and the `production` and `regulated` profiles refuse to start with a message naming WP-3.2.
+  Deployments that must run before then state `assurance.profile: development`.
 
 - **A security mutation is refused while the audit trail cannot record it.**
   A grant mutation whose intent record cannot be written applies nothing and answers `audit_unavailable` (503).

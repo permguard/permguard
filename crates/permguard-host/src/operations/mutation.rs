@@ -154,8 +154,9 @@ pub struct Observed {
 pub trait Domain {
     /// The name intents carry: `grants`.
     fn name(&self) -> &'static str;
-    /// What the domain shows of `operation_id`, when it applied it.
-    fn observe(&self, operation_id: &OperationId) -> Option<Observed>;
+    /// What the domain shows of `operation_id`, when it applied it; `target` is what the intent
+    /// named, for a domain whose state records the outcome rather than the operation id.
+    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed>;
 }
 
 /// The proof that the engine is applying an operation: a domain mutator takes one, and only this
@@ -549,13 +550,29 @@ impl Mutations {
     /// the system clock: what a process that runs no server uses, the offline CLI. Its records
     /// land in the same trails a server writes.
     pub fn open_offline(volume: &Volume, build: &str) -> Result<Self, String> {
+        Self::open_offline_as(volume, build, None)
+    }
+
+    /// [`Mutations::open_offline`], its records stamped with `identity`'s `host_id` and
+    /// `boot_id`; without one, with the volume's id and a boot id drawn here, as a volume
+    /// provisioned before WP-2.2 is.
+    pub fn open_offline_as(
+        volume: &Volume,
+        build: &str,
+        identity: Option<&crate::identity::Identity>,
+    ) -> Result<Self, String> {
         let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
-        let stamp = crate::audit::Stamp::draw(
-            volume.id(),
-            build,
-            crate::audit::config_revision(std::iter::empty()),
-        )
-        .map_err(|error| error.to_string())?;
+        let revision = crate::audit::config_revision(std::iter::empty());
+        let stamp = match identity {
+            Some(identity) => crate::audit::Stamp {
+                host_id: identity.host_id(),
+                boot_id: identity.boot_id(),
+                build: build.to_owned(),
+                config_revision: revision,
+            },
+            None => crate::audit::Stamp::draw(volume.id(), build, revision)
+                .map_err(|error| error.to_string())?,
+        };
         let audit = crate::audit::Engine::open(volume, stamp, Arc::clone(&time), None)
             .map_err(|error| error.to_string())?;
         Self::open(volume, Arc::new(audit), time).map_err(|error| error.to_string())
@@ -615,26 +632,31 @@ impl Mutations {
     /// Resolves the open intents of `domain`: committed when the domain shows the operation,
     /// failed when it does not; then writes every pending outcome record it can.
     pub fn recover(&self, domain: &dyn Domain) -> Result<Recovered, StorageError> {
-        let open: Vec<OperationId> = self
+        let open: Vec<(OperationId, Option<String>)> = self
             .state
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .operations
             .values()
             .filter(|operation| operation.end.is_none() && operation.intent.domain == domain.name())
-            .map(|operation| operation.intent.operation_id)
+            .map(|operation| {
+                (
+                    operation.intent.operation_id,
+                    operation.intent.target.clone(),
+                )
+            })
             .collect();
         // An operation of this process between its intent and its answer is not a crash's.
-        let open: Vec<OperationId> = {
+        let open: Vec<(OperationId, Option<String>)> = {
             let running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
             open.into_iter()
-                .filter(|operation_id| !running.contains(operation_id))
+                .filter(|(operation_id, _)| !running.contains(operation_id))
                 .collect()
         };
         let mut recovered = Recovered::default();
-        for operation_id in open {
+        for (operation_id, target) in open {
             let now = self.time.now_secs();
-            match domain.observe(&operation_id) {
+            match domain.observe(&operation_id, target.as_deref()) {
                 Some(observed) => {
                     self.append(Entry::Commit(Commit {
                         operation_id,

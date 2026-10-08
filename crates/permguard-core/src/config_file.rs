@@ -28,9 +28,10 @@ use crate::config::{
     SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED,
     SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS,
     SETTING_AUDIT_RETENTION, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
-    SETTING_ISSUER, SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED,
-    SETTING_KEYS_MAINTENANCE_INTERVAL, SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN,
-    SETTING_KEYS_ROTATE_EVERY, SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
+    SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_ISSUER,
+    SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
+    SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
+    SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
     SETTING_LIMITS_CONNECTION_LIFETIME, SETTING_LIMITS_CONNECTIONS,
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
@@ -688,6 +689,18 @@ struct TelemetryTlsSection {
     min_version: Option<String>,
 }
 
+/// The Host identity (WP-2.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IdentitySection {
+    /// The suite a newly provisioned identity key takes.
+    #[serde(default)]
+    suite: Option<String>,
+    /// The external witness `permguard host identity provision` printed.
+    #[serde(default)]
+    witness: Option<String>,
+}
+
 /// Listener address for the telemetry surface.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -697,6 +710,9 @@ struct TelemetrySection {
     /// Where the Host surface is reachable from outside, when that is not where it binds.
     #[serde(default)]
     advertised_url: Option<String>,
+    /// The Host identity: its key's suite and its external witness (WP-2.2).
+    #[serde(default)]
+    identity: IdentitySection,
     #[serde(default)]
     tls: TelemetryTlsSection,
     /// OTLP trace export: off unless the file says otherwise.
@@ -1188,6 +1204,14 @@ impl ConfigFile {
             (
                 SETTING_TELEMETRY_ADVERTISED_URL,
                 self.host.advertised_url.as_ref(),
+            ),
+            (
+                SETTING_HOST_IDENTITY_SUITE,
+                self.host.identity.suite.as_ref(),
+            ),
+            (
+                SETTING_HOST_IDENTITY_WITNESS,
+                self.host.identity.witness.as_ref(),
             ),
             (SETTING_ADMIN_ADDR, self.admin.addr.as_ref()),
             (

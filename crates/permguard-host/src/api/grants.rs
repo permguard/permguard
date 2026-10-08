@@ -204,6 +204,7 @@ impl HostApi {
         // What the store would never write is refused before the operation begins (step 1).
         let checked = issue.clone();
         self.transact(
+            crate::operations::grants::DOMAIN,
             &admitted.principal,
             CREATE,
             AUDIT_ISSUED,
@@ -265,6 +266,7 @@ impl HostApi {
             Ok(record)
         };
         self.transact(
+            crate::operations::grants::DOMAIN,
             &admitted.principal,
             REVOKE_PLAN,
             AUDIT_REVOKE_PLANNED,
@@ -353,6 +355,7 @@ impl HostApi {
             Ok(plan)
         };
         self.transact(
+            crate::operations::grants::DOMAIN,
             &admitted.principal,
             REVOKE_RUN,
             AUDIT_REVOKED,

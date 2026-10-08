@@ -59,8 +59,11 @@ pub mod operations {
     pub const KEYS_READ: &str = "keys.read";
     /// Read the effective configuration and its revisions.
     pub const CONFIG_READ: &str = "config.read";
-    /// Read the Host identity and its ring bindings; the routes arrive with WP-2.2 and WP-2.3.
+    /// Read the Host identity (WP-2.2) and its ring bindings (WP-2.3).
     pub const IDENTITY_READ: &str = "identity.read";
+    /// Rotate the Host identity, and reset it when the memberships exist: the "identity grant"
+    /// of the blueprint, granted only explicitly (WP-2.2, owner decision of 2026-10-08).
+    pub const IDENTITY_ADMIN: &str = "identity.admin";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -74,6 +77,7 @@ pub mod operations {
         KEYS_READ,
         CONFIG_READ,
         IDENTITY_READ,
+        IDENTITY_ADMIN,
     ];
 
     /// Whether `operation` is registered.

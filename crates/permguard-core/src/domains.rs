@@ -39,6 +39,11 @@ pub mod digest {
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
     /// An audit pseudonym.
     pub const AUDIT_PSEUDONYM: &str = "permguard.audit.pseudonym.v1\n";
+    /// The external witness of a Host identity: over `INIT`, `VOLUME_ID` and the first identity
+    /// fingerprint (WP-2.2).
+    pub const HOST_IDENTITY_WITNESS: &str = "permguard.host.identity.witness.v1\n";
+    /// A Host succession record, as the next record and the identity document cite it (WP-2.2).
+    pub const HOST_SUCCESSION: &str = "permguard.host.succession.v1\n";
     /// A decision record.
     pub const DECISION_RECORD: &str = "permguard.decision.v1\n";
     /// A normalized evaluation request, as a signed decision response cites it.
@@ -162,6 +167,12 @@ pub mod producer {
     pub const DATA_PLANE_V1: &str = "permguard.event.producer.data-plane.v1";
 }
 
+/// The URN prefixes of subjects.
+pub mod subject {
+    /// A Host: `urn:permguard:host:v1:<host_id>` (WP-2.2).
+    pub const HOST_V1_PREFIX: &str = "urn:permguard:host:v1:";
+}
+
 /// Capability URNs listed by discovery documents.
 pub mod capability {
     pub const PDP_V1_PREFIX: &str = "urn:permguard:pdp:v1:";
@@ -275,6 +286,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.KEY_SET", digest::KEY_SET),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
+        (
+            "digest.HOST_IDENTITY_WITNESS",
+            digest::HOST_IDENTITY_WITNESS,
+        ),
+        ("digest.HOST_SUCCESSION", digest::HOST_SUCCESSION),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
         ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),
         (
@@ -372,6 +388,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("input.REGO_DATA_V1", input::REGO_DATA_V1),
         ("event.DOGWOOD_V1", event::DOGWOOD_V1),
         ("producer.DATA_PLANE_V1", producer::DATA_PLANE_V1),
+        ("subject.HOST_V1_PREFIX", subject::HOST_V1_PREFIX),
         ("capability.PDP_V1_PREFIX", capability::PDP_V1_PREFIX),
         (
             "capability.PDP_V1_STORE_IN_PAYLOAD",

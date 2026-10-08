@@ -208,6 +208,7 @@ check-headers: ## Check that every source file carries the licence header.
 
 check-vectors: ## Check that the golden vectors are what their independent generator prints (Python 3, `cryptography`).
 	python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
+	python3 contracts/vectors/identity.py | diff - contracts/vectors/identity.json
 
 notices: ## Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
 	./scripts/third-party-notices.sh

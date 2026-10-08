@@ -53,6 +53,9 @@ const SHAPED: &[&str] = &[
     "Setting",
     "ListConfigRevisionsResponse",
     "ConfigRevision",
+    "GetIdentityResponse",
+    "RotateIdentityRequest",
+    "RotateIdentityResponse",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

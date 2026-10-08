@@ -47,7 +47,7 @@ impl Domain for Grants<'_> {
         DOMAIN
     }
 
-    fn observe(&self, operation_id: &OperationId) -> Option<Observed> {
+    fn observe(&self, operation_id: &OperationId, _target: Option<&str>) -> Option<Observed> {
         self.0
             .operation(operation_id)
             .map(|(revision, grant_id)| Observed {

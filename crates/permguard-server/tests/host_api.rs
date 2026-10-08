@@ -52,6 +52,10 @@ const MINTED: &[&str] = &[
     // A revision names the grant it is about and the second it happened.
     "target",
     "at",
+    // The identity each facade provisioned for itself, and its bytes per transport.
+    "document",
+    "successions",
+    "first_public_key",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -142,6 +146,20 @@ fn facade(tag: &str) -> Arc<HostApi> {
         permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
             .expect("the mutation journal opens"),
     );
+    let identity = Arc::new(
+        permguard_host::identity::Identity::provision(
+            &volume,
+            Arc::new(permguard_host::keys::FileKeyProvider::new(
+                permguard_host::identity::directories(&volume)
+                    .expect("the identity directory")
+                    .1,
+            )),
+            permguard_host::identity::Suite::Ed25519Sha256V1,
+            permguard_host::authz::store::now(),
+            permguard_host::authz::store::now() * 1000,
+        )
+        .expect("the identity is provisioned"),
+    );
     permguard_host::operations::grants::issue(
         &mutations,
         &store,
@@ -190,6 +208,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
         },
         trail: "recording".to_owned(),
         mutations: Some(mutations),
+        identity: Some(identity),
         time: Arc::new(permguard_host::time::TimeGuard::system(
             std::time::Duration::from_secs(30),
         )),
@@ -885,6 +904,7 @@ fn schema_of(case: &str) -> &'static str {
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
+        "read the identity" => "HostIdentity",
         other => panic!("`{other}` answered and names no schema"),
     }
 }
@@ -961,9 +981,31 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     .await;
     assert!(conflict.get("revision").is_some(), "{conflict}");
     document.check_json("HostWireError", &conflict);
-    // A `not_served_yet` body: the identity route answers it until WP-2.2.
-    let refused = raw("GET", "/host/v1/identity", Some(ADMIN), None).await;
+    // A `not_served_yet` body: the ring bindings answer it until WP-2.3.
+    let refused = raw("GET", "/host/v1/ring-bindings", Some(ADMIN), None).await;
     document.check_json("HostWireError", &refused);
+    // A rotation's body and answer (WP-2.2): the stale epoch is a conflict with the current one.
+    let stale = raw(
+        "POST",
+        "/host/v1/identity/rotate",
+        Some(ADMIN),
+        Some(json!({ "request_id": "rot-0", "expected_epoch": 9 })),
+    )
+    .await;
+    assert_eq!(stale["revision"], 1, "{stale}");
+    document.check_json("HostWireError", &stale);
+    let rotated = raw(
+        "POST",
+        "/host/v1/identity/rotate",
+        Some(ADMIN),
+        Some(json!({ "request_id": "rot-1", "expected_epoch": 1 })),
+    )
+    .await;
+    document.check_json("IdentityRotated", &rotated);
+    document.check_json(
+        "RotateIdentityBody",
+        &json!({ "request_id": "r", "expected_epoch": 1 }),
+    );
     let denied = raw("GET", "/host/v1/status", None, None).await;
     common.check_json("WireDenial", &denied);
     // And the bodies the routes accept are instances of their request schemas.
@@ -1071,9 +1113,12 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         ),
         "the revisions are served (WP-2.9)"
     );
-    assert_eq!(
-        refused("read the identity"),
-        ("unavailable".to_owned(), host::NOT_SERVED_YET.to_owned())
+    assert!(
+        matches!(
+            steps.iter().find(|(name, _)| *name == "read the identity"),
+            Some((_, Outcome::Answered(_)))
+        ),
+        "the identity is served (WP-2.2)"
     );
     assert_eq!(
         refused("read the identity as nobody"),

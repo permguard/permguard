@@ -171,9 +171,24 @@ service OperationsService {
 message PeerFrame {}
 
 message GetIdentityRequest {}
-message GetIdentityResponse {}
-message RotateIdentityRequest {}
-message RotateIdentityResponse {}
+// `GET /host/v1/identity` (WP-2.2): the signed document of the current epoch and every
+// succession record, COSE_Sign1 bytes each; the epoch-1 public key the first fingerprint pins.
+message GetIdentityResponse {
+  bytes document = 1;
+  repeated bytes successions = 2;
+  bytes first_public_key = 3;
+  repeated string protocol_versions = 4;
+}
+// `POST /host/v1/identity/rotate` (WP-2.2), under `identity.admin`.
+message RotateIdentityRequest {
+  string request_id = 1;
+  uint64 expected_epoch = 2;
+}
+message RotateIdentityResponse {
+  Receipt receipt = 1;
+  // The succession record to the new epoch, COSE_Sign1.
+  bytes succession = 2;
+}
 message PlanIdentityResetRequest {}
 message PlanIdentityResetResponse {}
 message RunIdentityResetRequest {}

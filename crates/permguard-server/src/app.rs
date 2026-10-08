@@ -937,6 +937,102 @@ impl App {
         ))
     }
 
+    /// The Host identity of `volume`: opened when provisioned; provisioned here only under the
+    /// `development` profile, refused otherwise until `permguard host identity provision` ran
+    /// (owner decision of 2026-10-08); matched to `host.identity.witness`, which the
+    /// `production` profile and above require. Answers whether this start provisioned it.
+    fn host_identity_for(
+        &self,
+        config: &Config,
+        volume: &permguard_host::storage::volume::Volume,
+        time: &Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<(Arc<permguard_host::identity::Identity>, bool, Config)> {
+        use permguard_core::assurance::{AssuranceProfile, Control, Relaxation};
+        use permguard_host::identity::{self, Identity};
+        use permguard_host::keys::Custody;
+
+        let (_, keys) = identity::directories(volume).with_context(|| {
+            format!(
+                "opening the identity directory on {}",
+                volume.host().path().display()
+            )
+        })?;
+        let provider: Arc<dyn permguard_host::keys::KeyProvider> =
+            Arc::new(permguard_host::keys::FileKeyProvider::new(keys));
+        let assurance = config.assurance();
+        let witness = identity::witness_of(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .context("reading the Host identity's INIT")?;
+        if witness.is_none() && assurance.profile() != AssuranceProfile::Development {
+            bail!(
+                "the Host identity is not provisioned on {}: under the `{}` profile it is \
+                 created by `permguard host identity provision --volume <path>` before the first \
+                 start, which prints the witness to keep outside the volume",
+                volume.root().display(),
+                assurance.profile()
+            );
+        }
+        // Before anything is written to the identity: its custody, a relaxation of the Host the
+        // profile may forbid (owner decision of 2026-10-08, until the custody providers of
+        // WP-3.2), and its witness, which a replaced or rolled-back volume fails.
+        let config = match provider.custody() {
+            Custody::Plaintext => config
+                .clone()
+                .with_host_relaxation(Relaxation::CustodyPlaintext),
+        };
+        config
+            .assurance()
+            .check(&config.relaxations_in_force())
+            .map_err(|refused| {
+                anyhow::anyhow!(
+                    "{refused}; the Host identity key is held in plaintext on the volume until \
+                     the custody providers (WP-3.2) land"
+                )
+            })?;
+        match (config.host_identity_witness(), &witness) {
+            (Some(expected), Some(held)) if expected != held => bail!(
+                "`host.identity.witness` does not match this volume's identity: the volume was \
+                 replaced or rolled back, or the witness is another Host's"
+            ),
+            // The value is not printed here: a witness copied from the volume it is meant to check
+            // checks nothing. It is the one recorded at provisioning, outside the volume.
+            (None, Some(_)) if assurance.requires(Control::IdentityWitness) => bail!(
+                "the `{}` profile requires `host.identity.witness`, the value `permguard host \
+                 identity provision` printed and the operator kept outside the volume",
+                assurance.profile()
+            ),
+            _ => {}
+        }
+        let (opened, provisioned) = if witness.is_some() {
+            (Identity::open(volume, provider), false)
+        } else {
+            let suite = config
+                .host_identity_suite()
+                .and_then(identity::Suite::from_name)
+                .unwrap_or(identity::Suite::Ed25519Sha256V1);
+            let now = time.now_secs();
+            (
+                Identity::provision(volume, provider, suite, now, now.saturating_mul(1000)),
+                true,
+            )
+        };
+        let opened = opened
+            .map_err(|error| anyhow::anyhow!("{error}"))
+            .with_context(|| {
+                format!(
+                    "opening the Host identity on {}",
+                    volume.host().path().display()
+                )
+            })?;
+        if provisioned
+            && let Some(expected) = config.host_identity_witness()
+            && expected != opened.witness()
+        {
+            bail!("`host.identity.witness` names another identity than the one just provisioned");
+        }
+        Ok((Arc::new(opened), provisioned, config))
+    }
+
     /// Builds the privacy policy the effective configuration asks for.
     ///
     /// Returns nothing when pseudonymisation is off, which is the default: principals then reach a
@@ -1074,6 +1170,11 @@ impl App {
         let recovered = mutations
             .recover(&permguard_host::operations::grants::Grants(&store))
             .context("recovering the grant mutations a crash left open")?;
+        tracing::debug!(
+            event.name = "host.mutations_recovered_for",
+            domain = permguard_host::operations::grants::DOMAIN,
+            "the grant mutations are resolved"
+        );
         // An expiry that cannot be written does not stop the start: a grant past its time allows
         // nothing all the same, and the Host reports `degraded: security_mutations` meanwhile.
         let expiry =
@@ -1268,6 +1369,22 @@ impl App {
             )
         })?;
 
+        // The Host identity (WP-2.2), before anything is recorded under it: opened and verified,
+        // or provisioned when the profile allows it, and matched to its external witness.
+        let (host_identity, provisioned, config) =
+            self.host_identity_for(config, &volume, &time)?;
+        let config = &config;
+
+        tracing::info!(
+            event.name = "host.identity_opened",
+            host_id = %host_identity.host_id_text(),
+            epoch = host_identity.epoch(),
+            fingerprint = %host_identity.fingerprint(),
+            boot_id = %permguard_host::identity::record::uuid_text(&host_identity.boot_id()),
+            provisioned,
+            "the Host identity is open"
+        );
+
         if config.log_format() == LogFormat::Terminal {
             let banner = Banner::new(&self.identity, config);
 
@@ -1300,8 +1417,12 @@ impl App {
                     .iter()
                     .map(|setting| (setting.key.as_str(), setting.value.as_deref())),
             );
-            let stamp = Stamp::draw(volume.id(), config.version(), revision)
-                .map_err(|error| anyhow::anyhow!("{error}"))?;
+            let stamp = Stamp {
+                host_id: host_identity.host_id(),
+                boot_id: host_identity.boot_id(),
+                build: config.version().to_owned(),
+                config_revision: revision,
+            };
             let pseudonyms = self.audit_pseudonyms_for(config, secrets)?;
             Arc::new(
                 Engine::open(&volume, stamp, Arc::clone(&time), pseudonyms)
@@ -1341,6 +1462,23 @@ impl App {
                 )
             })?,
         );
+        // A rotation of the identity a crash left open is resolved now; the grants are below.
+        mutations
+            .recover(&permguard_host::identity::Identities(&host_identity))
+            .context("recovering the identity mutations a crash left open")?;
+        if provisioned {
+            audit_engine
+                .append(
+                    &permguard_core::AuditEvent::new(
+                        permguard_host::identity::AUDIT_PROVISIONED,
+                        permguard_core::Subject::System("host"),
+                    )
+                    .on(&host_identity.host_id_text()),
+                    None,
+                )
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("recording the identity's provisioning")?;
+        }
         let audit: Arc<dyn AuditSink> = Arc::new(permguard_host::audit::HostAuditSink::new(
             Arc::clone(&audit_engine),
             also,
@@ -1458,6 +1596,7 @@ impl App {
                 effective: Effective::of(config.effective_settings()),
                 trail: audit.name().to_owned(),
                 mutations: Some(Arc::clone(&mutations)),
+                identity: Some(Arc::clone(&host_identity)),
                 time: Arc::clone(&time),
             });
             context = context.with_host_handles(Arc::new(api));

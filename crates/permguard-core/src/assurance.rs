@@ -163,7 +163,10 @@ impl Control {
     pub fn enforceable_when_added(self) -> bool {
         matches!(
             self,
-            Self::Tls13Only | Self::RuntimeExperimentalForbidden | Self::CustodyEncrypted
+            Self::Tls13Only
+                | Self::RuntimeExperimentalForbidden
+                | Self::CustodyEncrypted
+                | Self::IdentityWitness
         )
     }
 

@@ -14,7 +14,7 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
-use permguard_host::api::{CreateGrant, HostApi, PlanRevoke, Refusal, RunRevoke};
+use permguard_host::api::{CreateGrant, HostApi, PlanRevoke, Refusal, RotateIdentity, RunRevoke};
 use permguard_transport::ActorOf;
 
 use super::wire;
@@ -36,6 +36,7 @@ impl Served {
 pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
     Router::new()
         .route("/host/v1/identity", get(identity))
+        .route("/host/v1/identity/rotate", post(rotate_identity))
         .route("/host/v1/ring-bindings", get(ring_bindings))
         .route("/host/v1/grants", get(list_grants).post(create_grant))
         .route("/host/v1/grants/{id}/revoke/plan", post(plan_revoke))
@@ -109,7 +110,19 @@ fn not_yet(served: &Served, result: Result<std::convert::Infallible, Refusal>) -
 }
 
 async fn identity(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
-    not_yet(&served, served.api.identity(&actor))
+    answer(&served, StatusCode::OK, served.api.identity(&actor))
+}
+
+async fn rotate_identity(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(rotate): Closed<RotateIdentity>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.rotate_identity(&actor, rotate).await,
+    )
 }
 
 async fn ring_bindings(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {

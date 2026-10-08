@@ -17,6 +17,8 @@ publish = false
 autobenches = false
 
 [dependencies]
+# The Host API answers binary members as base64url over REST and as bytes over gRPC (WP-2.2).
+base64.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true

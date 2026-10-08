@@ -97,6 +97,14 @@ pub const SETTING_TELEMETRY_ADDR: &str = "PERMGUARD_TELEMETRY_ADDR";
 /// process-level well-known document and the Host `jwks_uri` are built from this when it is set.
 pub const SETTING_TELEMETRY_ADVERTISED_URL: &str = "PERMGUARD_TELEMETRY_ADVERTISED_URL";
 
+/// Runtime setting key for the Host identity key's suite, used when the identity is provisioned
+/// (WP-2.2): `pg-ed25519-sha256-v1` (the default) or `pg-p256-sha256-v1`.
+pub const SETTING_HOST_IDENTITY_SUITE: &str = "PERMGUARD_HOST_IDENTITY_SUITE";
+
+/// Runtime setting key for the Host identity's external witness, `sha256:<hex>`, kept outside
+/// the volume and required from the `production` profile up (WP-2.2).
+pub const SETTING_HOST_IDENTITY_WITNESS: &str = "PERMGUARD_HOST_IDENTITY_WITNESS";
+
 /// The Server Host role port every deployment answers on unless told otherwise.
 ///
 /// The Host surface is the one interface every Permguard process exposes identically —
@@ -1057,6 +1065,10 @@ pub struct Config {
     telemetry_addr: Option<String>,
     telemetry_advertised_url: Option<String>,
     admin_advertised_url: Option<String>,
+    host_identity_suite: Option<String>,
+    host_identity_witness: Option<String>,
+    /// Relaxations the Host's own state imposes, added at start (WP-2.2).
+    host_relaxations: Vec<crate::assurance::Relaxation>,
     admin_addr: Option<String>,
     admin_allow: Vec<AllowedPeer>,
     disclose_build: bool,
@@ -1223,6 +1235,9 @@ impl Default for Config {
             telemetry_addr: None,
             telemetry_advertised_url: None,
             admin_advertised_url: None,
+            host_identity_suite: None,
+            host_identity_witness: None,
+            host_relaxations: Vec::new(),
             admin_addr: None,
             admin_allow: Vec::new(),
             disclose_build: true,
@@ -1695,6 +1710,7 @@ produce: use `EdDSA` or `ES256`"
         self.validate_development()?;
         self.validate_shutdown()?;
         self.validate_admin_advertised_url()?;
+        self.validate_host_identity()?;
         self.validate_admin_access()?;
         self.validate_key_lifecycle()?;
         self.validate_realms()?;
@@ -1838,6 +1854,33 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        Ok(())
+    }
+
+    /// The identity settings are what they claim to be: a suite this build signs with, a witness
+    /// in the form `permguard host identity provision` prints.
+    fn validate_host_identity(&self) -> Result<()> {
+        if let Some(suite) = self.host_identity_suite()
+            && !["pg-ed25519-sha256-v1", "pg-p256-sha256-v1"].contains(&suite)
+        {
+            bail!(
+                "`host.identity.suite` is `{suite}`: the Host identity key is \
+                 `pg-ed25519-sha256-v1` or `pg-p256-sha256-v1`"
+            );
+        }
+        if let Some(witness) = self.host_identity_witness() {
+            let hex = witness.strip_prefix("sha256:").unwrap_or_default();
+            if hex.len() != 64
+                || !hex
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            {
+                bail!(
+                    "`host.identity.witness` is not a witness: `sha256:` and 64 lowercase hex \
+                     characters, as `permguard host identity provision` prints it"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -2435,6 +2478,26 @@ produce: use `EdDSA` or `ES256`"
         self.admin_addr.as_deref()
     }
 
+    /// The suite a newly provisioned Host identity key takes, when stated.
+    pub fn host_identity_suite(&self) -> Option<&str> {
+        self.host_identity_suite.as_deref()
+    }
+
+    /// The configuration with `relaxation` in force because of the Host's own state, not of any
+    /// setting: the identity key held in plaintext until the custody providers (WP-2.2,
+    /// WP-3.2). It is published and checked like the others.
+    pub fn with_host_relaxation(mut self, relaxation: crate::assurance::Relaxation) -> Self {
+        if !self.host_relaxations.contains(&relaxation) {
+            self.host_relaxations.push(relaxation);
+        }
+        self
+    }
+
+    /// The external witness of the Host identity, when stated (WP-2.2).
+    pub fn host_identity_witness(&self) -> Option<&str> {
+        self.host_identity_witness.as_deref()
+    }
+
     /// Where the Host listener is reached from outside, trimmed of a trailing slash, when stated.
     pub fn admin_advertised_url(&self) -> Option<&str> {
         self.admin_advertised_url
@@ -2543,6 +2606,8 @@ produce: use `EdDSA` or `ES256`"
         {
             in_force.push(Relaxation::CustodyPlaintext);
         }
+        // What the Host's own state imposes rather than any setting: the identity key's custody.
+        in_force.extend(self.host_relaxations.iter().copied());
         in_force
     }
 
@@ -3354,6 +3419,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_TELEMETRY_ADVERTISED_URL => self.telemetry_advertised_url.clone(),
             SETTING_ADMIN_ADDR => self.admin_addr.clone(),
             SETTING_ADMIN_ADVERTISED_URL => self.admin_advertised_url.clone(),
+            SETTING_HOST_IDENTITY_SUITE => self.host_identity_suite.clone(),
+            SETTING_HOST_IDENTITY_WITNESS => self.host_identity_witness.clone(),
             SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
             SETTING_PUBLIC_DISCLOSE_BUILD => b(self.disclose_build),
             SETTING_PUBLIC_ERROR_DETAIL => Some(self.error_detail().as_str().to_owned()),
@@ -3699,6 +3766,14 @@ produce: use `EdDSA` or `ES256`"
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADVERTISED_URL) {
             self.admin_advertised_url = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_HOST_IDENTITY_SUITE) {
+            self.host_identity_suite = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_HOST_IDENTITY_WITNESS) {
+            self.host_identity_witness = Some(value.clone());
         }
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADDR) {
@@ -4762,6 +4837,8 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
 /// restricted to, so a layer's stray pair — the process environment is a layer — is never
 /// recorded as a setting (WP-2.5). A build's extra settings are declared beside them.
 const CORE_SETTINGS: &[&str] = &[
+    SETTING_HOST_IDENTITY_SUITE,
+    SETTING_HOST_IDENTITY_WITNESS,
     SETTING_ADMIN_ADDR,
     SETTING_ADMIN_ADVERTISED_URL,
     SETTING_ADMIN_ALLOW,
@@ -4917,6 +4994,8 @@ impl SettingClass {
 /// The core settings of class [`SettingClass::Startup`].
 const STARTUP_SETTINGS: &[&str] = &[
     SETTING_WORKING_DIR,
+    SETTING_HOST_IDENTITY_SUITE,
+    SETTING_HOST_IDENTITY_WITNESS,
     SETTING_PUBLIC_HTTP_ADDR,
     SETTING_PUBLIC_GRPC_ADDR,
     SETTING_TELEMETRY_ADDR,

@@ -1184,3 +1184,209 @@ async fn test_a_run_leaves_its_records_in_verified_trails_on_the_volume() {
     assert!(seen.contains(&"server.start".to_owned()), "{seen:?}");
     let _ = fs::remove_dir_all(&volume_root);
 }
+
+/// The volume a fixture configuration names.
+fn volume_of(path: &Path) -> std::path::PathBuf {
+    let config = fs::read_to_string(path).expect("the file reads");
+    std::path::PathBuf::from(
+        config
+            .lines()
+            .find_map(|line| line.strip_prefix("working_dir: "))
+            .expect("the fixture names its volume"),
+    )
+}
+
+/// The `security` actions the Host trail recorded.
+fn host_security_records(volume: &Path) -> Vec<permguard_host::audit::record::AuditRecord> {
+    use permguard_host::audit::trail;
+    let security = volume
+        .join("host/audit/trails/security")
+        .join(trail::resource_digest(permguard_host::audit::HOST));
+    let Ok(dir) = permguard_host::storage::Dir::open(&security) else {
+        return Vec::new();
+    };
+    trail::days(&dir)
+        .expect("listed")
+        .iter()
+        .flat_map(|day| trail::read_day(&dir, day).expect("read"))
+        .collect()
+}
+
+#[tokio::test]
+async fn test_a_development_volume_provisions_its_identity_at_the_first_start_and_keeps_it() {
+    use permguard_host::identity::record::Init;
+
+    let path = config_file("identity-development", SERVABLE);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    let serve = || async {
+        app()
+            .dispatch_to(&serve_action(&path), &mut Vec::new())
+            .await
+            .expect("the server serves")
+    };
+    serve().await;
+    let init = fs::read(volume.join("host/identity/INIT")).expect("INIT written");
+    let host_id = Init::decode(&init).expect("reads").host_id;
+    let boot = |volume: &Path| {
+        permguard_host::identity::record::Boot::decode(
+            &fs::read(volume.join("host/identity/BOOT")).expect("BOOT written"),
+        )
+        .expect("reads")
+        .boot_id
+    };
+    let first_boot = boot(&volume);
+    serve().await;
+    assert_ne!(
+        boot(&volume),
+        first_boot,
+        "a new incarnation at every start"
+    );
+    assert_eq!(
+        fs::read(volume.join("host/identity/INIT")).expect("INIT kept"),
+        init,
+        "the same Host on the second start"
+    );
+    let records = host_security_records(&volume);
+    let provisioned: Vec<_> = records
+        .iter()
+        .filter(|record| record.action == permguard_host::identity::AUDIT_PROVISIONED)
+        .collect();
+    assert_eq!(provisioned.len(), 1, "provisioned once: {records:?}");
+    assert_eq!(
+        provisioned[0].host_id, host_id,
+        "records name the identity's host_id"
+    );
+    assert_eq!(
+        provisioned[0].boot_id, first_boot,
+        "and the boot id of the start that made them"
+    );
+}
+
+#[tokio::test]
+async fn test_a_production_volume_without_an_identity_refuses_to_start_and_mints_nothing() {
+    let path = config_file(
+        "identity-production-unprovisioned",
+        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    fs::create_dir_all(&volume).expect("the mount point");
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("production needs a provisioned identity");
+    assert!(
+        format!("{refused:#}").contains("permguard host identity provision"),
+        "{refused:#}"
+    );
+    assert!(
+        !volume.join("host/identity/INIT").exists(),
+        "nothing minted"
+    );
+}
+
+#[tokio::test]
+async fn test_a_production_volume_refuses_a_plaintext_identity_key_until_the_custody_providers() {
+    use permguard_host::identity::{self, Identity, Suite};
+
+    let path = config_file(
+        "identity-production-plaintext",
+        &format!("assurance:\n  profile: production\n{SERVABLE}"),
+    );
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    let witness = {
+        let held = permguard_host::storage::volume::Volume::claim(
+            &volume,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("claimed");
+        let keys = identity::directories(&held).expect("dirs").1;
+        Identity::provision(
+            &held,
+            Arc::new(permguard_host::keys::FileKeyProvider::new(keys)),
+            Suite::Ed25519Sha256V1,
+            1_800_000_000,
+            1_800_000_000_000,
+        )
+        .expect("provisioned")
+        .witness()
+    };
+    permguard_host::storage::volume::set_claim(&volume, 1).expect("claimed");
+    let path = config_file(
+        "identity-production-plaintext",
+        &format!(
+            "assurance:\n  profile: production\nworking_dir: {}\nhost:\n  identity:\n    witness: {witness}\n{SERVABLE}",
+            volume.display()
+        ),
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("plaintext custody is not production's");
+    let message = format!("{refused:#}");
+    assert!(
+        message.contains("custody.plaintext") && message.contains("WP-3.2"),
+        "{message}"
+    );
+}
+
+#[tokio::test]
+async fn test_a_witness_that_does_not_match_the_volume_refuses_the_start() {
+    let path = config_file("identity-witness", SERVABLE);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("provisioned at the first start");
+    let path = config_file(
+        "identity-witness-wrong",
+        &format!(
+            "working_dir: {}\nhost:\n  identity:\n    witness: sha256:{}\n{SERVABLE}",
+            volume.display(),
+            "00".repeat(32)
+        ),
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("another volume's witness");
+    assert!(
+        format!("{refused:#}").contains("does not match"),
+        "{refused:#}"
+    );
+}
+
+#[tokio::test]
+async fn test_a_witness_required_by_an_added_control_must_be_given() {
+    let path = config_file("identity-witness-required", SERVABLE);
+    let volume = volume_of(&path);
+    let _ = fs::remove_dir_all(&volume);
+    app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect("provisioned at the first start");
+    let path = config_file(
+        "identity-witness-required-again",
+        &format!(
+            "assurance:\n  profile: development\n  added_controls: [identity.witness]\nworking_dir: {}\n{SERVABLE}",
+            volume.display()
+        ),
+    );
+    let refused = app()
+        .dispatch_to(&serve_action(&path), &mut Vec::new())
+        .await
+        .expect_err("the witness is required now");
+    let message = format!("{refused:#}");
+    assert!(
+        message.contains("requires `host.identity.witness`"),
+        "{message}"
+    );
+    assert!(
+        !message.contains("sha256:"),
+        "the witness is never printed: {message}"
+    );
+}

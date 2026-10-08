@@ -1,0 +1,52 @@
+{
+  "artifact": "Host identity document payload, succession record payload, INIT and BOOT; each signed record is a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs, its kid the signing epoch in decimal ASCII",
+  "authority": "1-architecture/2-architecture-server-host-identity.md#identity-objects and #files-on-disk (members), owner decisions of 2026-10-08 (labels, types, cardinalities); crates/permguard-host/src/identity/record.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "identity_document": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes, a UUIDv7" },
+        { "label": 2, "name": "subject", "type": "text", "occurs": "required", "note": "urn:permguard:host:v1:<host_id>" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the identity key epoch, from 1" },
+        { "label": 4, "name": "suite", "type": "text", "occurs": "required", "note": "pg-ed25519-sha256-v1 or pg-p256-sha256-v1" },
+        { "label": 5, "name": "public_key", "type": "bytes", "occurs": "required", "note": "the suite's raw public key" },
+        { "label": 6, "name": "fingerprint", "type": "text", "occurs": "required", "note": "sha256:<hex> of the public key" },
+        { "label": 7, "name": "last_succession", "type": "digest", "occurs": "optional", "note": "the digest of the last succession record; absent at epoch 1" },
+        { "label": 8, "name": "protocols", "type": "array<text>", "occurs": "required", "note": "the protocol versions the Host speaks" },
+        { "label": 9, "name": "revision", "type": "uint", "occurs": "required", "note": "the document's issued revision" },
+        { "label": 10, "name": "issued_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    },
+    "succession_record": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 2, "name": "from_epoch", "type": "uint", "occurs": "required", "note": "the epoch whose key signs the record" },
+        { "label": 3, "name": "to_epoch", "type": "uint", "occurs": "required", "note": "from_epoch + 1" },
+        { "label": 4, "name": "fingerprint", "type": "text", "occurs": "required", "note": "sha256:<hex> of the new key" },
+        { "label": 5, "name": "public_key", "type": "bytes", "occurs": "required", "note": "the new key, the suite's raw encoding" },
+        { "label": 6, "name": "previous", "type": "digest", "occurs": "required", "note": "the digest of the record before it under the domain permguard.host.succession.v1 and a newline; sha256: and 64 zeros for the first" },
+        { "label": 7, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    },
+    "init": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 2, "name": "volume_id", "type": "bytes", "occurs": "required", "note": "the volume's VOLUME_ID, 16 bytes" },
+        { "label": 3, "name": "fingerprint", "type": "text", "occurs": "required", "note": "the epoch-1 key's fingerprint" },
+        { "label": 4, "name": "created_at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    },
+    "boot": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "boot_id", "type": "bytes", "occurs": "required", "note": "16 random bytes, minted at every start" },
+        { "label": 2, "name": "generation", "type": "uint", "occurs": "required", "note": "the volume's claim generation" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["identity_document", "succession_record", "init", "boot"]
+}

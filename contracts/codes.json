@@ -330,6 +330,12 @@
       "kind": "refusal",
       "class": "not_found"
     },
+    "host.IDENTITY_UNAVAILABLE": {
+      "code": "identity_unavailable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "host.MUTATION_UNRECORDED": {
       "code": "mutation_unrecorded",
       "contract": "6-contracts/8-contract-host-api.md",

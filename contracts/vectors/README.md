@@ -18,6 +18,10 @@
 | `head_statement`  | today's signed NOTP head statement, COSE_Sign1                      | `permguard-objects`                |
 | `key_set_digest`  | a pointer to the WP-0.4 vectors in `permguard-objects`              | `permguard-objects`                |
 
+`identity.json` freezes the Host identity's records (WP-2.2): the identity document at epochs 1 and 2, the succession between them, `INIT`, its external witness and `BOOT`.
+`identity.py` computes them under the owner decisions of 2026-10-08, with the RFC 8032 section 7.1 test 1 and test 2 keys for the two epochs; `crates/permguard-host/tests/identity_vectors.rs` reproduces them.
+Each envelope's `kid` is its signing epoch in decimal ASCII.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.
@@ -27,6 +31,6 @@ Signatures use the RFC 8032 section 7.1 test 1 key, so they are deterministic, a
 ## Rules
 
 A vector changes only with a protocol version: a codec that stops reproducing one is a codec that changed a format.
-Running `generate.py` again must print `evidence.json` unchanged, and it is never edited to make a test pass: `task check:vectors` (or `make check-vectors`) compares the two.
+Running `generate.py` and `identity.py` again must print `evidence.json` and `identity.json` unchanged, and neither file is ever edited to make a test pass: `task check:vectors` (or `make check-vectors`) compares each with its generator.
 The generator needs Python 3 and the `cryptography` package (`pip install cryptography`; the vectors were computed with version 50).
 Target formats are not here: each is frozen by the package that designs it, as `status.md` lists under "Deferred format freezes".

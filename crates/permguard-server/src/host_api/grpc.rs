@@ -59,6 +59,14 @@ fn grant(view: api::GrantView) -> v1::Grant {
     }
 }
 
+/// The bytes of a member the facade answers base64url, as gRPC carries them.
+fn raw(text: &str) -> Result<Vec<u8>, Status> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(text)
+        .map_err(|error| Status::internal(format!("a member did not decode: {error}")))
+}
+
 fn receipt(receipt: api::Receipt) -> v1::Receipt {
     v1::Receipt {
         operation_id: receipt.operation_id,
@@ -91,17 +99,43 @@ impl IdentityService for Served {
         request: Request<v1::GetIdentityRequest>,
     ) -> Answer<v1::GetIdentityResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
-        match self.api.identity(&actor) {
-            Ok(never) => match never {},
-            Err(refusal) => Err(self.refuse(refusal)),
-        }
+        let view = self
+            .api
+            .identity(&actor)
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::GetIdentityResponse {
+            document: raw(&view.document)?,
+            successions: view
+                .successions
+                .iter()
+                .map(|record| raw(record))
+                .collect::<Result<_, _>>()?,
+            first_public_key: raw(&view.first_public_key)?,
+            protocol_versions: view.protocol_versions,
+        }))
     }
 
     async fn rotate_identity(
         &self,
-        _request: Request<v1::RotateIdentityRequest>,
+        request: Request<v1::RotateIdentityRequest>,
     ) -> Answer<v1::RotateIdentityResponse> {
-        Err(unimplemented("identity rotation"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let rotated = self
+            .api
+            .rotate_identity(
+                &actor,
+                api::RotateIdentity {
+                    request_id: asked.request_id,
+                    expected_epoch: asked.expected_epoch,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::RotateIdentityResponse {
+            receipt: Some(receipt(rotated.receipt)),
+            succession: raw(&rotated.succession)?,
+        }))
     }
 
     async fn plan_identity_reset(

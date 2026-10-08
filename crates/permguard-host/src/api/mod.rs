@@ -24,6 +24,7 @@
 pub mod bounds;
 pub mod config;
 pub mod grants;
+pub mod identity;
 pub mod keys;
 pub mod replay;
 pub mod status;
@@ -45,6 +46,7 @@ use crate::operations::mutation::{
 pub use bounds::Bounds;
 pub use config::{Effective, Setting};
 pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
+pub use identity::{IdentityRotated, IdentityView, RotateIdentity};
 pub use keys::{RingSummary, RingView, Rings};
 pub use replay::Replay;
 pub use status::{Assurance, ComponentView, DegradedView, StatusView};
@@ -203,6 +205,8 @@ pub struct Composition {
     /// The security-mutation engine every mutation runs through (WP-3.6): its journal, its
     /// audit records and its idempotent answers. Without it the mutations are refused.
     pub mutations: Option<Arc<Mutations>>,
+    /// The Host identity (WP-2.2); without it the identity routes are `identity_unavailable`.
+    pub identity: Option<Arc<crate::identity::Identity>>,
     /// The Host's time guard: grant expiry and the times receipts carry (WP-2.12).
     pub time: Arc<crate::time::TimeGuard>,
 }
@@ -219,6 +223,7 @@ pub struct HostApi {
     effective: Effective,
     trail: String,
     mutations: Option<Arc<Mutations>>,
+    identity: Option<Arc<crate::identity::Identity>>,
     time: Arc<crate::time::TimeGuard>,
 }
 
@@ -245,6 +250,7 @@ impl HostApi {
             effective: composition.effective,
             trail: composition.trail,
             mutations: composition.mutations,
+            identity: composition.identity,
             time: composition.time,
         }
     }
@@ -260,13 +266,6 @@ impl HostApi {
             principal,
             _permit: permit,
         })
-    }
-
-    /// `GET /host/v1/identity`: the signed identity document arrives with WP-2.2. Until then
-    /// the route authorizes and answers `not_served_yet`; the type says there is no answer yet.
-    pub fn identity(&self, actor: &Actor) -> Result<std::convert::Infallible, Refusal> {
-        let _admitted = self.admit(actor, operations::IDENTITY_READ)?;
-        Err(Refusal::not_served_yet("the Host identity", "WP-2.2"))
     }
 
     /// `GET /host/v1/ring-bindings`: the signed bindings arrive with WP-2.3.
@@ -306,6 +305,7 @@ impl HostApi {
     #[allow(clippy::too_many_arguments)]
     fn transact<T, R>(
         &self,
+        domain: &'static str,
         principal: &Principal,
         operation: &'static str,
         action: &'static str,
@@ -334,7 +334,7 @@ impl HostApi {
         }
         let outcome = mutations.run_checked(
             Begin {
-                domain: crate::operations::grants::DOMAIN,
+                domain,
                 operation,
                 action,
                 initiator: Initiator::Principal(principal.as_str().to_owned()),
@@ -593,6 +593,29 @@ pub(crate) mod testing {
         mutations
             .recover(&Grants(&store))
             .expect("the mutation journal recovers");
+        let provider: Arc<dyn crate::keys::KeyProvider> =
+            Arc::new(crate::keys::FileKeyProvider::new(
+                crate::identity::directories(&volume)
+                    .expect("the identity")
+                    .1,
+            ));
+        let identity = Arc::new(
+            if crate::identity::is_provisioned(&volume).expect("read") {
+                crate::identity::Identity::open(&volume, provider)
+            } else {
+                crate::identity::Identity::provision(
+                    &volume,
+                    provider,
+                    crate::identity::Suite::Ed25519Sha256V1,
+                    crate::authz::store::now(),
+                    crate::authz::store::now() * 1000,
+                )
+            }
+            .expect("the identity opens"),
+        );
+        mutations
+            .recover(&crate::identity::Identities(&identity))
+            .expect("the identity recovers");
         let admin = Principal::new(ADMIN).expect("a principal");
         if !store
             .records()
@@ -647,6 +670,7 @@ pub(crate) mod testing {
             },
             trail: "audit".to_owned(),
             mutations: Some(mutations),
+            identity: Some(identity),
             time,
         });
         (api, store, volume)
@@ -692,15 +716,11 @@ mod tests {
     fn the_stubs_authorize_before_they_say_they_are_not_served() {
         let api = facade("stubs");
         let refused = api
-            .identity(&actor("spiffe://acme/nobody"))
+            .ring_bindings(&actor("spiffe://acme/nobody"))
             .expect_err("no grant");
         assert!(matches!(refused, Refusal::Denied(denial) if denial.http_status() == 403));
-        let refused = api.identity(&Actor::Anonymous).expect_err("nobody");
+        let refused = api.ring_bindings(&Actor::Anonymous).expect_err("nobody");
         assert!(matches!(refused, Refusal::Denied(denial) if denial.http_status() == 401));
-        let unavailable = api.identity(&admin()).expect_err("not served yet");
-        let error = unavailable.error().expect("a domain refusal");
-        assert_eq!(error.code(), codes::host::NOT_SERVED_YET);
-        assert_eq!(error.http_status(), 503);
         let bindings = api.ring_bindings(&admin()).expect_err("not served yet");
         assert_eq!(
             bindings.error().expect("a domain refusal").code(),

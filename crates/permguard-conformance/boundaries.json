@@ -623,6 +623,41 @@
       "reason": "the security-mutation journal on the Host's own volume (WP-3.6): `snapshot.cbor` and `journal.cborseq`, written by this process or an earlier one; a torn final entry is cut, anything else that does not read is corruption and the journal refuses to open"
     },
     {
+      "source": "crates/permguard-objects/src/cose.rs",
+      "item": "Sign1::decode",
+      "reason": "a COSE_Sign1 of the Host's own identity records on its own volume (WP-2.2): `identity.cose` and `succession.cborseq`, written by this process or an earlier one; peer envelopes arrive with WP-2.3, which registers this decoder as a boundary with its fuzz target"
+    },
+    {
+      "source": "crates/permguard-objects/src/cose.rs",
+      "item": "Sign1::verify",
+      "reason": "the same envelopes as `Sign1::decode`, verified under the key and content type the caller expects; becomes a boundary with WP-2.3"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Document::decode",
+      "reason": "the identity document's payload from the Host's own `identity.cose` (WP-2.2), closed labels, read only after its envelope decoded; a peer's document is WP-2.3's"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Succession::decode",
+      "reason": "a succession record's payload from the Host's own `succession.cborseq` (WP-2.2), verified under the previous epoch's key before it is read"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Init::decode",
+      "reason": "`host/identity/INIT` on the Host's own volume (WP-2.2): four labels this process published once"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Boot::decode",
+      "reason": "`host/identity/BOOT` on the Host's own volume (WP-2.2): two labels this process wrote"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/mod.rs",
+      "item": "Identity::open",
+      "reason": "the identity directory on the Host's own volume (WP-2.2): INIT, the document, the succession records and the keys, each verified against INIT and the chain; anything that does not verify refuses the open"
+    },
+    {
       "source": "crates/permguard-host/src/audit/trail.rs",
       "item": "Trail::open",
       "reason": "a trail directory on the Host's own volume (WP-3.5): `META.cbor`, and its day files from the newest back to the last record, read as CBOR sequences; a final item of the newest day shorter than any record is cut as torn, anything else that does not read is corruption and the trail refuses"

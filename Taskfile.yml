@@ -163,6 +163,7 @@ tasks:
     desc: Check that the golden vectors are what their independent generator prints (needs Python 3 and the `cryptography` package).
     cmds:
       - python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
+      - python3 contracts/vectors/identity.py | diff - contracts/vectors/identity.json
 
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.

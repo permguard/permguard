@@ -11,8 +11,18 @@
       "get": {
         "operationId": "getHostIdentity",
         "summary": "The Host identity",
-        "description": "Under `identity.read` on the Host. Served as `not_served_yet` by this build: the route authorizes, then says a later package serves it.",
+        "description": "Under `identity.read` on the Host. The public identity: the signed document, the succession records, the epoch-1 public key and the protocol versions.",
         "responses": {
+          "200": {
+            "description": "The Host identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostIdentity"
+                }
+              }
+            }
+          },
           "401": {
             "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
             "headers": {
@@ -41,7 +51,7 @@
             }
           },
           "503": {
-            "description": "Under `identity.read`; the signed identity document arrives with WP-2.2 (`not_served_yet`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "description": "No Host identity is open (`identity_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -52,6 +62,104 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.IdentityService/GetIdentity"
+      }
+    },
+    "/host/v1/identity/rotate": {
+      "post": {
+        "operationId": "rotateHostIdentity",
+        "summary": "Rotate the Host identity",
+        "description": "Under `identity.admin` on the Host. A security mutation: the next epoch's key is generated, the current key signs the succession, the next signs the document. A retry with the same request id answers the stored receipt.",
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and the epoch the caller read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateIdentityBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated; a retry with the same request id answers the stored receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityRotated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The epoch is not the one the caller read (`revision_mismatch`, the current epoch beside it), or the request id is in flight or was used for another request (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No Host identity is open or it could not rotate (`identity_unavailable`), the mutation journal or the audit trail cannot record (`replay_unavailable`, `audit_unavailable`, nothing applied), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/RotateIdentity"
       }
     },
     "/host/v1/ring-bindings": {
@@ -1778,18 +1886,98 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/config/revisions` answers: the transitions of the Host's dynamic journals (WP-2.9).",
         "x-grpc-message": "permguard.host.v1.ListConfigRevisionsResponse"
+      },
+      "HostIdentity": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "string",
+            "description": "The signed identity document of the current epoch: COSE_Sign1 `permguard.host.identity.v1`, base64url without padding.",
+            "x-grpc-field": "document"
+          },
+          "successions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every succession record, oldest first: COSE_Sign1 `permguard.host.succession.v1` each, base64url without padding.",
+            "x-grpc-field": "successions"
+          },
+          "first_public_key": {
+            "type": "string",
+            "description": "The epoch-1 public key, the suite's raw bytes, base64url without padding: what the first fingerprint pins, from which the chain verifies.",
+            "x-grpc-field": "first_public_key"
+          },
+          "protocol_versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The protocol versions this Host speaks.",
+            "x-grpc-field": "protocol_versions"
+          }
+        },
+        "required": [
+          "document",
+          "successions",
+          "first_public_key",
+          "protocol_versions"
+        ],
+        "additionalProperties": false,
+        "description": "The public Host identity (WP-2.2).",
+        "x-grpc-message": "permguard.host.v1.GetIdentityResponse"
+      },
+      "RotateIdentityBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "description": "The envelope's request id: a retry carries the same one.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The epoch the caller read; the rotation produces the next one.",
+            "x-grpc-field": "expected_epoch"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_epoch"
+        ],
+        "additionalProperties": false,
+        "description": "A rotation of the Host identity.",
+        "x-grpc-message": "permguard.host.v1.RotateIdentityRequest"
+      },
+      "IdentityRotated": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the new epoch.",
+            "x-grpc-field": "receipt"
+          },
+          "succession": {
+            "type": "string",
+            "description": "The succession record to the new epoch, COSE_Sign1, base64url without padding.",
+            "x-grpc-field": "succession"
+          }
+        },
+        "required": [
+          "receipt",
+          "succession"
+        ],
+        "additionalProperties": false,
+        "description": "What a rotation answers.",
+        "x-grpc-message": "permguard.host.v1.RotateIdentityResponse"
       }
     }
   },
   "x-grpc-unmapped": [
     {
       "message": "permguard.host.v1.GetIdentityRequest",
-      "note": "an empty request; the identity document is shaped by WP-2.2",
-      "fields": []
-    },
-    {
-      "message": "permguard.host.v1.GetIdentityResponse",
-      "note": "empty until WP-2.2 defines the signed identity document; the rpc answers `not_served_yet`",
+      "note": "an empty request",
       "fields": []
     },
     {

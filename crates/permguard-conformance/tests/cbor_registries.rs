@@ -35,10 +35,11 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 11] = [
+const REGISTRIES: [&str; 12] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
+    "identity.json",
     "kdf.json",
     "key-set.json",
     "layout.json",
@@ -674,6 +675,87 @@ fn grant_samples() -> Vec<Sample> {
     ]
 }
 
+fn identity_samples() -> Vec<Sample> {
+    use permguard_host::identity::record::{Boot, Document, Init, Succession, zero_digest};
+    use permguard_objects::crypto::suite::Suite;
+
+    let host_id = HOST_ID;
+    let first = Document {
+        host_id,
+        subject: permguard_host::identity::record::subject(&host_id),
+        epoch: 1,
+        suite: Suite::Ed25519Sha256V1,
+        public_key: vec![7; 32],
+        fingerprint: format!("sha256:{}", "ab".repeat(32)),
+        last_succession: None,
+        protocols: vec!["permguard.host.session.v1".to_owned()],
+        revision: 1,
+        issued_at: 1_800_000_000,
+    };
+    let later = Document {
+        epoch: 2,
+        last_succession: Some(zero_digest()),
+        revision: 2,
+        ..first.clone()
+    };
+    let documents =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Document::decode(bytes)))) };
+    vec![
+        sample(
+            "identity_document",
+            first.encode().expect("encodes"),
+            &[],
+            documents(),
+        ),
+        sample(
+            "identity_document",
+            later.encode().expect("encodes"),
+            &["identity_document.last_succession"],
+            documents(),
+        ),
+        sample(
+            "succession_record",
+            Succession {
+                host_id,
+                from_epoch: 1,
+                to_epoch: 2,
+                fingerprint: format!("sha256:{}", "cd".repeat(32)),
+                public_key: vec![8; 32],
+                previous: zero_digest(),
+                at: 1_800_000_100,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Succession::decode(bytes)))),
+        ),
+        sample(
+            "init",
+            Init {
+                host_id,
+                volume_id: ZONE_ID,
+                fingerprint: format!("sha256:{}", "ab".repeat(32)),
+                created_at: 1_800_000_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Init::decode(bytes)))),
+        ),
+        sample(
+            "boot",
+            Boot {
+                boot_id: ZONE_ID,
+                generation: 3,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Boot::decode(bytes)))),
+        ),
+    ]
+}
+
 fn mutation_samples() -> Vec<Sample> {
     use permguard_host::operations::journal::{
         Commit, Entry, Initiator, Intent, OperationId, RequestKey, decode_snapshot, encode_snapshot,
@@ -1167,6 +1249,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "layout.json" => layout_samples(),
         "audit.json" => audit_samples(),
         "mutation.json" => mutation_samples(),
+        "identity.json" => identity_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -1676,6 +1759,16 @@ fn assert_type_resolves(file: &str, registry: &Json, ty: &str) {
             }
         }
     }
+}
+
+#[test]
+fn test_identity_records_match_their_registry() {
+    assert_samples_match("identity.json");
+}
+
+#[test]
+fn test_identity_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("identity.json");
 }
 
 #[test]
