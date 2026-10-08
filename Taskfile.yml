@@ -164,6 +164,7 @@ tasks:
     cmds:
       - python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
       - python3 contracts/vectors/identity.py | diff - contracts/vectors/identity.json
+      - python3 contracts/vectors/session.py | diff - contracts/vectors/session.json
 
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.

@@ -1703,3 +1703,121 @@ fn test_the_clock_bound_is_read_defaults_to_thirty_seconds_and_is_never_zero() {
             .contains(&(SETTING_TIME_MAX_CLOCK_SKEW.to_owned(), "45s".to_owned()))
     );
 }
+
+const PEER_A: &str = "0198f2aa-0000-7000-8000-000000000001";
+const PEER_B: &str = "0198f2aa-0000-7000-8000-000000000002";
+
+fn fingerprint(byte: char) -> String {
+    format!("sha256:{}", byte.to_string().repeat(64))
+}
+
+/// WP-2.3: `host.peers` pins each Host once, by a lowercase UUIDv7 and its first fingerprint.
+#[test]
+fn test_pinned_peers_are_read_checked_and_pinned_once() {
+    let pins = format!(
+        "{PEER_A} {}\n{PEER_B} {}",
+        fingerprint('a'),
+        fingerprint('b')
+    );
+    let pinned = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_PEERS, &pins),
+        ],
+        &[],
+        &[],
+    );
+    pinned.validate().expect("two pins validate");
+    let peers = pinned.host_peers();
+    assert_eq!(peers.len(), 2);
+    assert_eq!(
+        peers[0].to_string(),
+        format!("{PEER_A} {}", fingerprint('a'))
+    );
+    assert_eq!(peers[1].fingerprint(), fingerprint('b'));
+
+    let twice = format!(
+        "{PEER_A} {}\n{PEER_A} {}",
+        fingerprint('a'),
+        fingerprint('b')
+    );
+    let doubled = config(
+        &[
+            (SETTING_TELEMETRY_ADDR, "0.0.0.0:5443"),
+            (SETTING_HOST_PEERS, &twice),
+        ],
+        &[],
+        &[],
+    );
+    let error = doubled
+        .validate()
+        .expect_err("one pin per Host")
+        .to_string();
+    assert!(error.contains("twice"), "{error}");
+
+    for malformed in [
+        PEER_A.to_owned(),
+        format!("{} {}", PEER_A.to_uppercase(), fingerprint('a')),
+        format!("0198f2aa-0000-4000-8000-000000000001 {}", fingerprint('a')),
+        format!("{PEER_A} sha256:{}", "A".repeat(64)),
+        format!("{PEER_A} sha256:{}", "a".repeat(63)),
+        format!("{PEER_A} {}", "a".repeat(64)),
+    ] {
+        assert!(
+            Config::from_layers(
+                build_settings(),
+                NO_DECLARED,
+                Layers::new().with_file(pairs(&[(SETTING_HOST_PEERS, &malformed)])),
+            )
+            .is_err(),
+            "`{malformed}` is no pin"
+        );
+    }
+}
+
+/// WP-2.3: peer sessions default to `end_to_end` only on a mutual-TLS listener, and stating
+/// `end_to_end` for one without a client CA is refused.
+#[test]
+fn test_peer_sessions_default_by_the_listener_and_end_to_end_needs_mutual_tls() {
+    use permguard_core::PeerSessions;
+
+    let none = config(&[(SETTING_TELEMETRY_ADDR, "0.0.0.0:5443")], &[], &[]);
+    assert_eq!(none.admin_peer_sessions(), PeerSessions::Disabled);
+    assert!(!none.peer_sessions().served);
+
+    // Material that exists, so validation reaches the rule under test.
+    let volume =
+        std::env::temp_dir().join(format!("permguard-peer-sessions-{}", std::process::id()));
+    std::fs::create_dir_all(volume.join("tls")).expect("the directory");
+    for name in ["server.pem", "server.key"] {
+        std::fs::write(volume.join("tls").join(name), b"material").expect("written");
+    }
+    let working_dir = volume.display().to_string();
+    let stated = config(
+        &[
+            (SETTING_WORKING_DIR, &working_dir),
+            (SETTING_ADMIN_ADDR, "127.0.0.1:5444"),
+            (SETTING_ADMIN_TLS_CERT, "tls/server.pem"),
+            (SETTING_ADMIN_TLS_KEY, "tls/server.key"),
+            (SETTING_ADMIN_PEER_SESSIONS, "end_to_end"),
+            (SETTING_DEVELOPMENT_MODE, "true"),
+        ],
+        &[],
+        &[],
+    );
+    let error = format!(
+        "{:#}",
+        stated.validate().expect_err("end to end needs a client CA")
+    );
+    assert!(error.contains("admin.peer_sessions"), "{error}");
+
+    assert!(
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[(SETTING_ADMIN_PEER_SESSIONS, "proxied")])),
+        )
+        .is_err(),
+        "an unknown mode is refused"
+    );
+}

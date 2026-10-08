@@ -215,7 +215,20 @@ pub enum CompositionError {
         purpose: &'static str,
         detail: String,
     },
+    /// A Plane declared, as its own artifact, a content type only the Host identity signs: the
+    /// identity document, a succession, a session or its proof, a ring binding (WP-2.3).
+    Reserved { plane: String, artifact: String },
 }
+
+/// The content types the Host identity signs and no Plane may declare as its artifact: a verifier
+/// of a session proof or a ring binding never meets one a Plane's ring signed (WP-2.3).
+pub const HOST_RESERVED: &[&str] = &[
+    permguard_core::domains::protected::HOST_IDENTITY,
+    permguard_core::domains::protected::HOST_PROOF,
+    permguard_core::domains::protected::HOST_SESSION,
+    permguard_core::domains::protected::HOST_SUCCESSION,
+    permguard_core::domains::protected::HOST_RING_BINDING,
+];
 
 impl std::fmt::Display for CompositionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -238,6 +251,11 @@ impl std::fmt::Display for CompositionError {
             Self::Secret { purpose, detail } => {
                 write!(f, "the secret for `{purpose}`: {detail}")
             }
+            Self::Reserved { plane, artifact } => write!(
+                f,
+                "the plane `{plane}` declared `{artifact}` as its artifact, which only the Host \
+                 identity signs"
+            ),
         }
     }
 }
@@ -330,6 +348,16 @@ impl Host {
         secrets: Option<&dyn SecretStore>,
     ) -> Result<Registration, CompositionError> {
         let plane = declaration.plane.clone();
+        if let Some((artifact, _)) = declaration
+            .signers
+            .iter()
+            .find(|(artifact, _)| HOST_RESERVED.contains(artifact))
+        {
+            return Err(CompositionError::Reserved {
+                plane,
+                artifact: (*artifact).to_owned(),
+            });
+        }
         // Secrets first, outside the lock: a declaration whose secret does not resolve leaves no
         // claim behind, so nothing it named is held by a plane that never registered.
         let store = secrets;

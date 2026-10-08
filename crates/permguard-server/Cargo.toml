@@ -35,6 +35,14 @@ permguard-transport.workspace = true
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
+# The PeerChannel's frames, both ways, as streams (WP-2.3).
+futures-core.workspace = true
+# The initiator's one connection, handed to the gRPC client as it is (WP-2.3).
+hyper-util.workspace = true
+# `service_fn`, the connector that hands that connection over once.
+tower = { workspace = true, features = ["util"] }
+rustls.workspace = true
+tokio-rustls.workspace = true
 serde.workspace = true
 # Discovery documents are types, not hand-written strings: a plane that adds a field to
 # its own document composes a value rather than slicing a closing brace off some text.
@@ -55,14 +63,11 @@ tonic-prost-build.workspace = true
 [dev-dependencies]
 # `start_paused` lets the shutdown-budget test exhaust a thirty second budget instantly.
 tokio = { workspace = true, features = ["test-util"] }
-# `oneshot`, to ask a gated router one request at a time.
-tower = { workspace = true, features = ["util"] }
 # The cross-transport vectors of the Host API: the parity harness and the generated gRPC client.
 permguard-conformance.workspace = true
 http-body-util.workspace = true
-# The Host listener bound over the material the provisioner generates, spoken to over TLS.
-rustls.workspace = true
-tokio-rustls.workspace = true
+# Two Hosts' listeners and their peers' client certificates, over loopback mutual TLS (WP-2.3).
+rcgen.workspace = true
 
 [[bench]]
 name = "server_host"

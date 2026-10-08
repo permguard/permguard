@@ -212,6 +212,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
         time: Arc::new(permguard_host::time::TimeGuard::system(
             std::time::Duration::from_secs(30),
         )),
+        peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
     }))
 }
 
@@ -981,7 +982,7 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     .await;
     assert!(conflict.get("revision").is_some(), "{conflict}");
     document.check_json("HostWireError", &conflict);
-    // A `not_served_yet` body: the ring bindings answer it until WP-2.3.
+    // A `not_served_yet` body: the ring bindings answer it until WP-3.1.
     let refused = raw("GET", "/host/v1/ring-bindings", Some(ADMIN), None).await;
     document.check_json("HostWireError", &refused);
     // A rotation's body and answer (WP-2.2): the stale epoch is a conflict with the current one.

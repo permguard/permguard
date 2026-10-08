@@ -419,6 +419,86 @@
       "limit": "`authz::oidc::MAX_TOKEN_BYTES`, checked before the token is split; the `Authorization` header arrives under the transport's header limits",
       "enforced_at_decoder": true,
       "fuzz": "oidc_token"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Presentation::decode",
+      "entry": "permguard_host::session::record::Presentation::decode",
+      "max_input_bytes": 524288,
+      "limit": "`session::record::MAX_FRAME_BYTES`, checked by the decoder before it parses: a peer's frame on the PeerChannel (WP-2.3), inside the gRPC decoding ceiling",
+      "enforced_at_decoder": true,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Hello::decode",
+      "entry": "permguard_host::session::record::Hello::decode",
+      "max_input_bytes": 524288,
+      "limit": "`session::record::MAX_FRAME_BYTES`, checked by the decoder before it parses: a peer's frame on the PeerChannel (WP-2.3), inside the gRPC decoding ceiling",
+      "enforced_at_decoder": true,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Challenge::decode",
+      "entry": "permguard_host::session::record::Challenge::decode",
+      "max_input_bytes": 524288,
+      "limit": "`session::record::MAX_FRAME_BYTES`, checked by the decoder before it parses: a peer's frame on the PeerChannel (WP-2.3), inside the gRPC decoding ceiling",
+      "enforced_at_decoder": true,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Transcript::decode",
+      "entry": "permguard_host::session::record::Transcript::decode",
+      "max_input_bytes": 524288,
+      "limit": "`session::record::MAX_FRAME_BYTES`, checked by the decoder before it parses: a peer's frame on the PeerChannel (WP-2.3), inside the gRPC decoding ceiling; the session itself compares the signed bytes with the ones it built and decodes none",
+      "enforced_at_decoder": true,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/cose.rs",
+      "item": "Sign1::decode",
+      "entry": "permguard_objects::cose::Sign1::decode",
+      "max_input_bytes": 524288,
+      "limit": "no length check at the decoder: a peer's proof frame, or an envelope inside its presentation, each bounded by the `session::record::MAX_FRAME_BYTES` of the frame that carries it; the Host's own identity records on its volume too",
+      "enforced_at_decoder": false,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-objects",
+      "source": "crates/permguard-objects/src/cose.rs",
+      "item": "Sign1::verify",
+      "entry": "permguard_objects::cose::Sign1::verify",
+      "max_input_bytes": 524288,
+      "limit": "the envelope `Sign1::decode` read, so the same bound; the protected header parsed closed before any signature check",
+      "enforced_at_decoder": false,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Document::decode",
+      "entry": "permguard_host::identity::record::Document::decode",
+      "max_input_bytes": 524288,
+      "limit": "a peer's identity document payload inside its presentation frame (`session::record::MAX_FRAME_BYTES`), read before its signature only for the suite, then verified; the Host's own `identity.cose` too",
+      "enforced_at_decoder": false,
+      "fuzz": "peer_session"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/identity/record.rs",
+      "item": "Succession::decode",
+      "entry": "permguard_host::identity::record::Succession::decode",
+      "max_input_bytes": 524288,
+      "limit": "a peer's succession record inside its presentation frame (`session::record::MAX_FRAME_BYTES`, at most `identity::MAX_SUCCESSIONS` records), verified under the previous epoch's key before it is read",
+      "enforced_at_decoder": false,
+      "fuzz": "peer_session"
     }
   ],
   "trusted": [
@@ -623,26 +703,6 @@
       "reason": "the security-mutation journal on the Host's own volume (WP-3.6): `snapshot.cbor` and `journal.cborseq`, written by this process or an earlier one; a torn final entry is cut, anything else that does not read is corruption and the journal refuses to open"
     },
     {
-      "source": "crates/permguard-objects/src/cose.rs",
-      "item": "Sign1::decode",
-      "reason": "a COSE_Sign1 of the Host's own identity records on its own volume (WP-2.2): `identity.cose` and `succession.cborseq`, written by this process or an earlier one; peer envelopes arrive with WP-2.3, which registers this decoder as a boundary with its fuzz target"
-    },
-    {
-      "source": "crates/permguard-objects/src/cose.rs",
-      "item": "Sign1::verify",
-      "reason": "the same envelopes as `Sign1::decode`, verified under the key and content type the caller expects; becomes a boundary with WP-2.3"
-    },
-    {
-      "source": "crates/permguard-host/src/identity/record.rs",
-      "item": "Document::decode",
-      "reason": "the identity document's payload from the Host's own `identity.cose` (WP-2.2), closed labels, read only after its envelope decoded; a peer's document is WP-2.3's"
-    },
-    {
-      "source": "crates/permguard-host/src/identity/record.rs",
-      "item": "Succession::decode",
-      "reason": "a succession record's payload from the Host's own `succession.cborseq` (WP-2.2), verified under the previous epoch's key before it is read"
-    },
-    {
       "source": "crates/permguard-host/src/identity/record.rs",
       "item": "Init::decode",
       "reason": "`host/identity/INIT` on the Host's own volume (WP-2.2): four labels this process published once"
@@ -666,6 +726,36 @@
       "source": "crates/permguard-host/src/audit/trail.rs",
       "item": "verify",
       "reason": "every day file of a trail on the Host's own volume (WP-3.5), read as a CBOR sequence to check its sequence and chain; nothing it reads is acted on but the verdict"
+    },
+    {
+      "source": "crates/permguard-core/src/peer.rs",
+      "item": "PinnedPeer::from_str",
+      "reason": "a configuration value the operator sets: `host.peers[]` (WP-2.3)"
+    },
+    {
+      "source": "crates/permguard-core/src/peer.rs",
+      "item": "PeerSessions::from_str",
+      "reason": "a configuration value the operator sets: `admin.peer_sessions` (WP-2.3)"
+    },
+    {
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Operation::from_str",
+      "reason": "a text member already read by `Hello::decode` or `Transcript::decode`, which are the boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/session/record.rs",
+      "item": "Role::from_str",
+      "reason": "a text member already read by `Transcript::decode`, which is the boundary"
+    },
+    {
+      "source": "crates/permguard-host/src/session/peers.rs",
+      "item": "Seen::decode",
+      "reason": "`host/peers/<host_id>.cbor` on the Host's own volume (WP-2.3): four labels this process wrote; one naming another Host refuses the peer"
+    },
+    {
+      "source": "crates/permguard-host/src/session/peers.rs",
+      "item": "Peers::open",
+      "reason": "the pinned peers' directory on the Host's own volume (WP-2.3); each seen file is read through `Seen::decode`"
     }
   ]
 }

@@ -27,6 +27,7 @@ pub mod grants;
 pub mod identity;
 pub mod keys;
 pub mod replay;
+pub mod sessions;
 pub mod status;
 
 use std::sync::Arc;
@@ -209,6 +210,8 @@ pub struct Composition {
     pub identity: Option<Arc<crate::identity::Identity>>,
     /// The Host's time guard: grant expiry and the times receipts carry (WP-2.12).
     pub time: Arc<crate::time::TimeGuard>,
+    /// Peer Host sessions on the listener (WP-2.3).
+    pub peer_sessions: sessions::PeerSessions,
 }
 
 /// The Host API facade: one instance per process, shared by both transports.
@@ -225,6 +228,7 @@ pub struct HostApi {
     mutations: Option<Arc<Mutations>>,
     identity: Option<Arc<crate::identity::Identity>>,
     time: Arc<crate::time::TimeGuard>,
+    peer_sessions: sessions::PeerSessions,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -252,6 +256,7 @@ impl HostApi {
             mutations: composition.mutations,
             identity: composition.identity,
             time: composition.time,
+            peer_sessions: composition.peer_sessions,
         }
     }
 
@@ -268,10 +273,10 @@ impl HostApi {
         })
     }
 
-    /// `GET /host/v1/ring-bindings`: the signed bindings arrive with WP-2.3.
+    /// `GET /host/v1/ring-bindings`: the signed bindings arrive with the rings, WP-3.1.
     pub fn ring_bindings(&self, actor: &Actor) -> Result<std::convert::Infallible, Refusal> {
         let _admitted = self.admit(actor, operations::IDENTITY_READ)?;
-        Err(Refusal::not_served_yet("the ring bindings", "WP-2.3"))
+        Err(Refusal::not_served_yet("the ring bindings", "WP-3.1"))
     }
 
     /// The grant store, or the refusal a mutation without one answers.
@@ -672,6 +677,7 @@ pub(crate) mod testing {
             mutations: Some(mutations),
             identity: Some(identity),
             time,
+            peer_sessions: sessions::PeerSessions::none(),
         });
         (api, store, volume)
     }

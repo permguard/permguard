@@ -13,6 +13,7 @@
 
 pub mod grpc;
 pub mod http;
+pub mod peer;
 pub mod service;
 pub(crate) mod wire;
 
@@ -46,9 +47,10 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
 pub fn grpc_routes(api: Arc<HostApi>, disclosure: Disclosure) -> tonic::service::Routes {
     let mut routes = RoutesBuilder::default();
     let served = grpc::Served::new(api, disclosure);
-    routes.add_service(v1::identity_service_server::IdentityServiceServer::new(
-        served.clone(),
-    ));
+    routes.add_service(
+        v1::identity_service_server::IdentityServiceServer::new(served.clone())
+            .max_decoding_message_size(peer::MAX_MESSAGE_BYTES),
+    );
     routes.add_service(v1::grant_service_server::GrantServiceServer::new(
         served.clone(),
     ));

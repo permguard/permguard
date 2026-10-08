@@ -167,8 +167,31 @@ service OperationsService {
   rpc ApprovePlan(ApprovePlanRequest) returns (ApprovePlanResponse);
 }
 
-// A frame of the peer channel; defined with the peer protocol.
-message PeerFrame {}
+// A frame of the peer channel (WP-2.3): one message of the session protocol, its bytes the
+// canonical CBOR `contracts/cbor/session.json` defines. The sender's identity comes first,
+// then `hello`, `challenge` and the two proofs; task messages follow once the session is
+// established. No frame ever carries a TLS exporter: each side takes its own from the
+// connection.
+message PeerFrame {
+  oneof frame {
+    // The sender's presentation: identity document, succession records, epoch-1 public key.
+    bytes identity = 1;
+    bytes hello = 2;
+    bytes challenge = 3;
+    // A COSE_Sign1 `permguard.host.proof.v1` over the transcript.
+    bytes proof = 4;
+    // A task message, inside an established session (WP-11).
+    bytes task = 5;
+    // The other side refused: a stable code, nothing more. A refusal of the session ends the
+    // channel; `not_served_yet` answers a task message and keeps it.
+    PeerRefusal refusal = 6;
+  }
+}
+
+// Why the other side refused.
+message PeerRefusal {
+  string code = 1;
+}
 
 message GetIdentityRequest {}
 // `GET /host/v1/identity` (WP-2.2): the signed document of the current epoch and every
@@ -321,11 +344,11 @@ message GetKeyRingRequest {
 }
 message GetKeyRingResponse {
   string ring = 1;
-  // The ring epoch, once the bindings carry one (WP-2.3).
+  // The ring epoch, once the bindings carry one (WP-3.1).
   optional uint64 epoch = 2;
   // SHA-256 over the public set as published, hex.
   string digest = 3;
-  // The signed binding of this ring to the Host identity (WP-2.3).
+  // The signed binding of this ring to the Host identity (WP-3.1).
   optional string binding = 4;
   // How long a client may cache the set, in seconds.
   uint32 cache_max_age = 5;
@@ -385,6 +408,15 @@ message GetStatusResponse {
   repeated HostDegraded degraded = 4;
   repeated HostComponent components = 5;
   Assurance assurance = 6;
+  // Whether the listener serves peer Host sessions, and why not (WP-2.3).
+  PeerSessions peer_sessions = 7;
+}
+
+// Whether the PeerChannel serves sessions: `reason` names why not, or the limit it serves
+// them under (`tls_1_2_refused`); absent when there is nothing to say.
+message PeerSessions {
+  bool served = 1;
+  optional string reason = 2;
 }
 
 // One capability served without its backing.

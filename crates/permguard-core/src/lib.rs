@@ -75,7 +75,9 @@ pub use keys::{
 pub use limits::{Limits, PeerBlock};
 pub use logging::{LogFormat, LogLevel};
 pub use metrics::{Aggregate, Kind, Label, Metric, Metrics, Reading, Recorder, Sample};
-pub use peer::{AllowedPeer, PeerIdentity};
+pub use peer::{
+    AllowedPeer, ChannelBinding, PeerIdentity, PeerSessions, PeerSessionsReport, PinnedPeer,
+};
 pub use plane::{PlaneContext, PlaneHealth, PlaneTask};
 pub use pseudonym::Pseudonymizer;
 pub use realm::{

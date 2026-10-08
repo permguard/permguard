@@ -348,6 +348,12 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.PEER_SESSIONS_UNSERVEABLE": {
+      "code": "peer_sessions_unserveable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "host.PLAN_DIGEST_MISMATCH": {
       "code": "plan_digest_mismatch",
       "contract": "6-contracts/8-contract-host-api.md",
@@ -407,6 +413,11 @@
       "contract": "6-contracts/8-contract-host-api.md",
       "kind": "refusal",
       "class": "unavailable"
+    },
+    "host.SESSION_REFUSED": {
+      "code": "session_refused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "denial"
     },
     "legacy.REJECTED": {
       "code": "rejected",

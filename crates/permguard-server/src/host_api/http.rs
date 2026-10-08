@@ -38,6 +38,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/identity", get(identity))
         .route("/host/v1/identity/rotate", post(rotate_identity))
         .route("/host/v1/ring-bindings", get(ring_bindings))
+        .route("/host/v1/sessions/hello", post(session_over_rest))
+        .route("/host/v1/sessions/prove", post(session_over_rest))
         .route("/host/v1/grants", get(list_grants).post(create_grant))
         .route("/host/v1/grants/{id}/revoke/plan", post(plan_revoke))
         .route("/host/v1/grants/{id}/revoke/run", post(run_revoke))
@@ -107,6 +109,12 @@ fn not_yet(served: &Served, result: Result<std::convert::Infallible, Refusal>) -
         Ok(never) => match never {},
         Err(refusal) => served.refuse(&refusal),
     }
+}
+
+/// Peer sessions are never separate requests: refused whoever asks, before any body is read
+/// (WP-2.3).
+async fn session_over_rest(State(served): State<Served>) -> Response {
+    served.refuse(&served.api.session_over_rest())
 }
 
 async fn identity(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {

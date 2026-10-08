@@ -303,3 +303,91 @@ async fn test_a_tls_listener_serves_a_client_that_trusts_it() {
         .await
         .expect("the listener stops");
 }
+
+/// The router that answers the channel binding its request carries, in hex, or `none`.
+fn binding_router() -> Router {
+    Router::new().route(
+        "/",
+        get(
+            |binding: Option<axum::Extension<Arc<permguard_core::ChannelBinding>>>| async move {
+                binding.map_or_else(
+                    || "none".to_owned(),
+                    |binding| {
+                        binding
+                            .exporter()
+                            .iter()
+                            .map(|byte| format!("{byte:02x}"))
+                            .collect()
+                    },
+                )
+            },
+        ),
+    )
+}
+
+/// Speaks over `config` and answers what the server said with the client's own binding.
+async fn bound(
+    address: SocketAddr,
+    config: rustls::ClientConfig,
+) -> (String, Option<permguard_core::ChannelBinding>) {
+    let connector = TlsConnector::from(Arc::new(config));
+    let stream = TcpStream::connect(address).await.expect("connected");
+    let name = ServerName::try_from("localhost").expect("a name");
+    let mut stream = connector.connect(name, stream).await.expect("handshaken");
+    let mine = permguard_transport::channel_binding(&**stream.get_ref().1);
+    stream
+        .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .expect("written");
+    let mut said = Vec::new();
+    stream.read_to_end(&mut said).await.expect("read");
+    (String::from_utf8_lossy(&said).into_owned(), mine)
+}
+
+/// WP-2.3: every request of a TLS 1.3 connection carries the RFC 9266 exporter the client
+/// computes on its side; each connection has its own; a TLS 1.2 connection carries none.
+#[tokio::test]
+async fn test_a_tls_1_3_connection_carries_its_channel_binding_and_a_1_2_one_none() {
+    let pki = Pki::new("binding");
+    let (certificate, key) = self_signed(&pki, "server");
+    let settings = TlsSettings::new(&certificate, &key).with_min_version(TlsVersion::V1_2);
+    let surface = Surface::listener("test", "127.0.0.1:0", binding_router())
+        .tls(Some(&settings))
+        .start()
+        .await
+        .expect("the listener binds");
+    let address = surface.address();
+    let client = || {
+        rustls::ClientConfig::builder()
+            .with_root_certificates(roots_of(&certificate))
+            .with_no_client_auth()
+    };
+
+    let (said, mine) = bound(address, client()).await;
+    let mine = mine.expect("a TLS 1.3 client computes its binding");
+    let hex: String = mine
+        .exporter()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert!(said.contains(&hex), "{said}");
+    let (again, other) = bound(address, client()).await;
+    assert_ne!(
+        other.expect("a binding").exporter(),
+        mine.exporter(),
+        "another connection, another exporter"
+    );
+    assert!(!again.contains(&hex), "{again}");
+
+    let old = rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
+        .with_root_certificates(roots_of(&certificate))
+        .with_no_client_auth();
+    let (said, mine) = bound(address, old).await;
+    assert!(mine.is_none(), "no binding on TLS 1.2");
+    assert!(said.ends_with("none"), "{said}");
+
+    surface
+        .stop(Duration::from_secs(5))
+        .await
+        .expect("the listener stops");
+}

@@ -70,9 +70,19 @@ pub struct Listener<'a> {
     limits: Limits,
     metrics: Metrics,
     authenticator: Option<std::sync::Arc<dyn permguard_core::authz::Authenticator>>,
+    streaming: Vec<String>,
 }
 
 impl<'a> Listener<'a> {
+    /// Paths whose request body is a long-lived stream of bounded messages, the peer channel
+    /// (WP-2.3): exempt from the cumulative body limit, which would end the stream after
+    /// `limits.body_bytes()` in total. The service behind each bounds every message itself.
+    pub fn streaming(mut self, paths: impl IntoIterator<Item = String>) -> Self {
+        self.streaming = paths.into_iter().collect();
+
+        self
+    }
+
     /// Serves this listener over TLS as `tls` describes, or in the clear when it is `None`.
     pub fn tls(mut self, tls: Option<&'a TlsSettings>) -> Self {
         self.tls = tls;
@@ -119,6 +129,7 @@ impl<'a> Listener<'a> {
             limits,
             metrics,
             authenticator,
+            streaming,
         } = self;
 
         let parsed: SocketAddr = address
@@ -196,7 +207,10 @@ impl<'a> Listener<'a> {
                 // network — and the surface loses the one request that would have explained itself.
                 .layer(CatchPanicLayer::custom(panicked))
                 .layer(DefaultBodyLimit::max(limits.body_bytes()))
-                .layer(RequestBodyLimitLayer::new(limits.body_bytes()))
+                .layer(StreamingExempt::new(
+                    RequestBodyLimitLayer::new(limits.body_bytes()),
+                    streaming,
+                ))
                 .layer(TimeoutLayer::with_status_code(
                     StatusCode::REQUEST_TIMEOUT,
                     limits.request_timeout(),
@@ -301,6 +315,7 @@ impl Surface {
             limits: Limits::default(),
             metrics: Metrics::none(),
             authenticator: None,
+            streaming: Vec::new(),
         }
     }
 
@@ -372,6 +387,89 @@ impl Surface {
             .with_context(|| format!("waiting for the listener on {} to finish", self.address))?;
 
         Ok(self.address)
+    }
+}
+
+/// A body limit every path gets except the streaming ones.
+#[derive(Clone)]
+struct StreamingExempt<L> {
+    limit: L,
+    paths: Arc<[String]>,
+}
+
+impl<L> StreamingExempt<L> {
+    fn new(limit: L, paths: Vec<String>) -> Self {
+        Self {
+            limit,
+            paths: paths.into(),
+        }
+    }
+}
+
+impl<L, S> tower_layer::Layer<S> for StreamingExempt<L>
+where
+    L: tower_layer::Layer<S>,
+    S: Clone,
+{
+    type Service = Exempting<L::Service, S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        Exempting {
+            limited: self.limit.layer(inner.clone()),
+            plain: inner,
+            paths: Arc::clone(&self.paths),
+        }
+    }
+}
+
+/// The limited service, or the plain one for a streaming path.
+#[derive(Clone)]
+struct Exempting<Limited, Plain> {
+    limited: Limited,
+    plain: Plain,
+    paths: Arc<[String]>,
+}
+
+impl<Limited, Plain, B, LB, PB> tower_service::Service<http::Request<B>>
+    for Exempting<Limited, Plain>
+where
+    Limited: tower_service::Service<http::Request<B>, Response = http::Response<LB>>,
+    Plain: tower_service::Service<
+            http::Request<B>,
+            Response = http::Response<PB>,
+            Error = Limited::Error,
+        >,
+    Limited::Future: Send + 'static,
+    Plain::Future: Send + 'static,
+    LB: axum::body::HttpBody<Data = axum::body::Bytes> + Send + 'static,
+    LB::Error: Into<BoxError>,
+    PB: axum::body::HttpBody<Data = axum::body::Bytes> + Send + 'static,
+    PB::Error: Into<BoxError>,
+{
+    type Response = http::Response<Body>;
+    type Error = Limited::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(
+        &mut self,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        match self.limited.poll_ready(context) {
+            std::task::Poll::Ready(Ok(())) => self.plain.poll_ready(context),
+            other => other,
+        }
+    }
+
+    fn call(&mut self, request: http::Request<B>) -> Self::Future {
+        if self.paths.iter().any(|path| path == request.uri().path()) {
+            let answer = self.plain.call(request);
+            Box::pin(async move { answer.await.map(|response| response.map(Body::new)) })
+        } else {
+            let answer = self.limited.call(request);
+            Box::pin(async move { answer.await.map(|response| response.map(Body::new)) })
+        }
     }
 }
 

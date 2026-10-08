@@ -1413,6 +1413,11 @@ mod tests {
                     [permguard_core::assurance::Control::Tls13Only],
                 )
                 .report(&[permguard_core::assurance::Relaxation::CustodyPlaintext]),
+                // Served with a limit: both members present.
+                peer_sessions: permguard_core::PeerSessionsReport {
+                    served: true,
+                    reason: Some(permguard_core::PeerSessionsReport::TLS_1_2_REFUSED),
+                },
             },
         );
         let written: serde_json::Value = serde_json::from_str(
@@ -1430,6 +1435,10 @@ mod tests {
                     [],
                 )
                 .report(&[]),
+                peer_sessions: permguard_core::PeerSessionsReport {
+                    served: true,
+                    reason: None,
+                },
             },
         );
 

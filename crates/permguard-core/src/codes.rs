@@ -359,6 +359,14 @@ pub mod host {
     pub const RING_UNREADABLE: &str = "ring_unreadable";
     /// The route exists in the contract and a later package serves it.
     pub const NOT_SERVED_YET: &str = "not_served_yet";
+    /// This listener cannot serve peer Host sessions (WP-2.3): `admin.peer_sessions` is
+    /// `disabled`, the listener demands no client certificate, the connection is not TLS 1.3 or
+    /// carries no channel binding, or the session was asked of a transport other than the
+    /// `PeerChannel` stream.
+    pub const PEER_SESSIONS_UNSERVEABLE: &str = "peer_sessions_unserveable";
+    /// A peer Host session was refused (WP-2.3): the peer is not pinned, its identity or epoch
+    /// does not verify, or its `hello` or proof does not; nothing more is said to the peer.
+    pub const SESSION_REFUSED: &str = "session_refused";
 }
 
 /// Codes in use that no contract document names yet.
@@ -625,6 +633,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::RING_UNKNOWN,
         host::RING_UNREADABLE,
         host::NOT_SERVED_YET,
+        host::PEER_SESSIONS_UNSERVEABLE,
+        host::SESSION_REFUSED,
         legacy::REJECTED,
     ]
 }

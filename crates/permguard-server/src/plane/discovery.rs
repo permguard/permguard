@@ -412,6 +412,7 @@ pub fn server_configuration_document(config: &Config) -> String {
             })
             .flatten(),
         assurance: config.assurance().report(&config.relaxations_in_force()),
+        peer_sessions: config.peer_sessions(),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -450,6 +451,9 @@ pub struct ServerConfiguration {
     /// relaxations[]}`. Discovery describes; it never grants authority, and the profile is enforced
     /// locally, never attested.
     pub assurance: permguard_core::assurance::AssuranceReport,
+    /// Whether the Host listener serves peer Host sessions, and why not (WP-2.3): a deployment
+    /// behind a TLS-terminating proxy states `admin.peer_sessions: disabled`, and this says so.
+    pub peer_sessions: permguard_core::PeerSessionsReport,
     /// The operations ring as a JWKS, when this deployment publishes keys at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jwks_uri: Option<String>,
@@ -639,6 +643,66 @@ mod document_tests {
                 "added_controls": ["tls.1_3_only"],
                 "relaxations": ["custody.plaintext"]
             })
+        );
+    }
+
+    #[test]
+    fn the_registry_says_whether_peer_sessions_are_served_and_why_not() {
+        // WP-2.3: without a Host listener none are; a deployment behind a TLS-terminating proxy
+        // says `disabled`; a listener without a client CA cannot; a TLS 1.2 floor is a limit.
+        let peer_sessions = |pairs: &[(&str, &str)]| {
+            let document: serde_json::Value =
+                serde_json::from_str(&server_configuration_document(&config_with(pairs)))
+                    .expect("JSON");
+            document["peer_sessions"].clone()
+        };
+        use permguard_core::config::{
+            SETTING_ADMIN_ADDR, SETTING_ADMIN_PEER_SESSIONS, SETTING_ADMIN_TLS_CERT,
+            SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION,
+        };
+        let listener = [
+            (SETTING_ADMIN_ADDR, "127.0.0.1:5444"),
+            (SETTING_ADMIN_TLS_CERT, "tls/server.pem"),
+            (SETTING_ADMIN_TLS_KEY, "tls/server.key"),
+        ];
+        let mutual = [
+            listener.as_slice(),
+            &[(SETTING_ADMIN_TLS_CLIENT_CA, "tls/ca.pem")],
+        ]
+        .concat();
+        assert_eq!(
+            peer_sessions(&[]),
+            serde_json::json!({"served": false, "reason": "no_listener"})
+        );
+        assert_eq!(
+            peer_sessions(&listener),
+            serde_json::json!({"served": false, "reason": "disabled"}),
+            "without a client CA the default is `disabled`"
+        );
+        assert_eq!(
+            peer_sessions(
+                &[
+                    listener.as_slice(),
+                    &[(SETTING_ADMIN_PEER_SESSIONS, "end_to_end")]
+                ]
+                .concat()
+            ),
+            serde_json::json!({"served": false, "reason": "no_client_certificate"})
+        );
+        assert_eq!(peer_sessions(&mutual), serde_json::json!({"served": true}));
+        assert_eq!(
+            peer_sessions(
+                &[
+                    mutual.as_slice(),
+                    &[(SETTING_ADMIN_PEER_SESSIONS, "disabled")]
+                ]
+                .concat()
+            ),
+            serde_json::json!({"served": false, "reason": "disabled"})
+        );
+        assert_eq!(
+            peer_sessions(&[mutual.as_slice(), &[(SETTING_ADMIN_TLS_MIN_VERSION, "1.2")]].concat()),
+            serde_json::json!({"served": true, "reason": "tls_1_2_refused"})
         );
     }
 

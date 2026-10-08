@@ -44,6 +44,10 @@ pub mod digest {
     pub const HOST_IDENTITY_WITNESS: &str = "permguard.host.identity.witness.v1\n";
     /// A Host succession record, as the next record and the identity document cite it (WP-2.2).
     pub const HOST_SUCCESSION: &str = "permguard.host.succession.v1\n";
+    /// A session `hello`, as the transcript cites it (WP-2.3).
+    pub const HOST_SESSION_HELLO: &str = "permguard.host.session.hello.v1\n";
+    /// A session `challenge`, as the transcript cites it (WP-2.3).
+    pub const HOST_SESSION_CHALLENGE: &str = "permguard.host.session.challenge.v1\n";
     /// A decision record.
     pub const DECISION_RECORD: &str = "permguard.decision.v1\n";
     /// A normalized evaluation request, as a signed decision response cites it.
@@ -291,6 +295,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             digest::HOST_IDENTITY_WITNESS,
         ),
         ("digest.HOST_SUCCESSION", digest::HOST_SUCCESSION),
+        ("digest.HOST_SESSION_HELLO", digest::HOST_SESSION_HELLO),
+        (
+            "digest.HOST_SESSION_CHALLENGE",
+            digest::HOST_SESSION_CHALLENGE,
+        ),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
         ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),
         (

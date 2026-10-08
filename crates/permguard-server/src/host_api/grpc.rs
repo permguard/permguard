@@ -87,11 +87,28 @@ fn blank(text: String) -> Option<String> {
 impl IdentityService for Served {
     type PeerChannelStream = tonic::codegen::BoxStream<v1::PeerFrame>;
 
+    /// A peer session (WP-2.3): no grant is asked, the listener's mutual TLS and the session's
+    /// proof and pin admit it; the connection's own channel binding is the one signed.
     async fn peer_channel(
         &self,
-        _request: Request<tonic::Streaming<v1::PeerFrame>>,
+        request: Request<tonic::Streaming<v1::PeerFrame>>,
     ) -> Answer<Self::PeerChannelStream> {
-        Err(unimplemented("the peer channel"))
+        let peer = request
+            .extensions()
+            .get::<Arc<permguard_core::PeerIdentity>>()
+            .cloned();
+        let binding = request
+            .extensions()
+            .get::<Arc<permguard_core::ChannelBinding>>()
+            .cloned();
+        let responder = self
+            .api
+            .peer_responder(peer.as_deref(), binding.as_deref())
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(super::peer::respond(
+            responder,
+            request.into_inner(),
+        )))
     }
 
     async fn get_identity(
@@ -406,6 +423,10 @@ impl OperationsService for Served {
                 enforcement: status.assurance.enforcement,
                 added_controls: status.assurance.added_controls,
                 relaxations: status.assurance.relaxations,
+            }),
+            peer_sessions: Some(v1::PeerSessions {
+                served: status.peer_sessions.served,
+                reason: status.peer_sessions.reason,
             }),
         }))
     }

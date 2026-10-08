@@ -258,24 +258,24 @@ impl Boot {
     }
 }
 
-fn encode(pairs: Vec<(Value, Value)>) -> Result<Vec<u8>, RecordError> {
+pub(crate) fn encode(pairs: Vec<(Value, Value)>) -> Result<Vec<u8>, RecordError> {
     cbor::encode(&Value::Map(pairs)).map_err(|error| RecordError(error.to_string()))
 }
 
-fn uint(value: u64) -> Result<Value, RecordError> {
+pub(crate) fn uint(value: u64) -> Result<Value, RecordError> {
     i64::try_from(value)
         .map(Value::Int)
         .map_err(|_| RecordError("an integer beyond the signed 64-bit range".to_owned()))
 }
 
 /// A decoded integer-labelled map, read label by label and then checked for leftovers.
-struct Labelled {
+pub(crate) struct Labelled {
     what: &'static str,
     pairs: BTreeMap<i64, Value>,
 }
 
 impl Labelled {
-    fn read(bytes: &[u8], what: &'static str) -> Result<Self, RecordError> {
+    pub(crate) fn read(bytes: &[u8], what: &'static str) -> Result<Self, RecordError> {
         let value = cbor::decode_canonical(bytes)
             .map_err(|error| RecordError(format!("{what} is not canonical CBOR: {error}")))?;
         let Value::Map(pairs) = value else {
@@ -304,21 +304,21 @@ impl Labelled {
             .ok_or_else(|| self.error(format!("label {label} is required")))
     }
 
-    fn text(&mut self, label: i64) -> Result<String, RecordError> {
+    pub(crate) fn text(&mut self, label: i64) -> Result<String, RecordError> {
         match self.take(label)? {
             Value::Text(text) => Ok(text),
             _ => Err(self.error(format!("label {label} is text"))),
         }
     }
 
-    fn bytes(&mut self, label: i64) -> Result<Vec<u8>, RecordError> {
+    pub(crate) fn bytes(&mut self, label: i64) -> Result<Vec<u8>, RecordError> {
         match self.take(label)? {
             Value::Bytes(bytes) => Ok(bytes),
             _ => Err(self.error(format!("label {label} is bytes"))),
         }
     }
 
-    fn id(&mut self, label: i64) -> Result<[u8; 16], RecordError> {
+    pub(crate) fn id(&mut self, label: i64) -> Result<[u8; 16], RecordError> {
         let bytes = self.bytes(label)?;
         bytes
             .as_slice()
@@ -326,7 +326,7 @@ impl Labelled {
             .map_err(|_| self.error(format!("label {label} is 16 bytes")))
     }
 
-    fn uint(&mut self, label: i64) -> Result<u64, RecordError> {
+    pub(crate) fn uint(&mut self, label: i64) -> Result<u64, RecordError> {
         match self.take(label)? {
             Value::Int(value) if value >= 0 => Ok(value as u64),
             _ => Err(self.error(format!("label {label} is an unsigned integer"))),
@@ -338,7 +338,7 @@ impl Labelled {
         Suite::from_name(&name).ok_or_else(|| self.error(format!("`{name}` is not a suite")))
     }
 
-    fn digest(&mut self, label: i64) -> Result<Digest, RecordError> {
+    pub(crate) fn digest(&mut self, label: i64) -> Result<Digest, RecordError> {
         let text = self.text(label)?;
         Digest::parse(&text).map_err(|error| self.error(format!("label {label}: {error:?}")))
     }
@@ -348,6 +348,38 @@ impl Labelled {
             self.digest(label).map(Some)
         } else {
             Ok(None)
+        }
+    }
+
+    /// An optional text member: absent is `None`, never null.
+    pub(crate) fn optional_text(&mut self, label: i64) -> Result<Option<String>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.text(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// A byte string of exactly `N` bytes.
+    pub(crate) fn fixed<const N: usize>(&mut self, label: i64) -> Result<[u8; N], RecordError> {
+        let bytes = self.bytes(label)?;
+        bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| self.error(format!("label {label} is {N} bytes")))
+    }
+
+    /// An array of byte strings.
+    pub(crate) fn byte_strings(&mut self, label: i64) -> Result<Vec<Vec<u8>>, RecordError> {
+        match self.take(label)? {
+            Value::Array(items) => items
+                .into_iter()
+                .map(|item| match item {
+                    Value::Bytes(bytes) => Ok(bytes),
+                    _ => Err(self.error(format!("label {label} is an array of bytes"))),
+                })
+                .collect(),
+            _ => Err(self.error(format!("label {label} is an array"))),
         }
     }
 
@@ -364,7 +396,7 @@ impl Labelled {
         }
     }
 
-    fn finish(self) -> Result<(), RecordError> {
+    pub(crate) fn finish(self) -> Result<(), RecordError> {
         match self.pairs.keys().next() {
             None => Ok(()),
             Some(label) => Err(self.error(format!("unexpected label {label}"))),

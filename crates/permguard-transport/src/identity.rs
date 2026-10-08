@@ -34,7 +34,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::server::TlsStream;
 use x509_parser::prelude::{FromDer, X509Certificate};
 
-use permguard_core::PeerIdentity;
+use permguard_core::{ChannelBinding, PeerIdentity};
 
 /// Terminates TLS and remembers who was on the other end.
 #[derive(Clone)]
@@ -79,12 +79,16 @@ where
                 .and_then(<[CertificateDer<'_>]>::first)
                 .and_then(identity_of)
                 .map(Arc::new);
+            // Computed once, here, where the connection is: a request handler never sees the TLS
+            // state, so the binding a peer session signs cannot come from anywhere else (WP-2.3).
+            let binding = channel_binding(stream.get_ref().1).map(Arc::new);
 
             Ok((
                 stream,
                 WithPeer {
                     inner: service,
                     identity,
+                    binding,
                 },
             ))
         })
@@ -96,6 +100,7 @@ where
 pub struct WithPeer<S> {
     inner: S,
     identity: Option<Arc<PeerIdentity>>,
+    binding: Option<Arc<ChannelBinding>>,
 }
 
 impl<S, B> tower_service::Service<http::Request<B>> for WithPeer<S>
@@ -114,9 +119,31 @@ where
         if let Some(identity) = &self.identity {
             request.extensions_mut().insert(Arc::clone(identity));
         }
+        if let Some(binding) = &self.binding {
+            request.extensions_mut().insert(Arc::clone(binding));
+        }
 
         self.inner.call(request)
     }
+}
+
+/// The RFC 9266 label of the `tls-exporter` channel binding.
+pub const EXPORTER_LABEL: &[u8] = b"EXPORTER-Channel-Binding";
+
+/// The `tls-exporter` channel binding of a connection (RFC 9266): 32 bytes exported with an
+/// empty context, and only on TLS 1.3 (owner decision of 2026-10-08), RFC 9266 forbidding it on
+/// TLS 1.2 without the extended master secret. `None` on any other connection, which then cannot
+/// carry a peer Host session.
+pub fn channel_binding<Data>(
+    connection: &rustls::ConnectionCommon<Data>,
+) -> Option<ChannelBinding> {
+    if connection.protocol_version() != Some(rustls::ProtocolVersion::TLSv1_3) {
+        return None;
+    }
+    connection
+        .export_keying_material([0u8; 32], EXPORTER_LABEL, Some(b""))
+        .ok()
+        .map(ChannelBinding::new)
 }
 
 /// Reads what a certificate asserts about its holder.

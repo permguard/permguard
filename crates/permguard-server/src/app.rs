@@ -1598,6 +1598,30 @@ impl App {
                 mutations: Some(Arc::clone(&mutations)),
                 identity: Some(Arc::clone(&host_identity)),
                 time: Arc::clone(&time),
+                // Peer Host sessions (WP-2.3): the pinned peers and what the listener's
+                // configuration amounts to; the PeerChannel refuses when it serves none.
+                peer_sessions: permguard_host::api::sessions::PeerSessions {
+                    report: config.peer_sessions(),
+                    context: Some(permguard_host::session::Context {
+                        identity: Arc::clone(&host_identity),
+                        peers: Arc::new(
+                            permguard_host::session::peers::Peers::open(
+                                &volume,
+                                config.host_peers(),
+                            )
+                            .with_context(|| {
+                                format!(
+                                    "opening the pinned peers on {}",
+                                    volume.host().path().display()
+                                )
+                            })?,
+                        ),
+                        time: Arc::clone(&time),
+                        declared_assurance: config.assurance().profile(),
+                        audit: Some(Arc::clone(&audit_engine)),
+                        metrics: context.metrics().clone(),
+                    }),
+                },
             });
             context = context.with_host_handles(Arc::new(api));
         }

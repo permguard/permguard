@@ -56,6 +56,9 @@ const SHAPED: &[&str] = &[
     "GetIdentityResponse",
     "RotateIdentityRequest",
     "RotateIdentityResponse",
+    "PeerFrame",
+    "PeerRefusal",
+    "PeerSessions",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.

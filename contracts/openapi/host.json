@@ -196,7 +196,7 @@
             }
           },
           "503": {
-            "description": "Under `identity.read`; the bindings arrive with WP-2.3 (`not_served_yet`), or the principal is over its bound.",
+            "description": "Under `identity.read`; the bindings arrive with WP-3.1 (`not_served_yet`), or the principal is over its bound.",
             "content": {
               "application/json": {
                 "schema": {
@@ -207,6 +207,48 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.IdentityService/ListRingBindings"
+      }
+    },
+    "/host/v1/sessions/hello": {
+      "post": {
+        "operationId": "sessionHello",
+        "summary": "A peer session's hello, refused over REST",
+        "description": "Refused whoever asks, before any body is read (WP-2.3): a peer session is bound to one TLS connection and runs on the `permguard.host.v1.IdentityService/PeerChannel` stream only, never as separate requests.",
+        "responses": {
+          "503": {
+            "description": "Always: peer sessions run on the `PeerChannel` stream (`peer_sessions_unserveable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each"
+      }
+    },
+    "/host/v1/sessions/prove": {
+      "post": {
+        "operationId": "sessionProve",
+        "summary": "A peer session's proof, refused over REST",
+        "description": "Refused whoever asks, before any body is read (WP-2.3): a peer session is bound to one TLS connection and runs on the `permguard.host.v1.IdentityService/PeerChannel` stream only, never as separate requests.",
+        "responses": {
+          "503": {
+            "description": "Always: peer sessions run on the `PeerChannel` stream (`peer_sessions_unserveable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "the session messages travel as frames of `IdentityService/PeerChannel`, never as one rpc each"
       }
     },
     "/host/v1/grants": {
@@ -1479,7 +1521,7 @@
               "integer",
               "null"
             ],
-            "description": "The ring epoch; `null` until the ring bindings carry one (WP-2.3).",
+            "description": "The ring epoch; `null` until the ring bindings carry one (WP-3.1).",
             "x-grpc-field": "epoch"
           },
           "digest": {
@@ -1492,7 +1534,7 @@
               "string",
               "null"
             ],
-            "description": "The signed binding of this ring to the Host identity; `null` until WP-2.3.",
+            "description": "The signed binding of this ring to the Host identity; `null` until WP-3.1.",
             "x-grpc-field": "binding"
           },
           "cache_max_age": {
@@ -1680,6 +1722,38 @@
         "description": "The assurance block (WP-2.8): the profile in force, how it is enforced, the higher controls added and the relaxations in force; the same block the process discovery document publishes.",
         "x-grpc-message": "permguard.host.v1.Assurance"
       },
+      "PeerSessions": {
+        "type": "object",
+        "properties": {
+          "served": {
+            "type": "boolean",
+            "description": "Whether the `PeerChannel` serves peer Host sessions on this listener.",
+            "x-grpc-field": "served"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "no_listener",
+              "disabled",
+              "no_client_certificate",
+              "tls_1_2_refused",
+              null
+            ],
+            "description": "Why not (`no_listener`, `disabled`, `no_client_certificate`), or the limit sessions are served under (`tls_1_2_refused`: a connection at TLS 1.2 gets none); `null` when there is nothing to say.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "served",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Whether the listener serves peer Host sessions (WP-2.3): only with mutual TLS, end to end, as `admin.peer_sessions` states; a deployment behind a TLS-terminating proxy or sidecar states `disabled`.",
+        "x-grpc-message": "permguard.host.v1.PeerSessions"
+      },
       "HostStatus": {
         "type": "object",
         "properties": {
@@ -1727,6 +1801,10 @@
           "assurance": {
             "$ref": "#/components/schemas/Assurance",
             "x-grpc-field": "assurance"
+          },
+          "peer_sessions": {
+            "$ref": "#/components/schemas/PeerSessions",
+            "x-grpc-field": "peer_sessions"
           }
         },
         "required": [
@@ -1735,7 +1813,8 @@
           "state",
           "degraded",
           "components",
-          "assurance"
+          "assurance",
+          "peer_sessions"
         ],
         "additionalProperties": false,
         "description": "What `GET /host/v1/status` answers.",
@@ -1982,12 +2061,12 @@
     },
     {
       "message": "permguard.host.v1.ListRingBindingsRequest",
-      "note": "an empty request; the bindings are shaped by WP-2.3",
+      "note": "an empty request; the bindings are shaped by WP-3.1",
       "fields": []
     },
     {
       "message": "permguard.host.v1.ListRingBindingsResponse",
-      "note": "empty until WP-2.3 defines the signed bindings; the rpc answers `not_served_yet`",
+      "note": "empty until WP-3.1 defines the signed bindings; the rpc answers `not_served_yet`",
       "fields": []
     },
     {
@@ -2009,6 +2088,31 @@
       "message": "permguard.host.v1.ListConfigRevisionsRequest",
       "note": "an empty request",
       "fields": []
+    },
+    {
+      "message": "permguard.host.v1.PeerFrame",
+      "note": "a frame of the peer channel: each member the canonical CBOR bytes `contracts/cbor/session.json` defines, never a REST body",
+      "fields": [
+        "identity",
+        "hello",
+        "challenge",
+        "proof",
+        "task",
+        "refusal"
+      ]
+    },
+    {
+      "message": "permguard.host.v1.PeerRefusal",
+      "note": "the code a peer channel refuses with, inside a frame",
+      "fields": [
+        "code"
+      ]
+    }
+  ],
+  "x-grpc-unmapped-rpcs": [
+    {
+      "rpc": "permguard.host.v1.IdentityService/PeerChannel",
+      "note": "peer Host sessions (WP-2.3): one bidirectional stream bound to one TLS connection; REST refuses `sessions/hello` and `sessions/prove`, its frames are `contracts/cbor/session.json`"
     }
   ]
 }

@@ -223,6 +223,194 @@ impl fmt::Display for AllowedPeer {
     }
 }
 
+/// The RFC 9266 `tls-exporter` channel binding of one TLS 1.3 connection (WP-2.3):
+/// `TLS-Exporter("EXPORTER-Channel-Binding", "", 32)`, computed by whatever terminated that
+/// connection and handed to every request on it. A peer Host session signs it, so a proof made on
+/// one connection never verifies on another; it is never read from a request, a header or a
+/// frame, which is what makes a forwarded value no substitute.
+///
+/// One proof exchange authenticates one connection: the first session [`ChannelBinding::claim`]s
+/// the binding, and every request of the connection shares that claim.
+#[derive(Clone)]
+pub struct ChannelBinding {
+    exporter: [u8; 32],
+    claimed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ChannelBinding {
+    /// The binding of a connection whose exporter is `exporter`, not yet claimed.
+    pub fn new(exporter: [u8; 32]) -> Self {
+        Self {
+            exporter,
+            claimed: std::sync::Arc::default(),
+        }
+    }
+
+    /// The exporter value.
+    pub fn exporter(&self) -> &[u8; 32] {
+        &self.exporter
+    }
+
+    /// Claims the binding for one proof exchange: `true` the first time on this connection,
+    /// `false` ever after.
+    pub fn claim(&self) -> bool {
+        !self.claimed.swap(true, std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl PartialEq for ChannelBinding {
+    fn eq(&self, other: &Self) -> bool {
+        self.exporter == other.exporter
+    }
+}
+
+impl Eq for ChannelBinding {}
+
+impl fmt::Debug for ChannelBinding {
+    /// Keyed by the connection's secrets: never written out.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ChannelBinding(..)")
+    }
+}
+
+/// One `host.peers[]` entry (WP-2.3): a peer Host this one opens sessions with, by its `host_id`
+/// and its first identity fingerprint, pinned out of band. Written `<host_id> sha256:<hex>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinnedPeer {
+    host_id: [u8; 16],
+    fingerprint: String,
+}
+
+impl PinnedPeer {
+    /// The peer's `host_id`.
+    pub fn host_id(&self) -> [u8; 16] {
+        self.host_id
+    }
+
+    /// The peer's first identity fingerprint, `sha256:<hex>`.
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+}
+
+impl FromStr for PinnedPeer {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        let Some((host_id, fingerprint)) = value.trim().split_once(char::is_whitespace) else {
+            bail!("a pinned peer is `<host_id> sha256:<hex>`");
+        };
+        let hex: String = host_id.chars().filter(|c| *c != '-').collect();
+        let canonical = host_id.len() == 36
+            && [8, 13, 18, 23]
+                .iter()
+                .all(|at| host_id.as_bytes().get(*at) == Some(&b'-'))
+            && hex.len() == 32
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+        let mut bytes = [0u8; 16];
+        for (at, byte) in bytes.iter_mut().enumerate() {
+            *byte = canonical
+                .then(|| u8::from_str_radix(hex.get(at * 2..at * 2 + 2)?, 16).ok())
+                .flatten()
+                .unwrap_or_default();
+        }
+        // A UUIDv7: version 7, the RFC 9562 variant.
+        if !canonical || bytes[6] >> 4 != 7 || bytes[8] >> 6 != 0b10 {
+            bail!("`{host_id}` is not a Host id: a lowercase UUIDv7");
+        }
+        let fingerprint = fingerprint.trim();
+        let digest = fingerprint.strip_prefix("sha256:").unwrap_or_default();
+        if digest.len() != 64
+            || !digest
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        {
+            bail!(
+                "`{fingerprint}` is not an identity fingerprint: `sha256:` and 64 lowercase hex \
+                 characters"
+            );
+        }
+        Ok(Self {
+            host_id: bytes,
+            fingerprint: fingerprint.to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for PinnedPeer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let hex: String = self.host_id.iter().map(|b| format!("{b:02x}")).collect();
+        write!(
+            formatter,
+            "{}-{}-{}-{}-{} {}",
+            &hex[..8],
+            &hex[8..12],
+            &hex[12..16],
+            &hex[16..20],
+            &hex[20..],
+            self.fingerprint
+        )
+    }
+}
+
+/// Whether the Host listener serves peer Host sessions, as the deployment states it with
+/// `admin.peer_sessions` (WP-2.3). A TLS-terminating proxy or sidecar is invisible to the
+/// process, so a deployment behind one says `disabled`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerSessions {
+    /// The listener's TLS connections are end to end with the peers.
+    EndToEnd,
+    /// Peer sessions are not served.
+    Disabled,
+}
+
+impl PeerSessions {
+    /// The word the setting is written as.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EndToEnd => "end_to_end",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
+impl FromStr for PeerSessions {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
+        match value.trim() {
+            "end_to_end" => Ok(Self::EndToEnd),
+            "disabled" => Ok(Self::Disabled),
+            other => bail!("`{other}` is not a peer-session mode: `end_to_end` or `disabled`"),
+        }
+    }
+}
+
+/// What discovery publishes about peer sessions: whether they are served and, when they are not
+/// or are with a limit, why (WP-2.3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct PeerSessionsReport {
+    /// Whether the PeerChannel serves sessions on this listener.
+    pub served: bool,
+    /// Why not, or the limit it serves them under.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
+}
+
+impl PeerSessionsReport {
+    /// No Host listener is configured.
+    pub const NO_LISTENER: &'static str = "no_listener";
+    /// `admin.peer_sessions` is `disabled`.
+    pub const DISABLED: &'static str = "disabled";
+    /// The listener demands no client certificate.
+    pub const NO_CLIENT_CERTIFICATE: &'static str = "no_client_certificate";
+    /// Served, and a connection the listener accepts at TLS 1.2 is refused a session: the
+    /// RFC 9266 exporter is used only on TLS 1.3.
+    pub const TLS_1_2_REFUSED: &'static str = "tls_1_2_refused";
+}
+
 /// Rejects the entry that names nothing at all.
 fn non_empty(value: &str) -> Result<String> {
     let value = value.trim();

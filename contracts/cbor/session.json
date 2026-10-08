@@ -1,0 +1,69 @@
+{
+  "artifact": "Peer Host session messages (WP-2.3): the presentation, hello and challenge carried as PeerChannel frames, the transcript each proof signs as a COSE_Sign1 permguard.host.proof.v1 of the profile in crates/permguard-objects/src/cose.rs, and a verifier's seen epoch of a peer",
+  "authority": "1-architecture/2-architecture-server-host-identity.md#proof-of-possession (members), 6-contracts/8-contract-host-api.md#transport-binding, owner decisions of 2026-10-08 (labels, types, cardinalities, the signer role, hello's operation); crates/permguard-host/src/session/record.rs and peers.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "presentation": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "document", "type": "bytes", "occurs": "required", "note": "the sender's identity document, a COSE_Sign1 of identity.json's identity_document" },
+        { "label": 2, "name": "successions", "type": "array<bytes>", "occurs": "required", "note": "every succession record in order, each a COSE_Sign1 of identity.json's succession_record; at most 1024" },
+        { "label": 3, "name": "first_public_key", "type": "bytes", "occurs": "required", "note": "the epoch-1 public key, the suite's raw encoding; its fingerprint is what a pin names" }
+      ]
+    },
+    "hello": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "version", "type": "uint", "occurs": "required", "note": "1" },
+        { "label": 2, "name": "host", "type": "bytes", "occurs": "required", "note": "the initiator's host_id, 16 bytes, a UUIDv7" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the initiator's identity epoch, from 1; the one its presentation verifies at" },
+        { "label": 4, "name": "declared_assurance", "type": "text", "occurs": "required", "note": "development, production or regulated: a declaration for compatibility and audit, never attestation" },
+        { "label": 5, "name": "nonce", "type": "bytes", "occurs": "required", "note": "nonce_A, exactly 16 bytes from the OS CSPRNG" },
+        { "label": 6, "name": "operation", "type": "text", "occurs": "required", "note": "a closed registry: enroll or task" },
+        { "label": 7, "name": "membership_id", "type": "text", "occurs": "optional", "note": "1 to 128 bytes; absent is omitted, never null" },
+        { "label": 8, "name": "task", "type": "text", "occurs": "optional", "note": "1 to 128 bytes; absent is omitted, never null" }
+      ]
+    },
+    "challenge": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host", "type": "bytes", "occurs": "required", "note": "the responder's host_id, 16 bytes, a UUIDv7" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required", "note": "the responder's identity epoch, from 1" },
+        { "label": 3, "name": "declared_assurance", "type": "text", "occurs": "required", "note": "development, production or regulated" },
+        { "label": 4, "name": "nonce", "type": "bytes", "occurs": "required", "note": "nonce_B, exactly 16 bytes from the OS CSPRNG, single-use on its channel" },
+        { "label": 5, "name": "expires", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC: issue time plus 60; no proof is accepted after it" }
+      ]
+    },
+    "transcript": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "protocol", "type": "text", "occurs": "required", "note": "permguard.host.session.v1" },
+        { "label": 2, "name": "initiator_host", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 3, "name": "responder_host", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 4, "name": "initiator_epoch", "type": "uint", "occurs": "required", "note": "from the hello" },
+        { "label": 5, "name": "responder_epoch", "type": "uint", "occurs": "required", "note": "from the challenge" },
+        { "label": 6, "name": "nonce_a", "type": "bytes", "occurs": "required", "note": "16 bytes, the hello's nonce" },
+        { "label": 7, "name": "nonce_b", "type": "bytes", "occurs": "required", "note": "16 bytes, the challenge's nonce" },
+        { "label": 8, "name": "membership_id", "type": "text", "occurs": "optional", "note": "the hello's, omitted when it has none" },
+        { "label": 9, "name": "task", "type": "text", "occurs": "optional", "note": "the hello's, omitted when it has none" },
+        { "label": 10, "name": "operation", "type": "text", "occurs": "required", "note": "the hello's operation" },
+        { "label": 11, "name": "expires_at", "type": "uint", "occurs": "required", "note": "the challenge's expires" },
+        { "label": 12, "name": "tls_exporter", "type": "bytes", "occurs": "required", "note": "32 bytes, TLS-Exporter(\"EXPORTER-Channel-Binding\", \"\", 32) of the signer's own TLS 1.3 connection (RFC 9266); never carried by any frame" },
+        { "label": 13, "name": "hello_digest", "type": "digest", "occurs": "required", "note": "sha256 over the domain permguard.host.session.hello.v1 and a newline, then the hello's exact bytes" },
+        { "label": 14, "name": "challenge_digest", "type": "digest", "occurs": "required", "note": "sha256 over the domain permguard.host.session.challenge.v1 and a newline, then the challenge's exact bytes" },
+        { "label": 15, "name": "signer", "type": "text", "occurs": "required", "note": "initiator or responder: the role of the Host whose proof signs it; the two proofs differ in this member alone" }
+      ]
+    },
+    "seen_peer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "the peer's host_id, 16 bytes; the file is host/peers/<host_id>.cbor" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required", "note": "the highest epoch a session with the peer was established at" },
+        { "label": 3, "name": "fingerprint", "type": "text", "occurs": "required", "note": "sha256:<hex> of the peer's key at that epoch" },
+        { "label": 4, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["presentation", "hello", "challenge", "transcript", "seen_peer"]
+}

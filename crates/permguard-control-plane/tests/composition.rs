@@ -197,3 +197,36 @@ fn a_clock_anomaly_stops_the_control_planes_head_statements() {
     wall.jump(3_600);
     sign(&statement).expect("the wall clock caught up");
 }
+
+/// WP-2.3: only the Host identity signs a session proof, an identity document, a succession or
+/// a ring binding; the control plane's ring declaring one as its artifact is refused, and its own
+/// declaration names none.
+#[test]
+fn the_control_plane_cannot_declare_what_only_the_host_identity_signs() {
+    use permguard_host::composition::{Artifact, HOST_RESERVED};
+
+    struct ForgedProof;
+
+    impl Artifact for ForgedProof {
+        const TYPE: &'static str = permguard_core::domains::protected::HOST_PROOF;
+        const RING: permguard_host::composition::RingId =
+            permguard_host::composition::CONTROL_ATTEST;
+        const TIME_SENSITIVE: bool = false;
+    }
+
+    let Err(refused) = host().register(Declaration::new("control").signs::<ForgedProof>(), None)
+    else {
+        panic!("a Host proof is no plane's artifact");
+    };
+    assert!(
+        matches!(&refused, CompositionError::Reserved { artifact, .. } if artifact == ForgedProof::TYPE),
+        "{refused}"
+    );
+    assert!(HOST_RESERVED.contains(&permguard_core::domains::protected::HOST_RING_BINDING));
+    host()
+        .register(
+            permguard_control_plane::module().declaration(&config()),
+            None,
+        )
+        .expect("the control plane declares nothing reserved");
+}

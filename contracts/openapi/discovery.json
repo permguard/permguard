@@ -255,11 +255,16 @@
           "assurance": {
             "$ref": "#/components/schemas/Assurance",
             "description": "The Host's assurance profile, enforced locally (WP-2.8)."
+          },
+          "peer_sessions": {
+            "$ref": "#/components/schemas/PeerSessions",
+            "description": "Whether the Host listener serves peer Host sessions, and why not (WP-2.3)."
           }
         },
         "required": [
           "planes",
-          "assurance"
+          "assurance",
+          "peer_sessions"
         ],
         "additionalProperties": false,
         "description": "The process-level registry served on the telemetry listener.",
@@ -367,6 +372,32 @@
         "description": "The assurance block `{profile, enforcement: local, added_controls[], relaxations[]}` (7-architecture-security.md#assurance-profiles); `GET /host/v1/status` carries the same block.",
         "x-grpc-message": null,
         "x-grpc-note": "The process-level registry has no gRPC counterpart; the same block travels over gRPC as `permguard.host.v1.Assurance` inside `GetStatusResponse`."
+      },
+      "PeerSessions": {
+        "type": "object",
+        "properties": {
+          "served": {
+            "type": "boolean",
+            "description": "Whether the Host listener's `PeerChannel` serves peer Host sessions."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no_listener",
+              "disabled",
+              "no_client_certificate",
+              "tls_1_2_refused"
+            ],
+            "description": "Why not (`no_listener`, `disabled`, `no_client_certificate`), or the limit sessions are served under (`tls_1_2_refused`); absent when there is nothing to say. A deployment behind a TLS-terminating proxy or sidecar states `admin.peer_sessions: disabled`."
+          }
+        },
+        "required": [
+          "served"
+        ],
+        "additionalProperties": false,
+        "description": "Whether peer Host sessions are served (WP-2.3): only on a mutual-TLS Host listener whose connections are end to end, on TLS 1.3; `GET /host/v1/status` carries the same block.",
+        "x-grpc-message": null,
+        "x-grpc-note": "The process-level registry has no gRPC counterpart; the same block travels over gRPC as `permguard.host.v1.PeerSessions` inside `GetStatusResponse`."
       }
     }
   },

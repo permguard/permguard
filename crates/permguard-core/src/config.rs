@@ -16,7 +16,7 @@ use crate::config_section::{AnyConfigSection, ConfigSection};
 use crate::keys::KEY_SET_MAX_AGE;
 use crate::limits::{Limits, PeerBlock};
 use crate::logging::{LogFormat, LogLevel};
-use crate::peer::AllowedPeer;
+use crate::peer::{AllowedPeer, PeerSessions, PeerSessionsReport, PinnedPeer};
 use crate::realm::{
     EXCHANGE_ON_UNMATCHED_SCOPE_REJECT, EXCHANGE_SOURCE_FORMAT_JWT,
     EXCHANGE_SOURCE_OAUTH_ACCESS_TOKEN, ExchangeProfileConfig, RealmConfig, RealmInput,
@@ -105,6 +105,10 @@ pub const SETTING_HOST_IDENTITY_SUITE: &str = "PERMGUARD_HOST_IDENTITY_SUITE";
 /// the volume and required from the `production` profile up (WP-2.2).
 pub const SETTING_HOST_IDENTITY_WITNESS: &str = "PERMGUARD_HOST_IDENTITY_WITNESS";
 
+/// Runtime setting key for the peer Hosts this one opens sessions with (WP-2.3): one
+/// `<host_id> sha256:<first fingerprint>` per line, each pinned out of band.
+pub const SETTING_HOST_PEERS: &str = "PERMGUARD_HOST_PEERS";
+
 /// The Server Host role port every deployment answers on unless told otherwise.
 ///
 /// The Host surface is the one interface every Permguard process exposes identically —
@@ -187,6 +191,11 @@ pub const SETTING_ADMIN_TLS_MIN_VERSION: &str = "PERMGUARD_ADMIN_TLS_MIN_VERSION
 /// rather than a comma because a distinguished name contains commas, and a separator that appears
 /// inside the values it separates is a parser waiting to split somebody's identity in half.
 pub const SETTING_ADMIN_ALLOW: &str = "PERMGUARD_ADMIN_ALLOW";
+
+/// Runtime setting key for whether the Host listener serves peer Host sessions (WP-2.3):
+/// `end_to_end`, the default on a mutual-TLS listener, or `disabled`, the default otherwise and
+/// what a deployment behind a TLS-terminating proxy or sidecar states.
+pub const SETTING_ADMIN_PEER_SESSIONS: &str = "PERMGUARD_ADMIN_PEER_SESSIONS";
 
 /// Certificate chain the telemetry surface presents.
 pub const SETTING_TELEMETRY_TLS_CERT: &str = "PERMGUARD_TELEMETRY_TLS_CERT";
@@ -1067,6 +1076,8 @@ pub struct Config {
     admin_advertised_url: Option<String>,
     host_identity_suite: Option<String>,
     host_identity_witness: Option<String>,
+    host_peers: Vec<PinnedPeer>,
+    admin_peer_sessions: Option<PeerSessions>,
     /// Relaxations the Host's own state imposes, added at start (WP-2.2).
     host_relaxations: Vec<crate::assurance::Relaxation>,
     admin_addr: Option<String>,
@@ -1237,6 +1248,8 @@ impl Default for Config {
             admin_advertised_url: None,
             host_identity_suite: None,
             host_identity_witness: None,
+            host_peers: Vec::new(),
+            admin_peer_sessions: None,
             host_relaxations: Vec::new(),
             admin_addr: None,
             admin_allow: Vec::new(),
@@ -1881,6 +1894,20 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
+        let mut pinned = BTreeSet::new();
+        for peer in &self.host_peers {
+            if !pinned.insert(peer.host_id()) {
+                bail!("`host.peers` pins the Host `{peer}` twice: one pin per Host");
+            }
+        }
+        if self.admin_peer_sessions == Some(PeerSessions::EndToEnd)
+            && !self.admin_tls.as_ref().is_some_and(TlsSettings::is_mutual)
+        {
+            bail!(
+                "`admin.peer_sessions` is `end_to_end` and the Host listener demands no client \
+                 certificate: peer sessions need `admin.tls.client_ca`"
+            );
+        }
         Ok(())
     }
 
@@ -2496,6 +2523,46 @@ produce: use `EdDSA` or `ES256`"
     /// The external witness of the Host identity, when stated (WP-2.2).
     pub fn host_identity_witness(&self) -> Option<&str> {
         self.host_identity_witness.as_deref()
+    }
+
+    /// The peer Hosts this one opens sessions with, pinned by their first fingerprint (WP-2.3).
+    pub fn host_peers(&self) -> &[PinnedPeer] {
+        &self.host_peers
+    }
+
+    /// Whether the Host listener serves peer sessions, as stated or by default: `end_to_end` on
+    /// a mutual-TLS listener, `disabled` otherwise (WP-2.3).
+    pub fn admin_peer_sessions(&self) -> PeerSessions {
+        self.admin_peer_sessions.unwrap_or_else(|| {
+            if self.admin_tls.as_ref().is_some_and(TlsSettings::is_mutual) {
+                PeerSessions::EndToEnd
+            } else {
+                PeerSessions::Disabled
+            }
+        })
+    }
+
+    /// What discovery says about peer sessions: served only on a Host listener with mutual TLS
+    /// whose deployment states its connections end to end, and then on TLS 1.3 only (WP-2.3).
+    pub fn peer_sessions(&self) -> PeerSessionsReport {
+        let refused = |reason| PeerSessionsReport {
+            served: false,
+            reason: Some(reason),
+        };
+        let Some(tls) = self.admin_addr().and(self.admin_tls.as_ref()) else {
+            return refused(PeerSessionsReport::NO_LISTENER);
+        };
+        if self.admin_peer_sessions() == PeerSessions::Disabled {
+            return refused(PeerSessionsReport::DISABLED);
+        }
+        if !tls.is_mutual() {
+            return refused(PeerSessionsReport::NO_CLIENT_CERTIFICATE);
+        }
+        PeerSessionsReport {
+            served: true,
+            reason: (tls.min_version() < crate::tls::TlsVersion::V1_3)
+                .then_some(PeerSessionsReport::TLS_1_2_REFUSED),
+        }
     }
 
     /// Where the Host listener is reached from outside, trimmed of a trailing slash, when stated.
@@ -3421,6 +3488,8 @@ produce: use `EdDSA` or `ES256`"
             SETTING_ADMIN_ADVERTISED_URL => self.admin_advertised_url.clone(),
             SETTING_HOST_IDENTITY_SUITE => self.host_identity_suite.clone(),
             SETTING_HOST_IDENTITY_WITNESS => self.host_identity_witness.clone(),
+            SETTING_HOST_PEERS => lines(self.host_peers.iter().map(ToString::to_string)),
+            SETTING_ADMIN_PEER_SESSIONS => Some(self.admin_peer_sessions().as_str().to_owned()),
             SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
             SETTING_PUBLIC_DISCLOSE_BUILD => b(self.disclose_build),
             SETTING_PUBLIC_ERROR_DETAIL => Some(self.error_detail().as_str().to_owned()),
@@ -3778,6 +3847,24 @@ produce: use `EdDSA` or `ES256`"
 
         if let Some(value) = settings.get(SETTING_ADMIN_ADDR) {
             self.admin_addr = Some(value.clone());
+        }
+
+        if let Some(value) = settings.get(SETTING_HOST_PEERS) {
+            self.host_peers = value
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::parse)
+                .collect::<Result<_>>()
+                .with_context(|| format!("reading {SETTING_HOST_PEERS}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_ADMIN_PEER_SESSIONS) {
+            self.admin_peer_sessions = Some(
+                value
+                    .parse()
+                    .with_context(|| format!("reading {SETTING_ADMIN_PEER_SESSIONS}"))?,
+            );
         }
 
         if let Some(value) = settings.get(SETTING_PUBLIC_DISCLOSE_BUILD) {
@@ -4839,6 +4926,8 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
 const CORE_SETTINGS: &[&str] = &[
     SETTING_HOST_IDENTITY_SUITE,
     SETTING_HOST_IDENTITY_WITNESS,
+    SETTING_HOST_PEERS,
+    SETTING_ADMIN_PEER_SESSIONS,
     SETTING_ADMIN_ADDR,
     SETTING_ADMIN_ADVERTISED_URL,
     SETTING_ADMIN_ALLOW,

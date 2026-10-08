@@ -86,6 +86,8 @@ impl Service for HostApiService {
             .limits(context.config().limits())
             .metrics(context.metrics().clone())
             .authenticator(context.authenticator())
+            // The peer channel is one long-lived stream: bounded per frame, not in total.
+            .streaming([super::peer::channel_path()])
             .start()
             .await
             .context("starting the Host listener")?;

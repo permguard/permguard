@@ -23,12 +23,13 @@ use serde_norway::Value;
 use crate::config::experimental_setting_key;
 use crate::config::{
     DEFAULT_TELEMETRY_ADDR, SETTING_ADMIN_ADDR, SETTING_ADMIN_ADVERTISED_URL, SETTING_ADMIN_ALLOW,
-    SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA, SETTING_ADMIN_TLS_CRL,
-    SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION, SETTING_ASSURANCE_ADDED_CONTROLS,
-    SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_DIRECTORY, SETTING_AUDIT_PSEUDONYM_ENABLED,
-    SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS,
-    SETTING_AUDIT_RETENTION, SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
-    SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_ISSUER,
+    SETTING_ADMIN_PEER_SESSIONS, SETTING_ADMIN_TLS_CERT, SETTING_ADMIN_TLS_CLIENT_CA,
+    SETTING_ADMIN_TLS_CRL, SETTING_ADMIN_TLS_KEY, SETTING_ADMIN_TLS_MIN_VERSION,
+    SETTING_ASSURANCE_ADDED_CONTROLS, SETTING_ASSURANCE_PROFILE, SETTING_AUDIT_DIRECTORY,
+    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
+    SETTING_AUDIT_PSEUDONYM_KEY_VERSION, SETTING_AUDIT_REFUSALS, SETTING_AUDIT_RETENTION,
+    SETTING_AUDIT_SINK, SETTING_AUTOGENERATE, SETTING_DEVELOPMENT_MODE,
+    SETTING_HOST_IDENTITY_SUITE, SETTING_HOST_IDENTITY_WITNESS, SETTING_HOST_PEERS, SETTING_ISSUER,
     SETTING_KEYS_DIRECTORY, SETTING_KEYS_ENABLED, SETTING_KEYS_MAINTENANCE_INTERVAL,
     SETTING_KEYS_PUBLISH_AHEAD, SETTING_KEYS_RETAIN, SETTING_KEYS_ROTATE_EVERY,
     SETTING_LIMITS_BODY_BYTES, SETTING_LIMITS_CONCURRENT_REQUESTS,
@@ -701,6 +702,14 @@ struct IdentitySection {
     witness: Option<String>,
 }
 
+/// One `host.peers[]` entry (WP-2.3): a peer Host pinned by its first identity fingerprint.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PeerPinSection {
+    host_id: String,
+    fingerprint: String,
+}
+
 /// Listener address for the telemetry surface.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -713,6 +722,9 @@ struct TelemetrySection {
     /// The Host identity: its key's suite and its external witness (WP-2.2).
     #[serde(default)]
     identity: IdentitySection,
+    /// The peer Hosts this one opens sessions with (WP-2.3).
+    #[serde(default)]
+    peers: Vec<PeerPinSection>,
     #[serde(default)]
     tls: TelemetryTlsSection,
     /// OTLP trace export: off unless the file says otherwise.
@@ -801,6 +813,9 @@ struct AdminSection {
     /// YAML and from the environment as lines without either form being the special case.
     #[serde(default)]
     allow: Vec<String>,
+    /// Whether the listener serves peer Host sessions: `end_to_end` or `disabled` (WP-2.3).
+    #[serde(default)]
+    peer_sessions: Option<String>,
 }
 
 /// How much the build says, and in what shape.
@@ -1068,6 +1083,14 @@ impl ConfigFile {
         // A list is one setting whose value happens to have lines in it, so it travels through the
         // same precedence layers as everything else instead of needing a mechanism of its own.
         let allow = (!self.admin.allow.is_empty()).then(|| self.admin.allow.join("\n"));
+        let peers = (!self.host.peers.is_empty()).then(|| {
+            self.host
+                .peers
+                .iter()
+                .map(|peer| format!("{} {}", peer.host_id, peer.fingerprint))
+                .collect::<Vec<_>>()
+                .join("\n")
+        });
         let added_controls = (!self.assurance.added_controls.is_empty())
             .then(|| self.assurance.added_controls.join(","));
         let public_allow = self
@@ -1090,6 +1113,11 @@ impl ConfigFile {
             (SETTING_DEVELOPMENT_MODE, self.development_mode.as_ref()),
             (SETTING_ISSUER, self.public.url.as_ref()),
             (SETTING_ADMIN_ALLOW, allow.as_ref()),
+            (SETTING_HOST_PEERS, peers.as_ref()),
+            (
+                SETTING_ADMIN_PEER_SESSIONS,
+                self.admin.peer_sessions.as_ref(),
+            ),
             (SETTING_TLS_RELOAD, self.tls.reload.as_ref()),
             (
                 SETTING_TLS_RELOAD_INTERVAL,
@@ -1865,6 +1893,34 @@ mod tests {
         )
         .expect("the file parses");
         assert!(unknown.host_auth().is_err(), "an unregistered operation");
+    }
+
+    #[test]
+    fn test_the_pinned_peers_and_the_peer_session_mode_reach_their_settings() {
+        // WP-2.3: `host.peers[]` as lines `<host_id> <fingerprint>`, `admin.peer_sessions` as is.
+        let settings = settings_of(
+            "host:\n  peers:\n    - host_id: 0198f2aa-0000-7000-8000-000000000001\n      fingerprint: \"sha256:aa\"\n    - host_id: 0198f2aa-0000-7000-8000-000000000002\n      fingerprint: \"sha256:bb\"\nadmin:\n  peer_sessions: disabled\n",
+        );
+        let find = |key: &str| {
+            settings
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.clone())
+        };
+        assert_eq!(
+            find(SETTING_HOST_PEERS).as_deref(),
+            Some(
+                "0198f2aa-0000-7000-8000-000000000001 sha256:aa\n0198f2aa-0000-7000-8000-000000000002 sha256:bb"
+            )
+        );
+        assert_eq!(
+            find(SETTING_ADMIN_PEER_SESSIONS).as_deref(),
+            Some("disabled")
+        );
+        assert!(
+            ConfigFile::parse("host:\n  peers:\n    - host_id: x\n      key: y\n").is_err(),
+            "a pin has exactly its two members"
+        );
     }
 
     #[test]

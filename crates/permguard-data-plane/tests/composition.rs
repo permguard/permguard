@@ -230,3 +230,37 @@ fn a_clock_anomaly_leaves_the_data_planes_evidence_signing() {
     }
     assert!(time.trusted_now().is_err(), "the anomaly is still in force");
 }
+
+/// WP-2.3: only the Host identity signs a session proof, an identity document, a succession or
+/// a ring binding; the data plane's ring declaring one as its artifact is refused, and its own
+/// declaration names none.
+#[test]
+fn the_data_plane_cannot_declare_what_only_the_host_identity_signs() {
+    use permguard_host::composition::{Artifact, CompositionError, Declaration, HOST_RESERVED};
+
+    struct ForgedBinding;
+
+    impl Artifact for ForgedBinding {
+        const TYPE: &'static str = permguard_core::domains::protected::HOST_RING_BINDING;
+        const RING: permguard_host::composition::RingId = DATA_ATTEST;
+        const TIME_SENSITIVE: bool = false;
+    }
+
+    let Err(refused) = host().register(Declaration::new("data").signs::<ForgedBinding>(), None)
+    else {
+        panic!("a ring binding is no plane's artifact");
+    };
+    assert!(
+        matches!(&refused, CompositionError::Reserved { artifact, .. } if artifact == ForgedBinding::TYPE),
+        "{refused}"
+    );
+    for reserved in HOST_RESERVED {
+        assert!(reserved.starts_with("permguard.host."), "{reserved}");
+    }
+    host()
+        .register(
+            permguard_data_plane::module().declaration(&config(&[])),
+            None,
+        )
+        .expect("the data plane declares nothing reserved");
+}

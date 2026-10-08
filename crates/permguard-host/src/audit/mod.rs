@@ -151,6 +151,34 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
     action("host.identity.provisioned", Class::Security, HOST),
     mutation("host.identity.rotated", HOST),
+    // Peer Host sessions (WP-2.3): each one established or refused.
+    ActionSchema {
+        action: "host.session.established",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("role", FactType::Text(16)),
+            ("epoch", FactType::Uint),
+            ("operation", FactType::Text(16)),
+            ("declared_assurance", FactType::Text(16)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.session.refused",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("role", FactType::Text(16)),
+            ("code", FactType::Text(64)),
+            ("reason", FactType::Text(512)),
+            ("epoch", FactType::Uint),
+            ("operation", FactType::Text(16)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
     // The Control Plane: catalog, NOTP and its sweep.
     action("zone.created", Class::Security, CONTROL),
     action("zone.renamed", Class::Security, CONTROL),

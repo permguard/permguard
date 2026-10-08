@@ -89,6 +89,18 @@ is cut.
   `GET /host/v1/identity` answers the document, the successions, the epoch-1 public key and the protocol versions under `identity.read`; `POST /host/v1/identity/rotate` rotates the key under the new operation `identity.admin`, as a security mutation; `permguard host identity show` and `rotate` do the same offline.
   Audit records now name the identity's `host_id` and `boot_id`; trails written before keep the volume id they named.
 
+- **Peer Host sessions on `permguard.host.v1.IdentityService/PeerChannel`.**
+  Two Hosts authenticate each other with a session proof bound to the TLS connection it runs on: each side presents its identity, the initiator sends `hello`, the responder a `challenge`, and each signs the transcript with its identity key.
+  A session runs on one bidirectional gRPC stream over one TLS 1.3 connection with mutual TLS; a connection that changes between phases, or a channel relayed through a TLS-terminating proxy, fails the session.
+  One connection carries one session; the stream stays open, each frame bounded to 512 KiB, until the peer closes it or it stays silent for 15 minutes.
+  `POST /host/v1/sessions/hello` and `/prove` answer `503 peer_sessions_unserveable`: peer sessions are never separate requests.
+  The peers a Host trusts are pinned in `host.peers` (`PERMGUARD_HOST_PEERS`), each `{host_id, fingerprint}` with the first fingerprint `permguard host identity show` prints; a peer no pin names is refused.
+  The highest epoch a session was established at is kept per peer in `host/peers/<host_id>.cbor` on the volume: a peer presenting a lower epoch, or another key for an epoch already seen, is refused.
+  `admin.peer_sessions` (`PERMGUARD_ADMIN_PEER_SESSIONS`) is `end_to_end`, the default on a listener with `admin.tls.client_ca`, or `disabled`, the default otherwise; a deployment behind a TLS-terminating proxy or sidecar states `disabled`.
+  `GET /host/v1/status` and `/.well-known/server-configuration` publish `peer_sessions: {served, reason}`.
+  Every session established or refused is a `host.session.established` or `host.session.refused` record in the security trail, and is counted in `permguard_host_peer_sessions_total`.
+  No operation uses a session yet: memberships and their tasks come later, and a task message on an established session answers `not_served_yet`.
+
 ### Changed
 
 - **A `production` deployment does not start until the custody providers land (WP-3.2).**

@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 12] = [
+const REGISTRIES: [&str; 13] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -48,6 +48,7 @@ const REGISTRIES: [&str; 12] = [
     "notp.json",
     "objects.json",
     "sealed-key.json",
+    "session.json",
 ];
 
 /// The one encoding every registry states.
@@ -756,6 +757,120 @@ fn identity_samples() -> Vec<Sample> {
     ]
 }
 
+fn session_samples() -> Vec<Sample> {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_host::session::peers::Seen;
+    use permguard_host::session::record::{
+        Challenge, Hello, Operation, Presentation, Role, Transcript, challenge_digest, hello_digest,
+    };
+
+    let hello = Hello {
+        version: 1,
+        host: HOST_ID,
+        epoch: 1,
+        declared_assurance: AssuranceProfile::Production,
+        nonce: [1; 16],
+        operation: Operation::Enroll,
+        membership_id: None,
+        task: None,
+    };
+    let scoped = Hello {
+        operation: Operation::Task,
+        membership_id: Some("m-1".to_owned()),
+        task: Some("replicate".to_owned()),
+        ..hello.clone()
+    };
+    let transcript = Transcript {
+        initiator_host: HOST_ID,
+        responder_host: ZONE_ID,
+        initiator_epoch: 1,
+        responder_epoch: 2,
+        nonce_a: [1; 16],
+        nonce_b: [2; 16],
+        membership_id: None,
+        task: None,
+        operation: Operation::Enroll,
+        expires_at: 1_800_000_060,
+        tls_exporter: [3; 32],
+        hello_digest: hello_digest(b"hello"),
+        challenge_digest: challenge_digest(b"challenge"),
+        signer: Role::Initiator,
+    };
+    let scoped_transcript = Transcript {
+        membership_id: Some("m-1".to_owned()),
+        task: Some("replicate".to_owned()),
+        operation: Operation::Task,
+        signer: Role::Responder,
+        ..transcript.clone()
+    };
+    let hellos =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Hello::decode(bytes)))) };
+    let transcripts =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Transcript::decode(bytes)))) };
+    vec![
+        sample(
+            "presentation",
+            Presentation {
+                document: vec![0x80],
+                successions: vec![vec![0x80], vec![0x80]],
+                first_public_key: vec![7; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Presentation::decode(bytes))
+            })),
+        ),
+        sample("hello", hello.encode().expect("encodes"), &[], hellos()),
+        sample(
+            "hello",
+            scoped.encode().expect("encodes"),
+            &["hello.membership_id", "hello.task"],
+            hellos(),
+        ),
+        sample(
+            "challenge",
+            Challenge {
+                host: ZONE_ID,
+                epoch: 2,
+                declared_assurance: AssuranceProfile::Regulated,
+                nonce: [2; 16],
+                expires: 1_800_000_060,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Challenge::decode(bytes)))),
+        ),
+        sample(
+            "transcript",
+            transcript.encode().expect("encodes"),
+            &[],
+            transcripts(),
+        ),
+        sample(
+            "transcript",
+            scoped_transcript.encode().expect("encodes"),
+            &["transcript.membership_id", "transcript.task"],
+            transcripts(),
+        ),
+        sample(
+            "seen_peer",
+            Seen {
+                host_id: HOST_ID,
+                epoch: 2,
+                fingerprint: format!("sha256:{}", "ab".repeat(32)),
+                at: 1_800_000_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Seen::decode(bytes)))),
+        ),
+    ]
+}
+
 fn mutation_samples() -> Vec<Sample> {
     use permguard_host::operations::journal::{
         Commit, Entry, Initiator, Intent, OperationId, RequestKey, decode_snapshot, encode_snapshot,
@@ -1250,6 +1365,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "audit.json" => audit_samples(),
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
+        "session.json" => session_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -1769,6 +1885,16 @@ fn test_identity_records_match_their_registry() {
 #[test]
 fn test_identity_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("identity.json");
+}
+
+#[test]
+fn test_session_messages_match_their_registry() {
+    assert_samples_match("session.json");
+}
+
+#[test]
+fn test_session_messages_refuse_unknown_labels() {
+    assert_unknown_labels_refused("session.json");
 }
 
 #[test]

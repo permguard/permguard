@@ -209,6 +209,120 @@ pub fn witness_of(volume: &Volume) -> Result<Option<String>, IdentityError> {
     )))
 }
 
+/// The most succession records a published identity may carry: a bound on the work a peer's
+/// presentation costs (WP-2.3), far above any real rotation history.
+pub const MAX_SUCCESSIONS: usize = 1024;
+
+/// A Host identity as another Host published it, verified (WP-2.3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Verified {
+    pub host_id: [u8; 16],
+    pub epoch: u64,
+    pub suite: Suite,
+    /// The current epoch's public key.
+    pub public_key: Vec<u8>,
+    /// The fingerprint of every epoch's key, epoch 1 first.
+    pub fingerprints: Vec<String>,
+    pub document: Document,
+}
+
+impl Verified {
+    /// The fingerprint of the epoch-1 key: what a pin names.
+    pub fn first_fingerprint(&self) -> &str {
+        self.fingerprints.first().map_or("", String::as_str)
+    }
+
+    /// The fingerprint of the current key.
+    pub fn fingerprint(&self) -> &str {
+        self.fingerprints.last().map_or("", String::as_str)
+    }
+}
+
+/// Verifies an identity another Host published: its epoch-1 public key, its succession records
+/// in order and its current document, as `GET /host/v1/identity` answers them. The chain is
+/// walked from the epoch-1 key, every record verified under the key of the epoch before; the
+/// document under the last. Nothing of the document is trusted before its signature: the suite
+/// it names is checked against the first key's length and pins every verification. The caller
+/// matches [`Verified::first_fingerprint`] to the pin it holds; without that match the result is
+/// descriptive, never authority.
+pub fn verify_published(
+    document: &[u8],
+    successions: &[Vec<u8>],
+    first_public_key: &[u8],
+) -> Result<Verified, IdentityError> {
+    if successions.len() > MAX_SUCCESSIONS {
+        return Err(corrupt("more succession records than any identity carries"));
+    }
+    let sign1 = Sign1::decode(document).map_err(corrupt)?;
+    let claimed = Document::decode(sign1.payload_unverified())?;
+    let suite = claimed.suite;
+    if first_public_key.len() != suite.public_key_len() {
+        return Err(corrupt(
+            "the epoch-1 public key is not a key of the document's suite",
+        ));
+    }
+    let mut key = PublicKey {
+        suite,
+        bytes: first_public_key.to_vec(),
+    };
+    let mut fingerprints = vec![key.fingerprint()];
+    let mut epoch = 1;
+    let mut last = None;
+    for bytes in successions {
+        let envelope = Sign1::decode(bytes).map_err(corrupt)?;
+        check_kid(&envelope, epoch)?;
+        let payload = envelope
+            .verify(suite, &key.bytes, protected::HOST_SUCCESSION)
+            .map_err(|error| corrupt(format!("succession to epoch {}: {error}", epoch + 1)))?;
+        let record = Succession::decode(payload)?;
+        let next = PublicKey {
+            suite,
+            bytes: record.public_key.clone(),
+        };
+        if record.host_id != claimed.host_id
+            || record.from_epoch != epoch
+            || record.to_epoch != epoch + 1
+            || record.previous != last.clone().unwrap_or_else(record::zero_digest)
+            || record.fingerprint != next.fingerprint()
+            || next.bytes.len() != suite.public_key_len()
+        {
+            return Err(corrupt(format!(
+                "the succession to epoch {} does not continue the chain",
+                epoch + 1
+            )));
+        }
+        last = Some(record::succession_digest(bytes));
+        fingerprints.push(next.fingerprint());
+        key = next;
+        epoch += 1;
+    }
+    check_kid(&sign1, epoch)?;
+    let payload = sign1
+        .verify(suite, &key.bytes, protected::HOST_IDENTITY)
+        .map_err(|error| corrupt(format!("the identity document: {error}")))?;
+    let verified = Document::decode(payload)?;
+    if verified.epoch != epoch
+        || !record::is_uuid_v7(&verified.host_id)
+        || verified.subject != record::subject(&verified.host_id)
+        || verified.public_key != key.bytes
+        || verified.fingerprint != key.fingerprint()
+        || verified.last_succession != last
+        || verified.suite != suite
+    {
+        return Err(corrupt(
+            "the document does not name the key and chain it was published with",
+        ));
+    }
+    Ok(Verified {
+        host_id: verified.host_id,
+        epoch,
+        suite,
+        public_key: key.bytes,
+        fingerprints,
+        document: verified,
+    })
+}
+
 /// Whether `volume` holds a provisioned identity.
 pub fn is_provisioned(volume: &Volume) -> Result<bool, StorageError> {
     Ok(directories(volume)?.0.read(INIT)?.is_some())

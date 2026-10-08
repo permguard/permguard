@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! `GET /host/v1/status`: the phase of the Host, every Plane and every service, with reasons
-//! and `stalled_since`, and the assurance profile the volume runs under. Under `lifecycle.read`.
+//! and `stalled_since`, the assurance profile the volume runs under and whether the listener
+//! serves peer sessions. Under `lifecycle.read`.
 //!
 //! The members that may be absent are always present and `null` when they are: both transports
 //! render the same document, and the cross-transport vectors compare them byte for byte.
@@ -98,6 +99,8 @@ pub struct StatusView {
     pub degraded: Vec<DegradedView>,
     pub components: Vec<ComponentView>,
     pub assurance: Assurance,
+    /// Whether the listener serves peer Host sessions (WP-2.3).
+    pub peer_sessions: super::sessions::PeerSessionsView,
 }
 
 impl HostApi {
@@ -117,6 +120,7 @@ impl HostApi {
             degraded: report.degraded.into_iter().map(Into::into).collect(),
             components: report.components.into_iter().map(Into::into).collect(),
             assurance: self.assurance.clone(),
+            peer_sessions: self.peer_sessions(),
         }
     }
 }
@@ -133,6 +137,14 @@ mod tests {
         let api = facade("status");
         let status = api.status(&admin()).expect("the administrator reads it");
         assert_eq!(status.assurance.profile, "development");
+        // WP-2.3: whether the listener serves peer sessions, `reason` present even when null.
+        assert_eq!(
+            status.peer_sessions,
+            super::super::sessions::PeerSessionsView {
+                served: false,
+                reason: Some("no_listener".to_owned())
+            }
+        );
         assert!(status.components.iter().any(|c| c.component == HOST));
         assert_eq!(status.state, status.components[0].state);
         let json = serde_json::to_value(&status).expect("serializes");
