@@ -85,10 +85,11 @@ fn the_token_holds_the_ring_keys_and_the_kek() {
             return;
         }
     };
+    the_operator_creates_the_keks(&module);
     let hsm = open(module.clone());
     a_ring_key_is_generated_in_the_token_and_signs_there(&hsm, &root);
     the_identity_is_provisioned_and_opened_in_the_token(&hsm, &root);
-    a_token_kek_binds_its_context_and_its_attributes_are_checked(&hsm, &module);
+    a_token_kek_binds_its_context_and_its_attributes_are_checked(&hsm);
 }
 
 fn a_ring_key_is_generated_in_the_token_and_signs_there(hsm: &Arc<Hsm>, root: &std::path::Path) {
@@ -163,44 +164,44 @@ fn the_identity_is_provisioned_and_opened_in_the_token(hsm: &Arc<Hsm>, root: &st
     );
 }
 
-fn a_token_kek_binds_its_context_and_its_attributes_are_checked(
-    hsm: &Arc<Hsm>,
-    module: &std::path::Path,
-) {
+fn the_operator_creates_the_keks(module: &std::path::Path) {
     use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
     use cryptoki::mechanism::Mechanism;
     use cryptoki::object::Attribute;
     use cryptoki::session::UserType;
     use cryptoki::types::AuthPin;
 
-    // The operator's AES keys: one a KEK must be, one extractable.
-    {
-        let context = Pkcs11::new(module).expect("the module");
-        context
-            .initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
-            .expect("initialized");
-        let slot = context.get_slots_with_token().expect("slots")[0];
-        let session = context.open_rw_session(slot).expect("a session");
+    let context = Pkcs11::new(module).expect("the module");
+    context
+        .initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
+        .expect("initialized");
+    let slot = context.get_slots_with_token().expect("slots")[0];
+    let session = context.open_rw_session(slot).expect("a session");
+    session
+        .login(UserType::User, Some(&AuthPin::from("1234")))
+        .expect("logged in");
+    // One key has the attributes a KEK must have, the other is deliberately extractable.
+    for (label, extractable) in [("permguard-kek", false), ("loose-kek", true)] {
         session
-            .login(UserType::User, Some(&AuthPin::from("1234")))
-            .expect("logged in");
-        for (label, extractable) in [("permguard-kek", false), ("loose-kek", true)] {
-            session
-                .generate_key(
-                    &Mechanism::AesKeyGen,
-                    &[
-                        Attribute::Token(true),
-                        Attribute::Sensitive(true),
-                        Attribute::Extractable(extractable),
-                        Attribute::Encrypt(true),
-                        Attribute::Decrypt(true),
-                        Attribute::ValueLen(32.into()),
-                        Attribute::Label(label.as_bytes().to_vec()),
-                    ],
-                )
-                .expect("the KEK");
-        }
+            .generate_key(
+                &Mechanism::AesKeyGen,
+                &[
+                    Attribute::Token(true),
+                    Attribute::Sensitive(true),
+                    Attribute::Extractable(extractable),
+                    Attribute::Encrypt(true),
+                    Attribute::Decrypt(true),
+                    Attribute::ValueLen(32.into()),
+                    Attribute::Label(label.as_bytes().to_vec()),
+                ],
+            )
+            .expect("the KEK");
     }
+    drop(session);
+    context.finalize().expect("finalized");
+}
+
+fn a_token_kek_binds_its_context_and_its_attributes_are_checked(hsm: &Arc<Hsm>) {
     let kek = HsmKek::open(Arc::clone(hsm), "permguard-kek", 1).expect("a KEK");
     let dek = Dek::from_unwrapped(Zeroizing::new([6u8; 32]));
     let wrapped = kek.wrap(&dek, b"context").expect("wrapped");

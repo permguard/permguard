@@ -35,8 +35,11 @@ use permguard_host::storage::write::{Published, publish_immutable};
 /// The wrapping algorithm a PKCS#11 KEK writes.
 pub const WRAP_PKCS11: &str = permguard_core::domains::format::PKCS11_KEK_WRAP_V1;
 
-/// DER of the Ed25519 curve OID, 1.3.101.112.
-const ED25519_PARAMS: &[u8] = &[0x06, 0x03, 0x2b, 0x65, 0x70];
+/// DER `PrintableString` of the PKCS#11 curve name `edwards25519`.
+///
+/// PKCS#11 permits both this name and the RFC 8410 OID. The name also works with SoftHSM 2.6,
+/// whose generated OID-addressed private keys cannot subsequently be used with `CKM_EDDSA`.
+const ED25519_PARAMS: &[u8] = b"\x13\x0cedwards25519";
 /// DER of the P-256 curve OID, 1.2.840.10045.3.1.7.
 const P256_PARAMS: &[u8] = &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
 
@@ -305,16 +308,21 @@ impl KeyProvider for HsmKeys {
     fn sign(&self, slot: &str, suite: Suite, message: &[u8]) -> Result<Vec<u8>, KeyError> {
         let label = self.label_of(slot)?;
         let handle = self.hsm.find(ObjectClass::PRIVATE_KEY, &label)?;
+        let digest = (suite == Suite::P256Sha256V1)
+            .then(|| ring::digest::digest(&ring::digest::SHA256, message));
         let mechanism = match suite {
             Suite::Ed25519Sha256V1 => {
                 Mechanism::Eddsa(EddsaParams::new(EddsaSignatureScheme::Pure))
             }
-            Suite::P256Sha256V1 => Mechanism::EcdsaSha256,
+            // Raw `CKM_ECDSA` is the interoperable PKCS#11 mechanism. Some tokens, including
+            // SoftHSM before 2.7, do not implement the optional combined `CKM_ECDSA_SHA256`.
+            Suite::P256Sha256V1 => Mechanism::Ecdsa,
         };
+        let input = digest.as_ref().map_or(message, |digest| digest.as_ref());
         let signature = self
             .hsm
             .session()
-            .sign(&mechanism, handle, message)
+            .sign(&mechanism, handle, input)
             .map_err(hsm_error)?;
         // A token does not choose the low-s twin of a P-256 signature: this profile does.
         suite
