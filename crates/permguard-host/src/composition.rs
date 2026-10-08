@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! composition (permguard-server)
-//!   ─▶ Host::builder()          the rings, the audit recorder, the secret store: built once
+//!   ─▶ Host::builder()          the rings, the audit recorder, the zone keys: built once
 //!   ─▶ host.register(declaration)   per Plane, before its state opens; collisions refused
 //!   ─▶ Registration              the Plane's handles, limited to what it declared
 //! ```
@@ -16,11 +16,11 @@
 //! | [`Signer<T>`]      | sign with the ring artifact `T` names           | the key manager, another ring, any key   |
 //! | [`PublicKeys`]     | read a declared ring's public set               | signing                                  |
 //! | [`AuditHandle<T>`] | record the actions schema `T` declares          | another action, the sink, the trail      |
-//! | [`SecretHandle<T>`]| an HMAC under the secret of purpose `T`         | the secret's bytes                       |
+//! | `ZoneHandle`       | a MAC under the zone key of a declared purpose  | any key's bytes, another purpose's keys  |
 //! | [`StreamProducer`], [`TaskClient`], [`Authorization`] | declared now; built by their packages | — |
 //!
 //! Least privilege is a property of the types: no handle has an accessor that returns the key
-//! manager, the secret's bytes or a Host-private path, so a Plane holding one cannot widen it. A
+//! manager, a key's bytes or a Host-private path, so a Plane holding one cannot widen it. A
 //! Plane is trusted code in this process, and the handles are not a sandbox; they keep a Plane from
 //! signing, recording or reading what it did not declare by mistake — the confused-deputy risk the
 //! security architecture names.
@@ -33,17 +33,13 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use hmac::{Hmac, KeyInit, Mac};
 #[cfg(test)]
 use permguard_core::keys::Sign as _;
 use permguard_core::keys::{Jwk, KeyId, KeyManager, Signature};
-use permguard_core::secrets::{SecretRef, SecretStore};
 use permguard_core::server::AuditRecorder;
 use permguard_core::{AuditError, AuditEvent, Subject};
 
 use crate::time::TimeGuard;
-use sha2::Sha256;
-use zeroize::Zeroizing;
 
 /// A key ring the Host holds, by its registered name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -112,14 +108,6 @@ pub trait AuditSchema: 'static {
     const ACTIONS: &'static [&'static str];
 }
 
-/// The purpose a secret serves; a secret is resolved for one purpose and used for no other.
-pub trait SecretPurpose: 'static {
-    /// The purpose's name, unique across Planes.
-    const NAME: &'static str;
-    /// The shortest secret this purpose accepts.
-    const MIN_BYTES: usize;
-}
-
 /// What a Plane declares before its state opens.
 #[derive(Debug, Clone, Default)]
 pub struct Declaration {
@@ -127,7 +115,7 @@ pub struct Declaration {
     signers: Vec<(&'static str, RingId)>,
     public_rings: Vec<RingId>,
     audit: Vec<(&'static str, &'static [&'static str])>,
-    secrets: Vec<(&'static str, SecretRef, String, usize)>,
+    zone_keys: Vec<crate::secrets::ZonePurpose>,
     streams: Vec<String>,
     tasks: Vec<String>,
     scope_schemas: Vec<String>,
@@ -160,14 +148,12 @@ impl Declaration {
         self
     }
 
-    /// Declares the secret of purpose `T`, resolved from `reference` at version `version`.
-    pub fn uses_secret<T: SecretPurpose>(
-        mut self,
-        reference: SecretRef,
-        version: impl Into<String>,
-    ) -> Self {
-        self.secrets
-            .push((T::NAME, reference, version.into(), T::MIN_BYTES));
+    /// Declares the zone keys of `purpose` this Plane MACs under (WP-3.3): a handle that never
+    /// shows a key, and answers no MAC for a zone or scope this Host holds no key for.
+    pub fn uses_zone_key(mut self, purpose: crate::secrets::ZonePurpose) -> Self {
+        if !self.zone_keys.contains(&purpose) {
+            self.zone_keys.push(purpose);
+        }
         self
     }
 
@@ -210,11 +196,6 @@ pub enum CompositionError {
     AlreadyRegistered(String),
     /// A handle asked for something its Plane did not declare.
     Undeclared { plane: String, what: String },
-    /// A declared secret could not be resolved, or is too short for its purpose.
-    Secret {
-        purpose: &'static str,
-        detail: String,
-    },
     /// A Plane declared, as its own artifact, a content type only the Host identity signs: the
     /// identity document, a succession, a session or its proof, a ring binding (WP-2.3).
     Reserved { plane: String, artifact: String },
@@ -248,9 +229,6 @@ impl std::fmt::Display for CompositionError {
                 f,
                 "the plane `{plane}` asked for {what}, which it did not declare"
             ),
-            Self::Secret { purpose, detail } => {
-                write!(f, "the secret for `{purpose}`: {detail}")
-            }
             Self::Reserved { plane, artifact } => write!(
                 f,
                 "the plane `{plane}` declared `{artifact}` as its artifact, which only the Host \
@@ -268,6 +246,8 @@ pub struct Host {
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
     time: Arc<TimeGuard>,
+    zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
+    host_id: Option<[u8; 16]>,
     claimed: std::sync::Mutex<Claims>,
 }
 
@@ -284,6 +264,8 @@ pub struct HostBuilder {
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
     time: Option<Arc<TimeGuard>>,
+    zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
+    host_id: Option<[u8; 16]>,
 }
 
 impl HostBuilder {
@@ -314,6 +296,19 @@ impl HostBuilder {
         self
     }
 
+    /// The zone keys of one purpose this Host holds, as coordinator or as a member (WP-3.3).
+    pub fn zone_key(mut self, handle: crate::secrets::ZoneHandle) -> Self {
+        self.zone_keys.insert(handle.purpose(), Arc::new(handle));
+        self
+    }
+
+    /// This Host's `host_id`, the salt of every Host-local key a Plane derives from a root of
+    /// its own (WP-3.3).
+    pub fn host_id(mut self, host_id: [u8; 16]) -> Self {
+        self.host_id = Some(host_id);
+        self
+    }
+
     pub fn build(self) -> Host {
         Host {
             rings: self.rings,
@@ -324,6 +319,8 @@ impl HostBuilder {
                     permguard_core::config::DEFAULT_TIME_MAX_CLOCK_SKEW,
                 ))
             }),
+            zone_keys: self.zone_keys,
+            host_id: self.host_id,
             claimed: std::sync::Mutex::new(Claims::default()),
         }
     }
@@ -335,18 +332,13 @@ impl Host {
         HostBuilder::default()
     }
 
-    /// Registers a Plane's declaration and answers its handles; its declared secrets are resolved
-    /// from `secrets`, here and only here.
+    /// Registers a Plane's declaration and answers its handles. A Plane holds no secret: what it
+    /// MACs under is a zone key handle the Host holds (WP-3.3).
     ///
     /// Refuses a Plane registered before, and any declaration that collides with one already
-    /// registered: an artifact type, a ring signed by two Planes, an audit schema, a secret purpose,
-    /// a stream descriptor, a task type or a scope schema. Declared secrets are resolved here, so a
-    /// missing or short one stops the start rather than the first request.
-    pub fn register(
-        &self,
-        declaration: Declaration,
-        secrets: Option<&dyn SecretStore>,
-    ) -> Result<Registration, CompositionError> {
+    /// registered: an artifact type, a ring signed by two Planes, an audit schema, a stream
+    /// descriptor, a task type or a scope schema.
+    pub fn register(&self, declaration: Declaration) -> Result<Registration, CompositionError> {
         let plane = declaration.plane.clone();
         if let Some((artifact, _)) = declaration
             .signers
@@ -358,39 +350,6 @@ impl Host {
                 artifact: (*artifact).to_owned(),
             });
         }
-        // Secrets first, outside the lock: a declaration whose secret does not resolve leaves no
-        // claim behind, so nothing it named is held by a plane that never registered.
-        let store = secrets;
-        let mut secrets = BTreeMap::new();
-        for (purpose, reference, version, min_bytes) in &declaration.secrets {
-            let store = store.ok_or(CompositionError::Secret {
-                purpose,
-                detail: "no secret store is composed".to_owned(),
-            })?;
-            let secret = store
-                .resolve(reference)
-                .map_err(|error| CompositionError::Secret {
-                    purpose,
-                    detail: format!("`{}` does not resolve: {error}", reference.name()),
-                })?;
-            if secret.expose().len() < *min_bytes {
-                return Err(CompositionError::Secret {
-                    purpose,
-                    detail: format!(
-                        "`{}` is shorter than the {min_bytes} bytes the purpose requires",
-                        reference.name()
-                    ),
-                });
-            }
-            secrets.insert(
-                *purpose,
-                (
-                    Arc::new(Zeroizing::new(secret.expose().to_vec())),
-                    version.clone(),
-                ),
-            );
-        }
-
         {
             let mut claims = self
                 .claimed
@@ -409,12 +368,6 @@ impl Host {
                     .audit
                     .iter()
                     .map(|(name, _)| ("audit schema", (*name).to_owned())),
-            );
-            claimed.extend(
-                declaration
-                    .secrets
-                    .iter()
-                    .map(|(purpose, ..)| ("secret purpose", (*purpose).to_owned())),
             );
             claimed.extend(
                 declaration
@@ -484,7 +437,17 @@ impl Host {
             declared_public: declaration.public_rings.clone(),
             audit: declaration.audit.iter().map(|(name, _)| *name).collect(),
             recorder: self.recorder.clone(),
-            secrets,
+            zone_keys: declaration
+                .zone_keys
+                .iter()
+                .filter_map(|purpose| {
+                    self.zone_keys
+                        .get(purpose)
+                        .map(|handle| (*purpose, Arc::clone(handle)))
+                })
+                .collect(),
+            declared_zone_keys: declaration.zone_keys.clone(),
+            host_id: self.host_id,
             authorization: self
                 .authorization
                 .clone()
@@ -503,13 +466,12 @@ pub struct Registration {
     declared_public: Vec<RingId>,
     audit: Vec<&'static str>,
     recorder: Option<AuditRecorder>,
-    secrets: BTreeMap<&'static str, ResolvedSecret>,
+    zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
+    declared_zone_keys: Vec<crate::secrets::ZonePurpose>,
+    host_id: Option<[u8; 16]>,
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
 }
-
-/// A resolved secret's bytes, shared by the handles made from it, and its version.
-type ResolvedSecret = (Arc<Zeroizing<Vec<u8>>>, String);
 
 impl std::fmt::Debug for Registration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -518,7 +480,7 @@ impl std::fmt::Debug for Registration {
             .field("signers", &self.declared_signers)
             .field("public", &self.declared_public)
             .field("audit", &self.audit)
-            .field("secrets", &self.secrets.keys().collect::<Vec<_>>())
+            .field("zone_keys", &self.declared_zone_keys)
             .finish()
     }
 }
@@ -564,17 +526,22 @@ impl Registration {
         Arc::clone(&self.authorization)
     }
 
-    /// The secret of purpose `T`, as a handle that never shows its bytes.
-    pub fn secret<T: SecretPurpose>(&self) -> Result<SecretHandle<T>, CompositionError> {
-        let (key, version) = self
-            .secrets
-            .get(T::NAME)
-            .ok_or_else(|| self.undeclared(format!("the secret for `{}`", T::NAME)))?;
-        Ok(SecretHandle {
-            key: Arc::clone(key),
-            version: version.clone(),
-            purpose: PhantomData,
-        })
+    /// The zone keys of `purpose`: `None` when this Host holds none (no coordinator root and
+    /// nothing delivered), never another purpose's.
+    pub fn zone_key(
+        &self,
+        purpose: crate::secrets::ZonePurpose,
+    ) -> Result<Option<Arc<crate::secrets::ZoneHandle>>, CompositionError> {
+        if !self.declared_zone_keys.contains(&purpose) {
+            return Err(self.undeclared(format!("the zone keys of `{}`", purpose.as_str())));
+        }
+        Ok(self.zone_keys.get(&purpose).cloned())
+    }
+
+    /// This Host's `host_id`, when the composition knows it: public, the salt of a Host-local
+    /// key a Plane derives from its own root.
+    pub fn host_id(&self) -> Option<[u8; 16]> {
+        self.host_id
     }
 
     fn undeclared(&self, what: String) -> CompositionError {
@@ -753,46 +720,6 @@ impl<T: AuditSchema> AuditHandle<T> {
     }
 }
 
-/// The secret of purpose `T`, usable only to compute an HMAC under it; its bytes are never shown.
-pub struct SecretHandle<T: SecretPurpose> {
-    key: Arc<Zeroizing<Vec<u8>>>,
-    version: String,
-    purpose: PhantomData<fn() -> T>,
-}
-
-impl<T: SecretPurpose> Clone for SecretHandle<T> {
-    fn clone(&self) -> Self {
-        Self {
-            key: Arc::clone(&self.key),
-            version: self.version.clone(),
-            purpose: PhantomData,
-        }
-    }
-}
-
-impl<T: SecretPurpose> std::fmt::Debug for SecretHandle<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SecretHandle<{}>({}, redacted)", T::NAME, self.version)
-    }
-}
-
-impl<T: SecretPurpose> SecretHandle<T> {
-    /// The version the secret was resolved at, which readers of an HMAC need beside it.
-    pub fn version(&self) -> &str {
-        &self.version
-    }
-
-    /// HMAC-SHA256 under the secret, over `parts` in order; `None` only if the HMAC refused the
-    /// key, which it does for no length — never a tag that merely looks valid.
-    pub fn mac(&self, parts: &[&[u8]]) -> Option<[u8; 32]> {
-        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&self.key).ok()?;
-        for part in parts {
-            mac.update(part);
-        }
-        Some(mac.finalize().into_bytes().into())
-    }
-}
-
 /// Appends to a stream the Plane declared: built by the stream engine (WP-5.1).
 #[derive(Debug)]
 pub struct StreamProducer {
@@ -815,7 +742,6 @@ mod tests {
 
     use super::*;
     use permguard_core::keys::Maintenance;
-    use permguard_core::secrets::Secret;
 
     /// A ring that signs with a fixed tag, so a test can tell which ring signed.
     struct TaggedRing(&'static str);
@@ -861,23 +787,6 @@ mod tests {
         }
     }
 
-    struct FixedSecrets(Vec<u8>);
-
-    impl SecretStore for FixedSecrets {
-        fn name(&self) -> &'static str {
-            "fixed"
-        }
-        fn resolve(&self, _: &SecretRef) -> permguard_core::secrets::Result<Secret> {
-            Ok(Secret::new(self.0.clone()))
-        }
-    }
-
-    struct Commitments;
-    impl SecretPurpose for Commitments {
-        const NAME: &'static str = "decision.commitment";
-        const MIN_BYTES: usize = 32;
-    }
-
     struct CatalogActions;
     impl AuditSchema for CatalogActions {
         const NAME: &'static str = "catalog.v1";
@@ -900,7 +809,6 @@ mod tests {
                 Declaration::new("data")
                     .signs::<DecisionBatchV1>()
                     .signs::<EventBatchV1>(),
-                None,
             )
             .expect("registers");
         let signer = data
@@ -944,10 +852,10 @@ mod tests {
             .time(time)
             .build();
         let control = host
-            .register(Declaration::new("control").signs::<HeadStatementV1>(), None)
+            .register(Declaration::new("control").signs::<HeadStatementV1>())
             .expect("registers");
         let data = host
-            .register(Declaration::new("data").signs::<DecisionBatchV1>(), None)
+            .register(Declaration::new("data").signs::<DecisionBatchV1>())
             .expect("registers");
         let heads = control
             .signer::<HeadStatementV1>()
@@ -975,7 +883,7 @@ mod tests {
     #[test]
     fn colliding_declarations_fail_registration() {
         let host = host();
-        host.register(Declaration::new("data").signs::<DecisionBatchV1>(), None)
+        host.register(Declaration::new("data").signs::<DecisionBatchV1>())
             .expect("first");
         for (second, what) in [
             (
@@ -987,7 +895,7 @@ mod tests {
                 "signing ring",
             ),
         ] {
-            let refused = host.register(second, None).expect_err("collides");
+            let refused = host.register(second).expect_err("collides");
             assert!(
                 matches!(&refused, CompositionError::Collision { what: found, .. } if *found == what),
                 "{refused}"
@@ -1000,7 +908,6 @@ mod tests {
                 .handles_task("notp.mirror")
                 .owns_scope_schema("zone")
                 .audits::<CatalogActions>(),
-            None,
         )
         .expect("first");
         for (second, what) in [
@@ -1021,14 +928,14 @@ mod tests {
                 "audit schema",
             ),
         ] {
-            let refused = host.register(second, None).expect_err("collides");
+            let refused = host.register(second).expect_err("collides");
             assert!(
                 matches!(&refused, CompositionError::Collision { what: found, .. } if *found == what),
                 "{refused}"
             );
         }
         let refused = host
-            .register(Declaration::new("control"), None)
+            .register(Declaration::new("control"))
             .expect_err("twice");
         assert!(matches!(refused, CompositionError::AlreadyRegistered(_)));
         let refused = self::host()
@@ -1036,7 +943,6 @@ mod tests {
                 Declaration::new("data")
                     .produces_stream("s")
                     .produces_stream("s"),
-                None,
             )
             .expect_err("a Plane colliding with itself");
         assert!(
@@ -1050,7 +956,7 @@ mod tests {
         let recorder = AuditRecorder::new(Arc::new(Discard));
         let host = Host::builder().audit(recorder).build();
         let control = host
-            .register(Declaration::new("control").audits::<CatalogActions>(), None)
+            .register(Declaration::new("control").audits::<CatalogActions>())
             .expect("registers");
         let audit = control
             .audit::<CatalogActions>()
@@ -1100,7 +1006,7 @@ mod tests {
         let sink = Arc::new(HostAuditSink::new(Arc::clone(&engine), None));
         let host = Host::builder().audit(AuditRecorder::new(sink)).build();
         let audit = host
-            .register(Declaration::new("control").audits::<CatalogActions>(), None)
+            .register(Declaration::new("control").audits::<CatalogActions>())
             .expect("registers")
             .audit::<CatalogActions>()
             .expect("declared")
@@ -1132,53 +1038,5 @@ mod tests {
             "{refused}"
         );
         let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn a_secret_handle_macs_without_showing_its_bytes() {
-        let host = host();
-        let data = host
-            .register(
-                Declaration::new("data")
-                    .uses_secret::<Commitments>(SecretRef::new("commitment"), "v3"),
-                Some(&FixedSecrets(vec![7u8; 32])),
-            )
-            .expect("registers");
-        let secret = data.secret::<Commitments>().expect("declared");
-        assert_eq!(secret.version(), "v3");
-        let expected = {
-            let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&[7u8; 32]).expect("key");
-            mac.update(b"domain\n");
-            mac.update(b"value");
-            <[u8; 32]>::from(mac.finalize().into_bytes())
-        };
-        assert_eq!(secret.mac(&[b"domain\n", b"value"]), Some(expected));
-        assert!(
-            !format!("{secret:?}").contains("07"),
-            "Debug never shows the key"
-        );
-
-        let short = Host::builder()
-            .build()
-            .register(
-                Declaration::new("data")
-                    .uses_secret::<Commitments>(SecretRef::new("commitment"), "v1"),
-                Some(&FixedSecrets(vec![1u8; 8])),
-            )
-            .expect_err("too short for the purpose");
-        assert!(matches!(short, CompositionError::Secret { .. }), "{short}");
-
-        // A refused registration holds nothing: the same plane registers once its secret is fixed,
-        // and what it declared is not attributed to it meanwhile.
-        let host = Host::builder().build();
-        let declaration = || {
-            Declaration::new("data")
-                .signs::<DecisionBatchV1>()
-                .uses_secret::<Commitments>(SecretRef::new("commitment"), "v1")
-        };
-        host.register(declaration(), Some(&FixedSecrets(vec![1u8; 8])))
-            .expect_err("too short");
-        host.register(declaration(), Some(&FixedSecrets(vec![1u8; 32])))
-            .expect("the failed attempt left no claim behind");
     }
 }

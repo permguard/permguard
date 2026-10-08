@@ -1821,3 +1821,61 @@ fn test_peer_sessions_default_by_the_listener_and_end_to_end_needs_mutual_tls() 
         "an unknown mode is refused"
     );
 }
+
+/// WP-3.3: key versions are `vN`; the decision log needs the coordinator root; the old commitment
+/// key settings are refused with the new ones named.
+#[test]
+fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
+    let base = [(SETTING_TELEMETRY_ADDR, "0.0.0.0:5443")];
+    let with = |extra: &[(&str, &str)]| {
+        Config::from_layers(
+            build_settings(),
+            NO_DECLARED,
+            Layers::new().with_file(pairs(&[&base[..], extra].concat())),
+        )
+    };
+    let valid = with(&[(SETTING_SECRETS_ZONE_KEY_VERSION, "v3")]).expect("builds");
+    valid.validate().expect("`v3` is a version");
+    assert_eq!(valid.secrets_zone_key_version(), "v3");
+    for refused in ["3", "v0", "v03", "version-2"] {
+        let config = with(&[(SETTING_SECRETS_ZONE_KEY_VERSION, refused)]).expect("builds");
+        assert!(config.validate().is_err(), "`{refused}`");
+    }
+
+    for retired in [
+        SETTING_LOG_COMMITMENT_KEY_REF,
+        SETTING_LOG_COMMITMENT_KEY_VERSION,
+    ] {
+        let refused = format!("{:#}", with(&[(retired, "x")]).expect_err("refused"));
+        assert!(
+            refused.contains("retired") && refused.contains("coordinator_root_ref"),
+            "{refused}"
+        );
+    }
+
+    let logging = [
+        (SETTING_LOG_ENABLED, "true"),
+        (SETTING_LOG_PDP_ID, "pdp-1"),
+        (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
+        (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
+    ];
+    let refused = format!("{:#}", with(&logging).expect_err("refused"));
+    assert!(
+        refused.contains(SETTING_SECRETS_COORDINATOR_ROOT_REF),
+        "{refused}"
+    );
+    let rooted = with(
+        &[
+            &logging[..],
+            &[(SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root")],
+        ]
+        .concat(),
+    )
+    .expect("builds with a coordinator root");
+    assert_eq!(
+        rooted
+            .secrets_coordinator_root_ref()
+            .map(|reference| reference.name()),
+        Some("coordinator-root")
+    );
+}

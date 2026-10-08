@@ -61,6 +61,9 @@ pub struct Decided<'a> {
     pub zone: &'a str,
     /// The ledger that answered.
     pub ledger: &'a str,
+    /// The zone and the ledger as their 16 UUID bytes: the scope input tags are keyed by
+    /// (WP-3.3). Absent for a ledger whose ids are not UUIDs: its tags are then `unavailable`.
+    pub scope: Option<permguard_decisions::commitment::Scope>,
     /// The exact commit it answered from.
     pub commit: &'a str,
     /// Where that commit stood in the ledger's history.
@@ -886,8 +889,9 @@ impl Journal {
                     .as_ref()
                     .map(|principal| party(principal, None)),
                 inputs: Inputs {
-                    context: self.commit_to(decided.context.as_ref()),
-                    partition_inputs: self.commit_to(decided.partition_inputs.as_ref()),
+                    context: self.commit_to(decided.scope.as_ref(), decided.context.as_ref()),
+                    partition_inputs: self
+                        .commit_to(decided.scope.as_ref(), decided.partition_inputs.as_ref()),
                     absent: decided.absent_inputs.clone(),
                     external: Vec::new(),
                 },
@@ -951,10 +955,14 @@ impl Journal {
     /// float in the context must not be able to make the record silently
     /// non-committal about what the decision saw — that would hand whoever is
     /// being audited a way to degrade their own audit trail.
-    fn commit_to(&self, value: Option<&Value>) -> Option<String> {
+    fn commit_to(
+        &self,
+        scope: Option<&permguard_decisions::commitment::Scope>,
+        value: Option<&Value>,
+    ) -> Option<String> {
         value.and_then(|value| {
             self.commitment
-                .commit(&permguard_decisions::jcs::normalized(value))
+                .commit_in(scope, &permguard_decisions::jcs::normalized(value))
                 .ok()
         })
     }

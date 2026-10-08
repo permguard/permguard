@@ -237,7 +237,7 @@ fn provision(
     manifest: &Manifest,
     contents: &[(&str, Vec<&Policy>, Option<&str>)],
 ) -> Mirror {
-    let path = root.join(format!("{zone}-id")).join(format!("{ledger}-id"));
+    let path = root.join(uuid_of(zone)).join(uuid_of(ledger));
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -320,15 +320,54 @@ fn provision(
     .expect("the checkpoint is written");
 
     let identity = Identity {
-        zone_id: format!("{zone}-id"),
+        zone_id: uuid_of(zone),
         zone_name: zone.to_owned(),
-        ledger_id: format!("{ledger}-id"),
+        ledger_id: uuid_of(ledger),
         ledger_name: ledger.to_owned(),
         server: "http://127.0.0.1:6443".to_owned(),
     };
     permguard_data_plane::authz::store::record(&path, &identity).expect("the identity is recorded");
 
     Mirror { path, identity }
+}
+
+/// A zone or ledger id as the catalog mints it, a UUIDv7, derived from `name` so a test can name
+/// it again: zone keys are keyed by ids of 16 bytes (WP-3.3).
+fn uuid_of(name: &str) -> String {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut bytes = [0u8; 16];
+    for (half, salt) in [(0usize, 0u8), (8, 1)] {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (salt, name).hash(&mut hasher);
+        bytes[half..half + 8].copy_from_slice(&hasher.finish().to_be_bytes());
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x70;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
+/// The zone's shared pseudonyms, as the Host's coordinator holds them (WP-3.3).
+fn subjects() -> Option<Arc<permguard_host::secrets::ZoneHandle>> {
+    let coordinator = permguard_host::secrets::Coordinator::new(
+        permguard_host::secrets::Root::from_material(
+            &[0x5a; 32],
+            permguard_host::secrets::KeyVersion::new(1).expect("v1"),
+        )
+        .expect("a root"),
+        [1; 16],
+    );
+    Some(Arc::new(permguard_host::secrets::ZoneHandle::coordinated(
+        permguard_host::secrets::ZonePurpose::AuditPseudonym,
+        coordinator,
+    )))
 }
 
 fn decider(root: &Path) -> Arc<Decider> {
@@ -352,7 +391,7 @@ fn decider_with_journal(root: &Path, journal: Journal) -> Arc<Decider> {
         )
         .with_journal(
             Some(Arc::new(journal)),
-            None,
+            subjects(),
             permguard_core::decisions::IncludeSection::default(),
         ),
     )
@@ -1050,7 +1089,10 @@ async fn a_decision_addressed_by_identity_is_recorded_under_the_public_names() {
     let decider = decider_with_journal(&root, journal);
 
     decider
-        .decide(&ask("acme-id", "main-ledger-id", "alice", "read"), None)
+        .decide(
+            &ask(&uuid_of("acme"), &uuid_of("main-ledger"), "alice", "read"),
+            None,
+        )
         .await
         .expect("the mirror is also addressable by identity");
     drop(decider);
@@ -1075,6 +1117,76 @@ async fn a_decision_addressed_by_identity_is_recorded_under_the_public_names() {
     assert_eq!(decisions.len(), 1);
     assert_eq!(decisions[0]["store"]["zone"], json!("acme"));
     assert_eq!(decisions[0]["store"]["ledger"], json!("main-ledger"));
+    // WP-3.3: the subject is the zone's shared pseudonym, the same on every replica holding the
+    // zone's key, and never the identifier.
+    let zone = permguard_host::secrets::parse_uuid(&uuid_of("acme")).expect("a UUID");
+    let expected = subjects()
+        .expect("a handle")
+        .pseudonym(&zone, "subject", "alice")
+        .expect("a pseudonym");
+    assert_eq!(decisions[0]["subject"]["id"], json!(expected));
+    assert!(expected.starts_with("v1:"), "{expected}");
+}
+
+/// WP-3.3: a decision whose subject cannot be pseudonymised under its zone's key is never
+/// recorded raw: a closed journal refuses to answer it.
+#[tokio::test]
+async fn a_subject_without_its_zone_key_is_never_recorded_raw() {
+    let root = scratch("decision-no-zone-key").join("mirrors");
+    provision(
+        &root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", false)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], None)],
+    );
+    let spool = scratch("decision-no-zone-key-spool");
+    let journal = Journal::open(
+        &spool,
+        "plane",
+        Epoch {
+            version: "0.1.0".to_owned(),
+            build: None,
+            engines: BTreeMap::new(),
+            sampling: "1.0".to_owned(),
+        },
+        WhenFull::Closed,
+        Bounds {
+            bytes: 64 * 1024 * 1024,
+            age: std::time::Duration::from_secs(3600),
+            segment_bytes: 1024 * 1024,
+        },
+        permguard_decisions::Commitment::new(*b"a-key-of-at-least-32-bytes-long!!", "v1"),
+        Metrics::none(),
+    )
+    .expect("the journal opens");
+    let decider = Arc::new(
+        Decider::new(
+            root.to_path_buf(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_journal(
+            Some(Arc::new(journal)),
+            None,
+            permguard_core::decisions::IncludeSection::default(),
+        ),
+    );
+    let refused = decider
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("unrecordable");
+    assert!(refused.to_string().contains("pseudonym key"), "{refused}");
+    drop(decider);
+    for entry in std::fs::read_dir(&spool).expect("the spool can be listed") {
+        let path = entry.expect("an entry").path();
+        if path.extension().and_then(std::ffi::OsStr::to_str) == Some("jsonl") {
+            let text = std::fs::read_to_string(path).expect("read");
+            assert!(!text.contains("alice"), "{text}");
+        }
+    }
 }
 
 #[tokio::test]
@@ -1144,14 +1256,14 @@ async fn a_ledger_this_plane_does_not_mirror_is_not_found() {
 #[tokio::test]
 async fn a_ledger_with_no_history_is_unavailable_not_a_deny() {
     let root = scratch("empty").join("mirrors");
-    let path = root.join("acme-id").join("main-ledger-id");
+    let path = root.join(uuid_of("acme")).join(uuid_of("main-ledger"));
     std::fs::create_dir_all(&path).expect("the directory exists");
     permguard_data_plane::authz::store::record(
         &path,
         &Identity {
-            zone_id: "acme-id".to_owned(),
+            zone_id: uuid_of("acme"),
             zone_name: "acme".to_owned(),
-            ledger_id: "main-ledger-id".to_owned(),
+            ledger_id: uuid_of("main-ledger"),
             ledger_name: "main-ledger".to_owned(),
             server: "http://127.0.0.1:6443".to_owned(),
         },
@@ -2186,9 +2298,9 @@ mod adversarial_ids {
         permguard_data_plane::authz::store::record(
             &mirror.path,
             &Identity {
-                zone_id: "acme-id".to_owned(),
+                zone_id: uuid_of("acme"),
                 zone_name: ZONE.to_owned(),
-                ledger_id: "main-id".to_owned(),
+                ledger_id: uuid_of("main"),
                 ledger_name: LEDGER.to_owned(),
                 server: "http://127.0.0.1:6443".to_owned(),
             },
@@ -2227,7 +2339,7 @@ mod adversarial_ids {
             )
             .with_journal(
                 Some(Arc::new(journal)),
-                None,
+                subjects(),
                 permguard_core::decisions::IncludeSection::default(),
             ),
         );
@@ -2764,7 +2876,7 @@ mod indeterminate {
             )
             .with_journal(
                 Some(Arc::new(journal(&spool))),
-                None,
+                subjects(),
                 permguard_core::decisions::IncludeSection::default(),
             ),
         );

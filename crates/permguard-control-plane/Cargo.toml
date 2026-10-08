@@ -31,6 +31,8 @@ path = "src/bin/permguard_control_plane.rs"
 doc = false
 
 [dependencies]
+# The cursor keys derived from the store's root, erased on drop (WP-3.3).
+zeroize.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 base64.workspace = true

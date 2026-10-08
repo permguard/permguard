@@ -44,12 +44,12 @@ use crate::config::{
     SETTING_PUBLIC_GRPC_ADDR, SETTING_PUBLIC_GRPC_ENABLED, SETTING_PUBLIC_HTTP_ADDR,
     SETTING_PUBLIC_HTTP_ENABLED, SETTING_PUBLIC_PATH_PREFIX, SETTING_PUBLIC_TLS_ALLOW,
     SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA, SETTING_PUBLIC_TLS_CRL,
-    SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_SECRETS_DIRECTORY,
-    SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
-    SETTING_SHUTDOWN_TIMEOUT, SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL,
-    SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION,
-    SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL,
-    SETTING_WORKING_DIR,
+    SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_SECRETS_COORDINATOR_ROOT_REF,
+    SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER,
+    SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_TIMEOUT,
+    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW,
+    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -844,6 +844,12 @@ struct SecretsSection {
     directory: Option<String>,
     #[serde(default)]
     env_prefix: Option<String>,
+    /// The coordinator root zone keys are derived from (WP-3.3).
+    #[serde(default)]
+    coordinator_root_ref: Option<String>,
+    /// The version of the zone keys, `vN` (WP-3.3).
+    #[serde(default)]
+    zone_key_version: Option<String>,
 }
 
 /// The assurance profile (WP-2.8).
@@ -1296,6 +1302,14 @@ impl ConfigFile {
             (
                 SETTING_SECRETS_ENV_PREFIX,
                 self.operations.secrets.env_prefix.as_ref(),
+            ),
+            (
+                SETTING_SECRETS_COORDINATOR_ROOT_REF,
+                self.operations.secrets.coordinator_root_ref.as_ref(),
+            ),
+            (
+                SETTING_SECRETS_ZONE_KEY_VERSION,
+                self.operations.secrets.zone_key_version.as_ref(),
             ),
             (
                 SETTING_AUDIT_PSEUDONYM_ENABLED,

@@ -448,8 +448,9 @@ pub struct Decider {
     journal: Option<Arc<crate::decisions::Journal>>,
     /// Which caller-supplied attributes this plane may record in clear.
     include: permguard_core::decisions::IncludeSection,
-    /// Turns an identifier into a token before it ever leaves this plane.
-    pseudonymizer: Option<Arc<dyn permguard_core::pseudonym::Pseudonymizer>>,
+    /// Turns an identifier into the zone's shared token before it ever leaves this plane
+    /// (WP-3.3).
+    subjects: Option<Arc<permguard_host::secrets::ZoneHandle>>,
     /// How old a mirror's last verified synchronization may grow before this
     /// plane refuses to answer from it. `None`: no bound.
     expire_after: Option<std::time::Duration>,
@@ -507,7 +508,7 @@ impl Decider {
             max_evaluations: max_evaluations.max(1),
             journal: None,
             include: permguard_core::decisions::IncludeSection::default(),
-            pseudonymizer: None,
+            subjects: None,
             expire_after: None,
             budget: None,
             // Everything this build carries, unless a deployment says otherwise. A decider built
@@ -637,11 +638,11 @@ impl Decider {
     pub fn with_journal(
         mut self,
         journal: Option<Arc<crate::decisions::Journal>>,
-        pseudonymizer: Option<Arc<dyn permguard_core::pseudonym::Pseudonymizer>>,
+        subjects: Option<Arc<permguard_host::secrets::ZoneHandle>>,
         include: permguard_core::decisions::IncludeSection,
     ) -> Self {
         self.journal = journal;
-        self.pseudonymizer = pseudonymizer;
+        self.subjects = subjects;
         self.include = include;
 
         self
@@ -1283,12 +1284,32 @@ impl Decider {
     }
 }
 
+/// The zone and the ledger of `mirror` as their 16 UUID bytes: the scope its records' tags and
+/// pseudonyms are keyed by (WP-3.3); `None` for ids that are not UUIDs.
+fn scope_of(mirror: &store::Mirror) -> Option<permguard_decisions::commitment::Scope> {
+    Some((
+        permguard_host::secrets::parse_uuid(&mirror.identity.zone_id)?,
+        permguard_host::secrets::parse_uuid(&mirror.identity.ledger_id)?,
+    ))
+}
+
+/// A decision whose subject cannot be pseudonymised under its zone's key is not recorded: an
+/// identifier never leaves this plane raw.
+fn unpseudonymizable() -> ApiError {
+    ApiError::new(
+        ErrorClass::Unavailable,
+        permguard_core::codes::common::UNAVAILABLE,
+        "the zone's pseudonym key is not held by this Host: the decision cannot be recorded",
+    )
+}
+
 #[derive(Debug, Clone)]
 struct OwnedDecided {
     id: String,
     at: String,
     zone: String,
     ledger: String,
+    scope: Option<permguard_decisions::commitment::Scope>,
     commit: String,
     counter: u64,
     profile: String,
@@ -1387,6 +1408,7 @@ impl OwnedDecided {
             at: self.at.clone(),
             zone: self.zone.as_str(),
             ledger: self.ledger.as_str(),
+            scope: self.scope,
             commit: self.commit.as_str(),
             counter: self.counter,
             profile: self.profile.as_str(),
@@ -1441,11 +1463,18 @@ impl Decider {
         let Some(journal) = &self.journal else {
             return Ok(());
         };
-        // Pseudonymised here, at the source: the control plane never holds a
-        // raw identifier, and neither does any consumer of the log.
-        let token = |value: &str| match &self.pseudonymizer {
-            Some(pseudonymizer) => pseudonymizer.pseudonymize(value),
-            None => value.to_owned(),
+        // Pseudonymised here, at the source, under the zone's shared key: the control plane never
+        // holds a raw identifier, neither does any consumer of the log, and every replica of the
+        // zone writes the same token (WP-3.3). Without the zone's key nothing is written raw: the
+        // decision is unrecordable.
+        let scope = scope_of(mirror);
+        let token = |identifier_type: &str, value: &str| -> Result<String, ApiError> {
+            self.subjects
+                .as_ref()
+                .and_then(|subjects| {
+                    scope.and_then(|(zone, _)| subjects.pseudonym(&zone, identifier_type, value))
+                })
+                .ok_or_else(unpseudonymizable)
         };
         let at = now_rfc3339();
         let latency_us = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
@@ -1478,10 +1507,14 @@ impl Decider {
                 // versioned record shape and name-to-id resolution at the read boundary.
                 zone: mirror.identity.zone_name.clone(),
                 ledger: mirror.identity.ledger_name.clone(),
+                scope,
                 commit: head.commit.clone(),
                 counter: head.counter,
                 profile: resolved.profile.clone(),
-                subject: (query.subject.kind.clone(), token(&query.subject.id)),
+                subject: (
+                    query.subject.kind.clone(),
+                    token("subject", &query.subject.id)?,
+                ),
                 subject_properties: named(
                     &query.subject.properties,
                     &self.include.subject_properties,
@@ -1493,10 +1526,12 @@ impl Decider {
                 ),
                 included_context: named(&query.context, &self.include.context),
                 action: query.action.name.clone(),
-                principal: resolved
-                    .principal
-                    .as_ref()
-                    .map(|principal| ("Principal".to_owned(), token(principal))),
+                principal: match resolved.principal.as_ref() {
+                    Some(principal) => {
+                        Some(("Principal".to_owned(), token("principal", principal)?))
+                    }
+                    None => None,
+                },
                 context: serde_json::to_value(&query.context).ok(),
                 partition_inputs: serde_json::to_value(&query.partition_inputs).ok(),
                 absent_inputs: context
@@ -1549,19 +1584,25 @@ impl Decider {
         if self.journal.is_none() {
             return Ok(());
         }
-        let token = |value: &str| match &self.pseudonymizer {
-            Some(pseudonymizer) => pseudonymizer.pseudonymize(value),
-            None => value.to_owned(),
+        let scope = scope_of(at.mirror);
+        let token = |identifier_type: &str, value: &str| -> Result<String, ApiError> {
+            self.subjects
+                .as_ref()
+                .and_then(|subjects| {
+                    scope.and_then(|(zone, _)| subjects.pseudonym(&zone, identifier_type, value))
+                })
+                .ok_or_else(unpseudonymizable)
         };
         let decided = OwnedDecided {
             id: at.decision_id.to_owned(),
             at: now_rfc3339(),
             zone: at.mirror.identity.zone_name.clone(),
             ledger: at.mirror.identity.ledger_name.clone(),
+            scope,
             commit: at.head.commit.clone(),
             counter: at.head.counter,
             profile: at.profile.to_owned(),
-            subject: (at.subject.0.to_owned(), token(at.subject.1)),
+            subject: (at.subject.0.to_owned(), token("subject", at.subject.1)?),
             subject_properties: None,
             resource: (at.resource.0.to_owned(), at.resource.1.to_owned()),
             resource_properties: None,

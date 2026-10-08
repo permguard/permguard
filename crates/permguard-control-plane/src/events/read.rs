@@ -27,7 +27,9 @@
 
 use std::collections::BTreeMap;
 
-use permguard_stream::cursor::{Cursor, CursorError, CursorKey, Position, filter_digest};
+use permguard_stream::cursor::{Cursor, CursorError, Position, filter_digest};
+
+use crate::decisions::cursorkey::CursorKeys;
 use permguard_stream::{Block, Coverage, Frontier, Window};
 use serde_json::Value;
 
@@ -238,7 +240,7 @@ pub fn read(
     store: &EventStore,
     scope: &Scope,
     filters: &Filters,
-    key: &CursorKey,
+    keys: &CursorKeys,
     window: &Window,
 ) -> Result<Page, ReadError> {
     let gate = store.scope_gate(scope);
@@ -255,6 +257,10 @@ pub fn read(
     let oldest_segment = segments.first().map(|(first, _)| *first).unwrap_or(0);
     let stream = scope.key();
     let bound = filters.digest();
+    // The resource's own key (WP-3.3): an offset of one resource never opens under another's.
+    let key = &keys
+        .for_resource(&stream)
+        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
 
     let beginning = |until: Option<Frontier>| {
         let mut cursor = Cursor::beginning(API, &stream, &bound, until);
@@ -420,7 +426,7 @@ pub fn get(
     store: &EventStore,
     scope: &Scope,
     event_id: &str,
-    key: &CursorKey,
+    key: &CursorKeys,
 ) -> Result<Option<Value>, ReadError> {
     let filters = Filters {
         event_id: Some(event_id.to_owned()),

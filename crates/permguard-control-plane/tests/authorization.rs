@@ -142,7 +142,7 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
         .ring(CONTROL_ATTEST, keys)
         .authorization(Arc::new(Authorization::new(store, public)))
         .build()
-        .register(module.declaration(config), None)
+        .register(module.declaration(config))
         .expect("the control plane registers");
     let server: &'static ServerContext<'static> = Box::leak(Box::new(
         ServerContext::new(identity(), config, storage, audit)

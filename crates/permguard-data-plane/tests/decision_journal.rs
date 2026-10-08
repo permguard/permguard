@@ -66,6 +66,7 @@ fn decided(id: &str, permit: bool) -> Decided<'_> {
         at: "2026-08-24T10:00:00Z".to_owned(),
         zone: "acme",
         ledger: "main-ledger",
+        scope: None,
         commit: "sha256:ec1773bf",
         counter: 3,
         profile: "default",

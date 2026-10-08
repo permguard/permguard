@@ -214,6 +214,7 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
         at: "2026-08-24T10:00:00Z".to_owned(),
         zone,
         ledger: "main-ledger",
+        scope: None,
         commit: "sha256:ec1773bf",
         counter: 3,
         profile: "default",
@@ -248,8 +249,12 @@ fn decided<'a>(id: &'a str, zone: &'a str, permit: bool) -> Decided<'a> {
 /// Through the real bounded reader rather than a bulk call, because the bounds are the contract:
 /// a helper that asked for ten thousand records at once would be testing a path no consumer takes.
 fn read_all(store: &DecisionStore, scope: &Scope) -> Vec<Value> {
-    let key = permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
-        .expect("the key is long enough");
+    let key = permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(
+        b"a-test-cursor-key-of-32-bytes!!!!",
+        [1; 16],
+        "decisions",
+    )
+    .expect("the key is long enough");
     let mut records = Vec::new();
     let mut window = permguard_stream::Window {
         limit_records: 100,
@@ -503,8 +508,12 @@ fn asking_for_the_signers_of_a_stream_nobody_holds_is_not_found() {
         store: Arc::clone(&pair.store),
         local: None,
         local_pdp: String::new(),
-        cursor_key: permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
-            .expect("a cursor key"),
+        cursor_key: permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(
+            b"a-test-cursor-key-of-32-bytes!!!!",
+            [1; 16],
+            "decisions",
+        )
+        .expect("a cursor key"),
         producers: Arc::new(std::sync::RwLock::new(Vec::new())),
         producer_files: Vec::new(),
         disclosure: permguard_core::Disclosure::Full,

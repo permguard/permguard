@@ -734,9 +734,17 @@ fn a_text_shaped_like_a_secret_is_refused_and_an_ordinary_one_is_not() {
     }
 }
 
+/// The Host-local `audit.pseudonym` root of these tests, at `v1`, owned by the stamp's Host.
+fn local_pseudonyms() -> crate::secrets::HostLocal {
+    crate::secrets::HostLocal::new(
+        crate::secrets::Root::from_material(&[9u8; 32], "v1".parse().expect("v1")).expect("a root"),
+        stamp().host_id,
+    )
+}
+
 #[test]
 fn a_principal_is_pseudonymised_per_resource() {
-    let pseudonyms = pseudonym::ResourcePseudonyms::new(&[9u8; 32], "v1");
+    let pseudonyms = pseudonym::ResourcePseudonyms::new(local_pseudonyms());
     let control = pseudonyms
         .pseudonym(CONTROL, "principal", "alice")
         .expect("derived");
@@ -754,10 +762,10 @@ fn a_principal_is_pseudonymised_per_resource() {
         control.starts_with("v1:") && control.len() == 3 + 32,
         "{control}"
     );
-    // Golden vector, computed apart from this code (Python's `hmac` and `hashlib`): HKDF-SHA256
-    // with no salt over the root, info = domain ‖ SHA-256(resource) ‖ "principal", then
-    // HMAC-SHA256(key, domain ‖ "alice")[0..16].
-    assert_eq!(control, "v1:2dbdd0064034d27f36f3e44f4e8466b2");
+    // Golden vector, computed apart from this code (`contracts/vectors/secrets.py`'s functions):
+    // `derive_host_local(root, owner, "audit.pseudonym", owner, "plane/control", 1)`, then
+    // HMAC-SHA256(key, domain ‖ det-CBOR(["principal", "alice"]))[0..16] (WP-3.3).
+    assert_eq!(control, "v1:ab18ff52a8b800fe04ceeeaced2af862");
 
     let root = scratch("pseudonym");
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
@@ -766,7 +774,7 @@ fn a_principal_is_pseudonymised_per_resource() {
         &volume,
         stamp(),
         time,
-        Some(pseudonym::ResourcePseudonyms::new(&[9u8; 32], "v1")),
+        Some(pseudonym::ResourcePseudonyms::new(local_pseudonyms())),
     )
     .expect("opens");
     engine

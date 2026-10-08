@@ -28,7 +28,7 @@
 //! │   ├── audit/                            the trail, when it is kept here rather than in the log
 //! │   ├── keys/                             the ring that seals the trail, which maintains itself
 //! │   ├── secrets/audit-pseudonym           32 random bytes
-//! │   └── secrets/decision-commitment       32 random bytes, when decisions are recorded
+//! │   └── secrets/coordinator-root          32 random bytes, when the Host coordinates zones
 //! ├── tls/ca.{pem,key}                      a local authority
 //! ├── tls/ca.crl                            its revocation list, revoking nothing yet
 //! ├── tls/server.{pem,key}                  for localhost, signed by it
@@ -192,12 +192,11 @@ fn prepare_secrets(config: &Config, volume: &Volume) -> Result<()> {
         )?;
     }
 
-    // The key input commitments are taken under, when this plane records decisions. A *different*
-    // secret from the pseudonymisation one, and deliberately: they protect different things, and
-    // rotating one to crypto-shred pseudonyms must not silently invalidate every commitment too.
-    if config.log_enabled()
-        && let Some(reference) = config.log_commitment_key_ref()
-    {
+    // The coordinator root, when this Host coordinates zones (WP-3.3): the zone keys input tags
+    // and the zone's shared pseudonyms are derived from. A *different* secret from the
+    // pseudonymisation one, and deliberately: they protect different things, and rotating one
+    // to crypto-shred the Host's own pseudonyms must not silently change every zone's keys too.
+    if let Some(reference) = config.secrets_coordinator_root_ref() {
         generate_secret(
             &volume.secrets(config).join(reference.name()),
             reference.name(),

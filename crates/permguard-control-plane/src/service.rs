@@ -724,7 +724,7 @@ fn decisions_startup_check(config: &permguard_core::Config) -> anyhow::Result<()
             directory.display()
         )
     })?;
-    crate::decisions::cursorkey::load(&directory).with_context(|| {
+    crate::decisions::cursorkey::load_root(&directory).with_context(|| {
         format!(
             "loading the decision store cursor key at {}",
             directory.display()
@@ -759,7 +759,12 @@ fn build_event_facade(
             return None;
         }
     };
-    let cursor_key = match crate::decisions::cursorkey::load(directory) {
+    let cursor_key = match crate::handles::host_id(context)
+        .ok_or_else(|| {
+            anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
+        })
+        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "events"))
+    {
         Ok(key) => key,
         Err(error) => {
             tracing::error!(
@@ -886,7 +891,12 @@ fn build_decision_facade(
     // The offset signing key lives beside the store it issues positions into, and is created on
     // first use. A store that cannot hold one cannot issue a resumable offset, so the decision log
     // is not served at all rather than served with offsets a consumer could edit.
-    let cursor_key = match crate::decisions::cursorkey::load(directory) {
+    let cursor_key = match crate::handles::host_id(context)
+        .ok_or_else(|| {
+            anyhow::anyhow!("no Host identity is composed: read offsets are keyed per Host")
+        })
+        .and_then(|host_id| crate::decisions::cursorkey::load(directory, host_id, "decisions"))
+    {
         Ok(key) => key,
         Err(error) => {
             tracing::error!(
@@ -1248,6 +1258,20 @@ mod tests {
         .expect("the test configuration builds")
     }
 
+    /// `server` with this plane registered on a Host that knows its `host_id`: the salt of the
+    /// stores' cursor keys (WP-3.3).
+    fn registered<'a>(
+        server: permguard_core::ServerContext<'a>,
+        _config: &permguard_core::Config,
+    ) -> permguard_core::ServerContext<'a> {
+        let registration = permguard_host::composition::Host::builder()
+            .host_id([1; 16])
+            .build()
+            .register(crate::handles::declaration())
+            .expect("the control plane registers");
+        server.with_plane_handles(PLANE, std::sync::Arc::new(registration))
+    }
+
     fn stream() -> permguard_events::Stream {
         permguard_events::Stream::new(
             permguard_events::Producer::data_plane("plane-a", "instance-1"),
@@ -1266,7 +1290,10 @@ mod tests {
         let config = receiving("event-store");
         let storage = MemoryStorage::new();
         let audit = RecordingAuditSink::new();
-        let server = permguard_core::ServerContext::new(identity(), &config, &storage, &audit);
+        let server = registered(
+            permguard_core::ServerContext::new(identity(), &config, &storage, &audit),
+            &config,
+        );
         let context = PlaneContext::new(&server, PLANE);
         let module = ControlPlaneModule::default();
 
@@ -1289,7 +1316,10 @@ mod tests {
         let config = receiving("decision-store");
         let storage = MemoryStorage::new();
         let audit = RecordingAuditSink::new();
-        let server = permguard_core::ServerContext::new(identity(), &config, &storage, &audit);
+        let server = registered(
+            permguard_core::ServerContext::new(identity(), &config, &storage, &audit),
+            &config,
+        );
         let context = PlaneContext::new(&server, PLANE);
         let module = ControlPlaneModule::default();
 

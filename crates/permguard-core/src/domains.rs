@@ -48,6 +48,8 @@ pub mod digest {
     pub const HOST_SESSION_HELLO: &str = "permguard.host.session.hello.v1\n";
     /// A session `challenge`, as the transcript cites it (WP-2.3).
     pub const HOST_SESSION_CHALLENGE: &str = "permguard.host.session.challenge.v1\n";
+    /// The witness of a secret at one version, and of a delivered zone key (WP-3.3).
+    pub const SECRET_WITNESS: &str = "permguard.secret.witness.v1\n";
     /// A decision record.
     pub const DECISION_RECORD: &str = "permguard.decision.v1\n";
     /// A normalized evaluation request, as a signed decision response cites it.
@@ -280,6 +282,12 @@ pub mod kdf {
     pub const HOST_LOCAL: &str = "host-local";
     pub const ZONE_ROOT: &str = "zone-root";
     pub const ZONE_USE: &str = "zone-use";
+    /// The purpose of audit pseudonyms: Host-local, or a zone's shared user pseudonyms (WP-3.3).
+    pub const AUDIT_PSEUDONYM: &str = "audit.pseudonym";
+    /// The purpose of decision input tags, distributed per ledger (WP-3.3).
+    pub const DECISION_COMMITMENT: &str = "decision.commitment";
+    /// The purpose of read-offset MACs, Host-local per API (WP-3.3).
+    pub const STREAM_CURSOR: &str = "stream.cursor";
 }
 
 /// Every constant of this module as `(name, value)`, for vectors and lints.
@@ -300,6 +308,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "digest.HOST_SESSION_CHALLENGE",
             digest::HOST_SESSION_CHALLENGE,
         ),
+        ("digest.SECRET_WITNESS", digest::SECRET_WITNESS),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
         ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),
         (
@@ -517,6 +526,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("kdf.HOST_LOCAL", kdf::HOST_LOCAL),
         ("kdf.ZONE_ROOT", kdf::ZONE_ROOT),
         ("kdf.ZONE_USE", kdf::ZONE_USE),
+        ("kdf.AUDIT_PSEUDONYM", kdf::AUDIT_PSEUDONYM),
+        ("kdf.DECISION_COMMITMENT", kdf::DECISION_COMMITMENT),
+        ("kdf.STREAM_CURSOR", kdf::STREAM_CURSOR),
         ("grpc.CONTROL_PLANE", grpc::CONTROL_PLANE),
         ("grpc.DATA_PLANE", grpc::DATA_PLANE),
         ("grpc.GIT_LIKE_STORE", grpc::GIT_LIKE_STORE),

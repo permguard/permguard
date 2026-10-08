@@ -5,25 +5,25 @@
 //! handles and nothing else.
 //!
 //! The plane signs its evidence through two typed signers, records through its own audit schema
-//! and commits to inputs through a secret handle that never shows the key; it holds no key manager,
-//! audit recorder or secret store. The commitment key is declared only when the decision log is on.
+//! and tags inputs and pseudonymizes subjects through zone key handles that never show a key; it
+//! holds no key manager, audit recorder, secret store or root. The zone keys are declared only when
+//! the decision log is on (WP-3.3).
 
 #![allow(clippy::expect_used)]
 
 use std::sync::Arc;
 
 use permguard_core::config::{
-    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF,
-    SETTING_LOG_COMMITMENT_KEY_REF, SETTING_LOG_ENABLED, SETTING_LOG_PDP_ID,
+    SETTING_AUDIT_PSEUDONYM_ENABLED, SETTING_AUDIT_PSEUDONYM_KEY_REF, SETTING_LOG_ENABLED,
+    SETTING_LOG_PDP_ID, SETTING_SECRETS_COORDINATOR_ROOT_REF,
 };
 use permguard_core::keys::{Jwk, PublicSet, Sign, Signature};
-use permguard_core::secrets::{Secret, SecretRef, SecretStore};
 use permguard_core::{BuildSettings, Config, KeyId, KeyManager, Layers, Maintenance};
-use permguard_data_plane::handles::DecisionCommitment;
 use permguard_host::composition::{
     CONTROL_ATTEST, CompositionError, DATA_ATTEST, DecisionBatchV1, EventBatchV1, HeadStatementV1,
     Host,
 };
+use permguard_host::secrets::{Coordinator, KeyVersion, Root, ZoneHandle, ZonePurpose};
 
 struct Ring(&'static str);
 
@@ -57,18 +57,6 @@ impl KeyManager for Ring {
     }
 }
 
-struct Store(usize);
-
-impl SecretStore for Store {
-    fn name(&self) -> &'static str {
-        "store"
-    }
-
-    fn resolve(&self, _: &SecretRef) -> permguard_core::secrets::Result<Secret> {
-        Ok(Secret::new(vec![9u8; self.0]))
-    }
-}
-
 fn config(settings: &[(&str, &str)]) -> Config {
     Config::from_layers(
         BuildSettings::new("9.9.9", "2026", "Test Holder"),
@@ -93,10 +81,7 @@ fn host() -> Host {
 #[test]
 fn the_data_plane_signs_its_evidence_and_nothing_else() {
     let registration = host()
-        .register(
-            permguard_data_plane::module().declaration(&config(&[])),
-            None,
-        )
+        .register(permguard_data_plane::module().declaration(&config(&[])))
         .expect("registers");
     for signer in [
         registration
@@ -129,59 +114,95 @@ fn the_data_plane_signs_its_evidence_and_nothing_else() {
         matches!(refused, Err(CompositionError::Undeclared { .. })),
         "{refused:?}"
     );
-    let refused = registration.secret::<DecisionCommitment>().map(|_| ());
-    assert!(
-        matches!(refused, Err(CompositionError::Undeclared { .. })),
-        "no decision log, no commitment key: {refused:?}"
-    );
+    for purpose in [ZonePurpose::DecisionCommitment, ZonePurpose::AuditPseudonym] {
+        let refused = registration.zone_key(purpose).map(|_| ());
+        assert!(
+            matches!(refused, Err(CompositionError::Undeclared { .. })),
+            "no decision log, no zone key: {refused:?}"
+        );
+    }
 }
 
 #[test]
-fn the_commitment_key_is_resolved_by_the_host_and_never_shown() {
+fn the_zone_keys_are_held_by_the_host_and_never_shown() {
     let logging = config(&[
         (SETTING_LOG_ENABLED, "true"),
-        (SETTING_LOG_COMMITMENT_KEY_REF, "decisions-commitment"),
+        (SETTING_SECRETS_COORDINATOR_ROOT_REF, "coordinator-root"),
         // A decision log needs pseudonymised subjects; the configuration refuses one without.
         (SETTING_AUDIT_PSEUDONYM_ENABLED, "true"),
         (SETTING_AUDIT_PSEUDONYM_KEY_REF, "audit-pseudonym"),
         (SETTING_LOG_PDP_ID, "data-plane-7f3a"),
     ]);
-    let registration = host()
-        .register(
-            permguard_data_plane::module().declaration(&logging),
-            Some(&Store(32)),
-        )
+    let coordinator = Coordinator::new(
+        Root::from_material(&[9u8; 32], KeyVersion::new(1).expect("v1")).expect("a root"),
+        [1; 16],
+    );
+    let registration = Host::builder()
+        .ring(DATA_ATTEST, Arc::new(Ring("data")))
+        .zone_key(ZoneHandle::coordinated(
+            ZonePurpose::DecisionCommitment,
+            coordinator.clone(),
+        ))
+        .zone_key(ZoneHandle::coordinated(
+            ZonePurpose::AuditPseudonym,
+            coordinator.clone(),
+        ))
+        .build()
+        .register(permguard_data_plane::module().declaration(&logging))
         .expect("registers");
-    let secret = registration
-        .secret::<DecisionCommitment>()
-        .expect("declared while the log is on");
-    assert!(!format!("{secret:?}").contains("09"), "never shown");
-
-    // The production path commits through the handle's HMAC, and commits exactly as the key would.
-    let value = serde_json::json!({"principal": {"id": "alice", "type": "user"}});
-    let through_handle = permguard_decisions::Commitment::with_mac(secret.version(), {
-        let secret = secret.clone();
-        move |parts| secret.mac(parts)
-    });
-    let with_the_key = permguard_decisions::Commitment::new(vec![9u8; 32], secret.version());
+    let tags = registration
+        .zone_key(ZonePurpose::DecisionCommitment)
+        .expect("declared while the log is on")
+        .expect("held");
     assert_eq!(
-        through_handle.commit(&value).expect("committed"),
-        with_the_key.commit(&value).expect("committed")
+        format!("{tags:?}"),
+        "ZoneHandle(decision.commitment, v1, redacted)",
+        "never shown"
+    );
+
+    // The production path tags through the handle, per ledger, exactly as the ledger's key would.
+    let (zone, ledger, other) = ([2u8; 16], [3u8; 16], [4u8; 16]);
+    let value = serde_json::json!({"principal": {"id": "alice", "type": "user"}});
+    let through_handle = permguard_decisions::Commitment::with_scoped_mac("v1", {
+        let tags = Arc::clone(&tags);
+        move |(zone, ledger), parts| tags.mac(zone, ledger, parts)
+    });
+    let with_the_key = permguard_decisions::Commitment::new(
+        coordinator
+            .distributed(ZonePurpose::DecisionCommitment, &zone, &ledger)
+            .expect("derived")
+            .to_vec(),
+        "v1",
+    );
+    let tagged = through_handle
+        .commit_in(Some(&(zone, ledger)), &value)
+        .expect("committed");
+    assert_eq!(tagged, with_the_key.commit(&value).expect("committed"));
+    assert_ne!(
+        tagged,
+        through_handle
+            .commit_in(Some(&(zone, other)), &value)
+            .expect("committed"),
+        "another ledger, another key"
     );
     assert!(
-        !through_handle
-            .commit(&value)
+        through_handle
+            .commit_in(None, &value)
             .expect("committed")
-            .ends_with("unavailable")
+            .ends_with("unavailable"),
+        "no scope, no tag"
     );
 
-    let short = host()
-        .register(
-            permguard_data_plane::module().declaration(&logging),
-            Some(&Store(16)),
-        )
-        .expect_err("a 16-byte key is too short to commit with");
-    assert!(matches!(short, CompositionError::Secret { .. }), "{short}");
+    // Without the zone keys composed the handles are absent, never another purpose's.
+    let without = host()
+        .register(permguard_data_plane::module().declaration(&logging))
+        .expect("registers");
+    assert!(
+        without
+            .zone_key(ZonePurpose::DecisionCommitment)
+            .expect("declared")
+            .is_none()
+    );
 }
 
 /// WP-2.12: with the Host's clock in anomaly the data plane's evidence keeps signing — decision and
@@ -201,10 +222,7 @@ fn a_clock_anomaly_leaves_the_data_planes_evidence_signing() {
         .ring(DATA_ATTEST, Arc::new(Ring("data")))
         .time(Arc::clone(&time))
         .build()
-        .register(
-            permguard_data_plane::module().declaration(&config(&[])),
-            None,
-        )
+        .register(permguard_data_plane::module().declaration(&config(&[])))
         .expect("registers");
     wall.jump(-3_600);
     time.tick();
@@ -246,8 +264,7 @@ fn the_data_plane_cannot_declare_what_only_the_host_identity_signs() {
         const TIME_SENSITIVE: bool = false;
     }
 
-    let Err(refused) = host().register(Declaration::new("data").signs::<ForgedBinding>(), None)
-    else {
+    let Err(refused) = host().register(Declaration::new("data").signs::<ForgedBinding>()) else {
         panic!("a ring binding is no plane's artifact");
     };
     assert!(
@@ -258,9 +275,6 @@ fn the_data_plane_cannot_declare_what_only_the_host_identity_signs() {
         assert!(reserved.starts_with("permguard.host."), "{reserved}");
     }
     host()
-        .register(
-            permguard_data_plane::module().declaration(&config(&[])),
-            None,
-        )
+        .register(permguard_data_plane::module().declaration(&config(&[])))
         .expect("the data plane declares nothing reserved");
 }

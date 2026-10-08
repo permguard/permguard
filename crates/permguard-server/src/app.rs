@@ -35,16 +35,9 @@ type SectionReader = Box<dyn Fn(&Value) -> Result<Vec<(String, String)>> + Send 
 /// A check a composed build makes on the assembled configuration.
 type StartupCheck = Box<dyn Fn(&Config) -> Result<()> + Send + Sync>;
 
-/// Builds the privacy policy from the key and key version the effective configuration named.
-///
-/// It is a factory rather than a composed instance because the key is configuration, and the app is
-/// composed before any configuration has been read. The binary still names the concrete type — the
-/// closure it passes is the only place that does — so the composition root keeps its job.
-type PseudonymizerFactory = Box<dyn Fn(&[u8], &str) -> Box<dyn Pseudonymizer> + Send + Sync>;
-
 /// Builds the secret store the effective configuration names.
 ///
-/// A factory for the same reason as the pseudonymiser: where secrets live is configuration, and the
+/// A factory because where secrets live is configuration, and the
 /// app is composed before any configuration has been read. The binary still names the type.
 type SecretStoreFactory =
     Box<dyn Fn(&Config) -> Result<Option<Box<dyn SecretStore>>> + Send + Sync>;
@@ -53,6 +46,34 @@ type SecretStoreFactory =
 ///
 /// It hands back an `Arc` rather than a `Box` because a key ring is maintained by work that outlives
 /// any single call — see [`ServerContext::with_keys`](permguard_core::ServerContext::with_keys).
+/// Resolves the root `reference` names at the text `version` (`vN`), witnessed on `volume`; the
+/// errors name the reference and never the material (WP-3.3).
+fn resolve_root(
+    secrets: &dyn SecretStore,
+    volume: &permguard_host::storage::volume::Volume,
+    reference: &permguard_core::SecretRef,
+    version: &str,
+    what: &str,
+    role: &str,
+) -> Result<permguard_host::secrets::Root> {
+    let version: permguard_host::secrets::KeyVersion = version
+        .parse()
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .with_context(|| format!("reading the version of {what}"))?;
+    let witnesses = permguard_host::secrets::Witnesses::open(volume)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .context("opening the secrets' witnesses")?;
+    permguard_host::secrets::resolve(secrets, &witnesses, reference, version, role)
+        .map_err(|error| anyhow::anyhow!("{error}"))
+        .with_context(|| {
+            format!(
+                "resolving {what} `{}` from the {} secret store",
+                reference.name(),
+                secrets.name()
+            )
+        })
+}
+
 /// What `authorization_for` opens on the volume (WP-2.4, WP-2.5): the authorization every Plane
 /// and the Host listener decide with, the credential mapper, and the grant store the Host API
 /// mutates.
@@ -127,13 +148,6 @@ pub type VerifiedTree = (
 /// keys can be exported, and only the composition root knows what a ring on disk is made of.
 type KeysExporter = Box<dyn Fn(&Path) -> Result<String> + Send + Sync>;
 
-/// The shortest key material worth deriving anything from.
-///
-/// Sixteen bytes is the floor, not the recommendation: what belongs in that secret is 32 random
-/// bytes. Checked against what the store returned, not against what configuration said, because
-/// configuration no longer knows.
-const MINIMUM_KEY_LENGTH: usize = 16;
-
 /// Parses one registered section out of a configuration file and keeps it on the config.
 ///
 /// The closure is what carries the section's type from where it was registered to where the file is
@@ -172,7 +186,6 @@ pub struct App {
     /// *this* build — a configuration that names a surface nothing here serves, say. Whoever
     /// composes the binary knows what it serves; the contract does not.
     startup_checks: Vec<StartupCheck>,
-    pseudonymizer_factory: Option<PseudonymizerFactory>,
     shutdown_factory: Option<ShutdownFactory>,
     secrets_factory: Option<SecretStoreFactory>,
     keys_factory: Option<KeyManagerFactory>,
@@ -218,7 +231,6 @@ impl App {
             metrics: Metrics::none(),
             services: Vec::new(),
             startup_checks: Vec::new(),
-            pseudonymizer_factory: None,
             shutdown_factory: None,
             secrets_factory: None,
             keys_factory: None,
@@ -248,10 +260,6 @@ impl App {
         self
     }
 
-    /// Supplies the pseudonymiser this build uses when the configuration turns pseudonymisation on.
-    ///
-    /// A build that registers none and is then asked to pseudonymise refuses to start, rather than
-    /// recording less carefully than it was told to.
     /// Installs somewhere for the numbers this process records about itself to go.
     ///
     /// Without one, every measurement in every crate is a branch and a return, and `/metrics`
@@ -262,15 +270,6 @@ impl App {
         // looking at before it reads anything else.
         metrics.publish_schema();
         self.metrics = metrics;
-
-        self
-    }
-
-    pub fn with_pseudonymizer_factory<F>(mut self, factory: F) -> Self
-    where
-        F: Fn(&[u8], &str) -> Box<dyn Pseudonymizer> + Send + Sync + 'static,
-    {
-        self.pseudonymizer_factory = Some(Box::new(factory));
 
         self
     }
@@ -908,35 +907,6 @@ impl App {
         Ok(Realms::new(realms))
     }
 
-    /// The resource-derived pseudonyms of the audit engine (WP-3.5): HKDF from the same
-    /// `audit.pseudonym` root and version the pseudonymiser uses, when pseudonymisation is on.
-    fn audit_pseudonyms_for(
-        &self,
-        config: &Config,
-        secrets: Option<&dyn SecretStore>,
-    ) -> Result<Option<permguard_host::audit::pseudonym::ResourcePseudonyms>> {
-        if !config.audit_pseudonym_enabled() {
-            return Ok(None);
-        }
-        let (Some(reference), Some(secrets)) = (config.audit_pseudonym_key_ref(), secrets) else {
-            // `pseudonymizer_for` refuses this configuration with its reason, before this runs.
-            return Ok(None);
-        };
-        let key = secrets.resolve(reference).with_context(|| {
-            format!(
-                "resolving the audit pseudonymisation key `{}` from the {} secret store",
-                reference.name(),
-                secrets.name()
-            )
-        })?;
-        Ok(Some(
-            permguard_host::audit::pseudonym::ResourcePseudonyms::new(
-                key.expose(),
-                config.audit_pseudonym_key_version(),
-            ),
-        ))
-    }
-
     /// The Host identity of `volume`: opened when provisioned; provisioned here only under the
     /// `development` profile, refused otherwise until `permguard host identity provision` ran
     /// (owner decision of 2026-10-08); matched to `host.identity.witness`, which the
@@ -1033,49 +1003,84 @@ impl App {
         Ok((Arc::new(opened), provisioned, config))
     }
 
-    /// Builds the privacy policy the effective configuration asks for.
-    ///
-    /// Returns nothing when pseudonymisation is off, which is the default: principals then reach a
-    /// sink masked. Fails when it is on and this build has no pseudonymiser to satisfy it.
-    pub fn pseudonymizer_for(
+    /// The Host-local `audit.pseudonym` root (WP-3.3), when pseudonymisation is on: resolved
+    /// from the secret store, at least 256 bits, witnessed per reference and version on the
+    /// volume, and bound to this Host. A version that now yields other material refuses the start.
+    pub fn pseudonym_root_for(
         &self,
         config: &Config,
         secrets: Option<&dyn SecretStore>,
-    ) -> Result<Option<Box<dyn Pseudonymizer>>> {
+        volume: &permguard_host::storage::volume::Volume,
+        host_id: [u8; 16],
+    ) -> Result<Option<permguard_host::secrets::HostLocal>> {
         if !config.audit_pseudonym_enabled() {
             return Ok(None);
         }
-
-        let factory = self.pseudonymizer_factory.as_ref().context(
-            "audit pseudonymisation is enabled but this build composes no pseudonymiser",
-        )?;
-
         let reference = config
             .audit_pseudonym_key_ref()
             .context("audit pseudonymisation is enabled but names no secret")?;
         let secrets = secrets
             .context("audit pseudonymisation is enabled but this build resolved no secret store")?;
-
-        // The reference is safe to name in an error; the material it resolves to never is.
-        let key = secrets.resolve(reference).with_context(|| {
-            format!(
-                "resolving the audit pseudonymisation key `{}` from the {} secret store",
-                reference.name(),
-                secrets.name()
-            )
-        })?;
-
-        if key.expose().len() < MINIMUM_KEY_LENGTH {
-            bail!(
-                "the secret `{}` is shorter than {MINIMUM_KEY_LENGTH} bytes, which is too short to \
-                 derive pseudonyms from",
-                reference.name()
-            );
-        }
-
-        Ok(Some(factory(
-            key.expose(),
+        let root = resolve_root(
+            secrets,
+            volume,
+            reference,
             config.audit_pseudonym_key_version(),
+            "the audit pseudonymisation key",
+            "audit-pseudonym",
+        )?;
+        Ok(Some(permguard_host::secrets::HostLocal::new(root, host_id)))
+    }
+
+    /// Builds the privacy policy the effective configuration asks for: pseudonyms of principals
+    /// in the records a sink renders, under the Host-local key of the resource `host`.
+    ///
+    /// Returns nothing when pseudonymisation is off, which is the default: principals then reach a
+    /// sink masked.
+    pub fn pseudonymizer_for(
+        &self,
+        config: &Config,
+        secrets: Option<&dyn SecretStore>,
+        volume: &permguard_host::storage::volume::Volume,
+        host_id: [u8; 16],
+    ) -> Result<Option<Box<dyn Pseudonymizer>>> {
+        let Some(local) = self.pseudonym_root_for(config, secrets, volume, host_id)? else {
+            return Ok(None);
+        };
+        Ok(Some(Box::new(
+            local
+                .pseudonymizer(permguard_host::audit::HOST)
+                .map_err(|error| anyhow::anyhow!("{error}"))?,
+        )))
+    }
+
+    /// The coordinator root (WP-3.3), when `operations.secrets.coordinator_root_ref` names one:
+    /// resolved, at least 256 bits, witnessed, at `operations.secrets.zone_key_version`, with this
+    /// Host as the authority of the zones it coordinates.
+    pub fn coordinator_for(
+        &self,
+        config: &Config,
+        secrets: Option<&dyn SecretStore>,
+        volume: &permguard_host::storage::volume::Volume,
+        host_id: [u8; 16],
+    ) -> Result<Option<permguard_host::secrets::Coordinator>> {
+        let Some(reference) = config.secrets_coordinator_root_ref() else {
+            return Ok(None);
+        };
+        let secrets = secrets.context(
+            "`operations.secrets.coordinator_root_ref` is set and this build resolved no secret \
+             store",
+        )?;
+        let root = resolve_root(
+            secrets,
+            volume,
+            reference,
+            config.secrets_zone_key_version(),
+            "the coordinator root",
+            "coordinator",
+        )?;
+        Ok(Some(permguard_host::secrets::Coordinator::new(
+            root, host_id,
         )))
     }
 
@@ -1395,8 +1400,21 @@ impl App {
         // The store is built first: everything that needs a secret needs it to exist.
         let resolved = self.secrets_for(config)?;
         let secrets = resolved.as_deref().or(self.secrets.as_deref());
-        let pseudonymizer: Option<Arc<dyn Pseudonymizer>> =
-            self.pseudonymizer_for(config, secrets)?.map(Arc::from);
+        // The Host-local pseudonym root (WP-3.3): the sinks' policy for the resource `host`, and
+        // the audit engine's per-resource pseudonyms below.
+        let pseudonym_root =
+            self.pseudonym_root_for(config, secrets, &volume, host_identity.host_id())?;
+        let pseudonymizer: Option<Arc<dyn Pseudonymizer>> = match &pseudonym_root {
+            Some(local) => Some(Arc::new(
+                local
+                    .pseudonymizer(permguard_host::audit::HOST)
+                    .map_err(|error| anyhow::anyhow!("{error}"))?,
+            )),
+            None => None,
+        };
+        // The coordinator root (WP-3.3): the zone keys this Host derives as its own authority.
+        let coordinator =
+            self.coordinator_for(config, secrets, &volume, host_identity.host_id())?;
 
         // Before the first record is written, not after: the damage a silent key change does is
         // done by the records made under it.
@@ -1423,7 +1441,8 @@ impl App {
                 build: config.version().to_owned(),
                 config_revision: revision,
             };
-            let pseudonyms = self.audit_pseudonyms_for(config, secrets)?;
+            let pseudonyms =
+                pseudonym_root.map(permguard_host::audit::pseudonym::ResourcePseudonyms::new);
             Arc::new(
                 Engine::open(&volume, stamp, Arc::clone(&time), pseudonyms)
                     .map_err(|error| anyhow::anyhow!("{error}"))
@@ -1639,7 +1658,21 @@ impl App {
         let mut host = permguard_host::composition::Host::builder()
             .audit(recorder)
             .authorization(authorization)
-            .time(Arc::clone(&time));
+            .time(Arc::clone(&time))
+            .host_id(host_identity.host_id());
+        // The zone keys this Host holds as coordinator; delivered keys arrive with WP-11.
+        if let Some(coordinator) = coordinator {
+            use permguard_host::secrets::{ZoneHandle, ZonePurpose};
+            host = host
+                .zone_key(ZoneHandle::coordinated(
+                    ZonePurpose::DecisionCommitment,
+                    coordinator.clone(),
+                ))
+                .zone_key(ZoneHandle::coordinated(
+                    ZonePurpose::AuditPseudonym,
+                    coordinator,
+                ));
+        }
         if let Some(keys) = control_signing_keys {
             context = context.with_maintained_ring("control-signing", Arc::clone(&keys));
             host = host.ring(permguard_host::composition::CONTROL_ATTEST, keys);
@@ -1664,7 +1697,7 @@ impl App {
                 permguard_core::lifecycle::Phase::Bootstrap,
             );
             let registration = host
-                .register(declaration, secrets)
+                .register(declaration)
                 .with_context(|| format!("registering the {plane} plane with the Host"))?;
             context = context.with_plane_handles(plane, Arc::new(registration));
         }

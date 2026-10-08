@@ -740,7 +740,7 @@ mod tests {
             .ring(CONTROL_ATTEST, Arc::new(Ring))
             .time(time)
             .build()
-            .register(Declaration::new("control").signs::<HeadStatementV1>(), None)
+            .register(Declaration::new("control").signs::<HeadStatementV1>())
             .expect("registers")
             .signer::<HeadStatementV1>()
             .expect("declared")

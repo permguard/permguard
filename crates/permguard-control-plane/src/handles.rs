@@ -62,6 +62,12 @@ fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
 }
 
+/// This Host's `host_id`, the salt of the cursor keys this plane derives from its stores' roots
+/// (WP-3.3); `None` when no Host registered the plane.
+pub(crate) fn host_id(context: &PlaneContext<'_>) -> Option<[u8; 16]> {
+    registration(context)?.host_id()
+}
+
 /// The Host's authorization, which every route of this plane decides with (WP-2.4). A plane the
 /// Host did not register decides with a closed one: nothing is allowed.
 pub(crate) fn authorization(
@@ -114,7 +120,7 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
     permguard_host::composition::Host::builder()
         .audit(recorder)
         .build()
-        .register(declaration(), None)
+        .register(declaration())
         .ok()
         .and_then(|registration| registration.audit::<ControlPlaneAudit>().ok().flatten())
         .unwrap_or_else(|| unreachable!("a declared schema with a composed recorder"))

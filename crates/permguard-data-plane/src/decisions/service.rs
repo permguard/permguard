@@ -95,15 +95,17 @@ impl PlaneTask for DecisionService {
             // plane — a different trust domain, with a different set of readers
             // — never holds a raw one. A plane that shipped them raw would make
             // that sentence false, and it would do so silently.
-            if crate::handles::audit(context)
-                .and_then(|audit| audit.pseudonymizer())
-                .is_none()
+            if crate::handles::zone_key(
+                context,
+                permguard_host::secrets::ZonePurpose::AuditPseudonym,
+            )
+            .is_none()
             {
                 return Err(anyhow!(
-                    "the decision log is enabled and no pseudonymizer is composed \
-                     (operations.audit.pseudonym): subject and principal identifiers are \
-                     tokenised before a record leaves this plane, and there is nothing here to \
-                     tokenise them with"
+                    "the decision log is enabled and the Host holds no zone keys for pseudonyms \
+                     (operations.secrets.coordinator_root_ref): subject and principal identifiers \
+                     are tokenised under the zone's key before a record leaves this plane, and \
+                     there is nothing here to tokenise them with"
                 ));
             }
             let Some(keys) = crate::handles::decision_signer(context) else {

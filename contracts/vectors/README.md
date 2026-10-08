@@ -26,6 +26,9 @@ Each envelope's `kid` is its signing epoch in decimal ASCII.
 `session.py` computes them under the owner decisions of 2026-10-08, with the RFC 8032 section 7.1 test 1, 2 and 3 keys for Hosts A, B and C.
 Its `refused` cases are proofs a verifier must refuse against the transcript it expects: a replay, a relay, a reflection and an unknown-key share; `crates/permguard-host/tests/session_vectors.rs` reproduces the bytes and refuses each case.
 
+`secrets.json` freezes the secrets and zone derivations (WP-3.3): a root's witness, a Host-local key and audit pseudonym, a cursor key, a zone root, the distributed keys of a zone, and the shared pseudonym and input tag under them.
+`secrets.py` computes them with the standard library alone, HKDF-SHA256 over the closed CBOR tuples of the keys architecture; `crates/permguard-host/tests/secrets_vectors.rs` reproduces them.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.
@@ -35,6 +38,6 @@ Signatures use the RFC 8032 section 7.1 test 1 key, so they are deterministic, a
 ## Rules
 
 A vector changes only with a protocol version: a codec that stops reproducing one is a codec that changed a format.
-Running `generate.py`, `identity.py` and `session.py` again must print `evidence.json`, `identity.json` and `session.json` unchanged, and neither file is ever edited to make a test pass: `task check:vectors` (or `make check-vectors`) compares each with its generator.
+Running `generate.py`, `identity.py`, `session.py` and `secrets.py` again must print `evidence.json`, `identity.json`, `session.json` and `secrets.json` unchanged, and neither file is ever edited to make a test pass: `task check:vectors` (or `make check-vectors`) compares each with its generator.
 The generator needs Python 3 and the `cryptography` package (`pip install cryptography`; the vectors were computed with version 50).
 Target formats are not here: each is frozen by the package that designs it, as `status.md` lists under "Deferred format freezes".

@@ -232,9 +232,13 @@ fn accept(store: &EventStore, batch: &Batch, keys: &dyn KeyManager) -> Result<Ac
     ingest::accept(store, batch, &trusted(keys, producer), &[DOGWOOD])
 }
 
-fn cursor_key() -> permguard_stream::CursorKey {
-    permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
-        .expect("the key is long enough")
+fn cursor_key() -> permguard_control_plane::decisions::cursorkey::CursorKeys {
+    permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(
+        b"a-test-cursor-key-of-32-bytes!!!!",
+        [1; 16],
+        "events",
+    )
+    .expect("the key is long enough")
 }
 
 fn tenant() -> Scope {

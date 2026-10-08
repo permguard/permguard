@@ -210,6 +210,7 @@ check-vectors: ## Check that the golden vectors are what their independent gener
 	python3 contracts/vectors/generate.py | diff - contracts/vectors/evidence.json
 	python3 contracts/vectors/identity.py | diff - contracts/vectors/identity.json
 	python3 contracts/vectors/session.py | diff - contracts/vectors/session.json
+	python3 contracts/vectors/secrets.py | diff - contracts/vectors/secrets.json
 
 notices: ## Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
 	./scripts/third-party-notices.sh

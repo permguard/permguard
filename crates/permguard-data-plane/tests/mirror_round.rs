@@ -97,7 +97,7 @@ mod plane {
                 permguard_host::composition::Authorization::permissive(),
             ))
             .build()
-            .register(module.declaration(config), None)
+            .register(module.declaration(config))
             .expect("the control plane registers");
         let server: &'static ServerContext<'static> = Box::leak(Box::new(
             ServerContext::new(identity(), config, storage, audit)

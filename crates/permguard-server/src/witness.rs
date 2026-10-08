@@ -91,8 +91,10 @@ fn check_at(path: &Path, pseudonymizer: Option<&dyn Pseudonymizer>) -> Result<()
             "the audit pseudonymisation key changed but its version did not: version `{version}` \
              has already produced records under a different key, and writing more under the same \
              version would make the two indistinguishable. Give the new key a new \
-             `audit.pseudonym.key_version`, or restore the previous key. If this has genuinely \
-             never written a record under `{version}`, remove {} and start again.",
+             `audit.pseudonym.key_version`, or restore the previous key. After an upgrade to \
+             per-Host, per-resource pseudonyms (WP-3.3) the key is the same and its derivation is \
+             not: raise the version (`v2` after `v1`). If this has genuinely never written a \
+             record under `{version}`, remove {} and start again.",
             path.display()
         );
     }

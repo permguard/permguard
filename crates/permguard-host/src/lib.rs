@@ -21,6 +21,7 @@ pub mod composition;
 pub mod identity;
 pub mod keys;
 pub mod operations;
+pub mod secrets;
 pub mod session;
 pub mod storage;
 pub mod time;

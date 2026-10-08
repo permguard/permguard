@@ -101,7 +101,29 @@ is cut.
   Every session established or refused is a `host.session.established` or `host.session.refused` record in the security trail, and is counted in `permguard_host_peer_sessions_total`.
   No operation uses a session yet: memberships and their tasks come later, and a task message on an established session answers `not_served_yet`.
 
+- **Secrets are witnessed, and zone keys are derived per zone, purpose and scope.**
+  Every root a Host resolves is at least 32 bytes and is witnessed per reference and version in `host/state/witness/<reference>/<version>`, and per role and version in `host/state/witness/by-role/<role>/<version>`: other material under a version already seen refuses the start, whichever reference names it, and a new key takes a new version.
+  Key versions are written `vN` (`v1`, `v2`, …); any other form is refused.
+  `operations.secrets.coordinator_root_ref` (`PERMGUARD_SECRETS_COORDINATOR_ROOT_REF`) names the root this Host derives zone keys from, at `operations.secrets.zone_key_version` (`PERMGUARD_SECRETS_ZONE_KEY_VERSION`, default `v1`); the development provisioner generates it when it is named.
+  Decision input tags are keyed per ledger, and decision subjects are pseudonymised per zone, under keys derived from it, so every replica of a zone writes the same tags and tokens without holding the zone's root; a member's delivered keys are kept in `host/zone-use/` and arrive with memberships.
+
 ### Changed
+
+- **The decision log needs `operations.secrets.coordinator_root_ref`; `decisions.log.commitment` is retired.**
+  A configuration still setting `decisions.log.commitment.key_ref` or `key_version` is refused with a message naming the new settings.
+  The marker's `key_version` is the zone key version, and it never names two keys in one spool: a spool whose records already name the version under the commitment key of before refuses the start until `operations.secrets.zone_key_version` is raised (`v2` after `v1`), and `ZONE_KEYS` in the spool keeps the witness of each version's key.
+
+- **Audit pseudonyms are derived per Host and resource: raise the key version.**
+  The Host's trails, and the principals a sink renders, are pseudonymised under a key derived from the `audit.pseudonym` root for this Host and the resource, with the identifier's type and value in the MAC.
+  The same root and version now give other tokens than before: the start is refused by the pseudonym witness until `operations.audit.pseudonym.key_version` is raised (`v2` after `v1`), so no version ever names two keys.
+  Records written before keep the tokens they carry.
+
+- **Read offsets are keyed per API, resource and Host: outstanding offsets are invalid once.**
+  `CURSOR_KEY` in each store is now the root a cursor key is derived from, per API, resource and Host, and it is witnessed in `CURSOR_KEY.witness`: rotate by moving it to `CURSOR_KEY.previous` and writing a new one, or by removing it; other bytes written in place are refused.
+  Offsets issued before this version are refused once; a consumer starts again from a fresh offset.
+
+- **A Plane holds no secret: `Declaration::uses_secret` and `SecretHandle` are removed.**
+  A Plane MACs only under the zone keys it declares (`Declaration::uses_zone_key`, `Registration::zone_key`), and `Host::register` takes the declaration alone.
 
 - **A `production` deployment does not start until the custody providers land (WP-3.2).**
   The Host identity key is held in plaintext on the volume, which is the `custody.plaintext` relaxation: discovery and `host status` publish it, and the `production` and `regulated` profiles refuse to start with a message naming WP-3.2.

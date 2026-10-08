@@ -439,38 +439,6 @@ fn test_the_context_carries_the_registered_services() {
     assert_eq!(context.services().len(), 1);
 }
 
-/// A secret purpose wider than the stub secret store's 32 bytes.
-struct WideSecret;
-
-impl permguard_host::composition::SecretPurpose for WideSecret {
-    const NAME: &'static str = "test.wide";
-    const MIN_BYTES: usize = 64;
-}
-
-#[tokio::test]
-async fn test_a_plane_whose_declared_secret_is_too_short_does_not_start() {
-    use permguard_host::composition::Declaration;
-
-    let path = config_file("short-secret", SERVABLE);
-    let app = app()
-        .with_secrets(Box::new(StubSecrets))
-        .with_plane_declaration(|_| {
-            Some((
-                "data",
-                true,
-                Declaration::new("data").uses_secret::<WideSecret>(SecretRef::new("k"), "v1"),
-            ))
-        });
-
-    let refused = app
-        .dispatch_to(&serve_action(&path), &mut Vec::new())
-        .await
-        .expect_err("registration refuses the plane");
-    let message = format!("{refused:#}");
-    assert!(message.contains("registering the data plane"), "{message}");
-    assert!(message.contains("shorter than the 64 bytes"), "{message}");
-}
-
 #[tokio::test]
 async fn test_two_planes_declaring_one_artifact_do_not_start() {
     use permguard_host::composition::{DecisionBatchV1, Declaration};
@@ -620,19 +588,6 @@ fn test_a_failing_section_reader_names_the_section_and_the_file() {
     assert!(message.contains(path.to_str().expect("a UTF-8 path")));
 }
 
-/// A policy of the kind the binary's factory would build.
-struct StubPolicy(String);
-
-impl Pseudonymizer for StubPolicy {
-    fn key_version(&self) -> &str {
-        &self.0
-    }
-
-    fn pseudonymize(&self, value: &str) -> String {
-        format!("{}:{}", self.0, value.len())
-    }
-}
-
 const PSEUDONYM_ON: &str = "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    env_prefix: PERMGUARD_APP_TEST\n  audit:\n    pseudonym:\n      enabled: true\n      key_ref: audit-pseudonym\n      key_version: \"v7\"\n";
 
 /// A store holding the one secret these tests name.
@@ -656,6 +611,23 @@ impl SecretStore for ShortSecret {
     }
 }
 
+/// A volume for the pseudonym root's witnesses, and the Host it belongs to.
+fn pseudonym_volume(tag: &str) -> permguard_host::storage::volume::Volume {
+    let root = env::temp_dir().join(format!(
+        "permguard-app-pseudonym-{tag}-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    permguard_host::storage::volume::Volume::claim(
+        &root,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .expect("claimed")
+}
+
+const HOST_ID: [u8; 16] = [1; 16];
+
 #[test]
 fn test_a_configuration_that_leaves_pseudonymisation_off_builds_no_policy() {
     let path = config_file("pseudonym-off", SERVABLE);
@@ -666,63 +638,96 @@ fn test_a_configuration_that_leaves_pseudonymisation_off_builds_no_policy() {
     assert!(!config.audit_pseudonym_enabled());
     assert!(
         app()
-            .pseudonymizer_for(&config, None)
+            .pseudonymizer_for(&config, None, &pseudonym_volume("off"), HOST_ID)
             .expect("no policy is needed")
             .is_none()
     );
 }
 
+/// WP-3.3: the policy is the Host-local key of the resource `host`, from the configured root and
+/// version, and the root is witnessed under that version.
 #[test]
-fn test_the_policy_is_built_from_the_configured_key_and_version() {
+fn test_the_policy_is_the_host_local_key_of_the_configured_root_and_version() {
     let path = config_file("pseudonym-on", PSEUDONYM_ON);
-    let app = app().with_pseudonymizer_factory(|key, version| {
-        assert_eq!(key, b"0123456789abcdef0123456789abcdef");
-
-        Box::new(StubPolicy(version.to_owned()))
-    });
-    let config = app
-        .config_for(&serve_action(&path))
-        .expect("the config builds");
-
-    let store = secrets();
-    let policy = app
-        .pseudonymizer_for(&config, Some(store.as_ref()))
-        .expect("the policy builds")
-        .expect("the configuration asked for one");
-
-    assert_eq!(policy.key_version(), "v7");
-}
-
-#[test]
-fn test_asking_for_pseudonymisation_a_build_cannot_provide_refuses() {
-    let path = config_file("pseudonym-unsupported", PSEUDONYM_ON);
     let app = app();
     let config = app
         .config_for(&serve_action(&path))
         .expect("the config builds");
+    let volume = pseudonym_volume("on");
 
     let store = secrets();
-    let error = match app.pseudonymizer_for(&config, Some(store.as_ref())) {
-        Err(error) => error,
-        Ok(_) => panic!("this build composes no pseudonymiser"),
-    };
+    let policy = app
+        .pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .expect("the policy builds")
+        .expect("the configuration asked for one");
 
-    assert!(format!("{error:#}").contains("composes no pseudonymiser"));
+    assert_eq!(policy.key_version(), "v7");
+    let expected = permguard_host::secrets::HostLocal::new(
+        permguard_host::secrets::Root::from_material(
+            b"0123456789abcdef0123456789abcdef",
+            "v7".parse().expect("v7"),
+        )
+        .expect("a root"),
+        HOST_ID,
+    )
+    .pseudonymizer(permguard_host::audit::HOST)
+    .expect("derived");
+    assert_eq!(policy.pseudonymize("alice"), expected.pseudonymize("alice"));
+    assert!(
+        volume
+            .host()
+            .path()
+            .join("state/witness/audit-pseudonym/v7")
+            .exists()
+    );
+}
+
+#[test]
+fn test_another_key_under_a_witnessed_version_is_refused() {
+    let path = config_file("pseudonym-changed", PSEUDONYM_ON);
+    let app = app();
+    let config = app
+        .config_for(&serve_action(&path))
+        .expect("the config builds");
+    let volume = pseudonym_volume("changed");
+    let store = secrets();
+    app.pseudonymizer_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .expect("first seen");
+    let other: Box<dyn SecretStore> = Box::new(WideSecret32);
+    let error = match app.pseudonymizer_for(&config, Some(other.as_ref()), &volume, HOST_ID) {
+        Err(error) => error,
+        Ok(_) => panic!("other material under v7"),
+    };
+    assert!(format!("{error:#}").contains("new version"), "{error:#}");
+}
+
+/// Other material of the right length.
+struct WideSecret32;
+
+impl SecretStore for WideSecret32 {
+    fn name(&self) -> &'static str {
+        "other"
+    }
+
+    fn resolve(
+        &self,
+        _reference: &SecretRef,
+    ) -> std::result::Result<Secret, permguard_core::SecretError> {
+        Ok(Secret::new(vec![0x5a; 32]))
+    }
 }
 
 #[test]
 fn test_asking_for_pseudonymisation_with_nowhere_to_resolve_the_key_refuses() {
     let path = config_file("pseudonym-no-store", PSEUDONYM_ON);
-    let app = app().with_pseudonymizer_factory(|key, version| {
-        Box::new(StubPolicy(format!("{version}:{}", key.len())))
-    });
+    let app = app();
     let config = app
         .config_for(&serve_action(&path))
         .expect("the config builds");
 
     // A build that can pseudonymise but has nowhere to get the key refuses, rather than deriving
     // pseudonyms from something it invented.
-    let error = match app.pseudonymizer_for(&config, None) {
+    let error = match app.pseudonymizer_for(&config, None, &pseudonym_volume("no-store"), HOST_ID) {
         Err(error) => error,
         Ok(_) => panic!("there is no secret store"),
     };
@@ -731,25 +736,78 @@ fn test_asking_for_pseudonymisation_with_nowhere_to_resolve_the_key_refuses() {
 }
 
 #[test]
-fn test_a_secret_too_short_to_derive_from_is_refused() {
+fn test_a_secret_shorter_than_256_bits_is_refused() {
     let path = config_file("pseudonym-short", PSEUDONYM_ON);
-    let app = app().with_pseudonymizer_factory(|key, version| {
-        Box::new(StubPolicy(format!("{version}:{}", key.len())))
-    });
+    let app = app();
     let config = app
         .config_for(&serve_action(&path))
         .expect("the config builds");
     let store: Box<dyn SecretStore> = Box::new(ShortSecret);
 
-    let error = match app.pseudonymizer_for(&config, Some(store.as_ref())) {
+    let error = match app.pseudonymizer_for(
+        &config,
+        Some(store.as_ref()),
+        &pseudonym_volume("short"),
+        HOST_ID,
+    ) {
         Err(error) => error,
         Ok(_) => panic!("the secret is too short"),
     };
 
     let message = format!("{error:#}");
-    assert!(message.contains("too short"), "{message}");
+    assert!(message.contains("at least 32"), "{message}");
     // The reference may be named; what it resolved to may not.
     assert!(!message.contains("tiny"), "{message}");
+}
+
+const COORDINATING: &str = "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    env_prefix: PERMGUARD_APP_TEST\n    coordinator_root_ref: coordinator-root\n    zone_key_version: \"v4\"\n";
+
+/// WP-3.3: the coordinator root is resolved, at least 256 bits, and witnessed under its role at
+/// the zone key version; without the setting the Host coordinates nothing.
+#[test]
+fn test_the_coordinator_root_is_resolved_witnessed_and_bound_to_this_host() {
+    let path = config_file("coordinating", COORDINATING);
+    let app = app();
+    let config = app
+        .config_for(&serve_action(&path))
+        .expect("the config builds");
+    let volume = pseudonym_volume("coordinating");
+    let store = secrets();
+    let coordinator = app
+        .coordinator_for(&config, Some(store.as_ref()), &volume, HOST_ID)
+        .expect("resolved")
+        .expect("the configuration names one");
+    assert_eq!(coordinator.authority(), HOST_ID);
+    assert_eq!(coordinator.version().to_string(), "v4");
+    assert!(
+        volume
+            .host()
+            .path()
+            .join("state/witness/by-role/coordinator/v4")
+            .exists()
+    );
+
+    let short: Box<dyn SecretStore> = Box::new(ShortSecret);
+    let refused = app
+        .coordinator_for(
+            &config,
+            Some(short.as_ref()),
+            &pseudonym_volume("short-root"),
+            HOST_ID,
+        )
+        .err()
+        .map(|error| format!("{error:#}"))
+        .expect("a short root is refused");
+    assert!(refused.contains("at least 32"), "{refused}");
+
+    let plain = app
+        .config_for(&serve_action(&config_file("not-coordinating", SERVABLE)))
+        .expect("the config builds");
+    assert!(
+        app.coordinator_for(&plain, Some(store.as_ref()), &volume, HOST_ID)
+            .expect("nothing to resolve")
+            .is_none()
+    );
 }
 
 /// A section of the kind a crate outside this workspace would define — and not about keys.

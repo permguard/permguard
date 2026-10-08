@@ -24,7 +24,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use permguard_decisions::{merkle, record};
-use permguard_stream::cursor::{Cursor, CursorError, CursorKey, Position, filter_digest};
+use permguard_stream::cursor::{Cursor, CursorError, Position, filter_digest};
+
+use crate::decisions::cursorkey::CursorKeys;
 use permguard_stream::{Block, Coverage, Frontier, Window};
 
 use super::store::{DecisionStore, Scope, read_segment};
@@ -118,7 +120,7 @@ impl std::fmt::Display for ReadError {
 pub fn read(
     store: &DecisionStore,
     scope: &Scope,
-    key: &CursorKey,
+    keys: &CursorKeys,
     window: &Window,
 ) -> Result<Page, ReadError> {
     let segments = store
@@ -126,6 +128,10 @@ pub fn read(
         .map_err(|error| ReadError::Unavailable(error.to_string()))?;
     let oldest_segment = segments.first().map(|(first, _)| *first).unwrap_or(0);
     let stream = scope.key();
+    // The resource's own key (WP-3.3): an offset of one resource never opens under another's.
+    let key = &keys
+        .for_resource(&stream)
+        .map_err(|error| ReadError::Unavailable(error.to_string()))?;
     let filters = filters();
 
     let oldest_available = {

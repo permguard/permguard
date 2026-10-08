@@ -31,7 +31,6 @@ use permguard_core::{
 use permguard_std::audit::TracingAuditSink;
 use permguard_std::keys::KeyService;
 use permguard_std::metrics::Registry;
-use permguard_std::pseudonym::HmacPseudonymizer;
 use permguard_std::storage::MemoryStorage;
 use permguard_telemetry::TelemetryService;
 use permguard_transport::Surface;
@@ -608,9 +607,6 @@ impl PlaneServer {
         .with_catalog_factory(catalog_for)
         .with_control_signing_keys_factory(control_signing_keys_for)
         .with_data_signing_keys_factory(data_signing_keys_for)
-        .with_pseudonymizer_factory(|key, key_version| {
-            Box::new(HmacPseudonymizer::new(key, key_version))
-        })
         .with_reload_handler(|| {
             permguard_transport::reload_all();
         })

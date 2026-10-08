@@ -61,7 +61,7 @@ pub struct DecisionFacade {
     /// position it was never given is this signature. Held here rather than read per request: it
     /// is the store's, it is stable across restarts, and reading a key file on the hot path would
     /// be a disk read per page.
-    pub cursor_key: permguard_stream::CursorKey,
+    pub cursor_key: crate::decisions::cursorkey::CursorKeys,
     /// How much a refusal says about the inside.
     pub disclosure: Disclosure,
     /// What to count.

@@ -50,8 +50,12 @@ pub struct Commitment {
     version: String,
 }
 
-/// HMAC-SHA256 under the commitment key, over its arguments in order.
-type MacFn = std::sync::Arc<dyn Fn(&[&[u8]]) -> Option<[u8; 32]> + Send + Sync>;
+/// The zone and the ledger a tag is taken in, as their 16 UUID bytes: the key is the ledger's
+/// (WP-3.3).
+pub type Scope = ([u8; 16], [u8; 16]);
+
+/// HMAC-SHA256 under the commitment key of a scope, over its arguments in order.
+type MacFn = std::sync::Arc<dyn Fn(Option<&Scope>, &[&[u8]]) -> Option<[u8; 32]> + Send + Sync>;
 
 impl Commitment {
     /// Builds a commitment scheme from key material and its version.
@@ -74,7 +78,22 @@ impl Commitment {
         mac: impl Fn(&[&[u8]]) -> Option<[u8; 32]> + Send + Sync + 'static,
     ) -> Self {
         Self {
-            mac: std::sync::Arc::new(mac),
+            mac: std::sync::Arc::new(move |_: Option<&Scope>, parts: &[&[u8]]| mac(parts)),
+            version: version.into(),
+        }
+    }
+
+    /// Builds a commitment scheme whose key is chosen per scope, by a MAC computed elsewhere —
+    /// the Host's zone key handle (WP-3.3). A value committed without a scope, or in a scope the
+    /// handle holds no key for, is rendered `unavailable`, never tagged under another key.
+    pub fn with_scoped_mac(
+        version: impl Into<String>,
+        mac: impl Fn(&Scope, &[&[u8]]) -> Option<[u8; 32]> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            mac: std::sync::Arc::new(move |scope: Option<&Scope>, parts: &[&[u8]]| {
+                scope.and_then(|scope| mac(scope, parts))
+            }),
             version: version.into(),
         }
     }
@@ -90,8 +109,17 @@ impl Commitment {
     /// holding two commitments can tell "different values" from "different
     /// keys" instead of concluding the first when it is the second.
     pub fn commit(&self, value: &Value) -> Result<String, CanonicalError> {
+        self.commit_in(None, value)
+    }
+
+    /// Commits to `value` in `scope`: under that ledger's key for a scoped scheme.
+    pub fn commit_in(
+        &self,
+        scope: Option<&Scope>,
+        value: &Value,
+    ) -> Result<String, CanonicalError> {
         let canonical = jcs::canonicalize(value)?;
-        let Some(tag) = (self.mac)(&[COMMITMENT_DOMAIN.as_bytes(), &canonical]) else {
+        let Some(tag) = (self.mac)(scope, &[COMMITMENT_DOMAIN.as_bytes(), &canonical]) else {
             return Ok(format!("hmac-sha256:{}:unavailable", self.version));
         };
 
@@ -187,5 +215,33 @@ mod tests {
         let rendered = format!("{:?}", Commitment::new(*b"super-secret", "v1"));
 
         assert!(!rendered.contains("super-secret"), "{rendered}");
+    }
+
+    /// WP-3.3: a scoped scheme tags under the key of the scope it is given, and nothing without.
+    #[test]
+    fn test_a_scoped_scheme_tags_per_scope_and_never_without_one() {
+        let scheme = Commitment::with_scoped_mac("v1", |(zone, ledger), parts| {
+            let mut key = zone.to_vec();
+            key.extend_from_slice(ledger);
+            let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(&key).ok()?;
+            for part in parts {
+                mac.update(part);
+            }
+            Some(mac.finalize().into_bytes().into())
+        });
+        let value = json!("HR");
+        let one = scheme
+            .commit_in(Some(&([1; 16], [2; 16])), &value)
+            .expect("it commits");
+        let other = scheme
+            .commit_in(Some(&([1; 16], [3; 16])), &value)
+            .expect("it commits");
+        assert_ne!(one, other, "another ledger, another key");
+        assert!(one.starts_with("hmac-sha256:v1:") && !one.ends_with("unavailable"));
+        assert_eq!(
+            scheme.commit(&value).expect("it commits"),
+            "hmac-sha256:v1:unavailable",
+            "no scope, no tag"
+        );
     }
 }

@@ -275,6 +275,15 @@ pub const SETTING_SECRETS_DIRECTORY: &str = "PERMGUARD_SECRETS_DIRECTORY";
 /// Runtime setting key for the variable prefix the `environment` provider reads.
 pub const SETTING_SECRETS_ENV_PREFIX: &str = "PERMGUARD_SECRETS_ENV_PREFIX";
 
+/// Runtime setting key for the coordinator root (WP-3.3): the secret zone roots, and the keys
+/// distributed per zone, purpose and scope, are derived from. Optional: a Host without one
+/// coordinates no zone.
+pub const SETTING_SECRETS_COORDINATOR_ROOT_REF: &str = "PERMGUARD_SECRETS_COORDINATOR_ROOT_REF";
+
+/// Runtime setting key for the version of the zone keys this Host derives or uses, `vN`
+/// (WP-3.3): the decision input tags and the zone's shared pseudonyms carry it.
+pub const SETTING_SECRETS_ZONE_KEY_VERSION: &str = "PERMGUARD_SECRETS_ZONE_KEY_VERSION";
+
 /// Runtime setting key for whether audit subjects are pseudonymised.
 pub const SETTING_AUDIT_PSEUDONYM_ENABLED: &str = "PERMGUARD_AUDIT_PSEUDONYM_ENABLED";
 
@@ -600,15 +609,12 @@ pub const SETTING_LOG_ON_FULL: &str = "PERMGUARD_DECISIONS_LOG_ON_FULL";
 /// audit trail.
 pub const SETTING_LOG_SAMPLE_PERMITS: &str = "PERMGUARD_DECISIONS_LOG_SAMPLE_PERMITS";
 
-/// Runtime setting key for the secret input commitments are taken under.
-///
-/// Required when the decision log is on. A commitment keyed by something public — a hostname, the
-/// producer's own name, anything that travels in the records — is a bare digest wearing a hat, and
-/// a bare digest of a low-entropy value is a dictionary away from the value.
+/// Retired (WP-3.3): input tags are keyed by the per-ledger zone key derived from
+/// [`SETTING_SECRETS_COORDINATOR_ROOT_REF`]; a configuration that still sets this is refused.
 pub const SETTING_LOG_COMMITMENT_KEY_REF: &str = "PERMGUARD_DECISIONS_LOG_COMMITMENT_KEY_REF";
 
-/// Which version of that key, recorded in every marker so a reader can tell a different value from
-/// a different key.
+/// Retired with [`SETTING_LOG_COMMITMENT_KEY_REF`]: the version is
+/// [`SETTING_SECRETS_ZONE_KEY_VERSION`].
 pub const SETTING_LOG_COMMITMENT_KEY_VERSION: &str =
     "PERMGUARD_DECISIONS_LOG_COMMITMENT_KEY_VERSION";
 
@@ -1100,6 +1106,8 @@ pub struct Config {
     secrets_provider: SecretProvider,
     secrets_directory: Option<String>,
     secrets_env_prefix: String,
+    secrets_coordinator_root_ref: Option<SecretRef>,
+    secrets_zone_key_version: String,
     audit_destination: AuditDestination,
     audit_refusals: bool,
     notp_max_batch_bytes: u64,
@@ -1142,8 +1150,6 @@ pub struct Config {
     log_batch_interval: Duration,
     log_on_full_open: bool,
     log_sample_permits: f64,
-    log_commitment_key_ref: Option<SecretRef>,
-    log_commitment_key_version: String,
     log_destination: Option<crate::decisions::LogDestination>,
     events_destination: Option<crate::decisions::EventDestination>,
     log_include: crate::decisions::IncludeSection,
@@ -1271,6 +1277,8 @@ impl Default for Config {
             secrets_provider: SecretProvider::None,
             secrets_directory: None,
             secrets_env_prefix: "PERMGUARD_SECRET".to_owned(),
+            secrets_coordinator_root_ref: None,
+            secrets_zone_key_version: DEFAULT_KEY_VERSION.to_owned(),
             audit_destination: AuditDestination::default(),
             audit_refusals: false,
             notp_max_batch_bytes: DEFAULT_NOTP_MAX_BATCH_BYTES,
@@ -1310,8 +1318,6 @@ impl Default for Config {
             log_batch_interval: DEFAULT_LOG_BATCH_INTERVAL,
             log_on_full_open: true,
             log_sample_permits: DEFAULT_LOG_SAMPLE_PERMITS,
-            log_commitment_key_ref: None,
-            log_commitment_key_version: DEFAULT_KEY_VERSION.to_owned(),
             log_destination: None,
             events_destination: None,
             log_include: crate::decisions::IncludeSection::default(),
@@ -1635,9 +1641,19 @@ produce: use `EdDSA` or `ES256`"
                 .audit_pseudonym_key_ref
                 .map(SecretRef::new)
                 .or_else(|| self.audit_pseudonym_key_ref.clone()),
-            audit_pseudonym_key_version: input
-                .audit_pseudonym_key_version
-                .unwrap_or_else(|| self.audit_pseudonym_key_version.clone()),
+            audit_pseudonym_key_version: {
+                let version = input
+                    .audit_pseudonym_key_version
+                    .unwrap_or_else(|| self.audit_pseudonym_key_version.clone());
+                // The same `vN` every key version is (WP-3.3).
+                if !is_key_version(&version) {
+                    bail!(
+                        "the realm `{name}` names the pseudonym key version `{version}`: a key \
+                         version is `v` and an integer of at least 1, as `v1`"
+                    );
+                }
+                version
+            },
             secrets_provider,
             secrets_env_prefix: input.secrets_env_prefix.unwrap_or_else(|| {
                 // A per-realm environment prefix defaults to the server's, suffixed with the realm, so
@@ -1748,9 +1764,21 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
 
-            if self.audit_pseudonym_key_version.trim().is_empty() {
-                bail!("the audit pseudonymisation key version is empty");
+            if !is_key_version(&self.audit_pseudonym_key_version) {
+                bail!(
+                    "the audit pseudonymisation key version is `{}`: a key version is `v` and an \
+                     integer of at least 1, as `v1`",
+                    self.audit_pseudonym_key_version
+                );
             }
+        }
+
+        if !is_key_version(&self.secrets_zone_key_version) {
+            bail!(
+                "`secrets.zone_key_version` is `{}`: a key version is `v` and an integer of at \
+                 least 1, as `v1`",
+                self.secrets_zone_key_version
+            );
         }
 
         Ok(())
@@ -2737,6 +2765,16 @@ produce: use `EdDSA` or `ES256`"
         &self.secrets_env_prefix
     }
 
+    /// The coordinator root, when this Host coordinates zones (WP-3.3).
+    pub fn secrets_coordinator_root_ref(&self) -> Option<&SecretRef> {
+        self.secrets_coordinator_root_ref.as_ref()
+    }
+
+    /// The version of the zone keys this Host derives or uses, `vN` (WP-3.3).
+    pub fn secrets_zone_key_version(&self) -> &str {
+        &self.secrets_zone_key_version
+    }
+
     /// Reports whether audit subjects are pseudonymised.
     pub fn audit_pseudonym_enabled(&self) -> bool {
         self.audit_pseudonym_enabled
@@ -2995,16 +3033,6 @@ produce: use `EdDSA` or `ES256`"
     /// The rate at which permits are recorded. Denies and errors always are.
     pub fn log_sample_permits(&self) -> f64 {
         self.log_sample_permits
-    }
-
-    /// Which secret input commitments are taken under.
-    pub fn log_commitment_key_ref(&self) -> Option<&SecretRef> {
-        self.log_commitment_key_ref.as_ref()
-    }
-
-    /// Which version of it, recorded in every marker.
-    pub fn log_commitment_key_version(&self) -> &str {
-        &self.log_commitment_key_version
     }
 
     /// Where records are shipped, when the file names a server.
@@ -3576,6 +3604,11 @@ produce: use `EdDSA` or `ES256`"
             SETTING_SECRETS_PROVIDER => Some(self.secrets_provider.as_str().to_owned()),
             SETTING_SECRETS_DIRECTORY => Some(self.secrets_directory().display().to_string()),
             SETTING_SECRETS_ENV_PREFIX => Some(self.secrets_env_prefix.clone()),
+            SETTING_SECRETS_COORDINATOR_ROOT_REF => self
+                .secrets_coordinator_root_ref
+                .as_ref()
+                .map(|reference| reference.name().to_owned()),
+            SETTING_SECRETS_ZONE_KEY_VERSION => Some(self.secrets_zone_key_version.clone()),
             SETTING_AUDIT_PSEUDONYM_ENABLED => b(self.audit_pseudonym_enabled),
             SETTING_AUDIT_PSEUDONYM_KEY_REF => self
                 .audit_pseudonym_key_ref
@@ -3624,11 +3657,6 @@ produce: use `EdDSA` or `ES256`"
                 .to_owned(),
             ),
             SETTING_LOG_SAMPLE_PERMITS => n(self.log_sample_permits),
-            SETTING_LOG_COMMITMENT_KEY_REF => self
-                .log_commitment_key_ref
-                .as_ref()
-                .map(|r| r.name().to_owned()),
-            SETTING_LOG_COMMITMENT_KEY_VERSION => Some(self.log_commitment_key_version.clone()),
             SETTING_EVENTS_ENABLED => b(self.events_enabled),
             SETTING_EVENTS_PRODUCER_ID => Some(self.events_producer_id.clone()),
             SETTING_EVENTS_DIRECTORY => Some(self.events_directory().display().to_string()),
@@ -4096,6 +4124,14 @@ produce: use `EdDSA` or `ES256`"
             self.secrets_env_prefix.clone_from(value);
         }
 
+        if let Some(value) = settings.get(SETTING_SECRETS_COORDINATOR_ROOT_REF) {
+            self.secrets_coordinator_root_ref = Some(SecretRef::new(value.clone()));
+        }
+
+        if let Some(value) = settings.get(SETTING_SECRETS_ZONE_KEY_VERSION) {
+            self.secrets_zone_key_version = value.trim().to_owned();
+        }
+
         if let Some(value) = settings.get(SETTING_AUDIT_PSEUDONYM_ENABLED) {
             self.audit_pseudonym_enabled = parse_bool(value)
                 .with_context(|| format!("reading {SETTING_AUDIT_PSEUDONYM_ENABLED}"))?;
@@ -4357,26 +4393,31 @@ produce: use `EdDSA` or `ES256`"
                 );
             }
         }
-        if let Some(value) = settings.get(SETTING_LOG_COMMITMENT_KEY_REF) {
-            self.log_commitment_key_ref = Some(SecretRef::new(value.clone()));
-        }
-        if let Some(value) = settings.get(SETTING_LOG_COMMITMENT_KEY_VERSION) {
-            self.log_commitment_key_version = value.trim().to_owned();
-            if self.log_commitment_key_version.is_empty() {
+        // Retired (WP-3.3): input tags are keyed per ledger by the zone keys the coordinator root
+        // derives. A configuration still naming its own commitment key is refused, so nothing
+        // keeps committing under a key the deployment believes is in use.
+        for retired in [
+            SETTING_LOG_COMMITMENT_KEY_REF,
+            SETTING_LOG_COMMITMENT_KEY_VERSION,
+        ] {
+            if settings.contains_key(retired) {
                 anyhow::bail!(
-                    "reading {SETTING_LOG_COMMITMENT_KEY_VERSION}: a key with no version cannot be \
-                     rotated, because nothing can say which one produced a commitment"
+                    "{retired} (`decisions.log.commitment`) is retired: decision input tags are \
+                     keyed per ledger by the zone keys derived from \
+                     `operations.secrets.coordinator_root_ref`, at \
+                     `operations.secrets.zone_key_version`"
                 );
             }
         }
         // A commitment keyed by something public is a bare digest, and a bare digest of a
         // low-entropy caller attribute is a dictionary away from the attribute. Refused at
         // startup rather than discovered by whoever reads the log.
-        if self.log_enabled && self.log_commitment_key_ref.is_none() {
+        if self.log_enabled && self.secrets_coordinator_root_ref.is_none() {
             anyhow::bail!(
-                "the decision log is on but no {SETTING_LOG_COMMITMENT_KEY_REF} is set: input \
-                 commitments would be keyed by nothing secret, and a reader could recover \
-                 low-entropy caller attributes from them by trying values"
+                "the decision log is on but no {SETTING_SECRETS_COORDINATOR_ROOT_REF} is set: \
+                 input tags and the subjects' pseudonyms are keyed per zone and ledger by keys \
+                 derived from it, and zone keys delivered by another coordinator arrive with the \
+                 memberships"
             );
         }
 
@@ -4911,6 +4952,17 @@ fn is_loopback(address: &str) -> bool {
     host == "localhost" || host == "::1" || host.starts_with("127.")
 }
 
+/// Whether `text` is a key version: `v` and an integer of at least 1 without leading zeros, in
+/// the signed 64-bit range (WP-3.3).
+pub fn is_key_version(text: &str) -> bool {
+    text.strip_prefix('v').is_some_and(|digits| {
+        !digits.is_empty()
+            && !digits.starts_with('0')
+            && digits.bytes().all(|b| b.is_ascii_digit())
+            && digits.parse::<i64>().is_ok()
+    })
+}
+
 /// Reads a setting written as a boolean.
 pub(crate) fn parse_bool(value: &str) -> Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
@@ -5001,8 +5053,6 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LIMITS_WRITE_STALL_TIMEOUT,
     SETTING_LOG_BATCH_BYTES,
     SETTING_LOG_BATCH_INTERVAL,
-    SETTING_LOG_COMMITMENT_KEY_REF,
-    SETTING_LOG_COMMITMENT_KEY_VERSION,
     SETTING_LOG_ENABLED,
     SETTING_LOG_FORMAT,
     SETTING_LOG_LEVEL,
@@ -5044,6 +5094,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_PUBLIC_TLS_MIN_VERSION,
     SETTING_SECRETS_DIRECTORY,
     SETTING_SECRETS_ENV_PREFIX,
+    SETTING_SECRETS_COORDINATOR_ROOT_REF,
+    SETTING_SECRETS_ZONE_KEY_VERSION,
     SETTING_SECRETS_PROVIDER,
     SETTING_SHUTDOWN_DRAIN_TIMEOUT,
     SETTING_SHUTDOWN_TIMEOUT,
@@ -5101,7 +5153,7 @@ const STARTUP_SETTINGS: &[&str] = &[
     SETTING_CONTROL_KEYS_DIRECTORY,
     SETTING_DATA_KEYS_DIRECTORY,
     SETTING_AUDIT_PSEUDONYM_KEY_REF,
-    SETTING_LOG_COMMITMENT_KEY_REF,
+    SETTING_SECRETS_COORDINATOR_ROOT_REF,
     SETTING_LOG_PDP_ID,
     SETTING_EVENTS_PRODUCER_ID,
     SETTING_PUBLIC_TLS_CERT,

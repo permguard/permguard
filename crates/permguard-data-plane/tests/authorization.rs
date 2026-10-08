@@ -61,7 +61,7 @@ fn router(tag: &str, public: &[PublicGrant]) -> axum::Router {
     let registration = Host::builder()
         .authorization(Arc::new(Authorization::public_only(public)))
         .build()
-        .register(module.declaration(config), None)
+        .register(module.declaration(config))
         .expect("the data plane registers");
     let server: &'static ServerContext<'static> = Box::leak(Box::new(
         ServerContext::new(identity(), config, storage, audit)
@@ -125,7 +125,7 @@ async fn a_router_without_the_authentication_boundary_is_closed_even_to_public_g
     let registration = Host::builder()
         .authorization(Arc::new(Authorization::permissive()))
         .build()
-        .register(module.declaration(config), None)
+        .register(module.declaration(config))
         .expect("the data plane registers");
     let server: &'static ServerContext<'static> = Box::leak(Box::new(
         ServerContext::new(identity(), config, storage, audit)

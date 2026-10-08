@@ -44,7 +44,7 @@ use axum::{Json, Router};
 
 use permguard_core::metrics::labels;
 use permguard_core::{ApiError, Disclosure, ErrorClass, Jwk, Metrics};
-use permguard_stream::{CursorKey, Window};
+use permguard_stream::Window;
 
 use super::ingest::{self, Accepted, Batch, ProducerTrust, Refused};
 use super::measure;
@@ -75,7 +75,7 @@ pub struct EventFacade {
     /// Where those sets are read from, for the re-read when a batch cannot be attributed.
     pub producer_files: Vec<ProducerFile>,
     /// The secret read offsets are signed with.
-    pub cursor_key: CursorKey,
+    pub cursor_key: crate::decisions::cursorkey::CursorKeys,
     /// The catalog, for turning the scope a reader named into the one records are keyed by.
     ///
     /// Optional because the contract makes it optional: a build that composes no catalog has no

@@ -756,6 +756,21 @@
       "source": "crates/permguard-host/src/session/peers.rs",
       "item": "Peers::open",
       "reason": "the pinned peers' directory on the Host's own volume (WP-2.3); each seen file is read through `Seen::decode`"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "item": "KeyVersion::from_str",
+      "reason": "a configuration value the operator sets: `vN`, refused in any other form (WP-3.3)"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "item": "Witnesses::open",
+      "reason": "`host/state/witness/` on the Host's own volume (WP-3.3): 32-byte witnesses this process wrote, compared and never parsed"
+    },
+    {
+      "source": "crates/permguard-host/src/secrets/mod.rs",
+      "item": "ZoneKeys::open",
+      "reason": "`host/zone-use/` on the Host's own volume (WP-3.3): 32-byte keys delivered to it, each checked against its witness before use"
     }
   ]
 }

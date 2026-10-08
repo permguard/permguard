@@ -8,10 +8,11 @@
 //! | signs `DecisionBatchV1`               | `Signer<DecisionBatchV1>`        | the decision shipper, the JWKS |
 //! | signs `EventBatchV1`                  | `Signer<EventBatchV1>`           | the event shipper              |
 //! | audit schema [`DataPlaneAudit`]       | `AuditHandle<DataPlaneAudit>`    | decisions, mirrors             |
-//! | the [`DecisionCommitment`] secret     | `SecretHandle<DecisionCommitment>` | input commitments            |
+//! | zone keys `decision.commitment`       | `ZoneHandle`                     | input tags, per ledger         |
+//! | zone keys `audit.pseudonym`           | `ZoneHandle`                     | decision subjects, per zone    |
 //!
-//! The plane never sees a key manager, the audit recorder, the secret store or a secret's bytes:
-//! only these.
+//! The plane never sees a key manager, the audit recorder, the secret store, a root or a key's
+//! bytes: only these (WP-3.3 for the zone keys).
 
 use std::sync::Arc;
 
@@ -19,8 +20,8 @@ use permguard_core::keys::{PublicSet, SigningRing};
 use permguard_core::{Config, PlaneContext};
 use permguard_host::composition::{
     AuditHandle, AuditSchema, DecisionBatchV1, Declaration, EventBatchV1, Registration,
-    SecretHandle, SecretPurpose,
 };
+use permguard_host::secrets::{ZoneHandle, ZonePurpose};
 
 use crate::service::PLANE;
 
@@ -32,32 +33,23 @@ impl AuditSchema for DataPlaneAudit {
     const ACTIONS: &'static [&'static str] = &["authz.decision", "ledger.synchronized"];
 }
 
-/// The key decision input commitments are taken under.
-pub struct DecisionCommitment;
-
-impl SecretPurpose for DecisionCommitment {
-    const NAME: &'static str = "decision.commitment";
-    /// The same floor the pseudonym key has: below it, an exhaustive search over the key is cheaper
-    /// than a dictionary over the values.
-    const MIN_BYTES: usize = 32;
-}
-
 /// This plane's audit handle.
 pub type Audit = AuditHandle<DataPlaneAudit>;
 
-/// What this plane declares to the Host under `config`: the commitment key only when the decision
-/// log is on and names one, so a plane that keeps no log resolves no secret.
+/// What this plane declares to the Host under `config`: the zone keys of input tags and of the
+/// subjects' pseudonyms only when the decision log is on, so a plane that keeps no log MACs under
+/// nothing (WP-3.3).
 pub(crate) fn declaration(config: &Config) -> Declaration {
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
         .audits::<DataPlaneAudit>();
-    match config.log_commitment_key_ref() {
-        Some(reference) if config.log_enabled() => declaration.uses_secret::<DecisionCommitment>(
-            reference.clone(),
-            config.log_commitment_key_version(),
-        ),
-        _ => declaration,
+    if config.log_enabled() {
+        declaration
+            .uses_zone_key(ZonePurpose::DecisionCommitment)
+            .uses_zone_key(ZonePurpose::AuditPseudonym)
+    } else {
+        declaration
     }
 }
 
@@ -117,15 +109,19 @@ pub(crate) fn audit_for_tests(recorder: permguard_core::AuditRecorder) -> Audit 
     permguard_host::composition::Host::builder()
         .audit(recorder)
         .build()
-        .register(Declaration::new(PLANE).audits::<DataPlaneAudit>(), None)
+        .register(Declaration::new(PLANE).audits::<DataPlaneAudit>())
         .ok()
         .and_then(|registration| registration.audit::<DataPlaneAudit>().ok().flatten())
         .unwrap_or_else(|| unreachable!("a declared schema with a composed recorder"))
 }
 
-/// The commitment key's handle, when the declaration named one.
-pub(crate) fn commitment(context: &PlaneContext<'_>) -> Option<SecretHandle<DecisionCommitment>> {
-    registration(context)?.secret::<DecisionCommitment>().ok()
+/// The zone keys of `purpose` the Host holds for this plane: `None` without them, never another
+/// purpose's.
+pub(crate) fn zone_key(
+    context: &PlaneContext<'_>,
+    purpose: ZonePurpose,
+) -> Option<Arc<ZoneHandle>> {
+    registration(context)?.zone_key(purpose).ok().flatten()
 }
 
 #[cfg(test)]

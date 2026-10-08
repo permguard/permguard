@@ -237,8 +237,9 @@ impl EventReader for Wire {
 /// A control plane that accepts what this ring signs.
 fn control(tag: &str, keys: &DirectoryKeyManager) -> Arc<Wire> {
     let store = EventStore::open(scratch(&format!("{tag}-store"))).expect("the store opens");
-    let cursor_key = permguard_control_plane::decisions::cursorkey::load(store.root())
-        .expect("an offset key is created");
+    let cursor_key =
+        permguard_control_plane::decisions::cursorkey::load(store.root(), [1; 16], "events")
+            .expect("an offset key is created");
 
     let published = keys.public_keys().expect("the ring publishes");
     let producers = ["plane-a", "plane-b"]

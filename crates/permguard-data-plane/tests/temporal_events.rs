@@ -65,8 +65,24 @@ const EVENT_SCHEMA: &str = include_str!("fixtures/pinned.dwschema");
 const ZONE: &str = "acme";
 const LEDGER: &str = "agent-governance";
 /// What storage is keyed by: a request may name either, and one ledger keeps one journal.
-const ZONE_ID: &str = "acme-id";
-const LEDGER_ID: &str = "agent-governance-id";
+/// The zone's shared pseudonyms, as the Host's coordinator holds them (WP-3.3).
+fn subjects() -> Option<Arc<permguard_host::secrets::ZoneHandle>> {
+    let coordinator = permguard_host::secrets::Coordinator::new(
+        permguard_host::secrets::Root::from_material(
+            &[0x5a; 32],
+            permguard_host::secrets::KeyVersion::new(1).expect("v1"),
+        )
+        .expect("a root"),
+        [1; 16],
+    );
+    Some(Arc::new(permguard_host::secrets::ZoneHandle::coordinated(
+        permguard_host::secrets::ZonePurpose::AuditPseudonym,
+        coordinator,
+    )))
+}
+
+const ZONE_ID: &str = "01a3185c-5000-7000-8000-000000000a01";
+const LEDGER_ID: &str = "01a3185c-5000-7000-8000-000000000b01";
 const PROFILE: &str = "temporal";
 /// The second profile of [`manifest_two_profiles`], over its own identical partition.
 const AUDIT_PROFILE: &str = "audit";
@@ -200,7 +216,7 @@ fn provision_with(
     (policy_id, policy): (&str, &str),
     artifacts: &[(&str, &str)],
 ) -> Mirror {
-    let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
+    let path = root.join(ZONE_ID).join(LEDGER_ID);
     std::fs::create_dir_all(&path).expect("the mirror directory is created");
     let store = FsStore::new(&path);
 
@@ -290,9 +306,9 @@ fn provision_with(
     .expect("the checkpoint is written");
 
     let identity = Identity {
-        zone_id: format!("{ZONE}-id"),
+        zone_id: ZONE_ID.to_owned(),
         zone_name: ZONE.to_owned(),
-        ledger_id: format!("{LEDGER}-id"),
+        ledger_id: LEDGER_ID.to_owned(),
         ledger_name: LEDGER.to_owned(),
         server: "http://127.0.0.1:6443".to_owned(),
     };
@@ -378,7 +394,7 @@ fn plane_built(
         .expect("the journal opens");
         decider.with_journal(
             Some(Arc::new(journal)),
-            None,
+            subjects(),
             permguard_core::decisions::IncludeSection::default(),
         )
     } else {
@@ -1169,7 +1185,7 @@ mod shipped_example {
             permguard_languages::manifest_file::from_yaml(example("manifest.yml").as_bytes())
                 .expect("the example's manifest parses");
 
-        let path = root.join(format!("{ZONE}-id")).join(format!("{LEDGER}-id"));
+        let path = root.join(ZONE_ID).join(LEDGER_ID);
         std::fs::create_dir_all(&path).expect("the mirror directory is created");
         let store = FsStore::new(&path);
         let put_blob = |media_type: &str, data: &[u8]| {
@@ -1269,9 +1285,9 @@ mod shipped_example {
         .expect("the checkpoint is written");
 
         let identity = Identity {
-            zone_id: format!("{ZONE}-id"),
+            zone_id: ZONE_ID.to_owned(),
             zone_name: ZONE.to_owned(),
-            ledger_id: format!("{LEDGER}-id"),
+            ledger_id: LEDGER_ID.to_owned(),
             ledger_name: LEDGER.to_owned(),
             server: "http://127.0.0.1:6443".to_owned(),
         };

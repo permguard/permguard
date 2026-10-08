@@ -235,8 +235,12 @@ fn page(
     from: Option<&str>,
     limit: usize,
 ) -> Result<permguard_control_plane::decisions::read::Page, read::ReadError> {
-    let key = permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
-        .expect("the key is long enough");
+    let key = permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(
+        b"a-test-cursor-key-of-32-bytes!!!!",
+        [1; 16],
+        "decisions",
+    )
+    .expect("the key is long enough");
 
     read::read(
         store,
@@ -806,9 +810,13 @@ fn window(records: usize) -> permguard_stream::Window {
     }
 }
 
-fn cursor_key() -> permguard_stream::CursorKey {
-    permguard_stream::CursorKey::new(b"a-test-cursor-key-of-32-bytes!!!!", &[])
-        .expect("the key is long enough")
+fn cursor_key() -> permguard_control_plane::decisions::cursorkey::CursorKeys {
+    permguard_control_plane::decisions::cursorkey::CursorKeys::from_root(
+        b"a-test-cursor-key-of-32-bytes!!!!",
+        [1; 16],
+        "decisions",
+    )
+    .expect("the key is long enough")
 }
 
 /// The failure a moving end causes, and the fix `until` is.

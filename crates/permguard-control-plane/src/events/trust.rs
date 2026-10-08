@@ -218,7 +218,8 @@ mod tests {
             store: Arc::new(crate::events::EventStore::open(&root).expect("the store opens")),
             producers: Arc::new(std::sync::RwLock::new(Vec::new())),
             producer_files: files,
-            cursor_key: crate::decisions::cursorkey::load(&root).expect("a cursor key"),
+            cursor_key: crate::decisions::cursorkey::load(&root, [1; 16], "events")
+                .expect("a cursor key"),
             disclosure: permguard_core::Disclosure::default(),
             metrics: permguard_core::metrics::Metrics::default(),
             base_url: String::new(),
