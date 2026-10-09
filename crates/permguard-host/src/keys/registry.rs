@@ -166,6 +166,11 @@ impl Registry {
         Self { identity, rings }
     }
 
+    /// The identity, when it is open.
+    pub fn identity(&self) -> Option<&Arc<Identity>> {
+        self.identity.as_ref()
+    }
+
     /// The rings with keys of their own.
     pub fn rings(&self) -> &[Arc<Ring>] {
         &self.rings

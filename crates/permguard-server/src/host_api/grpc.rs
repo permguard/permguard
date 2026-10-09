@@ -432,9 +432,36 @@ impl KeyService for Served {
 
     async fn get_key_bundle(
         &self,
-        _request: Request<v1::GetKeyBundleRequest>,
+        request: Request<v1::GetKeyBundleRequest>,
     ) -> Answer<v1::GetKeyBundleResponse> {
-        Err(unimplemented("the key bundle"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let request = request.into_inner();
+        // An empty string is no value, as an absent query member is on REST.
+        let given = |text: String| (!text.is_empty()).then_some(text);
+        let page = self
+            .api
+            .key_bundle(
+                &actor,
+                &api::KeyBundleQuery {
+                    resource: request.resource,
+                    frontier: given(request.frontier),
+                    cursor: given(request.cursor),
+                    limit: request.limit,
+                },
+            )
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::GetKeyBundleResponse {
+            resource: page.resource,
+            manifest: raw(&page.manifest)?,
+            bundle_digest: page.bundle_digest,
+            total: page.total,
+            items: page
+                .items
+                .iter()
+                .map(|item| raw(item))
+                .collect::<Result<_, _>>()?,
+            next_cursor: page.next_cursor,
+        }))
     }
 
     async fn list_secrets(

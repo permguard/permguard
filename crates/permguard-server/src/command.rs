@@ -253,7 +253,7 @@ pub enum KeysCommand {
     /// verification takes its keys from a snapshot made *before* the incident, never from the
     /// machine under suspicion, whose endpoint the same attacker could be answering.
     Export {
-        /// Directory the ring lives in, e.g. `<volume>/operations/keys`.
+        /// The ring's directory on a stopped volume, `<volume>/host/keys/<ring>`.
         #[arg(long, value_name = "DIRECTORY")]
         directory: PathBuf,
     },

@@ -438,6 +438,12 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "host.FRONTIER_UNREPRODUCIBLE": {
+      "code": "frontier_unreproducible",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.SESSION_REFUSED": {
       "code": "session_refused",
       "contract": "6-contracts/8-contract-host-api.md",

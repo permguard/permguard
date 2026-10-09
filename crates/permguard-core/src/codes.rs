@@ -367,6 +367,10 @@ pub mod host {
     /// A successor is prepublished already and takes over once `publish_ahead` has passed: a
     /// second rotation waits for it (WP-3.1).
     pub const KEY_ROTATION_PENDING: &str = "key_rotation_pending";
+    /// The verification bundle's frontier is not one this Host can rebuild: the identity rotated
+    /// since it was fixed, or it names a ring or an entry the Host does not hold (WP-3.4). A
+    /// bundle asked again without a frontier starts at a new one.
+    pub const FRONTIER_UNREPRODUCIBLE: &str = "frontier_unreproducible";
     /// The route exists in the contract and a later package serves it.
     pub const NOT_SERVED_YET: &str = "not_served_yet";
     /// This listener cannot serve peer Host sessions (WP-2.3): `admin.peer_sessions` is
@@ -646,6 +650,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::KEY_UNKNOWN,
         host::KEY_REVOKED,
         host::KEY_ROTATION_PENDING,
+        host::FRONTIER_UNREPRODUCIBLE,
         host::NOT_SERVED_YET,
         host::PEER_SESSIONS_UNSERVEABLE,
         host::SESSION_REFUSED,

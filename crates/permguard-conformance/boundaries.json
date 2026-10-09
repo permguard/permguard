@@ -509,6 +509,46 @@
       "limit": "`keys::record::MAX_BINDING_BYTES`, checked by the decoder before it parses: the payload of a ring binding a peer presents (WP-3.1, read by peers from WP-11), and the Host's own `binding.cose`",
       "enforced_at_decoder": true,
       "fuzz": "ring_binding"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/keys/bundle.rs",
+      "item": "Item::decode",
+      "entry": "permguard_host::keys::bundle::Item::decode",
+      "max_input_bytes": 524288,
+      "limit": "`keys::bundle::MAX_ITEM_BYTES`, checked by the decoder before it parses: one item of a verification bundle a verifier reads offline (WP-3.4); the identity's carries at most `identity::MAX_SUCCESSIONS` records",
+      "enforced_at_decoder": true,
+      "fuzz": "key_bundle"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/keys/bundle.rs",
+      "item": "Frontier::decode",
+      "entry": "permguard_host::keys::bundle::Frontier::decode",
+      "max_input_bytes": 4096,
+      "limit": "`keys::bundle::MAX_FRONTIER_BYTES`, checked by the decoder before it parses: the frontier token a client names on `GET /host/v1/keys/bundle` (WP-3.4); `Frontier::from_token` bounds the token text first",
+      "enforced_at_decoder": true,
+      "fuzz": "key_bundle"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/keys/bundle.rs",
+      "item": "Manifest::decode",
+      "entry": "permguard_host::keys::bundle::Manifest::decode",
+      "max_input_bytes": 8192,
+      "limit": "`keys::bundle::MAX_MANIFEST_BYTES`, checked by the decoder before it parses: the payload of a bundle manifest a verifier reads offline (WP-3.4)",
+      "enforced_at_decoder": true,
+      "fuzz": "key_bundle"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/keys/bundle.rs",
+      "item": "verify",
+      "entry": "permguard_host::keys::bundle::verify",
+      "max_input_bytes": 8192,
+      "limit": "`keys::bundle::MAX_MANIFEST_BYTES` for the envelope and `MAX_ITEMS` items of at most `MAX_ITEM_BYTES` each, checked before anything is parsed: a verification bundle an offline verifier is handed (WP-3.4)",
+      "enforced_at_decoder": true,
+      "fuzz": "key_bundle"
     }
   ],
   "trusted": [

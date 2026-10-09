@@ -55,6 +55,7 @@ fn verified(host: &Value) -> Verified {
         suite: Suite::Ed25519Sha256V1,
         public_key: public_key.clone(),
         fingerprints: vec![fingerprint.clone()],
+        public_keys: vec![public_key.clone()],
         document: Document {
             host_id,
             subject: subject(&host_id),

@@ -264,3 +264,249 @@ fn a_revocation_target_reads_back_as_planned() {
     assert!(Revocation::parse("a\nb\nc\nx").is_none());
     assert!(Revocation::parse("a\nb\nc\n\nextra").is_none());
 }
+
+/// Every page of the bundle at `frontier` (the first page when `None`), collected.
+fn pages(api: &HostApi, frontier: Option<&str>) -> Result<(String, Vec<Vec<u8>>), Refusal> {
+    let query = |frontier: Option<&str>, cursor: Option<&str>| KeyBundleQuery {
+        resource: "host".to_owned(),
+        frontier: frontier.map(str::to_owned),
+        cursor: cursor.map(str::to_owned),
+        limit: Some(2),
+    };
+    let first = api.key_bundle(&admin(), &query(frontier, None))?;
+    assert!(first.items.len() <= 2);
+    let mut items = first.items.clone();
+    let mut cursor = first.next_cursor.clone();
+    while let Some(next) = cursor {
+        let page = api.key_bundle(&admin(), &query(Some(&first.manifest), Some(&next)))?;
+        assert_eq!(
+            page.manifest, first.manifest,
+            "one manifest, the same bytes"
+        );
+        assert_eq!(page.bundle_digest, first.bundle_digest);
+        items.extend(page.items);
+        cursor = page.next_cursor;
+    }
+    assert_eq!(items.len() as u64, first.total);
+    Ok((
+        first.manifest,
+        items
+            .iter()
+            .map(|item| URL_SAFE_NO_PAD.decode(item).expect("base64url"))
+            .collect(),
+    ))
+}
+
+fn pin(api: &HostApi) -> String {
+    api.keys
+        .identity()
+        .expect("the identity")
+        .first_fingerprint()
+        .to_owned()
+}
+
+/// WP-3.4: the pages of one frontier carry one manifest and, together, the items it digests; a
+/// rotation and a revocation between two pages change nothing they carry; the bundle verifies
+/// offline from the pin, and a revocation reaches the next frontier's bundle.
+#[tokio::test]
+async fn the_bundle_pages_keep_one_signed_frontier_and_verify_offline() {
+    use crate::keys::bundle;
+    use crate::keys::ring::HOST_OPERATIONS;
+
+    let api = facade_with("keys-bundle", vec![HOST_OPERATIONS, DATA_ATTEST]);
+    let (manifest, items) = pages(&api, None).expect("the bundle");
+    let manifest_bytes = URL_SAFE_NO_PAD.decode(&manifest).expect("base64url");
+    let verified =
+        bundle::verify(&manifest_bytes, &items, &pin(&api), "host").expect("verifies offline");
+    assert_eq!(verified.manifest.resource, "host");
+
+    // A rotation and a revocation of the operations ring after the first page: the frontier's
+    // pages carry the same bytes.
+    let rotated = api
+        .rotate_ring(&admin(), HOST_OPERATIONS, rotate("b1", 1))
+        .await
+        .expect("rotated");
+    let revoked_kid = api.ring(DATA_ATTEST).expect("public").keys[0].kid.clone();
+    let planned = api
+        .plan_key_revoke(
+            &admin(),
+            DATA_ATTEST,
+            plan("bp", &revoked_kid, "compromise"),
+        )
+        .await
+        .expect("planned");
+    api.run_key_revoke(
+        &admin(),
+        DATA_ATTEST,
+        RunKeyRevoke {
+            request_id: "br".to_owned(),
+            plan_id: planned.plan_id,
+            plan_digest: planned.plan_digest,
+        },
+    )
+    .await
+    .expect("revoked");
+    let (again, items_again) = pages(&api, Some(&manifest)).expect("the same frontier");
+    assert_eq!(again, manifest);
+    assert_eq!(items_again, items);
+
+    // The next frontier carries the successor and the revocation, and verifies.
+    let (later, later_items) = pages(&api, None).expect("a later frontier");
+    let verified = bundle::verify(
+        &URL_SAFE_NO_PAD.decode(&later).expect("base64url"),
+        &later_items,
+        &pin(&api),
+        "host",
+    )
+    .expect("verifies offline");
+    assert!(verified.items.iter().any(|item| matches!(
+        item,
+        bundle::Item::Revocation { kid, .. } if *kid == revoked_kid
+    )));
+    assert!(verified.items.iter().any(|item| matches!(
+        item,
+        bundle::Item::Key { kid, .. } if *kid == rotated.kid
+    )));
+}
+
+/// WP-3.4 review: a frontier is the manifest the Host signed; a client cannot present one of its
+/// own, a cursor needs its frontier, and after the identity rotates a frontier fixed before is no
+/// longer rebuilt, while a binding by the superseded identity key vouches for nothing.
+#[tokio::test]
+async fn a_frontier_is_the_hosts_signed_manifest_and_a_superseded_identity_key_binds_nothing() {
+    use crate::keys::bundle;
+    use crate::keys::ring::HOST_OPERATIONS;
+
+    let api = facade_with("keys-bundle-frontier", vec![HOST_OPERATIONS, DATA_ATTEST]);
+    let (manifest, items) = pages(&api, None).expect("the bundle");
+    let query = |frontier: Option<String>, cursor: Option<&str>, resource: &str| KeyBundleQuery {
+        resource: resource.to_owned(),
+        frontier,
+        cursor: cursor.map(str::to_owned),
+        limit: Some(2),
+    };
+
+    // A manifest changed by one byte, one for another resource, a cursor alone or past the end.
+    let mut forged = URL_SAFE_NO_PAD.decode(&manifest).expect("base64url");
+    let last = forged.len() - 1;
+    forged[last] ^= 1;
+    for (what, refused) in [
+        (
+            "a forged frontier",
+            api.key_bundle(
+                &admin(),
+                &query(Some(URL_SAFE_NO_PAD.encode(&forged)), None, "host"),
+            ),
+        ),
+        (
+            "a frontier issued for another resource",
+            api.key_bundle(&admin(), &query(Some(manifest.clone()), None, "host/x")),
+        ),
+        (
+            "a cursor without its frontier",
+            api.key_bundle(&admin(), &query(None, Some("2"), "host")),
+        ),
+        (
+            "a cursor past the end",
+            api.key_bundle(
+                &admin(),
+                &query(Some(manifest.clone()), Some("999"), "host"),
+            ),
+        ),
+        (
+            "a resource out of the grammar",
+            api.key_bundle(&admin(), &query(None, None, "zone:x")),
+        ),
+    ] {
+        let refused = refused.expect_err(what);
+        assert!(
+            matches!(&refused, Refusal::Api(_)) || matches!(&refused, Refusal::Denied(_)),
+            "{what}: {refused:?}"
+        );
+        if !matches!(refused, Refusal::Denied(_)) {
+            assert_eq!(code(&refused), codes::common::INVALID_ARGUMENT, "{what}");
+        }
+    }
+
+    // The identity rotates: the frontier fixed before is no longer rebuilt.
+    let identity_epoch = api.keys.identity().expect("open").epoch();
+    api.rotate_identity(
+        &admin(),
+        crate::api::RotateIdentity {
+            request_id: "i1".to_owned(),
+            expected_epoch: identity_epoch,
+        },
+    )
+    .await
+    .expect("the identity rotates");
+    let refused = api
+        .key_bundle(&admin(), &query(Some(manifest.clone()), None, "host"))
+        .expect_err("the identity moved");
+    assert_eq!(code(&refused), codes::host::FRONTIER_UNREPRODUCIBLE);
+
+    // The rings are bound again under the new key; the bundle verifies. With only the bindings
+    // the superseded key signed, it does not.
+    for ring in api.keys.rings() {
+        ring.maintain_now().expect("bound again");
+    }
+    let (fresh, fresh_items) = pages(&api, None).expect("a fresh bundle");
+    let fresh_manifest = URL_SAFE_NO_PAD.decode(&fresh).expect("base64url");
+    bundle::verify(&fresh_manifest, &fresh_items, &pin(&api), "host").expect("verifies");
+    let old_bindings: Vec<&Vec<u8>> = items
+        .iter()
+        .filter(|bytes| {
+            matches!(
+                bundle::Item::decode(bytes),
+                Ok(bundle::Item::Binding { .. })
+            )
+        })
+        .collect();
+    let stale: Vec<Vec<u8>> = fresh_items
+        .iter()
+        .filter(|bytes| {
+            !matches!(
+                bundle::Item::decode(bytes),
+                Ok(bundle::Item::Binding { .. })
+            ) || old_bindings.contains(bytes)
+        })
+        .cloned()
+        .collect();
+    let refused = bundle::verify(&fresh_manifest, &stale, &pin(&api), "host")
+        .expect_err("only the superseded key's bindings");
+    assert!(
+        matches!(refused, bundle::BundleError::Unbound(_)),
+        "{refused}"
+    );
+}
+
+#[test]
+fn the_bundle_needs_the_operations_ring_and_keys_read_on_the_resource() {
+    let api = facade_with("keys-bundle-no-ops", vec![DATA_ATTEST]);
+    let refused = api
+        .key_bundle(
+            &admin(),
+            &KeyBundleQuery {
+                resource: "host".to_owned(),
+                ..KeyBundleQuery::default()
+            },
+        )
+        .expect_err("nothing signs the manifest");
+    assert_eq!(code(&refused), codes::common::UNAVAILABLE);
+
+    // The administrator's grants cover `host` and what lies under it; a Plane is another
+    // resource, which this principal holds no grant on.
+    let api = facade_with(
+        "keys-bundle-resource",
+        vec![crate::keys::ring::HOST_OPERATIONS],
+    );
+    let refused = api
+        .key_bundle(
+            &admin(),
+            &KeyBundleQuery {
+                resource: "plane/data".to_owned(),
+                ..KeyBundleQuery::default()
+            },
+        )
+        .expect_err("no grant on the resource");
+    assert!(matches!(refused, Refusal::Denied(_)), "{refused:?}");
+}

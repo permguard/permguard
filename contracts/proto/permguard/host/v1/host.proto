@@ -419,8 +419,32 @@ message RunKeyRevokeResponse {
   Receipt receipt = 1;
   string kid = 2;
 }
-message GetKeyBundleRequest {}
-message GetKeyBundleResponse {}
+message GetKeyBundleRequest {
+  // The resource the bundle covers, in the Host API's grammar: `host`, `plane/<p>`, ...
+  string resource = 1;
+  // The manifest a first page answered, base64url, which fixes the frontier; empty on the first
+  // page (WP-3.4).
+  string frontier = 2;
+  // Where the page starts, as the page before answered it; requires `frontier`.
+  string cursor = 3;
+  // How many items the page carries: 1 to 500, 100 when absent.
+  optional uint32 limit = 4;
+}
+message GetKeyBundleResponse {
+  reserved 2;
+  string resource = 1;
+  // The signed manifest, COSE_Sign1 `permguard.keys.bundle.v1`, the same bytes on every page of
+  // one frontier: a later page names it, base64url, as `frontier`.
+  bytes manifest = 3;
+  // The bundle digest, hex.
+  string bundle_digest = 4;
+  // How many items the whole bundle holds.
+  uint64 total = 5;
+  // This page's items, canonical CBOR each, in the bundle's digest order.
+  repeated bytes items = 6;
+  // The cursor of the next page; absent on the last one.
+  optional string next_cursor = 7;
+}
 message ListSecretsRequest {}
 message ListSecretsResponse {}
 message RotateSecretRequest {}

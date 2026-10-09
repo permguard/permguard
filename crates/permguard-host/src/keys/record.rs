@@ -192,7 +192,7 @@ impl State {
         }
     }
 
-    fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         Some(match text {
             "prepublished" => Self::Prepublished,
             "active" => Self::Active,

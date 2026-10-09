@@ -48,8 +48,8 @@ pub use config::{Effective, Setting};
 pub use grants::{CreateGrant, GrantView, Grants, PlanRevoke, Planned, Revoked, RunRevoke};
 pub use identity::{IdentityRotated, IdentityView, RotateIdentity};
 pub use keys::{
-    KeyRevoked, PlanKeyRevoke, RingBinding, RingBindings, RingRotated, RingSummary, RingView,
-    Rings, RotateRing, RunKeyRevoke,
+    KeyBundlePage, KeyBundleQuery, KeyRevoked, PlanKeyRevoke, RingBinding, RingBindings,
+    RingRotated, RingSummary, RingView, Rings, RotateRing, RunKeyRevoke,
 };
 pub use replay::Replay;
 pub use status::{Assurance, ComponentView, DegradedView, StatusView};
@@ -266,8 +266,17 @@ impl HostApi {
     /// Whether `actor` may do `operation` on the Host itself, with the principal it acts as.
     /// Every route starts here; the per-principal bounds are charged to the principal it names.
     fn admit(&self, actor: &Actor, operation: &str) -> Result<Admitted<'_>, Refusal> {
-        self.authorization
-            .authorize(actor, operation, &Resource::host())?;
+        self.admit_on(actor, operation, &Resource::host())
+    }
+
+    /// [`Self::admit`] on `resource`: a grant whose selector covers it (WP-3.4).
+    fn admit_on(
+        &self,
+        actor: &Actor,
+        operation: &str,
+        resource: &Resource,
+    ) -> Result<Admitted<'_>, Refusal> {
+        self.authorization.authorize(actor, operation, resource)?;
         let principal = actor.principal()?;
         let permit = self.bounds.admit(&principal)?;
         Ok(Admitted {

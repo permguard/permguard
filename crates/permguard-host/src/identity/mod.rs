@@ -250,6 +250,8 @@ pub struct Verified {
     pub public_key: Vec<u8>,
     /// The fingerprint of every epoch's key, epoch 1 first.
     pub fingerprints: Vec<String>,
+    /// Every epoch's public key, epoch 1 first: what verifies a record an earlier key signed.
+    pub public_keys: Vec<Vec<u8>>,
     pub document: Document,
 }
 
@@ -293,6 +295,7 @@ pub fn verify_published(
         bytes: first_public_key.to_vec(),
     };
     let mut fingerprints = vec![key.fingerprint()];
+    let mut public_keys = vec![key.bytes.clone()];
     let mut epoch = 1;
     let mut last = None;
     for bytes in successions {
@@ -320,6 +323,7 @@ pub fn verify_published(
         }
         last = Some(record::succession_digest(bytes));
         fingerprints.push(next.fingerprint());
+        public_keys.push(next.bytes.clone());
         key = next;
         epoch += 1;
     }
@@ -346,6 +350,7 @@ pub fn verify_published(
         suite,
         public_key: key.bytes,
         fingerprints,
+        public_keys,
         document: verified,
     })
 }

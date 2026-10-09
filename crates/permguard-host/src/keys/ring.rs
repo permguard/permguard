@@ -8,6 +8,7 @@
 //! ├── journal.cborseq          lifecycle and epoch transitions; authoritative
 //! ├── ring.cbor                the materialized public view, rebuilt from the journal
 //! ├── binding.cose             the identity-signed binding of the current set
+//! ├── bindings/<seq>.cose      every binding issued, by its `bound` journal entry (WP-3.4)
 //! ├── public/<thumbprint>.jwk  every key the ring ever published, kept for good
 //! └── private/<thumbprint>.key through the key provider, 0600; destroyed at retirement
 //! ```
@@ -65,6 +66,9 @@ pub const JOURNAL: &str = "journal.cborseq";
 pub const VIEW: &str = "ring.cbor";
 /// The identity-signed binding.
 pub const BINDING: &str = "binding.cose";
+/// Every binding issued, by the sequence of its `bound` journal entry, kept for the verification
+/// bundle (WP-3.4, owner decisions of 2026-10-09).
+pub const BINDINGS: &str = "bindings";
 /// The public halves.
 pub const PUBLIC: &str = "public";
 /// The private halves, through the key provider.
@@ -371,6 +375,45 @@ pub struct Statement {
     pub binding: Option<Vec<u8>>,
 }
 
+/// A ring as its journal stood at one entry (WP-3.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct History {
+    pub ring: String,
+    /// The last entry applied.
+    pub seq: u64,
+    pub epoch: u64,
+    pub suite: Suite,
+    /// The digest of the published set at that entry.
+    pub key_set_digest: [u8; 32],
+    /// Every key prepublished up to that entry, in that order, with its state there.
+    pub keys: Vec<HistoryKey>,
+    /// Every revocation up to that entry, in that order.
+    pub revocations: Vec<Entry>,
+    /// Every `bound` entry up to that entry: its sequence and the ring epoch it bound.
+    pub bound: Vec<(u64, u64)>,
+}
+
+/// One key of a [`History`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryKey {
+    pub kid: String,
+    /// The RFC 7517 JSON as it was published.
+    pub jwk: String,
+    /// The epoch its prepublication opened.
+    pub epoch: u64,
+    pub state: State,
+}
+
+/// Keeps `envelope` as `bindings/<seq>.cose`, `seq` the `bound` journal entry about to record
+/// it (WP-3.4, owner decision of 2026-10-09). Written before the entry: a file whose entry never
+/// reached the journal counts for nothing and is replaced by the next binding of that sequence,
+/// and once the entry is written the file is never written again.
+fn keep_binding(dir: &Dir, seq: u64, envelope: &[u8]) -> Result<(), RingError> {
+    let kept = dir.subdir(BINDINGS, true)?;
+    replace_view(&kept, &format!("{seq}.cose"), format::VIEW, envelope)?;
+    Ok(())
+}
+
 /// What an operator's transition produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transition {
@@ -578,7 +621,7 @@ impl Materialized {
     }
 }
 
-fn suite_of(jwk: &Jwk) -> Option<Suite> {
+pub(crate) fn suite_of(jwk: &Jwk) -> Option<Suite> {
     match (jwk.kty.as_str(), jwk.crv.as_deref(), jwk.alg.as_str()) {
         ("OKP", Some("Ed25519"), "EdDSA") => Some(Suite::Ed25519Sha256V1),
         ("EC", Some("P-256"), "ES256") => Some(Suite::P256Sha256V1),
@@ -726,6 +769,7 @@ impl Ring {
             Some(bytes) => Sign1::decode(&bytes)
                 .ok()
                 .and_then(|sign1| Binding::decode(sign1.payload_unverified()).ok())
+                .filter(|binding| binding.ring == ring)
                 .map(|binding| (binding, bytes)),
             None => None,
         };
@@ -1192,6 +1236,8 @@ impl Ring {
                         now,
                     )
                     .is_ok_and(|verified| verified == *binding)
+                    // A binding from before WP-3.4 was never kept: it is issued again, kept.
+                    && self.is_kept(bytes)
             });
         if current {
             return Ok(());
@@ -1211,10 +1257,102 @@ impl Ring {
         let signer = binder
             .kid()
             .map_err(|detail| RingError::NotReady(format!("the identity's kid: {detail}")))?;
-        self.commit(self.entry(Kind::Bound, &signer, 0, now))?;
+        let entry = self.entry(Kind::Bound, &signer, 0, now);
+        keep_binding(&self.dir, entry.seq, &envelope)?;
+        self.commit(entry)?;
         replace_view(&self.dir, BINDING, format::VIEW, &envelope)?;
         *self.binding.write().unwrap_or_else(PoisonError::into_inner) = Some((binding, envelope));
         Ok(())
+    }
+
+    /// Where the ring stands for a verification bundle (WP-3.4): its epoch, the sequence of its
+    /// last journal entry and its key-set digest; `None` before its first key.
+    pub fn frontier(&self) -> Result<Option<(u64, u64, [u8; 32])>, RingError> {
+        let state = self.read();
+        if state.suite.is_none() {
+            return Ok(None);
+        }
+        let (_, digest, _) = state.statement(self.id)?;
+        Ok(Some((state.epoch, state.seq, digest)))
+    }
+
+    /// The ring as its journal stood at entry `seq`, rebuilt from the journal's prefix: what a
+    /// verification bundle fixed at that frontier holds, however the ring moved since. A sequence
+    /// the journal has not reached is refused.
+    pub fn history(&self, seq: u64) -> Result<History, RingError> {
+        let entries = {
+            let _serial = self.serial();
+            journal_entries(&self.dir)?
+        };
+        if entries.last().is_none_or(|last| last.seq < seq) || seq == 0 {
+            return Err(RingError::Refused(format!(
+                "the journal of `{}` has no entry {seq}",
+                self.id
+            )));
+        }
+        let mut state = Materialized::default();
+        let mut keys: Vec<HistoryKey> = Vec::new();
+        let mut revocations = Vec::new();
+        let mut bound = Vec::new();
+        for entry in entries.into_iter().take_while(|entry| entry.seq <= seq) {
+            state
+                .apply(self.id, &entry)
+                .map_err(|detail| RingError::Corrupt(format!("{}: {detail}", self.id)))?;
+            match entry.kind {
+                Kind::Prepublished => keys.push(HistoryKey {
+                    kid: entry.kid.clone(),
+                    jwk: entry.jwk.clone().unwrap_or_default(),
+                    epoch: entry.epoch,
+                    state: State::Prepublished,
+                }),
+                Kind::Revoked => revocations.push(entry),
+                Kind::Bound => bound.push((entry.seq, entry.epoch)),
+                _ => {}
+            }
+        }
+        for key in &mut keys {
+            if let Some(held) = state.key(&key.kid) {
+                key.state = held.state;
+            }
+        }
+        let (suite, key_set_digest, _) = state.statement(self.id)?;
+        Ok(History {
+            ring: self.id.to_owned(),
+            seq,
+            epoch: state.epoch,
+            suite,
+            key_set_digest,
+            keys,
+            revocations,
+            bound,
+        })
+    }
+
+    /// The bindings `history` recorded, each with the ring epoch it binds, in journal order: a
+    /// binding counts only once its `bound` entry is in the journal's prefix, so every page of a
+    /// frontier carries the same ones.
+    pub fn kept_bindings(&self, history: &History) -> Result<Vec<(u64, Vec<u8>)>, RingError> {
+        let dir = self.dir.subdir(BINDINGS, true)?;
+        let mut kept = Vec::new();
+        for (seq, epoch) in &history.bound {
+            if let Some(bytes) = read_view(&dir, &format!("{seq}.cose"), format::VIEW)? {
+                kept.push((*epoch, bytes));
+            }
+        }
+        Ok(kept)
+    }
+
+    /// Whether `envelope` is kept in `bindings/`.
+    fn is_kept(&self, envelope: &[u8]) -> bool {
+        let Ok(dir) = self.dir.subdir(BINDINGS, true) else {
+            return false;
+        };
+        dir.names().unwrap_or_default().iter().any(|name| {
+            read_view(&dir, name, format::VIEW)
+                .ok()
+                .flatten()
+                .is_some_and(|bytes| bytes == envelope)
+        })
     }
 
     fn expect_epoch(&self, expected: u64) -> Result<(), RingError> {
@@ -1515,6 +1653,67 @@ pub fn stored_public(public: Dir) -> super::custody::StoredPublic {
         }
         Ok(Some(key.bytes))
     })
+}
+
+/// What `keys export --directory` prints for a ring directory on a stopped volume (WP-3.4, owner
+/// decisions of 2026-10-09), from its journal alone, no private half read: the ring, its epoch and
+/// key-set digest; `keys`, the JWKS of the published set the digest covers; `retained`, every
+/// other key it ever published with its state; `revoked`, the revocations. A consumer that reads
+/// `keys` as a JWKS never meets a revoked key.
+pub fn export(directory: &std::path::Path) -> Result<String, RingError> {
+    let dir = Dir::open(directory)?;
+    let entries = journal_entries(&dir)?;
+    let ring = entries
+        .iter()
+        .find(|entry| entry.kind == Kind::Prepublished)
+        .and_then(|entry| thumbprint::split_kid(&entry.kid))
+        .map(|(ring, _)| ring.to_owned())
+        .filter(|ring| REGISTERED.contains(&ring.as_str()) && ring != HOST_IDENTITY)
+        .ok_or_else(|| {
+            RingError::Refused(format!(
+                "{} holds no ring journal with a key",
+                directory.display()
+            ))
+        })?;
+    let mut state = Materialized::default();
+    for entry in &entries {
+        state
+            .apply(&ring, entry)
+            .map_err(|detail| RingError::Corrupt(format!("{ring}: {detail}")))?;
+    }
+    let (_, digest, _) = state.statement(&ring)?;
+    let mut keys = Vec::new();
+    let mut retained = Vec::new();
+    for key in &state.keys {
+        let jwk: serde_json::Value = serde_json::from_str(&key.jwk)
+            .map_err(|error| RingError::Corrupt(format!("the jwk of `{}`: {error}", key.kid)))?;
+        if key.state.is_published() {
+            keys.push(jwk);
+        } else {
+            retained.push(serde_json::json!({ "state": key.state.as_str(), "jwk": jwk }));
+        }
+    }
+    let revoked: Vec<serde_json::Value> = entries
+        .iter()
+        .filter(|entry| entry.kind == Kind::Revoked)
+        .map(|entry| {
+            serde_json::json!({
+                "kid": entry.kid,
+                "at": entry.at,
+                "reason": entry.reason,
+                "compromised_at": entry.compromised_at,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({
+        "ring": ring,
+        "epoch": state.epoch,
+        "digest": digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+        "keys": keys,
+        "retained": retained,
+        "revoked": revoked,
+    }))
+    .map_err(|error| RingError::Corrupt(error.to_string()))
 }
 
 /// Decodes `journal.cborseq`'s entries, for the tests and an offline reader.

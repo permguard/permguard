@@ -85,6 +85,8 @@ pub mod protected {
     pub const HOST_SESSION: &str = "permguard.host.session.v1";
     pub const HOST_SUCCESSION: &str = "permguard.host.succession.v1";
     pub const HOST_RING_BINDING: &str = "permguard.host.ring-binding.v1";
+    /// The manifest of a verification bundle, under `host.operations` (WP-3.4).
+    pub const KEYS_BUNDLE: &str = "permguard.keys.bundle.v1";
     pub const HOST_GRANT: &str = "permguard.host.grant.v1";
     pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1";
     pub const MEMBERSHIP_LEASE: &str = "permguard.membership.lease.v1";
@@ -339,6 +341,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("protected.HOST_SESSION", protected::HOST_SESSION),
         ("protected.HOST_SUCCESSION", protected::HOST_SUCCESSION),
         ("protected.HOST_RING_BINDING", protected::HOST_RING_BINDING),
+        ("protected.KEYS_BUNDLE", protected::KEYS_BUNDLE),
         ("protected.HOST_GRANT", protected::HOST_GRANT),
         (
             "protected.MEMBERSHIP_MANIFEST",

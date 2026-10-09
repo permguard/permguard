@@ -602,6 +602,10 @@ impl PlaneServer {
         .with_metrics(Metrics::new(Arc::new(Registry::new())))
         .with_provisioner(permguard_std::provision::prepare)
         .with_secrets_factory(secret_store_for)
+        // `keys export --directory` reads a ring's journal on a stopped volume (WP-3.4).
+        .with_keys_exporter(|directory| {
+            permguard_host::keys::ring::export(directory).map_err(anyhow::Error::from)
+        })
         .with_audit_factory(move |config| audit_sink_for(binary_name, config))
         .with_keys_factory(key_manager_for)
         .with_catalog_factory(catalog_for)

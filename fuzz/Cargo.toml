@@ -138,6 +138,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "key_bundle"
+path = "fuzz_targets/key_bundle.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "grant_transition"
 path = "fuzz_targets/grant_transition.rs"
 test = false

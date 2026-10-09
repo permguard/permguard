@@ -733,6 +733,127 @@
         "x-grpc-rpc": "permguard.host.v1.KeyService/ListKeyRings"
       }
     },
+    "/host/v1/keys/bundle": {
+      "get": {
+        "operationId": "getKeyBundle",
+        "summary": "One page of the verification bundle",
+        "description": "Under `keys.read` on `resource` (WP-3.4). The identity, every public key the rings published, every ring binding issued and the revocations, at a frontier the first page fixes. The first page signs the manifest once, COSE_Sign1 `permguard.keys.bundle.v1` under the `host.operations` key active at the frontier; later pages present it as `frontier` and receive the same bytes, so a rotation in between changes nothing. The items of all pages together are the ones the manifest counts and digests. Never private material.",
+        "parameters": [
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The resource the bundle covers, in the Host API's grammar: `host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`.",
+            "x-grpc-field": "resource"
+          },
+          {
+            "name": "frontier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The manifest a first page answered, base64url, which the Host checks it signed; absent on the first page, which fixes the frontier.",
+            "x-grpc-field": "frontier"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Where the page starts, as the page before answered it; requires `frontier`.",
+            "x-grpc-field": "cursor"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "How many items the page carries: 1 to 500, 100 when absent.",
+            "x-grpc-field": "limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page, with the frontier, the signed manifest and the bundle digest.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyBundlePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, a frontier this Host did not sign or signed for another resource, a cursor without its frontier or past the bundle, or a limit out of range (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The bundle at that frontier can no longer be rebuilt as it was signed: the identity rotated since, or the key that signed it no longer signs (`frontier_unreproducible`); ask again without one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No identity is open (`identity_unavailable`), this Host runs without `operations.keys` and nothing signs the manifest (`unavailable`), a ring could not be read (`ring_unreadable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.KeyService/GetKeyBundle"
+      }
+    },
     "/host/v1/keys/{ring}": {
       "get": {
         "operationId": "getKeyRing",
@@ -1940,6 +2061,59 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/keys/{ring}` answers: one ring's public set with its digest and cache policy.",
         "x-grpc-message": "permguard.host.v1.GetKeyRingResponse"
+      },
+      "KeyBundlePage": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource the bundle covers, as the manifest binds it.",
+            "x-grpc-field": "resource"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The signed manifest, COSE_Sign1 `permguard.keys.bundle.v1` under the `host.operations` key active at the frontier, base64url without padding: host id, resource, frontier, item count, bundle digest and `issued_at`. The same bytes on every page of one frontier: a later page names it as `frontier`.",
+            "x-grpc-field": "manifest"
+          },
+          "bundle_digest": {
+            "type": "string",
+            "description": "The bundle digest, hex: SHA-256 of `permguard.keys.bundle.v1\\n` and every item's SHA-256, in ascending order.",
+            "x-grpc-field": "bundle_digest"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many items the whole bundle holds.",
+            "x-grpc-field": "total"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "This page's items, canonical CBOR each (`contracts/cbor/keys-bundle.json`), base64url without padding, in the bundle's digest order.",
+            "x-grpc-field": "items"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page; `null` on the last one.",
+            "x-grpc-field": "next_cursor"
+          }
+        },
+        "required": [
+          "resource",
+          "manifest",
+          "bundle_digest",
+          "total",
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/keys/bundle` answers: one page of the verification bundle (WP-3.4).",
+        "x-grpc-message": "permguard.host.v1.GetKeyBundleResponse"
       },
       "HostDegraded": {
         "type": "object",

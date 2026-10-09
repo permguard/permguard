@@ -1,0 +1,75 @@
+{
+  "artifact": "Verification bundle: its items, its frontier and the payload of its manifest; the manifest is a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by a host.operations key, content type permguard.keys.bundle.v1, its kid that key's <ring>:<thumbprint>, the key active at the frontier; the bundle digest is SHA-256 of \"permguard.keys.bundle.v1\\n\" and every item's SHA-256 in ascending order",
+  "authority": "1-architecture/4-architecture-server-host-keys.md#library-and-api, 6-contracts/8-contract-host-api.md (GET /host/v1/keys/bundle), owner decisions of 2026-10-09 (encoding, signer, frontier, bindings per epoch, resource, anchor); crates/permguard-host/src/keys/bundle.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "identity_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"identity\"", "occurs": "required" },
+        { "label": 2, "name": "document", "type": "bytes", "occurs": "required", "note": "the identity document's COSE_Sign1 of the frontier's identity epoch (identity.json)" },
+        { "label": 3, "name": "successions", "type": "array<bytes>", "occurs": "required", "note": "every succession record's COSE_Sign1, oldest first; at most 1024" },
+        { "label": 4, "name": "first_public_key", "type": "bytes", "occurs": "required", "note": "the epoch-1 public key the chain is walked from, the one the pinned fingerprint names" }
+      ]
+    },
+    "key_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"key\"", "occurs": "required" },
+        { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "kid", "type": "text", "occurs": "required", "note": "<ring>:<thumbprint>" },
+        { "label": 4, "name": "jwk", "type": "text", "occurs": "required", "note": "the RFC 7517 JSON of the public key as published" },
+        { "label": 5, "name": "epoch", "type": "uint", "occurs": "required", "note": "the ring epoch its prepublication opened" },
+        { "label": 6, "name": "state", "type": "text", "occurs": "required", "note": "its state at the frontier: prepublished, active, retired-public, revoked or archived" }
+      ]
+    },
+    "binding_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"binding\"", "occurs": "required" },
+        { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "envelope", "type": "bytes", "occurs": "required", "note": "a ring binding (keys.json ring_binding), its COSE_Sign1 by the identity key of the epoch its kid names; one per `bound` journal entry up to the frontier" }
+      ]
+    },
+    "revocation_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"revocation\"", "occurs": "required" },
+        { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "kid", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "epoch", "type": "uint", "occurs": "required", "note": "the ring epoch once the revocation applied" },
+        { "label": 5, "name": "at", "type": "uint", "occurs": "required", "note": "seconds since the epoch, UTC" },
+        { "label": 6, "name": "reason", "type": "text", "occurs": "required" },
+        { "label": 7, "name": "compromised_at", "type": "uint", "occurs": "optional" }
+      ]
+    },
+    "frontier": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "identity_epoch", "type": "uint", "occurs": "required", "note": "from 1" },
+        { "label": 2, "name": "rings", "type": "array:ring_frontier", "occurs": "required", "note": "sorted by ring, each once; host.identity never, its chain stands for it" }
+      ]
+    },
+    "manifest": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "exactly 16 bytes" },
+        { "label": 2, "name": "resource", "type": "text", "occurs": "required", "note": "the canonical resource text of the Host API grammar" },
+        { "label": 3, "name": "frontier", "type": "cbor:map:frontier", "occurs": "required" },
+        { "label": 4, "name": "items", "type": "uint", "occurs": "required", "note": "how many items the bundle holds" },
+        { "label": 5, "name": "bundle_digest", "type": "bytes", "occurs": "required", "note": "32 bytes" },
+        { "label": 6, "name": "issued_at", "type": "uint", "occurs": "required", "note": "when the first page fixed the frontier, seconds since the epoch, UTC" }
+      ]
+    }
+  },
+  "arrays": {
+    "ring_frontier": [
+      { "position": 0, "name": "ring", "type": "text" },
+      { "position": 1, "name": "epoch", "type": "uint", "note": "from 1" },
+      { "position": 2, "name": "seq", "type": "uint", "note": "the ring's last journal entry at the frontier, from 1" },
+      { "position": 3, "name": "key_set_digest", "type": "bytes", "note": "32 bytes" }
+    ]
+  },
+  "root": ["identity_item", "key_item", "binding_item", "revocation_item", "frontier", "manifest"]
+}

@@ -15,6 +15,7 @@
 //! RFC 7638 thumbprint ([`KeyProvider::generate_addressed`]), so the slot cannot name other
 //! material.
 
+pub mod bundle;
 pub mod custody;
 pub mod migration;
 pub mod record;

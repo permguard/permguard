@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 14] = [
+const REGISTRIES: [&str; 15] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -43,6 +43,7 @@ const REGISTRIES: [&str; 14] = [
     "kdf.json",
     "key-set.json",
     "keys.json",
+    "keys-bundle.json",
     "layout.json",
     "manifest.json",
     "mutation.json",
@@ -754,6 +755,113 @@ fn identity_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Boot::decode(bytes)))),
+        ),
+    ]
+}
+
+fn keys_bundle_samples() -> Vec<Sample> {
+    use permguard_host::keys::bundle::{Frontier, Item, Manifest, RingFrontier};
+    use permguard_host::keys::record::State;
+
+    let kid = "data.attest:FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk";
+    let items =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Item::decode(bytes)))) };
+    let frontier = Frontier {
+        identity_epoch: 2,
+        rings: vec![
+            RingFrontier {
+                ring: "data.attest".to_owned(),
+                epoch: 3,
+                seq: 7,
+                key_set_digest: [9; 32],
+            },
+            RingFrontier {
+                ring: "host.operations".to_owned(),
+                epoch: 1,
+                seq: 2,
+                key_set_digest: [8; 32],
+            },
+        ],
+    };
+    let revocation = |compromised_at| Item::Revocation {
+        ring: "data.attest".to_owned(),
+        kid: kid.to_owned(),
+        epoch: 3,
+        at: 1_800_000_000,
+        reason: "key-compromise".to_owned(),
+        compromised_at,
+    };
+    vec![
+        sample(
+            "identity_item",
+            Item::Identity {
+                document: vec![0x80],
+                successions: vec![vec![0x80], vec![0x81]],
+                first_public_key: vec![1; 32],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
+            "key_item",
+            Item::Key {
+                ring: "data.attest".to_owned(),
+                kid: kid.to_owned(),
+                jwk: "{}".to_owned(),
+                epoch: 1,
+                state: State::RetiredPublic,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
+            "binding_item",
+            Item::Binding {
+                ring: "data.attest".to_owned(),
+                epoch: 1,
+                envelope: vec![0x84],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
+            "revocation_item",
+            revocation(Some(1_799_999_000)).encode().expect("encodes"),
+            &["revocation_item.compromised_at"],
+            items(),
+        ),
+        sample(
+            "revocation_item",
+            revocation(None).encode().expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
+            "frontier",
+            frontier.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Frontier::decode(bytes)))),
+        ),
+        sample(
+            "manifest",
+            Manifest {
+                host_id: HOST_ID,
+                resource: "host".to_owned(),
+                frontier,
+                items: 12,
+                bundle_digest: [5; 32],
+                issued_at: 1_800_000_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))),
         ),
     ]
 }
@@ -1492,6 +1600,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "identity.json" => identity_samples(),
         "session.json" => session_samples(),
         "keys.json" => keys_samples(),
+        "keys-bundle.json" => keys_bundle_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }

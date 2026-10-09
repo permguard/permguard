@@ -8,6 +8,7 @@
 //! | `GET /host/v1/keys`                     | `keys.read`               | every ring, its epoch and key-set digest   |
 //! | `GET /host/v1/keys/{ring}`              | none: public keys         | the published set, epoch, digest, binding  |
 //! | `GET /host/v1/ring-bindings`            | `identity.read`           | every identity-signed binding held         |
+//! | `GET /host/v1/keys/bundle`              | `keys.read` on `resource` | one page of the verification bundle        |
 //! | `POST /host/v1/keys/{ring}/rotate`      | `keys.admin`              | a successor prepublished; a receipt        |
 //! | `POST /host/v1/keys/{ring}/revoke/plan` | `keys.admin`              | a plan bound to the key, reason and epoch  |
 //! | `POST /host/v1/keys/{ring}/revoke/run`  | `keys.admin`              | the key revoked; a receipt                 |
@@ -27,10 +28,11 @@ use permguard_core::{ErrorClass, codes};
 use super::grants::{Planned, plan_digest, rfc3339};
 use super::replay::{PLAN_LIFETIME, Plan, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
+use crate::keys::bundle::{self, BundleError, MAX_MANIFEST_BYTES, PAGE_DEFAULT, PAGE_MAX, Source};
 use crate::keys::record::MAX_REASON_BYTES;
 use crate::keys::ring::{
-    AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_ROTATED, DOMAIN, HOST_IDENTITY, REVOKE_PLAN,
-    REVOKE_RUN, ROTATE, Ring, RingError, Statement,
+    AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_ROTATED, DOMAIN, HOST_IDENTITY, HOST_OPERATIONS,
+    REVOKE_PLAN, REVOKE_RUN, ROTATE, Ring, RingError, Statement,
 };
 use crate::operations::mutation::{Applied, Failure};
 
@@ -112,6 +114,40 @@ pub struct RingBinding {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RingBindings {
     pub bindings: Vec<RingBinding>,
+}
+
+/// `GET /host/v1/keys/bundle`'s query.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyBundleQuery {
+    /// The resource the bundle covers, in the Host API's grammar: `host`, `plane/<p>`, …
+    pub resource: String,
+    /// The manifest a first page answered, which fixes the frontier; absent on the first page.
+    #[serde(default)]
+    pub frontier: Option<String>,
+    /// Where the page starts, as the page before answered it; requires `frontier`.
+    #[serde(default)]
+    pub cursor: Option<String>,
+    /// How many items the page carries: 1 to 500, 100 when absent.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+/// One page of the verification bundle (WP-3.4, owner decisions of 2026-10-09).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyBundlePage {
+    pub resource: String,
+    /// The signed manifest, COSE_Sign1 `permguard.keys.bundle.v1` in base64url, the same bytes on
+    /// every page of one frontier: a later page names it as `frontier`.
+    pub manifest: String,
+    /// The bundle digest, hex.
+    pub bundle_digest: String,
+    /// How many items the whole bundle holds.
+    pub total: u64,
+    /// This page's items, canonical CBOR in base64url, in the bundle's digest order.
+    pub items: Vec<String>,
+    /// The cursor of the next page; absent on the last one.
+    pub next_cursor: Option<String>,
 }
 
 /// `POST /host/v1/keys/{ring}/rotate`.
@@ -257,6 +293,117 @@ impl HostApi {
                     binding: URL_SAFE_NO_PAD.encode(bytes),
                 })
                 .collect(),
+        })
+    }
+
+    /// `GET /host/v1/keys/bundle`: one page of the bundle at a fixed frontier, under `keys.read`
+    /// on the resource. The first page fixes the frontier and signs the manifest once, under the
+    /// `host.operations` key active there; later pages present that manifest and receive the same
+    /// bytes; the items of all pages together are the ones it counts and digests (owner decisions
+    /// of 2026-10-09).
+    pub fn key_bundle(
+        &self,
+        actor: &Actor,
+        query: &KeyBundleQuery,
+    ) -> Result<KeyBundlePage, Refusal> {
+        let invalid = |detail: String| {
+            Refusal::new(
+                ErrorClass::Validation,
+                codes::common::INVALID_ARGUMENT,
+                detail,
+            )
+        };
+        let resource = permguard_core::authz::Resource::parse(&query.resource)
+            .map_err(|error| invalid(format!("`resource`: {error}")))?;
+        let _admitted = self.admit_on(actor, operations::KEYS_READ, &resource)?;
+        let limit = match query.limit {
+            None => PAGE_DEFAULT,
+            Some(limit) => usize::try_from(limit)
+                .ok()
+                .filter(|limit| (1..=PAGE_MAX).contains(limit))
+                .ok_or_else(|| invalid(format!("`limit` is 1 to {PAGE_MAX}")))?,
+        };
+        let identity = self.keys.identity().ok_or_else(|| {
+            Refusal::new(
+                ErrorClass::Unavailable,
+                codes::host::IDENTITY_UNAVAILABLE,
+                "no Host identity is open on this process",
+            )
+        })?;
+        let operations_ring = self.keys.ring(HOST_OPERATIONS).ok_or_else(|| {
+            Refusal::new(
+                ErrorClass::Unavailable,
+                codes::common::UNAVAILABLE,
+                "the bundle's manifest is signed by `host.operations`, and this Host runs \
+                 without `operations.keys`",
+            )
+        })?;
+        let source = Source {
+            identity,
+            rings: self.keys.rings(),
+        };
+        let resource = resource.to_string();
+        let (built, manifest) = match (&query.frontier, &query.cursor) {
+            // A later page: the manifest the first page answered, which the Host checks it signed.
+            (Some(token), _) => {
+                let bytes = Some(token)
+                    .filter(|token| token.len() <= MAX_MANIFEST_BYTES.div_ceil(3) * 4)
+                    .and_then(|token| URL_SAFE_NO_PAD.decode(token).ok())
+                    .ok_or_else(|| {
+                        invalid("`frontier` is the manifest a first page answered".to_owned())
+                    })?;
+                let built = source
+                    .reopen(&bytes, &resource)
+                    .map_err(|error| match error {
+                        BundleError::Unreproducible(_) | BundleError::Ring(_) => {
+                            bundle_refusal(error)
+                        }
+                        other => invalid(format!("`frontier`: {other}")),
+                    })?;
+                (built, bytes)
+            }
+            (None, Some(_)) => {
+                return Err(invalid(
+                    "`cursor` continues a frontier, and the query names none".to_owned(),
+                ));
+            }
+            // A first page: the frontier now, signed once; fixed again when the operations key
+            // turns between the two.
+            (None, None) => {
+                let mut again = true;
+                loop {
+                    let frontier = source.frontier().map_err(bundle_refusal)?;
+                    let built = source
+                        .build(&resource, &frontier, self.time.now_secs())
+                        .map_err(bundle_refusal)?;
+                    match bundle::sign(operations_ring, &built) {
+                        Ok(manifest) => break (built, manifest),
+                        Err(BundleError::Unreproducible(_)) if again => again = false,
+                        Err(error) => return Err(bundle_refusal(error)),
+                    }
+                }
+            }
+        };
+        let total = built.items.len();
+        let start = match query.cursor.as_deref() {
+            None => 0,
+            Some(cursor) => cursor
+                .parse::<usize>()
+                .ok()
+                .filter(|start| *start <= total && cursor == start.to_string())
+                .ok_or_else(|| invalid("`cursor` is not one this bundle answered".to_owned()))?,
+        };
+        let end = start.saturating_add(limit).min(total);
+        Ok(KeyBundlePage {
+            resource,
+            manifest: URL_SAFE_NO_PAD.encode(manifest),
+            bundle_digest: hex(&built.manifest.bundle_digest),
+            total: total as u64,
+            items: built.items[start..end]
+                .iter()
+                .map(|item| URL_SAFE_NO_PAD.encode(item))
+                .collect(),
+            next_cursor: (end < total).then(|| end.to_string()),
         })
     }
 
@@ -591,6 +738,25 @@ fn refusal_of(error: RingError) -> Refusal {
             detail,
         ),
         other => unreadable("the ring", other),
+    }
+}
+
+fn bundle_refusal(error: BundleError) -> Refusal {
+    match error {
+        BundleError::Unreproducible(detail) => Refusal::new(
+            ErrorClass::Conflict,
+            codes::host::FRONTIER_UNREPRODUCIBLE,
+            format!("{detail}: ask again without a frontier"),
+        ),
+        BundleError::Ring(error) => unreadable("a ring", error),
+        other => Refusal::Api(
+            permguard_core::ApiError::new(
+                ErrorClass::Unavailable,
+                codes::common::UNAVAILABLE,
+                "the verification bundle could not be built",
+            )
+            .with_internal(other.to_string()),
+        ),
     }
 }
 

@@ -15,8 +15,8 @@ use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
 use permguard_host::api::{
-    CreateGrant, HostApi, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity, RotateRing,
-    RunKeyRevoke, RunRevoke,
+    CreateGrant, HostApi, KeyBundleQuery, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity,
+    RotateRing, RunKeyRevoke, RunRevoke,
 };
 use permguard_transport::ActorOf;
 
@@ -47,6 +47,7 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/grants/{id}/revoke/plan", post(plan_revoke))
         .route("/host/v1/grants/{id}/revoke/run", post(run_revoke))
         .route("/host/v1/keys", get(list_rings))
+        .route("/host/v1/keys/bundle", get(key_bundle))
         .route("/host/v1/keys/{ring}", get(get_ring))
         .route("/host/v1/keys/{ring}/rotate", post(rotate_ring))
         .route("/host/v1/keys/{ring}/revoke/plan", post(plan_key_revoke))
@@ -189,6 +190,30 @@ async fn run_revoke(
 
 async fn list_rings(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
     answer(&served, StatusCode::OK, served.api.rings(&actor))
+}
+
+async fn key_bundle(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let [resource, frontier, cursor, limit] = <[Option<String>; 4]>::try_from(query_members(
+        query.as_deref(),
+        &["resource", "frontier", "cursor", "limit"],
+    ))
+    .unwrap_or_default();
+    let query = KeyBundleQuery {
+        resource: resource.unwrap_or_default(),
+        frontier,
+        cursor,
+        // A limit that is not a number is out of range, and refused as one.
+        limit: limit.map(|text| text.parse().unwrap_or(0)),
+    };
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.key_bundle(&actor, &query),
+    )
 }
 
 async fn get_ring(State(served): State<Served>, Path(ring): Path<String>) -> Response {

@@ -60,6 +60,11 @@ const MINTED: &[&str] = &[
     "x",
     "digest",
     "binding",
+    // The verification bundle each facade built of its own keys (WP-3.4).
+    "frontier",
+    "manifest",
+    "bundle_digest",
+    "items",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -558,6 +563,41 @@ impl Transport {
         }
     }
 
+    async fn key_bundle(
+        &self,
+        who: Option<&str>,
+        resource: &str,
+        frontier: Option<&str>,
+        cursor: Option<&str>,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                let mut path = format!("/host/v1/keys/bundle?resource={resource}&limit=2");
+                if let Some(frontier) = frontier {
+                    path.push_str(&format!("&frontier={frontier}"));
+                }
+                if let Some(cursor) = cursor {
+                    path.push_str(&format!("&cursor={cursor}"));
+                }
+                self.rest("GET", &path, who, None).await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.keys()
+                    .await
+                    .get_key_bundle(Self::grpc_request(
+                        who,
+                        host_v1::GetKeyBundleRequest {
+                            resource: resource.to_owned(),
+                            frontier: frontier.unwrap_or_default().to_owned(),
+                            cursor: cursor.unwrap_or_default().to_owned(),
+                            limit: Some(2),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn ring(&self, ring: &str) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -927,6 +967,43 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.ring(HOST_OPERATIONS.as_str()).await,
     ));
     steps.push(("read an unknown ring", transport.ring("nope").await));
+    let page = transport.key_bundle(admin, "host", None, None).await;
+    let Outcome::Answered(first) = &page else {
+        panic!("the bundle reads: {page:?}")
+    };
+    // The manifest is the frontier a later page names, base64url: REST answers it so, gRPC as
+    // bytes.
+    let frontier = match &first["manifest"] {
+        Value::String(text) => text.clone(),
+        Value::Array(bytes) => {
+            use base64::Engine as _;
+            let bytes: Vec<u8> = bytes
+                .iter()
+                .map(|byte| {
+                    byte.as_u64()
+                        .and_then(|byte| u8::try_from(byte).ok())
+                        .expect("a byte")
+                })
+                .collect();
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+        }
+        other => panic!("a manifest: {other}"),
+    };
+    steps.push(("read the verification bundle", page.clone()));
+    steps.push((
+        "read the next page of the bundle",
+        transport
+            .key_bundle(admin, "host", Some(&frontier), Some("2"))
+            .await,
+    ));
+    steps.push((
+        "read the bundle of a resource out of the grammar",
+        transport.key_bundle(admin, "zone:x", None, None).await,
+    ));
+    steps.push((
+        "read the bundle from a cursor without its frontier",
+        transport.key_bundle(admin, "host", None, Some("2")).await,
+    ));
     steps.push(("read the status", transport.status(admin).await));
     steps.push((
         "read the status as a stranger",
@@ -1054,6 +1131,7 @@ fn schema_of(case: &str) -> &'static str {
         "run the revocation" => "GrantRevoked",
         "list the key rings" | "list the key rings as nobody" => "KeyRings",
         "read the operations ring" => "KeyRing",
+        "read the verification bundle" | "read the next page of the bundle" => "KeyBundlePage",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",

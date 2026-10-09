@@ -114,7 +114,20 @@ is cut.
   `POST /host/v1/keys/{ring}/rotate` prepublishes a successor, and `POST /host/v1/keys/{ring}/revoke/plan` then `revoke/run` revoke a key at once, with its reason and compromise time, under the new operation `keys.admin`, each a security mutation; `host.identity` rotates through `POST /host/v1/identity/rotate` only.
   Every transition is also a `host.keys.transition` record in the operations trail.
 
+- **A verification bundle: `GET /host/v1/keys/bundle`.**
+  Under `keys.read` on `resource` (`host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`), the Host answers, page by page, what a verifier needs to check its signatures without asking it again: the identity with its succession chain, every public key its rings published, every ring binding it issued and the revocations.
+  The first page fixes a frontier, each ring's epoch and journal entry and the identity epoch, and signs the manifest once: a COSE_Sign1 `permguard.keys.bundle.v1` under the `host.operations` key active there, over the Host, the resource, the frontier, the item count, the bundle digest and `issued_at`.
+  Later pages present that manifest as `frontier`, with `cursor`, and receive the same bytes: a rotation or a revocation in between changes nothing they carry, and a frontier the Host did not sign is refused; after an identity rotation it answers `409 frontier_unreproducible`.
+  The items are canonical CBOR (`contracts/cbor/keys-bundle.json`), the same bytes over REST and `GetKeyBundle`.
+  `permguard_host::keys::bundle::verify` checks a bundle offline from the identity's first fingerprint, the one `permguard host identity provision` printed: every ring must be bound at its frontier epoch by the current identity key, so a superseded identity key vouches for nothing; a key, a binding or a revocation outside the frontier is refused.
+  Each ring now keeps every binding it issues in `host/keys/<ring>/bindings/<seq>.cose`, by its journal entry; a binding from before this version is issued again at the next start.
+  A Host without `operations.keys` has nothing to sign the manifest, and answers `503`.
+
 ### Changed
+
+- **`keys export --directory` reads a ring on the volume: `<volume>/host/keys/<ring>`.**
+  The offline export answered that the build could not export a ring; it now reads the ring's journal on a stopped volume and prints its epoch, its key-set digest, `keys` (the JWKS of the published set the digest covers), `retained` (every other key it ever published, with its state) and `revoked` (the revocations); never a private key, and never a revoked key among `keys`.
+  The directory is the ring's under `host/keys/`, no longer `<volume>/operations/keys`.
 
 - **Ring keys are named `<ring>:<thumbprint>`, and the legacy key directories migrate once.**
   At the first start, the `ring.json` directory of each ring (`operations/keys/{operations,control,data}` on the volume, or the configured one) is migrated into `host/keys/<ring>` through the layout migration framework; its keys keep their material, and the old directory, with the private halves of the keys that had stopped signing, stays until `permguard migrate finalize --subsystem keys-<ring>` (`keys-host-operations`, `keys-control-attest`, `keys-data-attest`).
