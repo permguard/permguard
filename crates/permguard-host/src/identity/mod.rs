@@ -253,7 +253,10 @@ fn destroy_retired(
         match provider.public(&slot(epoch), suite) {
             Ok(held) if held.bytes == published => {}
             Ok(_) => {
-                kept(Some(epoch), &"its slot holds another key than its epoch published");
+                kept(
+                    Some(epoch),
+                    &"its slot holds another key than its epoch published",
+                );
                 continue;
             }
             Err(error) => {

@@ -1704,10 +1704,16 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "rotate the identity again from the epoch it left",
         transport.rotate_identity(admin, "ri3", 1).await,
     ));
-    steps.push((
-        "read the identity after its rotation",
-        transport.identity_document(admin).await,
-    ));
+    let after = transport.identity_document(admin).await;
+    let Outcome::Answered(view) = &after else {
+        panic!("the identity reads: {after:?}")
+    };
+    assert_eq!(
+        view["successions"].as_array().map(Vec::len),
+        Some(1),
+        "the identity names its one succession: {view}"
+    );
+    steps.push(("read the identity after its rotation", after));
 
     // The identity reset (WP-4.1), last: it leaves the facade's identity retired.
     steps.push((
@@ -2051,6 +2057,18 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
     assert_eq!(
         refused("rotate a ring as a stranger"),
         (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("rotate the identity as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    assert_eq!(
+        refused("rotate the identity from a stale epoch"),
+        ("conflict".to_owned(), host::REVISION_MISMATCH.to_owned())
+    );
+    assert_eq!(
+        refused("rotate the identity again from the epoch it left"),
+        ("conflict".to_owned(), host::REVISION_MISMATCH.to_owned())
     );
     assert_eq!(
         refused("rotate the identity ring"),

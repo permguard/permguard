@@ -539,11 +539,13 @@ impl KeyProvider for Failing {
     }
 }
 
-/// A provider that cannot destroy one slot until told it can.
+/// A provider that cannot destroy or read one slot, or list its slots, until told it can.
 struct Keeping {
     inner: FileKeyProvider,
     slot: &'static str,
     keeps: std::sync::atomic::AtomicBool,
+    unlisted: std::sync::atomic::AtomicBool,
+    unread: std::sync::atomic::AtomicBool,
 }
 
 impl KeyProvider for Keeping {
@@ -560,9 +562,15 @@ impl KeyProvider for Keeping {
         self.inner.generate_addressed(suite)
     }
     fn slots(&self) -> Result<Vec<String>, KeyError> {
+        if self.unlisted.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(KeyError::Malformed("the HSM lists nothing".to_owned()));
+        }
         self.inner.slots()
     }
     fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
+        if slot == self.slot && self.unread.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(KeyError::Malformed("the HSM reads nothing".to_owned()));
+        }
         self.inner.public(slot, suite)
     }
     fn sign(&self, slot: &str, suite: Suite, message: &[u8]) -> Result<Vec<u8>, KeyError> {
@@ -586,6 +594,8 @@ fn a_retired_key_a_rotation_could_not_destroy_is_destroyed_by_the_next() {
         inner: FileKeyProvider::new(keys),
         slot: "1",
         keeps: std::sync::atomic::AtomicBool::new(true),
+        unlisted: std::sync::atomic::AtomicBool::new(false),
+        unread: std::sync::atomic::AtomicBool::new(false),
     });
     let identity = Identity::open(&volume, provider.clone()).expect("opens");
     let held = root.join("host").join(DIRECTORY).join(KEYS);
@@ -619,6 +629,114 @@ fn a_retired_key_a_rotation_could_not_destroy_is_destroyed_by_the_next() {
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
     let identity = Identity::open(&volume, self::provider(&volume)).expect("verifies");
     assert_eq!(identity.epoch(), 4);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_rotation_whose_retired_keys_cannot_be_listed_still_rotates_and_the_next_destroys_them() {
+    let root = scratch("unlisted");
+    drop(provisioned(&root));
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let keys = directories(&volume).expect("dirs").1;
+    let provider = Arc::new(Keeping {
+        inner: FileKeyProvider::new(keys),
+        slot: "",
+        keeps: std::sync::atomic::AtomicBool::new(false),
+        unlisted: std::sync::atomic::AtomicBool::new(true),
+        unread: std::sync::atomic::AtomicBool::new(false),
+    });
+    let identity = Identity::open(&volume, provider.clone()).expect("opens");
+    let held = root.join("host").join(DIRECTORY).join(KEYS);
+    identity
+        .rotate(&Applying::for_tests(1), Some(1), NOW + 1)
+        .expect("rotated to 2");
+    let rotated = identity
+        .rotate(&Applying::for_tests(2), Some(2), NOW + 2)
+        .expect("rotated to 3: a key kept is never a refusal");
+    assert_eq!(rotated.epoch, 3);
+    assert!(
+        held.join("1.key").exists(),
+        "nothing listed, nothing destroyed"
+    );
+    provider
+        .unlisted
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    identity
+        .rotate(&Applying::for_tests(3), Some(3), NOW + 3)
+        .expect("rotated to 4");
+    assert!(!held.join("1.key").exists(), "destroyed once listed");
+    assert!(!held.join("2.key").exists(), "its grace over");
+    assert!(held.join("3.key").exists(), "epoch 3's in its grace");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_retired_key_whose_public_half_cannot_be_read_is_kept_until_it_can() {
+    let root = scratch("unread");
+    drop(provisioned(&root));
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let keys = directories(&volume).expect("dirs").1;
+    let provider = Arc::new(Keeping {
+        inner: FileKeyProvider::new(keys),
+        slot: "1",
+        keeps: std::sync::atomic::AtomicBool::new(false),
+        unlisted: std::sync::atomic::AtomicBool::new(false),
+        unread: std::sync::atomic::AtomicBool::new(true),
+    });
+    let identity = Identity::open(&volume, provider.clone()).expect("opens");
+    let held = root.join("host").join(DIRECTORY).join(KEYS);
+    identity
+        .rotate(&Applying::for_tests(1), Some(1), NOW + 1)
+        .expect("rotated to 2");
+    identity
+        .rotate(&Applying::for_tests(2), Some(2), NOW + 2)
+        .expect("rotated to 3: a key kept is never a refusal");
+    assert!(
+        held.join("1.key").exists(),
+        "a key that cannot be identified is never destroyed"
+    );
+    provider
+        .unread
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    identity
+        .rotate(&Applying::for_tests(3), Some(3), NOW + 3)
+        .expect("rotated to 4");
+    assert!(!held.join("1.key").exists(), "destroyed once identified");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_retired_slot_holding_another_key_than_its_epoch_published_is_never_destroyed() {
+    let root = scratch("swapped-slot");
+    let (_volume, identity) = provisioned(&root);
+    let held = root.join("host").join(DIRECTORY).join(KEYS);
+    identity
+        .rotate(&Applying::for_tests(1), Some(1), NOW + 1)
+        .expect("rotated to 2");
+    // Epoch 1's slot made to hold epoch 2's key, the one in its grace.
+    let grace = std::fs::read(held.join("2.key")).expect("epoch 2's key");
+    std::fs::write(held.join("1.key"), &grace).expect("written");
+    identity
+        .rotate(&Applying::for_tests(2), Some(2), NOW + 2)
+        .expect("rotated to 3");
+    assert_eq!(
+        std::fs::read(held.join("1.key")).expect("kept"),
+        grace,
+        "a slot whose key is not its epoch's is left alone"
+    );
+    assert_eq!(
+        std::fs::read(held.join("2.key")).expect("kept"),
+        grace,
+        "the key in its grace kept"
+    );
+    identity
+        .rotate(&Applying::for_tests(3), Some(3), NOW + 3)
+        .expect("rotated to 4");
+    assert!(!held.join("2.key").exists(), "epoch 2's own slot destroyed");
+    assert!(
+        held.join("1.key").exists(),
+        "the swapped slot still left alone"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
