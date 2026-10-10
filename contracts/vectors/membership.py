@@ -193,7 +193,34 @@ assured_payload = {1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plan
 assured_payload = cbor(assured_payload)
 assured = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid, assured_payload)
 
-out = {"comment": "Membership records (WP-4.1) and assurance appraisal (WP-4.2); see README.md and membership.py",
+# Task sessions (WP-4.3): a lease request, the lease the coordinator signs under its operations
+# key, bound to the connection by the digest of its exporter, the answer, one task message and its
+# answer, and a journal entry holding the membership for review.
+COORDINATOR_BOOT, MEMBER_BOOT = bytes([0xB0]) * 16, bytes([0xB1]) * 16
+RESOURCE = "plane/data/zone/z1"
+lease_request = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: RESOURCE, 5: MEMBER_BOOT})
+channel = hashlib.sha256(b"permguard.membership.lease-channel.v1\n" + EXPORTER).digest()
+lease_payload = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: COORDINATOR, 5: MEMBER,
+                      6: COORDINATOR_BOOT, 7: MEMBER_BOOT, 8: "plane/data/*", 9: RESOURCE,
+                      10: limits, 11: AT + 20, 12: AT + 3620, 13: channel})
+lease = sign1(OPERATIONS, "permguard.membership.lease.v1", operations_kid, lease_payload)
+lease_answer = cbor({1: lease})
+task_message = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: "r-1", 5: b"hello"})
+task_answer = cbor({1: "r-1", 2: b"echo:hello"})
+# The same with every optional label: evidence in the request, the binding digest in the lease,
+# the revised manifest beside it in the answer.
+lease_request_evidence = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: RESOURCE, 5: MEMBER_BOOT,
+                               6: [[VERIFIER, EVIDENCE]]})
+lease_bound_payload = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 2, 4: COORDINATOR, 5: MEMBER,
+                            6: COORDINATOR_BOOT, 7: MEMBER_BOOT, 8: "plane/data/*", 9: RESOURCE,
+                            10: limits, 11: AT + 20, 12: AT + 3620, 13: channel,
+                            14: binding_digest})
+lease_bound = sign1(OPERATIONS, "permguard.membership.lease.v1", operations_kid, lease_bound_payload)
+lease_answer_revised = cbor({1: lease_bound, 2: assured})
+held = cbor({1: 4, 2: "held", 3: MEMBERSHIP_ID, 4: 7, 5: AT + 30,
+             7: digest(b"permguard.membership.journal.v1\n", third)})
+
+out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2) and task sessions (WP-4.3); see README.md and membership.py",
        "coordinator": {"host_id": COORDINATOR.hex(), "seed": SEED_COORDINATOR,
                        "public_key": COORDINATOR_PUB.hex(), "fingerprint": fingerprint(COORDINATOR_PUB)},
        "member": {"host_id": MEMBER.hex(), "seed": SEED_MEMBER, "public_key": MEMBER_PUB.hex(),
@@ -221,7 +248,16 @@ out = {"comment": "Membership records (WP-4.1) and assurance appraisal (WP-4.2);
                      "binding": {"bytes": binding_bytes.hex(), "digest": binding_digest},
                      "nonce": assurance_nonce.hex(),
                      "nonce_pending": pending_nonce.hex(),
-                     "manifest": {"payload": assured_payload.hex(), "cose_sign1": assured.hex()}}}
+                     "manifest": {"payload": assured_payload.hex(), "cose_sign1": assured.hex()}},
+       "task": {"coordinator_boot_id": COORDINATOR_BOOT.hex(), "member_boot_id": MEMBER_BOOT.hex(),
+                "resource": RESOURCE, "lease_request": lease_request.hex(),
+                "channel_binding": channel.hex(),
+                "lease": {"payload": lease_payload.hex(), "cose_sign1": lease.hex()},
+                "lease_answer": lease_answer.hex(), "task_message": task_message.hex(),
+                "task_answer": task_answer.hex(), "held": held.hex(),
+                "lease_request_evidence": lease_request_evidence.hex(),
+                "lease_bound": {"payload": lease_bound_payload.hex(), "cose_sign1": lease_bound.hex()},
+                "lease_answer_revised": lease_answer_revised.hex()}}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

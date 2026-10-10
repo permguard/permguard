@@ -1852,6 +1852,38 @@
         "x-grpc-note": "the enrollment travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own"
       }
     },
+    "/host/v1/tasks/{task}/session": {
+      "post": {
+        "operationId": "openTaskSession",
+        "summary": "A task session, refused over REST",
+        "description": "Refused whoever asks, before any body is read (WP-4.3, owner decision): a task session runs inside a proven peer session, operation `task`, on the `permguard.host.v1.IdentityService/PeerChannel` stream, opened by its lease request, the CBOR maps `contracts/cbor/membership.json` defines.",
+        "parameters": [
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The task."
+          }
+        ],
+        "responses": {
+          "503": {
+            "description": "Always: a task session runs on the `PeerChannel` stream (`peer_sessions_unserveable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "the task session travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own"
+      }
+    },
     "/host/v1/members/{id}": {
       "get": {
         "operationId": "getMember",
@@ -2268,7 +2300,7 @@
             }
           },
           "409": {
-            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`); the membership is held for review, which only a revocation leaves (`membership_held`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2388,7 +2420,7 @@
             }
           },
           "409": {
-            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`); the membership is held for review, which only a revocation leaves (`membership_held`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2508,7 +2540,7 @@
             }
           },
           "409": {
-            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`); the membership is held for review, which only a revocation leaves (`membership_held`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2628,7 +2660,7 @@
             }
           },
           "409": {
-            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`); the membership is held for review, which only a revocation leaves (`membership_held`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2659,6 +2691,95 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.MembershipService/AppraiseMember"
+      }
+    },
+    "/host/v1/members/{id}/sessions": {
+      "get": {
+        "operationId": "listMemberSessions",
+        "summary": "The open task sessions of a membership",
+        "description": "Under `membership.read` on the Host (WP-4.3). The task sessions of a membership this Host coordinates that are open now, with the boot ids of both incarnations; empty on the member side.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The open sessions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSessions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMemberSessions"
       }
     },
     "/host/v1/members/{id}/revoke/plan": {
@@ -5285,6 +5406,15 @@
             ],
             "description": "While the coordinator appraises the tasks' controls: what the policy wants, what the declaration meets, the nonce; `null` otherwise (WP-4.2).",
             "x-grpc-field": "appraisal"
+          },
+          "held_epoch": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Held for review since a peer named this epoch, which this coordinator never issued: no task, no fence, no resumption, only revocation (WP-4.3); `null` when not held.",
+            "x-grpc-field": "held_epoch"
           }
         },
         "required": [
@@ -5303,7 +5433,8 @@
           "updated_at",
           "last_session_at",
           "assurance",
-          "appraisal"
+          "appraisal",
+          "held_epoch"
         ],
         "additionalProperties": false,
         "description": "One membership, as an operator reads it. Dormancy and member-reported progress arrive with the leases and the task handlers (WP-4.3, WP-4.4).",
@@ -6687,6 +6818,78 @@
         "additionalProperties": false,
         "description": "What an appraisal answers: the successor manifest with the binding renewed or revoked, still active, a new epoch.",
         "x-grpc-message": "permguard.host.v1.AppraiseMemberResponse"
+      },
+      "MemberSession": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "The task the session serves.",
+            "x-grpc-field": "task_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The epoch the lease was issued under.",
+            "x-grpc-field": "epoch"
+          },
+          "member_boot_id": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32,
+            "description": "The member's incarnation, 32 hex digits: two at once is a clone alarm.",
+            "x-grpc-field": "member_boot_id"
+          },
+          "coordinator_boot_id": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32,
+            "description": "This Host's incarnation, 32 hex digits.",
+            "x-grpc-field": "coordinator_boot_id"
+          },
+          "opened_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the lease was issued, RFC 3339.",
+            "x-grpc-field": "opened_at"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the lease expires, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "task_id",
+          "epoch",
+          "member_boot_id",
+          "coordinator_boot_id",
+          "opened_at",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "One open task session of a membership this Host coordinates (WP-4.3).",
+        "x-grpc-message": "permguard.host.v1.MemberSession"
+      },
+      "MemberSessions": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberSession"
+            },
+            "description": "The open task sessions whose lease runs, oldest first.",
+            "x-grpc-field": "sessions"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/members/{id}/sessions` answers.",
+        "x-grpc-message": "permguard.host.v1.ListMemberSessionsResponse"
       }
     }
   },
@@ -6765,26 +6968,12 @@
       "fields": [
         "member"
       ]
-    },
-    {
-      "message": "permguard.host.v1.ListMemberSessionsRequest",
-      "note": "the task sessions of a membership come with WP-4.3",
-      "fields": []
-    },
-    {
-      "message": "permguard.host.v1.ListMemberSessionsResponse",
-      "note": "the task sessions of a membership come with WP-4.3",
-      "fields": []
     }
   ],
   "x-grpc-unmapped-rpcs": [
     {
       "rpc": "permguard.host.v1.IdentityService/PeerChannel",
       "note": "peer Host sessions (WP-2.3): one bidirectional stream bound to one TLS connection; REST refuses `sessions/hello` and `sessions/prove`, its frames are `contracts/cbor/session.json`"
-    },
-    {
-      "rpc": "permguard.host.v1.MembershipService/ListMemberSessions",
-      "note": "the task sessions of a membership come with WP-4.3: `UNIMPLEMENTED`, and no REST route yet"
     }
   ]
 }

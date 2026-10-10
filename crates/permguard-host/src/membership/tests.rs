@@ -27,6 +27,11 @@ fn now() -> u64 {
 
 impl Host {
     pub(crate) fn new(tag: &str) -> Self {
+        Self::timed(tag, Arc::new(TimeGuard::system(Duration::from_secs(30))))
+    }
+
+    /// A Host whose rings run on `time`.
+    pub(crate) fn timed(tag: &str, time: Arc<TimeGuard>) -> Self {
         let root = std::env::temp_dir().join(format!(
             "permguard-host-members-{tag}-{}-{:?}",
             std::process::id(),
@@ -52,7 +57,6 @@ impl Host {
             )
             .expect("provisioned"),
         );
-        let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
         let rings = [HOST_OPERATIONS, CONTROL_ATTEST, DATA_ATTEST]
             .into_iter()
             .map(|id| {
@@ -85,10 +89,71 @@ impl Host {
         }
     }
 
-    fn coordinator(&self) -> Coordinator<'_> {
+    pub(crate) fn volume(&self) -> &Volume {
+        &self._volume
+    }
+
+    pub(crate) fn coordinator(&self) -> Coordinator<'_> {
         Coordinator {
             identity: &self.identity,
             rings: &self.rings,
+        }
+    }
+
+    /// A copy of this Host's volume, claimed and opened beside it: the same Host, its rings and
+    /// memberships, another boot id (F-31).
+    pub(crate) fn copy(&self, tag: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "permguard-host-members-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let status = std::process::Command::new("cp")
+            .arg("-Rp")
+            .arg(&self.root)
+            .arg(&root)
+            .status()
+            .expect("cp runs");
+        assert!(status.success(), "the volume is copied");
+        let volume = Volume::claim(
+            &root,
+            permguard_core::assurance::AssuranceProfile::Development,
+        )
+        .expect("the copy is claimed");
+        let provider: Arc<dyn crate::keys::KeyProvider> =
+            Arc::new(crate::keys::FileKeyProvider::new(
+                identity::directories(&volume).expect("the identity").1,
+            ));
+        let identity = Arc::new(Identity::open(&volume, provider).expect("the copy opens"));
+        let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+        let rings = [HOST_OPERATIONS, CONTROL_ATTEST, DATA_ATTEST]
+            .into_iter()
+            .map(|id| {
+                Arc::new(
+                    Ring::open(
+                        &volume,
+                        id,
+                        Suite::Ed25519Sha256V1,
+                        Policy {
+                            publish_ahead: Duration::from_secs(600),
+                            rotate_every: Duration::from_secs(3600),
+                            retain: Duration::from_secs(7200),
+                        },
+                        Arc::clone(&time),
+                    )
+                    .expect("the ring opens")
+                    .with_binder(identity.clone()),
+                )
+            })
+            .collect();
+        let store = Store::open(&volume).expect("the store opens");
+        Self {
+            root,
+            _volume: volume,
+            identity,
+            rings,
+            store,
         }
     }
 
@@ -174,6 +239,14 @@ pub(crate) fn offered_nothing() -> Offered<'static> {
 }
 
 /// An invitation from `coordinator` for decisions under `plane/data/*`, and its token.
+/// An invitation from `coordinator` that expects `member`, and its token.
+pub(crate) fn invite_for(coordinator: &Host, member: &Host) -> (Invitation, [u8; 32]) {
+    invite(
+        coordinator,
+        Some(member.identity.first_fingerprint().to_owned()),
+    )
+}
+
 fn invite(coordinator: &Host, expected: Option<String>) -> (Invitation, [u8; 32]) {
     coordinator
         .store
@@ -777,7 +850,7 @@ fn the_request_actions_read_back() {
     );
 }
 
-mod protocol {
+pub(crate) mod protocol {
     //! The whole protocol through real sessions: the member's `Initiator`, the coordinator's
     //! `Responder` serving `Coordinating`, one in-memory connection whose exporter both sides
     //! read.
@@ -791,20 +864,48 @@ mod protocol {
     use crate::session::peers::Peers;
     use crate::session::{Context, Frame, Initiator, Request, Responder};
 
-    struct Side {
-        host: Host,
-        mutations: Arc<Mutations>,
-        context: Context,
+    /// A task handler that answers each body with `echo:` before it.
+    pub(crate) struct Echo;
+
+    impl crate::membership::task::TaskHandler for Echo {
+        fn handle(
+            &self,
+            _context: &crate::membership::task::TaskContext,
+            body: &[u8],
+        ) -> Result<Vec<u8>, crate::session::Refusal> {
+            Ok([b"echo:".as_slice(), body].concat())
+        }
+    }
+
+    pub(crate) struct Side {
+        pub(crate) host: Host,
+        pub(crate) mutations: Arc<Mutations>,
+        pub(crate) context: Context,
+        pub(crate) tasks: Arc<crate::membership::task::Tasks>,
+        pub(crate) trail: Arc<Recording>,
     }
 
     impl Side {
-        fn new(tag: &str, service: bool) -> Self {
-            let host = Host::new(tag);
-            let time = Arc::new(TimeGuard::system(Duration::from_secs(30)));
+        pub(crate) fn new(tag: &str, service: bool) -> Self {
+            Self::of(Host::new(tag), service)
+        }
+
+        /// The side of `host`, serving as a coordinator when `service`.
+        pub(crate) fn of(host: Host, service: bool) -> Self {
+            Self::timed(
+                host,
+                service,
+                Arc::new(TimeGuard::system(Duration::from_secs(30))),
+            )
+        }
+
+        /// The side of `host` on `time`.
+        pub(crate) fn timed(host: Host, service: bool, time: Arc<TimeGuard>) -> Self {
+            let trail = Arc::new(Recording::default());
             let mutations = Arc::new(
                 Mutations::open(
                     &host._volume,
-                    Arc::new(Recording::default()),
+                    Arc::clone(&trail) as Arc<dyn crate::operations::mutation::Projection>,
                     Arc::clone(&time),
                 )
                 .expect("the engine opens"),
@@ -815,6 +916,12 @@ mod protocol {
                 Some(Arc::clone(&host.identity)),
                 host.rings.clone(),
             ));
+            let tasks = Arc::new(crate::membership::task::Tasks {
+                live: Arc::default(),
+                appraisal: Arc::new(appraisal::tests::appraisal()),
+                handlers: crate::membership::task::TaskHandlers::default()
+                    .register(TaskType::DecisionsShip, Arc::new(Echo)),
+            });
             let service = service.then(|| {
                 Arc::new(Coordinating {
                     store: Arc::clone(&host.store),
@@ -823,6 +930,7 @@ mod protocol {
                     keys: registry,
                     capabilities: capabilities(),
                     time: Arc::clone(&time),
+                    tasks: Arc::clone(&tasks),
                 }) as Arc<dyn crate::session::Service>
             });
             let context = Context {
@@ -838,16 +946,43 @@ mod protocol {
                 host,
                 mutations,
                 context,
+                tasks,
+                trail,
             }
         }
     }
 
     /// The member's connection to the coordinator, in memory; `tamper` changes the request after
     /// its digest went into the hello.
-    struct Loopback<'a> {
-        member: &'a Side,
-        coordinator: &'a Side,
-        tamper: bool,
+    pub(crate) struct Loopback<'a> {
+        pub(crate) member: &'a Side,
+        pub(crate) coordinator: &'a Side,
+        pub(crate) tamper: bool,
+    }
+
+    /// An open task session in memory: the coordinator's responder, kept with the session.
+    struct LoopTask {
+        responder: Responder,
+    }
+
+    impl crate::membership::member::TaskChannel for LoopTask {
+        fn exchange(
+            &mut self,
+            message: Vec<u8>,
+        ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, crate::session::Refusal>> {
+            let result = match self.responder.receive(Frame::Task(message)) {
+                Ok(mut frames) => match frames.pop() {
+                    Some(Frame::Task(answer)) => Ok(answer),
+                    Some(Frame::Refusal { code }) => Err(crate::session::Refusal {
+                        code: Box::leak(code.into_boxed_str()),
+                        reason: "refused".to_owned(),
+                    }),
+                    other => panic!("an answer, not {other:?}"),
+                },
+                Err(refusal) => Err(refusal),
+            };
+            Box::pin(std::future::ready(result))
+        }
     }
 
     impl Connector for Loopback<'_> {
@@ -905,9 +1040,57 @@ mod protocol {
             })();
             Box::pin(std::future::ready(result))
         }
+
+        fn open_task(
+            &self,
+            target: Target,
+            open: crate::membership::member::TaskOpen,
+        ) -> permguard_core::BoxFuture<
+            '_,
+            Result<crate::membership::member::TaskOpened, crate::session::Refusal>,
+        > {
+            let result = (|| {
+                let exporter = EXPORTER;
+                let mut initiator = Initiator::new(
+                    self.member.context.clone(),
+                    exporter,
+                    Request {
+                        peer: target.host_id,
+                        operation: crate::session::record::Operation::Task,
+                        membership_id: Some(uuid_text(&open.membership_id)),
+                        task: Some(open.task_id.clone()),
+                        request_digest: None,
+                        pin: None,
+                    },
+                );
+                let mut responder = Responder::new(self.coordinator.context.clone(), exporter);
+                let mut outbound = initiator.start()?;
+                while initiator.session().is_none() {
+                    let mut inbound = Vec::new();
+                    for frame in outbound.drain(..) {
+                        inbound.extend(responder.receive(frame)?);
+                    }
+                    for frame in inbound {
+                        outbound.extend(initiator.receive(frame)?);
+                    }
+                }
+                let answer = match responder.receive(Frame::Task(open.request))?.pop() {
+                    Some(Frame::Task(answer)) => answer,
+                    other => panic!("a lease answer, not {other:?}"),
+                };
+                Ok(crate::membership::member::TaskOpened {
+                    peer: initiator.peer().expect("verified").clone(),
+                    // `tamper` reports another connection than the one the lease was bound to.
+                    exporter: if self.tamper { [0xE2; 32] } else { exporter },
+                    answer,
+                    channel: Box::new(LoopTask { responder }),
+                })
+            })();
+            Box::pin(std::future::ready(result))
+        }
     }
 
-    fn member<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
+    pub(crate) fn member<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
         Member {
             store: &side.host.store,
             mutations: &side.mutations,
@@ -922,7 +1105,175 @@ mod protocol {
         }
     }
 
-    fn join_of(c: &Side, invitation: &Invitation, token: &[u8; 32]) -> Join {
+    /// A membership of `m` with `c`, joined over the loopback, approved with `lease_policy` and
+    /// synced: active on both sides.
+    pub(crate) async fn active(c: &Side, m: &Side, lease_policy: Option<LeasePolicy>) -> [u8; 16] {
+        let (invitation, token) = invite(
+            &c.host,
+            Some(m.host.identity.first_fingerprint().to_owned()),
+        );
+        let loopback = Loopback {
+            member: m,
+            coordinator: c,
+            tamper: false,
+        };
+        let member = member(m, &loopback);
+        let who = || Who::Principal("spiffe://acme/operators/member".to_owned());
+        let id = member
+            .join(who(), join_of(c, &invitation, &token))
+            .await
+            .expect("joined")
+            .request
+            .membership_id;
+        let (manifest, _, _) = c
+            .host
+            .store
+            .check_approve(
+                &c.host.coordinator(),
+                &capabilities(),
+                &id,
+                None,
+                lease_policy,
+                &offered_nothing(),
+                None,
+                now(),
+            )
+            .expect("approvable");
+        c.host
+            .store
+            .approve(
+                &Applying::for_tests(41),
+                &c.host.coordinator(),
+                &manifest,
+                now(),
+            )
+            .expect("approved");
+        member.sync(who(), &id).await.expect("synced");
+        id
+    }
+
+    /// [`active`], its task requiring `controls`, approved on an attestation of them by the test
+    /// verifier against the pending request's nonce (WP-4.2).
+    pub(crate) async fn active_requiring(
+        c: &Side,
+        m: &Side,
+        controls: &[permguard_core::assurance::Control],
+    ) -> [u8; 16] {
+        let mut task = decisions("plane/data/*");
+        task.assurance_requirements = controls.iter().map(|c| c.name().to_owned()).collect();
+        active_with(c, m, task, controls, &[]).await
+    }
+
+    /// A membership of `m` with `c` granting `task`, approved on an attestation of `attested`
+    /// against the pending request's nonce and on the operator's `approvals`.
+    pub(crate) async fn active_with(
+        c: &Side,
+        m: &Side,
+        task: Task,
+        attested: &[permguard_core::assurance::Control],
+        approvals: &[appraisal::Approval],
+    ) -> [u8; 16] {
+        let controls = attested;
+        let (invitation, token) = c
+            .host
+            .store
+            .invite(
+                &Applying::for_tests(1),
+                NewInvite {
+                    selector: Selector::parse("plane/data/*").expect("a selector"),
+                    tasks: vec![task.clone()],
+                    expires: None,
+                    expected_fingerprint: Some(m.host.identity.first_fingerprint().to_owned()),
+                    min_assurance: None,
+                },
+                "operator",
+                now(),
+            )
+            .expect("invited");
+        let loopback = Loopback {
+            member: m,
+            coordinator: c,
+            tamper: false,
+        };
+        let member = member(m, &loopback);
+        let who = || Who::Principal("spiffe://acme/operators/member".to_owned());
+        let id = member
+            .join(
+                who(),
+                Join {
+                    tasks: vec![task],
+                    ..join_of(c, &invitation, &token)
+                },
+            )
+            .await
+            .expect("joined")
+            .request
+            .membership_id;
+        let pending = c.host.store.membership(&id).expect("held").request;
+        let nonce = appraisal::nonce(
+            &c.host.identity.host_id(),
+            &id,
+            &Digest::compute(&pending.encode().expect("encodes")),
+        );
+        let evidence: Vec<appraisal::Evidence> = if controls.is_empty() {
+            Vec::new()
+        } else {
+            vec![appraisal::Evidence {
+                verifier: appraisal::tests::VERIFIER.to_owned(),
+                evidence: appraisal::tests::evidence(&nonce, controls),
+            }]
+        };
+        let (manifest, _, _) = c
+            .host
+            .store
+            .check_approve(
+                &c.host.coordinator(),
+                &capabilities(),
+                &id,
+                None,
+                None,
+                &Offered {
+                    appraisal: &c.tasks.appraisal,
+                    approvals,
+                    evidence: &evidence,
+                    principal: "operator",
+                },
+                None,
+                now(),
+            )
+            .expect("approvable");
+        c.host
+            .store
+            .approve(
+                &Applying::for_tests(43),
+                &c.host.coordinator(),
+                &manifest,
+                now(),
+            )
+            .expect("approved");
+        member.sync(who(), &id).await.expect("synced");
+        id
+    }
+
+    /// Moves `id` to `to` on the coordinator: a successor, a new epoch.
+    pub(crate) fn move_to(c: &Side, id: &[u8; 16], to: Status, operation: u8) {
+        let manifest = c
+            .host
+            .store
+            .check_successor(&c.host.coordinator(), id, to, None, now())
+            .expect("a successor");
+        c.host
+            .store
+            .transition(
+                &Applying::for_tests(operation),
+                &c.host.coordinator(),
+                &manifest,
+                now(),
+            )
+            .expect("issued");
+    }
+
+    pub(crate) fn join_of(c: &Side, invitation: &Invitation, token: &[u8; 32]) -> Join {
         Join {
             coordinator: Target {
                 address: "https://coordinator:7443".to_owned(),

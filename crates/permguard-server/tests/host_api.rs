@@ -242,6 +242,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             capabilities: permguard_host::membership::Capabilities::default(),
             connector: None,
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
+            live: Arc::default(),
         })),
     }))
 }
@@ -684,6 +685,27 @@ impl Transport {
                             request_id: request_id.to_owned(),
                             expected_revision: 1,
                             reason: None,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    /// The open task sessions of a membership (WP-4.3).
+    async fn member_sessions(&self, who: Option<&str>, id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest("GET", &format!("/host/v1/members/{id}/sessions"), who, None)
+                    .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .list_member_sessions(Self::grpc_request(
+                        who,
+                        host_v1::ListMemberSessionsRequest {
+                            membership_id: id.to_owned(),
                         },
                     ))
                     .await,
@@ -1581,6 +1603,18 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
             .await,
     ));
     steps.push((
+        "list the sessions of an unknown membership",
+        transport
+            .member_sessions(admin, "0190a5c3-0000-7000-8000-000000000022")
+            .await,
+    ));
+    steps.push((
+        "list sessions as a stranger",
+        transport
+            .member_sessions(Some(STRANGER), "0190a5c3-0000-7000-8000-000000000022")
+            .await,
+    ));
+    steps.push((
         "approve an unknown membership bringing an approval and evidence",
         transport
             .approve_member_assured(admin, "0190a5c3-0000-7000-8000-000000000022", "ap1")
@@ -2051,6 +2085,33 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
             Request::builder()
                 .method("POST")
                 .uri("/host/v1/members/enroll")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{}"))
+                .expect("a request"),
+        )
+        .await
+        .expect("answered");
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("reads")
+        .to_bytes();
+    assert_eq!(
+        reduced_http(StatusCode::SERVICE_UNAVAILABLE, &body),
+        Outcome::Refused {
+            class: "unavailable".to_owned(),
+            code: host::PEER_SESSIONS_UNSERVEABLE.to_owned(),
+        }
+    );
+    // Nor is a task session (WP-4.3): it runs on the PeerChannel, opened by its lease request.
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/host/v1/tasks/decisions/session")
                 .header("content-type", "application/json")
                 .body(axum::body::Body::from("{}"))
                 .expect("a request"),

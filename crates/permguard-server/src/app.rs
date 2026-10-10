@@ -1804,8 +1804,24 @@ impl App {
             // The task types this Host's Planes act in: none until the Planes declare their task
             // handlers (WP-4.4), so an approval names no task this Host cannot serve.
             let capabilities = permguard_host::membership::Capabilities::default();
-            // What a coordinator serves on a proven session: an enrollment, a manifest fetch or a
-            // revocation asked by its member.
+            // The appraisal policy configured; no verifier ships, so `attested` is refused until a
+            // composition registers one (WP-4.2, owner decision).
+            let appraisal = permguard_host::membership::appraisal::Appraisal::new(
+                permguard_host::membership::appraisal::Policy::new(
+                    config.membership_appraisal_controls().clone(),
+                    config.membership_appraisal_max_binding(),
+                ),
+                permguard_host::membership::appraisal::Verifiers::default(),
+            );
+            // The open task sessions, shared by the PeerChannel and the sessions route; no task
+            // handler is registered until the Planes declare theirs (WP-4.4).
+            let tasks = Arc::new(permguard_host::membership::task::Tasks {
+                live: Arc::default(),
+                appraisal: Arc::new(appraisal.clone()),
+                handlers: permguard_host::membership::task::TaskHandlers::default(),
+            });
+            // What a coordinator serves on a proven session: an enrollment, a manifest fetch, a
+            // revocation asked by its member, and its task sessions.
             let coordinating = permguard_host::membership::service::Coordinating {
                 store: Arc::clone(&members),
                 mutations: Arc::clone(&mutations),
@@ -1813,6 +1829,7 @@ impl App {
                 keys: Arc::clone(&key_registry),
                 capabilities: capabilities.clone(),
                 time: Arc::clone(&time),
+                tasks: Arc::clone(&tasks),
             };
             let session_context = permguard_host::session::Context {
                 identity: Arc::clone(&host_identity),
@@ -1859,15 +1876,8 @@ impl App {
                     store: Arc::clone(&members),
                     capabilities: capabilities.clone(),
                     connector,
-                    // The appraisal policy configured; no verifier ships, so `attested` is
-                    // refused until a composition registers one (WP-4.2, owner decision).
-                    appraisal: permguard_host::membership::appraisal::Appraisal::new(
-                        permguard_host::membership::appraisal::Policy::new(
-                            config.membership_appraisal_controls().clone(),
-                            config.membership_appraisal_max_binding(),
-                        ),
-                        permguard_host::membership::appraisal::Verifiers::default(),
-                    ),
+                    appraisal,
+                    live: Arc::clone(&tasks.live),
                 })),
             });
             context = context.with_host_handles(Arc::new(api));

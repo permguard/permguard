@@ -1,6 +1,6 @@
 {
-  "artifact": "Membership records (WP-4.1) and assurance appraisal (WP-4.2): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
-  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) and of 2026-10-10 (assurance appraisal); crates/permguard-host/src/membership/record.rs",
+  "artifact": "Membership records (WP-4.1) assurance appraisal (WP-4.2) and task sessions (WP-4.3): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
+  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) and of 2026-10-10 (assurance appraisal, task sessions and leases); crates/permguard-host/src/membership/record.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "host_ref": {
@@ -154,9 +154,9 @@
       "keys": "int",
       "fields": [
         { "label": 1, "name": "seq", "type": "uint", "occurs": "required", "note": "from 1" },
-        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "invited, invite_revoked, enrolled, manifest, joined or orphaned" },
+        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "invited, invite_revoked, enrolled, manifest, joined, orphaned or held" },
         { "label": 3, "name": "subject", "type": "bytes", "occurs": "required", "note": "the invitation's or the membership's id" },
-        { "label": 4, "name": "epoch", "type": "uint", "occurs": "optional", "note": "a manifest's epoch" },
+        { "label": 4, "name": "epoch", "type": "uint", "occurs": "optional", "note": "a manifest's epoch; for `held`, the epoch the peer named" },
         { "label": 5, "name": "at", "type": "uint", "occurs": "required" },
         { "label": 6, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "the mutation that wrote it" },
         { "label": 7, "name": "previous", "type": "digest", "occurs": "required", "note": "the digest of the entry before it under `permguard.membership.journal.v1\\n`, of nothing for the first" },
@@ -214,6 +214,60 @@
         { "label": 1, "name": "controls", "type": "array<array:policy_control>", "occurs": "required", "note": "sorted by control, each once" },
         { "label": 2, "name": "max_binding_seconds", "type": "uint", "occurs": "required" }
       ]
+    },
+    "lease_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the membership the session's hello named" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the task the hello named" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the epoch the member holds, from 1" },
+        { "label": 4, "name": "resource", "type": "text", "occurs": "required", "note": "inside the task's selector" },
+        { "label": 5, "name": "member_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes: this incarnation of the member" },
+        { "label": 6, "name": "evidence", "type": "array<array:assurance_evidence>", "occurs": "optional", "note": "1 to 4 pieces, appraised as `appraise` does; absent when none" }
+      ]
+    },
+    "lease": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the manifest's epoch the lease is issued under" },
+        { "label": 4, "name": "coordinator", "type": "bytes", "occurs": "required", "note": "16 bytes: the coordinator's host_id" },
+        { "label": 5, "name": "member", "type": "bytes", "occurs": "required", "note": "16 bytes: the member's host_id" },
+        { "label": 6, "name": "coordinator_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 7, "name": "member_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the incarnation the lease binds" },
+        { "label": 8, "name": "selector", "type": "text", "occurs": "required", "note": "the task's selector" },
+        { "label": 9, "name": "resource", "type": "text", "occurs": "required" },
+        { "label": 10, "name": "limits", "type": "map:limits", "occurs": "required", "note": "the task's signed limits" },
+        { "label": 11, "name": "issued_at", "type": "uint", "occurs": "required" },
+        { "label": 12, "name": "expires_at", "type": "uint", "occurs": "required", "note": "the earliest of the lease policy's session bound, the binding's expiry and the manifest's not_after" },
+        { "label": 13, "name": "channel_binding", "type": "bytes", "occurs": "required", "note": "32 bytes: SHA-256 of `permguard.membership.lease-channel.v1\\n` and the connection's RFC 9266 exporter" },
+        { "label": 14, "name": "binding_digest", "type": "digest", "occurs": "optional", "note": "the assurance binding the task was admitted under; absent when it requires no control" }
+      ]
+    },
+    "lease_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "lease", "type": "bytes", "occurs": "required", "note": "a COSE_Sign1 `permguard.membership.lease.v1` under the coordinator's host.operations key" },
+        { "label": 2, "name": "manifest", "type": "bytes", "occurs": "optional", "note": "the revision an appraisal at the session issued; the member accepts it as the exact successor first" }
+      ]
+    },
+    "task_message": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the lease's" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the lease's" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the lease's: below the current one is stale, above it unknown" },
+        { "label": 4, "name": "request_id", "type": "text", "occurs": "required", "note": "1 to 128 printable bytes" },
+        { "label": 5, "name": "body", "type": "bytes", "occurs": "required", "note": "at most 448 KiB, inside one 512 KiB peer frame, and within the task's signed max_body_bytes" }
+      ]
+    },
+    "task_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "request_id", "type": "text", "occurs": "required", "note": "the message's" },
+        { "label": 2, "name": "body", "type": "bytes", "occurs": "required" }
+      ]
     }
   },
   "arrays": {
@@ -226,5 +280,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer"]
 }

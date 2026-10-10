@@ -36,6 +36,7 @@ pub mod member;
 pub mod record;
 pub mod reset;
 pub mod service;
+pub mod task;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -82,6 +83,8 @@ pub const INVITES: &str = "invites";
 pub const MANIFESTS: &str = "manifests";
 pub const CURRENT: &str = "current.cose";
 pub const HISTORY: &str = "history";
+/// The leases a member holds, one per task: `leases/<membership_id>/<task_id>.cose` (WP-4.3).
+pub const LEASES: &str = "leases";
 /// The layout version `FORMAT` holds.
 pub const LAYOUT_VERSION: u64 = 1;
 
@@ -179,6 +182,8 @@ pub enum MembershipError {
     Storage(String),
     /// The coordinator refused, or could not be reached: its stable code and the local reason.
     Remote { code: String, reason: String },
+    /// The membership is held for review: only its revocation moves it (WP-4.3).
+    Held(String),
 }
 
 impl fmt::Display for MembershipError {
@@ -206,6 +211,7 @@ impl fmt::Display for MembershipError {
             Self::Remote { code, reason } => {
                 write!(f, "the coordinator answered `{code}`: {reason}")
             }
+            Self::Held(detail) => write!(f, "held for review: {detail}"),
         }
     }
 }
@@ -281,6 +287,9 @@ pub struct Held {
     /// One more at every entry about the membership.
     pub revision: u64,
     pub updated_at: u64,
+    /// The epoch a peer named that this coordinator never issued: the membership is held for
+    /// review until revoked (WP-4.3).
+    pub held_epoch: Option<u64>,
 }
 
 impl Held {
@@ -739,6 +748,86 @@ pub fn verify_manifest(
     Ok((manifest, manifest_digest(envelope)))
 }
 
+/// The kids of the coordinator's `host.operations` set that `manifest` pins, as the statement
+/// journaled with it names them: the keys a lease may be signed with (WP-4.3).
+pub(crate) fn pinned_kids(manifest: &Manifest, statements: &[RingStatement]) -> Vec<String> {
+    let Some(pin) = manifest
+        .ring_pins
+        .iter()
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS)
+    else {
+        return Vec::new();
+    };
+    statements
+        .iter()
+        .filter(|statement| {
+            statement.ring == HOST_OPERATIONS
+                && statement.epoch == pin.epoch
+                && statement.binding == pin.binding
+        })
+        .flat_map(|statement| statement.keys.iter().filter_map(|text| public_of(text)))
+        .map(|(kid, ..)| kid)
+        .collect()
+}
+
+/// Verifies a lease under the coordinator's `host.operations` key that `manifest` pins, bound
+/// by the statement journaled with it: the pinned identity, then its binding, then the key
+/// (WP-4.3). The lease's claims are its caller's to check.
+pub fn verify_lease(
+    envelope: &[u8],
+    coordinator: &identity::Verified,
+    manifest: &Manifest,
+    statements: &[RingStatement],
+) -> Result<record::Lease, MembershipError> {
+    let sign1 =
+        Sign1::decode(envelope).map_err(|error| MembershipError::Unverified(error.to_string()))?;
+    let pin = manifest
+        .ring_pins
+        .iter()
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS)
+        .ok_or_else(|| {
+            MembershipError::Unverified(
+                "the manifest pins no coordinator `host.operations`".to_owned(),
+            )
+        })?;
+    let statement = statements
+        .iter()
+        .find(|statement| {
+            statement.ring == HOST_OPERATIONS
+                && statement.epoch == pin.epoch
+                && statement.binding == pin.binding
+        })
+        .ok_or_else(|| {
+            MembershipError::Unverified(
+                "no statement of the coordinator's `host.operations` at the pinned epoch"
+                    .to_owned(),
+            )
+        })?;
+    let binding = verify_statement(statement, coordinator, None)?;
+    if binding.key_set_digest != pin.key_set_digest {
+        return Err(MembershipError::Unverified(
+            "the pinned `host.operations` digest is not the one its binding names".to_owned(),
+        ));
+    }
+    let header = sign1
+        .header()
+        .map_err(|error| MembershipError::Unverified(error.to_string()))?;
+    let (_, suite, public_key) = statement
+        .keys
+        .iter()
+        .filter_map(|text| public_of(text))
+        .find(|(kid, ..)| kid.as_bytes() == header.kid.as_slice())
+        .ok_or_else(|| {
+            MembershipError::Unverified(
+                "the lease is signed by no key of the pinned operations set".to_owned(),
+            )
+        })?;
+    let payload = sign1
+        .verify(suite, &public_key, protected::MEMBERSHIP_LEASE)
+        .map_err(|error| MembershipError::Unverified(error.to_string()))?;
+    Ok(record::Lease::decode(payload)?)
+}
+
 /// How a manifest stands against the one held: the exact current one is a retry, the next epoch
 /// naming the held digest is the successor, anything else is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1026,6 +1115,41 @@ impl Store {
         replace_view(&history, &name, format::VIEW, envelope)?;
         replace_view(&dir, CURRENT, format::VIEW, envelope)?;
         Ok(())
+    }
+
+    /// Keeps the lease a member holds for `task_id` of `id`, replacing the one before (WP-4.3).
+    pub fn keep_lease(
+        &self,
+        id: &[u8; 16],
+        task_id: &str,
+        envelope: &[u8],
+    ) -> Result<(), MembershipError> {
+        let dir = self.dir.subdir(LEASES, true)?.subdir(&hex(id), true)?;
+        replace_view(&dir, &format!("{task_id}.cose"), format::VIEW, envelope)?;
+        Ok(())
+    }
+
+    /// The lease a member holds for `task_id` of `id`, if any.
+    pub fn lease(&self, id: &[u8; 16], task_id: &str) -> Result<Option<Vec<u8>>, MembershipError> {
+        // Reading creates nothing: a member that never leased has no directory.
+        if !self.dir.subdirs()?.iter().any(|name| name == LEASES) {
+            return Ok(None);
+        }
+        let leases = self.dir.subdir(LEASES, false)?;
+        if !leases.subdirs()?.contains(&hex(id)) {
+            return Ok(None);
+        }
+        let dir = leases.subdir(&hex(id), false)?;
+        Ok(read_view(&dir, &format!("{task_id}.cose"), format::VIEW)?)
+    }
+
+    /// The coordinator's ring statements journaled with `id`'s manifest of `epoch`.
+    pub fn statements_held(&self, id: &[u8; 16], epoch: u64) -> Vec<RingStatement> {
+        self.read()
+            .statements
+            .get(&(*id, epoch))
+            .cloned()
+            .unwrap_or_default()
     }
 
     // ---- reads ----
@@ -1586,6 +1710,16 @@ impl Store {
                 to,
             });
         }
+        // Held for review: the manifests the member holds past this coordinator's are lost here,
+        // so only a revocation ends it (owner decision of 2026-10-10).
+        if let Some(seen) = held.held_epoch
+            && to != Status::Revoked
+        {
+            return Err(MembershipError::Held(format!(
+                "a peer named epoch {seen}, which this coordinator never issued: revoke it and \
+                 enroll again"
+            )));
+        }
         // `fence` keeps an active membership active; nothing else moves a status to itself.
         if to == held.status && to != Status::Active {
             return Err(MembershipError::Transition {
@@ -1653,6 +1787,15 @@ impl Store {
                 from: held.status,
                 to: manifest.status,
             });
+        }
+        // Rechecked under the lock: a hold committed since the check lets only a revocation by.
+        if let Some(seen) = held.held_epoch
+            && manifest.status != Status::Revoked
+        {
+            return Err(MembershipError::Held(format!(
+                "a peer named epoch {seen}, which this coordinator never issued: revoke it and \
+                 enroll again"
+            )));
         }
         self.issue(&writing, applying, coordinator, manifest, now)
     }
@@ -1885,6 +2028,32 @@ impl Store {
         digest: &Digest,
         now: u64,
     ) -> Result<(), MembershipError> {
+        self.accept_with(applying, manifest, envelope, digest, &[], now)
+    }
+
+    /// [`Self::accept`], journaling with the manifest the coordinator's statements of the rings
+    /// it pins, among `statements`: what a lease is later verified with (WP-4.3).
+    pub fn accept_with(
+        &self,
+        applying: &Applying<'_>,
+        manifest: &Manifest,
+        envelope: &[u8],
+        digest: &Digest,
+        statements: &[RingStatement],
+        now: u64,
+    ) -> Result<(), MembershipError> {
+        let pinned: Vec<RingStatement> = statements
+            .iter()
+            .filter(|statement| {
+                manifest.ring_pins.iter().any(|pin| {
+                    pin.owner == Role::Coordinator
+                        && pin.ring == statement.ring
+                        && pin.epoch == statement.epoch
+                        && pin.binding == statement.binding
+                })
+            })
+            .cloned()
+            .collect();
         let writing = self.begin();
         let held = self.held(&manifest.membership_id)?;
         let at = held
@@ -1901,7 +2070,7 @@ impl Store {
                 to: manifest.status,
             });
         }
-        self.commit(
+        self.commit_with(
             &writing,
             applying,
             Kind::Manifest,
@@ -1909,6 +2078,7 @@ impl Store {
             Some(manifest.epoch),
             now,
             Some(envelope.to_vec()),
+            pinned,
         )?;
         Ok(())
     }
@@ -1930,6 +2100,33 @@ impl Store {
             });
         }
         self.commit(&writing, applying, Kind::Orphaned, *id, None, now, None)?;
+        Ok(())
+    }
+
+    /// Holds a membership this Host coordinates for review: a peer named `seen`, an epoch past
+    /// any it issued (WP-4.3).
+    pub fn hold(
+        &self,
+        applying: &Applying<'_>,
+        id: &[u8; 16],
+        seen: u64,
+        now: u64,
+    ) -> Result<(), MembershipError> {
+        let writing = self.begin();
+        let held = self.held(id)?;
+        // Only a membership with a manifest, active or suspended: a pending one has no epoch.
+        if held.role != Role::Coordinator
+            || held.manifest.is_none()
+            || !matches!(held.status, Status::Active | Status::Suspended)
+            || seen <= held.epoch()
+        {
+            return Err(MembershipError::Invalid(
+                "only a membership this Host coordinates, active or suspended, is held, for an \
+                 epoch it never issued"
+                    .to_owned(),
+            ));
+        }
+        self.commit(&writing, applying, Kind::Held, *id, Some(seen), now, None)?;
         Ok(())
     }
 }
@@ -2015,6 +2212,7 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                     manifest: None,
                     revision,
                     updated_at: entry.at,
+                    held_epoch: None,
                 },
             );
         }
@@ -2035,6 +2233,7 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                     manifest: None,
                     revision,
                     updated_at: entry.at,
+                    held_epoch: None,
                 },
             );
         }
@@ -2087,6 +2286,29 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                 .entry(entry.subject)
                 .or_default()
                 .push(envelope.to_vec());
+        }
+        Kind::Held => {
+            let held = state
+                .memberships
+                .get_mut(&entry.subject)
+                .ok_or_else(|| corrupt("holds no membership".to_owned()))?;
+            let Some(seen) = entry.epoch else {
+                return Err(corrupt("a hold names the epoch seen".to_owned()));
+            };
+            if held.role != Role::Coordinator
+                || held.manifest.is_none()
+                || held.status.is_terminal()
+                || seen <= held.epoch()
+            {
+                return Err(corrupt(
+                    "a hold of a membership this Host does not coordinate, or of an epoch it issued"
+                        .to_owned(),
+                ));
+            }
+            held.held_epoch = Some(held.held_epoch.unwrap_or(0).max(seen));
+            held.revision += 1;
+            held.updated_at = entry.at;
+            revision = held.revision;
         }
         Kind::Orphaned => {
             let held = state

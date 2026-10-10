@@ -930,9 +930,10 @@ fn membership_samples() -> Vec<Sample> {
     use permguard_host::membership::appraisal::Policy;
     use permguard_host::membership::record::{
         Action, AssuranceBinding, Claim, EnrollAnswer, EnrollRequest, Entry, HostRef, Invitation,
-        Kind, LeasePolicy, Limits, Manifest, MembershipAnswer, MembershipRequest, OperatorApproval,
-        Pending, RingPin, RingStatement, Role, Status, Task, TaskType, Verdict, chain,
-        evidence_bytes, result_bytes, result_digest,
+        Kind, Lease, LeaseAnswer, LeasePolicy, LeaseRequest, Limits, Manifest, MembershipAnswer,
+        MembershipRequest, OperatorApproval, Pending, RingPin, RingStatement, Role, Status, Task,
+        TaskAnswer, TaskMessage, TaskType, Verdict, chain, evidence_bytes, result_bytes,
+        result_digest,
     };
     use permguard_objects::crypto::suite::Suite;
     use permguard_objects::digest::Digest;
@@ -1032,6 +1033,22 @@ fn membership_samples() -> Vec<Sample> {
         issued_at: 1_800_000_000,
         not_after: 1_831_536_000,
         status: Status::Active,
+    };
+    let lease = |optional: bool| Lease {
+        membership_id: SCOPE_ID,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        coordinator: HOST_ID,
+        member: ZONE_ID,
+        coordinator_boot_id: [0xB0; 16],
+        member_boot_id: [0xB1; 16],
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        resource: "plane/data/zone/z1".to_owned(),
+        limits: task.limits,
+        issued_at: 1_800_000_000,
+        expires_at: 1_800_003_600,
+        channel_binding: [0xC1; 32],
+        binding_digest: optional.then(|| Digest::compute(b"binding")),
     };
     let invitation = |optional: bool| Invitation {
         invite_id: SCOPE_ID,
@@ -1138,6 +1155,96 @@ fn membership_samples() -> Vec<Sample> {
             evidence_bytes("tpm-quote", &[0xEE; 8]).expect("encodes"),
             &[],
             None,
+        ),
+        // Task sessions (WP-4.3).
+        sample(
+            "lease_request",
+            LeaseRequest {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                resource: "plane/data/zone/z1".to_owned(),
+                member_boot_id: [0xB1; 16],
+                evidence: vec![("tpm-quote".to_owned(), vec![0xEE; 8])],
+            }
+            .encode()
+            .expect("encodes"),
+            &["lease_request.evidence"],
+            decoder(|bytes| verdict(LeaseRequest::decode(bytes))),
+        ),
+        sample(
+            "lease_request",
+            LeaseRequest {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                resource: "plane/data/zone/z1".to_owned(),
+                member_boot_id: [0xB1; 16],
+                evidence: Vec::new(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(LeaseRequest::decode(bytes))),
+        ),
+        sample(
+            "lease",
+            lease(true).encode().expect("encodes"),
+            &["lease.binding_digest"],
+            decoder(|bytes| verdict(Lease::decode(bytes))),
+        ),
+        sample(
+            "lease",
+            lease(false).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(Lease::decode(bytes))),
+        ),
+        sample(
+            "lease_answer",
+            LeaseAnswer {
+                lease: vec![0x84],
+                manifest: Some(vec![0x84]),
+            }
+            .encode()
+            .expect("encodes"),
+            &["lease_answer.manifest"],
+            decoder(|bytes| verdict(LeaseAnswer::decode(bytes))),
+        ),
+        sample(
+            "lease_answer",
+            LeaseAnswer {
+                lease: vec![0x84],
+                manifest: None,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(LeaseAnswer::decode(bytes))),
+        ),
+        sample(
+            "task_message",
+            TaskMessage {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                request_id: "r-1".to_owned(),
+                body: b"hello".to_vec(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(TaskMessage::decode(bytes))),
+        ),
+        sample(
+            "task_answer",
+            TaskAnswer {
+                request_id: "r-1".to_owned(),
+                body: b"echo:hello".to_vec(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(TaskAnswer::decode(bytes))),
         ),
         sample(
             "invitation",

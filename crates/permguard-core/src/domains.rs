@@ -70,6 +70,8 @@ pub mod digest {
     pub const MEMBERSHIP_ASSURANCE_RESULT: &str = "permguard.membership.assurance-result.v1\n";
     /// An assurance binding, as a task admission answers it (WP-4.2).
     pub const MEMBERSHIP_ASSURANCE_BINDING: &str = "permguard.membership.assurance-binding.v1\n";
+    /// The connection a task session's lease binds: the digest of its RFC 9266 exporter (WP-4.3).
+    pub const MEMBERSHIP_LEASE_CHANNEL: &str = "permguard.membership.lease-channel.v1\n";
     /// The witness of a secret at one version, and of a delivered zone key (WP-3.3).
     pub const SECRET_WITNESS: &str = "permguard.secret.witness.v1\n";
     /// A decision record.
@@ -371,6 +373,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "digest.MEMBERSHIP_ASSURANCE_BINDING",
             digest::MEMBERSHIP_ASSURANCE_BINDING,
+        ),
+        (
+            "digest.MEMBERSHIP_LEASE_CHANNEL",
+            digest::MEMBERSHIP_LEASE_CHANNEL,
         ),
         ("digest.SECRET_WITNESS", digest::SECRET_WITNESS),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),

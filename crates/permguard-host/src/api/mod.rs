@@ -770,6 +770,7 @@ pub(crate) mod testing {
                 // A fixed policy and a verifier that checks its nonce: tasks requiring none of
                 // these controls are untouched (WP-4.2).
                 appraisal: crate::membership::appraisal::tests::appraisal(),
+                live: Arc::default(),
             })),
         });
         (api, store, volume)

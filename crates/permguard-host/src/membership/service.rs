@@ -34,6 +34,7 @@ use crate::session::{Refusal, Service, Session};
 use crate::time::TimeGuard;
 
 /// The coordinator's side of the memberships, as a session serves it.
+#[derive(Clone)]
 pub struct Coordinating {
     pub store: Arc<Store>,
     pub mutations: Arc<Mutations>,
@@ -41,6 +42,8 @@ pub struct Coordinating {
     pub keys: Arc<Registry>,
     pub capabilities: Capabilities,
     pub time: Arc<TimeGuard>,
+    /// The open task sessions, the appraisal and the task handlers (WP-4.3).
+    pub tasks: Arc<super::task::Tasks>,
 }
 
 fn refusal(code: &'static str, reason: impl Into<String>) -> Refusal {
@@ -61,6 +64,7 @@ pub fn code_of(error: &MembershipError) -> &'static str {
         MembershipError::Storage(_) | MembershipError::Ring(_) => codes::common::UNAVAILABLE,
         MembershipError::AssuranceRefused(_) => codes::host::ASSURANCE_REFUSED,
         MembershipError::AssuranceUnavailable(_) => codes::host::ASSURANCE_UNAVAILABLE,
+        MembershipError::Held(_) => codes::host::MEMBERSHIP_HELD,
         _ => codes::common::INVALID_ARGUMENT,
     }
 }
@@ -85,7 +89,7 @@ fn failure(error: MembershipError) -> Failure<MembershipError> {
 }
 
 impl Coordinating {
-    fn coordinator(&self) -> Coordinator<'_> {
+    pub(super) fn coordinator(&self) -> Coordinator<'_> {
         Coordinator {
             identity: &self.identity,
             rings: self.keys.rings(),
@@ -246,11 +250,28 @@ impl Service for Coordinating {
         match session.operation {
             Operation::Enroll => self.enroll(session, peer, presentation, exporter, request),
             Operation::Membership => self.membership(session, peer, request),
+            // A task session is opened by its lease request, never served as one request.
             Operation::Task => Err(refusal(
-                codes::host::NOT_SERVED_YET,
-                "task sessions come with the task transport",
+                codes::common::INVALID_ARGUMENT,
+                "a task session opens with its lease request",
             )),
         }
+    }
+
+    fn open_task(
+        &self,
+        session: &Session,
+        peer: &Verified,
+        exporter: &[u8; EXPORTER_BYTES],
+        request: &[u8],
+    ) -> Result<(Vec<u8>, Box<dyn crate::session::TaskSession>), Refusal> {
+        if self.identity.is_retired() {
+            return Err(refusal(
+                codes::common::UNAVAILABLE,
+                "this Host's identity was reset",
+            ));
+        }
+        self.open_lease(session, peer, exporter, request)
     }
 }
 

@@ -187,6 +187,60 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
     mutation("host.membership.orphaned", HOST),
+    // Task sessions (WP-4.3): every lease issued, every epoch refused, every clone alarm, each
+    // a security record of the coordinator; a hold for review a mutation.
+    ActionSchema {
+        action: "host.membership.lease_issued",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("epoch", FactType::Uint),
+            ("resource", FactType::Text(512)),
+            ("member_boot_id", FactType::Text(32)),
+            ("coordinator_boot_id", FactType::Text(32)),
+            ("expires_at", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.membership.epoch_stale",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("presented", FactType::Uint),
+            ("current", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.membership.epoch_unknown",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("presented", FactType::Uint),
+            ("current", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.membership.clone_alarm",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("open_boot_id", FactType::Text(32)),
+            ("new_boot_id", FactType::Text(32)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    mutation("host.membership.held", HOST),
     // Assurance appraisal (WP-4.2): an appraisal a mutation; each operator approval it takes a
     // record of its own inside that operation, with its principal, scope, reason and expiry; no
     // evidence is ever a fact.

@@ -124,8 +124,9 @@ impl Pair {
             Request {
                 peer: self.b.identity.host_id(),
                 operation: Operation::Task,
-                membership_id: None,
-                task: None,
+                // A task session names its one membership and task (WP-4.3).
+                membership_id: Some("m-1".to_owned()),
+                task: Some("decisions".to_owned()),
                 request_digest: None,
                 pin: None,
             },
@@ -331,8 +332,9 @@ fn an_unknown_key_share_fails_when_the_challenge_names_the_attacker() {
         Request {
             peer: c.identity.host_id(),
             operation: Operation::Task,
-            membership_id: None,
-            task: None,
+            // A task session names its one membership and task (WP-4.3).
+            membership_id: Some("m-1".to_owned()),
+            task: Some("decisions".to_owned()),
             request_digest: None,
             pin: None,
         },
@@ -381,8 +383,9 @@ fn the_initiator_refuses_a_responder_other_than_the_one_it_asked_for() {
         Request {
             peer: c.identity.host_id(),
             operation: Operation::Task,
-            membership_id: None,
-            task: None,
+            // A task session names its one membership and task (WP-4.3).
+            membership_id: Some("m-1".to_owned()),
+            task: Some("decisions".to_owned()),
             request_digest: None,
             pin: None,
         },
@@ -405,8 +408,9 @@ fn an_unpinned_peer_is_refused_unless_it_enrolls() {
         Request {
             peer: b.identity.host_id(),
             operation: Operation::Task,
-            membership_id: None,
-            task: None,
+            // A task session names its one membership and task (WP-4.3).
+            membership_id: Some("m-1".to_owned()),
+            task: Some("decisions".to_owned()),
             request_digest: None,
             pin: None,
         },
@@ -431,8 +435,9 @@ fn an_unpinned_peer_is_refused_unless_it_enrolls() {
         Request {
             peer: c.identity.host_id(),
             operation: Operation::Task,
-            membership_id: None,
-            task: None,
+            // A task session names its one membership and task (WP-4.3).
+            membership_id: Some("m-1".to_owned()),
+            task: Some("decisions".to_owned()),
             request_digest: None,
             pin: None,
         },
@@ -521,22 +526,19 @@ fn a_hello_naming_another_epoch_than_the_identity_is_refused() {
 }
 
 #[test]
-fn an_established_channel_carries_one_exchange_and_answers_tasks_not_served_yet() {
+fn an_established_channel_carries_one_exchange_and_a_host_serving_no_tasks_refuses_a_lease() {
     let pair = pair("one-exchange");
+    // A Host serving no task sessions refuses the lease request, and the session ends (WP-4.3).
+    let (mut initiator, mut responder) = (pair.initiator(), pair.responder());
+    run(&mut initiator, &mut responder).expect("established");
+    let refused = responder
+        .receive(Frame::Task(b"anything".to_vec()))
+        .expect_err("no task sessions");
+    assert_eq!(refused.code, codes::host::NOT_SERVED_YET);
+    assert!(responder.session().is_none());
+    // One exchange per connection: a second hello on an established session is refused.
     let (mut initiator, mut responder) = (pair.initiator(), pair.responder());
     let sent = run(&mut initiator, &mut responder).expect("established");
-    assert_eq!(
-        responder
-            .receive(Frame::Task(b"anything".to_vec()))
-            .expect("answered"),
-        vec![Frame::Refusal {
-            code: codes::host::NOT_SERVED_YET.to_owned()
-        }]
-    );
-    assert!(
-        responder.session().is_some(),
-        "a task message keeps the session"
-    );
     let hello = sent
         .iter()
         .find(|frame| matches!(frame, Frame::Hello(_)))
@@ -596,8 +598,9 @@ fn a_rotated_peer_is_accepted_through_its_succession_and_its_old_epoch_is_rollba
         declared_assurance: AssuranceProfile::Development,
         nonce: [7; record::NONCE_BYTES],
         operation: Operation::Task,
-        membership_id: None,
-        task: None,
+        // A task session names its one membership and task (WP-4.3).
+        membership_id: Some("m-1".to_owned()),
+        task: Some("decisions".to_owned()),
         request_digest: None,
     }
     .encode()
@@ -936,6 +939,46 @@ fn a_hello_naming_what_its_operation_does_not_take_is_refused() {
         );
         assert!(responder.session().is_none());
     }
+}
+
+/// WP-4.3: a task session names the one membership and the one task it serves; without either
+/// the hello is refused, with both the session is established.
+#[test]
+fn a_task_hello_names_one_membership_and_one_task() {
+    let pair = pair("task-scope");
+    let task_hello = |membership_id: Option<&str>, task: Option<&str>| {
+        Initiator::new(
+            context(&pair.a, &[], &pair.clocks.time),
+            EXPORTER,
+            Request {
+                peer: pair.b.identity.host_id(),
+                operation: Operation::Task,
+                membership_id: membership_id.map(str::to_owned),
+                task: task.map(str::to_owned),
+                request_digest: None,
+                pin: Some((
+                    pair.b.identity.host_id(),
+                    pair.b.identity.first_fingerprint().to_owned(),
+                )),
+            },
+        )
+    };
+    for (membership_id, task) in [(None, Some("decisions")), (Some("m-1"), None), (None, None)] {
+        let mut initiator = task_hello(membership_id, task);
+        let mut responder = pair.responder();
+        let refused = run(&mut initiator, &mut responder).expect_err("refused at the hello");
+        assert_eq!(
+            refused.code,
+            codes::host::SESSION_REFUSED,
+            "{membership_id:?} {task:?}"
+        );
+        assert!(responder.session().is_none());
+    }
+    let mut initiator = task_hello(Some("m-1"), Some("decisions"));
+    let mut responder = pair.responder();
+    run(&mut initiator, &mut responder).expect("established");
+    let session = responder.session().expect("a session");
+    assert_eq!(session.task.as_deref(), Some("decisions"));
 }
 
 #[test]

@@ -73,6 +73,11 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/members/{id}/resume", post(resume_member))
         .route("/host/v1/members/{id}/fence", post(fence_member))
         .route("/host/v1/members/{id}/appraise", post(appraise_member))
+        .route("/host/v1/members/{id}/sessions", get(member_sessions))
+        .route(
+            "/host/v1/tasks/{task}/session",
+            post(task_session_over_rest),
+        )
         .route(
             "/host/v1/members/{id}/revoke/plan",
             post(plan_member_revoke),
@@ -358,6 +363,22 @@ async fn delete_invite(
 /// An enrollment is never a request of its own: refused whoever asks, before any body is read.
 async fn enroll_over_rest(State(served): State<Served>) -> Response {
     served.refuse(&served.api.enroll_over_rest())
+}
+
+async fn task_session_over_rest(State(served): State<Served>) -> Response {
+    served.refuse(&served.api.task_session_over_rest())
+}
+
+async fn member_sessions(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.member_sessions(&actor, &id),
+    )
 }
 
 async fn list_members(

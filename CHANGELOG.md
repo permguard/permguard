@@ -159,7 +159,19 @@ is cut.
   What is accepted is an assurance binding signed in the manifest (label 8): the member, the tasks, the policy revision, one claim per control with its class and who vouches for it, and an expiry no later than `membership.appraisal.max_binding` (default 30 days), an approval's or a result's.
   An approval short of what the policy wants is refused with `assurance_refused` and audited; a declaration never satisfies a control the policy wants approved or attested.
   `POST /host/v1/members/{id}/appraise` (gRPC `AppraiseMember`) renews or revokes the binding of an active membership, each a new epoch; `GET /host/v1/members/{id}` shows the binding and, while one can be appraised, what the policy wants and the nonce.
-  A binding admits nothing once expired, revoked or appraised under another policy revision: the task sessions that check it arrive with the leases.
+  A binding admits nothing once expired, revoked or appraised under another policy revision, and the task sessions below check it before every lease.
+
+- **Task sessions and leases on the PeerChannel; the clone alarm.**
+  A member opens a task session to its coordinator on `permguard.host.v1.IdentityService/PeerChannel`, the hello naming the membership and the task; the coordinator never dials.
+  Its first frame asks for a lease at the epoch the member holds, from this incarnation of the member (the volume's boot id), over one resource inside the task's selector, with evidence when the task's controls need appraising.
+  The coordinator signs a lease (`permguard.membership.lease.v1`, under `host.operations`) bound to that connection by the digest of its exporter, to both boot ids and to the task's limits; it lasts until the earliest of the session bound, the assurance binding's expiry and the manifest's.
+  The member verifies it under the coordinator key its manifest pins, keeps it in `host/members/leases/`, and never extends it; a task stands `live`, then in its offline grace, then `offline`.
+  Every task message repeats the membership, the task and the epoch: an older epoch is `epoch_stale`, a fenced lease too, an epoch the coordinator never issued `epoch_unknown`, which holds the membership for review until it is revoked (`membership_held`); an expired lease is `lease_expired`; each ends the session, and every refusal but the expiry is recorded in the security trail, as is every lease issued (none is issued the trail cannot record).
+  A second incarnation of the member while another holds an open session (a copied or restored volume started beside the original) is refused with `clone_suspected`, the membership suspended and `host.membership.clone_alarm` recorded with both boot ids.
+  A restored member is stale until it syncs; its next lease, under its new boot id, confirms the fence.
+  No lease is issued while the clock is in anomaly, nor once the coordinator's `host.operations` key has rotated past the one the manifest pins (until the re-pin); a message body is at most 448 KiB and within the task's signed `max_body_bytes`.
+  A held membership shows `held_epoch` in `GET /host/v1/members/{id}`.
+  `GET /host/v1/members/{id}/sessions` (gRPC `ListMemberSessions`) lists the open sessions with both boot ids; `POST /host/v1/tasks/{task}/session` answers `503`, the task session running on the PeerChannel only.
 
 ### Changed
 

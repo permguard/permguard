@@ -416,3 +416,138 @@ fn the_assurance_records_are_the_bytes_the_independent_generator_computed() {
     assert_eq!(manifest.coordinator, coordinator);
     assert_eq!(manifest.encode().expect("encodes"), payload);
 }
+
+/// WP-4.3: the lease request, the lease and its signature under the operations key, the channel
+/// binding, the answer, a task message and its answer, and the journal entry of a hold, byte for
+/// byte.
+#[test]
+fn the_task_session_records_are_the_bytes_the_independent_generator_computed() {
+    use permguard_host::membership::record::{
+        Lease, LeaseAnswer, LeaseRequest, TaskAnswer, TaskMessage, channel_binding,
+    };
+
+    let v = vectors();
+    let t = &v["task"];
+    let membership_id = id(&v["membership_id"]);
+    let member_boot: [u8; 16] = hex(&t["member_boot_id"]).try_into().expect("16 bytes");
+    let coordinator_boot: [u8; 16] = hex(&t["coordinator_boot_id"]).try_into().expect("16 bytes");
+    let resource = text(&t["resource"]);
+
+    let request = LeaseRequest {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        resource: resource.clone(),
+        member_boot_id: member_boot,
+        evidence: Vec::new(),
+    };
+    assert_eq!(request.encode().expect("encodes"), hex(&t["lease_request"]));
+    assert_eq!(
+        LeaseRequest::decode(&hex(&t["lease_request"])).expect("decodes"),
+        request
+    );
+
+    let exporter: [u8; 32] = hex(&v["exporter"]).try_into().expect("32 bytes");
+    assert_eq!(
+        channel_binding(&exporter).to_vec(),
+        hex(&t["channel_binding"])
+    );
+    let lease = Lease {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        coordinator: id(&v["coordinator"]["host_id"]),
+        member: id(&v["member"]["host_id"]),
+        coordinator_boot_id: coordinator_boot,
+        member_boot_id: member_boot,
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        resource,
+        limits: task().limits,
+        issued_at: AT + 20,
+        expires_at: AT + 3620,
+        channel_binding: channel_binding(&exporter),
+        binding_digest: None,
+    };
+    assert_eq!(
+        lease.encode().expect("encodes"),
+        hex(&t["lease"]["payload"])
+    );
+    let payload = Sign1::decode(&hex(&t["lease"]["cose_sign1"]))
+        .expect("a COSE_Sign1")
+        .verify(
+            Suite::Ed25519Sha256V1,
+            &hex(&v["operations"]["public_key"]),
+            protected::MEMBERSHIP_LEASE,
+        )
+        .expect("verifies under the operations key")
+        .to_vec();
+    assert_eq!(Lease::decode(&payload).expect("decodes"), lease);
+
+    let answer = LeaseAnswer {
+        lease: hex(&t["lease"]["cose_sign1"]),
+        manifest: None,
+    };
+    assert_eq!(answer.encode().expect("encodes"), hex(&t["lease_answer"]));
+    let message = TaskMessage {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "r-1".to_owned(),
+        body: b"hello".to_vec(),
+    };
+    assert_eq!(message.encode().expect("encodes"), hex(&t["task_message"]));
+    assert_eq!(
+        TaskMessage::decode(&hex(&t["task_message"])).expect("decodes"),
+        message
+    );
+    let reply = TaskAnswer {
+        request_id: "r-1".to_owned(),
+        body: b"echo:hello".to_vec(),
+    };
+    assert_eq!(reply.encode().expect("encodes"), hex(&t["task_answer"]));
+
+    // Every optional label: evidence, the binding digest, the revised manifest.
+    let a = &v["assurance"];
+    let with_evidence = LeaseRequest {
+        evidence: vec![(
+            text(&a["evidence"]["verifier"]),
+            hex(&a["evidence"]["bytes"]),
+        )],
+        ..request.clone()
+    };
+    assert_eq!(
+        with_evidence.encode().expect("encodes"),
+        hex(&t["lease_request_evidence"])
+    );
+    assert_eq!(
+        LeaseRequest::decode(&hex(&t["lease_request_evidence"])).expect("decodes"),
+        with_evidence
+    );
+    let bound = Lease {
+        epoch: 2,
+        binding_digest: Some(Digest::parse(&text(&a["binding"]["digest"])).expect("a digest")),
+        ..lease.clone()
+    };
+    assert_eq!(
+        bound.encode().expect("encodes"),
+        hex(&t["lease_bound"]["payload"])
+    );
+    let revised = LeaseAnswer {
+        lease: hex(&t["lease_bound"]["cose_sign1"]),
+        manifest: Some(hex(&a["manifest"]["cose_sign1"])),
+    };
+    assert_eq!(
+        revised.encode().expect("encodes"),
+        hex(&t["lease_answer_revised"])
+    );
+    assert_eq!(
+        LeaseAnswer::decode(&hex(&t["lease_answer_revised"])).expect("decodes"),
+        revised
+    );
+
+    let held = Entry::decode(&hex(&t["held"])).expect("decodes");
+    assert_eq!(held.kind, Kind::Held);
+    assert_eq!(held.epoch, Some(7));
+    assert_eq!(held.previous, chain(Some(&hex(&v["journal"]["third"]))));
+    assert_eq!(held.encode().expect("encodes"), hex(&t["held"]));
+}

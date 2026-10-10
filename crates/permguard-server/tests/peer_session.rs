@@ -225,8 +225,9 @@ fn request(peer: &Identity) -> Request {
     Request {
         peer: peer.host_id(),
         operation: Operation::Task,
-        membership_id: None,
-        task: None,
+        // A task session names its one membership and task (WP-4.3).
+        membership_id: Some("m-1".to_owned()),
+        task: Some("decisions".to_owned()),
         request_digest: None,
         pin: None,
     }
@@ -464,15 +465,17 @@ async fn an_established_channel_carries_more_than_the_body_limit_frame_by_frame(
     .await
     .expect("established")
     .connection;
-    for _ in 0..4 {
-        let answered = exchange(&mut connection, vec![Frame::Task(vec![7; 400 * 1024])], 1).await;
-        assert_eq!(
-            answered,
-            vec![Frame::Refusal {
-                code: codes::host::NOT_SERVED_YET.to_owned()
-            }]
-        );
-    }
+    // A frame past the body limit reaches the session; this listener serves no task session, so
+    // its lease request is refused (WP-4.3). The task messages of an open session, frame after
+    // frame past the body limit, are in
+    // `a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists_it`.
+    let answered = exchange(&mut connection, vec![Frame::Task(vec![7; 400 * 1024])], 1).await;
+    assert_eq!(
+        answered,
+        vec![Frame::Refusal {
+            code: codes::host::NOT_SERVED_YET.to_owned()
+        }]
+    );
     drop(connection);
     listener.stop(Duration::from_secs(5)).await.expect("stops");
 }
@@ -484,6 +487,24 @@ struct Side {
     host: Host,
     api: Arc<HostApi>,
     listener: Surface,
+    members: Arc<permguard_host::membership::Store>,
+    mutations: Arc<permguard_host::operations::mutation::Mutations>,
+    keys: Arc<permguard_host::keys::registry::Registry>,
+    connector: Option<Arc<dyn permguard_host::membership::member::Connector>>,
+    tasks: Arc<permguard_host::membership::task::Tasks>,
+}
+
+/// A task handler that answers each body with `echo:` before it.
+struct Echo;
+
+impl permguard_host::membership::task::TaskHandler for Echo {
+    fn handle(
+        &self,
+        _context: &permguard_host::membership::task::TaskContext,
+        body: &[u8],
+    ) -> Result<Vec<u8>, permguard_host::session::Refusal> {
+        Ok([b"echo:".as_slice(), body].concat())
+    }
 }
 
 const ADMIN: &str = "spiffe://acme/operators/root";
@@ -553,6 +574,14 @@ async fn side(
         vec![ring],
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
+    let tasks = Arc::new(permguard_host::membership::task::Tasks {
+        live: Arc::default(),
+        appraisal: Arc::default(),
+        handlers: permguard_host::membership::task::TaskHandlers::default().register(
+            permguard_host::membership::record::TaskType::DecisionsShip,
+            Arc::new(Echo),
+        ),
+    });
     let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
     peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
     let context = Context {
@@ -570,6 +599,7 @@ async fn side(
                 keys: Arc::clone(&keys),
                 capabilities: capabilities.clone(),
                 time: Arc::clone(&host.time),
+                tasks: Arc::clone(&tasks),
             },
         )),
     };
@@ -590,7 +620,7 @@ async fn side(
         authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
         store: Some(store),
         replay,
-        keys,
+        keys: Arc::clone(&keys),
         health: Health::new(),
         assurance: Assurance::of(
             &permguard_core::assurance::Assurance::new(AssuranceProfile::Production, [])
@@ -601,7 +631,7 @@ async fn side(
             settings: Vec::new(),
         },
         trail: "test".to_owned(),
-        mutations: Some(mutations),
+        mutations: Some(Arc::clone(&mutations)),
         identity: Some(Arc::clone(&host.identity)),
         time: Arc::clone(&host.time),
         peer_sessions: PeerSessions {
@@ -609,10 +639,11 @@ async fn side(
             context: Some(context),
         },
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
-            store: members,
+            store: Arc::clone(&members),
             capabilities,
-            connector,
+            connector: connector.clone(),
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
+            live: Arc::clone(&tasks.live),
         })),
     }));
     let listener = Surface::listener(
@@ -629,6 +660,11 @@ async fn side(
         host,
         api,
         listener,
+        members,
+        mutations,
+        keys,
+        connector,
+        tasks,
     }
 }
 
@@ -992,4 +1028,159 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
             .await
             .expect("stops");
     }
+}
+
+/// WP-4.3: over mutual TLS the member opens a task session to its coordinator, verifies the lease
+/// bound to that connection, exchanges a message; the coordinator lists the session with the
+/// member's boot id and drops it with the connection.
+#[tokio::test]
+async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists_it() {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::member::Member;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("task-session");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let id = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join"))
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+
+    let capabilities = Capabilities::default().declare(TaskType::DecisionsShip, Role::Member);
+    let acting = Member {
+        store: &member.members,
+        mutations: &member.mutations,
+        identity: &member.host.identity,
+        rings: member.keys.rings(),
+        capabilities: &capabilities,
+        connector: member.connector.as_deref().expect("a peer client"),
+        declared_assurance: AssuranceProfile::Production,
+        time: &member.host.time,
+    };
+    let membership_id = coordinator
+        .members
+        .memberships()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("one membership");
+    let mut task = acting
+        .open_task(
+            permguard_host::operations::journal::Initiator::System("test".to_owned()),
+            &membership_id,
+            "decisions",
+            "plane/data/zone/z1",
+            Vec::new(),
+        )
+        .await
+        .expect("a lease over mutual TLS");
+    assert_eq!(task.lease.member_boot_id, member.host.identity.boot_id());
+    assert_eq!(
+        task.lease.coordinator_boot_id,
+        coordinator.host.identity.boot_id()
+    );
+    assert_eq!(
+        task.send("r-1", b"over tls".to_vec())
+            .await
+            .expect("answered"),
+        b"echo:over tls"
+    );
+    // Frame after frame on the one connection, together past the listener's body limit.
+    for round in 0..4 {
+        let body = vec![7_u8; 400 * 1024];
+        let answer = task
+            .send(&format!("big-{round}"), body.clone())
+            .await
+            .expect("answered");
+        assert_eq!(answer.len(), body.len() + 5);
+    }
+    let listed = coordinator
+        .api
+        .member_sessions(&admin(), &id)
+        .expect("listed")
+        .sessions;
+    assert_eq!(listed.len(), 1);
+    let hex: String = member
+        .host
+        .identity
+        .boot_id()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(listed[0].member_boot_id, hex);
+    assert_eq!(listed[0].task_id, "decisions");
+    // The connection closed, the coordinator drops the session.
+    drop(task);
+    let mut waited = 0;
+    while !coordinator.tasks.live.of(&membership_id).is_empty() {
+        assert!(
+            waited < 100,
+            "the session was not dropped with its connection"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        waited += 1;
+    }
+    let _ = (&coordinator.listener, &member.listener);
 }

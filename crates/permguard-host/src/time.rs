@@ -374,7 +374,7 @@ impl TimeGuard {
         }
     }
 
-    /// The gate a new lease passes (membership sessions, `TODO(WP-4.3)`): refused while the clock is in
+    /// The gate a new lease passes (the task sessions' leases, WP-4.3): refused while the clock is in
     /// anomaly. A lease already granted keeps its expiry; only granting a new one stops.
     pub fn lease_now(&self) -> Result<i64, ClockAnomaly> {
         self.trusted_now()

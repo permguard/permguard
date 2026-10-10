@@ -166,6 +166,35 @@ pub trait Service: Send + Sync {
         exporter: &[u8; EXPORTER_BYTES],
         request: &[u8],
     ) -> Result<Vec<u8>, Refusal>;
+
+    /// Opens a task session on its first frame, the lease request (WP-4.3): the answer and the
+    /// session that serves every later frame of the connection, ended when the connection is.
+    fn open_task(
+        &self,
+        session: &Session,
+        peer: &Verified,
+        exporter: &[u8; EXPORTER_BYTES],
+        request: &[u8],
+    ) -> Result<(Vec<u8>, Box<dyn TaskSession>), Refusal> {
+        let _ = (session, peer, exporter, request);
+        Err(Refusal {
+            code: codes::host::NOT_SERVED_YET,
+            reason: "this Host serves no task sessions".to_owned(),
+        })
+    }
+}
+
+/// One open task session, on its connection: dropped with the connection.
+pub trait TaskSession: Send {
+    /// Answers one task message; a refusal that ends the session says so.
+    fn message(&mut self, request: &[u8]) -> Result<Vec<u8>, TaskRefusal>;
+}
+
+/// A task message refused: answered with its code, the session kept unless `end`.
+#[derive(Debug)]
+pub struct TaskRefusal {
+    pub refusal: Refusal,
+    pub end: bool,
 }
 
 /// What both sides need: this Host's identity, its pinned peers, its time and its audit.
@@ -429,6 +458,8 @@ enum Responding {
     Established(Box<Proven>),
     /// The session's one request was answered.
     Served(Session),
+    /// A task session with its lease (WP-4.3): every frame a task message.
+    Task(Session, Box<dyn TaskSession>),
     Closed,
 }
 
@@ -455,7 +486,7 @@ impl Responder {
     pub fn session(&self) -> Option<&Session> {
         match &self.state {
             Responding::Established(proven) => Some(&proven.session),
-            Responding::Served(session) => Some(session),
+            Responding::Served(session) | Responding::Task(session, _) => Some(session),
             _ => None,
         }
     }
@@ -518,7 +549,8 @@ impl Responder {
                     Operation::Enroll => hello.membership_id.is_none() && hello.task.is_none(),
                     // A membership session names the one membership it reads, and no task.
                     Operation::Membership => hello.membership_id.is_some() && hello.task.is_none(),
-                    Operation::Task => true,
+                    // A task session names the one membership and the one task it serves.
+                    Operation::Task => hello.membership_id.is_some() && hello.task.is_some(),
                 };
                 if !scoped {
                     return Err(Refusal::session(
@@ -652,23 +684,44 @@ impl Responder {
                     service.serve(&session, &peer, &presentation, &self.exporter, &bytes)?;
                 Ok((Responding::Served(session), vec![Frame::Task(answer)]))
             }
-            // Task sessions are served by the task transport (WP-4.3, WP-4.4): answered, the
-            // session kept.
-            (Responding::Established(proven), Frame::Task(_)) => Ok((
-                Responding::Established(proven),
-                vec![Frame::Refusal {
-                    code: codes::host::NOT_SERVED_YET.to_owned(),
-                }],
-            )),
+            // A task session's first frame is its lease request (WP-4.3): the service opens it,
+            // or the session ends with the refusal.
+            (Responding::Established(proven), Frame::Task(bytes)) => {
+                let Proven { session, peer, .. } = *proven;
+                let Some(service) = self.context.service.clone() else {
+                    return Err(Refusal {
+                        code: codes::host::NOT_SERVED_YET,
+                        reason: "this Host serves no task sessions".to_owned(),
+                    });
+                };
+                let (answer, task) = service.open_task(&session, &peer, &self.exporter, &bytes)?;
+                Ok((Responding::Task(session, task), vec![Frame::Task(answer)]))
+            }
+            // Every later frame is a task message of the open session.
+            (Responding::Task(session, mut task), Frame::Task(bytes)) => match task.message(&bytes)
+            {
+                Ok(answer) => Ok((Responding::Task(session, task), vec![Frame::Task(answer)])),
+                Err(TaskRefusal {
+                    refusal,
+                    end: false,
+                }) => Ok((
+                    Responding::Task(session, task),
+                    vec![Frame::Refusal {
+                        code: refusal.code.to_owned(),
+                    }],
+                )),
+                Err(TaskRefusal { refusal, end: true }) => Err(refusal),
+            },
             (Responding::Served(_), Frame::Task(_)) => Err(Refusal::session(
                 "a second request on a session that serves one",
             )),
-            (Responding::Established(..) | Responding::Served(_), frame @ Frame::Hello(_)) => {
-                Err(Refusal::session(format!(
-                    "a {} on an established session: one exchange per connection",
-                    frame.name()
-                )))
-            }
+            (
+                Responding::Established(..) | Responding::Served(_) | Responding::Task(..),
+                frame @ Frame::Hello(_),
+            ) => Err(Refusal::session(format!(
+                "a {} on an established session: one exchange per connection",
+                frame.name()
+            ))),
             (_, frame) => Err(unexpected(&frame)),
         }
     }

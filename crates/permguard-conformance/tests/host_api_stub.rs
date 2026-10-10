@@ -108,6 +108,10 @@ const SHAPED: &[&str] = &[
     "AssuranceClaim",
     "AppraisalState",
     "AssuranceRequirement",
+    // Task sessions (WP-4.3).
+    "ListMemberSessionsRequest",
+    "ListMemberSessionsResponse",
+    "MemberSession",
     "PlanMemberRevokeRequest",
     "PlanMemberRevokeResponse",
     "RunMemberRevokeRequest",

@@ -385,6 +385,16 @@ pub mod host {
     pub const ASSURANCE_UNAVAILABLE: &str = "assurance_unavailable";
     /// A control a task depends on has no current accepted assurance binding: a declaration, an approval or a result short of what the appraisal policy wants, expired, revoked or under another policy (WP-4.2).
     pub const ASSURANCE_REFUSED: &str = "assurance_refused";
+    /// A task message or lease request names an epoch older than the membership's, or a lease the membership has since been fenced past: rejected, audited, the session ended (WP-4.3).
+    pub const EPOCH_STALE: &str = "epoch_stale";
+    /// A task message or lease request names an epoch newer than any the coordinator holds: rejected, audited, the membership held for review (WP-4.3).
+    pub const EPOCH_UNKNOWN: &str = "epoch_unknown";
+    /// A task message after its session's lease expired: the remote task is unavailable until a new lease (WP-4.3).
+    pub const LEASE_EXPIRED: &str = "lease_expired";
+    /// Another incarnation of the member holds an open session of the membership: the membership is suspended with a clone alarm (WP-4.3).
+    pub const CLONE_SUSPECTED: &str = "clone_suspected";
+    /// The membership is held for review after a message from an epoch the coordinator never issued: no task, no fence and no resumption: only its revocation (WP-4.3).
+    pub const MEMBERSHIP_HELD: &str = "membership_held";
     /// An enrollment is refused: the invitation, its proof, the expected member or the request; the peer is told no more (WP-4.1).
     pub const ENROLLMENT_REFUSED: &str = "enrollment_refused";
     /// A membership manifest with the epoch held and another digest: equivocation (WP-4.1).
@@ -684,6 +694,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::TASK_UNSERVED,
         host::ASSURANCE_UNAVAILABLE,
         host::ASSURANCE_REFUSED,
+        host::EPOCH_STALE,
+        host::EPOCH_UNKNOWN,
+        host::LEASE_EXPIRED,
+        host::CLONE_SUSPECTED,
+        host::MEMBERSHIP_HELD,
         host::ENROLLMENT_REFUSED,
         host::MANIFEST_EQUIVOCATION,
         host::MANIFEST_NOT_SUCCESSOR,

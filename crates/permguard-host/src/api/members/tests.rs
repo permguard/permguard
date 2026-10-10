@@ -1444,3 +1444,121 @@ async fn attested_evidence_is_appraised_against_the_nonce_the_member_view_shows(
     assert_eq!(assurance.claims[0].class, "attested");
     assert_eq!(assurance.claims[0].by, verifier);
 }
+
+/// WP-4.3: the open task sessions of a membership this Host coordinates, with the boot ids of
+/// both incarnations; read under `membership.read`.
+#[tokio::test]
+async fn the_live_sessions_of_a_membership_name_their_boot_ids() {
+    let root = scratch("members-sessions");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("sessions-api-m");
+    let (id, pending) = enrolled(&api, &member, "enrol-1").await;
+    let memberships = api.memberships.as_deref().expect("memberships");
+    assert!(
+        api.member_sessions(&admin(), &id)
+            .expect("listed")
+            .sessions
+            .is_empty()
+    );
+    let opened = memberships
+        .live
+        .open(
+            pending.membership_id,
+            crate::membership::task::Live {
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                member_boot_id: [0xB1; 16],
+                coordinator_boot_id: [0xB0; 16],
+                opened_at: 1_800_000_000,
+                expires_at: 1_800_003_600,
+            },
+            1_800_000_000,
+        )
+        .expect("opened");
+    let listed = api.member_sessions(&admin(), &id).expect("listed").sessions;
+    assert_eq!(
+        listed,
+        [SessionView {
+            task_id: "decisions".to_owned(),
+            epoch: 1,
+            member_boot_id: "b1".repeat(16),
+            coordinator_boot_id: "b0".repeat(16),
+            opened_at: rfc3339(1_800_000_000),
+            expires_at: rfc3339(1_800_003_600),
+        }]
+    );
+    drop(opened);
+    assert!(
+        api.member_sessions(&admin(), &id)
+            .expect("listed")
+            .sessions
+            .is_empty()
+    );
+    // A connection whose lease ran out serves nothing: not listed.
+    let _stale = memberships
+        .live
+        .open(
+            pending.membership_id,
+            crate::membership::task::Live {
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                member_boot_id: [0xB2; 16],
+                coordinator_boot_id: [0xB0; 16],
+                opened_at: 1_000,
+                expires_at: 2_000,
+            },
+            1_000,
+        )
+        .expect("opened");
+    assert!(
+        api.member_sessions(&admin(), &id)
+            .expect("listed")
+            .sessions
+            .is_empty()
+    );
+    // Under `membership.read`, and only for a membership held.
+    assert!(matches!(
+        api.member_sessions(&actor("spiffe://acme/strangers/x"), &id),
+        Err(Refusal::Denied(_))
+    ));
+    assert_eq!(
+        code(
+            &api.member_sessions(&admin(), "0190a5c3-0000-7000-8000-000000000099")
+                .expect_err("unknown")
+        ),
+        codes::host::MEMBERSHIP_UNKNOWN
+    );
+}
+
+/// WP-4.3: a membership held for review shows the epoch it was held at.
+#[tokio::test]
+async fn a_held_membership_shows_the_epoch_it_was_held_at() {
+    let root = scratch("members-held");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("held-api-m");
+    let (id, pending) = enrolled(&api, &member, "enrol-1").await;
+    let revision = api.member(&admin(), &id).expect("read").revision;
+    api.approve_member(
+        &admin(),
+        &id,
+        ApproveMember {
+            request_id: "approve-1".to_owned(),
+            expected_revision: revision,
+            narrow: None,
+            lease_policy: None,
+            assurance: None,
+        },
+    )
+    .await
+    .expect("approved");
+    assert_eq!(api.member(&admin(), &id).expect("read").held_epoch, None);
+    api.memberships
+        .as_deref()
+        .expect("memberships")
+        .store
+        .hold(&Applying::for_tests(74), &pending.membership_id, 4, now())
+        .expect("held");
+    let view = api.member(&admin(), &id).expect("read");
+    assert_eq!(view.held_epoch, Some(4));
+    assert_eq!(view.status, "active", "held, not suspended by a manifest");
+}

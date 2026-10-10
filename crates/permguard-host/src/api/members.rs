@@ -12,12 +12,13 @@
 //! | `POST …/{id}/approve`, `reject`                | `membership.admin` | a receipt and the manifest               |
 //! | `POST …/{id}/suspend`, `resume`, `fence`       | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `POST …/{id}/appraise`                         | `membership.admin` | a receipt and the manifest, a new epoch  |
+//! | `GET …/{id}/sessions`                          | `membership.read`  | the open task sessions, with boot ids    |
 //! | `POST …/{id}/revoke/plan`, `…/revoke/run`      | `membership.admin` | a plan; a receipt and the manifest       |
 //! | `POST /host/v1/memberships/join`, `…/{id}/sync`| `membership.admin` | the member's view of the membership      |
 //!
-//! `POST /host/v1/members/enroll` runs only inside a proven peer session (the `PeerChannel`), and
-//! `GET …/{id}/sessions` comes with the task sessions (WP-4.3); a listing never carries a token, a
-//! proof, a key or a secret reference.
+//! `POST /host/v1/members/enroll` and `POST /host/v1/tasks/{task}/session` run only inside a
+//! proven peer session (the `PeerChannel`); a listing never carries a token, a proof, a key or a
+//! secret reference.
 //!
 //! A task requiring controls is approved only under an assurance binding the coordinator appraises
 //! (WP-4.2): `approve` and `appraise` take the operator's approvals and the evidence; the member
@@ -69,6 +70,26 @@ pub struct MembershipService {
     pub connector: Option<Arc<dyn Connector>>,
     /// The coordinator's appraisal policy and the verifiers it trusts (WP-4.2).
     pub appraisal: Appraisal,
+    /// The open task sessions this Host coordinates (WP-4.3).
+    pub live: Arc<crate::membership::task::LiveSessions>,
+}
+
+/// One open task session of a membership, as an operator reads it (WP-4.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionView {
+    pub task_id: String,
+    pub epoch: u64,
+    /// The member's incarnation, hex: two at once is a clone alarm.
+    pub member_boot_id: String,
+    pub coordinator_boot_id: String,
+    pub opened_at: String,
+    pub expires_at: String,
+}
+
+/// `GET /host/v1/members/{id}/sessions`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberSessions {
+    pub sessions: Vec<SessionView>,
 }
 
 /// A task's limits, as the Host API spells them.
@@ -368,7 +389,7 @@ pub struct MemberView {
     /// The manifest in force, COSE_Sign1 base64url; `null` while pending.
     pub manifest: Option<String>,
     pub updated_at: String,
-    /// The last task session: sessions come with WP-4.3.
+    /// The last task session, from the session journal: comes with WP-4.4.
     pub last_session_at: Option<String>,
     /// The assurance binding the manifest signs; `null` when it signs none (WP-4.2).
     #[serde(default)]
@@ -377,6 +398,10 @@ pub struct MemberView {
     /// declaration meets and the nonce evidence binds to; `null` otherwise (WP-4.2).
     #[serde(default)]
     pub appraisal: Option<AppraisalView>,
+    /// Held for review since a peer named this epoch, which this coordinator never issued: no
+    /// task until it is revoked (WP-4.3); `null` when not held.
+    #[serde(default)]
+    pub held_epoch: Option<u64>,
 }
 
 /// One claim of a binding, without the record it cites.
@@ -541,6 +566,7 @@ impl MemberView {
             last_session_at: None,
             assurance,
             appraisal,
+            held_epoch: held.held_epoch,
         }
     }
 }
@@ -777,7 +803,8 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
         }
         MembershipError::Transition { .. }
         | MembershipError::Equivocation(_)
-        | MembershipError::NotSuccessor(_) => ErrorClass::Conflict,
+        | MembershipError::NotSuccessor(_)
+        | MembershipError::Held(_) => ErrorClass::Conflict,
         MembershipError::AssuranceUnavailable(_)
         | MembershipError::Ring(_)
         | MembershipError::Storage(_) => ErrorClass::Unavailable,
@@ -1117,6 +1144,39 @@ impl HostApi {
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
         Ok(MemberView::of(&held, &self.viewing(memberships)))
+    }
+
+    /// `GET /host/v1/members/{id}/sessions`: the open task sessions of a membership this Host
+    /// coordinates, with the boot ids a clone alarm names (WP-4.3).
+    pub fn member_sessions(&self, actor: &Actor, id: &str) -> Result<MemberSessions, Refusal> {
+        let _admitted = self.admit(actor, operations::MEMBERSHIP_READ)?;
+        let memberships = self.memberships()?;
+        let membership_id = id_of(id)?;
+        memberships
+            .store
+            .membership(&membership_id)
+            .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
+        let hex = |bytes: &[u8; 16]| -> String {
+            bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+        };
+        let now = self.time.now_secs();
+        let mut sessions: Vec<SessionView> = memberships
+            .live
+            .of(&membership_id)
+            .into_iter()
+            // A connection whose lease ran out serves nothing more.
+            .filter(|live| now < live.expires_at)
+            .map(|live| SessionView {
+                task_id: live.task_id,
+                epoch: live.epoch,
+                member_boot_id: hex(&live.member_boot_id),
+                coordinator_boot_id: hex(&live.coordinator_boot_id),
+                opened_at: rfc3339(live.opened_at),
+                expires_at: rfc3339(live.expires_at),
+            })
+            .collect();
+        sessions.sort_by(|a, b| (&a.opened_at, &a.task_id).cmp(&(&b.opened_at, &b.task_id)));
+        Ok(MemberSessions { sessions })
     }
 
     /// `POST …/{id}/approve`: the genesis manifest, the request narrowed when asked.
@@ -1679,6 +1739,17 @@ impl HostApi {
             codes::host::PEER_SESSIONS_UNSERVEABLE,
             "an enrollment runs inside a peer session, operation `enroll`, on the \
              `permguard.host.v1.IdentityService/PeerChannel` stream, never as a request of its own",
+        )
+    }
+
+    /// `POST /host/v1/tasks/{task}/session`: a task session runs on the `PeerChannel`, opened by
+    /// its lease request (owner decision of 2026-10-10), never as a request of its own.
+    pub fn task_session_over_rest(&self) -> Refusal {
+        Refusal::new(
+            ErrorClass::Unavailable,
+            codes::host::PEER_SESSIONS_UNSERVEABLE,
+            "a task session runs inside a peer session, operation `task`, on the \
+             `permguard.host.v1.IdentityService/PeerChannel` stream, opened by its lease request",
         )
     }
 

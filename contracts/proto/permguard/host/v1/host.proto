@@ -401,6 +401,8 @@ message Member {
   AssuranceBinding assurance = 15;
   // While the coordinator appraises the tasks' controls; absent otherwise (WP-4.2).
   AppraisalState appraisal = 16;
+  // Held for review since a peer named this epoch, never issued; absent when not held (WP-4.3).
+  optional uint64 held_epoch = 17;
 }
 // An assurance binding, as an operator reads it (WP-4.2).
 message AssuranceBinding {
@@ -592,8 +594,23 @@ message RunMemberRevokeResponse {
   uint64 epoch = 3;
   bytes manifest = 4;
 }
-message ListMemberSessionsRequest {}
-message ListMemberSessionsResponse {}
+// `GET /host/v1/members/{id}/sessions` (WP-4.3), under `membership.read`.
+message ListMemberSessionsRequest {
+  string membership_id = 1;
+}
+message ListMemberSessionsResponse {
+  repeated MemberSession sessions = 1;
+}
+// One open task session of a membership this Host coordinates.
+message MemberSession {
+  string task_id = 1;
+  uint64 epoch = 2;
+  // The member's incarnation, hex: two at once is a clone alarm.
+  string member_boot_id = 3;
+  string coordinator_boot_id = 4;
+  string opened_at = 5;
+  string expires_at = 6;
+}
 // `POST /host/v1/memberships/join` (WP-4.1), under `membership.admin`: the coordinator, the
 // invitation and its token, from the coordinator's operator out of band.
 message JoinMembershipRequest {

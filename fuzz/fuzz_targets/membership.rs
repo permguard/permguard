@@ -9,8 +9,9 @@ use libfuzzer_sys::fuzz_target;
 
 use permguard_core::assurance::EvidenceClass;
 use permguard_host::membership::record::{
-    Action, EnrollAnswer, EnrollRequest, Entry, Invitation, Kind, Manifest, MembershipAnswer,
-    MembershipRequest, Pending, Role, Status, TaskType, Verdict,
+    Action, EnrollAnswer, EnrollRequest, Entry, Invitation, Kind, Lease, LeaseAnswer, LeaseRequest,
+    Manifest, MembershipAnswer, MembershipRequest, Pending, Role, Status, TaskAnswer, TaskMessage,
+    TaskType, Verdict,
 };
 
 fuzz_target!(|data: &[u8]| {
@@ -37,6 +38,22 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     if let Ok(record) = Entry::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    // The task session's records (WP-4.3).
+    if let Ok(record) = LeaseRequest::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = Lease::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = LeaseAnswer::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = TaskMessage::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = TaskAnswer::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     // The tokens a record or a Host API request names: whatever reads back spells itself.

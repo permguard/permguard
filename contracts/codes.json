@@ -486,6 +486,36 @@
       "kind": "refusal",
       "class": "validation"
     },
+    "host.EPOCH_STALE": {
+      "code": "epoch_stale",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.EPOCH_UNKNOWN": {
+      "code": "epoch_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.LEASE_EXPIRED": {
+      "code": "lease_expired",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.CLONE_SUSPECTED": {
+      "code": "clone_suspected",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.MEMBERSHIP_HELD": {
+      "code": "membership_held",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.ENROLLMENT_REFUSED": {
       "code": "enrollment_refused",
       "contract": "6-contracts/8-contract-host-api.md",

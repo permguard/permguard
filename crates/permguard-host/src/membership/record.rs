@@ -18,6 +18,11 @@
 //! | assurance_result   | {1 member, 2 task_ids, 3 policy_revision, 4 claims}, digested (WP-4.2)                       |
 //! | operator_approval  | {1 membership_id, 2 control, 3 principal, 4 task_ids, 5 reason, 6 expires_at, 7 approved_at}, digested and audited (WP-4.2) |
 //! | assurance_evidence | [verifier, evidence], digested and never kept (WP-4.2)                                        |
+//! | lease_request      | {1 membership_id, 2 task_id, 3 epoch, 4 resource, 5 member_boot_id, 6? evidence} (WP-4.3)     |
+//! | lease payload      | {1 membership_id, 2 task_id, 3 epoch, 4 coordinator, 5 member, 6 coordinator_boot_id, 7 member_boot_id, 8 selector, 9 resource, 10 limits, 11 issued_at, 12 expires_at, 13 channel_binding, 14? binding_digest} (WP-4.3) |
+//! | lease_answer       | {1 lease, 2? manifest} (WP-4.3)                                                               |
+//! | task_message       | {1 membership_id, 2 task_id, 3 epoch, 4 request_id, 5 body} (WP-4.3)                          |
+//! | task_answer        | {1 request_id, 2 body} (WP-4.3)                                                               |
 //! | invitation         | {1 invite_id, 2 token_key, 3 selector, 4 tasks, 5 expires, 6? expected_fingerprint, 7? min_assurance, 8 max_uses, 9 created_at, 10 created_by} |
 //! | enrollment request | {1 invite_id, 2 token_proof, 3 selector, 4 tasks, 5 member, 6 ring_statements}            |
 //! | pending membership | {1 membership_id, 2 invite_id, 3 coordinator, 4 member, 5 selector, 6 tasks, 7 member_assurance, 8 ring_statements, 9 requested_at, 10? coordinator_address, 11? identity} |
@@ -1354,6 +1359,9 @@ pub enum Kind {
     Joined,
     /// The membership became orphaned on an identity reset.
     Orphaned,
+    /// The coordinator saw an epoch it never issued: the membership is held for review until
+    /// revoked (WP-4.3); the entry's epoch is the one seen.
+    Held,
 }
 
 impl Kind {
@@ -1365,6 +1373,7 @@ impl Kind {
             Self::Manifest => "manifest",
             Self::Joined => "joined",
             Self::Orphaned => "orphaned",
+            Self::Held => "held",
         }
     }
 }
@@ -1380,6 +1389,7 @@ impl FromStr for Kind {
             Self::Manifest,
             Self::Joined,
             Self::Orphaned,
+            Self::Held,
         ]
         .into_iter()
         .find(|kind| kind.as_str() == text)
@@ -1469,3 +1479,327 @@ pub fn chain(previous_entry: Option<&[u8]>) -> Digest {
 
 #[cfg(test)]
 mod tests;
+
+/// The most bytes a task message's body takes: inside one peer frame
+/// (`session::record::MAX_FRAME_BYTES`, 512 KiB) with room for the envelope.
+pub const MAX_BODY_BYTES: usize = 448 * 1024;
+/// The longest request id a task message names.
+pub const MAX_REQUEST_ID_BYTES: usize = 128;
+
+/// A task id as a manifest grants it: lowercase letters, digits and `-`, 1 to
+/// [`MAX_NAME_BYTES`] bytes.
+fn task_id(text: String) -> Result<String, RecordError> {
+    name(&text, "a task id")?;
+    if !text
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(RecordError(
+            "a task id is lowercase letters, digits and `-`".to_owned(),
+        ));
+    }
+    Ok(text)
+}
+
+fn resource(text: String) -> Result<String, RecordError> {
+    permguard_core::authz::Resource::parse(&text)
+        .map_err(|error| RecordError(format!("a resource: {error}")))?;
+    Ok(text)
+}
+
+/// What a member asks a task session for (WP-4.3): a lease for one task of one membership, at the
+/// epoch it holds, over one resource, from this incarnation of itself.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LeaseRequest {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    pub epoch: u64,
+    pub resource: String,
+    pub member_boot_id: [u8; 16],
+    /// Evidence for the coordinator's appraisal, as `POST …/appraise` takes it (WP-4.2).
+    pub evidence: Vec<(String, Vec<u8>)>,
+}
+
+impl fmt::Debug for LeaseRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LeaseRequest")
+            .field("task_id", &self.task_id)
+            .field("epoch", &self.epoch)
+            .field("resource", &self.resource)
+            .field("evidence", &self.evidence.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl LeaseRequest {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut pairs = vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Text(self.task_id.clone())),
+            (Value::Int(3), uint(self.epoch)?),
+            (Value::Int(4), Value::Text(self.resource.clone())),
+            (Value::Int(5), Value::Bytes(self.member_boot_id.to_vec())),
+        ];
+        if !self.evidence.is_empty() {
+            pairs.push((
+                Value::Int(6),
+                Value::Array(
+                    self.evidence
+                        .iter()
+                        .map(|(verifier, evidence)| {
+                            Value::Array(vec![
+                                Value::Text(verifier.clone()),
+                                Value::Bytes(evidence.clone()),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ));
+        }
+        encode(pairs)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a lease request")?;
+        let mut map = Labelled::read(bytes, "a lease request")?;
+        let request = Self {
+            membership_id: map.id(1)?,
+            task_id: task_id(map.text(2)?)?,
+            epoch: map.uint(3)?,
+            resource: resource(map.text(4)?)?,
+            member_boot_id: map.id(5)?,
+            evidence: match map.optional_array(6)? {
+                None => Vec::new(),
+                Some(items) => {
+                    if items.is_empty() || items.len() > 4 {
+                        return Err(RecordError(
+                            "a lease request carries 1 to 4 pieces of evidence, or none".to_owned(),
+                        ));
+                    }
+                    items
+                        .into_iter()
+                        .map(|item| match item {
+                            Value::Array(pair) => match <[Value; 2]>::try_from(pair) {
+                                Ok([Value::Text(verifier), Value::Bytes(evidence)]) => {
+                                    Ok((verifier, evidence))
+                                }
+                                _ => Err(RecordError(
+                                    "a piece of evidence is [verifier, bytes]".to_owned(),
+                                )),
+                            },
+                            _ => Err(RecordError(
+                                "a piece of evidence is [verifier, bytes]".to_owned(),
+                            )),
+                        })
+                        .collect::<Result<_, _>>()?
+                }
+            },
+        };
+        map.finish()?;
+        if request.epoch == 0 {
+            return Err(RecordError(
+                "a lease request names an epoch from 1".to_owned(),
+            ));
+        }
+        Ok(request)
+    }
+}
+
+/// The digest a lease binds its connection by: of the connection's RFC 9266 exporter, never the
+/// exporter itself.
+pub fn channel_binding(exporter: &[u8; 32]) -> [u8; 32] {
+    let mut input = digest::MEMBERSHIP_LEASE_CHANNEL.as_bytes().to_vec();
+    input.extend_from_slice(exporter);
+    *Digest::compute(&input).raw()
+}
+
+/// What a lease signs (WP-4.3): one task session of one membership, at one epoch, between two
+/// incarnations of two Hosts, on one connection, until it expires.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lease {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    pub epoch: u64,
+    pub coordinator: [u8; 16],
+    pub member: [u8; 16],
+    pub coordinator_boot_id: [u8; 16],
+    pub member_boot_id: [u8; 16],
+    pub selector: Selector,
+    pub resource: String,
+    pub limits: Limits,
+    pub issued_at: u64,
+    pub expires_at: u64,
+    pub channel_binding: [u8; 32],
+    /// The assurance binding the task was admitted under, when it requires controls.
+    pub binding_digest: Option<Digest>,
+}
+
+impl Lease {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut pairs = vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Text(self.task_id.clone())),
+            (Value::Int(3), uint(self.epoch)?),
+            (Value::Int(4), Value::Bytes(self.coordinator.to_vec())),
+            (Value::Int(5), Value::Bytes(self.member.to_vec())),
+            (
+                Value::Int(6),
+                Value::Bytes(self.coordinator_boot_id.to_vec()),
+            ),
+            (Value::Int(7), Value::Bytes(self.member_boot_id.to_vec())),
+            (Value::Int(8), Value::Text(self.selector.to_string())),
+            (Value::Int(9), Value::Text(self.resource.clone())),
+            (Value::Int(10), self.limits.value()?),
+            (Value::Int(11), uint(self.issued_at)?),
+            (Value::Int(12), uint(self.expires_at)?),
+            (Value::Int(13), Value::Bytes(self.channel_binding.to_vec())),
+        ];
+        if let Some(binding) = &self.binding_digest {
+            pairs.push((Value::Int(14), Value::Text(binding.to_string())));
+        }
+        encode(pairs)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a lease")?;
+        let mut map = Labelled::read(bytes, "a lease")?;
+        let lease = Self {
+            membership_id: map.id(1)?,
+            task_id: task_id(map.text(2)?)?,
+            epoch: map.uint(3)?,
+            coordinator: map.id(4)?,
+            member: map.id(5)?,
+            coordinator_boot_id: map.id(6)?,
+            member_boot_id: map.id(7)?,
+            selector: selector(&map.text(8)?)?,
+            resource: resource(map.text(9)?)?,
+            limits: Limits::read(map.value(10)?)?,
+            issued_at: map.uint(11)?,
+            expires_at: map.uint(12)?,
+            channel_binding: map.fixed(13)?,
+            binding_digest: map.optional_digest(14)?,
+        };
+        map.finish()?;
+        if lease.epoch == 0 || lease.expires_at <= lease.issued_at {
+            return Err(RecordError(
+                "a lease names an epoch from 1 and expires after it is issued".to_owned(),
+            ));
+        }
+        Ok(lease)
+    }
+}
+
+/// What a coordinator answers a lease request: the lease, and the manifest an appraisal at the
+/// session revised, which the member accepts as the exact successor first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseAnswer {
+    pub lease: Vec<u8>,
+    pub manifest: Option<Vec<u8>>,
+}
+
+impl LeaseAnswer {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut pairs = vec![(Value::Int(1), Value::Bytes(self.lease.clone()))];
+        if let Some(manifest) = &self.manifest {
+            pairs.push((Value::Int(2), Value::Bytes(manifest.clone())));
+        }
+        encode(pairs)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a lease answer")?;
+        let mut map = Labelled::read(bytes, "a lease answer")?;
+        let answer = Self {
+            lease: map.bytes(1)?,
+            manifest: map.optional_bytes(2)?,
+        };
+        map.finish()?;
+        Ok(answer)
+    }
+}
+
+fn request_id(text: String) -> Result<String, RecordError> {
+    if text.is_empty() || text.len() > MAX_REQUEST_ID_BYTES || text.chars().any(char::is_control) {
+        return Err(RecordError(format!(
+            "a request id is printable text of 1 to {MAX_REQUEST_ID_BYTES} bytes"
+        )));
+    }
+    Ok(text)
+}
+
+fn body(bytes: Vec<u8>) -> Result<Vec<u8>, RecordError> {
+    if bytes.len() > MAX_BODY_BYTES {
+        return Err(RecordError(format!(
+            "a task message's body takes at most {MAX_BODY_BYTES} bytes"
+        )));
+    }
+    Ok(bytes)
+}
+
+/// One application message of a task session (WP-4.3): it repeats the membership, the task and
+/// the epoch, and names its request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskMessage {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    pub epoch: u64,
+    pub request_id: String,
+    pub body: Vec<u8>,
+}
+
+impl TaskMessage {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Text(self.task_id.clone())),
+            (Value::Int(3), uint(self.epoch)?),
+            (Value::Int(4), Value::Text(self.request_id.clone())),
+            (Value::Int(5), Value::Bytes(self.body.clone())),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_BODY_BYTES + 1024 {
+            return Err(RecordError("a task message is out of its bound".to_owned()));
+        }
+        let mut map = Labelled::read(bytes, "a task message")?;
+        let message = Self {
+            membership_id: map.id(1)?,
+            task_id: task_id(map.text(2)?)?,
+            epoch: map.uint(3)?,
+            request_id: request_id(map.text(4)?)?,
+            body: body(map.bytes(5)?)?,
+        };
+        map.finish()?;
+        Ok(message)
+    }
+}
+
+/// What a task's handler answers one message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskAnswer {
+    pub request_id: String,
+    pub body: Vec<u8>,
+}
+
+impl TaskAnswer {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Text(self.request_id.clone())),
+            (Value::Int(2), Value::Bytes(self.body.clone())),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_BODY_BYTES + 1024 {
+            return Err(RecordError("a task answer is out of its bound".to_owned()));
+        }
+        let mut map = Labelled::read(bytes, "a task answer")?;
+        let answer = Self {
+            request_id: request_id(map.text(1)?)?,
+            body: body(map.bytes(2)?)?,
+        };
+        map.finish()?;
+        Ok(answer)
+    }
+}

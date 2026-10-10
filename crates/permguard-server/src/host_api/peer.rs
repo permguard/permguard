@@ -25,7 +25,9 @@ use tonic::transport::Endpoint;
 
 use permguard_core::{ChannelBinding, codes};
 use permguard_host::identity::Verified;
-use permguard_host::membership::member::{Connector, Exchange, Exchanged, Target};
+use permguard_host::membership::member::{
+    Connector, Exchange, Exchanged, Target, TaskChannel, TaskOpen, TaskOpened,
+};
 use permguard_host::session::record::Operation;
 use permguard_host::session::{
     Context, Frame, Initiator, NONCE_LIFETIME, Refusal, Request, Responder, Session,
@@ -503,7 +505,110 @@ impl PeerConnector {
     }
 }
 
+/// The refusal a coordinator answered, its code kept when registered.
+fn answered(code: &str, reason: &str) -> Refusal {
+    Refusal {
+        code: codes::all()
+            .into_iter()
+            .map(|(_, registered)| registered)
+            .find(|registered| *registered == code)
+            .unwrap_or(codes::host::SESSION_REFUSED),
+        reason: reason.to_owned(),
+    }
+}
+
+/// The connection of an open task session: one message, one answer, each bounded.
+struct PeerTask {
+    connection: Connection,
+}
+
+impl TaskChannel for PeerTask {
+    fn exchange(
+        &mut self,
+        message: Vec<u8>,
+    ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, Refusal>> {
+        Box::pin(async move {
+            self.connection
+                .send(Frame::Task(message))
+                .await
+                .map_err(refusal_of)?;
+            match tokio::time::timeout(HANDSHAKE, self.connection.receive()).await {
+                Ok(Ok(Some(Frame::Task(answer)))) => Ok(answer),
+                Ok(Ok(Some(Frame::Refusal { code }))) => {
+                    Err(answered(&code, "the coordinator refused the message"))
+                }
+                Ok(Ok(_)) => Err(unreachable_peer("the coordinator closed the task session")),
+                Ok(Err(error)) => Err(refusal_of(error)),
+                Err(_) => Err(unreachable_peer("the coordinator did not answer in time")),
+            }
+        })
+    }
+}
+
+impl PeerConnector {
+    async fn open_task_once(&self, target: Target, open: TaskOpen) -> Result<TaskOpened, Refusal> {
+        let connection = tokio::time::timeout(HANDSHAKE, async {
+            let (address, name) = endpoint(&target.address).await?;
+            Connection::open(address, name, &self.tls)
+                .await
+                .map_err(refusal_of)
+        })
+        .await
+        .map_err(|_| unreachable_peer("the coordinator could not be reached in time"))??;
+        // A task session reaches the coordinator by the pin its membership holds, and names the
+        // one membership and the one task it serves.
+        let request = Request {
+            peer: target.host_id,
+            operation: Operation::Task,
+            membership_id: Some(permguard_host::identity::record::uuid_text(
+                &open.membership_id,
+            )),
+            task: Some(open.task_id),
+            request_digest: None,
+            pin: None,
+        };
+        let Established {
+            peer,
+            mut connection,
+            ..
+        } = initiate(connection, self.context.clone(), request)
+            .await
+            .map_err(refusal_of)?;
+        let exporter = connection.exporter();
+        connection
+            .send(Frame::Task(open.request))
+            .await
+            .map_err(refusal_of)?;
+        match tokio::time::timeout(HANDSHAKE, connection.receive()).await {
+            Ok(Ok(Some(Frame::Task(answer)))) => Ok(TaskOpened {
+                peer,
+                exporter,
+                answer,
+                channel: Box::new(PeerTask { connection }),
+            }),
+            Ok(Ok(Some(Frame::Refusal { code }))) => {
+                Err(answered(&code, "the coordinator refused the lease"))
+            }
+            Ok(Ok(_)) => Err(unreachable_peer("the coordinator answered no lease")),
+            Ok(Err(error)) => Err(refusal_of(error)),
+            Err(_) => Err(unreachable_peer("the coordinator did not answer in time")),
+        }
+    }
+}
+
 impl Connector for PeerConnector {
+    fn open_task(
+        &self,
+        target: Target,
+        open: TaskOpen,
+    ) -> permguard_core::BoxFuture<'_, Result<TaskOpened, Refusal>> {
+        Box::pin(async move {
+            tokio::time::timeout(3 * HANDSHAKE, self.open_task_once(target, open))
+                .await
+                .map_err(|_| unreachable_peer("the coordinator did not answer in time"))?
+        })
+    }
+
     fn exchange(
         &self,
         target: Target,

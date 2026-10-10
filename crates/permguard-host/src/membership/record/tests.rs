@@ -470,3 +470,131 @@ fn a_binding_round_trips_and_refuses_what_it_does_not_name() {
         assert!(check_reason(reason).is_err(), "{reason:?}");
     }
 }
+
+/// WP-4.3: the task session's records read back, and refuse what they bound or forbid.
+#[test]
+fn the_task_session_records_read_back_and_refuse_what_they_forbid() {
+    let request = LeaseRequest {
+        membership_id: host(0x44).host_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        resource: "plane/data/zone/z1".to_owned(),
+        member_boot_id: [0xB1; 16],
+        evidence: vec![("tpm-quote".to_owned(), vec![0xEE; 8])],
+    };
+    let bytes = request.encode().expect("encodes");
+    assert_eq!(LeaseRequest::decode(&bytes).expect("reads back"), request);
+    assert!(LeaseRequest::decode(&foreign(&bytes)).is_err());
+    for refused in [
+        LeaseRequest {
+            epoch: 0,
+            ..request.clone()
+        },
+        LeaseRequest {
+            task_id: "Decisions".to_owned(),
+            ..request.clone()
+        },
+        LeaseRequest {
+            resource: "nowhere".to_owned(),
+            ..request.clone()
+        },
+        LeaseRequest {
+            evidence: vec![("tpm-quote".to_owned(), vec![0xEE]); 5],
+            ..request.clone()
+        },
+    ] {
+        let bytes = refused.encode().expect("encodes");
+        assert!(LeaseRequest::decode(&bytes).is_err(), "{refused:?}");
+    }
+    // An empty evidence array is written by nobody and read by nothing.
+    let mut value = cbor::decode_canonical(&bytes).expect("canonical");
+    if let Value::Map(pairs) = &mut value {
+        for (key, item) in pairs.iter_mut() {
+            if *key == Value::Int(6) {
+                *item = Value::Array(Vec::new());
+            }
+        }
+    }
+    assert!(LeaseRequest::decode(&cbor::encode(&value).expect("encodes")).is_err());
+
+    let lease = Lease {
+        membership_id: host(0x44).host_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        coordinator: host(0x11).host_id,
+        member: host(0x22).host_id,
+        coordinator_boot_id: [0xB0; 16],
+        member_boot_id: [0xB1; 16],
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        resource: "plane/data/zone/z1".to_owned(),
+        limits: limits(),
+        issued_at: 10,
+        expires_at: 20,
+        channel_binding: [0xC1; 32],
+        binding_digest: Some(Digest::compute(b"binding")),
+    };
+    let bytes = lease.encode().expect("encodes");
+    assert_eq!(Lease::decode(&bytes).expect("reads back"), lease);
+    assert!(Lease::decode(&foreign(&bytes)).is_err());
+    for refused in [
+        Lease {
+            expires_at: 10,
+            ..lease.clone()
+        },
+        Lease {
+            epoch: 0,
+            ..lease.clone()
+        },
+    ] {
+        assert!(Lease::decode(&refused.encode().expect("encodes")).is_err());
+    }
+
+    let message = TaskMessage {
+        membership_id: host(0x44).host_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "r-1".to_owned(),
+        body: b"hello".to_vec(),
+    };
+    let bytes = message.encode().expect("encodes");
+    assert_eq!(TaskMessage::decode(&bytes).expect("reads back"), message);
+    assert!(TaskMessage::decode(&foreign(&bytes)).is_err());
+    for refused in [
+        TaskMessage {
+            request_id: String::new(),
+            ..message.clone()
+        },
+        TaskMessage {
+            request_id: "r".repeat(MAX_REQUEST_ID_BYTES + 1),
+            ..message.clone()
+        },
+        TaskMessage {
+            body: vec![0; MAX_BODY_BYTES + 1],
+            ..message.clone()
+        },
+    ] {
+        assert!(TaskMessage::decode(&refused.encode().expect("encodes")).is_err());
+    }
+    // One peer frame carries the largest message.
+    let largest = TaskMessage {
+        body: vec![0; MAX_BODY_BYTES],
+        ..message.clone()
+    }
+    .encode()
+    .expect("encodes");
+    assert!(largest.len() <= crate::session::record::MAX_FRAME_BYTES);
+    let answer = TaskAnswer {
+        request_id: "r-1".to_owned(),
+        body: b"echo".to_vec(),
+    };
+    let bytes = answer.encode().expect("encodes");
+    assert_eq!(TaskAnswer::decode(&bytes).expect("reads back"), answer);
+    assert!(TaskAnswer::decode(&foreign(&bytes)).is_err());
+    let answer = LeaseAnswer {
+        lease: vec![0x84],
+        manifest: Some(vec![0x84]),
+    };
+    let bytes = answer.encode().expect("encodes");
+    assert_eq!(LeaseAnswer::decode(&bytes).expect("reads back"), answer);
+    assert!(LeaseAnswer::decode(&foreign(&bytes)).is_err());
+}

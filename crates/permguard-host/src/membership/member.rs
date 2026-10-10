@@ -11,6 +11,9 @@
 //! sync    ─▶ session `membership` {fetch, held_epoch} ─▶ manifests verified in order
 //!         ─▶ `members.sync`: one transaction per manifest accepted
 //! revoke  ─▶ session `membership` {revoke} ─▶ the successor in status `revoked`, the receipt
+//! task    ─▶ session `task` (membership and task in the hello) ─▶ lease request {epoch, boot id}
+//!         ─▶ the lease verified under the pinned operations key, bound to the connection, kept
+//!         ─▶ task messages on the same connection, each naming the lease's epoch (WP-4.3)
 //! ```
 
 use std::sync::Arc;
@@ -20,8 +23,9 @@ use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Selector;
 
 use super::record::{
-    Action, EnrollAnswer, EnrollRequest, HostRef, MembershipAnswer, MembershipRequest, Pending,
-    Role, Status, Task,
+    Action, EnrollAnswer, EnrollRequest, HostRef, Lease, LeaseAnswer, LeaseRequest,
+    MembershipAnswer, MembershipRequest, Pending, Role, Status, Task, TaskAnswer, TaskMessage,
+    channel_binding,
 };
 use super::{
     AUDIT_JOINED, AUDIT_SYNCED, Capabilities, DOMAIN, Held, JOIN, MembershipError, SYNC, Store,
@@ -64,6 +68,29 @@ pub struct Exchanged {
     pub answer: Vec<u8>,
 }
 
+/// The first frame of a task session: the lease request, on a session naming the membership and
+/// the task.
+pub struct TaskOpen {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    pub request: Vec<u8>,
+}
+
+/// An open task session: the coordinator as its pin verified it, the connection's exporter, the
+/// lease answer, and the connection itself for the messages that follow.
+pub struct TaskOpened {
+    pub peer: Verified,
+    pub exporter: [u8; 32],
+    pub answer: Vec<u8>,
+    pub channel: Box<dyn TaskChannel>,
+}
+
+/// The connection of an open task session: one message, one answer, in order; closed when
+/// dropped.
+pub trait TaskChannel: Send {
+    fn exchange(&mut self, message: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, Refusal>>;
+}
+
 /// Opens one session to a coordinator, sends one request, reads one answer.
 pub trait Connector: Send + Sync {
     fn exchange(
@@ -71,6 +98,73 @@ pub trait Connector: Send + Sync {
         target: Target,
         exchange: Exchange,
     ) -> BoxFuture<'_, Result<Exchanged, Refusal>>;
+
+    /// Opens a task session and sends its lease request (WP-4.3): the session stays open.
+    fn open_task(
+        &self,
+        target: Target,
+        open: TaskOpen,
+    ) -> BoxFuture<'_, Result<TaskOpened, Refusal>> {
+        let _ = (target, open);
+        Box::pin(std::future::ready(Err(Refusal {
+            code: permguard_core::codes::host::PEER_CLIENT_UNCONFIGURED,
+            reason: "this connector opens no task session".to_owned(),
+        })))
+    }
+}
+
+/// Where a member's task stands (owner decision of 2026-10-10): what the task handlers (WP-4.4)
+/// consult before a remote action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    /// No lease was ever held for the task.
+    Unleased,
+    /// The lease runs until `expires_at`.
+    Live { expires_at: u64 },
+    /// The lease expired; local work continues, no new remote action without a new lease, until
+    /// `until`.
+    Grace { until: u64 },
+    /// Beyond the offline grace: no new remote action.
+    Offline,
+}
+
+/// An open task session, as the member holds it.
+pub struct MemberTask {
+    pub lease: Lease,
+    channel: Box<dyn TaskChannel>,
+}
+
+impl MemberTask {
+    /// The session's connection, for tests that send what a member never would.
+    #[cfg(test)]
+    pub(crate) fn channel_for_tests(&mut self) -> &mut dyn TaskChannel {
+        self.channel.as_mut()
+    }
+
+    /// Sends one message under the lease's epoch: the handler's answer, or the coordinator's
+    /// refusal.
+    pub async fn send(
+        &mut self,
+        request_id: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, MembershipError> {
+        let message = TaskMessage {
+            membership_id: self.lease.membership_id,
+            task_id: self.lease.task_id.clone(),
+            epoch: self.lease.epoch,
+            request_id: request_id.to_owned(),
+            body,
+        }
+        .encode()?;
+        let answer = self.channel.exchange(message).await.map_err(remote)?;
+        let answer = TaskAnswer::decode(&answer)?;
+        if answer.request_id != request_id {
+            return Err(MembershipError::Unverified(
+                "the answer names another request".to_owned(),
+            ));
+        }
+        Ok(answer.body)
+    }
 }
 
 /// What a join names.
@@ -335,7 +429,14 @@ impl Member<'_> {
                     },
                     |applying| {
                         self.store
-                            .accept(applying, &manifest, &envelope, &digest, now)
+                            .accept_with(
+                                applying,
+                                &manifest,
+                                &envelope,
+                                &digest,
+                                &answer.ring_statements,
+                                now,
+                            )
                             .map_err(failure)?;
                         Ok(Applied {
                             revision: self.store.membership(id).map_or(0, |held| held.revision),
@@ -381,5 +482,195 @@ impl Member<'_> {
         id: &[u8; 16],
     ) -> Result<Held, MembershipError> {
         self.ask(initiator, id, Action::Revoke).await
+    }
+
+    /// Opens a task session of `id` over `resource` (WP-4.3): only the member opens one. The
+    /// lease is verified under the coordinator's pinned operations key, bound to this
+    /// connection and this incarnation, and kept; evidence, when given, is appraised first and
+    /// the revised manifest accepted as the exact successor.
+    pub async fn open_task(
+        &self,
+        initiator: Initiator,
+        id: &[u8; 16],
+        task_id: &str,
+        resource: &str,
+        evidence: Vec<(String, Vec<u8>)>,
+    ) -> Result<MemberTask, MembershipError> {
+        let held = self.store.membership(id).ok_or_else(|| {
+            MembershipError::Unknown(format!("no membership `{}`", uuid_text(id)))
+        })?;
+        // The coordinator never dials: a membership this Host coordinates opens no task session.
+        if held.role != Role::Member {
+            return Err(MembershipError::Unknown(
+                "this Host is the coordinator of that membership".to_owned(),
+            ));
+        }
+        if held.status != Status::Active || held.manifest.is_none() {
+            return Err(MembershipError::Transition {
+                from: held.status,
+                to: Status::Active,
+            });
+        }
+        let boot_id = self.identity.boot_id();
+        let request = LeaseRequest {
+            membership_id: *id,
+            task_id: task_id.to_owned(),
+            epoch: held.epoch(),
+            resource: resource.to_owned(),
+            member_boot_id: boot_id,
+            evidence,
+        }
+        .encode()?;
+        let opened = self
+            .connector
+            .open_task(
+                Self::target(&held)?,
+                TaskOpen {
+                    membership_id: *id,
+                    task_id: task_id.to_owned(),
+                    request,
+                },
+            )
+            .await
+            .map_err(remote)?;
+        let answer = LeaseAnswer::decode(&opened.answer)?;
+        let now = self.time.now_secs();
+        // A revision the appraisal at the session issued: the exact successor, accepted first.
+        if let Some(envelope) = answer.manifest {
+            let statements = self.store.statements_held(id, held.epoch());
+            let accepted = self.store.check_sync(
+                id,
+                &opened.peer,
+                &MembershipAnswer {
+                    status: Status::Active,
+                    manifests: vec![envelope],
+                    ring_statements: statements.clone(),
+                },
+                now,
+            )?;
+            for (manifest, envelope, digest) in accepted {
+                self.mutations
+                    .run(
+                        Begin {
+                            domain: DOMAIN,
+                            operation: SYNC,
+                            action: AUDIT_SYNCED,
+                            initiator: initiator.clone(),
+                            request: None,
+                            target: Some(uuid_text(id)),
+                        },
+                        |applying| {
+                            self.store
+                                .accept_with(
+                                    applying,
+                                    &manifest,
+                                    &envelope,
+                                    &digest,
+                                    &statements,
+                                    now,
+                                )
+                                .map_err(failure)?;
+                            Ok(Applied {
+                                revision: 0,
+                                target: Some(uuid_text(id)),
+                                value: (),
+                            })
+                        },
+                    )
+                    .map_err(engine)?;
+            }
+        }
+        let held = self.store.membership(id).ok_or_else(|| {
+            MembershipError::Storage("the membership is no longer held".to_owned())
+        })?;
+        let Some((manifest, ..)) = &held.manifest else {
+            return Err(MembershipError::Storage("no manifest held".to_owned()));
+        };
+        let statements = self.store.statements_held(id, manifest.epoch);
+        let lease = super::verify_lease(&answer.lease, &opened.peer, manifest, &statements)?;
+        let skew = manifest.lease_policy.clock_skew_seconds;
+        let granted = manifest.tasks.iter().find(|task| task.task_id == task_id);
+        let ours = lease.membership_id == *id
+            && granted
+                .is_some_and(|task| task.selector == lease.selector && task.limits == lease.limits)
+            && lease.expires_at
+                <= lease
+                    .issued_at
+                    .saturating_add(manifest.lease_policy.max_session_seconds)
+                    .min(manifest.not_after)
+            && lease.task_id == task_id
+            && lease.epoch == manifest.epoch
+            && lease.coordinator == held.request.coordinator.host_id
+            && lease.coordinator == opened.peer.host_id
+            && lease.member == self.identity.host_id()
+            && lease.member_boot_id == boot_id
+            && lease.resource == resource
+            && lease.channel_binding == channel_binding(&opened.exporter);
+        if !ours {
+            return Err(MembershipError::Unverified(
+                "the lease names another membership, task, scope, epoch, Host, incarnation, \
+                 resource or connection, or runs past its bound"
+                    .to_owned(),
+            ));
+        }
+        // The coordinator's clock may run ahead within the skew it signed, no further.
+        if lease.issued_at > now.saturating_add(skew) || lease.expires_at <= now {
+            return Err(MembershipError::Unverified(
+                "the lease is issued beyond the clock skew, or already expired".to_owned(),
+            ));
+        }
+        self.store.keep_lease(id, task_id, &answer.lease)?;
+        Ok(MemberTask {
+            lease,
+            channel: opened.channel,
+        })
+    }
+
+    /// Where the task `task_id` of `id` stands at `now`: never extended locally.
+    pub fn task_state(
+        store: &Store,
+        id: &[u8; 16],
+        task_id: &str,
+        boot_id: &[u8; 16],
+        now: u64,
+    ) -> Result<TaskState, MembershipError> {
+        let Some(held) = store.membership(id) else {
+            return Err(MembershipError::Unknown(format!(
+                "no membership `{}`",
+                uuid_text(id)
+            )));
+        };
+        let Some((manifest, ..)) = &held.manifest else {
+            return Ok(TaskState::Unleased);
+        };
+        let Some(envelope) = store.lease(id, task_id)? else {
+            return Ok(TaskState::Unleased);
+        };
+        // This Host verified the lease when it kept it; its own file is read back as kept.
+        let sign1 = permguard_objects::cose::Sign1::decode(&envelope)
+            .map_err(|error| MembershipError::Storage(error.to_string()))?;
+        let lease = Lease::decode(sign1.payload_unverified())?;
+        // A lease of another incarnation, a restored or copied volume's predecessor, is none:
+        // this one leases again before work.
+        if lease.member_boot_id != *boot_id {
+            return Ok(TaskState::Unleased);
+        }
+        // A lease of an epoch the membership has moved past grants nothing.
+        if lease.epoch != manifest.epoch || held.status != Status::Active {
+            return Ok(TaskState::Offline);
+        }
+        if now < lease.expires_at {
+            return Ok(TaskState::Live {
+                expires_at: lease.expires_at,
+            });
+        }
+        let until = lease
+            .issued_at
+            .saturating_add(manifest.lease_policy.offline_grace_seconds);
+        if now < until {
+            Ok(TaskState::Grace { until })
+        } else {
+            Ok(TaskState::Offline)
+        }
     }
 }

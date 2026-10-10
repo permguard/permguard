@@ -18,7 +18,7 @@ use permguard_host::api::members::{
 
 use super::super::v1;
 use super::super::v1::membership_service_server::MembershipService;
-use super::{Answer, Served, blank, raw, receipt, unimplemented};
+use super::{Answer, Served, blank, raw, receipt};
 
 fn task_in(task: v1::MembershipTask) -> TaskView {
     let limits = task.limits.unwrap_or_default();
@@ -157,6 +157,7 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
         updated_at: view.updated_at,
         last_session_at: view.last_session_at,
         assurance: view.assurance.map(assurance_out),
+        held_epoch: view.held_epoch,
         appraisal: view
             .appraisal
             .map(|appraisal| {
@@ -583,9 +584,28 @@ impl MembershipService for Served {
 
     async fn list_member_sessions(
         &self,
-        _request: Request<v1::ListMemberSessionsRequest>,
+        request: Request<v1::ListMemberSessionsRequest>,
     ) -> Answer<v1::ListMemberSessionsResponse> {
-        Err(unimplemented("ListMemberSessions"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let listed = self
+            .api
+            .member_sessions(&actor, &asked.membership_id)
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::ListMemberSessionsResponse {
+            sessions: listed
+                .sessions
+                .into_iter()
+                .map(|session| v1::MemberSession {
+                    task_id: session.task_id,
+                    epoch: session.epoch,
+                    member_boot_id: session.member_boot_id,
+                    coordinator_boot_id: session.coordinator_boot_id,
+                    opened_at: session.opened_at,
+                    expires_at: session.expires_at,
+                })
+                .collect(),
+        }))
     }
 
     async fn join_membership(
@@ -722,6 +742,7 @@ mod tests {
                     declared: false,
                 }],
             }),
+            held_epoch: Some(7),
         };
         let member = member_out(view).expect("maps");
         let assurance = member.assurance.expect("a binding");
@@ -739,5 +760,6 @@ mod tests {
         assert_eq!(appraisal.nonce, nonce);
         assert_eq!(appraisal.requirements[0].wants.as_deref(), Some("attested"));
         assert!(!appraisal.requirements[0].declared);
+        assert_eq!(member.held_epoch, Some(7));
     }
 }
