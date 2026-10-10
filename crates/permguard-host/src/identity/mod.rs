@@ -18,7 +18,7 @@
 //! | --------- | -------------------------------------------------------------------------------------------- |
 //! | provision | leftovers of an interrupted provisioning removed; `host_id` (UUIDv7) minted; epoch 1 generated and self-tested; the document written; `INIT` last |
 //! | open      | `INIT` read and matched to `VOLUME_ID`; the chain verified from the epoch-1 key `INIT` pins to the current document; an interrupted rotation completed; keys of epochs never published removed; possession proven; a `boot_id` minted and `BOOT` written |
-//! | rotate    | under the mutation engine: epoch n+1 generated, the succession signed by n and appended, the document signed by n+1, the private key of n-1 destroyed |
+//! | rotate    | under the mutation engine: epoch n+1 generated, the succession signed by n and appended, the document signed by n+1, every private key below n the custody still holds destroyed, each checked against its published public half |
 //!
 //! Without `INIT` nothing is minted at open: the installation does not exist. With `INIT`,
 //! missing or damaged state refuses the open; no replacement key is ever generated (the blueprint's
@@ -205,6 +205,66 @@ fn slot(epoch: u64) -> String {
 
 fn public_name(epoch: u64) -> String {
     format!("{epoch}.pub")
+}
+
+/// Destroys every private key of an epoch below `current - 1` the provider still holds: past
+/// its grace, and one a rotation before could not destroy is tried again (WP-2.10). A key is
+/// destroyed only when its public half is the one published for its epoch, so a slot pointed at
+/// another key is never the one destroyed. Its public half and its succession stay. A key kept is
+/// reported, never a refusal: the rotation is already durable. Inside the rotation's operation,
+/// which `_applying` names.
+fn destroy_retired(
+    _applying: &Applying<'_>,
+    provider: &dyn KeyProvider,
+    keys: &Dir,
+    suite: Suite,
+    current: u64,
+) {
+    let kept = |epoch: Option<u64>, detail: &dyn std::fmt::Display| {
+        tracing::warn!(
+            event.name = "host.identity_key_kept",
+            component = "host",
+            epoch,
+            error = %detail,
+            "a retired identity key could not be destroyed"
+        );
+    };
+    let slots = match provider.slots() {
+        Ok(slots) => slots,
+        Err(error) => return kept(None, &error),
+    };
+    let retired = slots.into_iter().filter_map(|name| {
+        name.parse::<u64>().ok().filter(|epoch| {
+            *epoch >= 1 && epoch.saturating_add(1) < current && name == slot(*epoch)
+        })
+    });
+    for epoch in retired {
+        let published = match keys.read(&public_name(epoch)) {
+            Ok(Some(published)) => published,
+            Ok(None) => {
+                kept(Some(epoch), &"no public half is published for its epoch");
+                continue;
+            }
+            Err(error) => {
+                kept(Some(epoch), &error);
+                continue;
+            }
+        };
+        match provider.public(&slot(epoch), suite) {
+            Ok(held) if held.bytes == published => {}
+            Ok(_) => {
+                kept(Some(epoch), &"its slot holds another key than its epoch published");
+                continue;
+            }
+            Err(error) => {
+                kept(Some(epoch), &error);
+                continue;
+            }
+        }
+        if let Err(error) = provider.destroy(&slot(epoch)) {
+            kept(Some(epoch), &error);
+        }
+    }
 }
 
 /// The identity directory of `volume`, and its `keys/` below, created `0700`.
@@ -809,7 +869,7 @@ impl Identity {
     /// `expected_epoch` is not the current one.
     pub fn rotate(
         &self,
-        _applying: &Applying<'_>,
+        applying: &Applying<'_>,
         expected_epoch: Option<u64>,
         now: u64,
     ) -> Result<Rotated, IdentityError> {
@@ -881,19 +941,8 @@ impl Identity {
         write::replace_bytes(&self.dir, DOCUMENT, &envelope)
             .map_err(|error| indeterminate(error.into()))?;
         // The grace: the key just retired keeps verifying in-flight work until the next rotation,
-        // which destroys it; the one before it goes now.
-        if next >= 3 {
-            let retired = next - 2;
-            if let Err(error) = self.provider.destroy(&slot(retired)) {
-                tracing::warn!(
-                    event.name = "host.identity_key_kept",
-                    component = "host",
-                    epoch = retired,
-                    error = %error,
-                    "a retired identity key could not be destroyed"
-                );
-            }
-        }
+        // which destroys it; every one before it goes now.
+        destroy_retired(applying, self.provider.as_ref(), &self.keys, suite, next);
         current.successions.push(succession.clone());
         *current = Current {
             epoch: next,

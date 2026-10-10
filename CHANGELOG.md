@@ -312,6 +312,7 @@ is cut.
 - A runtime can be evaluated in a supervised local worker — the same binary, started with a cleared environment under OS address-space, CPU and core-file limits, and killed at the decision's deadline — for engines whose work cannot be bounded in-process.
   The mechanism is in place; no runtime uses it yet.
 - The server binaries report a panic by where it happened and withhold its message, which can carry policy text or tenant data.
+- An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
 

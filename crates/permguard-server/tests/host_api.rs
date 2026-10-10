@@ -54,6 +54,7 @@ const MINTED: &[&str] = &[
     // The identity each facade provisioned for itself, and its bytes per transport.
     "document",
     "successions",
+    "succession",
     "first_public_key",
     // The ring keys each facade generated, and what names and binds them (WP-3.1).
     "kid",
@@ -1261,6 +1262,37 @@ impl Transport {
         }
     }
 
+    async fn rotate_identity(
+        &self,
+        who: Option<&str>,
+        request_id: &str,
+        expected_epoch: u64,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/identity/rotate",
+                    who,
+                    Some(json!({ "request_id": request_id, "expected_epoch": expected_epoch })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.identity()
+                    .await
+                    .rotate_identity(Self::grpc_request(
+                        who,
+                        host_v1::RotateIdentityRequest {
+                            request_id: request_id.to_owned(),
+                            expected_epoch,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
     async fn identity_document(&self, who: Option<&str>) -> Outcome {
         match self {
             Self::Rest(_) => self.rest("GET", "/host/v1/identity", who, None).await,
@@ -1647,6 +1679,36 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.join_membership(admin, "j1").await,
     ));
 
+    // The identity rotation (WP-2.2, WP-2.10): refused to a stranger and on a stale epoch, then
+    // the next epoch, a retry answering what the rotation answered.
+    steps.push((
+        "rotate the identity as a stranger",
+        transport.rotate_identity(Some(STRANGER), "ri0", 1).await,
+    ));
+    steps.push((
+        "rotate the identity from a stale epoch",
+        transport.rotate_identity(admin, "ri1", 9).await,
+    ));
+    let rotated = transport.rotate_identity(admin, "ri2", 1).await;
+    let retried = transport.rotate_identity(admin, "ri2", 1).await;
+    assert_eq!(
+        retried, rotated,
+        "a retried rotation answers what it answered"
+    );
+    let Outcome::Answered(answer) = &rotated else {
+        panic!("the rotation answers: {rotated:?}")
+    };
+    assert_eq!(answer["receipt"]["revision"], 2, "the next epoch: {answer}");
+    steps.push(("rotate the identity", rotated));
+    steps.push((
+        "rotate the identity again from the epoch it left",
+        transport.rotate_identity(admin, "ri3", 1).await,
+    ));
+    steps.push((
+        "read the identity after its rotation",
+        transport.identity_document(admin).await,
+    ));
+
     // The identity reset (WP-4.1), last: it leaves the facade's identity retired.
     steps.push((
         "plan an identity reset as a stranger",
@@ -1744,7 +1806,8 @@ fn schema_of(case: &str) -> &'static str {
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
-        "read the identity" => "HostIdentity",
+        "read the identity" | "read the identity after its rotation" => "HostIdentity",
+        "rotate the identity" => "IdentityRotated",
         "read the ring bindings" => "RingBindings",
         "rotate the operations ring" | "rotate the operations ring again" => "RingRotated",
         "plan a key revocation" => "KeyRevokePlan",

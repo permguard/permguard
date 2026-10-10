@@ -539,6 +539,89 @@ impl KeyProvider for Failing {
     }
 }
 
+/// A provider that cannot destroy one slot until told it can.
+struct Keeping {
+    inner: FileKeyProvider,
+    slot: &'static str,
+    keeps: std::sync::atomic::AtomicBool,
+}
+
+impl KeyProvider for Keeping {
+    fn name(&self) -> &'static str {
+        "keeping"
+    }
+    fn custody(&self) -> Custody {
+        Custody::Plaintext
+    }
+    fn generate(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
+        self.inner.generate(slot, suite)
+    }
+    fn generate_addressed(&self, suite: Suite) -> Result<(String, PublicKey), KeyError> {
+        self.inner.generate_addressed(suite)
+    }
+    fn slots(&self) -> Result<Vec<String>, KeyError> {
+        self.inner.slots()
+    }
+    fn public(&self, slot: &str, suite: Suite) -> Result<PublicKey, KeyError> {
+        self.inner.public(slot, suite)
+    }
+    fn sign(&self, slot: &str, suite: Suite, message: &[u8]) -> Result<Vec<u8>, KeyError> {
+        self.inner.sign(slot, suite, message)
+    }
+    fn destroy(&self, slot: &str) -> Result<(), KeyError> {
+        if slot == self.slot && self.keeps.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(KeyError::Malformed("the HSM is busy".to_owned()));
+        }
+        self.inner.destroy(slot)
+    }
+}
+
+#[test]
+fn a_retired_key_a_rotation_could_not_destroy_is_destroyed_by_the_next() {
+    let root = scratch("kept");
+    drop(provisioned(&root));
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let keys = directories(&volume).expect("dirs").1;
+    let provider = Arc::new(Keeping {
+        inner: FileKeyProvider::new(keys),
+        slot: "1",
+        keeps: std::sync::atomic::AtomicBool::new(true),
+    });
+    let identity = Identity::open(&volume, provider.clone()).expect("opens");
+    let held = root.join("host").join(DIRECTORY).join(KEYS);
+    identity
+        .rotate(&Applying::for_tests(1), Some(1), NOW + 1)
+        .expect("rotated to 2");
+    identity
+        .rotate(&Applying::for_tests(2), Some(2), NOW + 2)
+        .expect("rotated to 3, epoch 1's key kept");
+    assert!(held.join("1.key").exists(), "the destruction failed");
+    assert!(held.join("2.key").exists(), "epoch 2's in its grace");
+    provider
+        .keeps
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    identity
+        .rotate(&Applying::for_tests(3), Some(3), NOW + 3)
+        .expect("rotated to 4");
+    assert!(!held.join("1.key").exists(), "tried again, destroyed");
+    assert!(!held.join("2.key").exists(), "its grace over");
+    assert!(held.join("3.key").exists(), "epoch 3's in its grace");
+    assert!(held.join("4.key").exists(), "the current key");
+    for epoch in 1..=4 {
+        assert!(
+            held.join(format!("{epoch}.pub")).exists(),
+            "epoch {epoch}'s public evidence kept"
+        );
+    }
+    assert_eq!(identity.successions().len(), 3, "every succession kept");
+    drop(identity);
+    drop(volume);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let identity = Identity::open(&volume, self::provider(&volume)).expect("verifies");
+    assert_eq!(identity.epoch(), 4);
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn a_rotation_that_fails_after_its_succession_is_uncertain_and_completed_at_open() {
     let root = scratch("uncertain");
