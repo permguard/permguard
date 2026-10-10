@@ -184,7 +184,21 @@ is cut.
   A member reaching its coordinators applies the Host listener's revocation list as the listener does (the end entity only, a list past its `nextUpdate` refusing), and reads its certificate, key, authorities and list again for every connection: a renewed certificate or a new list applies to the next session without a restart.
   Material the member cannot read is answered as its own `peer_client_unconfigured`, never as the coordinator's refusal.
 
+- **The CLI names its target and its operator: `--host-endpoint`, `--volume`, `--token-file`.**
+  `--host-endpoint <url>` (or the setting `host.endpoint`, `PERMGUARD_HOST_ENDPOINT`) names the Host listener, for the `host` commands still to come, and `--volume <dir>` a Server Host's volume for the offline commands; the scheme of any endpoint chooses the transport, `https` for REST and `grpcs` for gRPC (`config set` and `inspect` now take `grpc`/`grpcs` too, `inspect` asking each plane its `GetInfo` and `GetHealth`).
+  The operator's material comes from flags or the configuration: the settings `tls.ca_file`, `tls.cert_file`, `tls.key_file`, `tls.server_name` (`caFile`, `certFile`, `keyFile`, `serverName` under `tls:` in the file), or the key by reference, `tls.key_ref` (`keyRef`) set to `env:NAME` or `file:PATH`; a relative path in the configuration file is read from that file's directory.
+  `--token-file <path>` (or `auth.token_file`, `tokenFile` under `auth:`, `PERMGUARD_TOKEN_FILE`) sends the token as `Authorization: Bearer` over REST and `authorization` metadata over gRPC on every network command, to verified `https` or `grpcs` endpoints only: with a token, a plain endpoint or `--tls-skip-verify` is refused.
+  A token file that is not a regular file, is open to its group or to others, is empty, or holds more than one word is refused, and no token is ever printed, traced or echoed.
+  A denial at a listener's gate (`unauthenticated`, `forbidden`) is reported with its code and no class over REST as over gRPC, exit 64.
+
 ### Changed
+
+- **The CLI refuses a flag that names another target than the command's.**
+  A command reaches exactly one target class, the workspace, the control plane, the data plane, the Host listener or a volume; `--control-endpoint`, `--data-endpoint`, `--host-endpoint` or `--volume` beside a command that does not reach it is a usage error (64), never a silent fallback (`inspect` takes both plane endpoints).
+  The offline `host identity` and `host grants` commands read the now global `--volume`, written anywhere on the line as before.
+
+- **A failed verification exits 2.**
+  `events verify` and `events verify --file` that cannot account for every record exit 2 with `events_unverified` (they exited 64), as do `events list`, `tail` and `export` with `--verify` (they exited 0); `decisions list` or `tail` with `--verify` whose proof does not hold exit 2 with the new code `decisions_unverified` (they exited 0); `permguard verify` whose head statement or local closure does not hold exits 2 with the new code `head_unverified` (it exited 64); a truncated export keeps 64.
 
 - **From `production`, a Plane public listener serves TLS beyond loopback, or says who does: `tls.terminated_upstream`.**
   A Plane public listener (`public.*` or a Plane's `public.http`/`public.grpc`) serving in the clear on a bind that is not loopback no longer starts under `production` or `regulated`.

@@ -295,6 +295,11 @@ pub mod client {
     pub const EVENT_EXPORT_UNREADABLE: &str = "event_export_unreadable";
     pub const EVENT_KEYS_REQUIRED: &str = "event_keys_required";
     pub const EVENTS_UNVERIFIED: &str = "events_unverified";
+    /// A decision read with `--verify` whose chain or signatures did not hold (TC-1): the read
+    /// completed and its subject did not pass, exit 2.
+    pub const DECISIONS_UNVERIFIED: &str = "decisions_unverified";
+    /// A workspace head statement or local closure that did not verify (TC-1): exit 2.
+    pub const HEAD_UNVERIFIED: &str = "head_unverified";
     pub const EXPORT_TRUNCATED: &str = "export_truncated";
     pub const KEYS_EMPTY: &str = "keys_empty";
     pub const KEYS_MALFORMED: &str = "keys_malformed";
@@ -652,6 +657,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         client::EVENT_EXPORT_UNREADABLE,
         client::EVENT_KEYS_REQUIRED,
         client::EVENTS_UNVERIFIED,
+        client::DECISIONS_UNVERIFIED,
+        client::HEAD_UNVERIFIED,
         client::EXPORT_TRUNCATED,
         client::KEYS_EMPTY,
         client::KEYS_MALFORMED,

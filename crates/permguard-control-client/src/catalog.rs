@@ -67,7 +67,7 @@ impl std::fmt::Display for Failure {
 }
 
 /// Sends one catalog request and reads back either the payload or the refusal.
-fn call<T: for<'de> Deserialize<'de>>(
+pub(crate) fn call<T: for<'de> Deserialize<'de>>(
     client: &Client,
     endpoint: &Endpoint,
     method: &str,
@@ -105,12 +105,22 @@ fn call<T: for<'de> Deserialize<'de>>(
             reason: refusal.code,
             detail: refusal.message,
         }),
-        Err(_) => Err(Failure {
-            class: "internal".to_owned(),
-            reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
-            detail: format!("{method} {path} answered {}", response.status),
-            usage: false,
-        }),
+        // A denial at the listener's gate (TC-1): `{code, message}` and no class, as the wire
+        // carries it; the operator's to fix, as over gRPC.
+        Err(_) => match serde_json::from_str::<permguard_core::api::WireDenial>(&response.body) {
+            Ok(denial) if matches!(response.status, 401 | 403) => Err(Failure {
+                class: String::new(),
+                reason: denial.code,
+                detail: denial.message,
+                usage: true,
+            }),
+            _ => Err(Failure {
+                class: "internal".to_owned(),
+                reason: permguard_core::codes::client::HTTP_STATUS.to_owned(),
+                detail: format!("{method} {path} answered {}", response.status),
+                usage: false,
+            }),
+        },
     }
 }
 

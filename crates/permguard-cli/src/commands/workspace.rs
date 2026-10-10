@@ -17,7 +17,6 @@ use crate::narrator;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
 use permguard_control_client::AnyRemote;
-use permguard_control_client::TlsOptions;
 
 use crate::reference;
 use crate::workspace_out;
@@ -362,7 +361,7 @@ fn remote_plane(
 
     let client = permguard_control_client::pdp::client(
         &target.endpoint,
-        &crate::target::tls(globals),
+        &crate::target::tls(globals, &settings, trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;
@@ -504,15 +503,6 @@ pub fn workspace_command(
         Failure::usage(error)
     }
 
-    let tls = TlsOptions {
-        ca_file: globals.tls_ca_file.clone(),
-        cert_file: globals.tls_cert_file.clone(),
-        key_file: globals.tls_key_file.clone(),
-        server_name: globals.tls_server_name.clone(),
-        skip_verify: globals.tls_skip_verify,
-    }
-    .rooted_at(&globals.workdir);
-
     // The fallback chain of the documentation: the tracked ledger's remote
     // wins; a remote the workspace does not know falls back to the CLI's own
     // configuration; and that falls back to the localhost default.
@@ -526,8 +516,11 @@ pub fn workspace_command(
         )?;
         Ok(endpoint.to_string())
     };
+    // The operator's material is resolved only by a command that connects (TC-1): a local one
+    // never reads a token file or a key reference.
     let connect = |url: &str| -> Result<AnyRemote, Failure> {
         trace.say(format!("remote: {url}"));
+        let tls = crate::target::tls(globals, &open_store(globals, trace)?, trace)?;
         AnyRemote::connect(url, &tls, narrator::for_run(globals.verbose)).map_err(usage)
     };
 
@@ -1188,7 +1181,14 @@ pub fn workspace_command(
         }
         WorkspaceOp::Verify => {
             let remote = tracked_remote(trace)?;
-            let verified = ws.verify(&remote).map_err(usage)?;
+            let verified = ws.verify(&remote).map_err(|error| {
+                if error.unverified {
+                    // Ran and did not pass: exit 2 (TC-1, owner decision of 2026-10-10).
+                    Failure::not_passed(error, permguard_core::codes::client::HEAD_UNVERIFIED)
+                } else {
+                    usage(error)
+                }
+            })?;
             render(
                 &VerifyReport {
                     r#ref: verified.r#ref,

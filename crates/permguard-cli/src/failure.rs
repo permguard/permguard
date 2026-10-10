@@ -60,6 +60,16 @@ impl Failure {
         }
     }
 
+    /// The command ran and its subject did not pass (TC-1): a failed verification, exit 2.
+    pub fn not_passed(message: impl std::fmt::Display, code: &str) -> Self {
+        Self {
+            class: "validation".to_owned(),
+            code: code.to_owned(),
+            message: message.to_string(),
+            status: EXIT_NOT_READY,
+        }
+    }
+
     /// Something failed that the operator did not ask for.
     pub fn internal(message: impl std::fmt::Display) -> Self {
         Self {

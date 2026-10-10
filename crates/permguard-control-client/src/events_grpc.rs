@@ -40,7 +40,7 @@ impl GrpcEventSink {
         })
     }
 
-    fn client(&self) -> EventLogClient<tonic::transport::Channel> {
+    fn client(&self) -> EventLogClient<crate::grpc::AuthChannel> {
         EventLogClient::new(self.endpoint.channel())
             .max_decoding_message_size(crate::MAX_RESPONSE_BYTES as usize)
             // A batch carries up to ten thousand records: tonic's 4 MiB default is not a number

@@ -11,7 +11,6 @@
 
 use std::process::ExitCode;
 
-use permguard_control_client::TlsOptions;
 use permguard_control_client::catalog;
 
 use crate::args::{Globals, LedgersAction, ZonesAction};
@@ -42,14 +41,7 @@ pub fn catalog_command(
         &store,
         trace,
     )?;
-    let tls = TlsOptions {
-        ca_file: globals.tls_ca_file.clone(),
-        cert_file: globals.tls_cert_file.clone(),
-        key_file: globals.tls_key_file.clone(),
-        server_name: globals.tls_server_name.clone(),
-        skip_verify: globals.tls_skip_verify,
-    }
-    .rooted_at(&globals.workdir);
+    let tls = crate::target::tls(globals, &store, trace)?;
 
     // One catalog, whichever transport the scheme named: the client crate owns
     // that choice, so this file is about commands and nothing else.

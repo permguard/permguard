@@ -254,6 +254,19 @@ pub struct Globals {
     #[arg(long, global = true, value_name = "URL")]
     pub data_endpoint: Option<String>,
 
+    /// Where the Host listener is reached; no command takes it yet [env: PERMGUARD_HOST_ENDPOINT]
+    #[arg(long, global = true, value_name = "URL")]
+    pub host_endpoint: Option<String>,
+
+    /// A Server Host's volume (its `working_dir`), for the offline commands: the server stopped.
+    #[arg(long, global = true, value_name = "DIR")]
+    pub volume: Option<PathBuf>,
+
+    /// A file holding the operator's bearer token, readable by its owner only, sent over verified
+    /// TLS only [env: PERMGUARD_TOKEN_FILE]
+    #[arg(long, global = true, value_name = "FILE")]
+    pub token_file: Option<PathBuf>,
+
     /// Certificate authority the endpoint's certificate is checked against (PEM).
     #[arg(
         long,
@@ -1446,9 +1459,6 @@ pub enum IdentityAction {
         after_help = "Examples:\n  permguard host identity provision --volume /var/lib/permguard\n  permguard host identity provision --volume ./volume --suite pg-p256-sha256-v1 -o json"
     )]
     Provision {
-        /// The Host's volume (its `working_dir`); created when empty.
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The identity key's suite.
         #[arg(long, default_value = "pg-ed25519-sha256-v1")]
         suite: String,
@@ -1458,19 +1468,12 @@ pub enum IdentityAction {
     #[command(
         after_help = "Examples:\n  permguard host identity show --volume /var/lib/permguard\n  permguard host identity show --volume ./volume -o json"
     )]
-    Show {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
-    },
+    Show,
     /// Rotate the identity key to the next epoch: the current key signs the succession.
     #[command(
         after_help = "Examples:\n  permguard host identity rotate --volume /var/lib/permguard --expected-epoch 1\n  permguard host identity rotate --volume ./volume --expected-epoch 3 -o json"
     )]
     Rotate {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The epoch `show` printed: a rotation from another is refused.
         #[arg(long)]
         expected_epoch: u64,
@@ -1494,9 +1497,6 @@ pub enum ResetAction {
   permguard host identity reset plan --volume /var/lib/permguard --reason \"key compromised\" --out reset.plan
   permguard host identity reset plan --volume ./volume --reason drill --out reset.plan -o json")]
     Plan {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// Why, printable: kept in the plan.
         #[arg(long)]
         reason: String,
@@ -1509,9 +1509,6 @@ pub enum ResetAction {
   permguard host identity reset run --volume /var/lib/permguard --confirm-file reset.plan
   permguard host identity reset run --volume ./volume --confirm-file reset.plan -o json")]
     Run {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The plan `reset plan` wrote. Not needed to complete a reset a crash interrupted.
         #[arg(long, value_name = "FILE")]
         confirm_file: Option<PathBuf>,
@@ -1531,9 +1528,6 @@ pub enum GrantsAction {
         after_help = "Examples:\n  permguard host grants bootstrap --volume /var/lib/permguard --fingerprint sha256:ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\n  permguard host grants bootstrap --volume ./volume --fingerprint ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12 -o json"
     )]
     Bootstrap {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The certificate fingerprint, 64 hex characters, optionally prefixed `sha256:`.
         #[arg(long)]
         fingerprint: String,
@@ -1544,9 +1538,6 @@ pub enum GrantsAction {
         after_help = "Examples:\n  permguard host grants issue --volume /var/lib/permguard --principal spiffe://acme/billing --operations catalog.read,policy.push --selector plane/control/zone/0198f3bb-0000-7000-8000-000000000002/*\n  permguard host grants issue --volume ./volume --principal spki:sha256:ab12 --operations decision.evaluate --selector plane/data/* --expires 2027-01-01T00:00:00Z"
     )]
     Issue {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The exact authorization principal, as the credential mapper produces it.
         #[arg(long)]
         principal: String,
@@ -1571,9 +1562,6 @@ pub enum GrantsAction {
         after_help = "Examples:\n  permguard host grants revoke --volume /var/lib/permguard --grant-id 0123456789abcdef0123456789abcdef\n  permguard host grants revoke --volume ./volume --grant-id 0123456789abcdef0123456789abcdef --by alice -o json"
     )]
     Revoke {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// The grant, as `list` prints it.
         #[arg(long)]
         grant_id: String,
@@ -1586,9 +1574,6 @@ pub enum GrantsAction {
         after_help = "Examples:\n  permguard host grants list --volume /var/lib/permguard\n  permguard host grants list --volume /var/lib/permguard --principal spiffe://acme/billing -o json"
     )]
     List {
-        /// The Host's volume (its `working_dir`).
-        #[arg(long, value_name = "DIR")]
-        volume: PathBuf,
         /// Only this principal's grants.
         #[arg(long)]
         principal: Option<String>,

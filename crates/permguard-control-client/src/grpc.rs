@@ -23,17 +23,74 @@ use permguard_notp::{
 };
 use permguard_objects::digest::Digest;
 use permguard_objects::{compress, limits};
+use tonic::metadata::{AsciiMetadataValue, MetadataValue};
+use tonic::service::interceptor::InterceptedService;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
 
 use crate::catalog::{Failure as CatalogFailure, Ledger, Zone};
 use crate::narrate::Narrator;
 use crate::tls::TlsOptions;
 
+/// Which plane a probe asks: each answers `GetInfo` and `GetHealth` on its own service.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Plane {
+    Control,
+    Data,
+}
+
+/// What a plane says it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlaneInfo {
+    pub plane: String,
+    pub product: String,
+    pub version: String,
+    pub commit: String,
+}
+
+/// How a plane says it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlaneHealth {
+    pub live: bool,
+    pub ready: bool,
+}
+
+/// The local reason a failed call is reported under (TC-1): a deadline, an endpoint that could
+/// not be reached, or a transport failure after it was.
+pub fn reason_of(status: &tonic::Status) -> &'static str {
+    match status.code() {
+        tonic::Code::DeadlineExceeded => permguard_core::codes::client::TIMEOUT,
+        tonic::Code::Unavailable => permguard_core::codes::client::CONNECT_FAILED,
+        _ => permguard_core::codes::client::TRANSPORT_FAILED,
+    }
+}
+
+/// Adds the operator's bearer token to every call on a channel (TC-1): one interceptor, so no
+/// client generated from a contract can forget it.
+#[derive(Clone)]
+pub struct Authorize(Option<AsciiMetadataValue>);
+
+impl tonic::service::Interceptor for Authorize {
+    fn call(
+        &mut self,
+        mut request: tonic::Request<()>,
+    ) -> Result<tonic::Request<()>, tonic::Status> {
+        if let Some(value) = &self.0 {
+            request
+                .metadata_mut()
+                .insert("authorization", value.clone());
+        }
+        Ok(request)
+    }
+}
+
+/// A channel every call on which carries the operator's token, when there is one.
+pub type AuthChannel = InterceptedService<Channel, Authorize>;
+
 /// A connected gRPC endpoint: the channel, the runtime that drives it, and
 /// how exchanges are narrated.
 pub struct GrpcChannel {
     runtime: tokio::runtime::Runtime,
-    channel: Channel,
+    channel: AuthChannel,
     narrator: Box<dyn Narrator>,
 }
 
@@ -58,6 +115,7 @@ impl GrpcChannel {
         if rest.contains('/') {
             return Err("a gRPC endpoint is a host and a port only — no path".to_owned());
         }
+        tls.token_allowed(secure)?;
         if tls.skip_verify {
             // tonic verifies or refuses; there is no insecure TLS mode, and
             // pretending otherwise would be worse than saying so.
@@ -81,12 +139,16 @@ impl GrpcChannel {
                 }
                 None => ClientTlsConfig::new().with_native_roots(),
             };
-            if let (Some(cert), Some(key)) = (&tls.cert_file, &tls.key_file) {
-                let cert = std::fs::read(cert)
-                    .map_err(|error| format!("reading {}: {error}", cert.display()))?;
-                let key = std::fs::read(key)
-                    .map_err(|error| format!("reading {}: {error}", key.display()))?;
-                config = config.identity(Identity::from_pem(cert, key));
+            match (&tls.cert_file, tls.key_pem_bytes()?) {
+                (Some(cert), Some(key)) => {
+                    let cert = std::fs::read(cert)
+                        .map_err(|error| format!("reading {}: {error}", cert.display()))?;
+                    config = config.identity(Identity::from_pem(cert, key));
+                }
+                (None, None) => {}
+                // Half an identity is a typo, as over HTTP.
+                (Some(_), None) => return Err("a client certificate needs its key".to_owned()),
+                (None, Some(_)) => return Err("a client key needs its certificate".to_owned()),
             }
             if let Some(name) = &tls.server_name {
                 config = config.domain_name(name.clone());
@@ -102,9 +164,15 @@ impl GrpcChannel {
             .map_err(|error| format!("starting the gRPC runtime: {error}"))?;
         // Building the channel captures the runtime handle; every call runs
         // on this same runtime, so enter it here too.
+        let authorize = Authorize(
+            tls.bearer()?
+                .map(|value| MetadataValue::try_from(value.as_str()))
+                .transpose()
+                .map_err(|_| "the token cannot travel as gRPC metadata".to_owned())?,
+        );
         let channel = {
             let _entered = runtime.enter();
-            endpoint.connect_lazy()
+            InterceptedService::new(endpoint.connect_lazy(), authorize)
         };
 
         Ok(Self {
@@ -118,7 +186,7 @@ impl GrpcChannel {
     ///
     /// Cloning a channel is cheap and shares the connection, so a second
     /// service on the same endpoint costs nothing extra.
-    pub fn channel(&self) -> Channel {
+    pub fn channel(&self) -> AuthChannel {
         self.channel.clone()
     }
 
@@ -154,6 +222,84 @@ impl GrpcChannel {
                 Err(status)
             }
         }
+    }
+
+    /// What the `plane` says it is and how it is (`GetInfo`, then `GetHealth`), each answered
+    /// within `within` (TC-1): `inspect` over gRPC reads them where it reads `/version` and
+    /// `/health` over HTTP. Each plane answers them on its own service.
+    pub fn probe(
+        &self,
+        plane: Plane,
+        within: std::time::Duration,
+    ) -> Result<(PlaneInfo, Result<PlaneHealth, tonic::Status>), tonic::Status> {
+        match plane {
+            Plane::Control => {
+                let mut client =
+                    proto::control_plane_client::ControlPlaneClient::new(self.channel.clone());
+                let info =
+                    self.call_within("GetInfo", within, client.get_info(proto::GetInfoRequest {}))?;
+                let health = self
+                    .call_within(
+                        "GetHealth",
+                        within,
+                        client.get_health(proto::GetHealthRequest {}),
+                    )
+                    .map(|health| PlaneHealth {
+                        live: health.live,
+                        ready: health.ready,
+                    });
+                Ok((
+                    PlaneInfo {
+                        plane: info.plane,
+                        product: info.product,
+                        version: info.version,
+                        commit: info.commit,
+                    },
+                    health,
+                ))
+            }
+            Plane::Data => {
+                let mut client = pdp::data_plane_client::DataPlaneClient::new(self.channel.clone());
+                let info =
+                    self.call_within("GetInfo", within, client.get_info(pdp::GetInfoRequest {}))?;
+                let health = self
+                    .call_within(
+                        "GetHealth",
+                        within,
+                        client.get_health(pdp::GetHealthRequest {}),
+                    )
+                    .map(|health| PlaneHealth {
+                        live: health.live,
+                        ready: health.ready,
+                    });
+                Ok((
+                    PlaneInfo {
+                        plane: info.plane,
+                        product: info.product,
+                        version: info.version,
+                        commit: info.commit,
+                    },
+                    health,
+                ))
+            }
+        }
+    }
+
+    /// One RPC bounded by `within`: an endpoint that drops packets costs the deadline, not a hang.
+    fn call_within<T, F>(
+        &self,
+        rpc: &str,
+        within: std::time::Duration,
+        future: F,
+    ) -> Result<T, tonic::Status>
+    where
+        F: std::future::Future<Output = Result<tonic::Response<T>, tonic::Status>>,
+    {
+        self.call(rpc, async move {
+            tokio::time::timeout(within, future)
+                .await
+                .unwrap_or_else(|_| Err(tonic::Status::deadline_exceeded("no answer in time")))
+        })
     }
 
     /// The discovery document — the proof this endpoint is a Permguard
@@ -221,6 +367,9 @@ fn classify(code: tonic::Code) -> (&'static str, &'static str) {
         tonic::Code::NotFound => ("not_found", "not_found"),
         tonic::Code::Unavailable => ("unavailable", "unavailable"),
         tonic::Code::ResourceExhausted => ("unavailable", "exhausted"),
+        // A denial carries a code and no class, as over REST (TC-1).
+        tonic::Code::Unauthenticated => ("", permguard_core::codes::common::UNAUTHENTICATED),
+        tonic::Code::PermissionDenied => ("", permguard_core::codes::common::FORBIDDEN),
         _ => ("internal", "internal"),
     }
 }
@@ -286,35 +435,59 @@ impl crate::catalog::Catalog for GrpcAdmin {
     }
 }
 
+/// The refusal a gRPC status carries, as every client here reports it (TC-1): the class and
+/// stable code from the metadata the server sent, or what the gRPC code means when it sent none.
+pub(crate) fn failure_of(status: tonic::Status) -> CatalogFailure {
+    // The class and the stable code the server sent as metadata, when it sent them: a script
+    // that branches on either reads the same value whichever transport carried the refusal.
+    // Only a status without them — an older server, or one tonic produced itself — falls back
+    // to what its gRPC code means, through the same mapping every gRPC refusal here uses.
+    let metadata = |key: &str| {
+        status
+            .metadata()
+            .get(key)
+            .and_then(|value| value.to_str().ok())
+            .map(ToOwned::to_owned)
+    };
+    // A denial at the listener's gate carries a code and no class, as over REST (TC-1).
+    if matches!(
+        status.code(),
+        tonic::Code::Unauthenticated | tonic::Code::PermissionDenied
+    ) && metadata(GRPC_ERROR_CLASS).is_none()
+    {
+        let fallback = if status.code() == tonic::Code::Unauthenticated {
+            permguard_core::codes::common::UNAUTHENTICATED
+        } else {
+            permguard_core::codes::common::FORBIDDEN
+        };
+        return CatalogFailure {
+            class: String::new(),
+            reason: metadata(GRPC_ERROR_CODE).unwrap_or_else(|| fallback.to_owned()),
+            detail: status.message().to_owned(),
+            usage: true,
+        };
+    }
+    let (derived_class, derived_code) = classify(status.code());
+    let class = metadata(GRPC_ERROR_CLASS).unwrap_or_else(|| derived_class.to_owned());
+    let reason = metadata(GRPC_ERROR_CODE).unwrap_or_else(|| derived_code.to_owned());
+    // A usage error is a mistake in what was asked; the other classes are the world's.
+    let usage = matches!(class.as_str(), "validation" | "conflict" | "not_found");
+
+    CatalogFailure {
+        class,
+        reason,
+        detail: status.message().to_owned(),
+        usage,
+    }
+}
+
 impl GrpcAdmin {
-    fn catalog(&self) -> proto::zone_catalog_client::ZoneCatalogClient<Channel> {
+    fn catalog(&self) -> proto::zone_catalog_client::ZoneCatalogClient<AuthChannel> {
         proto::zone_catalog_client::ZoneCatalogClient::new(self.0.channel.clone())
     }
 
     fn failure(status: tonic::Status) -> CatalogFailure {
-        // The class and the stable code the server sent as metadata, when it sent them: a script
-        // that branches on either reads the same value whichever transport carried the refusal.
-        // Only a status without them — an older server, or one tonic produced itself — falls back
-        // to what its gRPC code means, through the same mapping every gRPC refusal here uses.
-        let metadata = |key: &str| {
-            status
-                .metadata()
-                .get(key)
-                .and_then(|value| value.to_str().ok())
-                .map(ToOwned::to_owned)
-        };
-        let (derived_class, derived_code) = classify(status.code());
-        let class = metadata(GRPC_ERROR_CLASS).unwrap_or_else(|| derived_class.to_owned());
-        let reason = metadata(GRPC_ERROR_CODE).unwrap_or_else(|| derived_code.to_owned());
-        // A usage error is a mistake in what was asked; the other classes are the world's.
-        let usage = matches!(class.as_str(), "validation" | "conflict" | "not_found");
-
-        CatalogFailure {
-            class,
-            reason,
-            detail: status.message().to_owned(),
-            usage,
-        }
+        failure_of(status)
     }
 
     fn zone(answer: proto::ZoneResponse) -> Result<Zone, CatalogFailure> {
@@ -546,7 +719,7 @@ impl GrpcRemote {
         self.channel.verify_discovery()
     }
 
-    fn store(&self) -> proto::git_like_store_client::GitLikeStoreClient<Channel> {
+    fn store(&self) -> proto::git_like_store_client::GitLikeStoreClient<AuthChannel> {
         proto::git_like_store_client::GitLikeStoreClient::new(self.channel.channel.clone())
             // Above tonic's 4 MiB default, deliberately: a fetch batch is as
             // large as the server negotiated, and the negotiation is the
@@ -823,7 +996,7 @@ impl GrpcPdp {
         Ok(Self(GrpcChannel::connect(url, tls, narrator)?))
     }
 
-    fn client(&self) -> pdp::policy_decision_point_client::PolicyDecisionPointClient<Channel> {
+    fn client(&self) -> pdp::policy_decision_point_client::PolicyDecisionPointClient<AuthChannel> {
         pdp::policy_decision_point_client::PolicyDecisionPointClient::new(self.0.channel.clone())
     }
 }

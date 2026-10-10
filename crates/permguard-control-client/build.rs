@@ -25,6 +25,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         contract.join("permguard/control/v1/decisions.proto"),
         contract.join("permguard/control/v1/events.proto"),
         contract.join("permguard/data/v1/pdp.proto"),
+        // The data plane's own identity and health, for `inspect` over gRPC (TC-1).
+        contract.join("permguard/data/v1/data_plane.proto"),
+        // The Host listener (TC-1): the facade TC-2's `host` commands build on.
+        contract.join("permguard/host/v1/host.proto"),
     ];
 
     for proto in &protos {

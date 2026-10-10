@@ -124,6 +124,7 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
     });
     let mut answer = report(&scope, read, query, keys.as_deref());
     answer.truncated = truncated;
+    let unverified = unverified(&answer);
     if let Some((records, envelopes, inclusion)) = evidence {
         render(
             &EventArchive {
@@ -153,8 +154,21 @@ fn list(globals: &Globals, query: &EventsQuery, everything: bool) -> Result<Exit
             permguard_core::codes::client::EXPORT_TRUNCATED,
         ));
     }
+    unverified?;
 
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// A read asked to verify whose records the store cannot all account for: it ran and its subject
+/// did not pass, exit 2 (TC-1, owner decision of 2026-10-10).
+fn unverified(answer: &crate::event_out::EventsReport) -> Result<(), Failure> {
+    match &answer.verified {
+        Some(verified) if !verified.holds() => Err(Failure::not_passed(
+            "these events did not verify: see the report above",
+            permguard_core::codes::client::EVENTS_UNVERIFIED,
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// The stream, as it arrives.
@@ -172,11 +186,11 @@ fn tail(globals: &Globals, query: &EventsQuery, follow: bool) -> Result<ExitCode
         if !page.records.is_empty() {
             let mut read = Read::default();
             read.absorb(page, &mut ReadWindow::default());
-            render(
-                &report(&scope, read, query, keys.as_deref()),
-                globals.output,
-                &trace,
-            )?;
+            let answer = report(&scope, read, query, keys.as_deref());
+            render(&answer, globals.output, &trace)?;
+            // A followed tail stops at the first page that does not verify: what follows a
+            // record the store cannot account for is not read as if it were.
+            unverified(&answer)?;
         }
         if !follow {
             break;
@@ -311,12 +325,9 @@ fn verify(globals: &Globals, query: &EventsQuery) -> Result<ExitCode, Failure> {
     // A verification that failed is a failed command: a script that ran this and looked only at
     // the exit status must not be told everything is fine.
     if !holds {
-        return Err(Failure::usage(
-            "this store cannot account for every record it returned: see the report above"
-                .to_owned(),
-        )
-        .named(
-            "validation",
+        // A verification that ran and did not pass: exit 2 (TC-1, owner decision).
+        return Err(Failure::not_passed(
+            "this store cannot account for every record it returned: see the report above",
             permguard_core::codes::client::EVENTS_UNVERIFIED,
         ));
     }
@@ -391,11 +402,8 @@ fn verify_file(globals: &Globals, query: &EventsQuery, file: &str) -> Result<Exi
         ));
     }
     if !holds {
-        return Err(Failure::usage(
+        return Err(Failure::not_passed(
             "this export cannot account for every record it contains: see the report above",
-        )
-        .named(
-            "validation",
             permguard_core::codes::client::EVENTS_UNVERIFIED,
         ));
     }
@@ -491,7 +499,7 @@ fn connect(
 
     let reader = events::client(
         &target.endpoint,
-        &target::tls(globals),
+        &target::tls(globals, &store, trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;

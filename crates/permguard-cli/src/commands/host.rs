@@ -36,6 +36,16 @@ use crate::output::Report;
 use crate::session::render;
 use crate::trace::Trace;
 
+/// The `--volume` target an offline command works on (TC-1): stated, never guessed.
+fn volume_of(globals: &Globals) -> Result<std::path::PathBuf, Failure> {
+    globals.volume.clone().ok_or_else(|| {
+        Failure::usage(
+            "an offline host command works on a volume: name it with --volume <dir>, the \
+             server stopped",
+        )
+    })
+}
+
 /// Runs one `host …` command.
 pub fn host_command(
     globals: &Globals,
@@ -55,12 +65,10 @@ fn grants(
     action: GrantsAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
+    let volume = volume_of(globals)?;
     let now = permguard_host::authz::store::now();
     match action {
-        GrantsAction::Bootstrap {
-            volume,
-            fingerprint,
-        } => {
+        GrantsAction::Bootstrap { fingerprint } => {
             let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let (commitment, grant) =
                 grants::bootstrap(&mutations, &store, &fingerprint, now).map_err(refused)?;
@@ -79,7 +87,6 @@ fn grants(
             )?;
         }
         GrantsAction::Issue {
-            volume,
             principal,
             operations,
             selector,
@@ -122,11 +129,7 @@ fn grants(
             .map_err(refused)?;
             render(&grant_report(&record), globals.output, trace)?;
         }
-        GrantsAction::Revoke {
-            volume,
-            grant_id,
-            by,
-        } => {
+        GrantsAction::Revoke { grant_id, by } => {
             let (store, mutations) = open_mutable(&volume, server_config, trace)?;
             let id =
                 GrantId::parse(&grant_id).map_err(|error| Failure::usage(error.to_string()))?;
@@ -142,7 +145,6 @@ fn grants(
             render(&grant_report(&record), globals.output, trace)?;
         }
         GrantsAction::List {
-            volume,
             principal,
             selector,
         } => {
@@ -460,11 +462,12 @@ fn identity(
     action: IdentityAction,
     trace: &Trace,
 ) -> Result<ExitCode, Failure> {
+    let volume = volume_of(globals)?;
     use permguard_host::identity::{self, Identity, Suite};
 
     let now = permguard_host::authz::store::now();
     match action {
-        IdentityAction::Provision { volume, suite } => {
+        IdentityAction::Provision { suite } => {
             let suite = Suite::from_name(&suite).ok_or_else(|| {
                 Failure::usage(format!(
                     "`{suite}` is not a suite: pg-ed25519-sha256-v1 or pg-p256-sha256-v1"
@@ -527,7 +530,7 @@ fn identity(
             )?;
             std::mem::forget(held);
         }
-        IdentityAction::Show { volume } => {
+        IdentityAction::Show => {
             let (_store, held) = open(&volume, trace)?;
             let opened = open_identity(&held, server_config)?;
             render(
@@ -536,10 +539,7 @@ fn identity(
                 trace,
             )?;
         }
-        IdentityAction::Rotate {
-            volume,
-            expected_epoch,
-        } => {
+        IdentityAction::Rotate { expected_epoch } => {
             let (_store, held) = open(&volume, trace)?;
             let opened = open_identity(&held, server_config)?;
             let mutations =
@@ -757,6 +757,7 @@ fn reset(
     action: ResetAction,
     trace: &Trace,
 ) -> Result<(), Failure> {
+    let volume = volume_of(globals)?;
     use permguard_host::identity::{self, IdentityError};
     use permguard_host::membership::Store;
 
@@ -766,11 +767,7 @@ fn reset(
             .map_err(|error| Failure::unavailable(format!("opening the memberships: {error}")))
     };
     match action {
-        ResetAction::Plan {
-            volume,
-            reason,
-            out,
-        } => {
+        ResetAction::Plan { reason, out } => {
             if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
                 return Err(Failure::usage(
                     "--reason is printable text of 1 to 256 bytes",
@@ -786,10 +783,7 @@ fn reset(
             render(&plan, globals.output, trace)?;
             std::mem::forget(held);
         }
-        ResetAction::Run {
-            volume,
-            confirm_file,
-        } => {
+        ResetAction::Run { confirm_file } => {
             let (_store, held) = open(&volume, trace)?;
             let config =
                 permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
@@ -847,21 +841,7 @@ fn reset(
                 std::mem::forget(held);
                 return Ok(());
             }
-            let confirm_file = confirm_file.ok_or_else(|| {
-                Failure::usage("--confirm-file names the plan `reset plan` wrote")
-            })?;
-            let plan: ResetPlan = std::fs::read(&confirm_file)
-                .map_err(|error| {
-                    Failure::usage(format!(
-                        "--confirm-file {}: {error}",
-                        confirm_file.display()
-                    ))
-                })
-                .and_then(|bytes| {
-                    serde_json::from_slice(&bytes).map_err(|error| {
-                        Failure::usage(format!("--confirm-file is not a reset plan: {error}"))
-                    })
-                })?;
+            let plan: ResetPlan = crate::confirm::read(confirm_file.as_deref(), "reset plan")?;
             if plan.kind != RESET_PLAN_KIND || plan.digest != plan.digest_of() {
                 return Err(Failure::usage(
                     "--confirm-file is not a reset plan `reset plan` wrote, or it was edited",

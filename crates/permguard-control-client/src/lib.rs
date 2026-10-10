@@ -11,6 +11,7 @@
 //! | [`endpoint`], [`tls`] | where a server is and what it takes to trust it — one URL, and the scheme decides the transport |
 //! | [`http`], [`grpc`] | the two transports, behaving identically: same framing, same negotiated compression, same discovery check, same error taxonomy |
 //! | [`remote`], [`catalog`] | what can be asked: the six NOTP verbs, and the zone/ledger catalog |
+//! | [`host`] | the Host listener over REST and gRPC: status and identity today (TC-1) |
 //! | [`store`], [`objects`], [`checkpoint`] | where the local half lives, and what it holds |
 //! | [`verify`], [`pull`] | the proof discipline, and the fetch cycle that respects it |
 //!
@@ -46,6 +47,9 @@ pub mod endpoint;
 pub mod events;
 pub mod events_grpc;
 pub mod grpc;
+pub mod host;
+/// The generated `permguard.host.v1` stubs (TC-1).
+pub mod host_v1;
 pub mod http;
 pub mod narrate;
 pub mod objects;

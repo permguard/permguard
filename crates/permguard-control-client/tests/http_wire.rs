@@ -34,6 +34,8 @@ type Seen = Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
 struct Stub {
     address: String,
     seen: Seen,
+    /// The `Authorization` header of every request, absent where none came (TC-1).
+    authorizations: Arc<std::sync::Mutex<Vec<Option<String>>>>,
 }
 
 /// Serves one canned answer per `(method, path)`, remembering every request
@@ -45,12 +47,15 @@ fn serve(routes: HashMap<(String, String), (u16, Vec<u8>)>) -> Stub {
     let routes = Arc::new(routes);
     let seen: Seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorded = Arc::clone(&seen);
+    let authorizations: Arc<std::sync::Mutex<Vec<Option<String>>>> = Arc::default();
+    let authorized = Arc::clone(&authorizations);
 
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
             let routes = Arc::clone(&routes);
             let recorded = Arc::clone(&recorded);
+            let authorized = Arc::clone(&authorized);
             std::thread::spawn(move || {
                 let mut reader = BufReader::new(stream.try_clone().expect("clones"));
                 let mut request_line = String::new();
@@ -62,6 +67,7 @@ fn serve(routes: HashMap<(String, String), (u16, Vec<u8>)>) -> Stub {
                 let path = parts.next().unwrap_or("").to_owned();
 
                 let mut length = 0usize;
+                let mut authorization = None;
                 loop {
                     let mut header = String::new();
                     if reader.read_line(&mut header).unwrap_or(0) == 0 {
@@ -70,6 +76,11 @@ fn serve(routes: HashMap<(String, String), (u16, Vec<u8>)>) -> Stub {
                     let header = header.trim();
                     if header.is_empty() {
                         break;
+                    }
+                    if let Some((name, value)) = header.split_once(':')
+                        && name.eq_ignore_ascii_case("authorization")
+                    {
+                        authorization = Some(value.trim().to_owned());
                     }
                     if let Some(value) = header
                         .to_ascii_lowercase()
@@ -86,6 +97,9 @@ fn serve(routes: HashMap<(String, String), (u16, Vec<u8>)>) -> Stub {
                 }
                 if let Ok(mut recorded) = recorded.lock() {
                     recorded.push((path.clone(), body));
+                }
+                if let Ok(mut authorized) = authorized.lock() {
+                    authorized.push(authorization);
                 }
 
                 let (status, answer) = routes.get(&(method, path)).cloned().unwrap_or((
@@ -105,7 +119,11 @@ fn serve(routes: HashMap<(String, String), (u16, Vec<u8>)>) -> Stub {
         }
     });
 
-    Stub { address, seen }
+    Stub {
+        address,
+        seen,
+        authorizations,
+    }
 }
 
 fn route(
@@ -411,4 +429,60 @@ fn nothing_listening_is_a_clean_error_not_a_hang() {
     remote.bind(ZONE, LEDGER);
 
     assert!(remote.keyring().is_err());
+}
+
+/// TC-1: a token is sent only over verified TLS: a REST remote in the clear refuses to carry one
+/// and sends nothing, and a client without one sends no `Authorization` at all. The token over TLS
+/// is proven by the CLI's transports test.
+#[test]
+fn a_token_never_travels_over_rest_in_the_clear() {
+    let d1 = Digest::compute(b"1");
+    let mut routes = HashMap::new();
+    route(
+        &mut routes,
+        "POST",
+        &format!("{}/notp/push/negotiate", base()),
+        200,
+        NegotiatePushResponse {
+            missing: vec![d1.clone()],
+            max_batch_bytes: 8 * 1024 * 1024,
+            max_batch_objects: 1000,
+            compression: None,
+        }
+        .encode()
+        .expect("it encodes"),
+    );
+    let stub = serve(routes);
+    let refused = HttpRemote::connect(
+        &format!("http://{}", stub.address),
+        &TlsOptions {
+            token: Some(permguard_control_client::tls::Credential::new(
+                b"op-token-456".to_vec(),
+            )),
+            ..TlsOptions::default()
+        },
+        Box::new(Silent),
+    );
+    let Err(why) = refused else {
+        panic!("a token over plain HTTP was accepted")
+    };
+    assert!(why.contains("only over verified TLS"), "{why}");
+    let request = NegotiatePushRequest {
+        r#ref: "main".into(),
+        new_head: d1.clone(),
+        expected_old: None,
+        closure: vec![ObjectClaim {
+            digest: d1,
+            size: 3,
+        }],
+    };
+    connected(&stub)
+        .negotiate_push(&request)
+        .expect("the negotiation answers without a token");
+    let seen = stub.authorizations.lock().expect("recorded");
+    assert_eq!(
+        *seen,
+        vec![None],
+        "nothing was sent with the token, nothing without it"
+    );
 }

@@ -49,6 +49,11 @@ toml = "1.1"
 pkcs11 = ["permguard-server/pkcs11"]
 
 [dev-dependencies]
+# The fake plane of the transports test: REST and gRPC on one TLS port (TC-1).
+axum.workspace = true
+permguard-transport.workspace = true
+tokio.workspace = true
+tonic.workspace = true
 base64.workspace = true
 permguard-control-plane.workspace = true
 rcgen.workspace = true

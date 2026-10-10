@@ -40,6 +40,7 @@ mod args;
 mod banner;
 mod commands;
 mod config;
+mod confirm;
 mod decision_out;
 mod event_out;
 mod failure;
@@ -195,6 +196,9 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         }
     };
 
+    let (name, class) = target_of(&command);
+    crate::target::check_class(name, class, &globals)?;
+
     match command {
         Command::Version => {
             render(&version::version(), format, &trace)?;
@@ -286,5 +290,37 @@ fn run(cli: Cli) -> Result<ExitCode, Failure> {
         Command::Ledgers { action } => {
             catalog_command(&globals, CatalogAction::Ledgers(action), &trace)
         }
+    }
+}
+
+/// The command's name, as a refusal quotes it, and the one target class it reaches (TC-1).
+fn target_of(command: &Command) -> (&'static str, crate::target::Class) {
+    use crate::target::Class;
+
+    match command {
+        Command::Version => ("version", Class::Local),
+        Command::Completion { .. } => ("completion", Class::Local),
+        Command::Config { .. } => ("config", Class::Local),
+        Command::Init { .. } => ("init", Class::Local),
+        Command::Refresh => ("refresh", Class::Local),
+        Command::Validate => ("validate", Class::Local),
+        Command::Plan => ("plan", Class::Local),
+        Command::Status => ("status", Class::Local),
+        Command::History { .. } => ("history", Class::Local),
+        Command::Objects { .. } => ("objects", Class::Local),
+        Command::Test { remote, .. } => ("test", if *remote { Class::Data } else { Class::Local }),
+        Command::Check(_) => ("check", Class::Data),
+        Command::Zones { .. } => ("zones", Class::Control),
+        Command::Ledgers { .. } => ("ledgers", Class::Control),
+        Command::Decisions { .. } => ("decisions", Class::Control),
+        Command::Events { .. } => ("events", Class::Control),
+        Command::Remote { .. } => ("remote", Class::Control),
+        Command::Clone { .. } => ("clone", Class::Control),
+        Command::Checkout { .. } => ("checkout", Class::Control),
+        Command::Pull { .. } => ("pull", Class::Control),
+        Command::Apply { .. } => ("apply", Class::Control),
+        Command::Verify => ("verify", Class::Control),
+        Command::Inspect { .. } => ("inspect", Class::Planes),
+        Command::Host { .. } => ("host", Class::Volume),
     }
 }

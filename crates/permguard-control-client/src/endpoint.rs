@@ -28,6 +28,8 @@ const HTTPS_PORT: u16 = 443;
 pub struct Endpoint {
     /// Whether reaching it means a TLS handshake.
     tls: bool,
+    /// Whether it is reached over gRPC (`grpc`, `grpcs`) rather than REST (TC-1).
+    grpc: bool,
     /// The host, as written.
     host: String,
     /// The port, defaulted from the scheme when the endpoint left it out.
@@ -59,9 +61,11 @@ impl Endpoint {
             Invalid::new(written, &error.to_string())
         })?;
         let scheme = uri.scheme_str().unwrap_or_default();
-        let tls = match scheme {
-            "http" => false,
-            "https" => true,
+        let (tls, grpc) = match scheme {
+            "http" => (false, false),
+            "https" => (true, false),
+            "grpc" => (false, true),
+            "grpcs" => (true, true),
             "" => {
                 return Err(Invalid::new(
                     written,
@@ -71,7 +75,10 @@ impl Endpoint {
             other => {
                 return Err(Invalid::new(
                     written,
-                    &format!("`{other}` is not a scheme this CLI speaks: use http:// or https://"),
+                    &format!(
+                        "`{other}` is not a scheme this CLI speaks: use https:// for REST or \
+                         grpcs:// for gRPC (http:// and grpc:// without TLS)"
+                    ),
                 ));
             }
         };
@@ -89,6 +96,7 @@ impl Endpoint {
 
         Ok(Self {
             tls,
+            grpc,
             port: uri
                 .port_u16()
                 .unwrap_or(if tls { HTTPS_PORT } else { HTTP_PORT }),
@@ -100,6 +108,11 @@ impl Endpoint {
     /// Whether reaching this endpoint means a TLS handshake.
     pub fn is_tls(&self) -> bool {
         self.tls
+    }
+
+    /// Whether this endpoint is reached over gRPC: the scheme chose the transport (TC-1).
+    pub fn is_grpc(&self) -> bool {
+        self.grpc
     }
 
     /// The host, which is also the name a certificate is checked against.
@@ -193,11 +206,27 @@ mod tests {
     }
 
     #[test]
+    fn test_the_scheme_chooses_the_transport() {
+        for (written, tls, grpc) in [
+            ("http://127.0.0.1:6443", false, false),
+            ("https://127.0.0.1:6443", true, false),
+            ("grpc://127.0.0.1:6443", false, true),
+            ("grpcs://127.0.0.1:6443", true, true),
+        ] {
+            let endpoint = Endpoint::parse(written).expect("a valid endpoint");
+            assert_eq!(
+                (endpoint.is_tls(), endpoint.is_grpc()),
+                (tls, grpc),
+                "{written}"
+            );
+        }
+    }
+
+    #[test]
     fn test_what_is_refused_and_why() {
         for (written, expected) in [
             ("127.0.0.1:6443", "an endpoint is a URL"),
             ("localhost:6443", "an endpoint is a URL"),
-            ("grpc://127.0.0.1:6443", "not a scheme this CLI speaks"),
             // The shape someone writes when they expect the scheme to name a security posture.
             ("tls:127.0.0.1:6443", "an endpoint is a URL"),
             ("mtls://127.0.0.1:6443", "not a scheme this CLI speaks"),

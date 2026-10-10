@@ -163,6 +163,9 @@ fn refusal(parsed: &Value, status: u16) -> Failure {
 
     Failure {
         class: match field("class").as_str() {
+            // A denial at the listener's gate carries a code and no class (TC-1): kept so, as
+            // over gRPC.
+            "" if matches!(status, 401 | 403) && !field("code").is_empty() => String::new(),
             "" => "unavailable".to_owned(),
             class => class.to_owned(),
         },

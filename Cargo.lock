@@ -2344,6 +2344,7 @@ name = "permguard-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "base64 0.23.1",
  "clap",
  "clap_complete",
@@ -2358,12 +2359,15 @@ dependencies = [
  "permguard-objects",
  "permguard-server",
  "permguard-stream",
+ "permguard-transport",
  "rcgen",
  "ring",
  "serde",
  "serde_json",
  "serde_norway",
+ "tokio",
  "toml",
+ "tonic",
 ]
 
 [[package]]

@@ -41,7 +41,7 @@ impl GrpcSink {
         })
     }
 
-    fn client(&self) -> DecisionLogClient<tonic::transport::Channel> {
+    fn client(&self) -> DecisionLogClient<crate::grpc::AuthChannel> {
         DecisionLogClient::new(self.endpoint.channel())
             // A read page carries up to a thousand records plus their proofs:
             // tonic's 4 MiB default is not a number anybody chose for that.

@@ -122,7 +122,7 @@ impl GrpcTemporal {
     fn client(
         &self,
     ) -> proto::temporal_policy_decision_point_client::TemporalPolicyDecisionPointClient<
-        tonic::transport::Channel,
+        crate::grpc::AuthChannel,
     > {
         proto::temporal_policy_decision_point_client::TemporalPolicyDecisionPointClient::new(
             self.0.channel(),

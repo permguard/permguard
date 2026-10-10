@@ -463,6 +463,9 @@ fn tls_of(
         key_file: tls.key.as_ref().map(Into::into),
         server_name: tls.server_name.clone(),
         skip_verify: false,
+        // A shipper or a mirror presents mutual TLS, never an operator's token (TC-1).
+        key_pem: None,
+        token: None,
     }
     .rooted_at(working_dir)
 }

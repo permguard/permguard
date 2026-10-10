@@ -108,6 +108,9 @@ impl Plan {
 #[derive(Debug)]
 pub struct WorkspaceError {
     pub message: String,
+    /// A verification that ran and did not pass, rather than one that could not run (TC-1): the
+    /// command exits 2 instead of 64.
+    pub unverified: bool,
 }
 
 impl std::fmt::Display for WorkspaceError {
@@ -120,13 +123,25 @@ impl std::error::Error for WorkspaceError {}
 
 impl From<String> for WorkspaceError {
     fn from(message: String) -> Self {
-        Self { message }
+        Self {
+            message,
+            unverified: false,
+        }
     }
 }
 
 pub(crate) fn err(message: impl Into<String>) -> WorkspaceError {
     WorkspaceError {
         message: message.into(),
+        unverified: false,
+    }
+}
+
+/// A verification that ran and did not hold (TC-1).
+pub(crate) fn unverified(message: impl Into<String>) -> WorkspaceError {
+    WorkspaceError {
+        message: message.into(),
+        unverified: true,
     }
 }
 

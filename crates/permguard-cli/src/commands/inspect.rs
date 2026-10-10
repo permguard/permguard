@@ -13,7 +13,6 @@ use crate::inspect;
 use crate::session::{open_store, render, resolve_endpoint};
 use crate::trace::{self, Trace};
 use crate::{EXIT_NOT_READY, EXIT_READY, EXIT_UNREACHABLE};
-use permguard_control_client::TlsOptions;
 use permguard_control_client::http::Client;
 
 pub fn inspect_command(
@@ -35,14 +34,19 @@ pub fn inspect_command(
         trace,
     )?;
 
-    let tls = TlsOptions {
-        ca_file: globals.tls_ca_file.clone(),
-        cert_file: globals.tls_cert_file.clone(),
-        key_file: globals.tls_key_file.clone(),
-        server_name: globals.tls_server_name.clone(),
-        skip_verify: globals.tls_skip_verify,
+    let tls = crate::target::tls(globals, &store, trace)?;
+    // gRPC verifies or refuses: skipping verification over grpcs is a usage error, said here
+    // rather than reported as a plane that could not be reached.
+    if tls.skip_verify && (control.is_grpc() || data.is_grpc()) {
+        return Err(Failure::usage(
+            "--tls-skip-verify is not supported over grpcs: trust the CA with --tls-ca-file",
+        ));
     }
-    .rooted_at(&globals.workdir);
+    // A token goes to neither plane unless each is verified TLS (TC-1).
+    for endpoint in [&control, &data] {
+        tls.token_allowed(endpoint.is_tls())
+            .map_err(Failure::usage)?;
+    }
     let needs_tls = control.is_tls() || data.is_tls();
 
     if needs_tls {
@@ -68,9 +72,14 @@ pub fn inspect_command(
         ));
     }
 
-    let client =
-        Client::new(Duration::from_secs(timeout.max(1)), tls, needs_tls).map_err(Failure::usage)?;
-    let report = inspect::inspect(&client, &control, &data, trace);
+    let within = Duration::from_secs(timeout.max(1));
+    let client = Client::new(within, tls.clone(), needs_tls).map_err(Failure::usage)?;
+    let prober = inspect::Prober {
+        client: &client,
+        tls: &tls,
+        timeout: within,
+    };
+    let report = inspect::inspect(&prober, &control, &data, trace);
 
     render(&report, globals.output, trace)?;
 

@@ -43,6 +43,9 @@ impl Source {
                 server_name: input.tls.server_name.clone(),
                 // Never: see `permguard_core::mirrors::MirrorTls`.
                 skip_verify: false,
+                // A shipper or a mirror presents mutual TLS, never an operator's token (TC-1).
+                key_pem: None,
+                token: None,
             }
             .rooted_at(workdir),
             zones: Patterns::compile(&input.zones, "zone")?,

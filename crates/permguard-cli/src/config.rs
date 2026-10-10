@@ -189,6 +189,18 @@ fn validate(setting: &Setting, value: &str) -> Result<(), Error> {
             detail: error.to_string(),
         })?;
     }
+    // A key reference is one of two shapes; anything else is refused when it is written (TC-1).
+    if setting.key == "tls.key_ref"
+        && !matches!(
+            value.split_once(':'),
+            Some(("env" | "file", rest)) if !rest.is_empty()
+        )
+    {
+        return Err(Error::InvalidValue {
+            key: setting.key.to_owned(),
+            detail: "a key reference is env:NAME or file:PATH".to_owned(),
+        });
+    }
 
     Ok(())
 }

@@ -1624,3 +1624,365 @@ fn the_shipped_dogwood_example_passes_its_own_test_plan() {
         "the histories are reset between cases, or this reads the previous case's login"
     );
 }
+
+/// TC-1: a command names exactly one target class, and a flag naming another is a usage error,
+/// never a fallback from one plane or Host to another.
+#[test]
+fn a_command_names_one_target_class_and_never_falls_back() {
+    let dir = scratch("target-class");
+    for (args, flag) in [
+        (
+            vec!["zones", "list", "--data-endpoint", "https://127.0.0.1:1"],
+            "--data-endpoint",
+        ),
+        (
+            vec!["zones", "list", "--host-endpoint", "https://127.0.0.1:1"],
+            "--host-endpoint",
+        ),
+        (
+            vec!["check", "--control-endpoint", "https://127.0.0.1:1"],
+            "--control-endpoint",
+        ),
+        (vec!["decisions", "list", "--volume", "."], "--volume"),
+        (
+            vec!["inspect", "--host-endpoint", "https://127.0.0.1:1"],
+            "--host-endpoint",
+        ),
+        (
+            vec![
+                "host",
+                "identity",
+                "show",
+                "--control-endpoint",
+                "https://127.0.0.1:1",
+            ],
+            "--control-endpoint",
+        ),
+        (
+            vec!["validate", "--data-endpoint", "https://127.0.0.1:1"],
+            "--data-endpoint",
+        ),
+        (
+            vec!["test", "--control-endpoint", "https://127.0.0.1:1"],
+            "--control-endpoint",
+        ),
+    ] {
+        let output = run(&dir, &args);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains(flag),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("never falls back"),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+        assert!(output.stdout.is_empty(), "{args:?}");
+    }
+    // Its own class is accepted: both plane endpoints for the multi-target probe.
+    let output = run(
+        &dir,
+        &[
+            "inspect",
+            "--control-endpoint",
+            "http://127.0.0.1:1",
+            "--data-endpoint",
+            "http://127.0.0.1:1",
+            "--timeout",
+            "1",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{}", stderr(&output));
+}
+
+/// TC-1: the offline host commands take the global `--volume`, wherever it is written, and refuse
+/// without one.
+#[test]
+fn the_offline_host_commands_take_the_global_volume() {
+    let dir = scratch("global-volume");
+    let volume = dir.join("volume");
+    let volume_text = volume.display().to_string();
+    let provision = run(
+        &dir,
+        &[
+            "host",
+            "identity",
+            "provision",
+            "--volume",
+            &volume_text,
+            "-o",
+            "json",
+        ],
+    );
+    assert!(provision.status.success(), "{}", stderr(&provision));
+    let before = run(
+        &dir,
+        &[
+            "--volume",
+            &volume_text,
+            "host",
+            "identity",
+            "show",
+            "-o",
+            "json",
+        ],
+    );
+    assert!(before.status.success(), "{}", stderr(&before));
+    let after = run(
+        &dir,
+        &[
+            "host",
+            "identity",
+            "show",
+            "--volume",
+            &volume_text,
+            "-o",
+            "json",
+        ],
+    );
+    assert_eq!(stdout(&before), stdout(&after));
+    let missing = run(&dir, &["host", "identity", "show"]);
+    assert_eq!(missing.status.code(), Some(64), "{}", stderr(&missing));
+    assert!(
+        stderr(&missing).contains("--volume"),
+        "{}",
+        stderr(&missing)
+    );
+}
+
+/// TC-1: the token file is the operator's alone, and holds one printable word.
+#[test]
+fn the_token_file_is_refused_when_others_can_read_it_or_it_is_empty() {
+    let dir = scratch("token-file");
+    let token = dir.join("token");
+    let refused = |contents: &str, mode: u32| {
+        std::fs::write(&token, contents).expect("written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&token, std::fs::Permissions::from_mode(mode)).expect("chmod");
+        }
+        let _ = mode;
+        let output = run(
+            &dir,
+            &[
+                "zones",
+                "list",
+                "--token-file",
+                &token.display().to_string(),
+                "--control-endpoint",
+                "https://127.0.0.1:1",
+            ],
+        );
+        (output.status.code(), stderr(&output))
+    };
+    #[cfg(unix)]
+    {
+        let (code, why) = refused("op-token-secret-value\n", 0o644);
+        assert_eq!(code, Some(64), "{why}");
+        assert!(why.contains("open to its group or to others"), "{why}");
+        assert!(!why.contains("op-token-secret-value"), "{why}");
+    }
+    let (code, why) = refused("  \n", 0o600);
+    assert_eq!(code, Some(64), "{why}");
+    assert!(why.contains("is empty"), "{why}");
+    let (code, why) = refused("two words\n", 0o600);
+    assert_eq!(code, Some(64), "{why}");
+    assert!(why.contains("one printable word"), "{why}");
+    // A good one reaches the transport: nothing listens, so the target is unavailable.
+    let (code, why) = refused("op-token-secret-value\n", 0o600);
+    assert_eq!(code, Some(69), "{why}");
+    assert!(!why.contains("op-token-secret-value"), "{why}");
+    // A FIFO is not a token file, and opening one would wait for a writer forever: refused
+    // before it is opened.
+    #[cfg(unix)]
+    {
+        let fifo = dir.join("token.fifo");
+        let made = Command::new("mkfifo").arg(&fifo).status();
+        if made.is_ok_and(|status| status.success()) {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&fifo, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+            let output = run(
+                &dir,
+                &[
+                    "zones",
+                    "list",
+                    "--token-file",
+                    &fifo.display().to_string(),
+                    "--control-endpoint",
+                    "https://127.0.0.1:1",
+                ],
+            );
+            assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+            assert!(
+                stderr(&output).contains("not a regular file"),
+                "{}",
+                stderr(&output)
+            );
+        }
+    }
+    // A directory is not a token file.
+    let directory = dir.join("not-a-file");
+    std::fs::create_dir_all(&directory).expect("created");
+    let output = run(
+        &dir,
+        &[
+            "zones",
+            "list",
+            "--token-file",
+            &directory.display().to_string(),
+            "--control-endpoint",
+            "https://127.0.0.1:1",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    // The token goes only over verified TLS (owner decision): in the clear, or with verification
+    // skipped, the command is refused before anything is sent.
+    for (endpoint, skip) in [
+        ("http://127.0.0.1:1", false),
+        ("grpc://127.0.0.1:1", false),
+        ("https://127.0.0.1:1", true),
+    ] {
+        let mut args = vec![
+            "zones",
+            "list",
+            "--token-file",
+            token.to_str().expect("utf-8"),
+            "--control-endpoint",
+            endpoint,
+        ];
+        if skip {
+            args.push("--tls-skip-verify");
+        }
+        let output = run(&dir, &args);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{endpoint}: {}",
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("only over verified TLS"),
+            "{endpoint}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+/// TC-1: the client key may be a reference in the configuration, `env:NAME` or `file:PATH`, never
+/// both a reference and a file, and never anything else.
+#[test]
+fn a_key_reference_names_a_variable_or_a_file() {
+    let dir = scratch("key-ref");
+    let with = |reference: &str, extra: &[(&str, &str)]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_permguard"));
+        command
+            .arg("-w")
+            .arg(&dir)
+            .args([
+                "zones",
+                "list",
+                "--control-endpoint",
+                "https://127.0.0.1:1",
+                "--tls-cert-file",
+                "cert.pem",
+            ])
+            .env("PERMGUARD_CONFIG", dir.join("cli-config.yml"))
+            .env("PERMGUARD_TLS_KEY_REF", reference)
+            .env("NO_COLOR", "1");
+        for (name, value) in extra {
+            command.env(name, value);
+        }
+        let output = command.output().expect("the binary runs");
+        (output.status.code(), stderr(&output))
+    };
+    let (code, why) = with("vault:secret/key", &[]);
+    assert_eq!(code, Some(64), "{why}");
+    assert!(why.contains("env:NAME or file:PATH"), "{why}");
+    let (code, why) = with("env:PERMGUARD_TEST_KEY_THAT_IS_UNSET", &[]);
+    assert_eq!(code, Some(64), "{why}");
+    assert!(why.contains("not set"), "{why}");
+    // The flag (or its variable) is the most specific statement: it wins over a reference.
+    let (code, why) = with("file:key.pem", &[("PERMGUARD_TLS_KEY_FILE", "other.pem")]);
+    assert_ne!(code, Some(0), "{why}");
+    assert!(
+        why.contains("other.pem"),
+        "the flag's file is the one read: {why}"
+    );
+    // Both in the configuration file is a mistake, not a precedence.
+    std::fs::write(
+        dir.join("cli-config.yml"),
+        "tls:\n  keyFile: a.pem\n  keyRef: file:b.pem\n",
+    )
+    .expect("written");
+    let output = run(
+        &dir,
+        &["zones", "list", "--control-endpoint", "https://127.0.0.1:1"],
+    );
+    assert_eq!(output.status.code(), Some(64), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("named twice in the configuration"),
+        "{}",
+        stderr(&output)
+    );
+    std::fs::remove_file(dir.join("cli-config.yml")).expect("removed");
+    // A variable holding something that is not a key: refused as TLS material, its contents
+    // never printed.
+    let (code, why) = with(
+        "env:PERMGUARD_TEST_KEY_VALUE",
+        &[("PERMGUARD_TEST_KEY_VALUE", "not-a-key-but-secret")],
+    );
+    assert_ne!(code, Some(0), "{why}");
+    assert!(why.contains("not a PEM private key"), "{why}");
+    assert!(!why.contains("not-a-key-but-secret"), "{why}");
+}
+
+/// TC-1: a verification that ran and did not pass exits 2, with its stable code.
+#[test]
+fn a_failed_verification_exits_two() {
+    let dir = scratch("verification-two");
+    std::fs::write(
+        dir.join("producer-keys.json"),
+        r#"{"keys":[{"kid":"unused","kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","alg":"EdDSA","use":"sig"}]}"#,
+    )
+    .expect("the key set writes");
+    // One record and no inclusion path: the export cannot account for it.
+    std::fs::write(
+        dir.join("events.json"),
+        r#"{
+          "format":"permguard.events.export.v1alpha1",
+          "scope_binding":{"kind":"tenant","zone":"acme","ledger":"main"},
+          "summary":{"scope":"acme/main","events":[],"next":"end","high_watermark":"end",
+            "more":false,"coverage":{"contiguous":false,"examined":1,"scan_bounded":false}},
+          "records":[{"kind":"request","seq":1,"id":"e-1","at":"2026-01-01T00:00:00Z"}],
+          "envelopes":[],"inclusion":[]
+        }"#,
+    )
+    .expect("the archive writes");
+    let output = run(
+        &dir,
+        &[
+            "events",
+            "verify",
+            "--file",
+            "events.json",
+            "--keys",
+            "producer-keys.json",
+            "-o",
+            "json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("events_unverified"),
+        "{}",
+        stderr(&output)
+    );
+}

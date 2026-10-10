@@ -469,12 +469,17 @@ impl Workspace<'_> {
             &r#ref,
             checkpoint.as_ref(),
         )
-        .map_err(err)?;
+        .map_err(super::unverified)?;
         let local_closure_objects = match checkpoint {
             Some(checkpoint) => {
                 let head =
                     Digest::parse(&checkpoint.head).map_err(|_| err("corrupt checkpoint"))?;
-                Some(walk_local(self.store, &head)?.len())
+                // A local closure that does not hash to what the checkpoint says did not pass.
+                Some(
+                    walk_local(self.store, &head)
+                        .map_err(|error| super::unverified(error.message))?
+                        .len(),
+                )
             }
             None => None,
         };

@@ -140,15 +140,272 @@ pub fn resolve(
     })
 }
 
-/// The TLS material the globals carry, resolved against the working
-/// directory — the same material every other command presents.
-pub fn tls(globals: &Globals) -> TlsOptions {
-    TlsOptions {
-        ca_file: globals.tls_ca_file.clone(),
-        cert_file: globals.tls_cert_file.clone(),
-        key_file: globals.tls_key_file.clone(),
-        server_name: globals.tls_server_name.clone(),
+/// The operator's material for every network command (TC-1): the TLS paths a flag states, or
+/// the configuration; the key by `tls.key_ref` (`env:NAME` or `file:PATH`) instead of a file; and
+/// the bearer token from `--token-file` or `auth.token_file`. A relative path from a flag or the
+/// environment is resolved against the working directory, one from the configuration file
+/// against that file's directory (owner decision of 2026-10-10), so no file planted where a
+/// command runs becomes a trust anchor. Nothing secret is ever traced: `-v` names the files,
+/// never what they hold.
+pub fn tls(globals: &Globals, store: &Store, trace: &Trace) -> Result<TlsOptions, Failure> {
+    let path = |flag: &Option<std::path::PathBuf>, key: &str| -> Option<std::path::PathBuf> {
+        match flag {
+            Some(flag) => Some(rooted_at(&globals.workdir, flag)),
+            None => configured(key, store, globals),
+        }
+    };
+    let mut options = TlsOptions {
+        ca_file: path(&globals.tls_ca_file, "tls.ca_file"),
+        cert_file: path(&globals.tls_cert_file, "tls.cert_file"),
+        key_file: None,
+        server_name: globals
+            .tls_server_name
+            .clone()
+            .or_else(|| setting_value("tls.server_name", store).map(|(value, _)| value)),
         skip_verify: globals.tls_skip_verify,
+        key_pem: None,
+        token: None,
+    };
+    // The client key, the most specific statement winning: a flag (or its variable), then a
+    // reference in the environment, then the configuration file, where naming it twice is a
+    // mistake rather than a precedence.
+    let key_file = setting_value("tls.key_file", store);
+    let key_ref = setting_value("tls.key_ref", store);
+    if let Some(flag) = &globals.tls_key_file {
+        options.key_file = Some(rooted_at(&globals.workdir, flag));
+    } else {
+        match (key_ref, key_file) {
+            (
+                Some((_, crate::settings::Origin::File)),
+                Some((_, crate::settings::Origin::File)),
+            ) => {
+                return Err(Failure::usage(
+                    "the client key is named twice in the configuration, by `tls.key_file` and \
+                     by `tls.key_ref`: keep one",
+                ));
+            }
+            (Some((reference, origin)), _) => {
+                key_by_reference(&mut options, &reference, origin, store, globals, trace)?;
+            }
+            (None, Some(_)) => options.key_file = configured("tls.key_file", store, globals),
+            (None, None) => {}
+        }
     }
-    .rooted_at(&globals.workdir)
+    let token_file = match &globals.token_file {
+        Some(flag) => Some(rooted_at(&globals.workdir, flag)),
+        None => configured("auth.token_file", store, globals),
+    };
+    if let Some(named) = token_file {
+        trace.say(format!("bearer token: {}", named.display()));
+        options.token = Some(read_token(&named)?);
+    }
+    Ok(options)
+}
+
+/// The key a `tls.key_ref` names: a variable's PEM, or a file resolved as its origin resolves.
+fn key_by_reference(
+    options: &mut TlsOptions,
+    reference: &str,
+    origin: crate::settings::Origin,
+    store: &Store,
+    globals: &Globals,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    match reference.split_once(':') {
+        Some(("env", name)) if !name.is_empty() => {
+            trace.say(format!("client key: the variable {name} [tls.key_ref]"));
+            let pem = std::env::var_os(name).ok_or_else(|| {
+                Failure::usage(format!(
+                    "`tls.key_ref` names the variable {name}, which is not set"
+                ))
+            })?;
+            let pem = pem.into_string().map_err(|_| {
+                Failure::usage(format!(
+                    "`tls.key_ref` names the variable {name}, which does not hold text"
+                ))
+            })?;
+            if pem.trim().is_empty() {
+                return Err(Failure::usage(format!(
+                    "`tls.key_ref` names the variable {name}, which is empty"
+                )));
+            }
+            options.key_pem = Some(permguard_control_client::tls::Credential::new(pem));
+        }
+        Some(("file", named)) if !named.is_empty() => {
+            trace.say(format!("client key: {named} [tls.key_ref]"));
+            let named = std::path::Path::new(named);
+            options.key_file = Some(match origin {
+                crate::settings::Origin::File => rooted_at(&config_dir(store), named),
+                _ => rooted_at(&globals.workdir, named),
+            });
+        }
+        _ => {
+            return Err(Failure::usage(
+                "`tls.key_ref` is a reference: env:NAME or file:PATH",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A setting the environment or the file states, with where it came from; never a compiled
+/// default, none of these having one.
+fn setting_value(key: &str, store: &Store) -> Option<(String, crate::settings::Origin)> {
+    let setting = crate::settings::setting(key)?;
+    let resolved =
+        crate::settings::resolve(setting, store.file(), None, &crate::settings::environment);
+    (!resolved.value.trim().is_empty()).then_some((resolved.value, resolved.origin))
+}
+
+/// A path setting, resolved as its origin says: the configuration file's directory for the file,
+/// the working directory for the environment.
+fn configured(key: &str, store: &Store, globals: &Globals) -> Option<std::path::PathBuf> {
+    let (value, origin) = setting_value(key, store)?;
+    let named = std::path::Path::new(&value);
+    Some(match origin {
+        crate::settings::Origin::File => rooted_at(&config_dir(store), named),
+        _ => rooted_at(&globals.workdir, named),
+    })
+}
+
+/// The directory of the configuration file.
+fn config_dir(store: &Store) -> std::path::PathBuf {
+    store
+        .path()
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default()
+}
+
+/// `path` as is when absolute, below `base` otherwise.
+fn rooted_at(base: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    }
+}
+
+/// The most a token file may hold: a token is a line, not a document.
+const TOKEN_FILE_MAX: u64 = 64 * 1024;
+
+/// Reads the bearer token from `path`: refused when it is not a regular file, when others than
+/// its owner may read it, when it is empty or larger than a token, or when it is not one printable
+/// word (TC-1, owner decision of 2026-10-10). The path is checked before it is opened, so a FIFO
+/// never blocks the command, and the handle is checked to be that same file.
+pub fn read_token(
+    path: &std::path::Path,
+) -> Result<permguard_control_client::tls::Credential, Failure> {
+    use std::io::Read as _;
+
+    let refused = |why: &str| Failure::usage(format!("the token file {}: {why}", path.display()));
+    // A regular file before it is opened: opening a FIFO would wait for a writer forever.
+    let named =
+        std::fs::metadata(path).map_err(|error| refused(&format!("cannot be read: {error}")))?;
+    if !named.is_file() {
+        return Err(refused("is not a regular file"));
+    }
+    let file =
+        std::fs::File::open(path).map_err(|error| refused(&format!("cannot be read: {error}")))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| refused(&format!("cannot be read: {error}")))?;
+    // And the file opened is the file checked: a path swapped between the two is refused.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if (named.dev(), named.ino()) != (metadata.dev(), metadata.ino()) {
+            return Err(refused("changed while it was being read"));
+        }
+    }
+    if !metadata.is_file() {
+        return Err(refused("is not a regular file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return Err(refused(
+                "is open to its group or to others: restrict it to its owner (chmod 600)",
+            ));
+        }
+    }
+    let mut text = String::new();
+    file.take(TOKEN_FILE_MAX + 1)
+        .read_to_string(&mut text)
+        .map_err(|error| refused(&format!("cannot be read: {error}")))?;
+    if text.len() as u64 > TOKEN_FILE_MAX {
+        return Err(refused("is larger than any token"));
+    }
+    let token = text.trim();
+    if token.is_empty() {
+        return Err(refused("is empty"));
+    }
+    if !token.bytes().all(|byte| (0x21..0x7f).contains(&byte)) {
+        return Err(refused("does not hold one printable word"));
+    }
+    Ok(permguard_control_client::tls::Credential::new(
+        token.as_bytes().to_vec(),
+    ))
+}
+
+/// The one target class a command reaches (TC-1): a command names exactly one, and a flag naming
+/// another is a usage error, never a fallback from one plane or Host to another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Class {
+    /// The workspace and nothing else.
+    Local,
+    /// The Control Plane public API.
+    Control,
+    /// The Data Plane public API.
+    Data,
+    /// The Host listener.
+    Host,
+    /// A Server Host's volume, offline.
+    Volume,
+    /// Both plane endpoints: a multi-target probe such as `inspect`.
+    Planes,
+}
+
+impl Class {
+    fn reaches(self) -> &'static str {
+        match self {
+            Self::Local => "the workspace alone",
+            Self::Control => "the control plane",
+            Self::Data => "the data plane",
+            Self::Host => "the Host listener",
+            Self::Volume => "a Server Host's volume",
+            Self::Planes => "both planes",
+        }
+    }
+}
+
+/// Refuses a flag that names a target `class` does not reach.
+pub fn check_class(command: &str, class: Class, globals: &Globals) -> Result<(), Failure> {
+    let named = [
+        (
+            "--control-endpoint",
+            globals.control_endpoint.is_some(),
+            matches!(class, Class::Control | Class::Planes),
+        ),
+        (
+            "--data-endpoint",
+            globals.data_endpoint.is_some(),
+            matches!(class, Class::Data | Class::Planes),
+        ),
+        (
+            "--host-endpoint",
+            globals.host_endpoint.is_some(),
+            class == Class::Host,
+        ),
+        ("--volume", globals.volume.is_some(), class == Class::Volume),
+    ];
+    match named.iter().find(|(_, given, allowed)| *given && !allowed) {
+        Some((flag, _, _)) => Err(Failure::usage(format!(
+            "`{command}` reaches {}; {flag} names another target, and a command never falls \
+             back from one to another",
+            class.reaches()
+        ))),
+        None => Ok(()),
+    }
 }

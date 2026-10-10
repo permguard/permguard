@@ -519,3 +519,93 @@ fn skip_verify_over_grpcs_is_refused_with_the_alternative() {
     };
     assert!(error.contains("--tls-ca-file"), "{error}");
 }
+
+/// TC-1: a push over `grpcs` presents the operator's token on every call, over TLS, through the
+/// one interceptor the channel carries.
+#[test]
+fn a_push_over_grpcs_carries_the_operators_token() {
+    let mut params = rcgen::CertificateParams::new(Vec::new()).expect("parameters");
+    params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    let authority_key = rcgen::KeyPair::generate().expect("a key");
+    let authority = params.self_signed(&authority_key).expect("self-signed");
+    let issuer = rcgen::Issuer::from_params(&params, &authority_key);
+    let server = rcgen::CertificateParams::new(vec!["localhost".to_owned()]).expect("parameters");
+    let server_key = rcgen::KeyPair::generate().expect("a key");
+    let signed = server.signed_by(&server_key, &issuer).expect("signed");
+    let dir = std::env::temp_dir().join(format!("permguard-grpcs-token-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("created");
+    let ca = dir.join("ca.pem");
+    std::fs::write(&ca, authority.pem()).expect("written");
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port is free");
+    let address = listener.local_addr().expect("the address is known");
+    listener.set_nonblocking(true).expect("non-blocking");
+    let seen: std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>> = std::sync::Arc::default();
+    let recorder = std::sync::Arc::clone(&seen);
+    let identity = tonic::transport::Identity::from_pem(signed.pem(), server_key.serialize_pem());
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("the server runtime starts");
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).expect("tokio adopts it");
+            let record = move |request: Request<()>| {
+                recorder.lock().expect("recorded").push(
+                    request
+                        .metadata()
+                        .get("authorization")
+                        .and_then(|value| value.to_str().ok())
+                        .map(ToOwned::to_owned),
+                );
+                Ok(request)
+            };
+            let _ = tonic::transport::Server::builder()
+                .tls_config(tonic::transport::ServerTlsConfig::new().identity(identity))
+                .expect("the server's TLS")
+                .add_service(GitLikeStoreServer::with_interceptor(
+                    FakePlane::default(),
+                    record,
+                ))
+                .serve_with_incoming(tokio_stream_of(listener))
+                .await;
+        });
+    });
+
+    let remote = grpc::GrpcRemote::connect(
+        &format!("grpcs://localhost:{}", address.port()),
+        &TlsOptions {
+            ca_file: Some(ca),
+            token: Some(permguard_control_client::tls::Credential::new(
+                b"op-token-123".to_vec(),
+            )),
+            ..TlsOptions::default()
+        },
+        Box::new(Silent),
+    )
+    .expect("connects lazily");
+    remote.bind("z", "l");
+    let digest = Digest::compute(b"1");
+    remote
+        .negotiate_push(&NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: digest.clone(),
+            expected_old: None,
+            closure: vec![ObjectClaim { digest, size: 3 }],
+        })
+        .expect("the negotiation answers over TLS");
+    remote
+        .upload(&UploadObjectsRequest {
+            objects: vec![b"abc".to_vec()],
+            compression: None,
+        })
+        .expect("the upload lands");
+    let seen = seen.lock().expect("recorded");
+    assert!(seen.len() >= 2, "{seen:?}");
+    assert!(
+        seen.iter()
+            .all(|value| value.as_deref() == Some("Bearer op-token-123")),
+        "{seen:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -54,6 +54,12 @@
       "kind": "local",
       "class": "unavailable"
     },
+    "client.DECISIONS_UNVERIFIED": {
+      "code": "decisions_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
     "client.DECODE_FAILED": {
       "code": "decode_failed",
       "contract": "5-command-line/1-command-line.md",
@@ -68,6 +74,12 @@
     },
     "client.EVENTS_UNVERIFIED": {
       "code": "events_unverified",
+      "contract": "5-command-line/1-command-line.md",
+      "kind": "local",
+      "class": "validation"
+    },
+    "client.HEAD_UNVERIFIED": {
+      "code": "head_unverified",
       "contract": "5-command-line/1-command-line.md",
       "kind": "local",
       "class": "validation"

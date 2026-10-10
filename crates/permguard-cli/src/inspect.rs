@@ -109,16 +109,23 @@ pub struct InspectReport {
     pub planes: Vec<PlaneInspection>,
 }
 
+/// How a probe reaches a plane: the HTTP client, and what a gRPC endpoint needs (TC-1).
+pub struct Prober<'a> {
+    pub client: &'a Client,
+    pub tls: &'a permguard_control_client::TlsOptions,
+    pub timeout: std::time::Duration,
+}
+
 /// Probes every plane and reports what each one is.
 pub fn inspect(
-    client: &Client,
+    prober: &Prober<'_>,
     control_endpoint: &Endpoint,
     data_endpoint: &Endpoint,
     trace: &Trace,
 ) -> InspectReport {
     let planes = vec![
-        probe(client, "control", control_endpoint, trace),
-        probe(client, "data", data_endpoint, trace),
+        probe(prober, "control", control_endpoint, trace),
+        probe(prober, "data", data_endpoint, trace),
     ];
     let reachable = planes
         .iter()
@@ -140,7 +147,7 @@ pub fn inspect(
 
 /// Asks one endpoint what it is and how it is, and turns whatever happens into a line of the report.
 fn probe(
-    client: &Client,
+    prober: &Prober<'_>,
     plane: &'static str,
     endpoint: &Endpoint,
     trace: &Trace,
@@ -151,7 +158,11 @@ fn probe(
     ));
 
     let started = Instant::now();
-    let outcome = read_plane(client, endpoint, trace);
+    let outcome = if endpoint.is_grpc() {
+        read_plane_grpc(prober, plane, endpoint, trace)
+    } else {
+        read_plane(prober.client, endpoint, trace)
+    };
     let latency_ms = elapsed_ms(started);
 
     match outcome {
@@ -287,6 +298,58 @@ fn read_plane(
     };
 
     Ok(PlaneAnswer { info, health })
+}
+
+/// The same two questions over gRPC: `GetInfo`, then `GetHealth` (TC-1).
+fn read_plane_grpc(
+    prober: &Prober<'_>,
+    plane: &'static str,
+    endpoint: &Endpoint,
+    trace: &Trace,
+) -> Result<PlaneAnswer, Unreachable> {
+    trace.say(format!("GetInfo {endpoint}"));
+    let channel = permguard_control_client::grpc::GrpcChannel::connect(
+        &endpoint.to_string(),
+        prober.tls,
+        Box::new(permguard_control_client::narrate::Silent),
+    )
+    .map_err(|detail| Unreachable {
+        reason: permguard_core::codes::client::CONNECT_FAILED,
+        detail,
+    })?;
+    let service = if plane == "data" {
+        permguard_control_client::grpc::Plane::Data
+    } else {
+        permguard_control_client::grpc::Plane::Control
+    };
+    let (info, health) = channel
+        .probe(service, prober.timeout)
+        .map_err(|status| Unreachable {
+            reason: permguard_control_client::grpc::reason_of(&status),
+            detail: format!("`{endpoint}` did not answer GetInfo: {}", status.message()),
+        })?;
+    let health = match health {
+        Ok(body) => HealthAnswer::Known {
+            live: body.live,
+            ready: body.ready,
+        },
+        Err(status) => HealthAnswer::Unknown {
+            reason: permguard_core::codes::client::HEALTH_UNREADABLE,
+            detail: format!(
+                "`{endpoint}` did not answer GetHealth: {}",
+                status.message()
+            ),
+        },
+    };
+    Ok(PlaneAnswer {
+        info: PlaneInfo {
+            plane: info.plane,
+            product: info.product,
+            version: info.version,
+            commit: info.commit,
+        },
+        health,
+    })
 }
 
 /// A request that did not produce a body this CLI could read.

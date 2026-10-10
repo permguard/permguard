@@ -31,6 +31,40 @@ use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
 
+/// A secret the client carries: a bearer token, or a private key read through a reference
+/// (TC-1). It never prints itself: `Debug` and `Display` render [`Credential::MASK`], the same
+/// width whatever the secret's length, so neither a report nor `-v` nor an error says how long it
+/// is.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Credential(Arc<[u8]>);
+
+impl Credential {
+    /// What a masked secret prints as: fixed width.
+    pub const MASK: &'static str = "********";
+
+    /// Holds `bytes`.
+    pub fn new(bytes: impl Into<Vec<u8>>) -> Self {
+        Self(Arc::from(bytes.into()))
+    }
+
+    /// The secret itself, for the one place that sends or parses it.
+    pub fn expose(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Credential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::MASK)
+    }
+}
+
+impl fmt::Display for Credential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::MASK)
+    }
+}
+
 /// What the operator supplied for reaching TLS endpoints.
 #[derive(Clone, Debug, Default)]
 pub struct TlsOptions {
@@ -44,6 +78,10 @@ pub struct TlsOptions {
     pub server_name: Option<String>,
     /// Whether to accept any certificate at all.
     pub skip_verify: bool,
+    /// The key, read through a `SecretRef` instead of `key_file` (TC-1).
+    pub key_pem: Option<Credential>,
+    /// The operator's bearer token, sent on every request over either transport (TC-1).
+    pub token: Option<Credential>,
 }
 
 impl TlsOptions {
@@ -63,7 +101,7 @@ impl TlsOptions {
 
     /// Whether the operator supplied a client identity.
     pub fn is_mutual(&self) -> bool {
-        self.cert_file.is_some() || self.key_file.is_some()
+        self.cert_file.is_some() || self.key_file.is_some() || self.key_pem.is_some()
     }
 
     /// The name an endpoint's certificate is checked against.
@@ -91,9 +129,10 @@ impl TlsOptions {
             builder.with_root_certificates(self.roots()?)
         };
 
-        let config = match (self.cert_file.as_deref(), self.key_file.as_deref()) {
+        let key = self.key()?;
+        let config = match (self.cert_file.as_deref(), key) {
             (Some(certificate), Some(key)) => builder
-                .with_client_auth_cert(load_certificates(certificate)?, load_key(key)?)
+                .with_client_auth_cert(load_certificates(certificate)?, key)
                 .map_err(|error| Error::ClientAuth {
                     detail: error.to_string(),
                 })?,
@@ -109,6 +148,72 @@ impl TlsOptions {
         };
 
         Ok(Arc::new(config))
+    }
+
+    /// The client key: the one a reference resolved, or the one in `key_file`.
+    fn key(&self) -> Result<Option<PrivateKeyDer<'static>>, Error> {
+        if let Some(pem) = &self.key_pem {
+            return PrivateKeyDer::from_pem_slice(pem.expose())
+                .map(Some)
+                .map_err(|_| Error::Config {
+                    detail: "the key the reference names is not a PEM private key".to_owned(),
+                });
+        }
+        self.key_file.as_deref().map(load_key).transpose()
+    }
+
+    /// The client key's PEM, for a transport that takes bytes: the reference's or `key_file`'s.
+    pub fn key_pem_bytes(&self) -> Result<Option<Vec<u8>>, String> {
+        if let Some(pem) = &self.key_pem {
+            return Ok(Some(pem.expose().to_vec()));
+        }
+        self.key_file
+            .as_deref()
+            .map(|path| {
+                std::fs::read(path).map_err(|error| format!("reading {}: {error}", path.display()))
+            })
+            .transpose()
+    }
+
+    /// Refuses to carry the token to an endpoint that is not verified TLS (TC-1, owner decision of
+    /// 2026-10-10): in the clear it could be read on the way, and with verification skipped it
+    /// could be handed to whoever answered. A loopback is no exception.
+    pub fn token_allowed(&self, tls: bool) -> Result<(), String> {
+        if self.token.is_none() {
+            return Ok(());
+        }
+        if !tls {
+            return Err(
+                "a bearer token is sent only over verified TLS: this endpoint is in the clear; \
+                 use https:// or grpcs://, or drop --token-file"
+                    .to_owned(),
+            );
+        }
+        if self.skip_verify {
+            return Err(
+                "a bearer token is sent only over verified TLS: --tls-skip-verify would hand it \
+                 to whoever answered; trust the authority with --tls-ca-file instead"
+                    .to_owned(),
+            );
+        }
+        Ok(())
+    }
+
+    /// The `Authorization` value the token makes, when there is one: refused when the token could
+    /// break out of a header (a control character), which no token issued for this does.
+    pub fn bearer(&self) -> Result<Option<String>, String> {
+        let Some(token) = &self.token else {
+            return Ok(None);
+        };
+        let text = std::str::from_utf8(token.expose())
+            .ok()
+            .filter(|text| {
+                !text.is_empty() && text.bytes().all(|byte| (0x21..0x7f).contains(&byte))
+            })
+            .ok_or_else(|| {
+                "the token is not one printable word: it cannot travel in a header".to_owned()
+            })?;
+        Ok(Some(format!("Bearer {text}")))
     }
 
     /// The trust anchors an endpoint's certificate is checked against.
@@ -302,6 +407,39 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    #[test]
+    fn a_credential_never_prints_itself() {
+        let short = Credential::new(b"ab".to_vec());
+        let long = Credential::new(vec![b'x'; 300]);
+        for credential in [&short, &long] {
+            assert_eq!(format!("{credential}"), Credential::MASK);
+            assert_eq!(format!("{credential:?}"), Credential::MASK);
+        }
+        let options = TlsOptions {
+            token: Some(Credential::new(b"op-token-value".to_vec())),
+            key_pem: Some(Credential::new(b"-----BEGIN PRIVATE KEY-----".to_vec())),
+            ..TlsOptions::default()
+        };
+        let printed = format!("{options:?}");
+        assert!(!printed.contains("op-token-value"), "{printed}");
+        assert!(!printed.contains("PRIVATE KEY"), "{printed}");
+        assert_eq!(
+            options.bearer().expect("one word").as_deref(),
+            Some("Bearer op-token-value")
+        );
+        for broken in [
+            b"two words".to_vec(),
+            b"line\r\nInjected: yes".to_vec(),
+            Vec::new(),
+        ] {
+            let options = TlsOptions {
+                token: Some(Credential::new(broken)),
+                ..TlsOptions::default()
+            };
+            assert!(options.bearer().is_err());
+        }
+    }
 
     fn scratch() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

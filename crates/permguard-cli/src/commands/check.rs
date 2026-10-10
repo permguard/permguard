@@ -84,7 +84,7 @@ pub fn check(globals: &Globals, args: &CheckArgs) -> Result<ExitCode, Failure> {
 
     let client = pdp::client(
         &target.endpoint,
-        &target::tls(globals),
+        &target::tls(globals, &store, &trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;
@@ -256,6 +256,9 @@ mod tests {
             config: None,
             control_endpoint: None,
             data_endpoint: None,
+            host_endpoint: None,
+            volume: None,
+            token_file: None,
             tls_ca_file: None,
             tls_cert_file: None,
             tls_key_file: None,

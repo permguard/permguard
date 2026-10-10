@@ -111,6 +111,64 @@ pub const SETTINGS: &[Setting] = &[
         read: |file| file.data_plane.endpoint.as_deref(),
         write: |file, value| file.data_plane.endpoint = value,
     },
+    // TC-1: the Host listener, and the operator's material. None of these has a compiled
+    // default: an unset one is absent, never a guess.
+    Setting {
+        key: "host.endpoint",
+        description: "Where the Host listener is reached",
+        env: "PERMGUARD_HOST_ENDPOINT",
+        default: "",
+        read: |file| file.host.endpoint.as_deref(),
+        write: |file, value| file.host.endpoint = value,
+    },
+    Setting {
+        key: "tls.ca_file",
+        description: "The authority an endpoint's certificate is checked against (PEM)",
+        env: "PERMGUARD_TLS_CA_FILE",
+        default: "",
+        read: |file| file.tls.ca_file.as_deref(),
+        write: |file, value| file.tls.ca_file = value,
+    },
+    Setting {
+        key: "tls.cert_file",
+        description: "The operator's client certificate, for mutual TLS (PEM)",
+        env: "PERMGUARD_TLS_CERT_FILE",
+        default: "",
+        read: |file| file.tls.cert_file.as_deref(),
+        write: |file, value| file.tls.cert_file = value,
+    },
+    Setting {
+        key: "tls.key_file",
+        description: "The private key of that certificate (PEM)",
+        env: "PERMGUARD_TLS_KEY_FILE",
+        default: "",
+        read: |file| file.tls.key_file.as_deref(),
+        write: |file, value| file.tls.key_file = value,
+    },
+    Setting {
+        key: "tls.key_ref",
+        description: "The private key by reference instead of a file: env:NAME or file:PATH",
+        env: "PERMGUARD_TLS_KEY_REF",
+        default: "",
+        read: |file| file.tls.key_ref.as_deref(),
+        write: |file, value| file.tls.key_ref = value,
+    },
+    Setting {
+        key: "tls.server_name",
+        description: "The name an endpoint's certificate is checked against, when not its host",
+        env: "PERMGUARD_TLS_SERVER_NAME",
+        default: "",
+        read: |file| file.tls.server_name.as_deref(),
+        write: |file, value| file.tls.server_name = value,
+    },
+    Setting {
+        key: "auth.token_file",
+        description: "A file holding the operator's bearer token, readable by its owner only",
+        env: "PERMGUARD_TOKEN_FILE",
+        default: "",
+        read: |file| file.auth.token_file.as_deref(),
+        write: |file, value| file.auth.token_file = value,
+    },
 ];
 
 /// Returns the setting a key names.
@@ -188,6 +246,52 @@ pub struct ConfigFile {
     control_plane: Section,
     #[serde(skip_serializing_if = "Section::is_empty")]
     data_plane: Section,
+    #[serde(skip_serializing_if = "Section::is_empty")]
+    host: Section,
+    #[serde(skip_serializing_if = "TlsSection::is_empty")]
+    tls: TlsSection,
+    #[serde(skip_serializing_if = "AuthSection::is_empty")]
+    auth: AuthSection,
+}
+
+/// The operator's TLS material, by path or, for the key, by reference (TC-1).
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+struct TlsSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ca_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cert_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server_name: Option<String>,
+}
+
+impl TlsSection {
+    fn is_empty(&self) -> bool {
+        self.ca_file.is_none()
+            && self.cert_file.is_none()
+            && self.key_file.is_none()
+            && self.key_ref.is_none()
+            && self.server_name.is_none()
+    }
+}
+
+/// How the operator authenticates beyond TLS (TC-1): a token, by file, never inline.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+struct AuthSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token_file: Option<String>,
+}
+
+impl AuthSection {
+    fn is_empty(&self) -> bool {
+        self.token_file.is_none()
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

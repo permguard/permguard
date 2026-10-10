@@ -145,6 +145,10 @@ pub struct Client {
     tls: TlsOptions,
     /// Built once, because reading the material and parsing it is per-process work, not per-request.
     config: Option<Arc<ClientConfig>>,
+    /// The `Authorization` header line the operator's token makes, when there is one (TC-1).
+    /// The one copy outside a `Credential`: `Client` is not `Debug`, and must not become so
+    /// without masking this.
+    authorization: String,
     /// Told once per JSON exchange. Silent unless a caller asks — the CLI's
     /// `-v` — so every surface riding this client narrates the same way
     /// instead of each command growing (or forgetting) its own.
@@ -157,6 +161,9 @@ impl Client {
     /// Material is read eagerly, before any request: a missing certificate file is a mistake in what
     /// the operator typed, and reporting it as one failed endpoint among several would bury it.
     pub fn new(timeout: Duration, tls: TlsOptions, needs_tls: bool) -> Result<Self, Error> {
+        tls.token_allowed(needs_tls).map_err(|detail| Error::Tls {
+            source: crate::tls::Error::Config { detail },
+        })?;
         let config = if needs_tls {
             Some(
                 tls.client_config()
@@ -166,10 +173,19 @@ impl Client {
             None
         };
 
+        let authorization = tls
+            .bearer()
+            .map_err(|detail| Error::Tls {
+                source: crate::tls::Error::Config { detail },
+            })?
+            .map(|value| format!("Authorization: {value}\r\n"))
+            .unwrap_or_default();
+
         Ok(Self {
             timeout,
             tls,
             config,
+            authorization,
             narrator: Box::new(crate::narrate::Silent),
         })
     }
@@ -218,6 +234,12 @@ impl Client {
         path: &str,
         body: Option<&str>,
     ) -> Result<Response, Error> {
+        // One client may serve several endpoints (`inspect`): the token goes to none in the clear.
+        self.tls
+            .token_allowed(endpoint.is_tls())
+            .map_err(|detail| Error::Tls {
+                source: crate::tls::Error::Config { detail },
+            })?;
         let address = endpoint.authority();
         let tcp = connect(&address, self.timeout)?;
 
@@ -229,13 +251,15 @@ impl Client {
         let mut stream = self.wrap(endpoint, &address, tcp)?;
         let request = match body {
             Some(body) => format!(
-                "{method} {path} HTTP/1.1\r\nHost: {}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\n{}Accept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 endpoint.host_header(),
+                self.authorization,
                 body.len()
             ),
             None => format!(
-                "{method} {path} HTTP/1.1\r\nHost: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
-                endpoint.host_header()
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\n{}Accept: application/json\r\nConnection: close\r\n\r\n",
+                endpoint.host_header(),
+                self.authorization
             ),
         };
 
@@ -286,6 +310,12 @@ impl Client {
         content_type: &str,
         body: Option<&[u8]>,
     ) -> Result<RawResponse, Error> {
+        // One client may serve several endpoints (`inspect`): the token goes to none in the clear.
+        self.tls
+            .token_allowed(endpoint.is_tls())
+            .map_err(|detail| Error::Tls {
+                source: crate::tls::Error::Config { detail },
+            })?;
         let address = endpoint.authority();
         let tcp = connect(&address, self.timeout)?;
         tcp.set_write_timeout(Some(self.timeout))
@@ -296,13 +326,15 @@ impl Client {
         let mut stream = self.wrap(endpoint, &address, tcp)?;
         let head = match body {
             Some(body) => format!(
-                "{method} {path} HTTP/1.1\r\nHost: {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\n{}Content-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 endpoint.host_header(),
+                self.authorization,
                 body.len()
             ),
             None => format!(
-                "{method} {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-                endpoint.host_header()
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\n{}Connection: close\r\n\r\n",
+                endpoint.host_header(),
+                self.authorization
             ),
         };
         stream

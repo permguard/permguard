@@ -133,6 +133,16 @@ pub struct Verified {
     pub signatures_checked: bool,
 }
 
+impl Verified {
+    /// Whether everything checked held: the chain unbroken, every record in a signed batch, and
+    /// no signature refused (TC-1).
+    pub fn holds(&self) -> bool {
+        self.chain != Some(false)
+            && self.not_included.unwrap_or(0) == 0
+            && self.signatures_failed == 0
+    }
+}
+
 impl Report for DecisionsReport {
     fn render_terminal(&self, out: &mut dyn Write) -> io::Result<()> {
         writeln!(out)?;

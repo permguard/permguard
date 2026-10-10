@@ -129,8 +129,21 @@ fn list(globals: &Globals, query: &DecisionsQuery, everything: bool) -> Result<E
 
     let report = report(&scope, read, query, keys.as_deref());
     render(&report, globals.output, &trace)?;
+    unverified(&report)?;
 
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// A read asked to verify whose proof did not hold: it ran and its subject did not pass, exit 2
+/// (TC-1, owner decision of 2026-10-10).
+fn unverified(report: &crate::decision_out::DecisionsReport) -> Result<(), Failure> {
+    match &report.verified {
+        Some(verified) if !verified.holds() => Err(Failure::not_passed(
+            "these decisions did not verify: see the report above",
+            permguard_core::codes::client::DECISIONS_UNVERIFIED,
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// The stream, as it arrives.
@@ -165,6 +178,9 @@ fn tail(globals: &Globals, query: &DecisionsQuery, follow: bool) -> Result<ExitC
                 keys.as_deref(),
             );
             render(&report, globals.output, &trace)?;
+            // A followed tail stops at the first page that does not verify: what follows a
+            // record the store cannot account for is not read as if it were.
+            unverified(&report)?;
         }
         if !follow {
             break;
@@ -292,7 +308,7 @@ fn connect(
         ));
         let reader = decisions::client(
             &target.endpoint,
-            &target::tls(globals),
+            &target::tls(globals, &store, trace)?,
             crate::narrator::for_run(globals.verbose),
         )
         .map_err(Failure::usage)?;
@@ -327,7 +343,7 @@ fn connect(
     trace.say(format!("reading {zone}/{ledger} from {}", target.endpoint));
     let reader = decisions::client(
         &target.endpoint,
-        &target::tls(globals),
+        &target::tls(globals, &store, trace)?,
         crate::narrator::for_run(globals.verbose),
     )
     .map_err(Failure::usage)?;

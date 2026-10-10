@@ -400,6 +400,8 @@ fn a_head_signed_by_a_foreign_key_is_refused_everywhere_it_appears() {
         "{}",
         error.message
     );
+    // TC-1: a verification that ran and did not pass, which the command answers with exit 2.
+    assert!(error.unverified, "the forgery is a failed verification");
 }
 
 #[test]
@@ -460,6 +462,8 @@ fn without_a_tracked_ledger_the_syncing_commands_say_what_to_do() {
             "{}",
             error.message
         );
+        // A verification that could not run is a usage error, never a failed one (TC-1).
+        assert!(!error.unverified, "{}", error.message);
     }
 }
 

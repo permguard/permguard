@@ -146,6 +146,7 @@ fn reachable(store: &dyn Store, start: Option<Digest>) -> Result<BTreeSet<Digest
                     "the object {digest} is referenced and missing: run `permguard verify` \
                          before pruning"
                 ),
+                unverified: false,
             })?;
         match object::decode(&bytes).map_err(|error| err(format!("{digest}: {error}")))? {
             Object::Commit(commit) => {
