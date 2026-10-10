@@ -1,6 +1,6 @@
 {
-  "artifact": "Membership records (WP-4.1): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
-  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset); crates/permguard-host/src/membership/record.rs",
+  "artifact": "Membership records (WP-4.1) and assurance appraisal (WP-4.2): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
+  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) and of 2026-10-10 (assurance appraisal); crates/permguard-host/src/membership/record.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "host_ref": {
@@ -32,7 +32,7 @@
         { "label": 6, "name": "resource_types", "type": "array<text>", "occurs": "required" },
         { "label": 7, "name": "required", "type": "bool", "occurs": "required" },
         { "label": 8, "name": "limits", "type": "map:limits", "occurs": "required" },
-        { "label": 9, "name": "assurance_requirements", "type": "array<text>", "occurs": "required", "note": "refused at approval while non-empty, until WP-4.2" }
+        { "label": 9, "name": "assurance_requirements", "type": "array<text>", "occurs": "required", "note": "registered control names (WP-2.8), each appraised under the coordinator's policy" }
       ]
     },
     "lease_policy": {
@@ -75,6 +75,7 @@
         { "label": 5, "name": "tasks", "type": "array<map:task>", "occurs": "required", "note": "1 to 32" },
         { "label": 6, "name": "member_assurance", "type": "text", "occurs": "required", "note": "the profile the member declared" },
         { "label": 7, "name": "min_assurance", "type": "text", "occurs": "optional", "note": "the invitation's floor" },
+        { "label": 8, "name": "assurance_binding", "type": "map:assurance_binding", "occurs": "optional", "note": "the coordinator's appraisal of the controls the tasks require; absent when no task requires one" },
         { "label": 9, "name": "ring_pins", "type": "array<map:ring_pin>", "occurs": "required" },
         { "label": 10, "name": "epoch", "type": "uint", "occurs": "required", "note": "the fence: one more at every manifest, from 1" },
         { "label": 11, "name": "lease_policy", "type": "map:lease_policy", "occurs": "required" },
@@ -162,8 +163,68 @@
         { "label": 8, "name": "detail", "type": "bytes", "occurs": "optional", "note": "the record the entry concerns: an invitation, a pending membership or a manifest envelope" },
         { "label": 9, "name": "statements", "type": "array<map:ring_statement>", "occurs": "optional", "note": "on a manifest the coordinator issued: its statements of the rings that manifest pins, as they stood at the signature; absent when empty" }
       ]
+    },
+    "claim": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "control", "type": "text", "occurs": "required", "note": "a registered control name" },
+        { "label": 2, "name": "class", "type": "text", "occurs": "required", "note": "declared, operator-approved or attested: the class accepted" },
+        { "label": 3, "name": "by", "type": "text", "occurs": "required", "note": "the declared profile, the approving principal or the verifier id" },
+        { "label": 4, "name": "record", "type": "digest", "occurs": "optional", "note": "the operator approval's digest, or the evidence's; absent for declared" }
+      ]
+    },
+    "assurance_binding": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "member", "type": "map:host_ref", "occurs": "required", "note": "the manifest's member" },
+        { "label": 2, "name": "task_ids", "type": "array<text>", "occurs": "required", "note": "the tasks requiring controls, sorted, each once" },
+        { "label": 3, "name": "policy_revision", "type": "digest", "occurs": "required", "note": "SHA-256 of `permguard.membership.appraisal-policy.v1\\n` and the policy" },
+        { "label": 4, "name": "claims", "type": "array<map:claim>", "occurs": "required", "note": "one per required control, sorted by control" },
+        { "label": 5, "name": "result_digest", "type": "digest", "occurs": "required", "note": "SHA-256 of `permguard.membership.assurance-result.v1\\n` and the assurance_result" },
+        { "label": 6, "name": "appraised_by", "type": "text", "occurs": "required", "note": "the principal of the approval or appraisal" },
+        { "label": 7, "name": "issued_at", "type": "uint", "occurs": "required" },
+        { "label": 8, "name": "expires_at", "type": "uint", "occurs": "required", "note": "no later than the policy's longest binding, an approval's or a result's expiry" },
+        { "label": 9, "name": "verdict", "type": "text", "occurs": "required", "note": "accepted or revoked" }
+      ]
+    },
+    "assurance_result": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "member", "type": "map:host_ref", "occurs": "required" },
+        { "label": 2, "name": "task_ids", "type": "array<text>", "occurs": "required" },
+        { "label": 3, "name": "policy_revision", "type": "digest", "occurs": "required" },
+        { "label": 4, "name": "claims", "type": "array<map:claim>", "occurs": "required" }
+      ]
+    },
+    "operator_approval": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "control", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "principal", "type": "text", "occurs": "required", "note": "the authenticated operator" },
+        { "label": 4, "name": "task_ids", "type": "array<text>", "occurs": "required", "note": "the scope: the tasks requiring the control" },
+        { "label": 5, "name": "reason", "type": "text", "occurs": "required", "note": "kept in the audit; the claim carries this record's digest" },
+        { "label": 6, "name": "expires_at", "type": "uint", "occurs": "required" },
+        { "label": 7, "name": "approved_at", "type": "uint", "occurs": "required" }
+      ]
+    },
+    "appraisal_policy": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "controls", "type": "array<array:policy_control>", "occurs": "required", "note": "sorted by control, each once" },
+        { "label": 2, "name": "max_binding_seconds", "type": "uint", "occurs": "required" }
+      ]
     }
   },
-  "arrays": {},
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry"]
+  "arrays": {
+    "policy_control": [
+      { "position": 0, "name": "control", "type": "text" },
+      { "position": 1, "name": "class", "type": "text", "note": "the least class that satisfies it" }
+    ],
+    "assurance_evidence": [
+      { "position": 0, "name": "verifier", "type": "text" },
+      { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
+    ]
+  },
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence"]
 }

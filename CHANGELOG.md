@@ -134,7 +134,7 @@ is cut.
   The member fetches its manifests with `POST /host/v1/memberships/{id}/sync` and accepts each only as the exact successor of the one it holds, a transition the table allows, no wider than it asked and not past its `not_after`; two manifests of one epoch are `manifest_equivocation`.
   A membership pins its peer for every session only while active; pending or suspended, only to read its manifests; once ended, it lets its member read the manifest that ended it.
   `GET /host/v1/members?status=` and `GET …/{id}` list both roles under the new operation `membership.read`; `POST /host/v1/members/enroll` answers `503`, since an enrollment runs only inside a peer session.
-  A task that names assurance requirements is refused at approval (`assurance_unavailable`), and so is a task no Plane of the coordinator acts in (`task_unserved`): no Plane declares its task handlers yet.
+  A task that names assurance requirements is approved only on an assurance binding (below), and a task no Plane of the coordinator acts in is refused (`task_unserved`): no Plane declares its task handlers yet.
   Every change is a `host.membership.*` record in the security trail; the records are canonical CBOR (`contracts/cbor/membership.json`), and the gRPC side is `permguard.host.v1.MembershipService`.
 
 - **An identity reset: `POST /host/v1/identity/reset/plan` and `…/reset/run`.**
@@ -148,6 +148,18 @@ is cut.
 - **A verification bundle carries the members a Host coordinates.**
   A bundle for a resource an active membership's task covers also carries its member: the manifest, the member's identity as its enrollment session proved it and the ring statements the manifest pins (`peer` items, listed by one `peers` item whose count and digest the frontier names, at most 8192 memberships per bundle).
   `permguard_host::keys::bundle::verify` walks from the coordinator's pin to the member's keys, so one bundle verifies both Hosts' signatures.
+
+- **Assurance appraisal: `membership.appraisal` and `POST /host/v1/members/{id}/appraise`.**
+  A task may require controls of the assurance table by name (`custody.hsm`, `operations.dual_control`, …); a name that is not a control is refused at invitation.
+  The coordinator's policy, `membership.appraisal.controls` (`PERMGUARD_MEMBERSHIP_APPRAISAL_CONTROLS`, `control=class` pairs), names for each control the least evidence that satisfies it: `declared`, `operator-approved` or `attested`, a stronger class satisfying a weaker requirement.
+  A control the policy does not name makes the task unapprovable; with no policy configured, no task requiring a control is approvable.
+  `approve` takes `assurance {approvals, evidence}`: an operator's approval of a control carries a reason and an expiry and is recorded whole as `host.membership.assurance_approved` in the security trail, its principal the caller; evidence goes to the verifier it names, against the nonce the member view shows.
+  No verifier ships: a control wanted `attested` is `assurance_unavailable` until a composition registers one, and a binding it attested admits nothing once its verifier is gone.
+  `membership.appraisal.max_binding` is at most 365 days; a revocation is recorded with its reason as `host.membership.assurance_revoked`.
+  What is accepted is an assurance binding signed in the manifest (label 8): the member, the tasks, the policy revision, one claim per control with its class and who vouches for it, and an expiry no later than `membership.appraisal.max_binding` (default 30 days), an approval's or a result's.
+  An approval short of what the policy wants is refused with `assurance_refused` and audited; a declaration never satisfies a control the policy wants approved or attested.
+  `POST /host/v1/members/{id}/appraise` (gRPC `AppraiseMember`) renews or revokes the binding of an active membership, each a new epoch; `GET /host/v1/members/{id}` shows the binding and, while one can be appraised, what the policy wants and the nonce.
+  A binding admits nothing once expired, revoked or appraised under another policy revision: the task sessions that check it arrive with the leases.
 
 ### Changed
 

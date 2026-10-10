@@ -381,8 +381,10 @@ pub mod host {
     pub const MEMBERSHIP_WIDENED: &str = "membership_widened";
     /// No Plane of this Host acts in the task's role: the capability check at approval (WP-4.1, WP-4.4).
     pub const TASK_UNSERVED: &str = "task_unserved";
-    /// The task depends on controls, and no assurance appraisal is served yet (WP-4.1 until WP-4.2).
+    /// A control the task depends on wants a verifier this Host has not registered, or names one it does not know (WP-4.2).
     pub const ASSURANCE_UNAVAILABLE: &str = "assurance_unavailable";
+    /// A control a task depends on has no current accepted assurance binding: a declaration, an approval or a result short of what the appraisal policy wants, expired, revoked or under another policy (WP-4.2).
+    pub const ASSURANCE_REFUSED: &str = "assurance_refused";
     /// An enrollment is refused: the invitation, its proof, the expected member or the request; the peer is told no more (WP-4.1).
     pub const ENROLLMENT_REFUSED: &str = "enrollment_refused";
     /// A membership manifest with the epoch held and another digest: equivocation (WP-4.1).
@@ -681,6 +683,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::MEMBERSHIP_WIDENED,
         host::TASK_UNSERVED,
         host::ASSURANCE_UNAVAILABLE,
+        host::ASSURANCE_REFUSED,
         host::ENROLLMENT_REFUSED,
         host::MANIFEST_EQUIVOCATION,
         host::MANIFEST_NOT_SUCCESSOR,

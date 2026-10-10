@@ -643,6 +643,26 @@
     {
       "crate": "permguard-host",
       "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Verdict::from_str",
+      "entry": "permguard_host::membership::record::Verdict::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record already bounded: a membership manifest's assurance binding (`MAX_RECORD_BYTES`)",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-core",
+      "source": "crates/permguard-core/src/assurance.rs",
+      "item": "EvidenceClass::from_str",
+      "entry": "permguard_core::assurance::EvidenceClass::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record already bounded: a claim of a membership manifest's assurance binding (`MAX_RECORD_BYTES`), or the operator's appraisal policy",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
       "item": "TaskType::from_str",
       "entry": "permguard_host::membership::record::TaskType::from_str",
       "max_input_bytes": 262144,

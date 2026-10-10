@@ -10,8 +10,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use tonic::{Request, Response, Status};
 
 use permguard_host::api::members::{
-    ApproveMember, ChangeMember, CoordinatorView, CreateInvite, JoinMembership, LeasePolicyView,
-    LimitsView, MemberChanged, MemberView, NarrowView, PlanMemberRevoke, RunMemberRevoke,
+    AppraiseMember, ApprovalView, ApproveMember, AssuranceOffer, AssuranceView, ChangeMember,
+    CoordinatorView, CreateInvite, EvidenceView, JoinMembership, LeasePolicyView, LimitsView,
+    MemberChanged, MemberView, NarrowView, PlanMemberRevoke, RevokeBinding, RunMemberRevoke,
     SyncMembership, TaskView,
 };
 
@@ -95,6 +96,50 @@ pub(super) fn host_out(host: permguard_host::api::members::HostView) -> v1::Memb
     }
 }
 
+fn approvals_in(approvals: Vec<v1::OperatorApproval>) -> Vec<ApprovalView> {
+    approvals
+        .into_iter()
+        .map(|approval| ApprovalView {
+            control: approval.control,
+            reason: approval.reason,
+            expires_at: approval.expires_at,
+        })
+        .collect()
+}
+
+/// The evidence travels raw on gRPC and base64url to the facade, as every byte member does.
+fn evidence_in(evidence: Vec<v1::AttestationEvidence>) -> Vec<EvidenceView> {
+    evidence
+        .into_iter()
+        .map(|item| EvidenceView {
+            verifier: item.verifier,
+            evidence: URL_SAFE_NO_PAD.encode(item.evidence),
+        })
+        .collect()
+}
+
+fn assurance_out(view: AssuranceView) -> v1::AssuranceBinding {
+    v1::AssuranceBinding {
+        verdict: view.verdict,
+        current: view.current,
+        policy_revision: view.policy_revision,
+        task_ids: view.task_ids,
+        claims: view
+            .claims
+            .into_iter()
+            .map(|claim| v1::AssuranceClaim {
+                control: claim.control,
+                class: claim.class,
+                by: claim.by,
+            })
+            .collect(),
+        appraised_by: view.appraised_by,
+        issued_at: view.issued_at,
+        expires_at: view.expires_at,
+        binding_digest: view.binding_digest,
+    }
+}
+
 fn member_out(view: MemberView) -> Result<v1::Member, Status> {
     Ok(v1::Member {
         membership_id: view.membership_id,
@@ -111,6 +156,25 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
         manifest: view.manifest.as_deref().map(raw).transpose()?,
         updated_at: view.updated_at,
         last_session_at: view.last_session_at,
+        assurance: view.assurance.map(assurance_out),
+        appraisal: view
+            .appraisal
+            .map(|appraisal| {
+                Ok::<_, Status>(v1::AppraisalState {
+                    policy_revision: appraisal.policy_revision,
+                    nonce: raw(&appraisal.nonce)?,
+                    requirements: appraisal
+                        .requirements
+                        .into_iter()
+                        .map(|requirement| v1::AssuranceRequirement {
+                            control: requirement.control,
+                            wants: requirement.wants,
+                            declared: requirement.declared,
+                        })
+                        .collect(),
+                })
+            })
+            .transpose()?,
     })
 }
 
@@ -274,6 +338,10 @@ impl MembershipService for Served {
                     expected_revision: asked.expected_revision,
                     narrow: asked.narrow.map(scope_in),
                     lease_policy: asked.lease_policy.map(lease_in),
+                    assurance: asked.assurance.map(|offer| AssuranceOffer {
+                        approvals: approvals_in(offer.approvals),
+                        evidence: evidence_in(offer.evidence),
+                    }),
                 },
             )
             .await
@@ -416,6 +484,43 @@ impl MembershipService for Served {
         }))
     }
 
+    async fn appraise_member(
+        &self,
+        request: Request<v1::AppraiseMemberRequest>,
+    ) -> Answer<v1::AppraiseMemberResponse> {
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let answer = self
+            .api
+            .appraise_member(
+                &actor,
+                &asked.membership_id,
+                AppraiseMember {
+                    request_id: asked.request_id,
+                    expected_revision: asked.expected_revision,
+                    approvals: approvals_in(asked.approvals),
+                    evidence: evidence_in(asked.evidence),
+                    revoke: asked.revoke.map(|revoke| RevokeBinding {
+                        reason: revoke.reason,
+                    }),
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        let Changed {
+            receipt,
+            status,
+            epoch,
+            manifest,
+        } = changed(answer)?;
+        Ok(Response::new(v1::AppraiseMemberResponse {
+            receipt,
+            status,
+            epoch,
+            manifest,
+        }))
+    }
+
     async fn plan_member_revoke(
         &self,
         request: Request<v1::PlanMemberRevokeRequest>,
@@ -533,5 +638,106 @@ impl MembershipService for Served {
         Ok(Response::new(v1::SyncMembershipResponse {
             member: Some(member_out(view)?),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use permguard_host::api::members::{AppraisalView, ClaimView, HostView, RequirementView};
+
+    use super::*;
+
+    /// WP-4.2: evidence travels raw on gRPC and reaches the facade as base64url; the binding and
+    /// the appraisal state come back field for field, the nonce as raw bytes.
+    #[test]
+    fn the_assurance_members_map_field_for_field_and_bytes_raw() {
+        let evidence = evidence_in(vec![v1::AttestationEvidence {
+            verifier: "tpm-quote".to_owned(),
+            evidence: vec![0xEE, 0x00, 0xFF],
+        }]);
+        assert_eq!(evidence[0].verifier, "tpm-quote");
+        assert_eq!(
+            URL_SAFE_NO_PAD
+                .decode(&evidence[0].evidence)
+                .expect("base64url"),
+            [0xEE, 0x00, 0xFF]
+        );
+        let approvals = approvals_in(vec![v1::OperatorApproval {
+            control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+            reason: "witnessed".to_owned(),
+            expires_at: "2099-01-01T00:00:00Z".to_owned(),
+        }]);
+        assert_eq!(
+            approvals,
+            [ApprovalView {
+                control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+                reason: "witnessed".to_owned(),
+                expires_at: "2099-01-01T00:00:00Z".to_owned(),
+            }]
+        );
+        let host = HostView {
+            host_id: "0190a5c3-0000-7000-8000-000000000011".to_owned(),
+            epoch: 1,
+            fingerprint: format!("sha256:{}", "ab".repeat(32)),
+        };
+        let nonce = [0xA7_u8; 32];
+        let view = MemberView {
+            membership_id: "0190a5c3-0000-7000-8000-000000000044".to_owned(),
+            role: "coordinator".to_owned(),
+            status: "active".to_owned(),
+            epoch: 2,
+            revision: 3,
+            coordinator: host.clone(),
+            member: host,
+            selector: "plane/data/*".to_owned(),
+            tasks: Vec::new(),
+            member_assurance: "production".to_owned(),
+            lease_policy: None,
+            manifest: None,
+            updated_at: "2027-01-01T00:00:00Z".to_owned(),
+            last_session_at: None,
+            assurance: Some(AssuranceView {
+                verdict: "accepted".to_owned(),
+                current: true,
+                policy_revision: format!("sha256:{}", "01".repeat(32)),
+                task_ids: vec!["decisions".to_owned()],
+                claims: vec![ClaimView {
+                    control: permguard_core::domains::assurance::CUSTODY_HSM.to_owned(),
+                    class: "attested".to_owned(),
+                    by: "tpm-quote".to_owned(),
+                }],
+                appraised_by: "spiffe://acme/operators/root".to_owned(),
+                issued_at: "2027-01-01T00:00:00Z".to_owned(),
+                expires_at: "2027-01-31T00:00:00Z".to_owned(),
+                binding_digest: format!("sha256:{}", "02".repeat(32)),
+            }),
+            appraisal: Some(AppraisalView {
+                policy_revision: format!("sha256:{}", "01".repeat(32)),
+                nonce: URL_SAFE_NO_PAD.encode(nonce),
+                requirements: vec![RequirementView {
+                    control: permguard_core::domains::assurance::CUSTODY_HSM.to_owned(),
+                    wants: Some("attested".to_owned()),
+                    declared: false,
+                }],
+            }),
+        };
+        let member = member_out(view).expect("maps");
+        let assurance = member.assurance.expect("a binding");
+        assert_eq!(assurance.verdict, "accepted");
+        assert!(assurance.current);
+        assert_eq!(assurance.task_ids, ["decisions"]);
+        assert_eq!(assurance.claims[0].class, "attested");
+        assert_eq!(assurance.claims[0].by, "tpm-quote");
+        assert_eq!(assurance.expires_at, "2027-01-31T00:00:00Z");
+        assert_eq!(
+            assurance.binding_digest,
+            format!("sha256:{}", "02".repeat(32))
+        );
+        let appraisal = member.appraisal.expect("an appraisal state");
+        assert_eq!(appraisal.nonce, nonce);
+        assert_eq!(appraisal.requirements[0].wants.as_deref(), Some("attested"));
+        assert!(!appraisal.requirements[0].declared);
     }
 }

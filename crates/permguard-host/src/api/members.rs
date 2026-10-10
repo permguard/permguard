@@ -11,12 +11,17 @@
 //! | `GET /host/v1/members`, `…/{id}`               | `membership.read`  | status, selector, tasks, epoch, lease    |
 //! | `POST …/{id}/approve`, `reject`                | `membership.admin` | a receipt and the manifest               |
 //! | `POST …/{id}/suspend`, `resume`, `fence`       | `membership.admin` | a receipt and the manifest, a new epoch  |
+//! | `POST …/{id}/appraise`                         | `membership.admin` | a receipt and the manifest, a new epoch  |
 //! | `POST …/{id}/revoke/plan`, `…/revoke/run`      | `membership.admin` | a plan; a receipt and the manifest       |
 //! | `POST /host/v1/memberships/join`, `…/{id}/sync`| `membership.admin` | the member's view of the membership      |
 //!
 //! `POST /host/v1/members/enroll` runs only inside a proven peer session (the `PeerChannel`), and
 //! `GET …/{id}/sessions` comes with the task sessions (WP-4.3); a listing never carries a token, a
 //! proof, a key or a secret reference.
+//!
+//! A task requiring controls is approved only under an assurance binding the coordinator appraises
+//! (WP-4.2): `approve` and `appraise` take the operator's approvals and the evidence; the member
+//! view shows the binding and, while one is wanted, the appraisal state and its nonce.
 
 use std::sync::Arc;
 
@@ -24,7 +29,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 
-use permguard_core::assurance::AssuranceProfile;
+use permguard_core::assurance::{AssuranceProfile, Control};
 use permguard_core::authz::{Actor, Selector, operations};
 use permguard_core::{ErrorClass, codes};
 
@@ -32,19 +37,23 @@ use super::grants::{Planned, plan_digest, rfc3339};
 use super::replay::{PLAN_LIFETIME, Plan, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::identity::record::uuid_text;
+use crate::membership::appraisal::{self, Appraisal, Approval, Evidence};
 use crate::membership::member::{Connector, Join, Member, Target};
 use crate::membership::record::{
-    HostRef, Invitation, LeasePolicy, Limits, Manifest, Status, Task, TaskType,
+    AssuranceBinding, HostRef, Invitation, LeasePolicy, Limits, Manifest, OperatorApproval, Role,
+    Status, Task, TaskType,
 };
 use crate::membership::service::code_of;
 use crate::membership::{
-    APPROVE, AUDIT_APPROVED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED, AUDIT_REJECTED,
+    APPRAISE, APPROVE, AUDIT_APPRAISED, AUDIT_APPROVED, AUDIT_ASSURANCE_APPROVED,
+    AUDIT_ASSURANCE_REVOKED, AUDIT_FENCED, AUDIT_INVITE_REVOKED, AUDIT_INVITED, AUDIT_REJECTED,
     AUDIT_RESUMED, AUDIT_REVOKE_PLANNED, AUDIT_REVOKED, AUDIT_SUSPENDED, Capabilities, Coordinator,
-    DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow, NewInvite, REJECT, RESUME,
-    REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store,
+    DOMAIN, FENCE, Held, INVITE, INVITE_REVOKE, MembershipError, Narrow, NewInvite, Offered,
+    REJECT, RESUME, REVOKE_PLAN, REVOKE_RUN, SUSPEND, Store,
 };
 use crate::operations::journal::Initiator;
-use crate::operations::mutation::{Applied, Failure};
+use crate::operations::mutation::{Applied, Applying, Failure};
+use permguard_core::{AuditEvent, AuditOutcome, AuditPhase, Fact, Subject};
 use permguard_objects::cose::Sign1;
 
 /// The revocation a plan names.
@@ -58,6 +67,8 @@ pub struct MembershipService {
     /// How this Host reaches a coordinator; without one, a join and a sync are
     /// `peer_client_unconfigured`.
     pub connector: Option<Arc<dyn Connector>>,
+    /// The coordinator's appraisal policy and the verifiers it trusts (WP-4.2).
+    pub appraisal: Appraisal,
 }
 
 /// A task's limits, as the Host API spells them.
@@ -359,14 +370,154 @@ pub struct MemberView {
     pub updated_at: String,
     /// The last task session: sessions come with WP-4.3.
     pub last_session_at: Option<String>,
+    /// The assurance binding the manifest signs; `null` when it signs none (WP-4.2).
+    #[serde(default)]
+    pub assurance: Option<AssuranceView>,
+    /// While the coordinator appraises the tasks' controls: what the policy wants, what the
+    /// declaration meets and the nonce evidence binds to; `null` otherwise (WP-4.2).
+    #[serde(default)]
+    pub appraisal: Option<AppraisalView>,
+}
+
+/// One claim of a binding, without the record it cites.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClaimView {
+    pub control: String,
+    pub class: String,
+    pub by: String,
+}
+
+/// An assurance binding, as an operator reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssuranceView {
+    /// `accepted` or `revoked`.
+    pub verdict: String,
+    /// Whether it admits tasks now: accepted, unexpired and, on the coordinator, under the policy
+    /// in force.
+    pub current: bool,
+    pub policy_revision: String,
+    pub task_ids: Vec<String>,
+    pub claims: Vec<ClaimView>,
+    pub appraised_by: String,
+    pub issued_at: String,
+    pub expires_at: String,
+    /// What a task admission answers it by.
+    pub binding_digest: String,
+}
+
+/// One control the tasks require, as the policy and the declaration stand.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequirementView {
+    pub control: String,
+    /// The least class the policy wants; `null` when it does not appraise the control, which
+    /// makes the task unapprovable.
+    pub wants: Option<String>,
+    /// Whether the member's declaration meets it.
+    pub declared: bool,
+}
+
+/// The appraisal state of a membership whose tasks require controls.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppraisalView {
+    pub policy_revision: String,
+    /// The nonce evidence for this revision binds to, base64url: it changes with every revision.
+    pub nonce: String,
+    pub requirements: Vec<RequirementView>,
+}
+
+/// What the views read beside a membership.
+struct Viewing<'a> {
+    appraisal: &'a Appraisal,
+    coordinator: Option<[u8; 16]>,
+    now: u64,
+}
+
+impl AssuranceView {
+    fn of(binding: &AssuranceBinding, current: bool) -> Self {
+        Self {
+            verdict: binding.verdict.as_str().to_owned(),
+            current,
+            policy_revision: binding.policy_revision.to_string(),
+            task_ids: binding.task_ids.clone(),
+            claims: binding
+                .claims
+                .iter()
+                .map(|claim| ClaimView {
+                    control: claim.control.name().to_owned(),
+                    class: claim.class.as_str().to_owned(),
+                    by: claim.by.clone(),
+                })
+                .collect(),
+            appraised_by: binding.appraised_by.clone(),
+            issued_at: rfc3339(binding.issued_at),
+            expires_at: rfc3339(binding.expires_at),
+            binding_digest: binding
+                .digest()
+                .map(|digest| digest.to_string())
+                .unwrap_or_default(),
+        }
+    }
 }
 
 impl MemberView {
-    fn of(held: &Held) -> Self {
+    fn of(held: &Held, viewing: &Viewing<'_>) -> Self {
         let (selector, tasks) = match &held.manifest {
             Some((manifest, ..)) => (&manifest.selector, &manifest.tasks),
             None => (&held.request.selector, &held.request.tasks),
         };
+        let binding = held
+            .manifest
+            .as_ref()
+            .and_then(|(manifest, ..)| manifest.assurance_binding.as_ref());
+        let assurance = binding.map(|binding| {
+            let current = match held.role {
+                Role::Coordinator => viewing.appraisal.is_current(binding, viewing.now),
+                // The member cannot read its coordinator's policy: the verdict and the expiry.
+                Role::Member => {
+                    binding.verdict == crate::membership::record::Verdict::Accepted
+                        && viewing.now < binding.expires_at
+                }
+            };
+            AssuranceView::of(binding, current)
+        });
+        // The coordinator's appraisal state, while it can still appraise: pending or active.
+        let appraisal = viewing
+            .coordinator
+            .filter(|_| {
+                held.role == Role::Coordinator
+                    && matches!(held.status, Status::Pending | Status::Active)
+            })
+            .and_then(|coordinator| {
+                let requirements = viewing
+                    .appraisal
+                    .requirements(tasks, held.request.member_assurance)
+                    .ok()?;
+                if requirements.is_empty() {
+                    return None;
+                }
+                let state = match &held.manifest {
+                    Some((_, _, digest)) => digest.clone(),
+                    None => {
+                        permguard_objects::digest::Digest::compute(&held.request.encode().ok()?)
+                    }
+                };
+                Some(AppraisalView {
+                    policy_revision: viewing.appraisal.policy.revision().to_string(),
+                    nonce: URL_SAFE_NO_PAD.encode(appraisal::nonce(
+                        &coordinator,
+                        &held.request.membership_id,
+                        &state,
+                    )),
+                    requirements: requirements
+                        .into_iter()
+                        .map(|requirement| RequirementView {
+                            control: requirement.control.name().to_owned(),
+                            wants: requirement.wants.map(|class| class.as_str().to_owned()),
+                            declared: requirement.declared,
+                        })
+                        .collect(),
+                })
+            });
         Self {
             membership_id: uuid_text(&held.request.membership_id),
             role: held.role.as_str().to_owned(),
@@ -388,6 +539,8 @@ impl MemberView {
                 .map(|(_, envelope, _)| URL_SAFE_NO_PAD.encode(envelope)),
             updated_at: rfc3339(held.updated_at),
             last_session_at: None,
+            assurance,
+            appraisal,
         }
     }
 }
@@ -409,6 +562,110 @@ pub struct ApproveMember {
     pub narrow: Option<NarrowView>,
     #[serde(default)]
     pub lease_policy: Option<LeasePolicyView>,
+    /// What the tasks' controls are appraised with (WP-4.2).
+    #[serde(default)]
+    pub assurance: Option<AssuranceOffer>,
+}
+
+/// An operator's approval of one control: an accountable risk decision, with its reason and
+/// expiry; the principal is the caller's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalView {
+    pub control: String,
+    pub reason: String,
+    pub expires_at: String,
+}
+
+/// One piece of evidence for a registered verifier, base64url; kept by its digest alone.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceView {
+    pub verifier: String,
+    pub evidence: String,
+}
+
+impl std::fmt::Debug for EvidenceView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EvidenceView")
+            .field("verifier", &self.verifier)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What an approval brings for the controls the tasks require.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssuranceOffer {
+    #[serde(default)]
+    pub approvals: Vec<ApprovalView>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceView>,
+}
+
+/// `POST …/{id}/appraise`: the binding of an active membership renewed, or revoked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppraiseMember {
+    pub request_id: String,
+    pub expected_revision: u64,
+    #[serde(default)]
+    pub approvals: Vec<ApprovalView>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceView>,
+    /// Revokes the binding instead: it admits no task from then on.
+    #[serde(default)]
+    pub revoke: Option<RevokeBinding>,
+}
+
+/// Why a binding is revoked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RevokeBinding {
+    pub reason: String,
+}
+
+/// The approvals and evidence of a request, read.
+fn offer(
+    approvals: &[ApprovalView],
+    evidence: &[EvidenceView],
+) -> Result<(Vec<Approval>, Vec<Evidence>), Refusal> {
+    let approvals = approvals
+        .iter()
+        .map(|view| {
+            let control = view.control.parse::<Control>().map_err(invalid)?;
+            // Spelled exactly, as a task's requirement is.
+            if control.name() != view.control {
+                return Err(invalid(format!(
+                    "`{}` is not a control's name",
+                    view.control
+                )));
+            }
+            Ok(Approval {
+                control,
+                reason: view.reason.clone(),
+                expires_at: time(&view.expires_at, "expires_at")?,
+            })
+        })
+        .collect::<Result<_, Refusal>>()?;
+    if evidence.len() > appraisal::MAX_EVIDENCE_ITEMS {
+        return Err(invalid(format!(
+            "at most {} pieces of evidence",
+            appraisal::MAX_EVIDENCE_ITEMS
+        )));
+    }
+    let evidence = evidence
+        .iter()
+        .map(|view| {
+            Ok(Evidence {
+                verifier: view.verifier.clone(),
+                evidence: URL_SAFE_NO_PAD
+                    .decode(&view.evidence)
+                    .map_err(|_| invalid("`evidence` is base64url"))?,
+            })
+        })
+        .collect::<Result<_, Refusal>>()?;
+    Ok((approvals, evidence))
 }
 
 /// An approval's narrowing.
@@ -529,7 +786,6 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
     let code = match &error {
         MembershipError::Widened(_) => codes::host::MEMBERSHIP_WIDENED,
         MembershipError::TaskUnserved(_) => codes::host::TASK_UNSERVED,
-        MembershipError::AssuranceUnavailable(_) => codes::host::ASSURANCE_UNAVAILABLE,
         other => code_of(other),
     };
     if matches!(error, MembershipError::Storage(_)) {
@@ -569,6 +825,121 @@ impl HostApi {
                 "the assurance profile in force does not read back",
             )
         })
+    }
+
+    /// What the member views read beside a membership: the appraisal, this Host as coordinator
+    /// (when its identity is open) and the time.
+    fn viewing<'a>(&'a self, memberships: &'a MembershipService) -> Viewing<'a> {
+        Viewing {
+            appraisal: &memberships.appraisal,
+            coordinator: self
+                .host_identity()
+                .ok()
+                .map(crate::identity::Identity::host_id),
+            now: self.time.now_secs(),
+        }
+    }
+
+    /// Records each operator approval an operation took, inside it, before its change: the
+    /// principal, the scope, the reason and the expiry (WP-4.2). A record that cannot be written
+    /// refuses the operation.
+    fn record_approvals(
+        &self,
+        applying: &Applying<'_>,
+        approvals: &[OperatorApproval],
+    ) -> Result<(), Failure<Refusal>> {
+        if approvals.is_empty() {
+            return Ok(());
+        }
+        let mutations = self.mutations().map_err(Failure::Refused)?;
+        let operation_id = applying.operation_id();
+        for approval in approvals {
+            let target = uuid_text(&approval.membership_id);
+            let tasks = approval.task_ids.join(",");
+            let record = approval
+                .digest()
+                .map_err(|error| failure(MembershipError::from(error)))?
+                .to_string();
+            let facts = [
+                ("control", Fact::Text(approval.control.name())),
+                ("tasks", Fact::Text(&tasks)),
+                ("reason", Fact::Text(&approval.reason)),
+                ("expires_at", Fact::Uint(approval.expires_at)),
+                ("record", Fact::Text(&record)),
+            ];
+            mutations
+                .project(
+                    &AuditEvent::new(
+                        AUDIT_ASSURANCE_APPROVED,
+                        Subject::Principal(&approval.principal),
+                    )
+                    .in_operation(operation_id.as_bytes(), AuditPhase::Intent)
+                    .with_outcome(AuditOutcome::Ok)
+                    .on(&target)
+                    .with_facts(&facts),
+                )
+                .map_err(|error| {
+                    // Nothing changed yet: the approval is refused, never applied unrecorded.
+                    Failure::Refused(Refusal::Api(
+                        permguard_core::ApiError::new(
+                            ErrorClass::Unavailable,
+                            codes::common::UNAVAILABLE,
+                            "the audit trail did not take the operator's approval",
+                        )
+                        .with_internal(error),
+                    ))
+                })?;
+        }
+        Ok(())
+    }
+
+    /// Records a binding's revocation inside its operation, before its change: the principal,
+    /// the reason and the controls it revoked (WP-4.2). A record that cannot be written refuses
+    /// the operation.
+    fn record_revocation(
+        &self,
+        applying: &Applying<'_>,
+        principal: &str,
+        manifest: &Manifest,
+        reason: &str,
+    ) -> Result<(), Failure<Refusal>> {
+        let mutations = self.mutations().map_err(Failure::Refused)?;
+        let operation_id = applying.operation_id();
+        let target = uuid_text(&manifest.membership_id);
+        let controls = manifest
+            .assurance_binding
+            .as_ref()
+            .map(|binding| {
+                binding
+                    .claims
+                    .iter()
+                    .map(|claim| claim.control.name())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
+        let facts = [
+            ("controls", Fact::Text(&controls)),
+            ("reason", Fact::Text(reason)),
+        ];
+        mutations
+            .project(
+                &AuditEvent::new(AUDIT_ASSURANCE_REVOKED, Subject::Principal(principal))
+                    .in_operation(operation_id.as_bytes(), AuditPhase::Intent)
+                    .with_outcome(AuditOutcome::Ok)
+                    .on(&target)
+                    .with_facts(&facts),
+            )
+            .map_err(|error| {
+                Failure::Refused(Refusal::Api(
+                    permguard_core::ApiError::new(
+                        ErrorClass::Unavailable,
+                        codes::common::UNAVAILABLE,
+                        "the audit trail did not take the revocation",
+                    )
+                    .with_internal(error),
+                ))
+            })
     }
 
     pub(super) fn coordinator(&self) -> Result<Coordinator<'_>, Refusal> {
@@ -724,14 +1095,15 @@ impl HostApi {
                     .map_err(|_| invalid(format!("`{text}` is not a membership status")))
             })
             .transpose()?;
+        let memberships = self.memberships()?;
+        let viewing = self.viewing(memberships);
         Ok(Members {
-            members: self
-                .memberships()?
+            members: memberships
                 .store
                 .memberships()
                 .iter()
                 .filter(|(_, held)| status.is_none_or(|status| held.status == status))
-                .map(|(_, held)| MemberView::of(held))
+                .map(|(_, held)| MemberView::of(held, &viewing))
                 .collect(),
         })
     }
@@ -739,12 +1111,12 @@ impl HostApi {
     /// `GET /host/v1/members/{id}`.
     pub fn member(&self, actor: &Actor, id: &str) -> Result<MemberView, Refusal> {
         let _admitted = self.admit(actor, operations::MEMBERSHIP_READ)?;
-        let held = self
-            .memberships()?
+        let memberships = self.memberships()?;
+        let held = memberships
             .store
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
-        Ok(MemberView::of(&held))
+        Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
 
     /// `POST …/{id}/approve`: the genesis manifest, the request narrowed when asked.
@@ -775,6 +1147,16 @@ impl HostApi {
             dormant_after_seconds: view.dormant_after_seconds,
             revoke_after_seconds: view.revoke_after_seconds,
         });
+        let (approvals, evidence) = match &approve.assurance {
+            Some(offered) => offer(&offered.approvals, &offered.evidence)?,
+            None => (Vec::new(), Vec::new()),
+        };
+        let offered = Offered {
+            appraisal: &memberships.appraisal,
+            approvals: &approvals,
+            evidence: &evidence,
+            principal: admitted.principal.as_str(),
+        };
         let now = self.time.now_secs();
         let check = || {
             memberships
@@ -785,10 +1167,11 @@ impl HostApi {
                     &membership_id,
                     narrow.as_ref(),
                     lease_policy,
+                    &offered,
                     Some(approve.expected_revision),
                     now,
                 )
-                .map(|(manifest, _)| manifest)
+                .map(|(manifest, _, approvals)| (manifest, approvals))
         };
         let mutation = Mutation {
             request_id: approve.request_id.clone(),
@@ -802,11 +1185,13 @@ impl HostApi {
             &mutation,
             &(id, &approve),
             Some(id.to_owned()),
-            // Checked inside the operation, so a refused approval (a task no Plane serves, one that
-            // needs assurance) leaves its intent and its refusal in the audit trail.
+            // Checked inside the operation, so a refused approval (a task no Plane serves, a
+            // control short of what the policy wants) leaves its intent and its refusal in the
+            // audit trail.
             || Ok(()),
             |applying| {
-                let manifest = check().map_err(failure)?;
+                let (manifest, approvals) = check().map_err(failure)?;
+                self.record_approvals(applying, &approvals)?;
                 let (envelope, _) = memberships
                     .store
                     .approve(applying, &coordinator, &manifest, now)
@@ -1014,6 +1399,77 @@ impl HostApi {
         }
         self.change(actor, id, change, Status::Active, FENCE, AUDIT_FENCED)
             .await
+    }
+
+    /// `POST …/{id}/appraise`: the binding renewed from the approvals and evidence given, or
+    /// revoked; still active, a new epoch.
+    pub async fn appraise_member(
+        &self,
+        actor: &Actor,
+        id: &str,
+        appraise: AppraiseMember,
+    ) -> Result<MemberChanged, Refusal> {
+        let admitted = self.admit(actor, operations::MEMBERSHIP_ADMIN)?;
+        let memberships = self.memberships()?;
+        let coordinator = self.coordinator()?;
+        let membership_id = id_of(id)?;
+        if let Some(revoke) = &appraise.revoke {
+            crate::membership::record::check_reason(&revoke.reason)
+                .map_err(|error| invalid(error.0))?;
+        }
+        let (approvals, evidence) = offer(&appraise.approvals, &appraise.evidence)?;
+        let offered = Offered {
+            appraisal: &memberships.appraisal,
+            approvals: &approvals,
+            evidence: &evidence,
+            principal: admitted.principal.as_str(),
+        };
+        let now = self.time.now_secs();
+        let check = || {
+            memberships.store.check_appraise(
+                &coordinator,
+                &membership_id,
+                &offered,
+                appraise.revoke.is_some(),
+                Some(appraise.expected_revision),
+                now,
+            )
+        };
+        let mutation = Mutation {
+            request_id: appraise.request_id.clone(),
+            expected_revision: Some(appraise.expected_revision),
+        };
+        self.transact(
+            DOMAIN,
+            &admitted.principal,
+            APPRAISE,
+            AUDIT_APPRAISED,
+            &mutation,
+            &(id, &appraise),
+            Some(id.to_owned()),
+            // Inside the operation, so a refused appraisal is in the audit trail too.
+            || Ok(()),
+            |applying| {
+                let (manifest, approvals) = check().map_err(failure)?;
+                self.record_approvals(applying, &approvals)?;
+                if let Some(revoke) = &appraise.revoke {
+                    self.record_revocation(
+                        applying,
+                        admitted.principal.as_str(),
+                        &manifest,
+                        &revoke.reason,
+                    )?;
+                }
+                let (envelope, _) = memberships
+                    .store
+                    .transition(applying, &coordinator, &manifest, now)
+                    .map_err(failure)?;
+                self.changed(applying, &membership_id, &manifest, &envelope)
+            },
+            |operation_id, revision, _| {
+                self.reconciled(&membership_id, operation_id, revision, APPRAISE)
+            },
+        )
     }
 
     /// `POST …/{id}/revoke/plan`.
@@ -1267,7 +1723,7 @@ impl HostApi {
             )
             .await
             .map_err(refusal_of)?;
-        Ok(MemberView::of(&held))
+        Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
 
     /// `POST /host/v1/memberships/{id}/sync`: the coordinator's manifests since the one held.
@@ -1292,7 +1748,7 @@ impl HostApi {
             )
             .await
             .map_err(refusal_of)?;
-        Ok(MemberView::of(&held))
+        Ok(MemberView::of(&held, &self.viewing(memberships)))
     }
 }
 

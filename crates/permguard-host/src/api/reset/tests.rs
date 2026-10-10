@@ -88,6 +88,7 @@ async fn a_normal_reset_refuses_while_a_coordinator_is_unreached_and_an_emergenc
             expected_revision: revision,
             narrow: None,
             lease_policy: None,
+            assurance: None,
         },
     )
     .await

@@ -612,6 +612,7 @@ async fn side(
             store: members,
             capabilities,
             connector,
+            appraisal: permguard_host::membership::appraisal::Appraisal::default(),
         })),
     }));
     let listener = Surface::listener(
@@ -789,6 +790,7 @@ async fn a_member_joins_a_coordinator_over_mutual_tls_and_follows_its_manifests(
                 expected_revision: pending.revision,
                 narrow: None,
                 lease_policy: None,
+                assurance: None,
             },
         )
         .await
@@ -932,6 +934,7 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
                 expected_revision: revision,
                 narrow: None,
                 lease_policy: None,
+                assurance: None,
             },
         )
         .await

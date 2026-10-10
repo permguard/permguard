@@ -59,6 +59,8 @@ pub fn code_of(error: &MembershipError) -> &'static str {
         MembershipError::Equivocation(_) => codes::host::MANIFEST_EQUIVOCATION,
         MembershipError::NotSuccessor(_) => codes::host::MANIFEST_NOT_SUCCESSOR,
         MembershipError::Storage(_) | MembershipError::Ring(_) => codes::common::UNAVAILABLE,
+        MembershipError::AssuranceRefused(_) => codes::host::ASSURANCE_REFUSED,
+        MembershipError::AssuranceUnavailable(_) => codes::host::ASSURANCE_UNAVAILABLE,
         _ => codes::common::INVALID_ARGUMENT,
     }
 }

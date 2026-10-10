@@ -480,6 +480,12 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.ASSURANCE_REFUSED": {
+      "code": "assurance_refused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
     "host.ENROLLMENT_REFUSED": {
       "code": "enrollment_refused",
       "contract": "6-contracts/8-contract-host-api.md",

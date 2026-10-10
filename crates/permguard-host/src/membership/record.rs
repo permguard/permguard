@@ -12,7 +12,12 @@
 //! | lease_policy       | {1 max_session_seconds, 2 offline_grace_seconds, 3 clock_skew_seconds, 4 dormant_after_seconds, 5 revoke_after_seconds} |
 //! | ring_pin           | {1 owner, 2 ring, 3 epoch, 4 key_set_digest, 5 binding}                                       |
 //! | ring_statement     | {1 ring, 2 epoch, 3 suite, 4 keys, 5 binding}                                                 |
-//! | manifest payload   | {1 membership_id, 2 coordinator, 3 member, 4 selector, 5 tasks, 6 member_assurance, 7? min_assurance, 9 ring_pins, 10 epoch, 11 lease_policy, 12? previous_manifest_digest, 13 issued_at, 14 not_after, 15 status}; 8 is kept for `assurance_binding` (WP-4.2) |
+//! | manifest payload   | {1 membership_id, 2 coordinator, 3 member, 4 selector, 5 tasks, 6 member_assurance, 7? min_assurance, 8? assurance_binding, 9 ring_pins, 10 epoch, 11 lease_policy, 12? previous_manifest_digest, 13 issued_at, 14 not_after, 15 status} |
+//! | claim              | {1 control, 2 class, 3 by, 4? record} (WP-4.2)                                                |
+//! | assurance_binding  | {1 member, 2 task_ids, 3 policy_revision, 4 claims, 5 result_digest, 6 appraised_by, 7 issued_at, 8 expires_at, 9 verdict} (WP-4.2) |
+//! | assurance_result   | {1 member, 2 task_ids, 3 policy_revision, 4 claims}, digested (WP-4.2)                       |
+//! | operator_approval  | {1 membership_id, 2 control, 3 principal, 4 task_ids, 5 reason, 6 expires_at, 7 approved_at}, digested and audited (WP-4.2) |
+//! | assurance_evidence | [verifier, evidence], digested and never kept (WP-4.2)                                        |
 //! | invitation         | {1 invite_id, 2 token_key, 3 selector, 4 tasks, 5 expires, 6? expected_fingerprint, 7? min_assurance, 8 max_uses, 9 created_at, 10 created_by} |
 //! | enrollment request | {1 invite_id, 2 token_proof, 3 selector, 4 tasks, 5 member, 6 ring_statements}            |
 //! | pending membership | {1 membership_id, 2 invite_id, 3 coordinator, 4 member, 5 selector, 6 tasks, 7 member_assurance, 8 ring_statements, 9 requested_at, 10? coordinator_address, 11? identity} |
@@ -26,7 +31,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use permguard_core::assurance::AssuranceProfile;
+use permguard_core::assurance::{AssuranceProfile, Control, EvidenceClass};
 use permguard_core::authz::Selector;
 use permguard_core::domains::digest;
 use permguard_objects::cbor::Value;
@@ -46,6 +51,8 @@ pub const MAX_RINGS: usize = 16;
 pub const MAX_KEYS: usize = 64;
 /// The longest task id, resource type, assurance requirement or principal.
 pub const MAX_NAME_BYTES: usize = 128;
+/// The longest reason an operator gives for an approval.
+pub const MAX_REASON_BYTES: usize = 512;
 
 /// Which side of a membership a role is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -584,6 +591,8 @@ pub struct Manifest {
     pub tasks: Vec<Task>,
     pub member_assurance: AssuranceProfile,
     pub min_assurance: Option<AssuranceProfile>,
+    /// The coordinator's appraisal of the controls the tasks require; `None` when none does.
+    pub assurance_binding: Option<AssuranceBinding>,
     pub ring_pins: Vec<RingPin>,
     pub epoch: u64,
     pub lease_policy: LeasePolicy,
@@ -609,6 +618,9 @@ impl Manifest {
         ];
         if let Some(min) = self.min_assurance {
             pairs.push((Value::Int(7), Value::Text(min.as_str().to_owned())));
+        }
+        if let Some(binding) = &self.assurance_binding {
+            pairs.push((Value::Int(8), binding.value()?));
         }
         pairs.push((
             Value::Int(9),
@@ -645,6 +657,10 @@ impl Manifest {
             tasks: read_tasks(map.array(5)?)?,
             member_assurance: profile(&map.text(6)?)?,
             min_assurance: map.optional_text(7)?.as_deref().map(profile).transpose()?,
+            assurance_binding: map
+                .optional_value(8)?
+                .map(AssuranceBinding::read)
+                .transpose()?,
             ring_pins: pins
                 .into_iter()
                 .map(RingPin::read)
@@ -677,6 +693,24 @@ impl Manifest {
                     .to_owned(),
             ));
         }
+        if let Some(binding) = &manifest.assurance_binding {
+            // A binding appraises this manifest's member, for exactly the tasks it grants that
+            // require controls.
+            let mut requiring: Vec<&str> = manifest
+                .tasks
+                .iter()
+                .filter(|task| !task.assurance_requirements.is_empty())
+                .map(|task| task.task_id.as_str())
+                .collect();
+            requiring.sort_unstable();
+            if binding.member != manifest.member || binding.task_ids != requiring {
+                return Err(RecordError(
+                    "an assurance binding names the manifest's member and the tasks requiring \
+                     controls"
+                        .to_owned(),
+                ));
+            }
+        }
         Ok(manifest)
     }
 }
@@ -686,6 +720,322 @@ pub fn manifest_digest(envelope: &[u8]) -> Digest {
     let mut input = digest::MEMBERSHIP_MANIFEST.as_bytes().to_vec();
     input.extend_from_slice(envelope);
     Digest::compute(&input)
+}
+
+/// Whether `names` is sorted and names each once.
+fn sorted_unique<T: Ord>(names: &[T]) -> bool {
+    names.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+/// One control as a coordinator accepted it (WP-4.2): the class of evidence, who vouches for it,
+/// and the digest of the record behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claim {
+    pub control: Control,
+    pub class: EvidenceClass,
+    /// The declared profile for `declared`, the approving principal for `operator-approved`, the
+    /// verifier id for `attested`.
+    pub by: String,
+    /// The operator approval's digest, or the evidence's; `None` for `declared`.
+    pub record: Option<Digest>,
+}
+
+impl Claim {
+    fn value(&self) -> Result<Value, RecordError> {
+        let mut pairs = vec![
+            (Value::Int(1), Value::Text(self.control.name().to_owned())),
+            (Value::Int(2), Value::Text(self.class.as_str().to_owned())),
+            (Value::Int(3), Value::Text(self.by.clone())),
+        ];
+        if let Some(record) = &self.record {
+            pairs.push((Value::Int(4), Value::Text(record.to_string())));
+        }
+        Ok(Value::Map(pairs))
+    }
+
+    fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "a claim")?;
+        let control = map.text(1)?;
+        let class = map.text(2)?;
+        let claim = Self {
+            control: control.parse().map_err(RecordError)?,
+            class: class.parse().map_err(RecordError)?,
+            by: map.text(3)?,
+            record: map.optional_digest(4)?,
+        };
+        // Spelled exactly: a record has one encoding.
+        if claim.control.name() != control || claim.class.as_str() != class {
+            return Err(RecordError(
+                "a claim names its control and class exactly".to_owned(),
+            ));
+        }
+        // A declaration is vouched for by the profile declared.
+        if claim.class == EvidenceClass::Declared
+            && profile(&claim.by).map(AssuranceProfile::as_str) != Ok(claim.by.as_str())
+        {
+            return Err(RecordError(
+                "a declared claim names the profile declared".to_owned(),
+            ));
+        }
+        map.finish()?;
+        name(&claim.by, "a claim's appraiser")?;
+        // A declaration has no record behind it; every other class has one.
+        if claim.record.is_none() != (claim.class == EvidenceClass::Declared) {
+            return Err(RecordError(
+                "a claim names its record unless it is declared".to_owned(),
+            ));
+        }
+        Ok(claim)
+    }
+}
+
+/// Where a binding stands: accepted until it expires, or revoked by an operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    Accepted,
+    Revoked,
+}
+
+impl Verdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Revoked => "revoked",
+        }
+    }
+}
+
+impl FromStr for Verdict {
+    type Err = RecordError;
+
+    fn from_str(text: &str) -> Result<Self, RecordError> {
+        match text {
+            "accepted" => Ok(Self::Accepted),
+            "revoked" => Ok(Self::Revoked),
+            _ => Err(RecordError(format!("`{text}` is not a binding verdict"))),
+        }
+    }
+}
+
+/// A coordinator's appraisal of a member's controls, signed in the manifest (WP-4.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssuranceBinding {
+    pub member: HostRef,
+    /// The tasks requiring controls, sorted, each once.
+    pub task_ids: Vec<String>,
+    pub policy_revision: Digest,
+    /// One per required control, sorted by the control's name.
+    pub claims: Vec<Claim>,
+    pub result_digest: Digest,
+    pub appraised_by: String,
+    pub issued_at: u64,
+    pub expires_at: u64,
+    pub verdict: Verdict,
+}
+
+/// The canonical bytes of an appraisal's result: the member, the tasks, the policy and the claims.
+pub fn result_bytes(
+    member: &HostRef,
+    task_ids: &[String],
+    policy_revision: &Digest,
+    claims: &[Claim],
+) -> Result<Vec<u8>, RecordError> {
+    encode(vec![
+        (Value::Int(1), member.value()?),
+        (Value::Int(2), names(task_ids)),
+        (Value::Int(3), Value::Text(policy_revision.to_string())),
+        (
+            Value::Int(4),
+            Value::Array(claims.iter().map(Claim::value).collect::<Result<_, _>>()?),
+        ),
+    ])
+}
+
+/// The digest of an appraisal's result, which the binding names.
+pub fn result_digest(
+    member: &HostRef,
+    task_ids: &[String],
+    policy_revision: &Digest,
+    claims: &[Claim],
+) -> Result<Digest, RecordError> {
+    let mut input = digest::MEMBERSHIP_ASSURANCE_RESULT.as_bytes().to_vec();
+    input.extend_from_slice(&result_bytes(member, task_ids, policy_revision, claims)?);
+    Ok(Digest::compute(&input))
+}
+
+impl AssuranceBinding {
+    fn value(&self) -> Result<Value, RecordError> {
+        Ok(Value::Map(vec![
+            (Value::Int(1), self.member.value()?),
+            (Value::Int(2), names(&self.task_ids)),
+            (Value::Int(3), Value::Text(self.policy_revision.to_string())),
+            (
+                Value::Int(4),
+                Value::Array(
+                    self.claims
+                        .iter()
+                        .map(Claim::value)
+                        .collect::<Result<_, _>>()?,
+                ),
+            ),
+            (Value::Int(5), Value::Text(self.result_digest.to_string())),
+            (Value::Int(6), Value::Text(self.appraised_by.clone())),
+            (Value::Int(7), uint(self.issued_at)?),
+            (Value::Int(8), uint(self.expires_at)?),
+            (Value::Int(9), Value::Text(self.verdict.as_str().to_owned())),
+        ]))
+    }
+
+    fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "an assurance binding")?;
+        let claims = map.array(4)?;
+        if claims.len() > Control::ALL.len() {
+            return Err(RecordError(format!(
+                "a binding carries at most {} claims",
+                Control::ALL.len()
+            )));
+        }
+        let binding = Self {
+            member: HostRef::read(map.value(1)?)?,
+            task_ids: map.texts(2)?,
+            policy_revision: map.digest(3)?,
+            claims: claims
+                .into_iter()
+                .map(Claim::read)
+                .collect::<Result<_, _>>()?,
+            result_digest: map.digest(5)?,
+            appraised_by: map.text(6)?,
+            issued_at: map.uint(7)?,
+            expires_at: map.uint(8)?,
+            verdict: map.text(9)?.parse()?,
+        };
+        map.finish()?;
+        // Sorted by the control's stable name, never by this build's order of the controls.
+        let controls: Vec<&str> = binding
+            .claims
+            .iter()
+            .map(|claim| claim.control.name())
+            .collect();
+        if binding.task_ids.is_empty()
+            || binding.task_ids.len() > MAX_TASKS
+            || !sorted_unique(&binding.task_ids)
+            || binding.claims.is_empty()
+            || !sorted_unique(&controls)
+        {
+            return Err(RecordError(
+                "a binding names its tasks and its claims each once, sorted".to_owned(),
+            ));
+        }
+        name(&binding.appraised_by, "a binding's appraiser")?;
+        if binding.expires_at < binding.issued_at {
+            return Err(RecordError(
+                "a binding expires no earlier than it was issued".to_owned(),
+            ));
+        }
+        // The result digest is over what the binding says: recomputed, never trusted.
+        if binding.result_digest
+            != result_digest(
+                &binding.member,
+                &binding.task_ids,
+                &binding.policy_revision,
+                &binding.claims,
+            )?
+        {
+            return Err(RecordError(
+                "a binding's result digest is not the digest of its result".to_owned(),
+            ));
+        }
+        Ok(binding)
+    }
+
+    /// The canonical bytes of the binding alone.
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let Value::Map(pairs) = self.value()? else {
+            unreachable!("a binding is a map");
+        };
+        encode(pairs)
+    }
+
+    /// The digest a task admission answers the binding by.
+    pub fn digest(&self) -> Result<Digest, RecordError> {
+        let mut input = digest::MEMBERSHIP_ASSURANCE_BINDING.as_bytes().to_vec();
+        input.extend_from_slice(&self.encode()?);
+        Ok(Digest::compute(&input))
+    }
+
+    /// Whether the binding is for `task_id`.
+    pub fn covers(&self, task_id: &str) -> bool {
+        self.task_ids.iter().any(|id| id == task_id)
+    }
+
+    /// The claim for `control`.
+    pub fn claim(&self, control: Control) -> Option<&Claim> {
+        self.claims.iter().find(|claim| claim.control == control)
+    }
+}
+
+/// An operator's approval of one control: an accountable risk decision, not attestation. Kept in
+/// the audit whole and cited by its digest in the claim (WP-4.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorApproval {
+    pub membership_id: [u8; 16],
+    pub control: Control,
+    pub principal: String,
+    /// The scope: the tasks requiring the control.
+    pub task_ids: Vec<String>,
+    pub reason: String,
+    pub expires_at: u64,
+    pub approved_at: u64,
+}
+
+impl OperatorApproval {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Text(self.control.name().to_owned())),
+            (Value::Int(3), Value::Text(self.principal.clone())),
+            (Value::Int(4), names(&self.task_ids)),
+            (Value::Int(5), Value::Text(self.reason.clone())),
+            (Value::Int(6), uint(self.expires_at)?),
+            (Value::Int(7), uint(self.approved_at)?),
+        ])
+    }
+
+    /// The digest the claim cites the approval by.
+    pub fn digest(&self) -> Result<Digest, RecordError> {
+        let mut input = digest::MEMBERSHIP_OPERATOR_APPROVAL.as_bytes().to_vec();
+        input.extend_from_slice(&self.encode()?);
+        Ok(Digest::compute(&input))
+    }
+}
+
+/// The canonical bytes a piece of evidence is digested as: `[verifier, evidence]`.
+pub fn evidence_bytes(verifier: &str, evidence: &[u8]) -> Result<Vec<u8>, RecordError> {
+    permguard_objects::cbor::encode(&Value::Array(vec![
+        Value::Text(verifier.to_owned()),
+        Value::Bytes(evidence.to_vec()),
+    ]))
+    .map_err(|error| RecordError(error.to_string()))
+}
+
+/// The digest a claim cites a piece of evidence by: the evidence itself is never kept.
+pub fn evidence_digest(verifier: &str, evidence: &[u8]) -> Result<Digest, RecordError> {
+    let mut input = digest::MEMBERSHIP_ASSURANCE_EVIDENCE.as_bytes().to_vec();
+    input.extend_from_slice(&evidence_bytes(verifier, evidence)?);
+    Ok(Digest::compute(&input))
+}
+
+/// The reason of an operator approval: printable text of 1 to [`MAX_REASON_BYTES`] bytes.
+pub fn check_reason(reason: &str) -> Result<(), RecordError> {
+    if reason.trim().is_empty()
+        || reason.len() > MAX_REASON_BYTES
+        || reason.chars().any(char::is_control)
+    {
+        return Err(RecordError(format!(
+            "a reason is printable text of 1 to {MAX_REASON_BYTES} bytes"
+        )));
+    }
+    Ok(())
 }
 
 /// An invitation, as the coordinator keeps it: never the token, only its hash.

@@ -16,6 +16,19 @@ autogenerate: false
 #   profile: production
 #   added_controls: [tls.1_3_only]
 
+# What this Host asks of the members it coordinates (WP-4.2). A task may require controls of the
+# assurance table; `appraisal.controls` names, for each, the least evidence that satisfies it:
+# `declared` (the member's profile, a compatibility claim only), `operator-approved` (an operator's
+# accountable approval, with reason and expiry) or `attested` (a fresh result from a verifier the
+# composition registers; none ships, so `attested` is refused until one is). A control it does not
+# name makes a task requiring it unapprovable. A binding lasts at most `max_binding` (30 days).
+# membership:
+#   appraisal:
+#     controls:
+#       custody.encrypted: declared
+#       operations.dual_control: operator-approved
+#     max_binding: "30d"
+
 # The one root of everything this process keeps: the catalog (data/), the trail, the keys, the
 # generated secrets. Move this and everything moves with it — it is the volume to mount and back up.
 working_dir: /var/lib/permguard

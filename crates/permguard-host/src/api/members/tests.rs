@@ -55,8 +55,26 @@ fn change(request_id: &str, expected_revision: u64) -> ChangeMember {
 /// Invites `member` through the facade and enrolls it as the coordinator's session would: the
 /// pending membership's id, and the request the member's store records.
 pub(crate) async fn enrolled(api: &HostApi, member: &Host, request_id: &str) -> (String, Pending) {
+    enrolled_requiring(api, member, request_id, &[]).await
+}
+
+/// [`enrolled`], the task requiring `controls` (WP-4.2).
+pub(crate) async fn enrolled_requiring(
+    api: &HostApi,
+    member: &Host,
+    request_id: &str,
+    controls: &[&str],
+) -> (String, Pending) {
+    let mut task = decisions("plane/data/*");
+    task.assurance_requirements = controls.iter().map(|name| (*name).to_owned()).collect();
     let created = api
-        .create_invite(&admin(), create(request_id, Some(member)))
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                tasks: vec![TaskView::from(&task)],
+                ..create(request_id, Some(member))
+            },
+        )
         .await
         .expect("invited");
     let token = URL_SAFE_NO_PAD.decode(&created.token).expect("base64url");
@@ -74,7 +92,7 @@ pub(crate) async fn enrolled(api: &HostApi, member: &Host, request_id: &str) -> 
             &EXPORTER,
         ),
         selector: selector("plane/data/*").expect("a selector"),
-        tasks: vec![decisions("plane/data/*")],
+        tasks: vec![task],
         member: member.host_ref(),
         ring_statements: vec![member.statement(DATA_ATTEST)],
     };
@@ -216,6 +234,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                 expected_revision: revision + 1,
                 narrow: None,
                 lease_policy: None,
+                assurance: None,
             },
         )
         .await
@@ -244,6 +263,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                     }],
                 }),
                 lease_policy: None,
+                assurance: None,
             },
         )
         .await
@@ -265,6 +285,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
                     dormant_after_seconds: 3600,
                     revoke_after_seconds: 7200,
                 }),
+                assurance: None,
             },
         )
         .await
@@ -472,6 +493,7 @@ async fn a_pending_membership_is_rejected_by_a_genesis_and_is_never_resumed_into
                 expected_revision: rejected.receipt.revision,
                 narrow: None,
                 lease_policy: None,
+                assurance: None,
             },
         )
         .await
@@ -623,6 +645,7 @@ async fn one_bundle_verifies_the_coordinator_and_its_pinned_member() {
             expected_revision: revision,
             narrow: None,
             lease_policy: None,
+            assurance: None,
         },
     )
     .await
@@ -901,6 +924,7 @@ async fn every_admin_route_is_denied_without_membership_admin() {
                     expected_revision: 1,
                     narrow: None,
                     lease_policy: None,
+                    assurance: None,
                 },
             )
             .await
@@ -1008,6 +1032,7 @@ async fn a_later_page_rebuilds_the_same_peers_after_the_memberships_moved() {
             expected_revision: revision,
             narrow: None,
             lease_policy: None,
+            assurance: None,
         },
     )
     .await
@@ -1056,4 +1081,366 @@ async fn a_later_page_rebuilds_the_same_peers_after_the_memberships_moved() {
     let verified = bundle::verify(&manifest, &items, &pin, "plane/data").expect("verifies");
     assert_eq!(verified.peers.len(), 1, "the frontier's peer, as it stood");
     assert_eq!(uuid_text(&verified.peers[0].membership_id), id);
+}
+
+/// WP-4.2: an approval of a task requiring a control stands only on the evidence the policy
+/// wants, refused and audited otherwise; the operator's approval is audited whole and signed by
+/// digest; the member view shows the binding and the appraisal state; `appraise` renews and
+/// revokes, each a new epoch.
+#[tokio::test]
+async fn an_approval_without_the_evidence_its_tasks_need_is_refused_and_audited() {
+    let root = scratch("members-assurance");
+    let trail = std::sync::Arc::new(crate::api::testing::Recording::default());
+    let (api, _, _volume) = crate::api::testing::reopen_with(
+        &root,
+        vec![HOST_OPERATIONS],
+        std::sync::Arc::clone(&trail),
+    );
+    let member = Host::new("assurance-api-m");
+    let (id, _) = enrolled_requiring(
+        &api,
+        &member,
+        "enrol-1",
+        &[permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL],
+    )
+    .await;
+
+    // Pending: the appraisal state names what the policy wants and that the declaration falls
+    // short, and the nonce evidence would bind to.
+    let pending = api.member(&admin(), &id).expect("read");
+    let appraisal = pending.appraisal.clone().expect("an appraisal state");
+    assert_eq!(
+        appraisal.requirements,
+        [RequirementView {
+            control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+            wants: Some("operator-approved".to_owned()),
+            declared: false,
+        }]
+    );
+    assert_eq!(
+        appraisal.policy_revision,
+        crate::membership::appraisal::tests::policy()
+            .revision()
+            .to_string()
+    );
+    assert_eq!(
+        URL_SAFE_NO_PAD
+            .decode(&appraisal.nonce)
+            .expect("base64url")
+            .len(),
+        32
+    );
+    assert!(pending.assurance.is_none());
+
+    let approve = |request_id: &str, assurance: Option<AssuranceOffer>| ApproveMember {
+        request_id: request_id.to_owned(),
+        expected_revision: pending.revision,
+        narrow: None,
+        lease_policy: None,
+        assurance,
+    };
+    // A control's name is spelled exactly.
+    let spaced = api
+        .approve_member(
+            &admin(),
+            &id,
+            approve(
+                "approve-0",
+                Some(AssuranceOffer {
+                    approvals: vec![ApprovalView {
+                        control: format!(
+                            " {}",
+                            permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL
+                        ),
+                        reason: "spaced".to_owned(),
+                        expires_at: rfc3339(now() + 600),
+                    }],
+                    evidence: Vec::new(),
+                }),
+            ),
+        )
+        .await
+        .expect_err("not a control's name");
+    assert_eq!(code(&spaced), codes::common::INVALID_ARGUMENT);
+    let refused = api
+        .approve_member(&admin(), &id, approve("approve-1", None))
+        .await
+        .expect_err("no approval of the control");
+    assert_eq!(code(&refused), codes::host::ASSURANCE_REFUSED);
+    let failed: Vec<_> = trail
+        .events
+        .lock()
+        .expect("lock")
+        .iter()
+        .filter(|(action, ..)| action == AUDIT_APPROVED)
+        .map(|(_, _, _, phase)| *phase)
+        .collect();
+    assert_eq!(
+        failed,
+        [Some("intent"), Some("failed")],
+        "refused and audited"
+    );
+
+    let reason = "dual control witnessed under change ticket 42";
+    let expires = now() + 7 * 86_400;
+    let approved = api
+        .approve_member(
+            &admin(),
+            &id,
+            approve(
+                "approve-2",
+                Some(AssuranceOffer {
+                    approvals: vec![ApprovalView {
+                        control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL
+                            .to_owned(),
+                        reason: reason.to_owned(),
+                        expires_at: rfc3339(expires),
+                    }],
+                    evidence: Vec::new(),
+                }),
+            ),
+        )
+        .await
+        .expect("approved");
+    assert_eq!(approved.epoch, 1);
+    // The operator's approval in the audit: principal, scope, reason and expiry, inside the
+    // operation, before its change.
+    let facts = trail.facts.lock().expect("lock").clone();
+    let (_, recorded) = facts
+        .iter()
+        .find(|(action, _)| action == AUDIT_ASSURANCE_APPROVED)
+        .expect("the approval is audited");
+    let fact = |name: &str| {
+        recorded
+            .iter()
+            .find(|(fact, _)| fact == name)
+            .map(|(_, value)| value.clone())
+            .expect(name)
+    };
+    assert_eq!(
+        fact("control"),
+        permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL
+    );
+    assert_eq!(fact("tasks"), "decisions");
+    assert_eq!(fact("reason"), reason);
+    assert_eq!(fact("expires_at"), expires.to_string());
+    let events = trail.events.lock().expect("lock").clone();
+    let at = events
+        .iter()
+        .position(|(action, ..)| action == AUDIT_ASSURANCE_APPROVED)
+        .expect("recorded");
+    assert_eq!(
+        events[at].1,
+        format!("principal:{}", crate::api::testing::ADMIN)
+    );
+    assert_eq!(events[at].2.as_deref(), Some(id.as_str()));
+    assert_eq!(events[at + 1].0, AUDIT_APPROVED);
+    assert_eq!(events[at + 1].3, Some("applied"));
+
+    // The manifest signs the binding; the member view shows it, and the record by digest only.
+    let active = api.member(&admin(), &id).expect("read");
+    let assurance = active.assurance.clone().expect("a binding");
+    assert_eq!(assurance.verdict, "accepted");
+    assert!(assurance.current);
+    assert_eq!(assurance.task_ids, ["decisions"]);
+    assert_eq!(
+        assurance.claims,
+        [ClaimView {
+            control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+            class: "operator-approved".to_owned(),
+            by: crate::api::testing::ADMIN.to_owned(),
+        }]
+    );
+    assert_eq!(assurance.expires_at, rfc3339(expires));
+    assert!(!json_of(&active).contains(reason));
+    let manifest = URL_SAFE_NO_PAD
+        .decode(active.manifest.as_deref().expect("a manifest"))
+        .expect("base64url");
+    let payload = Sign1::decode(&manifest).expect("COSE");
+    let signed = Manifest::decode(payload.payload_unverified()).expect("decodes");
+    let binding = signed.assurance_binding.expect("signed in the manifest");
+    assert_eq!(
+        assurance.binding_digest,
+        binding.digest().expect("digested").to_string()
+    );
+    // Still appraisable while active: the nonce is now the manifest's.
+    let nonce = active.appraisal.clone().expect("an appraisal state").nonce;
+    assert_ne!(nonce, appraisal.nonce, "another revision, another nonce");
+
+    // Renewed by an appraisal: a new epoch.
+    let renewed = api
+        .appraise_member(
+            &admin(),
+            &id,
+            AppraiseMember {
+                request_id: "appraise-1".to_owned(),
+                expected_revision: active.revision,
+                approvals: vec![ApprovalView {
+                    control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+                    reason: "renewed".to_owned(),
+                    expires_at: rfc3339(expires + 86_400),
+                }],
+                evidence: Vec::new(),
+                revoke: None,
+            },
+        )
+        .await
+        .expect("renewed");
+    assert_eq!(renewed.epoch, 2);
+    let after = api.member(&admin(), &id).expect("read");
+    assert_eq!(
+        after.assurance.as_ref().expect("a binding").expires_at,
+        rfc3339(expires + 86_400)
+    );
+
+    // An appraisal bringing nothing the policy accepts changes nothing.
+    let short = api
+        .appraise_member(
+            &admin(),
+            &id,
+            AppraiseMember {
+                request_id: "appraise-2".to_owned(),
+                expected_revision: after.revision,
+                approvals: Vec::new(),
+                evidence: Vec::new(),
+                revoke: None,
+            },
+        )
+        .await
+        .expect_err("nothing offered");
+    assert_eq!(code(&short), codes::host::ASSURANCE_REFUSED);
+    assert_eq!(api.member(&admin(), &id).expect("read").epoch, 2);
+
+    // Revoked: a new epoch, the binding admits nothing.
+    let revoked = api
+        .appraise_member(
+            &admin(),
+            &id,
+            AppraiseMember {
+                request_id: "appraise-3".to_owned(),
+                expected_revision: after.revision,
+                approvals: Vec::new(),
+                evidence: Vec::new(),
+                revoke: Some(RevokeBinding {
+                    reason: "the HSM was decommissioned".to_owned(),
+                }),
+            },
+        )
+        .await
+        .expect("revoked");
+    assert_eq!(revoked.epoch, 3);
+    // The revocation in the audit: its principal, its reason and the controls it revoked.
+    let facts = trail.facts.lock().expect("lock").clone();
+    let (_, recorded) = facts
+        .iter()
+        .find(|(action, _)| action == AUDIT_ASSURANCE_REVOKED)
+        .expect("the revocation is audited");
+    assert!(recorded.contains(&("reason".to_owned(), "the HSM was decommissioned".to_owned())));
+    assert!(recorded.contains(&(
+        "controls".to_owned(),
+        permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned()
+    )));
+    let events = trail.events.lock().expect("lock").clone();
+    let at = events
+        .iter()
+        .position(|(action, ..)| action == AUDIT_ASSURANCE_REVOKED)
+        .expect("recorded");
+    assert_eq!(
+        events[at].1,
+        format!("principal:{}", crate::api::testing::ADMIN)
+    );
+    let assurance = api
+        .member(&admin(), &id)
+        .expect("read")
+        .assurance
+        .expect("a binding");
+    assert_eq!(assurance.verdict, "revoked");
+    assert!(!assurance.current);
+
+    // A suspended membership is not appraised: an appraisal would otherwise resume it.
+    let current = api.member(&admin(), &id).expect("read");
+    api.suspend_member(&admin(), &id, change("suspend-1", current.revision))
+        .await
+        .expect("suspended");
+    let suspended = api.member(&admin(), &id).expect("read");
+    let refused = api
+        .appraise_member(
+            &admin(),
+            &id,
+            AppraiseMember {
+                request_id: "appraise-4".to_owned(),
+                expected_revision: suspended.revision,
+                approvals: vec![ApprovalView {
+                    control: permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL.to_owned(),
+                    reason: "while suspended".to_owned(),
+                    expires_at: rfc3339(expires),
+                }],
+                evidence: Vec::new(),
+                revoke: None,
+            },
+        )
+        .await
+        .expect_err("not while suspended");
+    assert_eq!(code(&refused), codes::host::MEMBERSHIP_TRANSITION_REFUSED);
+    assert_eq!(api.member(&admin(), &id).expect("read").status, "suspended");
+}
+
+/// WP-4.2: evidence names a registered verifier and is bound to the revision's nonce; a verifier
+/// the Host does not know is `assurance_unavailable`.
+#[tokio::test]
+async fn attested_evidence_is_appraised_against_the_nonce_the_member_view_shows() {
+    let root = scratch("members-attested");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    let member = Host::new("attested-api-m");
+    let (id, _) = enrolled_requiring(
+        &api,
+        &member,
+        "enrol-1",
+        &[permguard_core::domains::assurance::CUSTODY_HSM],
+    )
+    .await;
+    let pending = api.member(&admin(), &id).expect("read");
+    let nonce: [u8; 32] = URL_SAFE_NO_PAD
+        .decode(&pending.appraisal.expect("an appraisal state").nonce)
+        .expect("base64url")
+        .try_into()
+        .expect("32 bytes");
+    let offer = |verifier: &str, nonce: &[u8; 32]| AssuranceOffer {
+        approvals: Vec::new(),
+        evidence: vec![EvidenceView {
+            verifier: verifier.to_owned(),
+            evidence: URL_SAFE_NO_PAD.encode(crate::membership::appraisal::tests::evidence(
+                nonce,
+                &[Control::CustodyHsm],
+            )),
+        }],
+    };
+    let approve = |request_id: &str, assurance: AssuranceOffer| ApproveMember {
+        request_id: request_id.to_owned(),
+        expected_revision: pending.revision,
+        narrow: None,
+        lease_policy: None,
+        assurance: Some(assurance),
+    };
+    let unknown = api
+        .approve_member(&admin(), &id, approve("a-1", offer("tpm", &nonce)))
+        .await
+        .expect_err("no such verifier");
+    assert_eq!(code(&unknown), codes::host::ASSURANCE_UNAVAILABLE);
+    let verifier = crate::membership::appraisal::tests::VERIFIER;
+    let stale = api
+        .approve_member(&admin(), &id, approve("a-2", offer(verifier, &[0; 32])))
+        .await
+        .expect_err("another nonce");
+    assert_eq!(code(&stale), codes::host::ASSURANCE_REFUSED);
+    api.approve_member(&admin(), &id, approve("a-3", offer(verifier, &nonce)))
+        .await
+        .expect("approved on fresh evidence");
+    let assurance = api
+        .member(&admin(), &id)
+        .expect("read")
+        .assurance
+        .expect("a binding");
+    assert_eq!(assurance.claims[0].class, "attested");
+    assert_eq!(assurance.claims[0].by, verifier);
 }

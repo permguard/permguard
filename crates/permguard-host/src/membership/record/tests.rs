@@ -3,6 +3,7 @@
 
 #![allow(clippy::expect_used)]
 
+use permguard_core::assurance::{Control, EvidenceClass};
 use permguard_objects::cbor::{self, Value};
 
 use super::*;
@@ -59,6 +60,7 @@ fn manifest(epoch: u64) -> Manifest {
         tasks: vec![task("decisions", TaskType::DecisionsShip, "plane/data/*")],
         member_assurance: AssuranceProfile::Production,
         min_assurance: Some(AssuranceProfile::Development),
+        assurance_binding: None,
         ring_pins: vec![RingPin {
             owner: Role::Coordinator,
             ring: "host.operations".to_owned(),
@@ -282,4 +284,189 @@ fn limits_narrow_field_by_field() {
     assert!(narrow.within(&wide));
     narrow.retention_seconds = wide.retention_seconds + 1;
     assert!(!narrow.within(&wide));
+}
+
+/// A binding of `manifest(2)`'s member for its task: one declared claim, one approved.
+fn binding() -> AssuranceBinding {
+    let claims = vec![
+        Claim {
+            control: Control::CustodyEncrypted,
+            class: EvidenceClass::Declared,
+            by: "production".to_owned(),
+            record: None,
+        },
+        Claim {
+            control: Control::OperationsDualControl,
+            class: EvidenceClass::OperatorApproved,
+            by: "spiffe://acme/operators/root".to_owned(),
+            record: Some(Digest::compute(b"approval")),
+        },
+    ];
+    let task_ids = vec!["decisions".to_owned()];
+    let policy_revision = Digest::compute(b"policy");
+    AssuranceBinding {
+        result_digest: result_digest(&host(0x22), &task_ids, &policy_revision, &claims)
+            .expect("digested"),
+        member: host(0x22),
+        task_ids,
+        policy_revision,
+        claims,
+        appraised_by: "spiffe://acme/operators/root".to_owned(),
+        issued_at: 10,
+        expires_at: 20,
+        verdict: Verdict::Accepted,
+    }
+}
+
+/// WP-4.2: a manifest's binding reads back, and what it does not name, or names wrongly, is
+/// refused.
+#[test]
+fn a_binding_round_trips_and_refuses_what_it_does_not_name() {
+    // The binding's task requires both controls it claims.
+    let mut requiring = task("decisions", TaskType::DecisionsShip, "plane/data/*");
+    requiring.assurance_requirements = vec![
+        Control::CustodyEncrypted.name().to_owned(),
+        Control::OperationsDualControl.name().to_owned(),
+    ];
+    let with = |binding: AssuranceBinding| Manifest {
+        assurance_binding: Some(binding),
+        tasks: vec![requiring.clone()],
+        ..manifest(2)
+    };
+    let held = with(binding());
+    let bytes = held.encode().expect("encodes");
+    assert_eq!(Manifest::decode(&bytes).expect("reads back"), held);
+    let refused = |binding: AssuranceBinding, why: &str| {
+        let bytes = with(binding).encode().expect("encodes");
+        assert!(Manifest::decode(&bytes).is_err(), "{why}");
+    };
+    // Its digest is over what it says, recomputed.
+    refused(
+        AssuranceBinding {
+            result_digest: Digest::compute(b"other"),
+            ..binding()
+        },
+        "a result digest of something else",
+    );
+    // A binding names the manifest's own member and tasks it grants.
+    let mut other = binding();
+    other.member = host(0x33);
+    other.result_digest = result_digest(
+        &other.member,
+        &other.task_ids,
+        &other.policy_revision,
+        &other.claims,
+    )
+    .expect("digested");
+    refused(other, "another member");
+    let mut ungranted = binding();
+    ungranted.task_ids = vec!["events".to_owned()];
+    ungranted.result_digest = result_digest(
+        &ungranted.member,
+        &ungranted.task_ids,
+        &ungranted.policy_revision,
+        &ungranted.claims,
+    )
+    .expect("digested");
+    refused(ungranted, "a task the manifest does not grant");
+    // A task that requires no control is never in a binding.
+    let unrequiring = Manifest {
+        assurance_binding: Some(binding()),
+        ..manifest(2)
+    };
+    assert!(Manifest::decode(&unrequiring.encode().expect("encodes")).is_err());
+    // Claims sorted by name, each once; a declaration has no record and nothing else lacks one.
+    let resealed = |mut binding: AssuranceBinding| {
+        binding.result_digest = result_digest(
+            &binding.member,
+            &binding.task_ids,
+            &binding.policy_revision,
+            &binding.claims,
+        )
+        .expect("digested");
+        binding
+    };
+    let mut unsorted = binding();
+    unsorted.claims.reverse();
+    refused(resealed(unsorted), "claims out of order");
+    let mut twice = binding();
+    twice.claims[1] = twice.claims[0].clone();
+    refused(resealed(twice), "a control claimed twice");
+    let mut recorded = binding();
+    recorded.claims[0].record = Some(Digest::compute(b"x"));
+    refused(resealed(recorded), "a declaration with a record");
+    let mut bare = binding();
+    bare.claims[1].record = None;
+    refused(resealed(bare), "an approval without its record");
+    // A claim spells its control and class exactly: a record has one encoding.
+    for (control, class) in [
+        (" custody.encrypted", "declared"),
+        (Control::CustodyEncrypted.name(), "declared "),
+    ] {
+        let bytes = with(binding()).encode().expect("encodes");
+        let mut value = cbor::decode_canonical(&bytes).expect("canonical");
+        if let Value::Map(pairs) = &mut value {
+            for (key, inner) in pairs.iter_mut() {
+                if *key == Value::Int(8)
+                    && let Value::Map(fields) = inner
+                {
+                    for (label, claims) in fields.iter_mut() {
+                        if *label == Value::Int(4)
+                            && let Value::Array(claims) = claims
+                            && let Value::Map(first) = &mut claims[0]
+                        {
+                            first[0].1 = Value::Text(control.to_owned());
+                            first[1].1 = Value::Text(class.to_owned());
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            Manifest::decode(&cbor::encode(&value).expect("encodes")).is_err(),
+            "{control:?} {class:?}"
+        );
+    }
+    let mut vouched = binding();
+    vouched.claims[0].by = "spiffe://acme/operators/root".to_owned();
+    refused(
+        resealed(vouched),
+        "a declaration vouched for by other than a profile",
+    );
+    let mut empty = binding();
+    empty.claims.clear();
+    refused(resealed(empty), "no claim");
+    refused(
+        AssuranceBinding {
+            issued_at: 21,
+            ..binding()
+        },
+        "expires before it was issued",
+    );
+    // A label the binding does not name.
+    let mut value = cbor::decode_canonical(&bytes).expect("canonical");
+    if let Value::Map(pairs) = &mut value {
+        for (key, inner) in pairs.iter_mut() {
+            if *key == Value::Int(8)
+                && let Value::Map(binding) = inner
+            {
+                binding.push((Value::Int(99), Value::Int(0)));
+            }
+        }
+    }
+    assert!(Manifest::decode(&cbor::encode(&value).expect("encodes")).is_err());
+    // A revoked binding reads back as revoked.
+    let revoked = with(AssuranceBinding {
+        verdict: Verdict::Revoked,
+        ..binding()
+    });
+    assert_eq!(
+        Manifest::decode(&revoked.encode().expect("encodes")).expect("reads back"),
+        revoked
+    );
+    // An operator approval's reason is printable and bounded.
+    assert!(check_reason("ticket 42").is_ok());
+    for reason in ["", "  ", "a\nb", &"x".repeat(MAX_REASON_BYTES + 1)] {
+        assert!(check_reason(reason).is_err(), "{reason:?}");
+    }
 }

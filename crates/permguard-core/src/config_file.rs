@@ -42,19 +42,21 @@ use crate::config::{
     SETTING_LIMITS_CONNECTIONS_PER_PEER, SETTING_LIMITS_HANDSHAKE_TIMEOUT,
     SETTING_LIMITS_HEADER_BYTES, SETTING_LIMITS_HEADER_TIMEOUT, SETTING_LIMITS_PEER_EXEMPT,
     SETTING_LIMITS_REQUEST_TIMEOUT, SETTING_LIMITS_WRITE_STALL_TIMEOUT, SETTING_LOG_FORMAT,
-    SETTING_LOG_LEVEL, SETTING_NOTP_COMPRESSION, SETTING_NOTP_LEDGER_QUOTA_BYTES,
-    SETTING_NOTP_MAX_BATCH_BYTES, SETTING_NOTP_MAX_BATCH_OBJECTS, SETTING_NOTP_MAX_PUSH_BYTES,
-    SETTING_NOTP_MAX_PUSH_OBJECTS, SETTING_OTEL_ENABLED, SETTING_OTEL_ENDPOINT,
-    SETTING_OTEL_SAMPLE_RATE, SETTING_PUBLIC_DISCLOSE_BUILD, SETTING_PUBLIC_ERROR_DETAIL,
-    SETTING_PUBLIC_GRPC_ADDR, SETTING_PUBLIC_GRPC_ENABLED, SETTING_PUBLIC_HTTP_ADDR,
-    SETTING_PUBLIC_HTTP_ENABLED, SETTING_PUBLIC_PATH_PREFIX, SETTING_PUBLIC_TLS_ALLOW,
-    SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA, SETTING_PUBLIC_TLS_CRL,
-    SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION, SETTING_SECRETS_COORDINATOR_ROOT_REF,
-    SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER,
-    SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_TIMEOUT,
-    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
-    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW,
-    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
+    SETTING_LOG_LEVEL, SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+    SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING, SETTING_NOTP_COMPRESSION,
+    SETTING_NOTP_LEDGER_QUOTA_BYTES, SETTING_NOTP_MAX_BATCH_BYTES, SETTING_NOTP_MAX_BATCH_OBJECTS,
+    SETTING_NOTP_MAX_PUSH_BYTES, SETTING_NOTP_MAX_PUSH_OBJECTS, SETTING_OTEL_ENABLED,
+    SETTING_OTEL_ENDPOINT, SETTING_OTEL_SAMPLE_RATE, SETTING_PUBLIC_DISCLOSE_BUILD,
+    SETTING_PUBLIC_ERROR_DETAIL, SETTING_PUBLIC_GRPC_ADDR, SETTING_PUBLIC_GRPC_ENABLED,
+    SETTING_PUBLIC_HTTP_ADDR, SETTING_PUBLIC_HTTP_ENABLED, SETTING_PUBLIC_PATH_PREFIX,
+    SETTING_PUBLIC_TLS_ALLOW, SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA,
+    SETTING_PUBLIC_TLS_CRL, SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION,
+    SETTING_SECRETS_COORDINATOR_ROOT_REF, SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX,
+    SETTING_SECRETS_PROVIDER, SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
+    SETTING_SHUTDOWN_TIMEOUT, SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL,
+    SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION,
+    SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL,
+    SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -113,6 +115,9 @@ pub struct ConfigFile {
     /// The assurance profile and the higher controls switched on (WP-2.8).
     #[serde(default)]
     assurance: AssuranceSection,
+    /// What this Host asks of the members it coordinates (WP-4.2).
+    #[serde(default)]
+    membership: MembershipSection,
     /// The record-keeping subsystem — the keys that seal a trail, the trail itself, and the secret
     /// that pseudonymises it. These are the server's own, and the defaults every realm inherits.
     #[serde(default)]
@@ -934,6 +939,26 @@ struct AssuranceSection {
     added_controls: Vec<String>,
 }
 
+/// What this Host asks of the members it coordinates.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MembershipSection {
+    #[serde(default)]
+    appraisal: AppraisalSection,
+}
+
+/// The appraisal policy (WP-4.2): the least evidence class each control needs, and the longest a
+/// binding lasts.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppraisalSection {
+    /// Control name to evidence class: `declared`, `operator-approved` or `attested`.
+    #[serde(default)]
+    controls: BTreeMap<String, String>,
+    #[serde(default)]
+    max_binding: Option<String>,
+}
+
 /// How long the server is given to put itself away.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1169,6 +1194,15 @@ impl ConfigFile {
         });
         let added_controls = (!self.assurance.added_controls.is_empty())
             .then(|| self.assurance.added_controls.join(","));
+        let appraisal_controls = (!self.membership.appraisal.controls.is_empty()).then(|| {
+            self.membership
+                .appraisal
+                .controls
+                .iter()
+                .map(|(control, class)| format!("{control}={class}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        });
         let public_allow = self
             .public
             .tls
@@ -1403,6 +1437,14 @@ impl ConfigFile {
             (SETTING_LOG_FORMAT, self.log.format.as_ref()),
             (SETTING_ASSURANCE_PROFILE, self.assurance.profile.as_ref()),
             (SETTING_ASSURANCE_ADDED_CONTROLS, added_controls.as_ref()),
+            (
+                SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+                appraisal_controls.as_ref(),
+            ),
+            (
+                SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING,
+                self.membership.appraisal.max_binding.as_ref(),
+            ),
             (SETTING_SHUTDOWN_TIMEOUT, self.shutdown.timeout.as_ref()),
             (
                 SETTING_SHUTDOWN_DRAIN_TIMEOUT,

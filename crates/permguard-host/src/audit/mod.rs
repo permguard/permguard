@@ -187,6 +187,35 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.joined", HOST),
     mutation("host.membership.synced", HOST),
     mutation("host.membership.orphaned", HOST),
+    // Assurance appraisal (WP-4.2): an appraisal a mutation; each operator approval it takes a
+    // record of its own inside that operation, with its principal, scope, reason and expiry; no
+    // evidence is ever a fact.
+    mutation("host.membership.appraised", HOST),
+    ActionSchema {
+        action: "host.membership.assurance_revoked",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("controls", FactType::Text(1200)),
+            ("reason", FactType::Text(512)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: true,
+    },
+    ActionSchema {
+        action: "host.membership.assurance_approved",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("control", FactType::Text(64)),
+            ("tasks", FactType::Text(4200)),
+            ("reason", FactType::Text(512)),
+            ("expires_at", FactType::Uint),
+            ("record", FactType::Text(80)),
+        ],
+        max_bytes: 8 * 1024,
+        phases: true,
+    },
     // Peer Host sessions (WP-2.3): each one established or refused.
     ActionSchema {
         action: "host.session.established",

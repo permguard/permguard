@@ -435,6 +435,15 @@ impl Labelled {
         self.take(label)
     }
 
+    /// An optional member read whole: absent is `None`, never null.
+    pub(crate) fn optional_value(&mut self, label: i64) -> Result<Option<Value>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.take(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     pub(crate) fn boolean(&mut self, label: i64) -> Result<bool, RecordError> {
         match self.take(label)? {
             Value::Bool(value) => Ok(value),

@@ -67,6 +67,8 @@ service MembershipService {
   rpc ResumeMember(ResumeMemberRequest) returns (ResumeMemberResponse);
   // `POST /host/v1/members/{id}/fence`.
   rpc FenceMember(FenceMemberRequest) returns (FenceMemberResponse);
+  // `POST /host/v1/members/{id}/appraise`: the assurance binding renewed or revoked (WP-4.2).
+  rpc AppraiseMember(AppraiseMemberRequest) returns (AppraiseMemberResponse);
   // `POST /host/v1/members/{id}/revoke/plan`.
   rpc PlanMemberRevoke(PlanMemberRevokeRequest) returns (PlanMemberRevokeResponse);
   // `POST /host/v1/members/{id}/revoke/run`.
@@ -395,6 +397,64 @@ message Member {
   string updated_at = 13;
   // The last task session: sessions come with WP-4.3.
   optional string last_session_at = 14;
+  // The assurance binding the manifest signs; absent when it signs none (WP-4.2).
+  AssuranceBinding assurance = 15;
+  // While the coordinator appraises the tasks' controls; absent otherwise (WP-4.2).
+  AppraisalState appraisal = 16;
+}
+// An assurance binding, as an operator reads it (WP-4.2).
+message AssuranceBinding {
+  // `accepted` or `revoked`.
+  string verdict = 1;
+  // Whether it admits tasks now.
+  bool current = 2;
+  string policy_revision = 3;
+  repeated string task_ids = 4;
+  repeated AssuranceClaim claims = 5;
+  string appraised_by = 6;
+  string issued_at = 7;
+  string expires_at = 8;
+  // What a task admission answers it by.
+  string binding_digest = 9;
+}
+// One claim of a binding, without the record it cites.
+message AssuranceClaim {
+  string control = 1;
+  // `declared`, `operator-approved` or `attested`.
+  string class = 2;
+  // The declared profile, the approving principal or the verifier id.
+  string by = 3;
+}
+// The appraisal state of a membership whose tasks require controls.
+message AppraisalState {
+  string policy_revision = 1;
+  // The nonce evidence for this revision binds to.
+  bytes nonce = 2;
+  repeated AssuranceRequirement requirements = 3;
+}
+// One control the tasks require.
+message AssuranceRequirement {
+  string control = 1;
+  // The least class the policy wants; absent when it does not appraise the control.
+  optional string wants = 2;
+  // Whether the member's declaration meets it.
+  bool declared = 3;
+}
+// What an approval or an appraisal brings for the controls the tasks require (WP-4.2).
+message AssuranceOffer {
+  repeated OperatorApproval approvals = 1;
+  repeated AttestationEvidence evidence = 2;
+}
+// An operator's approval of one control; the principal is the caller's.
+message OperatorApproval {
+  string control = 1;
+  string reason = 2;
+  string expires_at = 3;
+}
+// One piece of evidence for a registered verifier; kept by its digest alone.
+message AttestationEvidence {
+  string verifier = 1;
+  bytes evidence = 2;
 }
 // A Host as a membership pins it.
 message MembershipHost {
@@ -424,6 +484,8 @@ message ApproveMemberRequest {
   // A narrowing of the request, never wider.
   MembershipScope narrow = 4;
   LeasePolicy lease_policy = 5;
+  // What the tasks' controls are appraised with (WP-4.2).
+  AssuranceOffer assurance = 6;
 }
 message ApproveMemberResponse {
   Receipt receipt = 1;
@@ -479,6 +541,26 @@ message FenceMemberRequest {
   optional string reason = 4;
 }
 message FenceMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/appraise` (WP-4.2), under `membership.admin`.
+message AppraiseMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  repeated OperatorApproval approvals = 4;
+  repeated AttestationEvidence evidence = 5;
+  // Revokes the binding instead.
+  RevokeBinding revoke = 6;
+}
+// Why a binding is revoked.
+message RevokeBinding {
+  string reason = 1;
+}
+message AppraiseMemberResponse {
   Receipt receipt = 1;
   string status = 2;
   uint64 epoch = 3;

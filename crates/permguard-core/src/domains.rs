@@ -58,6 +58,18 @@ pub mod digest {
     pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1\n";
     /// The hash chain of the membership journal (WP-4.1).
     pub const MEMBERSHIP_JOURNAL: &str = "permguard.membership.journal.v1\n";
+    /// A coordinator's appraisal policy, as an assurance binding names its revision (WP-4.2).
+    pub const MEMBERSHIP_APPRAISAL_POLICY: &str = "permguard.membership.appraisal-policy.v1\n";
+    /// The nonce attestation evidence is bound to: one coordinator, membership and state (WP-4.2).
+    pub const MEMBERSHIP_ASSURANCE_NONCE: &str = "permguard.membership.assurance-nonce.v1\n";
+    /// One piece of attestation evidence, kept by this digest alone (WP-4.2).
+    pub const MEMBERSHIP_ASSURANCE_EVIDENCE: &str = "permguard.membership.assurance-evidence.v1\n";
+    /// An operator's approval of one control, kept in the audit and cited by this digest (WP-4.2).
+    pub const MEMBERSHIP_OPERATOR_APPROVAL: &str = "permguard.membership.operator-approval.v1\n";
+    /// The result of an appraisal: the member, the tasks, the policy and the claims (WP-4.2).
+    pub const MEMBERSHIP_ASSURANCE_RESULT: &str = "permguard.membership.assurance-result.v1\n";
+    /// An assurance binding, as a task admission answers it (WP-4.2).
+    pub const MEMBERSHIP_ASSURANCE_BINDING: &str = "permguard.membership.assurance-binding.v1\n";
     /// The witness of a secret at one version, and of a delivered zone key (WP-3.3).
     pub const SECRET_WITNESS: &str = "permguard.secret.witness.v1\n";
     /// A decision record.
@@ -336,6 +348,30 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.MEMBERSHIP_TOKEN_KEY", digest::MEMBERSHIP_TOKEN_KEY),
         ("digest.MEMBERSHIP_MANIFEST", digest::MEMBERSHIP_MANIFEST),
         ("digest.MEMBERSHIP_JOURNAL", digest::MEMBERSHIP_JOURNAL),
+        (
+            "digest.MEMBERSHIP_APPRAISAL_POLICY",
+            digest::MEMBERSHIP_APPRAISAL_POLICY,
+        ),
+        (
+            "digest.MEMBERSHIP_ASSURANCE_NONCE",
+            digest::MEMBERSHIP_ASSURANCE_NONCE,
+        ),
+        (
+            "digest.MEMBERSHIP_ASSURANCE_EVIDENCE",
+            digest::MEMBERSHIP_ASSURANCE_EVIDENCE,
+        ),
+        (
+            "digest.MEMBERSHIP_OPERATOR_APPROVAL",
+            digest::MEMBERSHIP_OPERATOR_APPROVAL,
+        ),
+        (
+            "digest.MEMBERSHIP_ASSURANCE_RESULT",
+            digest::MEMBERSHIP_ASSURANCE_RESULT,
+        ),
+        (
+            "digest.MEMBERSHIP_ASSURANCE_BINDING",
+            digest::MEMBERSHIP_ASSURANCE_BINDING,
+        ),
         ("digest.SECRET_WITNESS", digest::SECRET_WITNESS),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
         ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),

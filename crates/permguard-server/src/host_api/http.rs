@@ -15,8 +15,8 @@ use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
 use permguard_host::api::members::{
-    ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke, RunMemberRevoke,
-    SyncMembership,
+    AppraiseMember, ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke,
+    RunMemberRevoke, SyncMembership,
 };
 use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
 use permguard_host::api::{
@@ -72,6 +72,7 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/members/{id}/suspend", post(suspend_member))
         .route("/host/v1/members/{id}/resume", post(resume_member))
         .route("/host/v1/members/{id}/fence", post(fence_member))
+        .route("/host/v1/members/{id}/appraise", post(appraise_member))
         .route(
             "/host/v1/members/{id}/revoke/plan",
             post(plan_member_revoke),
@@ -442,6 +443,19 @@ async fn fence_member(
         &served,
         StatusCode::OK,
         served.api.fence_member(&actor, &id, change).await,
+    )
+}
+
+async fn appraise_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(appraise): Closed<AppraiseMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.appraise_member(&actor, &id, appraise).await,
     )
 }
 

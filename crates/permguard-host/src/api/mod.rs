@@ -497,10 +497,15 @@ pub(crate) mod testing {
     /// One audit record as the facade's tests read it: action, subject, target and phase.
     pub(crate) type Recorded = (String, String, Option<String>, Option<&'static str>);
 
+    /// The facts of one audit record: its action, and each fact's name and value as text.
+    pub(crate) type RecordedFacts = (String, Vec<(String, String)>);
+
     /// The audit trail of the facade's tests: remembers every record, or refuses them all.
     #[derive(Default)]
     pub(crate) struct Recording {
         pub(crate) events: std::sync::Mutex<Vec<Recorded>>,
+        /// The facts of each record that carries any, by action, rendered as text.
+        pub(crate) facts: std::sync::Mutex<Vec<RecordedFacts>>,
         /// Every record refused.
         pub(crate) refuse: std::sync::atomic::AtomicBool,
         /// The records of this phase refused.
@@ -536,6 +541,26 @@ pub(crate) mod testing {
                 permguard_core::Subject::System(system) => format!("system:{system}"),
                 other => other.to_string(),
             };
+            if !event.facts().is_empty() {
+                self.facts
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push((
+                        event.action().to_owned(),
+                        event
+                            .facts()
+                            .iter()
+                            .map(|(name, fact)| {
+                                let value = match fact {
+                                    permguard_core::Fact::Text(text) => (*text).to_owned(),
+                                    permguard_core::Fact::Uint(value) => value.to_string(),
+                                    permguard_core::Fact::Bool(value) => value.to_string(),
+                                };
+                                ((*name).to_owned(), value)
+                            })
+                            .collect(),
+                    ));
+            }
             self.events
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -742,6 +767,9 @@ pub(crate) mod testing {
                     crate::membership::record::Role::Coordinator,
                 ),
                 connector: None,
+                // A fixed policy and a verifier that checks its nonce: tasks requiring none of
+                // these controls are untouched (WP-4.2).
+                appraisal: crate::membership::appraisal::tests::appraisal(),
             })),
         });
         (api, store, volume)

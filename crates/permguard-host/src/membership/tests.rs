@@ -161,6 +161,18 @@ fn capabilities() -> Capabilities {
     Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator)
 }
 
+/// An approval that brings nothing for the tasks' controls: what a task requiring none needs.
+pub(crate) fn offered_nothing() -> Offered<'static> {
+    static NOTHING: std::sync::LazyLock<appraisal::Appraisal> =
+        std::sync::LazyLock::new(appraisal::Appraisal::default);
+    Offered {
+        appraisal: &NOTHING,
+        approvals: &[],
+        evidence: &[],
+        principal: "spiffe://acme/operators/root",
+    }
+}
+
 /// An invitation from `coordinator` for decisions under `plane/data/*`, and its token.
 fn invite(coordinator: &Host, expected: Option<String>) -> (Invitation, [u8; 32]) {
     coordinator
@@ -285,7 +297,7 @@ fn the_lifecycle_between_two_hosts() {
     );
     assert_eq!(sync(&c, &m, &id), Status::Pending, "nothing to accept yet");
 
-    let (manifest, _) = c
+    let (manifest, _, _) = c
         .store
         .check_approve(
             &c.coordinator(),
@@ -293,6 +305,7 @@ fn the_lifecycle_between_two_hosts() {
             &id,
             None,
             None,
+            &offered_nothing(),
             Some(1),
             now(),
         )
@@ -486,6 +499,7 @@ fn approval_narrows_and_never_widens() {
             &id,
             narrow.as_ref(),
             None,
+            &offered_nothing(),
             None,
             now(),
         )
@@ -514,7 +528,7 @@ fn approval_narrows_and_never_widens() {
         selector: Selector::parse("plane/data/zone/z1/*").expect("a selector"),
         tasks: vec![decisions("plane/data/zone/z1/*")],
     };
-    let (manifest, _) = approve(Some(narrower), &capabilities()).expect("narrowed");
+    let (manifest, _, _) = approve(Some(narrower), &capabilities()).expect("narrowed");
     assert_eq!(manifest.selector.to_string(), "plane/data/zone/z1/*");
     assert!(
         manifest
@@ -529,25 +543,30 @@ fn approval_narrows_and_never_widens() {
     ));
 }
 
+/// WP-4.2: a requirement names a registered control, the coordinator's policy must appraise it,
+/// and an approval stands only on the evidence the policy wants; the member accepts the manifest
+/// carrying the binding.
 #[test]
-fn a_task_with_assurance_requirements_is_refused_at_approval() {
+fn a_task_requiring_a_control_is_approved_only_on_the_evidence_the_policy_wants() {
     let (c, m) = (Host::new("assurance-c"), Host::new("assurance-m"));
     let mut task = decisions("plane/data/*");
+    let offer = |task: &Task| NewInvite {
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![task.clone()],
+        expires: None,
+        expected_fingerprint: None,
+        min_assurance: None,
+    };
     task.assurance_requirements = vec!["hsm".to_owned()];
+    assert!(matches!(
+        c.store
+            .invite(&Applying::for_tests(1), offer(&task), "operator", now()),
+        Err(MembershipError::Invalid(_))
+    ));
+    task.assurance_requirements = vec![permguard_core::domains::assurance::CUSTODY_HSM.to_owned()];
     let (invitation, token) = c
         .store
-        .invite(
-            &Applying::for_tests(1),
-            NewInvite {
-                selector: Selector::parse("plane/data/*").expect("a selector"),
-                tasks: vec![task.clone()],
-                expires: None,
-                expected_fingerprint: None,
-                min_assurance: None,
-            },
-            "operator",
-            now(),
-        )
+        .invite(&Applying::for_tests(1), offer(&task), "operator", now())
         .expect("invited");
     let mut asked = request(&c, &m, &invitation, &token, &EXPORTER);
     asked.tasks = vec![task];
@@ -559,7 +578,7 @@ fn a_task_with_assurance_requirements_is_refused_at_approval() {
             &Enrolling {
                 peer: &verified,
                 presentation: &m.presentation(),
-                declared_assurance: AssuranceProfile::Production,
+                declared_assurance: AssuranceProfile::Regulated,
                 exporter: &EXPORTER,
             },
             &asked,
@@ -569,25 +588,79 @@ fn a_task_with_assurance_requirements_is_refused_at_approval() {
     c.store
         .enroll(&Applying::for_tests(2), &pending, now())
         .expect("enrolled");
-    assert!(matches!(
+    m.store
+        .join(
+            &Applying::for_tests(3),
+            &Pending {
+                coordinator_address: Some("https://coordinator:7443".to_owned()),
+                ..pending.clone()
+            },
+            now(),
+        )
+        .expect("joined");
+    let id = pending.membership_id;
+    let approve = |offered: &Offered<'_>| {
         c.store.check_approve(
             &c.coordinator(),
             &capabilities(),
-            &pending.membership_id,
+            &id,
             None,
             None,
+            offered,
             None,
-            now()
-        ),
-        Err(MembershipError::AssuranceUnavailable(_))
+            now(),
+        )
+    };
+    // A policy that appraises nothing: unapprovable.
+    assert!(matches!(
+        approve(&offered_nothing()),
+        Err(MembershipError::AssuranceRefused(_))
     ));
+    // The test policy wants `custody.hsm` attested: the `regulated` declaration is not enough.
+    let appraisal = appraisal::tests::appraisal();
+    let with = |evidence: &[appraisal::Evidence]| {
+        approve(&Offered {
+            appraisal: &appraisal,
+            approvals: &[],
+            evidence,
+            principal: "operator",
+        })
+    };
+    assert!(matches!(
+        with(&[]),
+        Err(MembershipError::AssuranceRefused(_))
+    ));
+    // Evidence bound to the pending request's nonce is accepted.
+    let state = Digest::compute(&pending.encode().expect("encodes"));
+    let nonce = appraisal::nonce(&c.identity.host_id(), &id, &state);
+    let evidence = [appraisal::Evidence {
+        verifier: appraisal::tests::VERIFIER.to_owned(),
+        evidence: appraisal::tests::evidence(
+            &nonce,
+            &[permguard_core::assurance::Control::CustodyHsm],
+        ),
+    }];
+    let (manifest, _, approvals) = with(&evidence).expect("approvable");
+    assert!(approvals.is_empty());
+    let binding = manifest.assurance_binding.clone().expect("a binding");
+    assert_eq!(binding.task_ids, ["decisions"]);
+    c.store
+        .approve(&Applying::for_tests(4), &c.coordinator(), &manifest, now())
+        .expect("approved");
+    // The member verifies and keeps the manifest with its binding.
+    assert_eq!(sync(&c, &m, &id), Status::Active);
+    let held = m.store.membership(&id).expect("held");
+    assert_eq!(
+        held.manifest.expect("a manifest").0.assurance_binding,
+        Some(binding)
+    );
 }
 
 #[test]
 fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
     let (c, m) = (Host::new("equiv-c"), Host::new("equiv-m"));
     let id = enroll(&c, &m).membership_id;
-    let (manifest, _) = c
+    let (manifest, _, _) = c
         .store
         .check_approve(
             &c.coordinator(),
@@ -595,6 +668,7 @@ fn same_epoch_other_digest_is_equivocation_and_a_skipped_revision_is_refused() {
             &id,
             None,
             None,
+            &offered_nothing(),
             None,
             now(),
         )
@@ -909,7 +983,7 @@ mod protocol {
                 .any(|(host, _)| *host == c.host.identity.host_id())
         );
 
-        let (manifest, _) = c
+        let (manifest, _, _) = c
             .host
             .store
             .check_approve(
@@ -918,6 +992,7 @@ mod protocol {
                 &id,
                 None,
                 None,
+                &offered_nothing(),
                 None,
                 now(),
             )
@@ -1236,7 +1311,7 @@ fn a_membership_pins_its_peer_as_far_as_its_status_lets_it() {
         fingerprint
     );
     assert_eq!(c.store.pin(&member, Some(Operation::Task)), None);
-    let (manifest, _) = c
+    let (manifest, _, _) = c
         .store
         .check_approve(
             &c.coordinator(),
@@ -1244,6 +1319,7 @@ fn a_membership_pins_its_peer_as_far_as_its_status_lets_it() {
             &pending.membership_id,
             None,
             None,
+            &offered_nothing(),
             None,
             now(),
         )
@@ -1279,7 +1355,7 @@ fn a_member_refuses_a_genesis_wider_than_its_request() {
     let (c, m) = (Host::new("strict-c"), Host::new("strict-m"));
     let pending = enroll(&c, &m);
     let id = pending.membership_id;
-    let (mut wider, _) = c
+    let (mut wider, _, _) = c
         .store
         .check_approve(
             &c.coordinator(),
@@ -1287,6 +1363,7 @@ fn a_member_refuses_a_genesis_wider_than_its_request() {
             &id,
             None,
             None,
+            &offered_nothing(),
             None,
             now(),
         )
@@ -1323,7 +1400,7 @@ fn a_member_refuses_a_manifest_already_past_its_not_after() {
     let (c, m) = (Host::new("late-c"), Host::new("late-m"));
     let pending = enroll(&c, &m);
     let id = pending.membership_id;
-    let (genesis, _) = c
+    let (genesis, _, _) = c
         .store
         .check_approve(
             &c.coordinator(),
@@ -1331,6 +1408,7 @@ fn a_member_refuses_a_manifest_already_past_its_not_after() {
             &id,
             None,
             None,
+            &offered_nothing(),
             None,
             now(),
         )

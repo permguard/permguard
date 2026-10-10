@@ -223,6 +223,55 @@ impl FromStr for Control {
     }
 }
 
+/// The evidence a coordinator accepts for one control of a member (WP-4.2): an ordered threshold,
+/// the appraisal policy naming the least sufficient class (owner decision of 2026-10-10).
+///
+/// A declaration proves only which Host made the claim; an operator approval is an accountable
+/// risk decision; an attestation is a configured verifier's fresh result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EvidenceClass {
+    Declared,
+    OperatorApproved,
+    Attested,
+}
+
+impl EvidenceClass {
+    /// Every class, weakest first.
+    pub const ALL: [Self; 3] = [Self::Declared, Self::OperatorApproved, Self::Attested];
+
+    /// The stable name an appraisal policy and a binding carry.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Declared => "declared",
+            Self::OperatorApproved => "operator-approved",
+            Self::Attested => "attested",
+        }
+    }
+}
+
+impl fmt::Display for EvidenceClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for EvidenceClass {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let value = value.trim();
+        Self::ALL
+            .into_iter()
+            .find(|class| class.as_str() == value)
+            .ok_or_else(|| {
+                format!(
+                    "`{value}` is not an evidence class; the classes are {}",
+                    Self::ALL.map(Self::as_str).join(", ")
+                )
+            })
+    }
+}
+
 /// One relaxation a profile may permit: always a named value, published when in force.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Relaxation {

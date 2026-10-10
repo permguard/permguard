@@ -1704,6 +1704,98 @@ fn test_the_clock_bound_is_read_defaults_to_thirty_seconds_and_is_never_zero() {
     );
 }
 
+/// WP-4.2: the appraisal policy is read as `control=class` pairs from either layer, names each
+/// control once with a registered class, and bounds a binding at thirty days unless told.
+#[test]
+fn test_the_appraisal_policy_is_read_pair_by_pair_and_bounds_a_binding_at_thirty_days() {
+    use permguard_core::assurance::{Control, EvidenceClass};
+
+    let defaults = config(&[], &[], &[]);
+    assert!(defaults.membership_appraisal_controls().is_empty());
+    assert_eq!(
+        defaults.membership_appraisal_max_binding(),
+        Duration::from_secs(30 * 86_400)
+    );
+    let read = config(
+        &[
+            (
+                SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+                "custody.hsm=attested, tls.1_3_only=declared\noperations.dual_control=operator-approved",
+            ),
+            (SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING, "365d"),
+        ],
+        &[],
+        &[],
+    );
+    assert_eq!(
+        read.membership_appraisal_controls()
+            .iter()
+            .map(|(control, class)| (*control, *class))
+            .collect::<Vec<_>>(),
+        vec![
+            (Control::CustodyHsm, EvidenceClass::Attested),
+            (
+                Control::OperationsDualControl,
+                EvidenceClass::OperatorApproved
+            ),
+            (Control::Tls13Only, EvidenceClass::Declared),
+        ]
+    );
+    assert_eq!(
+        read.membership_appraisal_max_binding(),
+        Duration::from_secs(365 * 86_400),
+        "a year at most, a year accepted"
+    );
+    for (setting, value, said) in [
+        (
+            SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+            "custody.hsm",
+            "control=class",
+        ),
+        (
+            SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+            "custody.hsm=trusted",
+            "evidence class",
+        ),
+        (
+            SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+            "custody.magic=attested",
+            "assurance control",
+        ),
+        (
+            SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+            "custody.hsm=attested,custody.hsm=declared",
+            "twice",
+        ),
+        (SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING, "0s", "zero"),
+        (SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING, "366d", "365 days"),
+    ] {
+        let refused = Config::from_layers(
+            build_settings(),
+            Vec::<String>::new(),
+            Layers::new().with_file(pairs(&[(setting, value)])),
+        )
+        .expect_err("refused");
+        assert!(
+            format!("{refused:#}").contains(said) && format!("{refused:#}").contains(setting),
+            "{setting}={value}: {refused:#}"
+        );
+    }
+    let file = permguard_core::ConfigFile::parse(
+        "membership:\n  appraisal:\n    controls:\n      tls.1_3_only: declared\n      custody.hsm: attested\n    max_binding: 1d\n",
+    )
+    .expect("parses");
+    let settings = file.settings();
+    assert!(settings.contains(&(
+        SETTING_MEMBERSHIP_APPRAISAL_CONTROLS.to_owned(),
+        "custody.hsm=attested,tls.1_3_only=declared".to_owned()
+    )));
+    assert!(settings.contains(&(
+        SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING.to_owned(),
+        "1d".to_owned()
+    )));
+}
+
 const PEER_A: &str = "0198f2aa-0000-7000-8000-000000000001";
 const PEER_B: &str = "0198f2aa-0000-7000-8000-000000000002";
 

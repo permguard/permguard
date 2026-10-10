@@ -925,11 +925,14 @@ fn keys_bundle_samples() -> Vec<Sample> {
 
 fn membership_samples() -> Vec<Sample> {
     use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::assurance::{Control, EvidenceClass};
     use permguard_core::authz::Selector;
+    use permguard_host::membership::appraisal::Policy;
     use permguard_host::membership::record::{
-        Action, EnrollAnswer, EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Limits,
-        Manifest, MembershipAnswer, MembershipRequest, Pending, RingPin, RingStatement, Role,
-        Status, Task, TaskType, chain,
+        Action, AssuranceBinding, Claim, EnrollAnswer, EnrollRequest, Entry, HostRef, Invitation,
+        Kind, LeasePolicy, Limits, Manifest, MembershipAnswer, MembershipRequest, OperatorApproval,
+        Pending, RingPin, RingStatement, Role, Status, Task, TaskType, Verdict, chain,
+        evidence_bytes, result_bytes, result_digest,
     };
     use permguard_objects::crypto::suite::Suite;
     use permguard_objects::digest::Digest;
@@ -961,14 +964,55 @@ fn membership_samples() -> Vec<Sample> {
         keys: vec!["{}".to_owned()],
         binding: vec![0x84],
     };
+    // A binding with a declared claim (no record) and an approved one (a record): WP-4.2.
+    let claims = vec![
+        Claim {
+            control: Control::CustodyEncrypted,
+            class: EvidenceClass::Declared,
+            by: "production".to_owned(),
+            record: None,
+        },
+        Claim {
+            control: Control::OperationsDualControl,
+            class: EvidenceClass::OperatorApproved,
+            by: "spiffe://acme/operators/root".to_owned(),
+            record: Some(Digest::compute(b"approval")),
+        },
+    ];
+    let task_ids = vec!["decisions".to_owned()];
+    let policy_revision = Digest::compute(b"policy");
+    let binding = AssuranceBinding {
+        member: host(ZONE_ID),
+        task_ids: task_ids.clone(),
+        policy_revision: policy_revision.clone(),
+        claims: claims.clone(),
+        result_digest: result_digest(&host(ZONE_ID), &task_ids, &policy_revision, &claims)
+            .expect("digested"),
+        appraised_by: "spiffe://acme/operators/root".to_owned(),
+        issued_at: 1_800_000_000,
+        expires_at: 1_800_086_400,
+        verdict: Verdict::Accepted,
+    };
     let manifest = |epoch: u64| Manifest {
         membership_id: SCOPE_ID,
         coordinator: host(HOST_ID),
         member: host(ZONE_ID),
         selector: Selector::parse("plane/data/*").expect("a selector"),
-        tasks: vec![task.clone()],
+        // Past genesis the task requires the two controls the binding claims.
+        tasks: vec![if epoch > 1 {
+            Task {
+                assurance_requirements: vec![
+                    Control::CustodyEncrypted.name().to_owned(),
+                    Control::OperationsDualControl.name().to_owned(),
+                ],
+                ..task.clone()
+            }
+        } else {
+            task.clone()
+        }],
         member_assurance: AssuranceProfile::Production,
         min_assurance: (epoch > 1).then_some(AssuranceProfile::Development),
+        assurance_binding: (epoch > 1).then(|| binding.clone()),
         ring_pins: vec![RingPin {
             owner: Role::Member,
             ring: "data.attest".to_owned(),
@@ -1046,8 +1090,54 @@ fn membership_samples() -> Vec<Sample> {
         sample(
             "manifest",
             manifest(2).encode().expect("encodes"),
-            &["manifest.min_assurance", "manifest.previous"],
+            &[
+                "manifest.min_assurance",
+                "manifest.previous",
+                "manifest.assurance_binding",
+                "claim.record",
+            ],
             decoder(|bytes| verdict(Manifest::decode(bytes))),
+        ),
+        sample(
+            "operator_approval",
+            OperatorApproval {
+                membership_id: SCOPE_ID,
+                control: Control::OperationsDualControl,
+                principal: "spiffe://acme/operators/root".to_owned(),
+                task_ids: task_ids.clone(),
+                reason: "ticket 42".to_owned(),
+                expires_at: 1_800_086_400,
+                approved_at: 1_800_000_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            None,
+        ),
+        sample(
+            "appraisal_policy",
+            Policy::new(
+                std::collections::BTreeMap::from([
+                    (Control::CustodyHsm, EvidenceClass::Attested),
+                    (Control::CustodyEncrypted, EvidenceClass::Declared),
+                ]),
+                std::time::Duration::from_secs(2_592_000),
+            )
+            .encode(),
+            &[],
+            None,
+        ),
+        sample(
+            "assurance_result",
+            result_bytes(&host(ZONE_ID), &task_ids, &policy_revision, &claims).expect("encodes"),
+            &["claim.record"],
+            None,
+        ),
+        sample(
+            "assurance_evidence",
+            evidence_bytes("tpm-quote", &[0xEE; 8]).expect("encodes"),
+            &[],
+            None,
         ),
         sample(
             "invitation",

@@ -693,6 +693,13 @@ impl Mutations {
         Ok(recovered)
     }
 
+    /// Writes a record of an operation's own facts beside its phases, through the same audit
+    /// projection, failure answered: what a phase record cannot carry (WP-4.2: an operator
+    /// approval's principal, scope, reason and expiry).
+    pub fn project(&self, event: &AuditEvent<'_>) -> Result<(), String> {
+        self.projection.project(event)
+    }
+
     /// Runs one operation through the protocol. `apply` is the domain mutation: it is given the
     /// [`Applying`] its mutators take, and answers the revision, the target and the answer.
     pub fn run<T, E>(

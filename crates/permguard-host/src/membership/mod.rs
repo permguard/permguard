@@ -31,6 +31,7 @@
 //! successor naming its predecessor's digest: the epoch is the fence, and the same epoch with
 //! another digest is equivocation.
 
+pub mod appraisal;
 pub mod member;
 pub mod record;
 pub mod reset;
@@ -68,8 +69,8 @@ use crate::storage::write::{read_view, replace_view};
 use crate::storage::{Dir, StorageError, format, sequence};
 
 use record::{
-    EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Manifest, Pending, RingPin,
-    RingStatement, Role, Status, Task, TaskType, chain, manifest_digest,
+    EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Manifest, OperatorApproval,
+    Pending, RingPin, RingStatement, Role, Status, Task, TaskType, chain, manifest_digest,
 };
 
 /// The directory below `host/`.
@@ -103,6 +104,8 @@ pub const SYNC: &str = "members.sync";
 pub const ORPHAN: &str = "members.orphan";
 /// A membership this Host coordinates, ended by its identity reset.
 pub const END_ON_RESET: &str = "members.reset";
+/// The appraisal of an active membership's assurance binding: renewed or revoked (WP-4.2).
+pub const APPRAISE: &str = "members.appraise";
 
 /// The audit actions.
 pub const AUDIT_INVITED: &str = "host.membership.invited";
@@ -118,6 +121,11 @@ pub const AUDIT_REVOKED: &str = "host.membership.revoked";
 pub const AUDIT_JOINED: &str = "host.membership.joined";
 pub const AUDIT_SYNCED: &str = "host.membership.synced";
 pub const AUDIT_ORPHANED: &str = "host.membership.orphaned";
+pub const AUDIT_APPRAISED: &str = "host.membership.appraised";
+/// One operator approval an approval or an appraisal took, inside its operation (WP-4.2).
+pub const AUDIT_ASSURANCE_APPROVED: &str = "host.membership.assurance_approved";
+/// A binding an appraisal revoked, with its principal, reason and controls (WP-4.2).
+pub const AUDIT_ASSURANCE_REVOKED: &str = "host.membership.assurance_revoked";
 
 /// The longest an invitation lives, and how long when the request names no expiry (decided in
 /// the package, 2026-10-09).
@@ -152,8 +160,11 @@ pub enum MembershipError {
     Widened(String),
     /// No Plane declared the task (WP-4.4 fills the registry).
     TaskUnserved(String),
-    /// The task depends on a control, and no assurance appraisal exists yet (WP-4.2).
+    /// A control wants a verifier this Host has not registered, or the evidence names one it does
+    /// not know (WP-4.2).
     AssuranceUnavailable(String),
+    /// A control a task depends on has no current accepted assurance binding (WP-4.2).
+    AssuranceRefused(String),
     /// An enrollment refused: the peer is told one code whatever the reason.
     Enrollment(String),
     /// A manifest with the epoch held and another digest.
@@ -185,6 +196,7 @@ impl fmt::Display for MembershipError {
             Self::Widened(detail) => write!(f, "an approval may narrow, never widen: {detail}"),
             Self::TaskUnserved(detail) => write!(f, "{detail}"),
             Self::AssuranceUnavailable(detail) => write!(f, "{detail}"),
+            Self::AssuranceRefused(detail) => write!(f, "assurance refused: {detail}"),
             Self::Enrollment(detail) => write!(f, "the enrollment is refused: {detail}"),
             Self::Equivocation(detail) => write!(f, "equivocation: {detail}"),
             Self::NotSuccessor(detail) => write!(f, "not the successor: {detail}"),
@@ -435,6 +447,8 @@ fn check_tasks(
         }
         task.check()
             .map_err(|error| MembershipError::Invalid(error.0))?;
+        // Every requirement names a registered control.
+        appraisal::required(std::slice::from_ref(task))?;
         if !selector_within(&task.selector, selector) {
             return Err(MembershipError::Invalid(format!(
                 "the task `{}` reaches outside the membership's selector",
@@ -793,6 +807,16 @@ pub struct Enrolling<'a> {
 pub struct Narrow {
     pub selector: Selector,
     pub tasks: Vec<Task>,
+}
+
+/// What an approval or an appraisal brings for the controls the tasks require (WP-4.2): the
+/// coordinator's appraisal, the operator's approvals, the evidence, and who asks.
+#[derive(Debug, Clone, Copy)]
+pub struct Offered<'a> {
+    pub appraisal: &'a appraisal::Appraisal,
+    pub approvals: &'a [appraisal::Approval],
+    pub evidence: &'a [appraisal::Evidence],
+    pub principal: &'a str,
 }
 
 impl Store {
@@ -1352,7 +1376,8 @@ impl Store {
         Ok(())
     }
 
-    /// Checks an approval without writing; answers the manifest it would sign.
+    /// Checks an approval without writing; answers the manifest it would sign and the operator
+    /// approvals its binding cites, which the audit keeps whole.
     #[allow(clippy::too_many_arguments)]
     pub fn check_approve(
         &self,
@@ -1361,9 +1386,10 @@ impl Store {
         id: &[u8; 16],
         narrow: Option<&Narrow>,
         lease_policy: Option<LeasePolicy>,
+        offered: &Offered<'_>,
         expected_revision: Option<u64>,
         now: u64,
-    ) -> Result<(Manifest, Vec<RingStatement>), MembershipError> {
+    ) -> Result<(Manifest, Vec<RingStatement>, Vec<OperatorApproval>), MembershipError> {
         let held = self.held(id)?;
         Self::expect(&held, expected_revision)?;
         if held.role != Role::Coordinator || held.status != Status::Pending {
@@ -1384,12 +1410,6 @@ impl Store {
             None => (held.request.selector.clone(), held.request.tasks.clone()),
         };
         for task in &tasks {
-            if !task.assurance_requirements.is_empty() {
-                return Err(MembershipError::AssuranceUnavailable(format!(
-                    "the task `{}` depends on controls, and no assurance appraisal is served yet",
-                    task.task_id
-                )));
-            }
             if !capabilities.acts(task.task_type, Role::Coordinator) {
                 return Err(MembershipError::TaskUnserved(format!(
                     "no Plane of this Host acts in `{}` as the coordinator",
@@ -1401,6 +1421,20 @@ impl Store {
         lease_policy
             .check()
             .map_err(|error| MembershipError::Invalid(error.0))?;
+        // The controls the granted tasks require, appraised against the pending request: a
+        // declaration alone never meets what the policy wants appraised.
+        let state = Digest::compute(&held.request.encode()?);
+        let outcome = offered.appraisal.appraise(&appraisal::Request {
+            membership_id: id,
+            member: &held.request.member,
+            declared: held.request.member_assurance,
+            tasks: &tasks,
+            approvals: offered.approvals,
+            evidence: offered.evidence,
+            principal: offered.principal,
+            nonce: &appraisal::nonce(&coordinator.identity.host_id(), id, &state),
+            now,
+        })?;
         let (pins, statements) = self.pins_for(coordinator, &held.request, &tasks)?;
         Ok((
             Manifest {
@@ -1415,6 +1449,7 @@ impl Store {
                     .invites
                     .get(&held.request.invite_id)
                     .and_then(|(invitation, _)| invitation.min_assurance),
+                assurance_binding: outcome.binding,
                 ring_pins: pins,
                 epoch: 1,
                 lease_policy,
@@ -1424,6 +1459,7 @@ impl Store {
                 status: Status::Active,
             },
             statements,
+            outcome.approvals,
         ))
     }
 
@@ -1576,6 +1612,7 @@ impl Store {
                     tasks: held.request.tasks.clone(),
                     member_assurance: held.request.member_assurance,
                     min_assurance: None,
+                    assurance_binding: None,
                     ring_pins: pins,
                     epoch: 1,
                     lease_policy: DEFAULT_LEASE_POLICY,
@@ -1618,6 +1655,73 @@ impl Store {
             });
         }
         self.issue(&writing, applying, coordinator, manifest, now)
+    }
+
+    /// Checks an appraisal of an active membership without writing: its successor, a new epoch,
+    /// with the binding renewed from what `offered` brings, or revoked when `revoke` is set.
+    pub fn check_appraise(
+        &self,
+        coordinator: &Coordinator<'_>,
+        id: &[u8; 16],
+        offered: &Offered<'_>,
+        revoke: bool,
+        expected_revision: Option<u64>,
+        now: u64,
+    ) -> Result<(Manifest, Vec<OperatorApproval>), MembershipError> {
+        let held = self.held(id)?;
+        if held.role != Role::Coordinator || held.status != Status::Active {
+            return Err(MembershipError::Transition {
+                from: held.status,
+                to: Status::Active,
+            });
+        }
+        let Some((current, _, digest)) = &held.manifest else {
+            return Err(MembershipError::Transition {
+                from: held.status,
+                to: Status::Active,
+            });
+        };
+        let mut next =
+            self.check_successor(coordinator, id, Status::Active, expected_revision, now)?;
+        if revoke {
+            if !offered.approvals.is_empty() || !offered.evidence.is_empty() {
+                return Err(MembershipError::Invalid(
+                    "a revocation takes no approval and no evidence".to_owned(),
+                ));
+            }
+            let binding = current.assurance_binding.as_ref().ok_or_else(|| {
+                MembershipError::Invalid("the membership has no assurance binding".to_owned())
+            })?;
+            if binding.verdict == record::Verdict::Revoked {
+                return Err(MembershipError::Invalid(
+                    "the assurance binding is already revoked".to_owned(),
+                ));
+            }
+            next.assurance_binding = Some(appraisal::Appraisal::revoked(
+                binding,
+                offered.principal,
+                now,
+            ));
+            return Ok((next, Vec::new()));
+        }
+        let outcome = offered.appraisal.appraise(&appraisal::Request {
+            membership_id: id,
+            member: &current.member,
+            declared: current.member_assurance,
+            tasks: &current.tasks,
+            approvals: offered.approvals,
+            evidence: offered.evidence,
+            principal: offered.principal,
+            nonce: &appraisal::nonce(&coordinator.identity.host_id(), id, digest),
+            now,
+        })?;
+        if outcome.binding.is_none() {
+            return Err(MembershipError::Invalid(
+                "no task of the membership requires a control".to_owned(),
+            ));
+        }
+        next.assurance_binding = outcome.binding;
+        Ok((next, outcome.approvals))
     }
 
     /// What a `membership` session answers its member: the status, the manifests after

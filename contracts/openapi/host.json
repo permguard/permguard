@@ -1981,7 +1981,7 @@
             }
           },
           "400": {
-            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the narrowing widens the request (`membership_widened`); a task no Plane of this Host acts in (`task_unserved`).",
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the narrowing widens the request (`membership_widened`); a task no Plane of this Host acts in (`task_unserved`); an approval or evidence malformed, or bringing what no task requires (`invalid_argument`); a control without the evidence the appraisal policy wants (`assurance_refused`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2048,7 +2048,7 @@
             }
           },
           "503": {
-            "description": "A task names assurance requirements, which need assurance appraisal (`assurance_unavailable`), or the store, journal or audit trail cannot serve.",
+            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2539,6 +2539,126 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.MembershipService/FenceMember"
+      }
+    },
+    "/host/v1/members/{id}/appraise": {
+      "post": {
+        "operationId": "appraiseMember",
+        "summary": "Renew or revoke an active membership's assurance binding",
+        "description": "Under `membership.admin` on the Host (WP-4.2). The binding is appraised again from the operator's approvals and the evidence given, or revoked; the membership stays active at a new epoch, which ends every session of the old one. The operator's approvals are audited whole; evidence is kept by digest.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read, and the approvals and evidence, or the revocation.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppraiseMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberAppraised"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); an approval, evidence or reason malformed, a revocation with approvals or evidence, or no binding to revoke (`invalid_argument`); a control without the evidence the appraisal policy wants (`assurance_refused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A control wants a verifier this Host has not registered, or the evidence names one it does not know (`assurance_unavailable`), or the store, journal or audit trail cannot serve (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/AppraiseMember"
       }
     },
     "/host/v1/members/{id}/revoke/plan": {
@@ -4694,7 +4814,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Assurance the task depends on: refused at approval until assurance appraisal exists (WP-4.2). Absent is none.",
+            "description": "Registered control names the task depends on, each appraised under the coordinator's policy (WP-4.2). Optional on a request; absent is none.",
             "x-grpc-field": "assurance_requirements"
           }
         },
@@ -5141,6 +5261,30 @@
             ],
             "description": "The last task session, RFC 3339: `null` until task sessions exist (WP-4.3).",
             "x-grpc-field": "last_session_at"
+          },
+          "assurance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssuranceBinding"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The assurance binding the manifest signs; `null` when it signs none (WP-4.2).",
+            "x-grpc-field": "assurance"
+          },
+          "appraisal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppraisalState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "While the coordinator appraises the tasks' controls: what the policy wants, what the declaration meets, the nonce; `null` otherwise (WP-4.2).",
+            "x-grpc-field": "appraisal"
           }
         },
         "required": [
@@ -5157,7 +5301,9 @@
           "lease_policy",
           "manifest",
           "updated_at",
-          "last_session_at"
+          "last_session_at",
+          "assurance",
+          "appraisal"
         ],
         "additionalProperties": false,
         "description": "One membership, as an operator reads it. Dormancy and member-reported progress arrive with the leases and the task handlers (WP-4.3, WP-4.4).",
@@ -5221,6 +5367,18 @@
             ],
             "description": "The lease policy to sign. Optional; `null` is the default policy.",
             "x-grpc-field": "lease_policy"
+          },
+          "assurance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssuranceOffer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the tasks' controls are appraised with (WP-4.2). Optional; `null` brings nothing, which only a task requiring no control, or controls the declaration meets as the policy allows, needs.",
+            "x-grpc-field": "assurance"
           }
         },
         "required": [
@@ -6160,6 +6318,375 @@
         "additionalProperties": false,
         "description": "What an identity reset answers.",
         "x-grpc-message": "permguard.host.v1.RunIdentityResetResponse"
+      },
+      "AssuranceClaim": {
+        "type": "object",
+        "properties": {
+          "control": {
+            "type": "string",
+            "description": "A registered control name.",
+            "x-grpc-field": "control"
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "declared",
+              "operator-approved",
+              "attested"
+            ],
+            "description": "The evidence accepted for it.",
+            "x-grpc-field": "class"
+          },
+          "by": {
+            "type": "string",
+            "description": "The declared profile, the approving principal or the verifier id.",
+            "x-grpc-field": "by"
+          }
+        },
+        "required": [
+          "control",
+          "class",
+          "by"
+        ],
+        "additionalProperties": false,
+        "description": "One claim of an assurance binding, without the record it cites.",
+        "x-grpc-message": "permguard.host.v1.AssuranceClaim"
+      },
+      "AssuranceBinding": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "revoked"
+            ],
+            "description": "Where the binding stands.",
+            "x-grpc-field": "verdict"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it admits tasks now: accepted, unexpired and, on the coordinator, under the appraisal policy in force.",
+            "x-grpc-field": "current"
+          },
+          "policy_revision": {
+            "type": "string",
+            "description": "The appraisal policy it was appraised under, `sha256:` and 64 hex digits.",
+            "x-grpc-field": "policy_revision"
+          },
+          "task_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The tasks requiring controls it covers.",
+            "x-grpc-field": "task_ids"
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssuranceClaim"
+            },
+            "description": "One per required control, sorted by name.",
+            "x-grpc-field": "claims"
+          },
+          "appraised_by": {
+            "type": "string",
+            "description": "The principal that approved or appraised it.",
+            "x-grpc-field": "appraised_by"
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was issued, RFC 3339.",
+            "x-grpc-field": "issued_at"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it stops admitting tasks, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          },
+          "binding_digest": {
+            "type": "string",
+            "description": "What a task admission answers it by, `sha256:` and 64 hex digits.",
+            "x-grpc-field": "binding_digest"
+          }
+        },
+        "required": [
+          "verdict",
+          "current",
+          "policy_revision",
+          "task_ids",
+          "claims",
+          "appraised_by",
+          "issued_at",
+          "expires_at",
+          "binding_digest"
+        ],
+        "additionalProperties": false,
+        "description": "The assurance binding a membership manifest signs (WP-4.2): the coordinator's appraisal of the controls the tasks require. The records behind the claims, an operator's reason, and evidence are never answered.",
+        "x-grpc-message": "permguard.host.v1.AssuranceBinding"
+      },
+      "AssuranceRequirement": {
+        "type": "object",
+        "properties": {
+          "control": {
+            "type": "string",
+            "description": "A registered control a task requires.",
+            "x-grpc-field": "control"
+          },
+          "wants": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "declared",
+              "operator-approved",
+              "attested",
+              null
+            ],
+            "description": "The least class the appraisal policy wants; `null` when it does not appraise the control, which makes the task unapprovable.",
+            "x-grpc-field": "wants"
+          },
+          "declared": {
+            "type": "boolean",
+            "description": "Whether the member's declared profile meets it.",
+            "x-grpc-field": "declared"
+          }
+        },
+        "required": [
+          "control",
+          "wants",
+          "declared"
+        ],
+        "additionalProperties": false,
+        "description": "One control the tasks require, as the policy and the declaration stand.",
+        "x-grpc-message": "permguard.host.v1.AssuranceRequirement"
+      },
+      "AppraisalState": {
+        "type": "object",
+        "properties": {
+          "policy_revision": {
+            "type": "string",
+            "description": "The appraisal policy in force, `sha256:` and 64 hex digits.",
+            "x-grpc-field": "policy_revision"
+          },
+          "nonce": {
+            "type": "string",
+            "description": "The nonce evidence for this revision binds to, 32 bytes base64url: it changes with every revision.",
+            "x-grpc-field": "nonce"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssuranceRequirement"
+            },
+            "description": "Each control the tasks require.",
+            "x-grpc-field": "requirements"
+          }
+        },
+        "required": [
+          "policy_revision",
+          "nonce",
+          "requirements"
+        ],
+        "additionalProperties": false,
+        "description": "The appraisal state of a membership whose tasks require controls, while the coordinator can appraise it (pending or active).",
+        "x-grpc-message": "permguard.host.v1.AppraisalState"
+      },
+      "OperatorApproval": {
+        "type": "object",
+        "properties": {
+          "control": {
+            "type": "string",
+            "description": "A control a task requires.",
+            "x-grpc-field": "control"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Why, printable, 1 to 512 bytes: kept in the audit, never in the manifest.",
+            "x-grpc-field": "reason"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the approval lapses, RFC 3339, in the future.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "control",
+          "reason",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "An operator's approval of one control: an accountable risk decision, not attestation. The principal is the caller's.",
+        "x-grpc-message": "permguard.host.v1.OperatorApproval"
+      },
+      "AttestationEvidence": {
+        "type": "object",
+        "properties": {
+          "verifier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The id of a verifier registered on this Host.",
+            "x-grpc-field": "verifier"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "The evidence, base64url, at most 64 KiB decoded, bound to the appraisal state's nonce; kept by its digest alone.",
+            "x-grpc-field": "evidence"
+          }
+        },
+        "required": [
+          "verifier",
+          "evidence"
+        ],
+        "additionalProperties": false,
+        "description": "One piece of attestation evidence for a registered verifier.",
+        "x-grpc-message": "permguard.host.v1.AttestationEvidence"
+      },
+      "AssuranceOffer": {
+        "type": "object",
+        "properties": {
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorApproval"
+            },
+            "description": "The operator's approvals, one per control at most. Optional; absent is none.",
+            "x-grpc-field": "approvals"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttestationEvidence"
+            },
+            "maxItems": 4,
+            "description": "The evidence, at most 4 pieces. Optional; absent is none.",
+            "x-grpc-field": "evidence"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "What an approval brings for the controls the tasks require (WP-4.2).",
+        "x-grpc-message": "permguard.host.v1.AssuranceOffer"
+      },
+      "RevokeBinding": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Why, printable, 1 to 512 bytes.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Why an assurance binding is revoked.",
+        "x-grpc-message": "permguard.host.v1.RevokeBinding"
+      },
+      "AppraiseMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperatorApproval"
+            },
+            "description": "The operator's approvals. Optional; absent is none.",
+            "x-grpc-field": "approvals"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttestationEvidence"
+            },
+            "maxItems": 4,
+            "description": "The evidence, at most 4 pieces. Optional; absent is none.",
+            "x-grpc-field": "evidence"
+          },
+          "revoke": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RevokeBinding"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Revokes the binding instead: it admits no task from then on. Optional; `null` renews it.",
+            "x-grpc-field": "revoke"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/appraise` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.AppraiseMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberAppraised": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What an appraisal answers: the successor manifest with the binding renewed or revoked, still active, a new epoch.",
+        "x-grpc-message": "permguard.host.v1.AppraiseMemberResponse"
       }
     }
   },

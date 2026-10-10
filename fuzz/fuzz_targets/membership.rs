@@ -7,9 +7,10 @@ use std::str::FromStr;
 
 use libfuzzer_sys::fuzz_target;
 
+use permguard_core::assurance::EvidenceClass;
 use permguard_host::membership::record::{
     Action, EnrollAnswer, EnrollRequest, Entry, Invitation, Kind, Manifest, MembershipAnswer,
-    MembershipRequest, Pending, Role, Status, TaskType,
+    MembershipRequest, Pending, Role, Status, TaskType, Verdict,
 };
 
 fuzz_target!(|data: &[u8]| {
@@ -48,6 +49,13 @@ fuzz_target!(|data: &[u8]| {
         }
         if let Ok(status) = Status::from_str(text) {
             assert_eq!(status.as_str(), text);
+        }
+        if let Ok(verdict) = Verdict::from_str(text) {
+            assert_eq!(verdict.as_str(), text);
+        }
+        // An evidence class reads its name around white space, as the policy setting is written.
+        if let Ok(class) = EvidenceClass::from_str(text) {
+            assert_eq!(class.as_str(), text.trim());
         }
         let _ = Action::from_str(text);
         let _ = Kind::from_str(text);

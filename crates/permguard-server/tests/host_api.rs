@@ -241,6 +241,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             store: members,
             capabilities: permguard_host::membership::Capabilities::default(),
             connector: None,
+            appraisal: permguard_host::membership::appraisal::Appraisal::default(),
         })),
     }))
 }
@@ -683,6 +684,122 @@ impl Transport {
                             request_id: request_id.to_owned(),
                             expected_revision: 1,
                             reason: None,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    /// An approval bringing one operator approval and one piece of evidence (WP-4.2): the two
+    /// transports decode the offer alike, base64url on REST and raw bytes on gRPC.
+    async fn approve_member_assured(
+        &self,
+        who: Option<&str>,
+        id: &str,
+        request_id: &str,
+    ) -> Outcome {
+        use base64::Engine as _;
+        let control = permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL;
+        let evidence = vec![0xEE_u8; 40];
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/members/{id}/approve"),
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "expected_revision": 1,
+                        "assurance": {
+                            "approvals": [{
+                                "control": control,
+                                "reason": "dual control witnessed",
+                                "expires_at": "2099-01-01T00:00:00Z",
+                            }],
+                            "evidence": [{
+                                "verifier": "tpm-quote",
+                                "evidence": base64::engine::general_purpose::URL_SAFE_NO_PAD
+                                    .encode(&evidence),
+                            }],
+                        },
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .approve_member(Self::grpc_request(
+                        who,
+                        host_v1::ApproveMemberRequest {
+                            membership_id: id.to_owned(),
+                            request_id: request_id.to_owned(),
+                            expected_revision: 1,
+                            narrow: None,
+                            lease_policy: None,
+                            assurance: Some(host_v1::AssuranceOffer {
+                                approvals: vec![host_v1::OperatorApproval {
+                                    control: control.to_owned(),
+                                    reason: "dual control witnessed".to_owned(),
+                                    expires_at: "2099-01-01T00:00:00Z".to_owned(),
+                                }],
+                                evidence: vec![host_v1::AttestationEvidence {
+                                    verifier: "tpm-quote".to_owned(),
+                                    evidence,
+                                }],
+                            }),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    /// An appraisal renewing a binding with one operator approval of `control` (WP-4.2).
+    async fn appraise_member(
+        &self,
+        who: Option<&str>,
+        id: &str,
+        request_id: &str,
+        control: &str,
+    ) -> Outcome {
+        let expires_at = "2099-01-01T00:00:00Z";
+        let reason = "dual control witnessed";
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/members/{id}/appraise"),
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "expected_revision": 1,
+                        "approvals": [{
+                            "control": control,
+                            "reason": reason,
+                            "expires_at": expires_at,
+                        }],
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .appraise_member(Self::grpc_request(
+                        who,
+                        host_v1::AppraiseMemberRequest {
+                            membership_id: id.to_owned(),
+                            request_id: request_id.to_owned(),
+                            expected_revision: 1,
+                            approvals: vec![host_v1::OperatorApproval {
+                                control: control.to_owned(),
+                                reason: reason.to_owned(),
+                                expires_at: expires_at.to_owned(),
+                            }],
+                            evidence: Vec::new(),
+                            revoke: None,
                         },
                     ))
                     .await,
@@ -1461,6 +1578,34 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "suspend an unknown membership",
         transport
             .suspend_member(admin, "0190a5c3-0000-7000-8000-000000000022", "s1")
+            .await,
+    ));
+    steps.push((
+        "approve an unknown membership bringing an approval and evidence",
+        transport
+            .approve_member_assured(admin, "0190a5c3-0000-7000-8000-000000000022", "ap1")
+            .await,
+    ));
+    steps.push((
+        "appraise an unknown membership",
+        transport
+            .appraise_member(
+                admin,
+                "0190a5c3-0000-7000-8000-000000000022",
+                "a1",
+                permguard_core::domains::assurance::OPERATIONS_DUAL_CONTROL,
+            )
+            .await,
+    ));
+    steps.push((
+        "appraise with an approval of no control",
+        transport
+            .appraise_member(
+                admin,
+                "0190a5c3-0000-7000-8000-000000000022",
+                "a2",
+                "custody.magic",
+            )
             .await,
     ));
     steps.push((

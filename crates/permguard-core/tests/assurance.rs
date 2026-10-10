@@ -6,7 +6,7 @@
 
 #![allow(clippy::expect_used)]
 
-use permguard_core::assurance::{AssuranceProfile, Relaxation};
+use permguard_core::assurance::{AssuranceProfile, EvidenceClass, Relaxation};
 use permguard_core::config::*;
 use permguard_core::{BuildSettings, Config};
 
@@ -299,4 +299,20 @@ fn the_file_carries_the_profile_and_the_added_controls() {
         SETTING_ASSURANCE_ADDED_CONTROLS.to_owned(),
         "custody.hsm,tls.1_3_only".to_owned()
     )));
+}
+
+/// WP-4.2: the evidence classes are a threshold, weakest first, by their stable names.
+#[test]
+fn the_evidence_classes_are_ordered_weakest_first_by_their_stable_names() {
+    assert!(EvidenceClass::Declared < EvidenceClass::OperatorApproved);
+    assert!(EvidenceClass::OperatorApproved < EvidenceClass::Attested);
+    for (class, name) in [
+        (EvidenceClass::Declared, "declared"),
+        (EvidenceClass::OperatorApproved, "operator-approved"),
+        (EvidenceClass::Attested, "attested"),
+    ] {
+        assert_eq!(class.as_str(), name);
+        assert_eq!(name.parse::<EvidenceClass>(), Ok(class));
+    }
+    assert!("approved".parse::<EvidenceClass>().is_err());
 }

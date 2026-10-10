@@ -266,6 +266,17 @@ pub const SETTING_SHUTDOWN_DRAIN_TIMEOUT: &str = "PERMGUARD_SHUTDOWN_DRAIN_TIMEO
 /// passes the highest one observed (WP-2.12, owner decisions of 2026-10-07).
 pub const SETTING_TIME_MAX_CLOCK_SKEW: &str = "PERMGUARD_TIME_MAX_CLOCK_SKEW";
 
+/// Runtime setting key for the coordinator's appraisal policy: for each assurance control a task
+/// may require, the least evidence class that satisfies it, as `control=class` pairs, comma- or
+/// line-separated (WP-4.2, owner decisions of 2026-10-10). A control it does not name makes a task
+/// requiring it unapprovable.
+pub const SETTING_MEMBERSHIP_APPRAISAL_CONTROLS: &str = "PERMGUARD_MEMBERSHIP_APPRAISAL_CONTROLS";
+
+/// Runtime setting key for the longest an assurance binding lasts: an operator approval or a
+/// verifier result expiring sooner cuts it shorter (WP-4.2).
+pub const SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING: &str =
+    "PERMGUARD_MEMBERSHIP_APPRAISAL_MAX_BINDING";
+
 /// Runtime setting key for where secrets are resolved from.
 pub const SETTING_SECRETS_PROVIDER: &str = "PERMGUARD_SECRETS_PROVIDER";
 
@@ -1023,6 +1034,14 @@ const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(25);
 /// set back by hand does not.
 pub const DEFAULT_TIME_MAX_CLOCK_SKEW: Duration = Duration::from_secs(30);
 
+/// Thirty days: the longest an assurance binding lasts when the configuration says nothing (owner
+/// decision of 2026-10-10).
+pub const DEFAULT_MEMBERSHIP_APPRAISAL_MAX_BINDING: Duration = Duration::from_secs(30 * 86_400);
+
+/// A year: the longest an assurance binding may be configured to last (owner decision of
+/// 2026-10-10).
+pub const MAX_MEMBERSHIP_APPRAISAL_MAX_BINDING: Duration = Duration::from_secs(365 * 86_400);
+
 /// The least of the budget the drain must leave: sealing the trail, releasing the store and the
 /// volume lock are not instant, and a drain that left nothing would leave them to the orchestrator's
 /// kill.
@@ -1202,6 +1221,9 @@ pub struct Config {
     time_max_clock_skew: Duration,
     assurance_profile: crate::assurance::AssuranceProfile,
     assurance_added: Vec<crate::assurance::Control>,
+    membership_appraisal_controls:
+        BTreeMap<crate::assurance::Control, crate::assurance::EvidenceClass>,
+    membership_appraisal_max_binding: Duration,
     secrets_provider: SecretProvider,
     secrets_directory: Option<String>,
     secrets_env_prefix: String,
@@ -1388,6 +1410,8 @@ impl Default for Config {
             time_max_clock_skew: DEFAULT_TIME_MAX_CLOCK_SKEW,
             assurance_profile: crate::assurance::AssuranceProfile::Production,
             assurance_added: Vec::new(),
+            membership_appraisal_controls: BTreeMap::new(),
+            membership_appraisal_max_binding: DEFAULT_MEMBERSHIP_APPRAISAL_MAX_BINDING,
             secrets_provider: SecretProvider::None,
             secrets_directory: None,
             secrets_env_prefix: "PERMGUARD_SECRET".to_owned(),
@@ -2969,6 +2993,20 @@ produce: use `EdDSA` or `ES256`"
         self.time_max_clock_skew
     }
 
+    /// Returns the coordinator's appraisal policy: for each control, the least evidence class
+    /// that satisfies it (WP-4.2). Empty unless configured: then no task requiring a control is
+    /// approvable.
+    pub fn membership_appraisal_controls(
+        &self,
+    ) -> &BTreeMap<crate::assurance::Control, crate::assurance::EvidenceClass> {
+        &self.membership_appraisal_controls
+    }
+
+    /// Returns the longest an assurance binding lasts (WP-4.2). Never zero.
+    pub fn membership_appraisal_max_binding(&self) -> Duration {
+        self.membership_appraisal_max_binding
+    }
+
     /// Keeps a parsed section a build added, replacing any section of the same type.
     ///
     /// Validation is the caller's business and happens before this point, so a config that holds a
@@ -3947,6 +3985,12 @@ produce: use `EdDSA` or `ES256`"
             SETTING_ASSURANCE_ADDED_CONTROLS => {
                 list(self.assurance_added.iter().map(ToString::to_string))
             }
+            SETTING_MEMBERSHIP_APPRAISAL_CONTROLS => list(
+                self.membership_appraisal_controls
+                    .iter()
+                    .map(|(control, class)| format!("{control}={class}")),
+            ),
+            SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING => d(self.membership_appraisal_max_binding),
             SETTING_SECRETS_PROVIDER => Some(self.secrets_provider.as_str().to_owned()),
             SETTING_SECRETS_DIRECTORY => Some(self.secrets_directory().display().to_string()),
             SETTING_SECRETS_ENV_PREFIX => Some(self.secrets_env_prefix.clone()),
@@ -4470,6 +4514,44 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_SHUTDOWN_DRAIN_TIMEOUT) {
             self.shutdown_drain_timeout = parse_duration(value)
                 .with_context(|| format!("reading {SETTING_SHUTDOWN_DRAIN_TIMEOUT}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_MEMBERSHIP_APPRAISAL_CONTROLS) {
+            let mut controls = BTreeMap::new();
+            for pair in value
+                .split([',', '\n'])
+                .map(str::trim)
+                .filter(|pair| !pair.is_empty())
+            {
+                let (control, class) = pair
+                    .split_once('=')
+                    .ok_or_else(|| anyhow!("`{pair}` is not `control=class`"))
+                    .and_then(|(control, class)| {
+                        Ok((
+                            control.parse().map_err(|error: String| anyhow!(error))?,
+                            class.parse().map_err(|error: String| anyhow!(error))?,
+                        ))
+                    })
+                    .with_context(|| format!("reading {SETTING_MEMBERSHIP_APPRAISAL_CONTROLS}"))?;
+                if controls.insert(control, class).is_some() {
+                    bail!("{SETTING_MEMBERSHIP_APPRAISAL_CONTROLS} names `{control}` twice");
+                }
+            }
+            self.membership_appraisal_controls = controls;
+        }
+
+        if let Some(value) = settings.get(SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING) {
+            // A zero is refused by the reading: a binding that expired when issued serves nothing.
+            let longest = parse_duration(value)
+                .with_context(|| format!("reading {SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING}"))?;
+            // At most a year, as a manifest lasts (owner decision of 2026-10-10).
+            if longest > MAX_MEMBERSHIP_APPRAISAL_MAX_BINDING {
+                bail!(
+                    "{SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING} is longer than 365 days: an \
+                     assurance binding is appraised again at least once a year"
+                );
+            }
+            self.membership_appraisal_max_binding = longest;
         }
 
         if let Some(value) = settings.get(SETTING_TIME_MAX_CLOCK_SKEW) {
@@ -5514,6 +5596,8 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_LOG_SPOOL_BYTES,
     SETTING_LOG_SPOOL_DIRECTORY,
     SETTING_MAX_BLOCKING,
+    SETTING_MEMBERSHIP_APPRAISAL_CONTROLS,
+    SETTING_MEMBERSHIP_APPRAISAL_MAX_BINDING,
     SETTING_MIRRORS_ENABLED,
     SETTING_MIRRORS_EXPIRE_AFTER,
     SETTING_MIRRORS_INTERVAL,

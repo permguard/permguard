@@ -1859,6 +1859,15 @@ impl App {
                     store: Arc::clone(&members),
                     capabilities: capabilities.clone(),
                     connector,
+                    // The appraisal policy configured; no verifier ships, so `attested` is
+                    // refused until a composition registers one (WP-4.2, owner decision).
+                    appraisal: permguard_host::membership::appraisal::Appraisal::new(
+                        permguard_host::membership::appraisal::Policy::new(
+                            config.membership_appraisal_controls().clone(),
+                            config.membership_appraisal_max_binding(),
+                        ),
+                        permguard_host::membership::appraisal::Verifiers::default(),
+                    ),
                 })),
             });
             context = context.with_host_handles(Arc::new(api));

@@ -160,6 +160,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         tasks: vec![task()],
         member_assurance: AssuranceProfile::Production,
         min_assurance: None,
+        assurance_binding: None,
         ring_pins: vec![RingPin {
             owner: Role::Member,
             ring: "data.attest".to_owned(),
@@ -273,4 +274,145 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         Entry::decode(&hex(&v["journal"]["third"])).expect("decodes"),
         third
     );
+}
+
+/// WP-4.2: the policy revision, the operator approval, the evidence, the claims, the result, the
+/// binding, the nonce and a manifest carrying the binding, byte for byte.
+#[test]
+fn the_assurance_records_are_the_bytes_the_independent_generator_computed() {
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use permguard_core::assurance::{Control, EvidenceClass};
+    use permguard_host::membership::appraisal::{Policy, nonce};
+    use permguard_host::membership::record::{
+        AssuranceBinding, Claim, OperatorApproval, Verdict, evidence_digest, result_digest,
+    };
+
+    let v = vectors();
+    let a = &v["assurance"];
+    let coordinator = HostRef {
+        host_id: id(&v["coordinator"]["host_id"]),
+        epoch: 1,
+        fingerprint: text(&v["coordinator"]["fingerprint"]),
+    };
+    let member = HostRef {
+        host_id: id(&v["member"]["host_id"]),
+        epoch: 1,
+        fingerprint: text(&v["member"]["fingerprint"]),
+    };
+    let membership_id = id(&v["membership_id"]);
+    let operator = "spiffe://acme/operators/root";
+
+    let policy = Policy::new(
+        BTreeMap::from([
+            (Control::CustodyEncrypted, EvidenceClass::Declared),
+            (Control::CustodyHsm, EvidenceClass::Attested),
+            (
+                Control::OperationsDualControl,
+                EvidenceClass::OperatorApproved,
+            ),
+        ]),
+        Duration::from_secs(2_592_000),
+    );
+    assert_eq!(
+        policy.revision().to_string(),
+        text(&a["policy"]["revision"])
+    );
+
+    let approval = OperatorApproval {
+        membership_id,
+        control: Control::OperationsDualControl,
+        principal: operator.to_owned(),
+        task_ids: vec!["decisions".to_owned()],
+        reason: "dual control witnessed under change ticket 42".to_owned(),
+        expires_at: AT + 7 * 86_400,
+        approved_at: AT + 10,
+    };
+    assert_eq!(
+        approval.encode().expect("encodes"),
+        hex(&a["approval"]["bytes"])
+    );
+    let approval_digest = approval.digest().expect("digested");
+    assert_eq!(approval_digest.to_string(), text(&a["approval"]["digest"]));
+
+    let evidence = evidence_digest(
+        &text(&a["evidence"]["verifier"]),
+        &hex(&a["evidence"]["bytes"]),
+    )
+    .expect("digested");
+    assert_eq!(evidence.to_string(), text(&a["evidence"]["digest"]));
+
+    let claims = vec![
+        Claim {
+            control: Control::CustodyEncrypted,
+            class: EvidenceClass::Declared,
+            by: "production".to_owned(),
+            record: None,
+        },
+        Claim {
+            control: Control::CustodyHsm,
+            class: EvidenceClass::Attested,
+            by: "tpm-quote".to_owned(),
+            record: Some(evidence),
+        },
+        Claim {
+            control: Control::OperationsDualControl,
+            class: EvidenceClass::OperatorApproved,
+            by: operator.to_owned(),
+            record: Some(approval_digest),
+        },
+    ];
+    let task_ids = vec!["decisions".to_owned()];
+    let result = result_digest(&member, &task_ids, &policy.revision(), &claims).expect("digested");
+    assert_eq!(result.to_string(), text(&a["result_digest"]));
+    let binding = AssuranceBinding {
+        member: member.clone(),
+        task_ids,
+        policy_revision: policy.revision(),
+        claims,
+        result_digest: result,
+        appraised_by: operator.to_owned(),
+        issued_at: AT + 10,
+        expires_at: AT + 7 * 86_400,
+        verdict: Verdict::Accepted,
+    };
+    assert_eq!(
+        binding.encode().expect("encodes"),
+        hex(&a["binding"]["bytes"])
+    );
+    assert_eq!(
+        binding.digest().expect("digested").to_string(),
+        text(&a["binding"]["digest"])
+    );
+
+    let genesis = Digest::parse(&text(&v["manifest_genesis"]["digest"])).expect("a digest");
+    assert_eq!(
+        nonce(&coordinator.host_id, &membership_id, &genesis).to_vec(),
+        hex(&a["nonce"])
+    );
+
+    // While pending, the state is the plain digest of the pending record's bytes.
+    let pending = Digest::compute(&hex(&v["pending"]));
+    assert_eq!(
+        nonce(&coordinator.host_id, &membership_id, &pending).to_vec(),
+        hex(&a["nonce_pending"])
+    );
+
+    // The manifest carrying it at label 8 verifies under the operations key and reads back.
+    let envelope = hex(&a["manifest"]["cose_sign1"]);
+    let payload = Sign1::decode(&envelope)
+        .expect("a COSE_Sign1")
+        .verify(
+            Suite::Ed25519Sha256V1,
+            &hex(&v["operations"]["public_key"]),
+            protected::MEMBERSHIP_MANIFEST,
+        )
+        .expect("verifies under the operations key")
+        .to_vec();
+    assert_eq!(payload, hex(&a["manifest"]["payload"]));
+    let manifest = Manifest::decode(&payload).expect("decodes");
+    assert_eq!(manifest.assurance_binding, Some(binding));
+    assert_eq!(manifest.coordinator, coordinator);
+    assert_eq!(manifest.encode().expect("encodes"), payload);
 }

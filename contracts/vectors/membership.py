@@ -153,7 +153,47 @@ second = cbor({1: 2, 2: "enrolled", 3: MEMBERSHIP_ID, 5: AT + 1,
 third = cbor({1: 3, 2: "manifest", 3: MEMBERSHIP_ID, 4: 1, 5: AT + 1, 6: bytes([0x55]) * 16,
               7: digest(b"permguard.membership.journal.v1\n", second), 8: genesis})
 
-out = {"comment": "Membership records (WP-4.1); see README.md and membership.py",
+# Assurance appraisal (WP-4.2): the policy and its revision, an operator approval record, one
+# piece of evidence, the claims, the result, the binding, the nonce, and a manifest carrying the
+# binding at label 8.
+POLICY = cbor({1: [["custody.encrypted", "declared"], ["custody.hsm", "attested"],
+                   ["operations.dual_control", "operator-approved"]], 2: 2_592_000})
+POLICY_REVISION = digest(b"permguard.membership.appraisal-policy.v1\n", POLICY)
+OPERATOR = "spiffe://acme/operators/root"
+assured_task = dict(task)
+assured_task[9] = ["custody.encrypted", "custody.hsm", "operations.dual_control"]
+APPROVED_AT, APPROVAL_EXPIRES = AT + 10, AT + 7 * 86_400
+approval = cbor({1: MEMBERSHIP_ID, 2: "operations.dual_control", 3: OPERATOR, 4: ["decisions"],
+                 5: "dual control witnessed under change ticket 42", 6: APPROVAL_EXPIRES,
+                 7: APPROVED_AT})
+approval_digest = digest(b"permguard.membership.operator-approval.v1\n", approval)
+VERIFIER, EVIDENCE = "tpm-quote", bytes([0xEE]) * 64
+evidence_digest = digest(b"permguard.membership.assurance-evidence.v1\n", cbor([VERIFIER, EVIDENCE]))
+claims = [{1: "custody.encrypted", 2: "declared", 3: "production"},
+          {1: "custody.hsm", 2: "attested", 3: VERIFIER, 4: evidence_digest},
+          {1: "operations.dual_control", 2: "operator-approved", 3: OPERATOR, 4: approval_digest}]
+result_digest = digest(b"permguard.membership.assurance-result.v1\n",
+                       cbor({1: member_ref, 2: ["decisions"], 3: POLICY_REVISION, 4: claims}))
+binding = {1: member_ref, 2: ["decisions"], 3: POLICY_REVISION, 4: claims, 5: result_digest,
+           6: OPERATOR, 7: APPROVED_AT, 8: APPROVAL_EXPIRES, 9: "accepted"}
+binding_bytes = cbor(binding)
+binding_digest = digest(b"permguard.membership.assurance-binding.v1\n", binding_bytes)
+# The nonce evidence is bound to: the coordinator, the membership and the state appraised (here
+# the genesis manifest's digest).
+assurance_nonce = hashlib.sha256(b"permguard.membership.assurance-nonce.v1\n" + COORDINATOR +
+                                 MEMBERSHIP_ID + genesis_digest.encode()).digest()
+# While pending, the state is plain SHA-256 of the pending record's bytes, as `sha256:` text.
+pending_nonce = hashlib.sha256(b"permguard.membership.assurance-nonce.v1\n" + COORDINATOR +
+                               MEMBERSHIP_ID +
+                               ("sha256:" + hashlib.sha256(pending).hexdigest()).encode()).digest()
+assured_payload = {1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plane/data/*",
+                   5: [assured_task], 6: "production", 8: binding, 9: [pin], 10: 2,
+                   11: lease_policy, 12: genesis_digest, 13: APPROVED_AT, 14: AT + 365 * 86_400,
+                   15: "active"}
+assured_payload = cbor(assured_payload)
+assured = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid, assured_payload)
+
+out = {"comment": "Membership records (WP-4.1) and assurance appraisal (WP-4.2); see README.md and membership.py",
        "coordinator": {"host_id": COORDINATOR.hex(), "seed": SEED_COORDINATOR,
                        "public_key": COORDINATOR_PUB.hex(), "fingerprint": fingerprint(COORDINATOR_PUB)},
        "member": {"host_id": MEMBER.hex(), "seed": SEED_MEMBER, "public_key": MEMBER_PUB.hex(),
@@ -172,7 +212,16 @@ out = {"comment": "Membership records (WP-4.1); see README.md and membership.py"
        "manifest_successor": {"payload": successor_payload.hex(), "cose_sign1": successor.hex()},
        "pending": pending.hex(),
        "journal": {"genesis_chain": GENESIS_CHAIN, "first": first.hex(), "second": second.hex(),
-                   "third": third.hex()}}
+                   "third": third.hex()},
+       "assurance": {"policy": {"bytes": POLICY.hex(), "revision": POLICY_REVISION},
+                     "approval": {"bytes": approval.hex(), "digest": approval_digest},
+                     "evidence": {"verifier": VERIFIER, "bytes": EVIDENCE.hex(),
+                                  "digest": evidence_digest},
+                     "result_digest": result_digest,
+                     "binding": {"bytes": binding_bytes.hex(), "digest": binding_digest},
+                     "nonce": assurance_nonce.hex(),
+                     "nonce_pending": pending_nonce.hex(),
+                     "manifest": {"payload": assured_payload.hex(), "cose_sign1": assured.hex()}}}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")
