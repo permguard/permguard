@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use permguard_core::PinnedPeer;
 use permguard_objects::cbor::Value;
@@ -26,6 +26,7 @@ use permguard_objects::digest::Digest;
 
 use crate::identity::record::{Document, Labelled, RecordError, encode, uint, uuid_text};
 use crate::identity::{self, Verified};
+use crate::session::record::Operation;
 use crate::storage::volume::Volume;
 use crate::storage::{Dir, StorageError, write};
 
@@ -113,9 +114,18 @@ impl Seen {
     }
 }
 
+/// Pins beside the configured ones: the peers the memberships name (WP-4.1).
+pub trait PinSource: Send + Sync {
+    /// The first fingerprint a membership pins `host_id` to for a session of `operation`, when
+    /// one does: a membership that ended still lets its member read how it ended, and nothing
+    /// else.
+    fn pin(&self, host_id: &[u8; 16], operation: Option<Operation>) -> Option<String>;
+}
+
 /// The pinned peers and their seen epochs.
 pub struct Peers {
     pins: BTreeMap<[u8; 16], String>,
+    source: RwLock<Option<Arc<dyn PinSource>>>,
     dir: Dir,
     /// Serializes the seen-epoch updates, so two sessions never move one backwards.
     advancing: Mutex<()>,
@@ -139,14 +149,49 @@ impl Peers {
                 .iter()
                 .map(|pin| (pin.host_id(), pin.fingerprint().to_owned()))
                 .collect(),
+            source: RwLock::new(None),
             dir,
             advancing: Mutex::new(()),
         })
     }
 
-    /// Whether a pin names `host_id`.
-    pub fn is_pinned(&self, host_id: &[u8; 16]) -> bool {
-        self.pins.contains_key(host_id)
+    /// Adds the memberships' pins to the configured ones.
+    pub fn with_source(&self, source: Arc<dyn PinSource>) {
+        *self.source.write().unwrap_or_else(PoisonError::into_inner) = Some(source);
+    }
+
+    /// The first fingerprint `host_id` is pinned to: configured, a membership's, or `extra`, the
+    /// pin a join brings for the coordinator it names.
+    fn pinned(
+        &self,
+        host_id: &[u8; 16],
+        extra: Option<&([u8; 16], String)>,
+        operation: Option<Operation>,
+    ) -> Option<String> {
+        if let Some(pin) = self.pins.get(host_id) {
+            return Some(pin.clone());
+        }
+        if let Some((pinned, fingerprint)) = extra
+            && pinned == host_id
+        {
+            return Some(fingerprint.clone());
+        }
+        self.source
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .and_then(|source| source.pin(host_id, operation))
+    }
+
+    /// The first fingerprint any pin names `host_id` by for a session of `operation`: configured,
+    /// or a membership's.
+    pub fn pinned_for(&self, host_id: &[u8; 16], operation: Option<Operation>) -> Option<String> {
+        self.pinned(host_id, None, operation)
+    }
+
+    /// Whether a pin names `host_id` for a session of `operation`.
+    pub fn is_pinned(&self, host_id: &[u8; 16], operation: Option<Operation>) -> bool {
+        self.pinned(host_id, None, operation).is_some()
     }
 
     /// The last epoch a session with `host_id` was established at.
@@ -164,9 +209,14 @@ impl Peers {
         Ok(Some(seen))
     }
 
-    /// Verifies `presentation` from its pin and against its seen epoch: the peer's current
-    /// identity, or why it is refused.
-    pub fn accept(&self, presentation: &Presentation) -> Result<Verified, PeerRefusal> {
+    /// Verifies `presentation` from its pin for a session of `operation` and against its seen
+    /// epoch: the peer's current identity, or why it is refused.
+    pub fn accept(
+        &self,
+        presentation: &Presentation,
+        extra: Option<&([u8; 16], String)>,
+        operation: Option<Operation>,
+    ) -> Result<Verified, PeerRefusal> {
         // The pin first, from what costs one digest: an unpinned client never makes this Host
         // walk a succession chain. The document is read here only for the Host it claims.
         let claimed = Sign1::decode(&presentation.document)
@@ -176,7 +226,8 @@ impl Peers {
                 PeerRefusal::Identity("the identity document does not read".to_owned())
             })?;
         let first = Digest::compute(&presentation.first_public_key).to_string();
-        if self.pins.get(&claimed.host_id) != Some(&first) {
+        let pin = self.pinned(&claimed.host_id, extra, operation);
+        if pin.as_ref() != Some(&first) {
             return Err(PeerRefusal::Unpinned);
         }
         let verified = identity::verify_published(
@@ -185,9 +236,33 @@ impl Peers {
             &presentation.first_public_key,
         )
         .map_err(|error| PeerRefusal::Identity(error.to_string()))?;
-        match self.pins.get(&verified.host_id) {
+        match pin {
             Some(pinned) if pinned == verified.first_fingerprint() => {}
             _ => return Err(PeerRefusal::Unpinned),
+        }
+        if let Some(seen) = self.seen(&verified.host_id)? {
+            check(&seen, &verified)?;
+        }
+        Ok(verified)
+    }
+
+    /// Verifies `presentation` with no pin, for an enrollment (WP-4.1): the chain from its own
+    /// first key, and against its seen epoch when one was. The enrolling Host becomes pinned
+    /// only by the membership the enrollment creates, its first fingerprint in the request the
+    /// coordinator's operator approves.
+    pub fn accept_enrolling(&self, presentation: &Presentation) -> Result<Verified, PeerRefusal> {
+        let verified = identity::verify_published(
+            &presentation.document,
+            &presentation.successions,
+            &presentation.first_public_key,
+        )
+        .map_err(|error| PeerRefusal::Identity(error.to_string()))?;
+        // A Host a pin already names enrolls only with the key that pin names: an enrolling
+        // chain never stands in for a Host this one trusts under another key.
+        if let Some(pin) = self.pinned(&verified.host_id, None, Some(Operation::Membership))
+            && pin != verified.first_fingerprint()
+        {
+            return Err(PeerRefusal::Unpinned);
         }
         if let Some(seen) = self.seen(&verified.host_id)? {
             check(&seen, &verified)?;

@@ -19,6 +19,8 @@ use super::v1::key_service_server::KeyService;
 use super::v1::operations_service_server::OperationsService;
 use super::wire;
 
+mod members;
+
 type Answer<T> = Result<Response<T>, Status>;
 
 /// What every rpc reaches: the facade and how much a refusal says.
@@ -157,16 +159,91 @@ impl IdentityService for Served {
 
     async fn plan_identity_reset(
         &self,
-        _request: Request<v1::PlanIdentityResetRequest>,
+        request: Request<v1::PlanIdentityResetRequest>,
     ) -> Answer<v1::PlanIdentityResetResponse> {
-        Err(unimplemented("identity reset"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let planned = self
+            .api
+            .plan_identity_reset(
+                &actor,
+                api::reset::PlanIdentityReset {
+                    request_id: asked.request_id,
+                    mode: asked.mode,
+                    reason: asked.reason,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::PlanIdentityResetResponse {
+            plan_id: planned.plan_id,
+            plan_digest: planned.plan_digest,
+            expires: planned.expires,
+            revision: planned.revision,
+            mode: planned.mode,
+            memberships: planned
+                .memberships
+                .into_iter()
+                .map(|held| v1::ResetMembership {
+                    membership_id: held.membership_id,
+                    role: held.role,
+                    status: held.status,
+                    peer: Some(members::host_out(held.peer)),
+                    address: held.address,
+                    step: held.step,
+                })
+                .collect(),
+        }))
     }
 
     async fn run_identity_reset(
         &self,
-        _request: Request<v1::RunIdentityResetRequest>,
+        request: Request<v1::RunIdentityResetRequest>,
     ) -> Answer<v1::RunIdentityResetResponse> {
-        Err(unimplemented("identity reset"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let done = self
+            .api
+            .run_identity_reset(
+                &actor,
+                api::reset::RunIdentityReset {
+                    request_id: asked.request_id,
+                    plan_id: asked.plan_id,
+                    plan_digest: asked.plan_digest,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::RunIdentityResetResponse {
+            receipt: Some(receipt(done.receipt)),
+            old_host_id: done.old_host_id,
+            host_id: done.host_id,
+            fingerprint: done.fingerprint,
+            witness: done.witness,
+            ended: done
+                .ended
+                .into_iter()
+                .map(|held| {
+                    Ok(v1::ResetEnded {
+                        membership_id: held.membership_id,
+                        role: held.role,
+                        status: held.status,
+                        epoch: held.epoch,
+                        manifest: held.manifest.as_deref().map(raw).transpose()?,
+                    })
+                })
+                .collect::<Result<_, Status>>()?,
+            orphaned: done
+                .orphaned
+                .into_iter()
+                .map(|held| v1::ResetOrphaned {
+                    membership_id: held.membership_id,
+                    coordinator: Some(members::host_out(held.coordinator)),
+                    address: held.address,
+                })
+                .collect(),
+            restart_required: done.restart_required,
+        }))
     }
 
     async fn list_ring_bindings(

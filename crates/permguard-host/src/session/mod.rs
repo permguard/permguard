@@ -44,6 +44,7 @@ use crate::identity::record::{subject, uuid_text};
 use crate::identity::{Identity, Verified};
 use crate::time::TimeGuard;
 
+use crate::membership::record::request_digest as membership_request_digest;
 use peers::Peers;
 use record::{
     Challenge, EXPORTER_BYTES, Hello, NONCE_BYTES, Operation, Presentation, Role, Transcript,
@@ -147,6 +148,24 @@ pub struct Session {
     pub operation: Operation,
     pub membership_id: Option<String>,
     pub task: Option<String>,
+    /// The digest of the one request the session serves (`enroll`, `membership`).
+    pub request_digest: Option<permguard_objects::digest::Digest>,
+}
+
+/// What serves the one request of an `enroll` or `membership` session (WP-4.1): the
+/// memberships, composed by the server.
+pub trait Service: Send + Sync {
+    /// Answers `request`, whose digest the session's transcript signed; `peer` is the verified
+    /// identity of the initiator, `presentation` the bytes it was verified from and `exporter`
+    /// the connection's RFC 9266 exporter.
+    fn serve(
+        &self,
+        session: &Session,
+        peer: &Verified,
+        presentation: &[u8],
+        exporter: &[u8; EXPORTER_BYTES],
+        request: &[u8],
+    ) -> Result<Vec<u8>, Refusal>;
 }
 
 /// What both sides need: this Host's identity, its pinned peers, its time and its audit.
@@ -161,6 +180,9 @@ pub struct Context {
     pub audit: Option<Arc<Engine>>,
     /// Where [`SESSIONS`] is counted.
     pub metrics: Metrics,
+    /// What serves an established session's request; without one, every request answers
+    /// `not_served_yet`.
+    pub service: Option<Arc<dyn Service>>,
 }
 
 impl Context {
@@ -174,15 +196,32 @@ impl Context {
         .map_err(|error| Refusal::unavailable(error.to_string()))
     }
 
-    fn accept(&self, bytes: &[u8]) -> Result<Verified, Refusal> {
+    /// Verifies a peer's presentation: an enrolling member from its own chain, any other peer
+    /// from its pin (configured, a membership's, or `extra`, a join's).
+    fn accept(
+        &self,
+        bytes: &[u8],
+        operation: Option<Operation>,
+        extra: Option<&([u8; 16], String)>,
+    ) -> Result<Verified, Refusal> {
         let presentation =
             Presentation::decode(bytes).map_err(|error| Refusal::session(error.to_string()))?;
-        self.peers
-            .accept(&presentation)
-            .map_err(|error| match error {
-                peers::PeerRefusal::Storage(_) => Refusal::unavailable(error.to_string()),
-                _ => Refusal::session(error.to_string()),
-            })
+        let verified = match (operation, extra) {
+            // Only a responder accepts an enrolling peer from its own chain; an initiator always
+            // names the Host it means to reach, by pin.
+            (Some(Operation::Enroll), None) => self.peers.accept_enrolling(&presentation),
+            _ => self.peers.accept(&presentation, extra, operation),
+        }
+        .map_err(|error| match error {
+            peers::PeerRefusal::Storage(_) => Refusal::unavailable(error.to_string()),
+            _ => Refusal::session(error.to_string()),
+        })?;
+        if verified.host_id == self.identity.host_id() {
+            return Err(Refusal::session(
+                "the peer presents this Host's own identity",
+            ));
+        }
+        Ok(verified)
     }
 
     fn prove(&self, transcript: &Transcript) -> Result<Vec<u8>, Refusal> {
@@ -197,12 +236,17 @@ impl Context {
     /// Records the session and moves the peer's seen epoch: a session the trail cannot record
     /// is not established.
     fn establish(&self, peer: &Verified, session: &Session) -> Result<(), Refusal> {
-        self.peers
-            .advance(peer, self.time.now_secs())
-            .map_err(|error| match error {
-                peers::PeerRefusal::Storage(_) => Refusal::unavailable(error.to_string()),
-                _ => Refusal::session(error.to_string()),
-            })?;
+        // An enrollment's peer is pinned by nothing yet: its chain moves no seen epoch, or any
+        // client could claim a Host's id and stand in the way of its real sessions. The epoch is
+        // seen from its first session under the membership's pin.
+        if session.operation != Operation::Enroll {
+            self.peers
+                .advance(peer, self.time.now_secs())
+                .map_err(|error| match error {
+                    peers::PeerRefusal::Storage(_) => Refusal::unavailable(error.to_string()),
+                    _ => Refusal::session(error.to_string()),
+                })?;
+        }
         if let Some(audit) = &self.audit {
             let peer_subject = subject(&session.peer);
             let target = uuid_text(&session.peer);
@@ -360,6 +404,8 @@ fn oversized(frame: &Frame) -> bool {
 /// The challenge a responder issued, waiting for its single proof.
 struct Issued {
     peer: Verified,
+    /// The presentation `peer` was verified from.
+    presentation: Vec<u8>,
     hello: Hello,
     hello_digest: permguard_objects::digest::Digest,
     challenge: Challenge,
@@ -368,11 +414,21 @@ struct Issued {
     issued: Duration,
 }
 
+/// An established session, the initiator and the presentation it was verified from.
+struct Proven {
+    session: Session,
+    peer: Verified,
+    presentation: Vec<u8>,
+}
+
 enum Responding {
     Identity,
-    Hello(Verified),
+    /// The initiator's presentation, verified once its `hello` names the operation.
+    Hello(Vec<u8>),
     Proof(Box<Issued>),
-    Established(Session),
+    Established(Box<Proven>),
+    /// The session's one request was answered.
+    Served(Session),
     Closed,
 }
 
@@ -398,7 +454,8 @@ impl Responder {
     /// The session, once established.
     pub fn session(&self) -> Option<&Session> {
         match &self.state {
-            Responding::Established(session) => Some(session),
+            Responding::Established(proven) => Some(&proven.session),
+            Responding::Served(session) => Some(session),
             _ => None,
         }
     }
@@ -439,14 +496,35 @@ impl Responder {
         match (state, frame) {
             (_, Frame::Refusal { code }) => Err(refused_by_peer(&code)),
             (Responding::Identity, Frame::Identity(bytes)) => {
-                let peer = self.context.accept(&bytes)?;
-                self.known.peer = Some(peer.host_id);
-                self.known.epoch = Some(peer.epoch);
-                Ok((Responding::Hello(peer), Vec::new()))
+                Ok((Responding::Hello(bytes), Vec::new()))
             }
-            (Responding::Hello(peer), Frame::Hello(bytes)) => {
+            (Responding::Hello(presentation), Frame::Hello(bytes)) => {
                 let hello = Hello::decode(&bytes).map_err(|error| Refusal::session(error.0))?;
                 self.known.operation = Some(hello.operation);
+                let peer = self
+                    .context
+                    .accept(&presentation, Some(hello.operation), None)?;
+                self.known.peer = Some(peer.host_id);
+                self.known.epoch = Some(peer.epoch);
+                let serves_a_request =
+                    matches!(hello.operation, Operation::Enroll | Operation::Membership);
+                if serves_a_request != hello.request_digest.is_some() {
+                    return Err(Refusal::session(
+                        "an enroll or membership hello names its request's digest, and only those",
+                    ));
+                }
+                let scoped = match hello.operation {
+                    // An enrollment names no membership yet, and no task.
+                    Operation::Enroll => hello.membership_id.is_none() && hello.task.is_none(),
+                    // A membership session names the one membership it reads, and no task.
+                    Operation::Membership => hello.membership_id.is_some() && hello.task.is_none(),
+                    Operation::Task => true,
+                };
+                if !scoped {
+                    return Err(Refusal::session(
+                        "the hello names a membership or a task its operation does not take",
+                    ));
+                }
                 if hello.host != peer.host_id || hello.epoch != peer.epoch {
                     return Err(Refusal::session(
                         "the hello names another Host or epoch than the identity presented",
@@ -476,6 +554,7 @@ impl Responder {
                 Ok((
                     Responding::Proof(Box::new(Issued {
                         peer,
+                        presentation,
                         hello,
                         hello_digest: hello_digest(&bytes),
                         challenge,
@@ -489,6 +568,7 @@ impl Responder {
             (Responding::Proof(issued), Frame::Proof(bytes)) => {
                 let Issued {
                     peer,
+                    presentation,
                     hello,
                     hello_digest,
                     challenge,
@@ -517,6 +597,7 @@ impl Responder {
                     hello_digest,
                     challenge_digest,
                     signer: Role::Initiator,
+                    request_digest: hello.request_digest.clone(),
                 };
                 let expected = transcript
                     .encode()
@@ -532,18 +613,57 @@ impl Responder {
                     operation: hello.operation,
                     membership_id: hello.membership_id,
                     task: hello.task,
+                    request_digest: hello.request_digest,
                 };
                 self.context.establish(&peer, &session)?;
-                Ok((Responding::Established(session), vec![Frame::Proof(proof)]))
+                Ok((
+                    Responding::Established(Box::new(Proven {
+                        session,
+                        peer,
+                        presentation,
+                    })),
+                    vec![Frame::Proof(proof)],
+                ))
             }
-            // Task messages are served by the memberships (WP-11): answered, the session kept.
-            (Responding::Established(session), Frame::Task(_)) => Ok((
-                Responding::Established(session),
+            // The one request of an `enroll` or `membership` session: its bytes are the ones the
+            // transcript signed the digest of (WP-4.1).
+            (Responding::Established(proven), Frame::Task(bytes))
+                if proven.session.request_digest.is_some() =>
+            {
+                let Proven {
+                    session,
+                    peer,
+                    presentation,
+                } = *proven;
+                if session.request_digest.as_ref() != Some(&membership_request_digest(&bytes)) {
+                    return Err(Refusal::session(
+                        "the request is not the one the transcript signed",
+                    ));
+                }
+                let Some(service) = self.context.service.clone() else {
+                    return Ok((
+                        Responding::Served(session),
+                        vec![Frame::Refusal {
+                            code: codes::host::NOT_SERVED_YET.to_owned(),
+                        }],
+                    ));
+                };
+                let answer =
+                    service.serve(&session, &peer, &presentation, &self.exporter, &bytes)?;
+                Ok((Responding::Served(session), vec![Frame::Task(answer)]))
+            }
+            // Task sessions are served by the task transport (WP-4.3, WP-4.4): answered, the
+            // session kept.
+            (Responding::Established(proven), Frame::Task(_)) => Ok((
+                Responding::Established(proven),
                 vec![Frame::Refusal {
                     code: codes::host::NOT_SERVED_YET.to_owned(),
                 }],
             )),
-            (Responding::Established(_), frame @ Frame::Hello(_)) => {
+            (Responding::Served(_), Frame::Task(_)) => Err(Refusal::session(
+                "a second request on a session that serves one",
+            )),
+            (Responding::Established(..) | Responding::Served(_), frame @ Frame::Hello(_)) => {
                 Err(Refusal::session(format!(
                     "a {} on an established session: one exchange per connection",
                     frame.name()
@@ -562,6 +682,11 @@ pub struct Request {
     pub operation: Operation,
     pub membership_id: Option<String>,
     pub task: Option<String>,
+    /// The digest of the request the session will carry (`enroll`, `membership`).
+    pub request_digest: Option<permguard_objects::digest::Digest>,
+    /// The pin a join brings for the coordinator it names, before any membership pins it:
+    /// `(host_id, first fingerprint)`.
+    pub pin: Option<([u8; 16], String)>,
 }
 
 enum Initiating {
@@ -580,7 +705,7 @@ enum Initiating {
         expected: Vec<u8>,
         session: Session,
     },
-    Established(Session),
+    Established(Session, Verified),
     Closed,
 }
 
@@ -612,7 +737,15 @@ impl Initiator {
     /// The session, once established.
     pub fn session(&self) -> Option<&Session> {
         match &self.state {
-            Initiating::Established(session) => Some(session),
+            Initiating::Established(session, _) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// The responder's identity, verified from its pin, once the session is established.
+    pub fn peer(&self) -> Option<&Verified> {
+        match &self.state {
+            Initiating::Established(_, peer) => Some(peer),
             _ => None,
         }
     }
@@ -622,7 +755,17 @@ impl Initiator {
         if !matches!(self.state, Initiating::Start) {
             return Err(Refusal::session("the session was already started"));
         }
-        if !self.context.peers.is_pinned(&self.request.peer) {
+        let joining = self
+            .request
+            .pin
+            .as_ref()
+            .is_some_and(|(host_id, _)| *host_id == self.request.peer);
+        if !joining
+            && !self
+                .context
+                .peers
+                .is_pinned(&self.request.peer, Some(self.request.operation))
+        {
             let refusal = Refusal::session("no pin names the Host asked for");
             self.context.refused(Role::Initiator, &self.known, &refusal);
             self.state = Initiating::Closed;
@@ -638,6 +781,7 @@ impl Initiator {
                 operation: self.request.operation,
                 membership_id: self.request.membership_id.clone(),
                 task: self.request.task.clone(),
+                request_digest: self.request.request_digest.clone(),
             };
             let bytes = hello
                 .encode()
@@ -701,7 +845,13 @@ impl Initiator {
                 },
                 Frame::Identity(bytes),
             ) => {
-                let peer = self.context.accept(&bytes)?;
+                let peer = self.context.accept(
+                    &bytes,
+                    // The responder is always verified by its pin: an enrollment is the
+                    // initiator's, never the responder's.
+                    Some(self.request.operation).filter(|op| *op != Operation::Enroll),
+                    self.request.pin.as_ref(),
+                )?;
                 self.known.epoch = Some(peer.epoch);
                 if peer.host_id != self.request.peer {
                     return Err(Refusal::session(
@@ -747,6 +897,7 @@ impl Initiator {
                     hello_digest,
                     challenge_digest: challenge_digest(&bytes),
                     signer: Role::Initiator,
+                    request_digest: hello.request_digest.clone(),
                 };
                 let proof = self.context.prove(&transcript)?;
                 transcript.signer = Role::Responder;
@@ -761,6 +912,7 @@ impl Initiator {
                     operation: hello.operation,
                     membership_id: hello.membership_id,
                     task: hello.task,
+                    request_digest: hello.request_digest,
                 };
                 Ok((
                     Initiating::Proof {
@@ -781,7 +933,7 @@ impl Initiator {
             ) => {
                 verify_proof(&peer, &bytes, &expected)?;
                 self.context.establish(&peer, &session)?;
-                Ok((Initiating::Established(session), Vec::new()))
+                Ok((Initiating::Established(session, peer), Vec::new()))
             }
             (_, frame) => Err(unexpected(&frame)),
         }

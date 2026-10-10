@@ -19,9 +19,10 @@
         { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the initiator's identity epoch, from 1; the one its presentation verifies at" },
         { "label": 4, "name": "declared_assurance", "type": "text", "occurs": "required", "note": "development, production or regulated: a declaration for compatibility and audit, never attestation" },
         { "label": 5, "name": "nonce", "type": "bytes", "occurs": "required", "note": "nonce_A, exactly 16 bytes from the OS CSPRNG" },
-        { "label": 6, "name": "operation", "type": "text", "occurs": "required", "note": "a closed registry: enroll or task" },
+        { "label": 6, "name": "operation", "type": "text", "occurs": "required", "note": "a closed registry: enroll, task or membership" },
         { "label": 7, "name": "membership_id", "type": "text", "occurs": "optional", "note": "1 to 128 bytes; absent is omitted, never null" },
-        { "label": 8, "name": "task", "type": "text", "occurs": "optional", "note": "1 to 128 bytes; absent is omitted, never null" }
+        { "label": 8, "name": "task", "type": "text", "occurs": "optional", "note": "1 to 128 bytes; absent is omitted, never null" },
+        { "label": 9, "name": "request_digest", "type": "digest", "occurs": "optional", "note": "the digest of the one request the session carries, under `permguard.membership.request.v1\\n`: present exactly for enroll and membership (WP-4.1)" }
       ]
     },
     "challenge": {
@@ -51,7 +52,8 @@
         { "label": 12, "name": "tls_exporter", "type": "bytes", "occurs": "required", "note": "32 bytes, TLS-Exporter(\"EXPORTER-Channel-Binding\", \"\", 32) of the signer's own TLS 1.3 connection (RFC 9266); never carried by any frame" },
         { "label": 13, "name": "hello_digest", "type": "digest", "occurs": "required", "note": "sha256 over the domain permguard.host.session.hello.v1 and a newline, then the hello's exact bytes" },
         { "label": 14, "name": "challenge_digest", "type": "digest", "occurs": "required", "note": "sha256 over the domain permguard.host.session.challenge.v1 and a newline, then the challenge's exact bytes" },
-        { "label": 15, "name": "signer", "type": "text", "occurs": "required", "note": "initiator or responder: the role of the Host whose proof signs it; the two proofs differ in this member alone" }
+        { "label": 15, "name": "signer", "type": "text", "occurs": "required", "note": "initiator or responder: the role of the Host whose proof signs it; the two proofs differ in this member alone" },
+        { "label": 16, "name": "request_digest", "type": "digest", "occurs": "optional", "note": "the hello's, omitted when it has none: the proofs sign the request the session serves" }
       ]
     },
     "seen_peer": {

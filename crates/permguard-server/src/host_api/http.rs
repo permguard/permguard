@@ -9,11 +9,16 @@ use axum::body::Bytes;
 use axum::extract::{FromRequest, Path, RawQuery, Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
+use permguard_host::api::members::{
+    ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke, RunMemberRevoke,
+    SyncMembership,
+};
+use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
 use permguard_host::api::{
     CreateGrant, HostApi, KeyBundleQuery, PlanKeyRevoke, PlanRevoke, Refusal, RotateIdentity,
     RotateRing, RunKeyRevoke, RunRevoke,
@@ -40,6 +45,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
     Router::new()
         .route("/host/v1/identity", get(identity))
         .route("/host/v1/identity/rotate", post(rotate_identity))
+        .route("/host/v1/identity/reset/plan", post(plan_identity_reset))
+        .route("/host/v1/identity/reset/run", post(run_identity_reset))
         .route("/host/v1/ring-bindings", get(ring_bindings))
         .route("/host/v1/sessions/hello", post(session_over_rest))
         .route("/host/v1/sessions/prove", post(session_over_rest))
@@ -52,6 +59,26 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/keys/{ring}/rotate", post(rotate_ring))
         .route("/host/v1/keys/{ring}/revoke/plan", post(plan_key_revoke))
         .route("/host/v1/keys/{ring}/revoke/run", post(run_key_revoke))
+        .route("/host/v1/members", get(list_members))
+        .route(
+            "/host/v1/members/invites",
+            get(list_invites).post(create_invite),
+        )
+        .route("/host/v1/members/invites/{id}", delete(delete_invite))
+        .route("/host/v1/members/enroll", post(enroll_over_rest))
+        .route("/host/v1/members/{id}", get(get_member))
+        .route("/host/v1/members/{id}/approve", post(approve_member))
+        .route("/host/v1/members/{id}/reject", post(reject_member))
+        .route("/host/v1/members/{id}/suspend", post(suspend_member))
+        .route("/host/v1/members/{id}/resume", post(resume_member))
+        .route("/host/v1/members/{id}/fence", post(fence_member))
+        .route(
+            "/host/v1/members/{id}/revoke/plan",
+            post(plan_member_revoke),
+        )
+        .route("/host/v1/members/{id}/revoke/run", post(run_member_revoke))
+        .route("/host/v1/memberships/join", post(join_membership))
+        .route("/host/v1/memberships/{id}/sync", post(sync_membership))
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
@@ -128,6 +155,30 @@ async fn rotate_identity(
         &served,
         StatusCode::OK,
         served.api.rotate_identity(&actor, rotate).await,
+    )
+}
+
+async fn plan_identity_reset(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(plan): Closed<PlanIdentityReset>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.plan_identity_reset(&actor, plan).await,
+    )
+}
+
+async fn run_identity_reset(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(run): Closed<RunIdentityReset>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.run_identity_reset(&actor, run).await,
     )
 }
 
@@ -265,6 +316,183 @@ async fn run_key_revoke(
         &served,
         StatusCode::OK,
         served.api.run_key_revoke(&actor, &ring, run).await,
+    )
+}
+
+async fn list_invites(State(served): State<Served>, ActorOf(actor): ActorOf) -> Response {
+    answer(&served, StatusCode::OK, served.api.invites(&actor))
+}
+
+async fn create_invite(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(invite): Closed<CreateInvite>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::CREATED,
+        served.api.create_invite(&actor, invite).await,
+    )
+}
+
+/// `DELETE` carries no body: its request id is the query's `request_id`.
+async fn delete_invite(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let request_id = query_members(query.as_deref(), &["request_id"])
+        .into_iter()
+        .next()
+        .flatten()
+        .unwrap_or_default();
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.delete_invite(&actor, &id, request_id).await,
+    )
+}
+
+/// An enrollment is never a request of its own: refused whoever asks, before any body is read.
+async fn enroll_over_rest(State(served): State<Served>) -> Response {
+    served.refuse(&served.api.enroll_over_rest())
+}
+
+async fn list_members(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let filters = query_members(query.as_deref(), &["status"]);
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.members(&actor, filters[0].as_deref()),
+    )
+}
+
+async fn get_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+) -> Response {
+    answer(&served, StatusCode::OK, served.api.member(&actor, &id))
+}
+
+async fn approve_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(approve): Closed<ApproveMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.approve_member(&actor, &id, approve).await,
+    )
+}
+
+async fn reject_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(change): Closed<ChangeMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.reject_member(&actor, &id, change).await,
+    )
+}
+
+async fn suspend_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(change): Closed<ChangeMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.suspend_member(&actor, &id, change).await,
+    )
+}
+
+async fn resume_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(change): Closed<ChangeMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.resume_member(&actor, &id, change).await,
+    )
+}
+
+async fn fence_member(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(change): Closed<ChangeMember>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.fence_member(&actor, &id, change).await,
+    )
+}
+
+async fn plan_member_revoke(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(plan): Closed<PlanMemberRevoke>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.plan_member_revoke(&actor, &id, plan).await,
+    )
+}
+
+async fn run_member_revoke(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(run): Closed<RunMemberRevoke>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.run_member_revoke(&actor, &id, run).await,
+    )
+}
+
+async fn join_membership(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Closed(join): Closed<JoinMembership>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::CREATED,
+        served.api.join_membership(&actor, join).await,
+    )
+}
+
+async fn sync_membership(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(sync): Closed<SyncMembership>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.sync_membership(&actor, &id, sync).await,
     )
 }
 

@@ -444,6 +444,78 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "host.INVITE_UNKNOWN": {
+      "code": "invite_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.MEMBERSHIP_UNKNOWN": {
+      "code": "membership_unknown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "not_found"
+    },
+    "host.MEMBERSHIP_TRANSITION_REFUSED": {
+      "code": "membership_transition_refused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.MEMBERSHIP_WIDENED": {
+      "code": "membership_widened",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.TASK_UNSERVED": {
+      "code": "task_unserved",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.ASSURANCE_UNAVAILABLE": {
+      "code": "assurance_unavailable",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.ENROLLMENT_REFUSED": {
+      "code": "enrollment_refused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "validation"
+    },
+    "host.MANIFEST_EQUIVOCATION": {
+      "code": "manifest_equivocation",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.MANIFEST_NOT_SUCCESSOR": {
+      "code": "manifest_not_successor",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.PEER_CLIENT_UNCONFIGURED": {
+      "code": "peer_client_unconfigured",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.IDENTITY_RESET_INCOMPLETE": {
+      "code": "identity_reset_incomplete",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.INVITE_TOKEN_SHOWN": {
+      "code": "invite_token_shown",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.SESSION_REFUSED": {
       "code": "session_refused",
       "contract": "6-contracts/8-contract-host-api.md",

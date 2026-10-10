@@ -377,7 +377,7 @@ impl Labelled {
         Digest::parse(&text).map_err(|error| self.error(format!("label {label}: {error:?}")))
     }
 
-    fn optional_digest(&mut self, label: i64) -> Result<Option<Digest>, RecordError> {
+    pub(crate) fn optional_digest(&mut self, label: i64) -> Result<Option<Digest>, RecordError> {
         if self.pairs.contains_key(&label) {
             self.digest(label).map(Some)
         } else {
@@ -417,7 +417,7 @@ impl Labelled {
         }
     }
 
-    fn texts(&mut self, label: i64) -> Result<Vec<String>, RecordError> {
+    pub(crate) fn texts(&mut self, label: i64) -> Result<Vec<String>, RecordError> {
         match self.take(label)? {
             Value::Array(items) => items
                 .into_iter()
@@ -427,6 +427,44 @@ impl Labelled {
                 })
                 .collect(),
             _ => Err(self.error(format!("label {label} is an array"))),
+        }
+    }
+
+    /// A member read whole, as a nested map is before it is read itself.
+    pub(crate) fn value(&mut self, label: i64) -> Result<Value, RecordError> {
+        self.take(label)
+    }
+
+    pub(crate) fn boolean(&mut self, label: i64) -> Result<bool, RecordError> {
+        match self.take(label)? {
+            Value::Bool(value) => Ok(value),
+            _ => Err(self.error(format!("label {label} is a boolean"))),
+        }
+    }
+
+    /// An optional byte string.
+    pub(crate) fn optional_array(&mut self, label: i64) -> Result<Option<Vec<Value>>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.array(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn optional_bytes(&mut self, label: i64) -> Result<Option<Vec<u8>>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.bytes(label).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// An optional 16-byte id.
+    pub(crate) fn optional_id(&mut self, label: i64) -> Result<Option<[u8; 16]>, RecordError> {
+        if self.pairs.contains_key(&label) {
+            self.id(label).map(Some)
+        } else {
+            Ok(None)
         }
     }
 

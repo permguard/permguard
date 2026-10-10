@@ -30,7 +30,7 @@ use permguard_host::operations::journal::Initiator;
 use permguard_host::operations::mutation::{MutationError, Mutations};
 use permguard_host::storage::volume::Volume;
 
-use crate::args::{Globals, GrantsAction, HostAction, IdentityAction};
+use crate::args::{Globals, GrantsAction, HostAction, IdentityAction, ResetAction};
 use crate::failure::{EXIT_READY, Failure};
 use crate::output::Report;
 use crate::session::render;
@@ -573,8 +573,392 @@ fn identity(
             )?;
             std::mem::forget(held);
         }
+        IdentityAction::Reset { action } => reset(globals, server_config, action, trace)?,
     }
     Ok(ExitCode::from(EXIT_READY))
+}
+
+/// The plan an offline reset writes and its run confirms (WP-4.1): what it binds is the Host,
+/// its epoch, the reason and every live membership at its revision.
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResetPlan {
+    kind: String,
+    mode: String,
+    host_id: String,
+    epoch: u64,
+    reason: String,
+    memberships: Vec<ResetPlanned>,
+    /// The memberships as the plan bound them: `<id>:<revision>`, in id order.
+    bound: String,
+    /// SHA-256 over every member above.
+    digest: String,
+}
+
+#[derive(Debug, Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResetPlanned {
+    membership_id: String,
+    role: String,
+    status: String,
+    /// `orphan` offline for a membership this Host is a member of; `revoke_local` or
+    /// `reject_local` for one it coordinates.
+    step: String,
+    peer: String,
+    address: Option<String>,
+}
+
+const RESET_PLAN_KIND: &str = permguard_core::domains::format::IDENTITY_RESET_PLAN_V1;
+
+impl ResetPlan {
+    fn digest_of(&self) -> String {
+        let mut bytes = Vec::new();
+        for part in [
+            self.kind.as_str(),
+            self.mode.as_str(),
+            self.host_id.as_str(),
+            &self.epoch.to_string(),
+            self.reason.as_str(),
+            self.bound.as_str(),
+        ] {
+            bytes.extend_from_slice(&(part.len() as u64).to_be_bytes());
+            bytes.extend_from_slice(part.as_bytes());
+        }
+        permguard_objects::digest::Digest::compute(&bytes).to_string()
+    }
+}
+
+impl Report for ResetPlan {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "Host identity reset planned (emergency, offline)")?;
+        writeln!(out, "host_id  {}", self.host_id)?;
+        writeln!(out, "epoch    {}", self.epoch)?;
+        writeln!(out, "digest   {}", self.digest)?;
+        for held in &self.memberships {
+            writeln!(
+                out,
+                "  {} {:<11} {:<9} {:<12} {}{}",
+                held.membership_id,
+                held.role,
+                held.status,
+                held.step,
+                held.peer,
+                held.address
+                    .as_deref()
+                    .map(|address| format!(" {address}"))
+                    .unwrap_or_default()
+            )?;
+        }
+        writeln!(out)?;
+        writeln!(
+            out,
+            "No coordinator is reached offline: every membership marked `orphan` stays active for \
+             its coordinator until revoked there. Run with `reset run --confirm-file <file>`."
+        )
+    }
+}
+
+#[derive(Serialize)]
+struct ResetReport {
+    old_host_id: String,
+    host_id: String,
+    fingerprint: String,
+    witness: String,
+    ended: Vec<String>,
+    /// Each membership left `orphaned`, with the coordinator to revoke it out of band.
+    orphaned: Vec<ResetOrphanedReport>,
+}
+
+#[derive(Serialize)]
+struct ResetOrphanedReport {
+    membership_id: String,
+    coordinator: String,
+    address: Option<String>,
+}
+
+impl Report for ResetReport {
+    fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
+        writeln!(out, "Host identity reset")?;
+        writeln!(out, "old host_id       {}", self.old_host_id)?;
+        writeln!(out, "host_id           {}", self.host_id)?;
+        writeln!(out, "first fingerprint {}", self.fingerprint)?;
+        writeln!(out, "witness           {}", self.witness)?;
+        for id in &self.ended {
+            writeln!(out, "  ended     {id}")?;
+        }
+        for orphaned in &self.orphaned {
+            writeln!(
+                out,
+                "  orphaned  {} coordinator {}{}",
+                orphaned.membership_id,
+                orphaned.coordinator,
+                orphaned
+                    .address
+                    .as_deref()
+                    .map(|address| format!(" at {address}"))
+                    .unwrap_or_default()
+            )?;
+        }
+        writeln!(out)?;
+        writeln!(
+            out,
+            "Give the server the new witness as `host.identity.witness`. Each orphaned \
+             membership's coordinator must revoke it: until then the old identity's key may still \
+             use it there."
+        )
+    }
+}
+
+/// The plan of `held`'s state: its identity and every live membership.
+fn reset_plan(
+    identity: &permguard_host::identity::Identity,
+    store: &permguard_host::membership::Store,
+    reason: String,
+) -> ResetPlan {
+    use permguard_host::membership::reset::{self as settle, Step};
+    let planned = settle::plan(store);
+    let mut plan = ResetPlan {
+        kind: RESET_PLAN_KIND.to_owned(),
+        mode: "emergency".to_owned(),
+        host_id: identity.host_id_text(),
+        epoch: identity.epoch(),
+        reason,
+        memberships: planned
+            .iter()
+            .map(|(id, held, step)| {
+                let peer = match held.role {
+                    permguard_host::membership::record::Role::Coordinator => &held.request.member,
+                    permguard_host::membership::record::Role::Member => &held.request.coordinator,
+                };
+                ResetPlanned {
+                    membership_id: permguard_host::identity::record::uuid_text(id),
+                    role: held.role.as_str().to_owned(),
+                    status: held.status.as_str().to_owned(),
+                    step: match step {
+                        Step::RevokeRemote => "orphan",
+                        other => other.as_str(),
+                    }
+                    .to_owned(),
+                    peer: permguard_host::identity::record::uuid_text(&peer.host_id),
+                    address: held.request.coordinator_address.clone(),
+                }
+            })
+            .collect(),
+        bound: settle::digest_target(&planned),
+        digest: String::new(),
+    };
+    plan.digest = plan.digest_of();
+    plan
+}
+
+fn reset(
+    globals: &Globals,
+    server_config: Option<&Path>,
+    action: ResetAction,
+    trace: &Trace,
+) -> Result<(), Failure> {
+    use permguard_host::identity::{self, IdentityError};
+    use permguard_host::membership::Store;
+
+    let now = permguard_host::authz::store::now();
+    let open_members = |held: &Volume| {
+        Store::open(held)
+            .map_err(|error| Failure::unavailable(format!("opening the memberships: {error}")))
+    };
+    match action {
+        ResetAction::Plan {
+            volume,
+            reason,
+            out,
+        } => {
+            if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
+                return Err(Failure::usage(
+                    "--reason is printable text of 1 to 256 bytes",
+                ));
+            }
+            let (_store, held) = open(&volume, trace)?;
+            let opened = open_identity(&held, server_config)?;
+            let plan = reset_plan(&opened, open_members(&held)?.as_ref(), reason);
+            let bytes = serde_json::to_vec_pretty(&plan)
+                .map_err(|error| Failure::internal(format!("writing the plan: {error}")))?;
+            write_new(&out, &bytes)?;
+            trace.say(format!("plan written to {}", out.display()));
+            render(&plan, globals.output, trace)?;
+            std::mem::forget(held);
+        }
+        ResetAction::Run {
+            volume,
+            confirm_file,
+        } => {
+            let (_store, held) = open(&volume, trace)?;
+            let config =
+                permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
+                    .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+            let custodian = custodian(&held, server_config)?;
+            let suite = identity::suite_of(&held)
+                .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
+                .unwrap_or(identity::Suite::Ed25519Sha256V1);
+            let provisioner = permguard_server::offline::provisioner(&custodian, &held, suite)
+                .map_err(|error| Failure::unavailable(format!("{error:#}")))?;
+            let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+                config.time_max_clock_skew(),
+            ));
+            // A reset a crash interrupted is completed, whatever its plan: its rings too.
+            if let Some(old) = identity::reset::marked(&held)
+                .map_err(|error| Failure::unavailable(format!("reading the identity: {error}")))?
+            {
+                let rings = permguard_server::offline::rings(
+                    &config,
+                    &held,
+                    old,
+                    None,
+                    &custodian,
+                    std::sync::Arc::clone(&time),
+                )
+                .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
+                let mutations = Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), None)
+                    .map_err(|error| {
+                        Failure::unavailable(format!("opening the mutation journal: {error}"))
+                    })?;
+                let resumed = identity::reset::resume_run(
+                    &mutations,
+                    &held,
+                    &provisioner,
+                    &rings,
+                    suite,
+                    Initiator::System(INITIATOR.to_owned()),
+                    now,
+                )
+                .map_err(|error| Failure::unavailable(format!("completing the reset: {error}")))?
+                .ok_or_else(|| Failure::internal("the reset under way was completed meanwhile"))?;
+                trace.say("an interrupted reset was completed".to_owned());
+                render(
+                    &ResetReport {
+                        old_host_id: identity::record::uuid_text(&resumed.old_host_id),
+                        host_id: identity::record::uuid_text(&resumed.host_id),
+                        fingerprint: resumed.fingerprint,
+                        witness: resumed.witness,
+                        ended: Vec::new(),
+                        orphaned: Vec::new(),
+                    },
+                    globals.output,
+                    trace,
+                )?;
+                std::mem::forget(held);
+                return Ok(());
+            }
+            let confirm_file = confirm_file.ok_or_else(|| {
+                Failure::usage("--confirm-file names the plan `reset plan` wrote")
+            })?;
+            let plan: ResetPlan = std::fs::read(&confirm_file)
+                .map_err(|error| {
+                    Failure::usage(format!(
+                        "--confirm-file {}: {error}",
+                        confirm_file.display()
+                    ))
+                })
+                .and_then(|bytes| {
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        Failure::usage(format!("--confirm-file is not a reset plan: {error}"))
+                    })
+                })?;
+            if plan.kind != RESET_PLAN_KIND || plan.digest != plan.digest_of() {
+                return Err(Failure::usage(
+                    "--confirm-file is not a reset plan `reset plan` wrote, or it was edited",
+                ));
+            }
+            let opened = std::sync::Arc::new(
+                open_identity(&held, server_config)?.with_provisioner(provisioner),
+            );
+            let mutations =
+                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(opened.as_ref()))
+                    .map_err(|error| {
+                        Failure::unavailable(format!("opening the mutation journal: {error}"))
+                    })?;
+            let store = open_members(&held)?;
+            mutations
+                .recover(&identity::Identities(&opened))
+                .and_then(|_| mutations.recover(&permguard_host::membership::Memberships(&store)))
+                .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
+            let current = reset_plan(&opened, &store, plan.reason.clone());
+            if current.digest != plan.digest {
+                return Err(Failure::usage(
+                    "the identity or its memberships changed since the plan: plan again",
+                ));
+            }
+            // Every ring the server composes: `host.operations` signs the manifests that end
+            // the memberships this Host coordinates, and every ring retires with the identity.
+            let rings = permguard_server::offline::rings(
+                &config,
+                &held,
+                opened.host_id(),
+                Some(std::sync::Arc::clone(&opened)
+                    as std::sync::Arc<dyn permguard_host::keys::ring::Binder>),
+                &custodian,
+                time,
+            )
+            .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
+            let done = permguard_host::membership::reset::emergency(
+                &store,
+                &mutations,
+                &opened,
+                &rings,
+                &Initiator::System(INITIATOR.to_owned()),
+                now,
+            )
+            .map_err(|error| match error {
+                permguard_host::membership::reset::EmergencyError::Identity(
+                    MutationError::Refused(IdentityError::Refused(_)),
+                ) => Failure::usage(error),
+                other => Failure::unavailable(other),
+            })?;
+            render(
+                &ResetReport {
+                    old_host_id: identity::record::uuid_text(&done.reset.old_host_id),
+                    host_id: identity::record::uuid_text(&done.reset.host_id),
+                    fingerprint: done.reset.fingerprint,
+                    witness: done.reset.witness,
+                    ended: done
+                        .ended
+                        .iter()
+                        .map(|held| identity::record::uuid_text(&held.request.membership_id))
+                        .collect(),
+                    orphaned: done
+                        .orphaned
+                        .iter()
+                        .map(|held| ResetOrphanedReport {
+                            membership_id: identity::record::uuid_text(&held.request.membership_id),
+                            coordinator: identity::record::uuid_text(
+                                &held.request.coordinator.host_id,
+                            ),
+                            address: held.request.coordinator_address.clone(),
+                        })
+                        .collect(),
+                },
+                globals.output,
+                trace,
+            )?;
+            std::mem::forget(held);
+        }
+    }
+    Ok(())
+}
+
+/// Writes `bytes` to a new file at `path`, readable by its owner only.
+fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| Failure::usage(format!("--out {}: {error}", path.display())))?;
+    file.write_all(bytes)
+        .map_err(|error| Failure::unavailable(format!("writing {}: {error}", path.display())))
 }
 
 /// An audit engine on `held`, stamped with `identity`.

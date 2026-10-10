@@ -56,9 +56,50 @@
         {
           "item": "open",
           "reason": "completes a rotation whose succession is durable, removes keys no document named, and writes this start's BOOT; never a new epoch"
+        },
+        {
+          "item": "provision_in",
+          "reason": "what `provision_with` and a reset share: creates an identity before its INIT exists; a reset reaches it only through `Identity::reset`, inside the engine's operation, or through `reset::resume`, which completes one"
+        },
+        {
+          "item": "open_provisioned",
+          "reason": "the body of `open`, once a reset under way is ruled out: completes a rotation, removes unnamed keys, writes this start's BOOT"
         }
       ],
       "state": "the Host identity: its keys, its document and its succession records"
+    },
+    {
+      "source": "crates/permguard-host/src/membership/mod.rs",
+      "calls": [
+        "append"
+      ],
+      "fields": [],
+      "exempt": [],
+      "state": "the membership journal: invitations, enrollments, manifests, joins and orphanings (WP-4.1)"
+    },
+    {
+      "source": "crates/permguard-host/src/identity/reset.rs",
+      "calls": [
+        "replace_bytes",
+        "destroy",
+        "delete"
+      ],
+      "fields": [],
+      "exempt": [
+        {
+          "item": "resume",
+          "reason": "completes a reset its RESETTING marker names, begun inside the engine's operation; what `open` is to a rotation (WP-4.1)"
+        },
+        {
+          "item": "complete",
+          "reason": "the last steps of `reset` and `resume`: removes INIT and provisions the next identity, reached only from them"
+        },
+        {
+          "item": "keep_evidence",
+          "reason": "copies the public records of the identity `reset` retires into `retired/`; reached only from `reset`"
+        }
+      ],
+      "state": "the identity reset: the retired identity's evidence, the RESETTING marker and the next identity (WP-4.1)"
     }
   ]
 }

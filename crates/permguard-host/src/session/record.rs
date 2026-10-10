@@ -46,6 +46,9 @@ pub enum Operation {
     Enroll,
     /// A member runs a task of its membership (WP-11).
     Task,
+    /// A member asks its coordinator for the manifests of its membership, or for its revocation
+    /// (WP-4.1, owner decision of 2026-10-09).
+    Membership,
 }
 
 impl Operation {
@@ -53,6 +56,7 @@ impl Operation {
         match self {
             Self::Enroll => "enroll",
             Self::Task => "task",
+            Self::Membership => "membership",
         }
     }
 }
@@ -64,6 +68,7 @@ impl FromStr for Operation {
         match value {
             "enroll" => Ok(Self::Enroll),
             "task" => Ok(Self::Task),
+            "membership" => Ok(Self::Membership),
             _ => Err(RecordError("not a session operation".to_owned())),
         }
     }
@@ -146,6 +151,9 @@ pub struct Hello {
     pub operation: Operation,
     pub membership_id: Option<String>,
     pub task: Option<String>,
+    /// The digest of the one request the session serves, for `enroll` and `membership`
+    /// (WP-4.1, owner decision of 2026-10-09): signed by the transcript as member 16.
+    pub request_digest: Option<Digest>,
 }
 
 impl Hello {
@@ -170,6 +178,9 @@ impl Hello {
         if let Some(task) = &self.task {
             pairs.push((Value::Int(8), Value::Text(task.clone())));
         }
+        if let Some(digest) = &self.request_digest {
+            pairs.push((Value::Int(9), Value::Text(digest.to_string())));
+        }
         encode(pairs)
     }
 
@@ -187,6 +198,7 @@ impl Hello {
             operation: map.text(6)?.parse()?,
             membership_id: map.optional_text(7)?,
             task: map.optional_text(8)?,
+            request_digest: map.optional_digest(9)?,
         };
         map.finish()?;
         if hello.version != VERSION {
@@ -259,6 +271,8 @@ pub struct Transcript {
     pub hello_digest: Digest,
     pub challenge_digest: Digest,
     pub signer: Role,
+    /// The digest of the session's one request, for `enroll` and `membership` (WP-4.1).
+    pub request_digest: Option<Digest>,
 }
 
 impl Transcript {
@@ -292,6 +306,9 @@ impl Transcript {
             ),
             (Value::Int(15), Value::Text(self.signer.as_str().to_owned())),
         ]);
+        if let Some(digest) = &self.request_digest {
+            pairs.push((Value::Int(16), Value::Text(digest.to_string())));
+        }
         encode(pairs)
     }
 
@@ -316,6 +333,7 @@ impl Transcript {
             hello_digest: map.digest(13)?,
             challenge_digest: map.digest(14)?,
             signer: map.text(15)?.parse()?,
+            request_digest: map.optional_digest(16)?,
         };
         map.finish()?;
         if protocol != HOST_SESSION {

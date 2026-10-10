@@ -1016,7 +1016,7 @@ impl App {
         config: &Config,
         volume: &permguard_host::storage::volume::Volume,
         time: &Arc<permguard_host::time::TimeGuard>,
-        custodian: &permguard_host::keys::custody::Custodian,
+        custodian: &Arc<permguard_host::keys::custody::Custodian>,
     ) -> Result<(
         Arc<permguard_host::identity::Identity>,
         bool,
@@ -1034,6 +1034,18 @@ impl App {
                 volume.host().path().display()
             )
         })?;
+        // A reset a crash interrupted is completed offline before the Host starts: its INIT may
+        // already be gone, and provisioning over it would leave the old keys and rings behind.
+        if identity::reset::marked(volume)
+            .map_err(|error| anyhow::anyhow!("{error}"))?
+            .is_some()
+        {
+            bail!(
+                "an identity reset began on this volume and did not complete: run `permguard host \
+                 identity reset run --volume {}` to complete it",
+                volume.root().display()
+            );
+        }
         let witness = identity_witness_checked(config, volume)?;
         // Before anything is written to the identity: its custody, a relaxation of the Host the
         // profile may forbid (owner decision of 2026-10-08, until the custody providers of
@@ -1109,7 +1121,15 @@ impl App {
         {
             bail!("`host.identity.witness` names another identity than the one just provisioned");
         }
-        Ok((Arc::new(opened), provisioned, config, prepared))
+        // What a reset provisions the next identity with (WP-4.1): the same custody, its keys
+        // bound to the `host_id` the reset mints.
+        let provisioner = crate::offline::provisioner(custodian, volume, opened.suite())?;
+        Ok((
+            Arc::new(opened.with_provisioner(provisioner)),
+            provisioned,
+            config,
+            prepared,
+        ))
     }
 
     /// The Host-local `audit.pseudonym` root (WP-3.3), when pseudonymisation is on: resolved
@@ -1683,6 +1703,17 @@ impl App {
         mutations
             .recover(key_registry.as_ref())
             .context("recovering the key ring mutations a crash left open")?;
+        // The memberships (WP-4.1): the store on the volume, whatever surface serves it, so a
+        // membership mutation a crash left open is resolved before anything reads it.
+        let members = permguard_host::membership::Store::open(&volume).with_context(|| {
+            format!(
+                "opening the memberships on {}",
+                volume.host().path().display()
+            )
+        })?;
+        mutations
+            .recover(&permguard_host::membership::Memberships(&members))
+            .context("recovering the membership mutations a crash left open")?;
         let keys: Option<Arc<dyn KeyManager>> = keys.map(|ring| ring as Arc<dyn KeyManager>);
 
         // Every issuer this deployment hosts, each with its own keys and trail, built once here. A
@@ -1757,6 +1788,51 @@ impl App {
                 recovered_truncated_bytes = recovery.truncated_bytes,
                 "the replay journal is open"
             );
+            // The peers a session accepts: the configured pins and the memberships' (WP-4.1).
+            let peers = Arc::new(
+                permguard_host::session::peers::Peers::open(&volume, config.host_peers())
+                    .with_context(|| {
+                        format!(
+                            "opening the pinned peers on {}",
+                            volume.host().path().display()
+                        )
+                    })?,
+            );
+            peers.with_source(
+                Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>
+            );
+            // The task types this Host's Planes act in: none until the Planes declare their task
+            // handlers (WP-4.4), so an approval names no task this Host cannot serve.
+            let capabilities = permguard_host::membership::Capabilities::default();
+            // What a coordinator serves on a proven session: an enrollment, a manifest fetch or a
+            // revocation asked by its member.
+            let coordinating = permguard_host::membership::service::Coordinating {
+                store: Arc::clone(&members),
+                mutations: Arc::clone(&mutations),
+                identity: Arc::clone(&host_identity),
+                keys: Arc::clone(&key_registry),
+                capabilities: capabilities.clone(),
+                time: Arc::clone(&time),
+            };
+            let session_context = permguard_host::session::Context {
+                identity: Arc::clone(&host_identity),
+                peers,
+                time: Arc::clone(&time),
+                declared_assurance: config.assurance().profile(),
+                audit: Some(Arc::clone(&audit_engine)),
+                metrics: context.metrics().clone(),
+                service: Some(Arc::new(coordinating)),
+            };
+            // How this Host, as a member, reaches its coordinators: over the Host listener's own
+            // certificate, verifying them against its client CA; without one, a join is refused.
+            let connector = crate::host_api::peer::member_client(config.admin_tls().as_ref())
+                .context("building the peer client of the Host listener")?
+                .map(|tls| {
+                    Arc::new(crate::host_api::peer::PeerConnector::new(
+                        session_context.clone(),
+                        tls,
+                    )) as Arc<dyn permguard_host::membership::member::Connector>
+                });
             let api = HostApi::new(Composition {
                 authorization: Arc::clone(&authorization),
                 store: Some(grants),
@@ -1777,26 +1853,13 @@ impl App {
                 // configuration amounts to; the PeerChannel refuses when it serves none.
                 peer_sessions: permguard_host::api::sessions::PeerSessions {
                     report: config.peer_sessions(),
-                    context: Some(permguard_host::session::Context {
-                        identity: Arc::clone(&host_identity),
-                        peers: Arc::new(
-                            permguard_host::session::peers::Peers::open(
-                                &volume,
-                                config.host_peers(),
-                            )
-                            .with_context(|| {
-                                format!(
-                                    "opening the pinned peers on {}",
-                                    volume.host().path().display()
-                                )
-                            })?,
-                        ),
-                        time: Arc::clone(&time),
-                        declared_assurance: config.assurance().profile(),
-                        audit: Some(Arc::clone(&audit_engine)),
-                        metrics: context.metrics().clone(),
-                    }),
+                    context: Some(session_context.clone()),
                 },
+                memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+                    store: Arc::clone(&members),
+                    capabilities: capabilities.clone(),
+                    connector,
+                })),
             });
             context = context.with_host_handles(Arc::new(api));
         }

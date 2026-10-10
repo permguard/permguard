@@ -13,7 +13,9 @@
 //! | `key`        | {1 type, 2 ring, 3 kid, 4 jwk, 5 epoch it was prepublished at, 6 state there}     |
 //! | `binding`    | {1 type, 2 ring, 3 epoch, 4 envelope}: the first binding of that epoch            |
 //! | `revocation` | {1 type, 2 ring, 3 kid, 4 epoch, 5 at, 6 reason, 7? compromised_at}               |
-//! | frontier     | {1 identity_epoch, 2 rings [[ring, epoch, seq, key_set_digest]]}, rings sorted    |
+//! | `peer`       | {1 type, 2 manifest (COSE), 3 member presentation, 4 member ring statements, 5 coordinator ring statements} (WP-4.1) |
+//! | `peers`      | {1 type, 2 [[membership_id, epoch, manifest digest]]}, sorted by membership (WP-4.1) |
+//! | frontier     | {1 identity_epoch, 2 rings [[ring, epoch, seq, key_set_digest]], 3? peers [membership journal seq, count, digest of the `peers` item]}, rings sorted |
 //! | manifest     | {1 host_id, 2 resource, 3 frontier (its bytes), 4 items, 5 bundle_digest}         |
 //!
 //! The manifest is a COSE_Sign1 [`protected::KEYS_BUNDLE`] under `host.operations`, its `kid` the
@@ -26,9 +28,13 @@
 //! nothing it receives. A frontier the Host cannot rebuild — the identity rotated since, a ring or
 //! an entry it does not hold — is refused, never answered with other items.
 //!
-//! Signer manifests of the streams (WP-5.x) and pinned peer rings (WP-4.1) are added by their
-//! packages; the resource is bound in the manifest today and every resource receives the Host's
-//! rings (owner decision of 2026-10-09).
+//! A bundle for a resource an active membership's task covers also carries that membership's peer
+//! (WP-4.1, owner decision of 2026-10-09), when this Host coordinates it: the manifest of the
+//! frontier's epoch, the member's identity as its enrollment session proved it and the ring
+//! statements the manifest pins. One bundle then verifies two pinned producers: the verifier walks
+//! this Host's identity, its `host.operations` key, the manifest, the member's identity from the
+//! fingerprint the manifest pins, the bindings and the keys. Signer manifests of the streams
+//! (WP-5.x) are added by their packages; every resource receives the Host's rings.
 
 use std::fmt;
 use std::sync::Arc;
@@ -48,6 +54,7 @@ use super::record::{Binding, State};
 use super::ring::{HOST_IDENTITY, HOST_OPERATIONS, REGISTERED, Ring, RingError, suite_of};
 use crate::identity::record::{Labelled, RecordError, encode, uint};
 use crate::identity::{self, Identity};
+use crate::membership::{self, record::RingStatement};
 
 /// The most bytes one item takes: the identity's carries up to
 /// [`identity::MAX_SUCCESSIONS`] succession records.
@@ -67,6 +74,10 @@ const IDENTITY: &str = "identity";
 const KEY: &str = "key";
 const BINDING: &str = "binding";
 const REVOCATION: &str = "revocation";
+const PEER: &str = "peer";
+const PEERS: &str = "peers";
+/// The most memberships one bundle projects: the `peers` item stays within [`MAX_ITEM_BYTES`].
+pub const MAX_PEERS: usize = 8192;
 
 /// Why a bundle was not built or did not verify.
 #[derive(Debug)]
@@ -152,6 +163,18 @@ pub enum Item {
         reason: String,
         compromised_at: Option<u64>,
     },
+    /// A membership this Host coordinates (WP-4.1): its manifest at the frontier's epoch, the
+    /// member's presentation its enrollment session proved, and the member's ring statements.
+    Peer {
+        manifest: Vec<u8>,
+        presentation: Vec<u8>,
+        statements: Vec<RingStatement>,
+        /// This Host's statements of the rings the manifest pins, as it signed: its
+        /// `host.operations` set, which the manifest's signer belongs to.
+        coordinator: Vec<RingStatement>,
+    },
+    /// The memberships the bundle projects, as the frontier's digest names them (WP-4.1).
+    Peers { entries: Vec<PeerFrontier> },
 }
 
 impl Item {
@@ -216,6 +239,48 @@ impl Item {
                 }
                 encode(pairs)
             }
+            Self::Peer {
+                manifest,
+                presentation,
+                statements,
+                coordinator,
+            } => encode(vec![
+                (Value::Int(1), text(PEER)),
+                (Value::Int(2), Value::Bytes(manifest.clone())),
+                (Value::Int(3), Value::Bytes(presentation.clone())),
+                (
+                    Value::Int(4),
+                    Value::Array(
+                        statements
+                            .iter()
+                            .map(RingStatement::value)
+                            .collect::<Result<_, _>>()?,
+                    ),
+                ),
+                (
+                    Value::Int(5),
+                    Value::Array(
+                        coordinator
+                            .iter()
+                            .map(RingStatement::value)
+                            .collect::<Result<_, _>>()?,
+                    ),
+                ),
+            ]),
+            Self::Peers { entries } => {
+                let mut list = Vec::with_capacity(entries.len());
+                for entry in entries {
+                    list.push(Value::Array(vec![
+                        Value::Bytes(entry.membership_id.to_vec()),
+                        uint(entry.epoch)?,
+                        Value::Bytes(entry.manifest_digest.to_vec()),
+                    ]));
+                }
+                encode(vec![
+                    (Value::Int(1), text(PEERS)),
+                    (Value::Int(2), Value::Array(list)),
+                ])
+            }
         }
     }
 
@@ -264,6 +329,79 @@ impl Item {
                 reason: map.text(6)?,
                 compromised_at: map.optional_uint(7)?,
             },
+            PEER => {
+                let manifest = map.bytes(2)?;
+                let presentation = map.bytes(3)?;
+                let values = map.array(4)?;
+                if values.len() > membership::record::MAX_RINGS {
+                    return Err(RecordError(
+                        "more ring statements than a membership pins".to_owned(),
+                    ));
+                }
+                let statements = values
+                    .into_iter()
+                    .map(RingStatement::read)
+                    .collect::<Result<_, _>>()?;
+                let values = map.array(5)?;
+                if values.is_empty() || values.len() > membership::record::MAX_RINGS {
+                    return Err(RecordError(
+                        "a peer carries 1 to MAX_RINGS coordinator statements".to_owned(),
+                    ));
+                }
+                Self::Peer {
+                    manifest,
+                    presentation,
+                    statements,
+                    coordinator: values
+                        .into_iter()
+                        .map(RingStatement::read)
+                        .collect::<Result<_, _>>()?,
+                }
+            }
+            PEERS => {
+                let refused = |detail: &str| RecordError(format!("a peers item: {detail}"));
+                let values = map.array(2)?;
+                if values.is_empty() || values.len() > MAX_PEERS {
+                    return Err(refused("1 to MAX_PEERS memberships"));
+                }
+                let mut entries: Vec<PeerFrontier> = Vec::with_capacity(values.len());
+                for value in values {
+                    let Value::Array(parts) = value else {
+                        return Err(refused("an entry is an array"));
+                    };
+                    let [Value::Bytes(id), Value::Int(epoch), Value::Bytes(digest)] =
+                        parts.as_slice()
+                    else {
+                        return Err(refused(
+                            "an entry is [membership_id, epoch, manifest_digest]",
+                        ));
+                    };
+                    let membership_id: [u8; 16] = id
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| refused("a membership id is 16 bytes"))?;
+                    let epoch = u64::try_from(*epoch)
+                        .ok()
+                        .filter(|epoch| *epoch >= 1)
+                        .ok_or_else(|| refused("a manifest epoch starts at 1"))?;
+                    let manifest_digest: [u8; 32] = digest
+                        .as_slice()
+                        .try_into()
+                        .map_err(|_| refused("a manifest digest is 32 bytes"))?;
+                    if entries
+                        .last()
+                        .is_some_and(|last| last.membership_id >= membership_id)
+                    {
+                        return Err(refused("entries are sorted, each membership once"));
+                    }
+                    entries.push(PeerFrontier {
+                        membership_id,
+                        epoch,
+                        manifest_digest,
+                    });
+                }
+                Self::Peers { entries }
+            }
             other => {
                 return Err(RecordError(format!("`{other}` is not a bundle item type")));
             }
@@ -283,12 +421,36 @@ pub struct RingFrontier {
     pub key_set_digest: [u8; 32],
 }
 
+/// The memberships a frontier projects (WP-4.1, owner decision of 2026-10-10): fixed at a
+/// journal entry of the memberships, named by their count and the digest of the `peers` item that
+/// lists them, so the frontier stays small however many there are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerSet {
+    /// The sequence of the membership journal's last entry when the frontier was fixed.
+    pub seq: u64,
+    pub count: u64,
+    /// SHA-256 of the `peers` item's bytes.
+    pub digest: [u8; 32],
+}
+
+/// One membership this Host coordinates, as the `peers` item lists it (WP-4.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerFrontier {
+    pub membership_id: [u8; 16],
+    /// The epoch of its manifest.
+    pub epoch: u64,
+    /// The digest of that manifest's envelope.
+    pub manifest_digest: [u8; 32],
+}
+
 /// The frontier a bundle is fixed at.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frontier {
     pub identity_epoch: u64,
     /// Sorted by ring, each ring once.
     pub rings: Vec<RingFrontier>,
+    /// The memberships it projects; absent from the bytes when none.
+    pub peers: Option<PeerSet>,
 }
 
 impl Frontier {
@@ -302,10 +464,21 @@ impl Frontier {
                 Value::Bytes(ring.key_set_digest.to_vec()),
             ]));
         }
-        encode(vec![
+        let mut pairs = vec![
             (Value::Int(1), uint(self.identity_epoch)?),
             (Value::Int(2), Value::Array(rings)),
-        ])
+        ];
+        if let Some(peers) = &self.peers {
+            pairs.push((
+                Value::Int(3),
+                Value::Array(vec![
+                    uint(peers.seq)?,
+                    uint(peers.count)?,
+                    Value::Bytes(peers.digest.to_vec()),
+                ]),
+            ));
+        }
+        encode(pairs)
     }
 
     /// Reads a frontier: rings this build registers, other than the identity's, sorted and
@@ -355,6 +528,28 @@ impl Frontier {
                 key_set_digest,
             });
         }
+        let peers = match map.optional_array(3)? {
+            None => None,
+            Some(values) => {
+                let [Value::Int(seq), Value::Int(count), Value::Bytes(digest)] = values.as_slice()
+                else {
+                    return Err(refused("peers are [seq, count, digest]"));
+                };
+                let seq = u64::try_from(*seq)
+                    .ok()
+                    .filter(|seq| *seq >= 1)
+                    .ok_or_else(|| refused("a journal sequence starts at 1"))?;
+                let count = u64::try_from(*count)
+                    .ok()
+                    .filter(|count| (1..=MAX_PEERS as u64).contains(count))
+                    .ok_or_else(|| refused("a frontier projects 1 to MAX_PEERS memberships"))?;
+                let digest: [u8; 32] = digest
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| refused("the peers digest is 32 bytes"))?;
+                Some(PeerSet { seq, count, digest })
+            }
+        };
         map.finish()?;
         if identity_epoch == 0 {
             return Err(refused("the identity epoch starts at 1"));
@@ -362,6 +557,7 @@ impl Frontier {
         Ok(Self {
             identity_epoch,
             rings,
+            peers,
         })
     }
 
@@ -432,10 +628,11 @@ pub fn bundle_digest(digests: &[[u8; 32]]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// What a bundle is built from: the open identity and the Host's rings.
+/// What a bundle is built from: the open identity, the Host's rings and its memberships.
 pub struct Source<'a> {
     pub identity: &'a Identity,
     pub rings: &'a [Arc<Ring>],
+    pub memberships: Option<&'a membership::Store>,
 }
 
 /// A bundle built at one frontier: its items in digest order and its manifest, unsigned.
@@ -448,8 +645,9 @@ pub struct Built {
 }
 
 impl Source<'_> {
-    /// Where the identity and every ring holding a key stand now.
-    pub fn frontier(&self) -> Result<Frontier, BundleError> {
+    /// Where the identity, every ring holding a key and every membership whose peer a bundle
+    /// for `resource` issued at `issued_at` carries stand now.
+    pub fn frontier(&self, resource: &str, issued_at: u64) -> Result<Frontier, BundleError> {
         let mut rings = Vec::new();
         for ring in self.rings {
             if let Some((epoch, seq, key_set_digest)) = ring.frontier()? {
@@ -465,7 +663,98 @@ impl Source<'_> {
         Ok(Frontier {
             identity_epoch: self.identity.epoch(),
             rings,
+            peers: self.peer_set(resource, issued_at)?,
         })
+    }
+
+    /// The peers a bundle for `resource` issued at `issued_at` projects, fixed at the membership
+    /// journal's current entry.
+    fn peer_set(&self, resource: &str, issued_at: u64) -> Result<Option<PeerSet>, BundleError> {
+        let Some(store) = self.memberships else {
+            return Ok(None);
+        };
+        let seq = store.seq();
+        let (entries, _) = self.peers_at(resource, seq, issued_at)?;
+        if entries.is_empty() {
+            return Ok(None);
+        }
+        let bytes = Item::Peers {
+            entries: entries.clone(),
+        }
+        .encode()?;
+        Ok(Some(PeerSet {
+            seq,
+            count: entries.len() as u64,
+            digest: item_digest(&bytes),
+        }))
+    }
+
+    /// The memberships a bundle for `resource` issued at `issued_at` projects, as they stood at
+    /// the membership journal's entry `seq`: those this Host coordinates, active, not past their
+    /// `not_after`, one of their tasks covering `resource`, the member's identity held; each with
+    /// its peer item, carrying only the statements its manifest pins. Deterministic for one
+    /// `(resource, seq, issued_at)`, so a later page rebuilds the same list.
+    fn peers_at(
+        &self,
+        resource: &str,
+        seq: u64,
+        issued_at: u64,
+    ) -> Result<(Vec<PeerFrontier>, Vec<Item>), BundleError> {
+        let (Some(store), Ok(resource)) = (
+            self.memberships,
+            permguard_core::authz::Resource::parse(resource),
+        ) else {
+            return Ok((Vec::new(), Vec::new()));
+        };
+        let mut projected: Vec<(PeerFrontier, Item)> = Vec::new();
+        for (request, manifest, envelope, digest, coordinator) in store.coordinated_at(seq) {
+            let covered = manifest
+                .tasks
+                .iter()
+                .any(|task| task.selector.contains(&resource));
+            let Some(presentation) = request.identity.clone() else {
+                continue;
+            };
+            if manifest.status != membership::record::Status::Active
+                || manifest.not_after <= issued_at
+                || !covered
+            {
+                continue;
+            }
+            let statements: Vec<RingStatement> = request
+                .ring_statements
+                .iter()
+                .filter(|statement| {
+                    manifest.ring_pins.iter().any(|pin| {
+                        pin.owner == membership::record::Role::Member
+                            && pin.ring == statement.ring
+                            && pin.epoch == statement.epoch
+                            && pin.binding == statement.binding
+                    })
+                })
+                .cloned()
+                .collect();
+            projected.push((
+                PeerFrontier {
+                    membership_id: manifest.membership_id,
+                    epoch: manifest.epoch,
+                    manifest_digest: *digest.raw(),
+                },
+                Item::Peer {
+                    manifest: envelope,
+                    presentation,
+                    statements,
+                    coordinator,
+                },
+            ));
+        }
+        if projected.len() > MAX_PEERS {
+            return Err(BundleError::Malformed(format!(
+                "a bundle projects at most {MAX_PEERS} memberships: ask for a narrower resource"
+            )));
+        }
+        projected.sort_by_key(|(entry, _)| entry.membership_id);
+        Ok(projected.into_iter().unzip())
     }
 
     /// The bundle at `frontier` for `resource`, rebuilt from the journals' prefixes; `issued_at`
@@ -540,6 +829,21 @@ impl Source<'_> {
                     compromised_at: entry.compromised_at,
                 });
             }
+        }
+        if let Some(fixed) = &frontier.peers {
+            // One uniform refusal: a frontier this Host cannot rebuild tells nothing of why.
+            let unreproducible =
+                || BundleError::Unreproducible("the frontier's peers cannot be rebuilt".to_owned());
+            let (entries, peers) = self
+                .peers_at(resource, fixed.seq, issued_at)
+                .map_err(|_| unreproducible())?;
+            let list = Item::Peers { entries };
+            let bytes = list.encode()?;
+            if item_digest(&bytes) != fixed.digest || peers.len() as u64 != fixed.count {
+                return Err(unreproducible());
+            }
+            items.push(list);
+            items.extend(peers);
         }
         let mut encoded = Vec::with_capacity(items.len());
         for item in &items {
@@ -669,6 +973,18 @@ pub struct Verified {
     /// The identity's chain, from the pinned first key.
     pub identity: identity::Verified,
     pub items: Vec<Item>,
+    /// The peers it carries, each verified from the manifest that pins it (WP-4.1).
+    pub peers: Vec<VerifiedPeer>,
+}
+
+/// A member a bundle carries, verified: the second producer one bundle vouches for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedPeer {
+    pub membership_id: [u8; 16],
+    /// The member's identity chain, from the fingerprint the manifest pins.
+    pub identity: identity::Verified,
+    /// Each pinned ring with the keys its binding vouches for.
+    pub rings: Vec<RingStatement>,
 }
 
 /// The suite and public key bytes a JWK names.
@@ -767,7 +1083,8 @@ pub fn verify(
     let mut bindings: Vec<(String, Binding, usize)> = Vec::new();
     for item in &decoded {
         match item {
-            Item::Identity { .. } => {}
+            // A peer is verified against its manifest once the Host's keys are (4b).
+            Item::Identity { .. } | Item::Peer { .. } | Item::Peers { .. } => {}
             Item::Key {
                 ring, kid, epoch, ..
             } => {
@@ -820,7 +1137,7 @@ pub fn verify(
 
     // 3. Each ring's frontier set: its published keys digest to it, and the current identity key
     // binds it.
-    let mut operations_keys: Vec<(String, State, Suite, Vec<u8>)> = Vec::new();
+    let mut operations_keys: Vec<OperationsKey> = Vec::new();
     for fixed in &frontier.rings {
         let mut suite = None;
         let mut thumbprints = Vec::new();
@@ -862,7 +1179,12 @@ pub fn verify(
                 thumbprints.push(thumbprint.to_owned());
             }
             if ring == HOST_OPERATIONS {
-                operations_keys.push((kid.clone(), *state, held, public_key));
+                operations_keys.push(OperationsKey {
+                    kid: kid.clone(),
+                    state: *state,
+                    suite: held,
+                    public_key,
+                });
             }
         }
         let suite = suite.ok_or_else(|| {
@@ -912,8 +1234,8 @@ pub fn verify(
         .map_err(|_| BundleError::Malformed("the manifest's kid is not text".to_owned()))?;
     let (suite, public_key) = operations_keys
         .iter()
-        .find(|(kid, state, ..)| *kid == signer && *state == State::Active)
-        .map(|(_, _, suite, public_key)| (*suite, public_key.clone()))
+        .find(|key| key.kid == signer && key.state == State::Active)
+        .map(|key| (key.suite, key.public_key.clone()))
         .ok_or_else(|| {
             BundleError::Signature(format!(
                 "`{signer}` is not the `{HOST_OPERATIONS}` key active at the frontier"
@@ -943,11 +1265,241 @@ pub fn verify(
             manifest.items
         )));
     }
+
+    // 6. Each peer, once every item is known to be the manifest's: the list the frontier's
+    // digest names, then each membership's manifest under this Host's operations key its own pin
+    // binds, the member's identity from the fingerprint that manifest pins, each pinned ring.
+    let peers = verify_peers(
+        &decoded,
+        frontier,
+        &chain,
+        &operations_keys,
+        resource,
+        manifest.issued_at,
+    )?;
     Ok(Verified {
         manifest,
         identity: chain,
         items: decoded,
+        peers,
     })
+}
+
+/// A `host.operations` key the bundle carries, as the peers are verified against it.
+struct OperationsKey {
+    kid: String,
+    state: State,
+    suite: Suite,
+    public_key: Vec<u8>,
+}
+
+/// Verifies the peers against the frontier: the `peers` item its digest names, and one peer
+/// item for each of its entries, nothing else.
+fn verify_peers(
+    decoded: &[Item],
+    frontier: &Frontier,
+    chain: &identity::Verified,
+    operations_keys: &[OperationsKey],
+    resource: &str,
+    issued_at: u64,
+) -> Result<Vec<VerifiedPeer>, BundleError> {
+    let lists: Vec<&Vec<PeerFrontier>> = decoded
+        .iter()
+        .filter_map(|item| match item {
+            Item::Peers { entries } => Some(entries),
+            _ => None,
+        })
+        .collect();
+    let peer_items = decoded
+        .iter()
+        .filter(|item| matches!(item, Item::Peer { .. }))
+        .count();
+    let entries: &[PeerFrontier] = match (&frontier.peers, lists.as_slice()) {
+        (None, []) if peer_items == 0 => return Ok(Vec::new()),
+        (Some(set), [entries]) => {
+            let bytes = Item::Peers {
+                entries: (*entries).clone(),
+            }
+            .encode()?;
+            if item_digest(&bytes) != set.digest
+                || entries.len() as u64 != set.count
+                || peer_items != entries.len()
+            {
+                return Err(BundleError::Digest(
+                    "the peers are not the ones the frontier names".to_owned(),
+                ));
+            }
+            entries
+        }
+        _ => {
+            return Err(BundleError::Outside(
+                "peers the frontier does not name, or a list it names missing".to_owned(),
+            ));
+        }
+    };
+    let mut peers: Vec<VerifiedPeer> = Vec::new();
+    for item in decoded {
+        let Item::Peer {
+            manifest,
+            presentation,
+            statements,
+            coordinator,
+        } = item
+        else {
+            continue;
+        };
+        let envelope =
+            Sign1::decode(manifest).map_err(|error| BundleError::Malformed(error.to_string()))?;
+        let kid = envelope
+            .header()
+            .ok()
+            .and_then(|header| String::from_utf8(header.kid).ok())
+            .ok_or_else(|| BundleError::Malformed("a peer manifest names no key".to_owned()))?;
+        // Read before its signature only to find the pin that names its signer's set.
+        let claimed = membership::record::Manifest::decode(envelope.payload_unverified())?;
+        let pin = claimed
+            .ring_pins
+            .iter()
+            .find(|pin| {
+                pin.owner == membership::record::Role::Coordinator && pin.ring == HOST_OPERATIONS
+            })
+            .ok_or_else(|| {
+                BundleError::Unbound(format!(
+                    "a peer manifest pins no `{HOST_OPERATIONS}` of its coordinator"
+                ))
+            })?;
+        // That set, as this Host stated it when it signed: bound by this Host's identity, its
+        // keys digesting to the pin's set; the signer is one of them, and never a revoked key.
+        let set = coordinator
+            .iter()
+            .find(|statement| {
+                statement.ring == HOST_OPERATIONS
+                    && statement.epoch == pin.epoch
+                    && statement.binding == pin.binding
+            })
+            .ok_or_else(|| {
+                BundleError::Unbound(format!(
+                    "a peer carries no statement of the `{HOST_OPERATIONS}` set its manifest pins"
+                ))
+            })?;
+        let bound = membership::verify_statement(set, chain, None)
+            .map_err(|error| BundleError::Signature(error.to_string()))?;
+        if bound.key_set_digest != pin.key_set_digest {
+            return Err(BundleError::Signature(
+                "a peer manifest's operations pin binds another set".to_owned(),
+            ));
+        }
+        let (suite, public_key) = set
+            .keys
+            .iter()
+            .filter_map(|text| serde_json::from_str::<Jwk>(text).ok())
+            .find(|jwk| jwk.kid == kid)
+            .and_then(|jwk| public_of(&jwk))
+            .ok_or_else(|| {
+                BundleError::Signature(format!(
+                    "a peer manifest is signed by `{kid}`, no key of the set its pin binds"
+                ))
+            })?;
+        if operations_keys
+            .iter()
+            .any(|key| key.kid == kid && key.state == State::Revoked)
+        {
+            return Err(BundleError::Signature(format!(
+                "a peer manifest is signed by `{kid}`, revoked since"
+            )));
+        }
+        let payload = envelope
+            .verify(suite, &public_key, protected::MEMBERSHIP_MANIFEST)
+            .map_err(|error| BundleError::Signature(error.to_string()))?;
+        let pinned = membership::record::Manifest::decode(payload)?;
+        let id = pinned.membership_id;
+        let fixed = entries
+            .iter()
+            .find(|fixed| fixed.membership_id == id)
+            .ok_or_else(|| {
+                BundleError::Outside("a peer of a membership the frontier does not name".to_owned())
+            })?;
+        if fixed.epoch != pinned.epoch
+            || membership::record::manifest_digest(manifest).raw() != &fixed.manifest_digest
+        {
+            return Err(BundleError::Outside(
+                "a peer manifest is not the one the frontier names".to_owned(),
+            ));
+        }
+        if peers.iter().any(|peer| peer.membership_id == id) {
+            return Err(BundleError::Malformed("a peer appears twice".to_owned()));
+        }
+        if pinned.coordinator.host_id != chain.host_id {
+            return Err(BundleError::Anchor(
+                "a peer manifest names another coordinator".to_owned(),
+            ));
+        }
+        if pinned.status != membership::record::Status::Active {
+            return Err(BundleError::Outside(
+                "a peer whose membership is not active".to_owned(),
+            ));
+        }
+        // What the builder projects, the verifier holds it to: unexpired when the bundle was
+        // issued, and one task covering the bundle's resource.
+        let covered = permguard_core::authz::Resource::parse(resource).is_ok_and(|resource| {
+            pinned
+                .tasks
+                .iter()
+                .any(|task| task.selector.contains(&resource))
+        });
+        if pinned.not_after <= issued_at || !covered {
+            return Err(BundleError::Outside(
+                "a peer expired when the bundle was issued, or outside its resource".to_owned(),
+            ));
+        }
+        let presented = crate::session::record::Presentation::decode(presentation)
+            .map_err(|error| BundleError::Malformed(error.to_string()))?;
+        let member = identity::verify_published(
+            &presented.document,
+            &presented.successions,
+            &presented.first_public_key,
+        )
+        .map_err(|error| BundleError::Anchor(format!("the member's identity: {error}")))?;
+        if member.host_id != pinned.member.host_id
+            || member.first_fingerprint() != pinned.member.fingerprint
+        {
+            return Err(BundleError::Anchor(
+                "the member's identity is not the one the manifest pins".to_owned(),
+            ));
+        }
+        let pins: Vec<&membership::record::RingPin> = pinned
+            .ring_pins
+            .iter()
+            .filter(|pin| pin.owner == membership::record::Role::Member)
+            .collect();
+        if statements.len() != pins.len() {
+            return Err(BundleError::Malformed(
+                "a peer carries other rings than its manifest pins".to_owned(),
+            ));
+        }
+        for pin in pins {
+            let statement = statements
+                .iter()
+                .find(|statement| statement.ring == pin.ring)
+                .ok_or_else(|| {
+                    BundleError::Unbound(format!("the member's `{}` is not carried", pin.ring))
+                })?;
+            let binding = membership::verify_statement(statement, &member, None)
+                .map_err(|error| BundleError::Signature(error.to_string()))?;
+            if binding.epoch != pin.epoch || binding.key_set_digest != pin.key_set_digest {
+                return Err(BundleError::Signature(format!(
+                    "the member's `{}` is not the set its manifest pins",
+                    pin.ring
+                )));
+            }
+        }
+        peers.push(VerifiedPeer {
+            membership_id: id,
+            identity: member,
+            rings: statements.clone(),
+        });
+    }
+    Ok(peers)
 }
 
 /// A kept binding, verified under the identity key of the epoch its `kid` names, for `ring` at

@@ -24,6 +24,9 @@ use tonic::codegen::BoxStream;
 use tonic::transport::Endpoint;
 
 use permguard_core::{ChannelBinding, codes};
+use permguard_host::identity::Verified;
+use permguard_host::membership::member::{Connector, Exchange, Exchanged, Target};
+use permguard_host::session::record::Operation;
 use permguard_host::session::{
     Context, Frame, Initiator, NONCE_LIFETIME, Refusal, Request, Responder, Session,
 };
@@ -307,10 +310,11 @@ fn once<T: Send + 'static>(
     })
 }
 
-/// A session this Host initiated, and the connection it runs on.
+/// A session this Host initiated, the peer as its pin verified it, and the connection it runs on.
 #[derive(Debug)]
 pub struct Established {
     pub session: Session,
+    pub peer: Verified,
     pub connection: Connection,
 }
 
@@ -363,10 +367,198 @@ pub async fn initiate(
         .session()
         .cloned()
         .ok_or_else(|| transport("no session"))?;
+    let peer = initiator
+        .peer()
+        .cloned()
+        .ok_or_else(|| transport("no verified peer"))?;
     Ok(Established {
         session,
+        peer,
         connection,
     })
+}
+
+/// The client configuration a member reaches its coordinators with (WP-4.1, owner decision of
+/// 2026-10-09): the Host listener's own certificate and key as its client identity, the
+/// listener's `client_ca` as the anchors a coordinator's certificate is verified against, and
+/// TLS 1.3 only, since the session signs the connection's exporter. `None` without a client CA:
+/// a join is then `peer_client_unconfigured`.
+pub fn member_client(
+    settings: Option<&permguard_core::TlsSettings>,
+) -> anyhow::Result<Option<Arc<rustls::ClientConfig>>> {
+    let Some(settings) = settings else {
+        return Ok(None);
+    };
+    let Some(client_ca) = settings.client_ca() else {
+        return Ok(None);
+    };
+    let mut roots = rustls::RootCertStore::empty();
+    for certificate in permguard_transport::load_certificates(client_ca)? {
+        roots.add(certificate).map_err(|error| {
+            anyhow::anyhow!(
+                "adding {} to the peer anchors: {error}",
+                client_ca.display()
+            )
+        })?;
+    }
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_protocol_versions(&[&rustls::version::TLS13])
+    .map_err(|error| anyhow::anyhow!("the TLS versions of the peer client: {error}"))?
+    .with_root_certificates(roots)
+    .with_client_auth_cert(
+        permguard_transport::load_certificates(settings.certificate())?,
+        permguard_transport::load_key(settings.key())?,
+    )
+    .map_err(|error| anyhow::anyhow!("the client identity of the peer client: {error}"))?;
+    Ok(Some(Arc::new(config)))
+}
+
+/// How a member reaches its coordinators (WP-4.1): one connection, one session and one request
+/// per exchange, the request's digest signed by the session's transcript and its token proof, if
+/// any, bound to the connection's exporter.
+pub struct PeerConnector {
+    context: Context,
+    tls: Arc<rustls::ClientConfig>,
+}
+
+impl PeerConnector {
+    /// A connector initiating with `context` over `tls`.
+    pub fn new(context: Context, tls: Arc<rustls::ClientConfig>) -> Self {
+        Self { context, tls }
+    }
+
+    async fn exchange_once(
+        &self,
+        target: Target,
+        exchange: Exchange,
+    ) -> Result<Exchanged, Refusal> {
+        // A configured pin wins over the fingerprint an operator types: a join naming another
+        // one is refused before the invitation is spent.
+        if exchange.operation == Operation::Enroll
+            && let Some(pinned) = self
+                .context
+                .peers
+                .pinned_for(&target.host_id, Some(Operation::Membership))
+            && pinned != target.fingerprint
+        {
+            return Err(Refusal {
+                code: codes::common::INVALID_ARGUMENT,
+                reason: "a pin already names this coordinator by another fingerprint".to_owned(),
+            });
+        }
+        // Resolution, TCP, TLS and the stream bounded together: an address that drops packets
+        // never holds a request.
+        let connection = tokio::time::timeout(HANDSHAKE, async {
+            let (address, name) = endpoint(&target.address).await?;
+            Connection::open(address, name, &self.tls)
+                .await
+                .map_err(refusal_of)
+        })
+        .await
+        .map_err(|_| unreachable_peer("the coordinator could not be reached in time"))??;
+        let bytes = (exchange.build)(&connection.exporter())?;
+        let request = Request {
+            peer: target.host_id,
+            operation: exchange.operation,
+            membership_id: exchange
+                .membership_id
+                .as_ref()
+                .map(permguard_host::identity::record::uuid_text),
+            task: None,
+            request_digest: Some(permguard_host::membership::record::request_digest(&bytes)),
+            // Only a join brings its own pin: every other exchange reaches the coordinator by
+            // the pin its membership holds, gated by the membership's status.
+            pin: (exchange.operation == Operation::Enroll)
+                .then(|| (target.host_id, target.fingerprint.clone())),
+        };
+        let Established {
+            peer,
+            mut connection,
+            ..
+        } = initiate(connection, self.context.clone(), request)
+            .await
+            .map_err(refusal_of)?;
+        connection
+            .send(Frame::Task(bytes))
+            .await
+            .map_err(refusal_of)?;
+        match tokio::time::timeout(HANDSHAKE, connection.receive()).await {
+            Ok(Ok(Some(Frame::Task(answer)))) => Ok(Exchanged { peer, answer }),
+            Ok(Ok(Some(Frame::Refusal { code }))) => Err(Refusal {
+                // A registered code is kept, so the operator reads why; anything else is not
+                // repeated.
+                code: codes::all()
+                    .into_iter()
+                    .map(|(_, registered)| registered)
+                    .find(|registered| *registered == code)
+                    .unwrap_or(codes::host::SESSION_REFUSED),
+                reason: "the coordinator refused the request".to_owned(),
+            }),
+            Ok(Ok(_)) => Err(unreachable_peer("the coordinator answered no request")),
+            Ok(Err(error)) => Err(refusal_of(error)),
+            Err(_) => Err(unreachable_peer("the coordinator did not answer in time")),
+        }
+    }
+}
+
+impl Connector for PeerConnector {
+    fn exchange(
+        &self,
+        target: Target,
+        exchange: Exchange,
+    ) -> permguard_core::BoxFuture<'_, Result<Exchanged, Refusal>> {
+        // The connection, the handshake and the answer each have their bound; the whole exchange
+        // has one too, so no step a peer slows holds a request past it.
+        Box::pin(async move {
+            tokio::time::timeout(3 * HANDSHAKE, self.exchange_once(target, exchange))
+                .await
+                .map_err(|_| unreachable_peer("the coordinator did not answer in time"))?
+        })
+    }
+}
+
+fn unreachable_peer(reason: impl Into<String>) -> Refusal {
+    Refusal {
+        code: codes::common::UNAVAILABLE,
+        reason: reason.into(),
+    }
+}
+
+fn refusal_of(error: PeerError) -> Refusal {
+    match error {
+        PeerError::Refused(refusal) => refusal,
+        PeerError::Transport(detail) => unreachable_peer(detail),
+    }
+}
+
+/// The socket address and server name of `https://<host>:<port>`.
+async fn endpoint(address: &str) -> Result<(SocketAddr, ServerName<'static>), Refusal> {
+    let invalid = || Refusal {
+        code: codes::common::INVALID_ARGUMENT,
+        reason: format!("`{address}` is not `https://<host>:<port>`"),
+    };
+    let uri: tonic::codegen::http::Uri = address.parse().map_err(|_| invalid())?;
+    if uri.scheme_str() != Some("https")
+        || uri.query().is_some()
+        || uri.path() != "/" && !uri.path().is_empty()
+    {
+        return Err(invalid());
+    }
+    let host = uri.host().ok_or_else(invalid)?;
+    let port = uri.port_u16().ok_or_else(invalid)?;
+    let host = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_owned();
+    let name = ServerName::try_from(host.clone()).map_err(|_| invalid())?;
+    let resolved = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|error| unreachable_peer(format!("resolving `{address}`: {error}")))?
+        .next()
+        .ok_or_else(|| unreachable_peer(format!("`{address}` resolves to nothing")))?;
+    Ok((resolved, name))
 }
 
 #[cfg(test)]
@@ -399,6 +591,33 @@ mod tests {
         // A clone, as a pool would hold, shares the one connection already taken.
         let cloned = connector.clone().oneshot(uri).await;
         assert!(cloned.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_coordinator_address_is_https_with_a_host_and_a_port() {
+        let (address, name) = endpoint("https://127.0.0.1:7443")
+            .await
+            .expect("an address");
+        assert_eq!(address.port(), 7443);
+        assert_eq!(name, ServerName::try_from("127.0.0.1").expect("a name"));
+        let (address, _) = endpoint("https://[::1]:7443")
+            .await
+            .expect("an IPv6 address");
+        assert!(address.is_ipv6());
+        for refused in [
+            "http://127.0.0.1:7443",
+            "https://127.0.0.1",
+            "https://127.0.0.1:7443/path",
+            "https://127.0.0.1:7443/?query",
+            "127.0.0.1:7443",
+            "",
+        ] {
+            assert_eq!(
+                endpoint(refused).await.expect_err(refused).code,
+                codes::common::INVALID_ARGUMENT,
+                "{refused}"
+            );
+        }
     }
 
     #[test]

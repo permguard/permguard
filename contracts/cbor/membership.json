@@ -1,0 +1,169 @@
+{
+  "artifact": "Membership records (WP-4.1): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
+  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset); crates/permguard-host/src/membership/record.rs",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "host_ref": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "host_id", "type": "bytes", "occurs": "required", "note": "16 bytes, a UUIDv7" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required", "note": "the Host's identity epoch when it entered the membership, from 1" },
+        { "label": 3, "name": "fingerprint", "type": "text", "occurs": "required", "note": "the Host's first fingerprint, `sha256:<hex>`: its pin" }
+      ]
+    },
+    "limits": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "max_body_bytes", "type": "uint", "occurs": "required" },
+        { "label": 2, "name": "max_concurrency", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "max_rate_per_minute", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "max_batch_records", "type": "uint", "occurs": "required" },
+        { "label": 5, "name": "retention_seconds", "type": "uint", "occurs": "required", "note": "each from 1; an approval lowers each, never raises one" }
+      ]
+    },
+    "task": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "task_id", "type": "text", "occurs": "required", "note": "lowercase letters, digits and `-`" },
+        { "label": 2, "name": "type", "type": "text", "occurs": "required", "note": "policy.mirror, decisions.ship, events.ship, events.import, audit.checkpoints or zone.secrets" },
+        { "label": 3, "name": "provider_role", "type": "text", "occurs": "required", "note": "coordinator or member, as the type fixes it" },
+        { "label": 4, "name": "consumer_role", "type": "text", "occurs": "required", "note": "the other role" },
+        { "label": 5, "name": "selector", "type": "text", "occurs": "required", "note": "inside the membership's selector" },
+        { "label": 6, "name": "resource_types", "type": "array<text>", "occurs": "required" },
+        { "label": 7, "name": "required", "type": "bool", "occurs": "required" },
+        { "label": 8, "name": "limits", "type": "map:limits", "occurs": "required" },
+        { "label": 9, "name": "assurance_requirements", "type": "array<text>", "occurs": "required", "note": "refused at approval while non-empty, until WP-4.2" }
+      ]
+    },
+    "lease_policy": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "max_session_seconds", "type": "uint", "occurs": "required" },
+        { "label": 2, "name": "offline_grace_seconds", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "clock_skew_seconds", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "dormant_after_seconds", "type": "uint", "occurs": "required" },
+        { "label": 5, "name": "revoke_after_seconds", "type": "uint", "occurs": "required", "note": "longer than dormant_after_seconds" }
+      ]
+    },
+    "ring_pin": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "owner", "type": "text", "occurs": "required", "note": "coordinator or member: whose ring" },
+        { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 4, "name": "key_set_digest", "type": "bytes", "occurs": "required", "note": "32 bytes (key-set.json)" },
+        { "label": 5, "name": "binding", "type": "bytes", "occurs": "required", "note": "the owner's ring binding, COSE_Sign1 (keys.json ring_binding)" }
+      ]
+    },
+    "ring_statement": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "suite", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "keys", "type": "array<text>", "occurs": "required", "note": "the RFC 7517 JSON of each published key, 1 to 64" },
+        { "label": 5, "name": "binding", "type": "bytes", "occurs": "required", "note": "the owner's ring binding of that set, COSE_Sign1" }
+      ]
+    },
+    "manifest": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes, a UUIDv7" },
+        { "label": 2, "name": "coordinator", "type": "map:host_ref", "occurs": "required" },
+        { "label": 3, "name": "member", "type": "map:host_ref", "occurs": "required" },
+        { "label": 4, "name": "selector", "type": "text", "occurs": "required" },
+        { "label": 5, "name": "tasks", "type": "array<map:task>", "occurs": "required", "note": "1 to 32" },
+        { "label": 6, "name": "member_assurance", "type": "text", "occurs": "required", "note": "the profile the member declared" },
+        { "label": 7, "name": "min_assurance", "type": "text", "occurs": "optional", "note": "the invitation's floor" },
+        { "label": 9, "name": "ring_pins", "type": "array<map:ring_pin>", "occurs": "required" },
+        { "label": 10, "name": "epoch", "type": "uint", "occurs": "required", "note": "the fence: one more at every manifest, from 1" },
+        { "label": 11, "name": "lease_policy", "type": "map:lease_policy", "occurs": "required" },
+        { "label": 12, "name": "previous", "type": "digest", "occurs": "optional", "note": "the digest of the predecessor's envelope under `permguard.membership.manifest.v1\\n`; absent exactly at epoch 1" },
+        { "label": 13, "name": "issued_at", "type": "uint", "occurs": "required" },
+        { "label": 14, "name": "not_after", "type": "uint", "occurs": "required" },
+        { "label": 15, "name": "status", "type": "text", "occurs": "required", "note": "active, suspended, revoked, rejected or expired" }
+      ]
+    },
+    "invitation": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "invite_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "token_key", "type": "bytes", "occurs": "required", "note": "the Ed25519 public key whose seed is SHA-256 of `permguard.membership.token-key.v1\\n` and the token: nothing the coordinator holds signs a proof" },
+        { "label": 3, "name": "selector", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "tasks", "type": "array<map:task>", "occurs": "required" },
+        { "label": 5, "name": "expires", "type": "uint", "occurs": "required", "note": "at most 7 days after creation" },
+        { "label": 6, "name": "expected_fingerprint", "type": "text", "occurs": "optional" },
+        { "label": 7, "name": "min_assurance", "type": "text", "occurs": "optional" },
+        { "label": 8, "name": "max_uses", "type": "uint", "occurs": "required", "note": "1" },
+        { "label": 9, "name": "created_at", "type": "uint", "occurs": "required" },
+        { "label": 10, "name": "created_by", "type": "text", "occurs": "required", "note": "the principal that issued it" }
+      ]
+    },
+    "enroll_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "invite_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "token_proof", "type": "bytes", "occurs": "required", "note": "64 bytes: the token key's Ed25519 signature over `permguard.membership.enroll.v1\\n` ‖ coordinator host_id ‖ member host_id ‖ the connection's RFC 9266 exporter" },
+        { "label": 3, "name": "selector", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "tasks", "type": "array<map:task>", "occurs": "required" },
+        { "label": 5, "name": "member", "type": "map:host_ref", "occurs": "required" },
+        { "label": 6, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" }
+      ]
+    },
+    "pending": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required" },
+        { "label": 2, "name": "invite_id", "type": "bytes", "occurs": "required" },
+        { "label": 3, "name": "coordinator", "type": "map:host_ref", "occurs": "required" },
+        { "label": 4, "name": "member", "type": "map:host_ref", "occurs": "required" },
+        { "label": 5, "name": "selector", "type": "text", "occurs": "required" },
+        { "label": 6, "name": "tasks", "type": "array<map:task>", "occurs": "required" },
+        { "label": 7, "name": "member_assurance", "type": "text", "occurs": "required" },
+        { "label": 8, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" },
+        { "label": 9, "name": "requested_at", "type": "uint", "occurs": "required" },
+        { "label": 10, "name": "coordinator_address", "type": "text", "occurs": "optional", "note": "the member's copy: `https://<host>:<port>`" },
+        { "label": 11, "name": "identity", "type": "bytes", "occurs": "optional", "note": "the coordinator's copy: the member's presentation its enrollment session proved (session.json presentation)" }
+      ]
+    },
+    "enroll_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required" },
+        { "label": 2, "name": "status", "type": "text", "occurs": "required", "note": "pending" }
+      ]
+    },
+    "membership_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "action", "type": "text", "occurs": "required", "note": "fetch or revoke" },
+        { "label": 2, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "the one the session names" },
+        { "label": 3, "name": "held_epoch", "type": "uint", "occurs": "optional", "note": "the epoch the member holds: the answer carries the manifests after it" }
+      ]
+    },
+    "membership_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "status", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "manifests", "type": "array<bytes>", "occurs": "required", "note": "COSE_Sign1 manifests after the held epoch, oldest first" },
+        { "label": 3, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required", "note": "the coordinator's statements of the rings its manifests pin" }
+      ]
+    },
+    "journal_entry": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "seq", "type": "uint", "occurs": "required", "note": "from 1" },
+        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "invited, invite_revoked, enrolled, manifest, joined or orphaned" },
+        { "label": 3, "name": "subject", "type": "bytes", "occurs": "required", "note": "the invitation's or the membership's id" },
+        { "label": 4, "name": "epoch", "type": "uint", "occurs": "optional", "note": "a manifest's epoch" },
+        { "label": 5, "name": "at", "type": "uint", "occurs": "required" },
+        { "label": 6, "name": "operation_id", "type": "bytes", "occurs": "optional", "note": "the mutation that wrote it" },
+        { "label": 7, "name": "previous", "type": "digest", "occurs": "required", "note": "the digest of the entry before it under `permguard.membership.journal.v1\\n`, of nothing for the first" },
+        { "label": 8, "name": "detail", "type": "bytes", "occurs": "optional", "note": "the record the entry concerns: an invitation, a pending membership or a manifest envelope" },
+        { "label": 9, "name": "statements", "type": "array<map:ring_statement>", "occurs": "optional", "note": "on a manifest the coordinator issued: its statements of the rings that manifest pins, as they stood at the signature; absent when empty" }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry"]
+}

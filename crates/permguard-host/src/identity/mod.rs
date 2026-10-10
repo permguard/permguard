@@ -26,6 +26,7 @@
 //! proof transcripts and ring bindings.
 
 pub mod record;
+pub mod reset;
 
 use std::sync::{Arc, PoisonError, RwLock};
 
@@ -83,6 +84,11 @@ pub enum IdentityError {
     /// A rotation whose succession is durable and whose document is not: the next open
     /// completes it.
     Indeterminate(String),
+    /// A reset retired this identity: it signs nothing more, and the process serves the new one
+    /// after a restart.
+    Retired,
+    /// A reset began and did not complete: running it again completes it.
+    ResetIncomplete,
     Key(KeyError),
     Storage(StorageError),
 }
@@ -106,6 +112,14 @@ impl std::fmt::Display for IdentityError {
                 f,
                 "the rotation is durable and its document is not; the next start completes it: \
                  {detail}"
+            ),
+            Self::Retired => f.write_str(
+                "the Host identity was reset: this process signs nothing more with it; restart \
+                 it to serve the new identity",
+            ),
+            Self::ResetIncomplete => f.write_str(
+                "an identity reset began and did not complete: run `permguard host identity \
+                 reset run` again to complete it",
             ),
             Self::Key(error) => write!(f, "{error}"),
             Self::Storage(error) => write!(f, "{error}"),
@@ -168,6 +182,12 @@ pub struct Identity {
     volume_id: [u8; 16],
     boot: Boot,
     current: RwLock<Current>,
+    /// Set by a reset: from then on the identity signs nothing.
+    retired: std::sync::atomic::AtomicBool,
+    /// Set while a reset of this identity runs: a second one is refused before it writes.
+    resetting: std::sync::atomic::AtomicBool,
+    /// Makes the provider of the identity a reset provisions, for its `host_id`.
+    provisioner: Option<reset::Provisioner>,
 }
 
 impl std::fmt::Debug for Identity {
@@ -383,22 +403,55 @@ impl Identity {
         now_millis: u64,
     ) -> Result<Self, IdentityError> {
         let (dir, keys) = directories(volume)?;
+        let provider =
+            Self::provision_in(&dir, &keys, volume.id(), provider, suite, now, now_millis)?;
+        Self::open(volume, provider)
+    }
+
+    /// Opens the identity of `volume`, verifying it whole, and mints this start's `boot_id`.
+    pub fn open(volume: &Volume, provider: Arc<dyn KeyProvider>) -> Result<Self, IdentityError> {
+        let (dir, keys) = directories(volume)?;
         dir.sweep_temps()?;
         tombstone::complete(&dir)?;
+        keys.sweep_temps()?;
+        tombstone::complete(&keys)?;
+        if dir.read(reset::RESETTING)?.is_some() {
+            return Err(IdentityError::ResetIncomplete);
+        }
+        Self::open_provisioned(volume, dir, keys, provider)
+    }
+
+    /// Provisions an identity in `dir` and its `keys`, refused when `INIT` exists: what
+    /// [`Identity::provision_with`] and a reset share. Answers the new identity's provider.
+    fn provision_in(
+        dir: &Dir,
+        keys: &Dir,
+        volume_id: [u8; 16],
+        provider: impl FnOnce(&[u8; 16]) -> Result<Arc<dyn KeyProvider>, IdentityError>,
+        suite: Suite,
+        now: u64,
+        now_millis: u64,
+    ) -> Result<Arc<dyn KeyProvider>, IdentityError> {
+        dir.sweep_temps()?;
+        tombstone::complete(dir)?;
         if dir.read(INIT)?.is_some() {
             return Err(IdentityError::Provisioned);
         }
+        // A reset retired the identity these files were (its evidence kept apart): they go,
+        // whatever they hold.
+        let resetting = dir.read(reset::RESETTING)?.is_some();
         // What an interrupted provisioning left: a key of epoch 1, its public half and an epoch-1
         // document, never more. Anything beyond is an identity that existed and lost its INIT,
         // which is never replaced (the blueprint's recovery).
-        let succeeded = dir.read(BOOT)?.is_some()
-            || dir.read(SUCCESSION)?.is_some_and(|bytes| !bytes.is_empty())
-            || keys.names()?.iter().any(|name| {
-                name.split('.')
-                    .next()
-                    .and_then(|stem| stem.parse::<u64>().ok())
-                    .is_some_and(|held| held >= 2)
-            });
+        let succeeded = !resetting
+            && (dir.read(BOOT)?.is_some()
+                || dir.read(SUCCESSION)?.is_some_and(|bytes| !bytes.is_empty())
+                || keys.names()?.iter().any(|name| {
+                    name.split('.')
+                        .next()
+                        .and_then(|stem| stem.parse::<u64>().ok())
+                        .is_some_and(|held| held >= 2)
+                }));
         if succeeded {
             return Err(corrupt(
                 "INIT is missing beside an identity that was opened or rotated: it is never \
@@ -407,18 +460,18 @@ impl Identity {
         }
         for name in [DOCUMENT, SUCCESSION, BOOT] {
             if dir.read(name)?.is_some() {
-                tombstone::delete(&dir, name)?;
+                tombstone::delete(dir, name)?;
             }
         }
         keys.sweep_temps()?;
-        tombstone::complete(&keys)?;
+        tombstone::complete(keys)?;
         for name in keys.names()? {
-            tombstone::delete(&keys, &name)?;
+            tombstone::delete(keys, &name)?;
         }
         let host_id = record::uuid_v7(now_millis, random()?);
         let provider = provider(&host_id)?;
         let public = provider.generate(&slot(1), suite)?;
-        publish_public(&keys, 1, &public.bytes)?;
+        publish_public(keys, 1, &public.bytes)?;
         // The self-test: the key signs a fresh challenge and its public half verifies it.
         let challenge = random()?;
         let probe = provider.sign(&slot(1), suite, &challenge)?;
@@ -438,16 +491,16 @@ impl Identity {
             issued_at: now,
         };
         let envelope = sign_document(provider.as_ref(), &document)?;
-        write::replace_bytes(&dir, DOCUMENT, &envelope)?;
+        write::replace_bytes(dir, DOCUMENT, &envelope)?;
         let init = Init {
             host_id,
-            volume_id: volume.id(),
+            volume_id,
             fingerprint: public.fingerprint(),
             created_at: now,
         };
         let bytes = init.encode()?;
         let same = |held: &[u8]| held == bytes.as_slice();
-        match publish_immutable(&dir, INIT, &bytes, &same, &same)? {
+        match publish_immutable(dir, INIT, &bytes, &same, &same)? {
             Published::Written | Published::AlreadyThere => {}
         }
         tracing::info!(
@@ -457,16 +510,18 @@ impl Identity {
             fingerprint = %public.fingerprint(),
             "the Host identity is provisioned"
         );
-        Self::open(volume, provider)
+        if resetting {
+            tombstone::delete(dir, reset::RESETTING)?;
+        }
+        Ok(provider)
     }
 
-    /// Opens the identity of `volume`, verifying it whole, and mints this start's `boot_id`.
-    pub fn open(volume: &Volume, provider: Arc<dyn KeyProvider>) -> Result<Self, IdentityError> {
-        let (dir, keys) = directories(volume)?;
-        dir.sweep_temps()?;
-        tombstone::complete(&dir)?;
-        keys.sweep_temps()?;
-        tombstone::complete(&keys)?;
+    fn open_provisioned(
+        volume: &Volume,
+        dir: Dir,
+        keys: Dir,
+        provider: Arc<dyn KeyProvider>,
+    ) -> Result<Self, IdentityError> {
         let init_bytes = dir.read(INIT)?.ok_or(IdentityError::NotProvisioned)?;
         let init = Init::decode(&init_bytes)?;
         if init.volume_id != volume.id() {
@@ -659,6 +714,9 @@ impl Identity {
                 successions,
                 last,
             }),
+            retired: std::sync::atomic::AtomicBool::new(false),
+            resetting: std::sync::atomic::AtomicBool::new(false),
+            provisioner: None,
         })
     }
 
@@ -729,6 +787,9 @@ impl Identity {
     /// Signs `payload` as `content_type` with the current key: only a proof transcript or a ring
     /// binding; the identity key never signs anything else for anyone.
     pub fn sign(&self, content_type: &str, payload: Vec<u8>) -> Result<Vec<u8>, IdentityError> {
+        if self.is_retired() {
+            return Err(IdentityError::Retired);
+        }
         if !SIGNS_FOR_OTHERS.contains(&content_type) {
             return Err(IdentityError::Refused(format!(
                 "the identity key does not sign `{content_type}`"
@@ -752,6 +813,9 @@ impl Identity {
         expected_epoch: Option<u64>,
         now: u64,
     ) -> Result<Rotated, IdentityError> {
+        if self.is_retired() {
+            return Err(IdentityError::Retired);
+        }
         let mut current = self.current.write().unwrap_or_else(PoisonError::into_inner);
         if let Some(expected) = expected_epoch
             && expected != current.epoch
@@ -913,7 +977,12 @@ impl Domain for Identities<'_> {
         DOMAIN
     }
 
-    fn observe(&self, _operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+        // A reset's intent names the identity it retires: the identity open now shows it done
+        // when another Host retired that one under this operation.
+        if target?.starts_with("reset:") {
+            return reset::observe(self.0, operation_id);
+        }
         let epoch = target?.strip_prefix("epoch:")?.parse::<u64>().ok()?;
         (self.0.epoch() >= epoch).then(|| Observed {
             revision: epoch,

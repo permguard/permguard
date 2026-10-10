@@ -1,6 +1,6 @@
 {
   "artifact": "Verification bundle: its items, its frontier and the payload of its manifest; the manifest is a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by a host.operations key, content type permguard.keys.bundle.v1, its kid that key's <ring>:<thumbprint>, the key active at the frontier; the bundle digest is SHA-256 of \"permguard.keys.bundle.v1\\n\" and every item's SHA-256 in ascending order",
-  "authority": "1-architecture/4-architecture-server-host-keys.md#library-and-api, 6-contracts/8-contract-host-api.md (GET /host/v1/keys/bundle), owner decisions of 2026-10-09 (encoding, signer, frontier, bindings per epoch, resource, anchor); crates/permguard-host/src/keys/bundle.rs",
+  "authority": "1-architecture/4-architecture-server-host-keys.md#library-and-api, 6-contracts/8-contract-host-api.md (GET /host/v1/keys/bundle), owner decisions of 2026-10-09 (peer projection, encoding, signer, frontier, bindings per epoch, resource, anchor); crates/permguard-host/src/keys/bundle.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "identity_item": {
@@ -48,7 +48,8 @@
       "keys": "int",
       "fields": [
         { "label": 1, "name": "identity_epoch", "type": "uint", "occurs": "required", "note": "from 1" },
-        { "label": 2, "name": "rings", "type": "array:ring_frontier", "occurs": "required", "note": "sorted by ring, each once; host.identity never, its chain stands for it" }
+        { "label": 2, "name": "rings", "type": "array:ring_frontier", "occurs": "required", "note": "sorted by ring, each once; host.identity never, its chain stands for it" },
+        { "label": 3, "name": "peers", "type": "array:peer_set", "occurs": "optional", "note": "the memberships this Host coordinates whose member the bundle carries, fixed at the membership journal's entry `seq`: their count and the SHA-256 of the `peers` item listing them; absent when none" }
       ]
     },
     "manifest": {
@@ -61,6 +62,33 @@
         { "label": 5, "name": "bundle_digest", "type": "bytes", "occurs": "required", "note": "32 bytes" },
         { "label": 6, "name": "issued_at", "type": "uint", "occurs": "required", "note": "when the first page fixed the frontier, seconds since the epoch, UTC" }
       ]
+    },
+    "peer_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"peer\"", "occurs": "required" },
+        { "label": 2, "name": "manifest", "type": "bytes", "occurs": "required", "note": "the membership manifest of the frontier's epoch, COSE_Sign1 by a host.operations key of this Host (membership.json manifest)" },
+        { "label": 3, "name": "presentation", "type": "bytes", "occurs": "required", "note": "the member's identity as its enrollment session proved it (session.json presentation); its first fingerprint the one the manifest pins" },
+        { "label": 4, "name": "statements", "type": "array<map:ring_statement>", "occurs": "required", "note": "the member's ring statements its manifest pins, one per pinned ring" },
+        { "label": 5, "name": "coordinator", "type": "array<map:ring_statement>", "occurs": "required", "note": "this Host's statements of the rings the manifest pins, as it signed it: its `host.operations` set, bound by its identity, digesting to the pin's set, holding the manifest's signer; 1 to 16" }
+      ]
+    },
+    "ring_statement": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required" },
+        { "label": 3, "name": "suite", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "keys", "type": "array<text>", "occurs": "required" },
+        { "label": 5, "name": "binding", "type": "bytes", "occurs": "required", "note": "membership.json ring_statement" }
+      ]
+    },
+    "peers_item": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "const:\"peers\"", "occurs": "required" },
+        { "label": 2, "name": "entries", "type": "array<array:peer_frontier>", "occurs": "required", "note": "sorted by membership, each once, 1 to 8192" }
+      ]
     }
   },
   "arrays": {
@@ -69,7 +97,17 @@
       { "position": 1, "name": "epoch", "type": "uint", "note": "from 1" },
       { "position": 2, "name": "seq", "type": "uint", "note": "the ring's last journal entry at the frontier, from 1" },
       { "position": 3, "name": "key_set_digest", "type": "bytes", "note": "32 bytes" }
+    ],
+    "peer_frontier": [
+      { "position": 0, "name": "membership_id", "type": "bytes", "note": "16 bytes" },
+      { "position": 1, "name": "epoch", "type": "uint", "note": "the manifest's epoch, from 1" },
+      { "position": 2, "name": "manifest_digest", "type": "bytes", "note": "32 bytes: SHA-256 of `permguard.membership.manifest.v1\\n` and the manifest envelope" }
+    ],
+    "peer_set": [
+      { "position": 0, "name": "seq", "type": "uint", "note": "the membership journal's last entry when the frontier was fixed, from 1" },
+      { "position": 1, "name": "count", "type": "uint", "note": "1 to 8192" },
+      { "position": 2, "name": "digest", "type": "bytes", "note": "32 bytes: SHA-256 of the `peers` item's bytes" }
     ]
   },
-  "root": ["identity_item", "key_item", "binding_item", "revocation_item", "frontier", "manifest"]
+  "root": ["identity_item", "key_item", "binding_item", "revocation_item", "peer_item", "peers_item", "frontier", "manifest"]
 }

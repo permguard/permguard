@@ -22,6 +22,7 @@ fn hello() -> Hello {
         operation: Operation::Enroll,
         membership_id: None,
         task: None,
+        request_digest: None,
     }
 }
 
@@ -41,6 +42,7 @@ fn transcript() -> Transcript {
         hello_digest: hello_digest(b"hello"),
         challenge_digest: challenge_digest(b"challenge"),
         signer: Role::Responder,
+        request_digest: None,
     }
 }
 

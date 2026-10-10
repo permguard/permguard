@@ -93,6 +93,7 @@ fn context(host: &Host, pinned: &[&Identity], time: &Arc<TimeGuard>) -> Context 
         declared_assurance: AssuranceProfile::Development,
         audit: None,
         metrics: permguard_core::Metrics::none(),
+        service: None,
     }
 }
 
@@ -122,9 +123,11 @@ impl Pair {
             exporter,
             Request {
                 peer: self.b.identity.host_id(),
-                operation: Operation::Enroll,
+                operation: Operation::Task,
                 membership_id: None,
                 task: None,
+                request_digest: None,
+                pin: None,
             },
         )
     }
@@ -183,7 +186,7 @@ fn a_session_is_established_on_both_sides_and_the_peer_epoch_is_seen() {
     assert_eq!(a.peer, pair.b.identity.host_id());
     assert_eq!(b.peer, pair.a.identity.host_id());
     assert_eq!((a.peer_epoch, b.peer_epoch), (1, 1));
-    assert_eq!(b.operation, Operation::Enroll);
+    assert_eq!(b.operation, Operation::Task);
     assert_eq!(b.peer_declared_assurance, AssuranceProfile::Development);
     let seen = responder
         .context
@@ -287,6 +290,7 @@ fn a_proof_for_the_same_transcript_with_the_other_role_is_refused() {
         hello_digest: hello_digest(b"h"),
         challenge_digest: challenge_digest(b"c"),
         signer: Role::Initiator,
+        request_digest: None,
     };
     let context = context(&pair.a, &[&pair.b.identity], &pair.clocks.time);
     let proof = context.prove(&transcript).expect("signed");
@@ -326,9 +330,11 @@ fn an_unknown_key_share_fails_when_the_challenge_names_the_attacker() {
         EXPORTER,
         Request {
             peer: c.identity.host_id(),
-            operation: Operation::Enroll,
+            operation: Operation::Task,
             membership_id: None,
             task: None,
+            request_digest: None,
+            pin: None,
         },
     );
     let mut responder = Responder::new(context(&b, &[&a.identity], &clocks.time), EXPORTER);
@@ -374,9 +380,11 @@ fn the_initiator_refuses_a_responder_other_than_the_one_it_asked_for() {
         EXPORTER,
         Request {
             peer: c.identity.host_id(),
-            operation: Operation::Enroll,
+            operation: Operation::Task,
             membership_id: None,
             task: None,
+            request_digest: None,
+            pin: None,
         },
     );
     let mut responder = Responder::new(context(&b, &[&a.identity], &clocks.time), EXPORTER);
@@ -385,7 +393,7 @@ fn the_initiator_refuses_a_responder_other_than_the_one_it_asked_for() {
 }
 
 #[test]
-fn an_unpinned_peer_is_refused_before_its_hello_is_read() {
+fn an_unpinned_peer_is_refused_unless_it_enrolls() {
     let root = scratch("unpinned");
     let a = host(&root.join("a"));
     let b = host(&root.join("b"));
@@ -396,27 +404,37 @@ fn an_unpinned_peer_is_refused_before_its_hello_is_read() {
         EXPORTER,
         Request {
             peer: b.identity.host_id(),
-            operation: Operation::Enroll,
+            operation: Operation::Task,
             membership_id: None,
             task: None,
+            request_digest: None,
+            pin: None,
         },
     );
     // B pins C, not A.
     let mut responder = Responder::new(context(&b, &[&c.identity], &clocks.time), EXPORTER);
     let opening = initiator.start().expect("started");
-    let refused = responder
+    // The identity is held until the hello names the operation: only an enrollment is taken
+    // from an unpinned Host (WP-4.1); any other is refused before its chain is walked.
+    responder
         .receive(opening[0].clone())
+        .expect("held until the hello");
+    let refused = responder
+        .receive(opening[1].clone())
         .expect_err("an unpinned identity is refused");
     assert_eq!(refused.code, codes::host::SESSION_REFUSED);
+    assert!(refused.reason.contains("no pin"), "{refused}");
     // And an initiator asked for a Host it does not pin sends nothing.
     let mut unpinned = Initiator::new(
         context(&a, &[&b.identity], &clocks.time),
         EXPORTER,
         Request {
             peer: c.identity.host_id(),
-            operation: Operation::Enroll,
+            operation: Operation::Task,
             membership_id: None,
             task: None,
+            request_digest: None,
+            pin: None,
         },
     );
     assert!(unpinned.start().is_err());
@@ -566,10 +584,26 @@ fn a_rotated_peer_is_accepted_through_its_succession_and_its_old_epoch_is_rollba
     let (mut initiator, mut responder) = (pair.initiator(), pair.responder());
     run(&mut initiator, &mut responder).expect("established at epoch 2");
     assert_eq!(responder.session().expect("a session").peer_epoch, 2);
-    // A presentation of epoch 1 now is rollback.
+    // A presentation of epoch 1 now is rollback: refused once the hello names the operation.
     let mut responder = pair.responder();
-    let refused = responder
+    responder
         .receive(Frame::Identity(old))
+        .expect("held until the hello");
+    let hello = record::Hello {
+        version: record::VERSION,
+        host: pair.a.identity.host_id(),
+        epoch: 1,
+        declared_assurance: AssuranceProfile::Development,
+        nonce: [7; record::NONCE_BYTES],
+        operation: Operation::Task,
+        membership_id: None,
+        task: None,
+        request_digest: None,
+    }
+    .encode()
+    .expect("encodes");
+    let refused = responder
+        .receive(Frame::Hello(hello))
         .expect_err("rollback");
     assert!(refused.reason.contains("rollback"), "{refused}");
 }
@@ -831,4 +865,109 @@ fn a_frame_beyond_its_bound_is_refused_and_a_peers_text_is_never_repeated() {
         refused.reason.contains(codes::host::SESSION_REFUSED),
         "a registered code is quoted: {refused}"
     );
+}
+
+/// A's initiator for `operation`, carrying `digest` and naming `membership_id`, pinning B by the
+/// join's own pin.
+fn scoped(
+    pair: &Pair,
+    operation: Operation,
+    membership_id: Option<&str>,
+    digest: Option<permguard_objects::digest::Digest>,
+) -> Initiator {
+    Initiator::new(
+        context(&pair.a, &[], &pair.clocks.time),
+        EXPORTER,
+        Request {
+            peer: pair.b.identity.host_id(),
+            operation,
+            membership_id: membership_id.map(str::to_owned),
+            task: None,
+            request_digest: digest,
+            pin: Some((
+                pair.b.identity.host_id(),
+                pair.b.identity.first_fingerprint().to_owned(),
+            )),
+        },
+    )
+}
+
+#[test]
+fn an_enrollment_moves_no_seen_epoch_of_the_host_it_claims() {
+    let pair = pair("enroll-seen");
+    let digest = membership_request_digest(b"request");
+    let mut initiator = scoped(&pair, Operation::Enroll, None, Some(digest));
+    // B pins nobody: A enrolls from its own chain.
+    let mut responder = Responder::new(context(&pair.b, &[], &pair.clocks.time), EXPORTER);
+    run(&mut initiator, &mut responder).expect("established");
+    assert!(responder.session().is_some());
+    assert!(
+        responder
+            .context
+            .peers
+            .seen(&pair.a.identity.host_id())
+            .expect("readable")
+            .is_none(),
+        "an enrollment's chain pins nothing and moves no seen epoch"
+    );
+}
+
+#[test]
+fn a_hello_naming_what_its_operation_does_not_take_is_refused() {
+    let pair = pair("hello-scope");
+    let digest = || Some(membership_request_digest(b"request"));
+    for (operation, membership_id, digest) in [
+        // An enrollment names no membership yet.
+        (Operation::Enroll, Some("m-1"), digest()),
+        // An enrollment names its request's digest.
+        (Operation::Enroll, None, None),
+        // A membership session names the membership it reads.
+        (Operation::Membership, None, digest()),
+        // A task session carries no request digest.
+        (Operation::Task, None, digest()),
+    ] {
+        let mut initiator = scoped(&pair, operation, membership_id, digest.clone());
+        let mut responder = pair.responder();
+        let refused = run(&mut initiator, &mut responder).expect_err("refused at the hello");
+        assert_eq!(
+            refused.code,
+            codes::host::SESSION_REFUSED,
+            "{operation:?} {membership_id:?}"
+        );
+        assert!(responder.session().is_none());
+    }
+}
+
+#[test]
+fn a_session_serves_one_request_and_none_before_it_is_established() {
+    let pair = pair("one-request");
+    let bytes = b"the request".to_vec();
+    let digest = membership_request_digest(&bytes);
+    let mut initiator = scoped(&pair, Operation::Membership, Some("m-1"), Some(digest));
+    let mut responder = pair.responder();
+    // Before the proof, a request is refused.
+    let opening = initiator.start().expect("started");
+    for frame in opening {
+        responder.receive(frame).expect("the handshake goes on");
+    }
+    let mut early = pair.responder();
+    assert!(early.receive(Frame::Task(bytes.clone())).is_err());
+    // Established, the one request is answered (no service here: `not_served_yet`).
+    let mut initiator = scoped(
+        &pair,
+        Operation::Membership,
+        Some("m-1"),
+        Some(membership_request_digest(&bytes)),
+    );
+    let mut responder = pair.responder();
+    run(&mut initiator, &mut responder).expect("established");
+    let answer = responder
+        .receive(Frame::Task(bytes.clone()))
+        .expect("answered");
+    assert!(matches!(
+        answer.as_slice(),
+        [Frame::Refusal { code }] if code == codes::host::NOT_SERVED_YET
+    ));
+    // A second request on the same session is refused.
+    assert!(responder.receive(Frame::Task(bytes)).is_err());
 }

@@ -48,6 +48,16 @@ pub mod digest {
     pub const HOST_SESSION_HELLO: &str = "permguard.host.session.hello.v1\n";
     /// A session `challenge`, as the transcript cites it (WP-2.3).
     pub const HOST_SESSION_CHALLENGE: &str = "permguard.host.session.challenge.v1\n";
+    /// An enrollment request, as the session `hello` and transcript cite it (WP-4.1).
+    pub const MEMBERSHIP_REQUEST: &str = "permguard.membership.request.v1\n";
+    /// What an enrollment's token signature signs, before both Host ids and the exporter (WP-4.1).
+    pub const MEMBERSHIP_ENROLL: &str = "permguard.membership.enroll.v1\n";
+    /// The seed of an invitation's Ed25519 key pair, derived from its token (WP-4.1).
+    pub const MEMBERSHIP_TOKEN_KEY: &str = "permguard.membership.token-key.v1\n";
+    /// A signed membership manifest, as its successor and the history cite it (WP-4.1).
+    pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1\n";
+    /// The hash chain of the membership journal (WP-4.1).
+    pub const MEMBERSHIP_JOURNAL: &str = "permguard.membership.journal.v1\n";
     /// The witness of a secret at one version, and of a delivered zone key (WP-3.3).
     pub const SECRET_WITNESS: &str = "permguard.secret.witness.v1\n";
     /// A decision record.
@@ -242,6 +252,8 @@ pub mod format {
     pub const SEALED_KEY_V1: &str = "permguard.sealed-key.v1";
     /// The source marker of the grant store's snapshot (`permguard_host::authz::store`).
     pub const AUTHZ_SNAPSHOT_V1: &str = "permguard.host.authz.snapshot.v1";
+    /// The kind of the plan file an offline identity reset writes and its run confirms (WP-4.1).
+    pub const IDENTITY_RESET_PLAN_V1: &str = "permguard.host.identity.reset.offline.v1";
     /// The wrapping algorithm of a key-encryption key held in the secret store (WP-3.2):
     /// AES-256-GCM, `nonce ‖ ciphertext ‖ tag`, the wrap context as associated data.
     pub const SECRET_KEK_WRAP_V1: &str = "permguard.local-kek.aes-256-gcm.v1";
@@ -319,6 +331,11 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
             "digest.HOST_SESSION_CHALLENGE",
             digest::HOST_SESSION_CHALLENGE,
         ),
+        ("digest.MEMBERSHIP_REQUEST", digest::MEMBERSHIP_REQUEST),
+        ("digest.MEMBERSHIP_ENROLL", digest::MEMBERSHIP_ENROLL),
+        ("digest.MEMBERSHIP_TOKEN_KEY", digest::MEMBERSHIP_TOKEN_KEY),
+        ("digest.MEMBERSHIP_MANIFEST", digest::MEMBERSHIP_MANIFEST),
+        ("digest.MEMBERSHIP_JOURNAL", digest::MEMBERSHIP_JOURNAL),
         ("digest.SECRET_WITNESS", digest::SECRET_WITNESS),
         ("digest.DECISION_RECORD", digest::DECISION_RECORD),
         ("digest.DECISION_REQUEST", digest::DECISION_REQUEST),
@@ -530,6 +547,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),
+        (
+            "format.IDENTITY_RESET_PLAN_V1",
+            format::IDENTITY_RESET_PLAN_V1,
+        ),
         ("format.SECRET_KEK_WRAP_V1", format::SECRET_KEK_WRAP_V1),
         ("format.TRANSIT_KEK_WRAP_V1", format::TRANSIT_KEK_WRAP_V1),
         ("format.PKCS11_KEK_WRAP_V1", format::PKCS11_KEK_WRAP_V1),

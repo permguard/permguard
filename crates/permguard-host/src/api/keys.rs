@@ -341,6 +341,10 @@ impl HostApi {
         let source = Source {
             identity,
             rings: self.keys.rings(),
+            memberships: self
+                .memberships
+                .as_deref()
+                .map(|memberships| memberships.store.as_ref()),
         };
         let resource = resource.to_string();
         let (built, manifest) = match (&query.frontier, &query.cursor) {
@@ -372,9 +376,12 @@ impl HostApi {
             (None, None) => {
                 let mut again = true;
                 loop {
-                    let frontier = source.frontier().map_err(bundle_refusal)?;
+                    let issued_at = self.time.now_secs();
+                    let frontier = source
+                        .frontier(&resource, issued_at)
+                        .map_err(bundle_refusal)?;
                     let built = source
-                        .build(&resource, &frontier, self.time.now_secs())
+                        .build(&resource, &frontier, issued_at)
                         .map_err(bundle_refusal)?;
                     match bundle::sign(operations_ring, &built) {
                         Ok(manifest) => break (built, manifest),

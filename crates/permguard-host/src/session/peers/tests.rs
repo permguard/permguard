@@ -75,14 +75,16 @@ fn a_pinned_peer_is_accepted_and_its_epoch_advances_only_upward() {
     let (_peer_volume, peer) = open(&root.join("peer"));
     let (volume, _) = open(&root.join("verifier"));
     let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
-    let verified = peers.accept(&presentation(&peer)).expect("accepted");
+    let verified = peers
+        .accept(&presentation(&peer), None, None)
+        .expect("accepted");
     assert_eq!(verified.host_id, peer.host_id());
     assert!(peers.seen(&peer.host_id()).expect("readable").is_none());
     peers.advance(&verified, NOW).expect("advanced");
     peer.rotate(&Applying::for_tests(1), Some(1), NOW + 1)
         .expect("rotated");
     let rotated = peers
-        .accept(&presentation(&peer))
+        .accept(&presentation(&peer), None, None)
         .expect("epoch 2 through its succession");
     assert_eq!(rotated.epoch, 2);
     peers.advance(&rotated, NOW + 2).expect("advanced");
@@ -133,25 +135,27 @@ fn a_lower_epoch_is_rollback_and_another_key_at_a_seen_epoch_is_equivocation() {
 
     let (volume, _) = open(&root.join("verifier"));
     let peers = Peers::open(&volume, &[pin(&peer)]).expect("opened");
-    let verified = peers.accept(&presentation(&peer)).expect("accepted");
+    let verified = peers
+        .accept(&presentation(&peer), None, None)
+        .expect("accepted");
     peers.advance(&verified, NOW).expect("advanced");
 
     assert!(matches!(
-        peers.accept(&at_one),
+        peers.accept(&at_one, None, None),
         Err(PeerRefusal::Rollback {
             seen: 2,
             presented: 1
         })
     ));
     assert!(matches!(
-        peers.accept(&presentation(&fork)),
+        peers.accept(&presentation(&fork), None, None),
         Err(PeerRefusal::Equivocation { epoch: 2 })
     ));
     // The fork moving on is still a fork: its epoch-2 key is not the one seen.
     fork.rotate(&Applying::for_tests(3), Some(2), NOW + 2)
         .expect("rotated");
     assert!(matches!(
-        peers.accept(&presentation(&fork)),
+        peers.accept(&presentation(&fork), None, None),
         Err(PeerRefusal::Equivocation { epoch: 2 })
     ));
 }
@@ -164,7 +168,7 @@ fn a_peer_no_pin_names_or_whose_first_key_is_another_is_refused() {
     let (volume, _) = open(&root.join("verifier"));
     let none = Peers::open(&volume, &[]).expect("opened");
     assert!(matches!(
-        none.accept(&presentation(&one)),
+        none.accept(&presentation(&one), None, None),
         Err(PeerRefusal::Unpinned)
     ));
     // The pin names `one`'s Host with `other`'s first key.
@@ -173,7 +177,7 @@ fn a_peer_no_pin_names_or_whose_first_key_is_another_is_refused() {
         .expect("a pin");
     let peers = Peers::open(&volume, &[wrong]).expect("opened");
     assert!(matches!(
-        peers.accept(&presentation(&one)),
+        peers.accept(&presentation(&one), None, None),
         Err(PeerRefusal::Unpinned)
     ));
 }
@@ -191,7 +195,7 @@ fn a_presentation_that_does_not_verify_is_refused() {
         ..presentation(&peer)
     };
     assert!(matches!(
-        peers.accept(&forged),
+        peers.accept(&forged, None, None),
         Err(PeerRefusal::Identity(_) | PeerRefusal::Unpinned)
     ));
     // A succession record dropped from the chain.
@@ -202,7 +206,7 @@ fn a_presentation_that_does_not_verify_is_refused() {
         ..presentation(&peer)
     };
     assert!(matches!(
-        peers.accept(&truncated),
+        peers.accept(&truncated, None, None),
         Err(PeerRefusal::Identity(_))
     ));
     // Too many records to walk.
@@ -211,7 +215,7 @@ fn a_presentation_that_does_not_verify_is_refused() {
         ..presentation(&peer)
     };
     assert!(matches!(
-        peers.accept(&flooded),
+        peers.accept(&flooded, None, None),
         Err(PeerRefusal::Identity(_))
     ));
 }
@@ -238,7 +242,7 @@ fn a_seen_file_naming_another_host_is_refused() {
     )
     .expect("written");
     assert!(matches!(
-        peers.accept(&presentation(&peer)),
+        peers.accept(&presentation(&peer), None, None),
         Err(PeerRefusal::Storage(_))
     ));
 }

@@ -42,3 +42,60 @@ pub fn custodian(config: &Config, volume: &Volume) -> Result<Arc<Custodian>> {
     let secrets = crate::plane::factories::secret_store_for(config)?;
     crate::app::custodian_for(config, secrets.as_deref(), volume)
 }
+
+/// What provisions the identity a reset makes on `volume` (WP-4.1): the identity's custody, its
+/// keys bound to the `host_id` the reset mints, as `serve` composes it.
+pub fn provisioner(
+    custodian: &Arc<Custodian>,
+    volume: &Volume,
+    suite: permguard_host::identity::Suite,
+) -> Result<permguard_host::identity::reset::Provisioner> {
+    use permguard_host::identity::{self, IdentityError};
+    let (_, keys) = identity::directories(volume).context("the identity directory")?;
+    let keys = keys.path().to_path_buf();
+    let custodian = Arc::clone(custodian);
+    Ok(Arc::new(move |host_id| {
+        let stored = identity::stored_public(permguard_host::storage::Dir::open(&keys)?);
+        custodian
+            .provider(
+                permguard_host::keys::ring::HOST_IDENTITY,
+                *host_id,
+                permguard_host::storage::Dir::open(&keys)?,
+                stored,
+                suite,
+            )
+            .map(|(provider, _)| provider)
+            .map_err(IdentityError::from)
+    }))
+}
+
+/// The key rings `serve` composes on `volume`, opened as it opens them for the Host `host_id`
+/// (WP-4.1): what an offline reset signs the manifests that end its coordinated memberships with,
+/// `host.operations` first, and retires with the identity. `binder` is the identity open, absent
+/// while a reset is completed.
+pub fn rings(
+    config: &Config,
+    volume: &Volume,
+    host_id: [u8; 16],
+    binder: Option<Arc<dyn permguard_host::keys::ring::Binder>>,
+    custodian: &Arc<Custodian>,
+    time: Arc<permguard_host::time::TimeGuard>,
+) -> Result<Vec<Arc<permguard_host::keys::ring::Ring>>> {
+    let opener = permguard_host::keys::registry::Opener {
+        volume,
+        host_id,
+        custodian: Arc::clone(custodian),
+        time,
+        binder,
+        recorder: None,
+        profile: config.assurance().profile(),
+    };
+    Ok([
+        crate::plane::factories::key_manager_for(config, &opener)?,
+        crate::plane::factories::control_signing_keys_for(config, &opener)?,
+        crate::plane::factories::data_signing_keys_for(config, &opener)?,
+    ]
+    .into_iter()
+    .flatten()
+    .collect())
+}

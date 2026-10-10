@@ -67,6 +67,11 @@ pub mod operations {
     /// Rotate and revoke the Host's key rings, `host.identity` excepted: the "key grant" of the
     /// blueprint, granted only explicitly (WP-3.1, owner decision of 2026-10-08).
     pub const KEYS_ADMIN: &str = "keys.admin";
+    /// List and read the memberships and their invitations (WP-4.1).
+    pub const MEMBERSHIP_READ: &str = "membership.read";
+    /// Invite, approve, reject, suspend, resume, fence and revoke memberships, and join a
+    /// coordinator: the "membership grant" of the blueprint, granted only explicitly (WP-4.1).
+    pub const MEMBERSHIP_ADMIN: &str = "membership.admin";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -82,6 +87,8 @@ pub mod operations {
         IDENTITY_READ,
         IDENTITY_ADMIN,
         KEYS_ADMIN,
+        MEMBERSHIP_READ,
+        MEMBERSHIP_ADMIN,
     ];
 
     /// Whether `operation` is registered.

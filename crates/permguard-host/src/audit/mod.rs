@@ -151,6 +151,9 @@ pub const REGISTRY: &[ActionSchema] = &[
     // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
     action("host.identity.provisioned", Class::Security, HOST),
     mutation("host.identity.rotated", HOST),
+    // Its reset (WP-4.1): planned, then run.
+    mutation("host.identity.reset_planned", HOST),
+    mutation("host.identity.reset", HOST),
     // The key rings (WP-3.1): every journal entry an `operations` record, an operator's
     // rotation and revocation each a mutation.
     ActionSchema {
@@ -169,6 +172,21 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.keys.rotated", HOST),
     mutation("host.keys.revoke_planned", HOST),
     mutation("host.keys.revoked", HOST),
+    // The memberships (WP-4.1): every change of an invitation or a membership a mutation, on
+    // either side; no token, proof or key is ever a fact.
+    mutation("host.membership.invited", HOST),
+    mutation("host.membership.invite_revoked", HOST),
+    mutation("host.membership.enrolled", HOST),
+    mutation("host.membership.approved", HOST),
+    mutation("host.membership.rejected", HOST),
+    mutation("host.membership.suspended", HOST),
+    mutation("host.membership.resumed", HOST),
+    mutation("host.membership.fenced", HOST),
+    mutation("host.membership.revoke_planned", HOST),
+    mutation("host.membership.revoked", HOST),
+    mutation("host.membership.joined", HOST),
+    mutation("host.membership.synced", HOST),
+    mutation("host.membership.orphaned", HOST),
     // Peer Host sessions (WP-2.3): each one established or refused.
     ActionSchema {
         action: "host.session.established",

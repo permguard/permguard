@@ -1475,6 +1475,47 @@ pub enum IdentityAction {
         #[arg(long)]
         expected_epoch: u64,
     },
+    /// Reset the Host identity, offline and in an emergency only (WP-4.1): no coordinator is
+    /// reached, so every membership this Host is a member of is marked `orphaned` and its
+    /// coordinator named, every one it coordinates is ended here, and a new identity replaces
+    /// the old. The normal reset, with revocation receipts, runs through the Host API.
+    Reset {
+        #[command(subcommand)]
+        action: ResetAction,
+    },
+}
+
+/// `permguard host identity reset …`: two steps, the run consuming the plan's file.
+#[derive(Debug, Subcommand)]
+pub enum ResetAction {
+    /// Plan the reset: every live membership and what the reset does to it, written to `--out`
+    /// for the run to confirm.
+    #[command(after_help = "Examples:
+  permguard host identity reset plan --volume /var/lib/permguard --reason \"key compromised\" --out reset.plan
+  permguard host identity reset plan --volume ./volume --reason drill --out reset.plan -o json")]
+    Plan {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// Why, printable: kept in the plan.
+        #[arg(long)]
+        reason: String,
+        /// Where the plan is written: a new file, readable by its owner only.
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+    },
+    /// Run the reset the plan in `--confirm-file` describes, refused when the volume moved since.
+    #[command(after_help = "Examples:
+  permguard host identity reset run --volume /var/lib/permguard --confirm-file reset.plan
+  permguard host identity reset run --volume ./volume --confirm-file reset.plan -o json")]
+    Run {
+        /// The Host's volume (its `working_dir`).
+        #[arg(long, value_name = "DIR")]
+        volume: PathBuf,
+        /// The plan `reset plan` wrote. Not needed to complete a reset a crash interrupted.
+        #[arg(long, value_name = "FILE")]
+        confirm_file: Option<PathBuf>,
+    },
 }
 
 /// `permguard host grants …`: the offline grant administration of WP-2.4. The Host API takes

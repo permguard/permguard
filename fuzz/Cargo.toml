@@ -152,6 +152,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "membership"
+path = "fuzz_targets/membership.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "oidc_token"
 path = "fuzz_targets/oidc_token.rs"
 test = false

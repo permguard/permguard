@@ -549,6 +549,136 @@
       "limit": "`keys::bundle::MAX_MANIFEST_BYTES` for the envelope and `MAX_ITEMS` items of at most `MAX_ITEM_BYTES` each, checked before anything is parsed: a verification bundle an offline verifier is handed (WP-3.4)",
       "enforced_at_decoder": true,
       "fuzz": "key_bundle"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Manifest::decode",
+      "entry": "permguard_host::membership::record::Manifest::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: a membership manifest's payload, from the coordinator on a `membership` session and from the member's own `host/members/` (WP-4.1), read once its COSE_Sign1 verified",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Invitation::decode",
+      "entry": "permguard_host::membership::record::Invitation::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: an invitation the coordinator's store keeps under `host/members/invites/` (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "EnrollRequest::decode",
+      "entry": "permguard_host::membership::record::EnrollRequest::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: the one request of an `enroll` peer session, inside the PeerChannel frame bound `session::record::MAX_FRAME_BYTES` (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Pending::decode",
+      "entry": "permguard_host::membership::record::Pending::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: a pending membership, in a journal entry of `host/members/` (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "EnrollAnswer::decode",
+      "entry": "permguard_host::membership::record::EnrollAnswer::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: the coordinator's answer on an `enroll` session, read by the member (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "MembershipRequest::decode",
+      "entry": "permguard_host::membership::record::MembershipRequest::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: the one request of a `membership` peer session (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "MembershipAnswer::decode",
+      "entry": "permguard_host::membership::record::MembershipAnswer::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: the coordinator's answer on a `membership` session, read by the member (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Entry::decode",
+      "entry": "permguard_host::membership::record::Entry::decode",
+      "max_input_bytes": 262144,
+      "limit": "`membership::record::MAX_RECORD_BYTES`, checked by the decoder before it parses: a journal entry of `host/members/journal.cborseq`, each chained to the one before (WP-4.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Role::from_str",
+      "entry": "permguard_host::membership::record::Role::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "TaskType::from_str",
+      "entry": "permguard_host::membership::record::TaskType::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Status::from_str",
+      "entry": "permguard_host::membership::record::Status::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Action::from_str",
+      "entry": "permguard_host::membership::record::Action::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/record.rs",
+      "item": "Kind::from_str",
+      "entry": "permguard_host::membership::record::Kind::from_str",
+      "max_input_bytes": 262144,
+      "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
+      "enforced_at_decoder": false,
+      "fuzz": "membership"
     }
   ],
   "trusted": [
@@ -851,6 +981,11 @@
       "source": "crates/permguard-core/src/config.rs",
       "item": "KekProvider::parse",
       "reason": "a configuration value the operator sets: the custody of the Host's keys (WP-3.2)"
+    },
+    {
+      "source": "crates/permguard-host/src/membership/mod.rs",
+      "item": "Store::open",
+      "reason": "the store's own directory on the Host's volume, written by this process; every entry is decoded by `Entry::decode` and the records it carries by their registered decoders, the journal's hash chain checked as it is replayed"
     }
   ]
 }

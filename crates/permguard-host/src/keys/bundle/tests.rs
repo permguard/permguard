@@ -91,6 +91,7 @@ impl Host {
         Source {
             identity: &self.identity,
             rings: &self.rings,
+            memberships: None,
         }
     }
 
@@ -135,7 +136,10 @@ impl Drop for Host {
 #[test]
 fn a_bundle_verifies_from_the_pinned_identity_and_a_rotation_does_not_move_its_frontier() {
     let host = Host::new("frontier");
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     assert_eq!(frontier.identity_epoch, 1);
     let names: Vec<&str> = frontier
         .rings
@@ -149,37 +153,44 @@ fn a_bundle_verifies_from_the_pinned_identity_and_a_rotation_does_not_move_its_f
     assert_eq!(verified.manifest.resource, "host");
     assert_eq!(verified.manifest.items, items.len() as u64);
     let kinds = |items: &[Item]| {
-        let mut counts = [0usize; 4];
+        let mut counts = [0usize; 5];
         for item in items {
             counts[match item {
                 Item::Identity { .. } => 0,
                 Item::Key { .. } => 1,
                 Item::Binding { .. } => 2,
                 Item::Revocation { .. } => 3,
+                Item::Peer { .. } | Item::Peers { .. } => 4,
             }] += 1;
         }
         counts
     };
-    assert_eq!(kinds(&verified.items), [1, 2, 2, 0]);
+    assert_eq!(kinds(&verified.items), [1, 2, 2, 0, 0]);
 
     // The rings rotate while a client pages: the same frontier rebuilds the same items.
     host.rotate();
     let again = host.build(&frontier);
     assert_eq!(again.items, items, "the items of the fixed frontier");
-    let later = host.source().frontier().expect("a later frontier");
+    let later = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("a later frontier");
     assert!(later.rings.iter().all(|ring| ring.epoch == 2));
     let (manifest_later, items_later) = host.bundle(&later);
     let verified = verify(&manifest_later, &items_later, &host.pin(), "host").expect("verifies");
-    assert_eq!(kinds(&verified.items), [1, 4, 4, 0]);
+    assert_eq!(kinds(&verified.items), [1, 4, 4, 0, 0]);
 }
 
 #[test]
 fn an_item_outside_the_frontier_is_refused_before_anything_is_digested() {
     let host = Host::new("outside");
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let (manifest, items) = host.bundle(&frontier);
     host.rotate();
-    let later = host.build(&host.source().frontier().expect("later"));
+    let later = host.build(&host.source().frontier("host", START as u64).expect("later"));
     let newer = |wanted: fn(&Item) -> bool| {
         later
             .items
@@ -221,7 +232,10 @@ fn an_item_outside_the_frontier_is_refused_before_anything_is_digested() {
 #[test]
 fn a_bundle_is_refused_under_another_pin_with_an_item_changed_or_without_its_binding() {
     let host = Host::new("refusals");
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let (manifest, items) = host.bundle(&frontier);
 
     let other = Host::new("refusals-other");
@@ -290,7 +304,10 @@ fn a_bundle_is_refused_under_another_pin_with_an_item_changed_or_without_its_bin
 #[test]
 fn a_frontier_the_host_cannot_rebuild_is_refused() {
     let host = Host::new("unreproducible");
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let mut beyond = frontier.clone();
     beyond.rings[0].seq += 100;
     assert!(matches!(
@@ -329,9 +346,25 @@ fn a_frontier_reads_back_and_refuses_what_no_host_writes() {
                 key_set_digest: [2; 32],
             },
         ],
+        peers: Some(PeerSet {
+            seq: 7,
+            count: 2,
+            digest: [4; 32],
+        }),
     };
     let bytes = frontier.encode().expect("encoded");
     assert_eq!(Frontier::decode(&bytes).expect("reads back"), frontier);
+    // A frontier with no peer is the bytes WP-3.4 wrote: label 3 absent.
+    let without = Frontier {
+        peers: None,
+        ..frontier.clone()
+    };
+    let value = permguard_objects::cbor::decode_canonical(&without.encode().expect("encoded"))
+        .expect("canonical");
+    let permguard_objects::cbor::Value::Map(pairs) = value else {
+        panic!("a map")
+    };
+    assert_eq!(pairs.len(), 2);
     let refused = |frontier: Frontier| {
         Frontier::decode(&frontier.encode().expect("encoded")).expect_err("refused")
     };
@@ -344,6 +377,44 @@ fn a_frontier_reads_back_and_refuses_what_no_host_writes() {
     let mut zero = frontier.clone();
     zero.rings[1].seq = 0;
     refused(zero);
+    for broken in [
+        PeerSet {
+            seq: 0,
+            count: 2,
+            digest: [4; 32],
+        },
+        PeerSet {
+            seq: 7,
+            count: 0,
+            digest: [4; 32],
+        },
+        PeerSet {
+            seq: 7,
+            count: MAX_PEERS as u64 + 1,
+            digest: [4; 32],
+        },
+    ] {
+        refused(Frontier {
+            peers: Some(broken),
+            ..frontier.clone()
+        });
+    }
+    // The peers list: sorted, each membership once, never empty.
+    let entry = |id: u8, epoch| PeerFrontier {
+        membership_id: [id; 16],
+        epoch,
+        manifest_digest: [9; 32],
+    };
+    let list = Item::Peers {
+        entries: vec![entry(1, 1), entry(2, 3)],
+    };
+    assert_eq!(
+        Item::decode(&list.encode().expect("encoded")).expect("decoded"),
+        list
+    );
+    for entries in [vec![], vec![entry(2, 1), entry(1, 1)], vec![entry(1, 0)]] {
+        assert!(Item::decode(&Item::Peers { entries }.encode().expect("encoded")).is_err());
+    }
 }
 
 #[test]
@@ -373,6 +444,24 @@ fn every_item_reads_back_and_refuses_a_foreign_member() {
             at: 9,
             reason: "lost".to_owned(),
             compromised_at: Some(8),
+        },
+        Item::Peer {
+            manifest: vec![6],
+            presentation: vec![7],
+            statements: vec![crate::membership::record::RingStatement {
+                ring: DATA_ATTEST.to_owned(),
+                epoch: 1,
+                suite: Suite::Ed25519Sha256V1,
+                keys: vec!["{}".to_owned()],
+                binding: vec![8],
+            }],
+            coordinator: vec![crate::membership::record::RingStatement {
+                ring: HOST_OPERATIONS.to_owned(),
+                epoch: 1,
+                suite: Suite::Ed25519Sha256V1,
+                keys: vec!["{}".to_owned()],
+                binding: vec![9],
+            }],
         },
     ];
     for item in items {
@@ -468,7 +557,10 @@ fn the_verifier_refuses_each_forgery_for_its_own_reason() {
     let host = Host::new("reasons");
     // Two keys in each set, so one can be presented as archived.
     host.rotate();
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let (manifest, items) = host.bundle(&frontier);
     let reason = |items: &[Vec<u8>]| {
         verify(&manifest, items, &host.pin(), "host")
@@ -560,7 +652,10 @@ fn the_verifier_refuses_each_forgery_for_its_own_reason() {
 fn a_manifest_signed_by_a_key_not_active_at_the_frontier_is_refused() {
     let host = Host::new("signer");
     host.rotate();
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let built = host.build(&frontier);
     let successor = built
         .items
@@ -601,7 +696,10 @@ fn a_manifest_signed_by_a_key_not_active_at_the_frontier_is_refused() {
 #[test]
 fn an_identity_of_another_epoch_than_the_frontiers_is_outside_it() {
     let host = Host::new("identity-epoch");
-    let mut frontier = host.source().frontier().expect("the frontier");
+    let mut frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let (_, items) = host.bundle(&frontier);
     // A manifest naming identity epoch 2, signed by the Host, over the same items.
     frontier.identity_epoch = 2;
@@ -609,11 +707,13 @@ fn an_identity_of_another_epoch_than_the_frontiers_is_outside_it() {
         manifest: Manifest {
             frontier: frontier.clone(),
             ..host
-                .build(&host.source().frontier().expect("again"))
+                .build(&host.source().frontier("host", START as u64).expect("again"))
                 .manifest
         },
         items: items.clone(),
-        signer: host.build(&host.source().frontier().expect("again")).signer,
+        signer: host
+            .build(&host.source().frontier("host", START as u64).expect("again"))
+            .signer,
     };
     let manifest = sign(host.operations(), &built).expect("signed");
     let refused = verify(&manifest, &items, &host.pin(), "host").expect_err("another epoch");
@@ -625,7 +725,10 @@ fn an_identity_of_another_epoch_than_the_frontiers_is_outside_it() {
 #[test]
 fn a_reopened_frontier_is_checked_for_its_resource_and_its_items() {
     let host = Host::new("reopen");
-    let frontier = host.source().frontier().expect("the frontier");
+    let frontier = host
+        .source()
+        .frontier("host", START as u64)
+        .expect("the frontier");
     let (manifest, items) = host.bundle(&frontier);
     let reopened = host.source().reopen(&manifest, "host").expect("reopened");
     assert_eq!(reopened.items, items);

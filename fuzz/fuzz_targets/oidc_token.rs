@@ -3,11 +3,12 @@
 
 #![no_main]
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use libfuzzer_sys::fuzz_target;
 
 use permguard_host::authz::oidc::{OidcRule, Verifier};
+use permguard_host::time::TimeGuard;
 
 /// One verifier over a fixed Ed25519 key set, built once: the token is the input under test.
 fn verifier() -> &'static Verifier {
@@ -32,6 +33,7 @@ fn verifier() -> &'static Verifier {
                 max_stale: std::time::Duration::from_secs(86_400),
             },
             0,
+            Arc::new(TimeGuard::system(std::time::Duration::from_secs(30))),
         )
         .expect("the verifier builds")
     })

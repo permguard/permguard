@@ -371,6 +371,30 @@ pub mod host {
     /// since it was fixed, or it names a ring or an entry the Host does not hold (WP-3.4). A
     /// bundle asked again without a frontier starts at a new one.
     pub const FRONTIER_UNREPRODUCIBLE: &str = "frontier_unreproducible";
+    /// No invitation of that id is held (WP-4.1).
+    pub const INVITE_UNKNOWN: &str = "invite_unknown";
+    /// No membership of that id is held, or it names another peer (WP-4.1).
+    pub const MEMBERSHIP_UNKNOWN: &str = "membership_unknown";
+    /// The membership's status does not move to the one asked: the state table, or a terminal status (WP-4.1).
+    pub const MEMBERSHIP_TRANSITION_REFUSED: &str = "membership_transition_refused";
+    /// An approval asked for more than the request or the invitation offered: it may narrow, never widen (WP-4.1).
+    pub const MEMBERSHIP_WIDENED: &str = "membership_widened";
+    /// No Plane of this Host acts in the task's role: the capability check at approval (WP-4.1, WP-4.4).
+    pub const TASK_UNSERVED: &str = "task_unserved";
+    /// The task depends on controls, and no assurance appraisal is served yet (WP-4.1 until WP-4.2).
+    pub const ASSURANCE_UNAVAILABLE: &str = "assurance_unavailable";
+    /// An enrollment is refused: the invitation, its proof, the expected member or the request; the peer is told no more (WP-4.1).
+    pub const ENROLLMENT_REFUSED: &str = "enrollment_refused";
+    /// A membership manifest with the epoch held and another digest: equivocation (WP-4.1).
+    pub const MANIFEST_EQUIVOCATION: &str = "manifest_equivocation";
+    /// A membership manifest that is not the exact successor of the one held (WP-4.1).
+    pub const MANIFEST_NOT_SUCCESSOR: &str = "manifest_not_successor";
+    /// This Host cannot reach a coordinator: its Host listener has no TLS certificate or no client CA (WP-4.1).
+    pub const PEER_CLIENT_UNCONFIGURED: &str = "peer_client_unconfigured";
+    /// A coordinator did not acknowledge the revocation: a normal identity reset does not complete; an emergency one marks those memberships orphaned (WP-4.1).
+    pub const IDENTITY_RESET_INCOMPLETE: &str = "identity_reset_incomplete";
+    /// A retried invitation: its token was shown once and is held nowhere (WP-4.1).
+    pub const INVITE_TOKEN_SHOWN: &str = "invite_token_shown";
     /// The route exists in the contract and a later package serves it.
     pub const NOT_SERVED_YET: &str = "not_served_yet";
     /// This listener cannot serve peer Host sessions (WP-2.3): `admin.peer_sessions` is
@@ -651,6 +675,18 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::KEY_REVOKED,
         host::KEY_ROTATION_PENDING,
         host::FRONTIER_UNREPRODUCIBLE,
+        host::INVITE_UNKNOWN,
+        host::MEMBERSHIP_UNKNOWN,
+        host::MEMBERSHIP_TRANSITION_REFUSED,
+        host::MEMBERSHIP_WIDENED,
+        host::TASK_UNSERVED,
+        host::ASSURANCE_UNAVAILABLE,
+        host::ENROLLMENT_REFUSED,
+        host::MANIFEST_EQUIVOCATION,
+        host::MANIFEST_NOT_SUCCESSOR,
+        host::PEER_CLIENT_UNCONFIGURED,
+        host::IDENTITY_RESET_INCOMPLETE,
+        host::INVITE_TOKEN_SHOWN,
         host::NOT_SERVED_YET,
         host::PEER_SESSIONS_UNSERVEABLE,
         host::SESSION_REFUSED,

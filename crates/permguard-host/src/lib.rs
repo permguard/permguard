@@ -20,6 +20,7 @@ pub mod authz;
 pub mod composition;
 pub mod identity;
 pub mod keys;
+pub mod membership;
 pub mod operations;
 pub mod secrets;
 pub mod session;

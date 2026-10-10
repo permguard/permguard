@@ -162,6 +162,212 @@
         "x-grpc-rpc": "permguard.host.v1.IdentityService/RotateIdentity"
       }
     },
+    "/host/v1/identity/reset/plan": {
+      "post": {
+        "operationId": "planIdentityReset",
+        "summary": "Plan an identity reset",
+        "description": "Under `identity.admin` on the Host (WP-4.1). The first step of a reset: the plan names every live membership and what the reset does to it, and is held by the server, consumed once by the run.",
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the mode and the reason.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIdentityResetBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan, to present to the run step within its lifetime.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityResetPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the mode or reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The plan may have been held and could not be recorded (`mutation_unrecorded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/PlanIdentityReset"
+      }
+    },
+    "/host/v1/identity/reset/run": {
+      "post": {
+        "operationId": "runIdentityReset",
+        "summary": "Reset the identity",
+        "description": "Under `identity.admin` on the Host (WP-4.1). Each coordinator asked to revoke the memberships this Host is a member of; the memberships it coordinates ended here; the identity retired, its public evidence kept under `host/identity/retired/`, its private keys destroyed and a new identity provisioned. The process signs nothing more and serves the new identity after a restart.",
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and the plan, as the plan step answered it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIdentityResetBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt, the memberships ended and orphaned, and the new identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityReset"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No reset plan of that id is held (`plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A normal reset some coordinator did not acknowledge, the identity unchanged (`identity_reset_incomplete`); the identity or a membership moved since the plan (`revision_mismatch`); the plan expired or ran (`plan_expired`); or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The reset began and did not complete (`mutation_unrecorded`): run it again, online or with the offline CLI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No identity is open, it was reset already, or this process cannot provision another (`identity_unavailable`); the journal or audit trail cannot record (`audit_unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.IdentityService/RunIdentityReset"
+      }
+    },
     "/host/v1/ring-bindings": {
       "get": {
         "operationId": "listRingBindings",
@@ -737,7 +943,7 @@
       "get": {
         "operationId": "getKeyBundle",
         "summary": "One page of the verification bundle",
-        "description": "Under `keys.read` on `resource` (WP-3.4). The identity, every public key the rings published, every ring binding issued and the revocations, at a frontier the first page fixes. The first page signs the manifest once, COSE_Sign1 `permguard.keys.bundle.v1` under the `host.operations` key active at the frontier; later pages present it as `frontier` and receive the same bytes, so a rotation in between changes nothing. The items of all pages together are the ones the manifest counts and digests. Never private material.",
+        "description": "Under `keys.read` on `resource` (WP-3.4). The identity, every public key the rings published, every ring binding issued and the revocations, and, for a resource an active membership's task covers, each member this Host coordinates (its manifest, its identity and the ring statements the manifest pins, listed by a `peers` item the frontier's digest names; WP-4.1), at a frontier the first page fixes. The first page signs the manifest once, COSE_Sign1 `permguard.keys.bundle.v1` under the `host.operations` key active at the frontier; later pages present it as `frontier` and receive the same bytes, so a rotation in between changes nothing. The items of all pages together are the ones the manifest counts and digests. Never private material.",
         "parameters": [
           {
             "name": "resource",
@@ -1272,6 +1478,1525 @@
           }
         },
         "x-grpc-rpc": "permguard.host.v1.KeyService/RunKeyRevoke"
+      }
+    },
+    "/host/v1/members": {
+      "get": {
+        "operationId": "listMembers",
+        "summary": "The memberships",
+        "description": "Under `membership.read` on the Host (WP-4.1). Both roles: the ones this Host coordinates and the ones it is a member of.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only the memberships in this status.",
+            "x-grpc-field": "status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The memberships, filtered by status when asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Members"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The status is not one (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListMembers"
+      }
+    },
+    "/host/v1/members/invites": {
+      "get": {
+        "operationId": "listInvites",
+        "summary": "The invitations, by hash",
+        "description": "Under `membership.read` on the Host (WP-4.1). A token never appears: each invitation is listed by the SHA-256 of its token.",
+        "responses": {
+          "200": {
+            "description": "Every invitation held.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invites"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ListInvites"
+      },
+      "post": {
+        "operationId": "createInvite",
+        "summary": "Invite a Host",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The token is answered here, once; the store keeps its hash.",
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the selector and tasks offered and, optionally, the expiry, the expected member and its least assurance.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The invitation and its token, this once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); a selector, task or time is malformed, or `max_uses` is not 1 (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A retry of an invitation already answered (`invite_token_shown`): delete it and invite again; or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/CreateInvite"
+      }
+    },
+    "/host/v1/members/invites/{id}": {
+      "delete": {
+        "operationId": "deleteInvite",
+        "summary": "Delete an invitation",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The invitation is revoked: its token enrols nobody.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The invitation's id.",
+            "x-grpc-field": "invite_id"
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The envelope's request id: a `DELETE` carries no body.",
+            "x-grpc-field": "request_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The receipt, as `{receipt}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request id is absent or out of bounds (`request_id_required`), or the id is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No invitation of that id (`invite_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/DeleteInvite"
+      }
+    },
+    "/host/v1/members/enroll": {
+      "post": {
+        "operationId": "enrollMember",
+        "summary": "An enrollment, refused over REST",
+        "description": "Refused whoever asks, before any body is read (WP-4.1): an enrollment runs inside a proven peer session, operation `enroll`, on the `permguard.host.v1.IdentityService/PeerChannel` stream, its request the CBOR map `contracts/cbor/membership.json` defines.",
+        "responses": {
+          "503": {
+            "description": "Always: an enrollment runs on the `PeerChannel` stream (`peer_sessions_unserveable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": null,
+        "x-grpc-note": "the enrollment travels inside a peer session of `IdentityService/PeerChannel`, never as an rpc of its own"
+      }
+    },
+    "/host/v1/members/{id}": {
+      "get": {
+        "operationId": "getMember",
+        "summary": "One membership",
+        "description": "Under `membership.read` on the Host (WP-4.1).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/GetMember"
+      }
+    },
+    "/host/v1/members/{id}/approve": {
+      "post": {
+        "operationId": "approveMember",
+        "summary": "Approve a pending membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The coordinator signs the genesis manifest under `host.operations`, the request narrowed when asked, never widened.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read and, optionally, a narrowing and a lease policy.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the genesis manifest.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberApproved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the narrowing widens the request (`membership_widened`); a task no Plane of this Host acts in (`task_unserved`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A task names assurance requirements, which need assurance appraisal (`assurance_unavailable`), or the store, journal or audit trail cannot serve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ApproveMember"
+      }
+    },
+    "/host/v1/members/{id}/reject": {
+      "post": {
+        "operationId": "rejectMember",
+        "summary": "Reject a pending membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The rejection is a genesis manifest in status `rejected`: the member learns it on its next sync.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read and, optionally, the reason.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRejected"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/RejectMember"
+      }
+    },
+    "/host/v1/members/{id}/suspend": {
+      "post": {
+        "operationId": "suspendMember",
+        "summary": "Suspend an active membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The successor manifest, a new epoch.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read and, optionally, the reason.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberSuspended"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/SuspendMember"
+      }
+    },
+    "/host/v1/members/{id}/resume": {
+      "post": {
+        "operationId": "resumeMember",
+        "summary": "Resume a suspended membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The successor manifest, active, a new epoch: a pending membership is approved, never resumed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read and, optionally, the reason.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResumed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/ResumeMember"
+      }
+    },
+    "/host/v1/members/{id}/fence": {
+      "post": {
+        "operationId": "fenceMember",
+        "summary": "Fence an active membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The membership stays active at a new epoch, which ends every session of the old one.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the revision read and, optionally, the reason.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FenceMemberBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the manifest issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberFenced"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/FenceMember"
+      }
+    },
+    "/host/v1/members/{id}/revoke/plan": {
+      "post": {
+        "operationId": "planMemberRevoke",
+        "summary": "Plan the revocation of a membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The first step of a revocation: the plan is held by the server and consumed once by the run.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the reason and, optionally, the revision read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanMemberRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The plan, to present to the run step within its lifetime.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRevokePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the reason is malformed (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The transition is not allowed from the current status (`membership_transition_refused`), the revision moved (`revision_mismatch`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/PlanMemberRevoke"
+      }
+    },
+    "/host/v1/members/{id}/revoke/run": {
+      "post": {
+        "operationId": "runMemberRevoke",
+        "summary": "Revoke a membership",
+        "description": "Under `membership.admin` on the Host (WP-4.1). The successor manifest in status `revoked`: terminal.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id and the plan, as the plan step answered it.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunMemberRevokeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The receipt and the revoked manifest.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRevoked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id, or no plan of that id held for it (`membership_unknown`, `plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The membership moved since the plan (`revision_mismatch`), cannot be revoked from its status (`membership_transition_refused`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No membership store or identity is open (`unavailable`, `identity_unavailable`), the mutation journal or the audit trail cannot record (`audit_unavailable`), or the principal is over its bound.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/RunMemberRevoke"
+      }
+    },
+    "/host/v1/memberships/join": {
+      "post": {
+        "operationId": "joinMembership",
+        "summary": "Join a coordinator",
+        "description": "Under `membership.admin` on the Host (WP-4.1). This Host, as a member, opens a peer session to the coordinator over its Host listener's TLS certificate, proves the token there and records the membership `pending`.",
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id, the coordinator, the invitation and its token, and what this Host asks for.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinMembershipBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The membership, pending on this side.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the coordinator, invitation, token or scope is malformed (`invalid_argument`); a task no Plane of this Host acts in (`task_unserved`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host has no outbound peer client: its Host listener has no TLS certificate or client CA (`peer_client_unconfigured`); or the coordinator refused or could not be reached (`enrollment_refused`, `unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/JoinMembership"
+      }
+    },
+    "/host/v1/memberships/{id}/sync": {
+      "post": {
+        "operationId": "syncMembership",
+        "summary": "Fetch a membership's manifests",
+        "description": "Under `membership.admin` on the Host (WP-4.1). This Host, as a member, fetches the coordinator's manifests since the one it holds and records each, the exact successor of the last.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncMembershipBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The membership as this side now holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No membership of that id held as a member (`membership_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The coordinator answered two manifests for one epoch (`manifest_equivocation`) or one that is not the successor (`manifest_not_successor`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No outbound peer client (`peer_client_unconfigured`), or the coordinator could not be reached (`unavailable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.MembershipService/SyncMembership"
       }
     },
     "/host/v1/status": {
@@ -2091,7 +3816,7 @@
             "items": {
               "type": "string"
             },
-            "description": "This page's items, canonical CBOR each (`contracts/cbor/keys-bundle.json`), base64url without padding, in the bundle's digest order.",
+            "description": "This page's items, canonical CBOR each (`contracts/cbor/keys-bundle.json`: identity, key, binding, revocation, peer and peers), base64url without padding, in the bundle's digest order.",
             "x-grpc-field": "items"
           },
           "next_cursor": {
@@ -2846,6 +4571,1595 @@
         "additionalProperties": false,
         "description": "What a key revocation answers.",
         "x-grpc-message": "permguard.host.v1.RunKeyRevokeResponse"
+      },
+      "TaskLimits": {
+        "type": "object",
+        "properties": {
+          "max_body_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The largest message body, in bytes.",
+            "x-grpc-field": "max_body_bytes"
+          },
+          "max_concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most concurrent task sessions.",
+            "x-grpc-field": "max_concurrency"
+          },
+          "max_rate_per_minute": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most messages a minute.",
+            "x-grpc-field": "max_rate_per_minute"
+          },
+          "max_batch_records": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most records a batch carries.",
+            "x-grpc-field": "max_batch_records"
+          },
+          "retention_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How long the consumer keeps what it receives, in seconds.",
+            "x-grpc-field": "retention_seconds"
+          }
+        },
+        "required": [
+          "max_body_bytes",
+          "max_concurrency",
+          "max_rate_per_minute",
+          "max_batch_records",
+          "retention_seconds"
+        ],
+        "additionalProperties": false,
+        "description": "A task's limits: an approval may lower each, never raise one.",
+        "x-grpc-message": "permguard.host.v1.TaskLimits"
+      },
+      "MembershipTask": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The task's name in the membership: lowercase letters, digits and `-`.",
+            "x-grpc-field": "task_id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "policy.mirror",
+              "decisions.ship",
+              "events.ship",
+              "events.import",
+              "audit.checkpoints",
+              "zone.secrets"
+            ],
+            "description": "The task type, a closed set.",
+            "x-grpc-field": "type"
+          },
+          "provider_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "coordinator",
+              "member",
+              null
+            ],
+            "description": "The role that provides the task: the type fixes it, so a request names it as the type does or not at all. Optional; `null` is absent.",
+            "x-grpc-field": "provider_role"
+          },
+          "consumer_role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "coordinator",
+              "member",
+              null
+            ],
+            "description": "The role that consumes the task, fixed by the type. Optional; `null` is absent.",
+            "x-grpc-field": "consumer_role"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The resources the task reaches, inside the membership's selector.",
+            "x-grpc-field": "selector"
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The resource types the task carries.",
+            "x-grpc-field": "resource_types"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the membership is unusable without the task.",
+            "x-grpc-field": "required"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/TaskLimits",
+            "description": "The task's limits.",
+            "x-grpc-field": "limits"
+          },
+          "assurance_requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Assurance the task depends on: refused at approval until assurance appraisal exists (WP-4.2). Absent is none.",
+            "x-grpc-field": "assurance_requirements"
+          }
+        },
+        "required": [
+          "task_id",
+          "type",
+          "selector",
+          "resource_types",
+          "required",
+          "limits"
+        ],
+        "additionalProperties": false,
+        "description": "One task a membership grants: its type, roles, reach and limits.",
+        "x-grpc-message": "permguard.host.v1.MembershipTask"
+      },
+      "MembershipScope": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "description": "The membership's selector.",
+            "x-grpc-field": "selector"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipTask"
+            },
+            "minItems": 1,
+            "maxItems": 32,
+            "description": "The tasks, each inside the selector.",
+            "x-grpc-field": "tasks"
+          }
+        },
+        "required": [
+          "selector",
+          "tasks"
+        ],
+        "additionalProperties": false,
+        "description": "A selector and its tasks: an approval's narrowing, or what a join asks for.",
+        "x-grpc-message": "permguard.host.v1.MembershipScope"
+      },
+      "CreateInviteBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is refused (`invite_token_shown`): the token is shown once.",
+            "x-grpc-field": "request_id"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The widest selector the invitation offers.",
+            "x-grpc-field": "selector"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipTask"
+            },
+            "minItems": 1,
+            "maxItems": 32,
+            "description": "The tasks it offers.",
+            "x-grpc-field": "tasks"
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the invitation expires, RFC 3339: at most 7 days ahead, 24 hours when absent. Optional; `null` is absent.",
+            "x-grpc-field": "expires"
+          },
+          "expected_fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first fingerprint of the only Host that may enrol with it. Optional; `null` is absent.",
+            "x-grpc-field": "expected_fingerprint"
+          },
+          "min_assurance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "development",
+              "production",
+              "regulated",
+              null
+            ],
+            "description": "The least assurance profile the member may declare. Optional; `null` is absent.",
+            "x-grpc-field": "min_assurance"
+          },
+          "max_uses": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1,
+            "description": "Always 1: an invitation is used once. 1 when absent.",
+            "x-grpc-field": "max_uses"
+          }
+        },
+        "required": [
+          "request_id",
+          "selector",
+          "tasks"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/invites` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.CreateInviteRequest"
+      },
+      "InviteCreated": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "invite_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The invitation's id.",
+            "x-grpc-field": "invite_id"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "description": "256 random bits, base64url without padding: answered once, held by no file and no replay window.",
+            "x-grpc-field": "token"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation expires, RFC 3339.",
+            "x-grpc-field": "expires"
+          }
+        },
+        "required": [
+          "receipt",
+          "invite_id",
+          "token",
+          "expires"
+        ],
+        "additionalProperties": false,
+        "description": "What creating an invitation answers: its token, this once.",
+        "x-grpc-message": "permguard.host.v1.CreateInviteResponse"
+      },
+      "Invite": {
+        "type": "object",
+        "properties": {
+          "invite_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The invitation's id.",
+            "x-grpc-field": "invite_id"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The selector offered.",
+            "x-grpc-field": "selector"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipTask"
+            },
+            "description": "The tasks offered.",
+            "x-grpc-field": "tasks"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it expires, RFC 3339.",
+            "x-grpc-field": "expires"
+          },
+          "expected_fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The only Host that may enrol with it, or `null`.",
+            "x-grpc-field": "expected_fingerprint"
+          },
+          "min_assurance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The least assurance the member may declare, or `null`.",
+            "x-grpc-field": "min_assurance"
+          },
+          "max_uses": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1,
+            "description": "Always 1.",
+            "x-grpc-field": "max_uses"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "issued",
+              "consumed",
+              "expired",
+              "revoked"
+            ],
+            "description": "Where the invitation stands.",
+            "x-grpc-field": "status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was issued, RFC 3339.",
+            "x-grpc-field": "created_at"
+          },
+          "created_by": {
+            "type": "string",
+            "description": "The principal that issued it.",
+            "x-grpc-field": "created_by"
+          }
+        },
+        "required": [
+          "invite_id",
+          "selector",
+          "tasks",
+          "expires",
+          "expected_fingerprint",
+          "min_assurance",
+          "max_uses",
+          "status",
+          "created_at",
+          "created_by"
+        ],
+        "additionalProperties": false,
+        "description": "One invitation, as listed: never its token, nor anything that signs for it.",
+        "x-grpc-message": "permguard.host.v1.Invite"
+      },
+      "Invites": {
+        "type": "object",
+        "properties": {
+          "invites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invite"
+            },
+            "description": "Every invitation held.",
+            "x-grpc-field": "invites"
+          }
+        },
+        "required": [
+          "invites"
+        ],
+        "additionalProperties": false,
+        "description": "The invitations.",
+        "x-grpc-message": "permguard.host.v1.ListInvitesResponse"
+      },
+      "MembershipHost": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The Host's id.",
+            "x-grpc-field": "host_id"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Its identity epoch when it entered the membership.",
+            "x-grpc-field": "epoch"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "Its first fingerprint: the pin.",
+            "x-grpc-field": "fingerprint"
+          }
+        },
+        "required": [
+          "host_id",
+          "epoch",
+          "fingerprint"
+        ],
+        "additionalProperties": false,
+        "description": "A Host as a membership pins it.",
+        "x-grpc-message": "permguard.host.v1.MembershipHost"
+      },
+      "LeasePolicy": {
+        "type": "object",
+        "properties": {
+          "max_session_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The longest task session.",
+            "x-grpc-field": "max_session_seconds"
+          },
+          "offline_grace_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How long a member keeps serving unreached.",
+            "x-grpc-field": "offline_grace_seconds"
+          },
+          "clock_skew_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The clock skew tolerated.",
+            "x-grpc-field": "clock_skew_seconds"
+          },
+          "dormant_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Silence after which the membership is dormant.",
+            "x-grpc-field": "dormant_after_seconds"
+          },
+          "revoke_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Silence after which it is revoked: longer than dormancy.",
+            "x-grpc-field": "revoke_after_seconds"
+          }
+        },
+        "required": [
+          "max_session_seconds",
+          "offline_grace_seconds",
+          "clock_skew_seconds",
+          "dormant_after_seconds",
+          "revoke_after_seconds"
+        ],
+        "additionalProperties": false,
+        "description": "The lease policy a manifest signs.",
+        "x-grpc-message": "permguard.host.v1.LeasePolicy"
+      },
+      "Member": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "member"
+            ],
+            "description": "This Host's role in it.",
+            "x-grpc-field": "role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "suspended",
+              "revoked",
+              "rejected",
+              "expired",
+              "orphaned"
+            ],
+            "description": "Where the membership stands.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The fence: one more at every manifest, 0 while pending.",
+            "x-grpc-field": "epoch"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "What `expected_revision` names.",
+            "x-grpc-field": "revision"
+          },
+          "coordinator": {
+            "$ref": "#/components/schemas/MembershipHost",
+            "description": "The coordinator.",
+            "x-grpc-field": "coordinator"
+          },
+          "member": {
+            "$ref": "#/components/schemas/MembershipHost",
+            "description": "The member.",
+            "x-grpc-field": "member"
+          },
+          "selector": {
+            "type": "string",
+            "description": "The selector in force: the manifest's, or the request's while pending.",
+            "x-grpc-field": "selector"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipTask"
+            },
+            "description": "The tasks in force.",
+            "x-grpc-field": "tasks"
+          },
+          "member_assurance": {
+            "type": "string",
+            "description": "The assurance profile the member declared.",
+            "x-grpc-field": "member_assurance"
+          },
+          "lease_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeasePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lease policy the manifest signs; `null` while pending.",
+            "x-grpc-field": "lease_policy"
+          },
+          "manifest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The manifest in force, COSE_Sign1 `permguard.membership.manifest.v1`, base64url; `null` while pending.",
+            "x-grpc-field": "manifest"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the membership last changed, RFC 3339.",
+            "x-grpc-field": "updated_at"
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last task session, RFC 3339: `null` until task sessions exist (WP-4.3).",
+            "x-grpc-field": "last_session_at"
+          }
+        },
+        "required": [
+          "membership_id",
+          "role",
+          "status",
+          "epoch",
+          "revision",
+          "coordinator",
+          "member",
+          "selector",
+          "tasks",
+          "member_assurance",
+          "lease_policy",
+          "manifest",
+          "updated_at",
+          "last_session_at"
+        ],
+        "additionalProperties": false,
+        "description": "One membership, as an operator reads it. Dormancy and member-reported progress arrive with the leases and the task handlers (WP-4.3, WP-4.4).",
+        "x-grpc-message": "permguard.host.v1.Member"
+      },
+      "Members": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "description": "The memberships matching the filter.",
+            "x-grpc-field": "members"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false,
+        "description": "The memberships.",
+        "x-grpc-message": "permguard.host.v1.ListMembersResponse"
+      },
+      "ApproveMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "narrow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A narrowing of the request: never wider (`membership_widened`). Optional; `null` approves the request as asked.",
+            "x-grpc-field": "narrow"
+          },
+          "lease_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeasePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The lease policy to sign. Optional; `null` is the default policy.",
+            "x-grpc-field": "lease_policy"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/approve` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.ApproveMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "RejectMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "Why, printable, at most 256 bytes. Optional; `null` is absent.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/reject` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RejectMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "SuspendMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "Why, printable, at most 256 bytes. Optional; `null` is absent.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/suspend` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.SuspendMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "ResumeMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "Why, printable, at most 256 bytes. Optional; `null` is absent.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/resume` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.ResumeMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "FenceMemberBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt and manifest.",
+            "x-grpc-field": "request_id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current.",
+            "x-grpc-field": "expected_revision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "Why, printable, at most 256 bytes. Optional; `null` is absent.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/fence` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.FenceMemberRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberApproved": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What an approval answers: the genesis manifest, epoch 1.",
+        "x-grpc-message": "permguard.host.v1.ApproveMemberResponse"
+      },
+      "MemberRejected": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a rejection answers: a genesis manifest in status `rejected`.",
+        "x-grpc-message": "permguard.host.v1.RejectMemberResponse"
+      },
+      "MemberSuspended": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a suspension answers: the successor manifest, a new epoch.",
+        "x-grpc-message": "permguard.host.v1.SuspendMemberResponse"
+      },
+      "MemberResumed": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a resumption answers: the successor manifest, active, a new epoch.",
+        "x-grpc-message": "permguard.host.v1.ResumeMemberResponse"
+      },
+      "MemberFenced": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a fence answers: the successor manifest, still active, a new epoch.",
+        "x-grpc-message": "permguard.host.v1.FenceMemberResponse"
+      },
+      "MemberRevoked": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt; its revision is the membership's.",
+            "x-grpc-field": "receipt"
+          },
+          "status": {
+            "type": "string",
+            "description": "The status the manifest states.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The manifest issued, COSE_Sign1 `permguard.membership.manifest.v1`, base64url.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "receipt",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "What a revocation answers: the successor manifest in status `revoked`, the member's receipt.",
+        "x-grpc-message": "permguard.host.v1.RunMemberRevokeResponse"
+      },
+      "PlanMemberRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Why, printable: kept in the audit.",
+            "x-grpc-field": "reason"
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The membership revision the caller read; another is a `conflict` carrying the current. Optional; `null` is absent.",
+            "x-grpc-field": "expected_revision"
+          }
+        },
+        "required": [
+          "request_id",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/revoke/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanMemberRevokeRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MemberRevokePlan": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "The server-held plan's id.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The membership revision the plan was made against; the run is a `conflict` when it moved.",
+            "x-grpc-field": "revision"
+          }
+        },
+        "required": [
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "revision"
+        ],
+        "additionalProperties": false,
+        "description": "What a membership revocation plan answers: a server-held plan, consumed once by its run.",
+        "x-grpc-message": "permguard.host.v1.PlanMemberRevokeResponse"
+      },
+      "RunMemberRevokeBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the stored receipt.",
+            "x-grpc-field": "request_id"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the plan step answered.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Its digest, as answered.",
+            "x-grpc-field": "plan_digest"
+          }
+        },
+        "required": [
+          "request_id",
+          "plan_id",
+          "plan_digest"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/members/{id}/revoke/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunMemberRevokeRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "MembershipCoordinator": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "description": "Where the coordinator's Host listener is: `https://<host>:<port>`.",
+            "x-grpc-field": "address"
+          },
+          "host_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The coordinator's host id.",
+            "x-grpc-field": "host_id"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The coordinator's first fingerprint: the pin its session must prove.",
+            "x-grpc-field": "fingerprint"
+          }
+        },
+        "required": [
+          "address",
+          "host_id",
+          "fingerprint"
+        ],
+        "additionalProperties": false,
+        "description": "Where and who the coordinator is, from its operator out of band.",
+        "x-grpc-message": "permguard.host.v1.MembershipCoordinator"
+      },
+      "JoinMembershipBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers the membership recorded.",
+            "x-grpc-field": "request_id"
+          },
+          "coordinator": {
+            "$ref": "#/components/schemas/MembershipCoordinator",
+            "description": "The coordinator.",
+            "x-grpc-field": "coordinator"
+          },
+          "invite_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The invitation's id.",
+            "x-grpc-field": "invite_id"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "description": "The invitation's token, base64url without padding: proven on the session, never sent and never kept.",
+            "x-grpc-field": "token"
+          },
+          "requested": {
+            "$ref": "#/components/schemas/MembershipScope",
+            "description": "What this Host asks for, inside the invitation.",
+            "x-grpc-field": "requested"
+          }
+        },
+        "required": [
+          "request_id",
+          "coordinator",
+          "invite_id",
+          "token",
+          "requested"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/memberships/join` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.JoinMembershipRequest"
+      },
+      "SyncMembershipBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; validated; a sync converges, so a retry fetches again.",
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/memberships/{id}/sync` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.SyncMembershipRequest",
+        "x-grpc-only": [
+          "membership_id"
+        ],
+        "x-grpc-note": "`membership_id` travels in the path on REST."
+      },
+      "InviteDeleted": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "What deleting an invitation answers.",
+        "x-grpc-message": "permguard.host.v1.DeleteInviteResponse"
+      },
+      "PlanIdentityResetBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the same plan.",
+            "x-grpc-field": "request_id"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "emergency"
+            ],
+            "description": "`normal`: refused until every coordinator acknowledged its revocation; `emergency`: the memberships no coordinator acknowledged marked `orphaned` and their coordinators named.",
+            "x-grpc-field": "mode"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Why, printable: kept in the audit.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "request_id",
+          "mode",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/identity/reset/plan` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.PlanIdentityResetRequest"
+      },
+      "ResetMembership": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "member"
+            ],
+            "description": "This Host's role in it.",
+            "x-grpc-field": "role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "suspended"
+            ],
+            "description": "Its live status.",
+            "x-grpc-field": "status"
+          },
+          "peer": {
+            "$ref": "#/components/schemas/MembershipHost",
+            "description": "The other Host.",
+            "x-grpc-field": "peer"
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the coordinator is, when this Host is the member; `null` otherwise.",
+            "x-grpc-field": "address"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "revoke_remote",
+              "revoke_local",
+              "reject_local"
+            ],
+            "description": "What the reset does to it: asked of the coordinator, or revoked or rejected here.",
+            "x-grpc-field": "step"
+          }
+        },
+        "required": [
+          "membership_id",
+          "role",
+          "status",
+          "peer",
+          "address",
+          "step"
+        ],
+        "additionalProperties": false,
+        "description": "One live membership, and what a reset does to it.",
+        "x-grpc-message": "permguard.host.v1.ResetMembership"
+      },
+      "IdentityResetPlan": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "The server-held plan's id.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "x-grpc-field": "expires"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The identity epoch the plan was made at; the run is a `conflict` when it or a membership moved.",
+            "x-grpc-field": "revision"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "emergency"
+            ],
+            "description": "The mode the plan was made in.",
+            "x-grpc-field": "mode"
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResetMembership"
+            },
+            "description": "Every live membership.",
+            "x-grpc-field": "memberships"
+          }
+        },
+        "required": [
+          "plan_id",
+          "plan_digest",
+          "expires",
+          "revision",
+          "mode",
+          "memberships"
+        ],
+        "additionalProperties": false,
+        "description": "What an identity reset plan answers.",
+        "x-grpc-message": "permguard.host.v1.PlanIdentityResetResponse"
+      },
+      "RunIdentityResetBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry answers what the run answered.",
+            "x-grpc-field": "request_id"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "The plan the plan step answered.",
+            "x-grpc-field": "plan_id"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Its digest, as answered.",
+            "x-grpc-field": "plan_digest"
+          }
+        },
+        "required": [
+          "request_id",
+          "plan_id",
+          "plan_digest"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/identity/reset/run` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.RunIdentityResetRequest"
+      },
+      "ResetEnded": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "coordinator",
+              "member"
+            ],
+            "description": "This Host's role in it.",
+            "x-grpc-field": "role"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "revoked",
+              "rejected"
+            ],
+            "description": "How it ended.",
+            "x-grpc-field": "status"
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Its last manifest's epoch.",
+            "x-grpc-field": "epoch"
+          },
+          "manifest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Its last manifest, COSE_Sign1 `permguard.membership.manifest.v1`, base64url: a coordinator's revocation receipt, or the manifest this Host issued.",
+            "x-grpc-field": "manifest"
+          }
+        },
+        "required": [
+          "membership_id",
+          "role",
+          "status",
+          "epoch",
+          "manifest"
+        ],
+        "additionalProperties": false,
+        "description": "A membership the reset ended.",
+        "x-grpc-message": "permguard.host.v1.ResetEnded"
+      },
+      "ResetOrphaned": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The membership's id.",
+            "x-grpc-field": "membership_id"
+          },
+          "coordinator": {
+            "$ref": "#/components/schemas/MembershipHost",
+            "description": "The coordinator that must revoke it out of band.",
+            "x-grpc-field": "coordinator"
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where that coordinator is.",
+            "x-grpc-field": "address"
+          }
+        },
+        "required": [
+          "membership_id",
+          "coordinator",
+          "address"
+        ],
+        "additionalProperties": false,
+        "description": "A membership the reset left `orphaned`: terminal here, active for its coordinator until revoked out of band.",
+        "x-grpc-message": "permguard.host.v1.ResetOrphaned"
+      },
+      "IdentityReset": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "old_host_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The Host this volume was.",
+            "x-grpc-field": "old_host_id"
+          },
+          "host_id": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "description": "The Host it is from the next start.",
+            "x-grpc-field": "host_id"
+          },
+          "fingerprint": {
+            "type": "string",
+            "description": "The new identity's first fingerprint: what peers pin.",
+            "x-grpc-field": "fingerprint"
+          },
+          "witness": {
+            "type": "string",
+            "description": "The new identity's external witness: the value of `host.identity.witness` where it is pinned.",
+            "x-grpc-field": "witness"
+          },
+          "ended": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResetEnded"
+            },
+            "description": "The memberships the reset ended.",
+            "x-grpc-field": "ended"
+          },
+          "orphaned": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResetOrphaned"
+            },
+            "description": "The memberships left `orphaned`, by coordinator.",
+            "x-grpc-field": "orphaned"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "description": "Always `true`: this process signs nothing more and serves the new identity after a restart.",
+            "x-grpc-field": "restart_required"
+          }
+        },
+        "required": [
+          "receipt",
+          "old_host_id",
+          "host_id",
+          "fingerprint",
+          "witness",
+          "ended",
+          "orphaned",
+          "restart_required"
+        ],
+        "additionalProperties": false,
+        "description": "What an identity reset answers.",
+        "x-grpc-message": "permguard.host.v1.RunIdentityResetResponse"
       }
     }
   },
@@ -2898,12 +6212,52 @@
       "fields": [
         "code"
       ]
+    },
+    {
+      "message": "permguard.host.v1.ListInvitesRequest",
+      "note": "an empty request: every invitation is listed",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.GetMemberResponse",
+      "note": "wraps `Member`, which REST answers bare",
+      "fields": [
+        "member"
+      ]
+    },
+    {
+      "message": "permguard.host.v1.JoinMembershipResponse",
+      "note": "wraps `Member`, which REST answers bare",
+      "fields": [
+        "member"
+      ]
+    },
+    {
+      "message": "permguard.host.v1.SyncMembershipResponse",
+      "note": "wraps `Member`, which REST answers bare",
+      "fields": [
+        "member"
+      ]
+    },
+    {
+      "message": "permguard.host.v1.ListMemberSessionsRequest",
+      "note": "the task sessions of a membership come with WP-4.3",
+      "fields": []
+    },
+    {
+      "message": "permguard.host.v1.ListMemberSessionsResponse",
+      "note": "the task sessions of a membership come with WP-4.3",
+      "fields": []
     }
   ],
   "x-grpc-unmapped-rpcs": [
     {
       "rpc": "permguard.host.v1.IdentityService/PeerChannel",
       "note": "peer Host sessions (WP-2.3): one bidirectional stream bound to one TLS connection; REST refuses `sessions/hello` and `sessions/prove`, its frames are `contracts/cbor/session.json`"
+    },
+    {
+      "rpc": "permguard.host.v1.MembershipService/ListMemberSessions",
+      "note": "the task sessions of a membership come with WP-4.3: `UNIMPLEMENTED`, and no REST route yet"
     }
   ]
 }

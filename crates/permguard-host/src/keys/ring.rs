@@ -681,6 +681,8 @@ pub struct Ring {
     /// Set when a journal write failed: what reached the file is uncertain, so the ring takes no
     /// transition until it is opened again and the journal is read back.
     stopped: AtomicBool,
+    /// Set when an identity reset retired the ring: it signs nothing more in this process.
+    retired: AtomicBool,
 }
 
 impl fmt::Debug for Ring {
@@ -698,7 +700,85 @@ pub fn directory(volume: &Volume, ring: &str) -> Result<Dir, StorageError> {
     volume.host().subdir(DIRECTORY, true)?.subdir(ring, true)
 }
 
+/// The directory a reset keeps a retired ring's public records in, below `host/keys/`.
+pub const RETIRED: &str = "retired";
+
 impl Ring {
+    /// Retires the ring with the identity a reset retires (WP-4.1, owner decision of
+    /// 2026-10-10): it signs and transitions nothing more here; its public records (journal,
+    /// view, bindings, public keys) are kept in `host/keys/retired/<old host_id>/<ring>/`; its
+    /// journal goes first, so the ring opens as a new one at the next start, bound to the new
+    /// identity; then every private key is destroyed through its provider and the rest removed.
+    /// A crash after the journal went leaves keys no journal names, which the next maintenance
+    /// removes.
+    pub fn retire(
+        &self,
+        _applying: &Applying<'_>,
+        old_host_id: &[u8; 16],
+    ) -> Result<(), RingError> {
+        let _serial = self.serial.lock().unwrap_or_else(PoisonError::into_inner);
+        self.retired.store(true, Ordering::SeqCst);
+        self.stopped.store(true, Ordering::SeqCst);
+        // Taken to write: the signings in flight end before anything is destroyed.
+        let _state = self.write();
+        let keys = Dir::open(
+            self.dir
+                .path()
+                .parent()
+                .ok_or_else(|| RingError::Corrupt("a ring directory has no parent".to_owned()))?,
+        )?;
+        let kept = keys
+            .subdir(RETIRED, true)?
+            .subdir(&crate::identity::record::uuid_text(old_host_id), true)?
+            .subdir(self.id, true)?;
+        for name in [JOURNAL, VIEW, BINDING] {
+            if let Some(bytes) = self.dir.read(name)? {
+                crate::storage::write::replace_bytes(&kept, name, &bytes)?;
+            }
+        }
+        for sub in [BINDINGS, PUBLIC] {
+            let from = self.dir.subdir(sub, true)?;
+            let to = kept.subdir(sub, true)?;
+            for name in from.names()? {
+                if let Some(bytes) = from.read(&name)? {
+                    crate::storage::write::replace_bytes(&to, &name, &bytes)?;
+                }
+            }
+        }
+        if self.dir.read(JOURNAL)?.is_some() {
+            crate::storage::tombstone::delete(&self.dir, JOURNAL)?;
+        }
+        for slot in self.provider.slots()? {
+            if let Err(error) = self.provider.destroy(&slot) {
+                tracing::warn!(
+                    event.name = "host.keys.retired_key_kept",
+                    component = "host",
+                    ring = self.id,
+                    error = %error,
+                    "a retired ring key could not be destroyed; the next maintenance removes it"
+                );
+            }
+        }
+        for name in [VIEW, BINDING] {
+            if self.dir.read(name)?.is_some() {
+                crate::storage::tombstone::delete(&self.dir, name)?;
+            }
+        }
+        for sub in [BINDINGS, PUBLIC] {
+            let dir = self.dir.subdir(sub, true)?;
+            for name in dir.names()? {
+                crate::storage::tombstone::delete(&dir, &name)?;
+            }
+        }
+        tracing::warn!(
+            event.name = "host.keys.retired",
+            component = "host",
+            ring = self.id,
+            "a key ring was retired with the Host identity"
+        );
+        Ok(())
+    }
+
     /// Opens `ring` on `volume`: the journal replayed and checked, `ring.cbor` rebuilt when
     /// absent or stale. A prepublished or active key whose private half is gone refuses the
     /// open: a lost key is never silently replaced. What a crash left otherwise (a private half a
@@ -787,6 +867,7 @@ impl Ring {
             binding: RwLock::new(binding),
             serial: Mutex::new(()),
             stopped: AtomicBool::new(false),
+            retired: AtomicBool::new(false),
         };
         Ok(opened)
     }
@@ -1548,6 +1629,12 @@ impl permguard_core::keys::Sign for Ring {
     }
 
     fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+        if self.retired.load(Ordering::SeqCst) {
+            return Err(permguard_core::KeyError::not_ready(format!(
+                "the ring `{}` was retired by an identity reset",
+                self.id
+            )));
+        }
         // Held across the signing: a retirement waits for it before destroying the key.
         let state = self.read();
         let kid = state.active().map(|key| key.kid.clone()).ok_or_else(|| {

@@ -65,6 +65,15 @@ const MINTED: &[&str] = &[
     "manifest",
     "bundle_digest",
     "items",
+    // The invitations each facade issued (WP-4.1).
+    "invite_id",
+    "token",
+    "created_at",
+    // The identity each facade's reset retired and provisioned (WP-4.1).
+    "old_host_id",
+    "host_id",
+    "fingerprint",
+    "witness",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -126,6 +135,16 @@ fn facade(tag: &str) -> Arc<HostApi> {
         permguard_host::operations::mutation::Mutations::open_offline(&volume, "test")
             .expect("the mutation journal opens"),
     );
+    let keys_path = permguard_host::identity::directories(&volume)
+        .expect("the identity directory")
+        .1
+        .path()
+        .to_path_buf();
+    let provisioner: permguard_host::identity::reset::Provisioner = Arc::new(move |_| {
+        Ok(Arc::new(permguard_host::keys::FileKeyProvider::new(
+            permguard_host::storage::Dir::open(&keys_path)?,
+        )) as Arc<dyn permguard_host::keys::KeyProvider>)
+    });
     let identity = Arc::new(
         permguard_host::identity::Identity::provision(
             &volume,
@@ -138,7 +157,8 @@ fn facade(tag: &str) -> Arc<HostApi> {
             permguard_host::authz::store::now(),
             permguard_host::authz::store::now() * 1000,
         )
-        .expect("the identity is provisioned"),
+        .expect("the identity is provisioned")
+        .with_provisioner(provisioner),
     );
     permguard_host::operations::grants::issue(
         &mutations,
@@ -184,6 +204,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
         Some(Arc::clone(&identity)),
         vec![ring],
     ));
+    let members = permguard_host::membership::Store::open(&volume).expect("the memberships open");
     // The volume stays claimed for the life of the test process: the store holds its directory.
     std::mem::forget(volume);
     Arc::new(HostApi::new(Composition {
@@ -216,6 +237,11 @@ fn facade(tag: &str) -> Arc<HostApi> {
             std::time::Duration::from_secs(30),
         )),
         peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
+        memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+            store: members,
+            capabilities: permguard_host::membership::Capabilities::default(),
+            connector: None,
+        })),
     }))
 }
 
@@ -460,6 +486,321 @@ impl Transport {
                             resource_types: vec!["zone".to_owned()],
                             constraints: constraints.into_iter().collect(),
                             expires_at: Some(expires_at.to_owned()),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn memberships(
+        &self,
+    ) -> host_v1::membership_service_client::MembershipServiceClient<tonic::transport::Channel>
+    {
+        host_v1::membership_service_client::MembershipServiceClient::connect(format!(
+            "http://{}",
+            self.grpc_url()
+        ))
+        .await
+        .expect("the gRPC endpoint answers")
+    }
+
+    fn task() -> (Value, host_v1::MembershipTask) {
+        let limits = host_v1::TaskLimits {
+            max_body_bytes: 1 << 20,
+            max_concurrency: 4,
+            max_rate_per_minute: 600,
+            max_batch_records: 1000,
+            retention_seconds: 86_400,
+        };
+        (
+            json!({
+                "task_id": "decisions",
+                "type": "decisions.ship",
+                "selector": "plane/data/*",
+                "resource_types": ["decision"],
+                "required": true,
+                "limits": {
+                    "max_body_bytes": limits.max_body_bytes,
+                    "max_concurrency": limits.max_concurrency,
+                    "max_rate_per_minute": limits.max_rate_per_minute,
+                    "max_batch_records": limits.max_batch_records,
+                    "retention_seconds": limits.retention_seconds,
+                },
+            }),
+            host_v1::MembershipTask {
+                task_id: "decisions".to_owned(),
+                r#type: "decisions.ship".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                resource_types: vec!["decision".to_owned()],
+                required: true,
+                limits: Some(limits),
+                ..Default::default()
+            },
+        )
+    }
+
+    async fn create_invite(&self, who: Option<&str>, request_id: &str) -> Outcome {
+        let (rest, grpc) = Self::task();
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/members/invites",
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "selector": "plane/data/*",
+                        "tasks": [rest],
+                        "min_assurance": "production",
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .create_invite(Self::grpc_request(
+                        who,
+                        host_v1::CreateInviteRequest {
+                            request_id: request_id.to_owned(),
+                            selector: "plane/data/*".to_owned(),
+                            tasks: vec![grpc],
+                            min_assurance: Some("production".to_owned()),
+                            ..Default::default()
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn list_invites(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest("GET", "/host/v1/members/invites", who, None)
+                    .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .list_invites(Self::grpc_request(
+                        who,
+                        host_v1::ListInvitesRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn delete_invite(&self, who: Option<&str>, id: &str, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "DELETE",
+                    &format!("/host/v1/members/invites/{id}?request_id={request_id}"),
+                    who,
+                    None,
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .delete_invite(Self::grpc_request(
+                        who,
+                        host_v1::DeleteInviteRequest {
+                            invite_id: id.to_owned(),
+                            request_id: request_id.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn list_members(&self, who: Option<&str>, status: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                let path = status.map_or_else(
+                    || "/host/v1/members".to_owned(),
+                    |status| format!("/host/v1/members?status={status}"),
+                );
+                self.rest("GET", &path, who, None).await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .list_members(Self::grpc_request(
+                        who,
+                        host_v1::ListMembersRequest {
+                            status: status.unwrap_or_default().to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn get_member(&self, who: Option<&str>, id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest("GET", &format!("/host/v1/members/{id}"), who, None)
+                    .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .get_member(Self::grpc_request(
+                        who,
+                        host_v1::GetMemberRequest {
+                            membership_id: id.to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn suspend_member(&self, who: Option<&str>, id: &str, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/members/{id}/suspend"),
+                    who,
+                    Some(json!({ "request_id": request_id, "expected_revision": 1 })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .suspend_member(Self::grpc_request(
+                        who,
+                        host_v1::SuspendMemberRequest {
+                            membership_id: id.to_owned(),
+                            request_id: request_id.to_owned(),
+                            expected_revision: 1,
+                            reason: None,
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn join_membership(&self, who: Option<&str>, request_id: &str) -> Outcome {
+        let (rest, grpc) = Self::task();
+        let host_id = "0190a5c3-0000-7000-8000-000000000033";
+        let invite_id = "0190a5c3-0000-7000-8000-000000000044";
+        let fingerprint = format!("sha256:{}", "ab".repeat(32));
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/memberships/join",
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "coordinator": {
+                            "address": "https://coordinator:7443",
+                            "host_id": host_id,
+                            "fingerprint": fingerprint,
+                        },
+                        "invite_id": invite_id,
+                        "token": "B".repeat(43),
+                        "requested": { "selector": "plane/data/*", "tasks": [rest] },
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.memberships()
+                    .await
+                    .join_membership(Self::grpc_request(
+                        who,
+                        host_v1::JoinMembershipRequest {
+                            request_id: request_id.to_owned(),
+                            coordinator: Some(host_v1::MembershipCoordinator {
+                                address: "https://coordinator:7443".to_owned(),
+                                host_id: host_id.to_owned(),
+                                fingerprint,
+                            }),
+                            invite_id: invite_id.to_owned(),
+                            token: vec![0x04; 32],
+                            requested: Some(host_v1::MembershipScope {
+                                selector: "plane/data/*".to_owned(),
+                                tasks: vec![grpc],
+                            }),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn plan_identity_reset(&self, who: Option<&str>, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/identity/reset/plan",
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "mode": "emergency",
+                        "reason": "a drill",
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.identity()
+                    .await
+                    .plan_identity_reset(Self::grpc_request(
+                        who,
+                        host_v1::PlanIdentityResetRequest {
+                            request_id: request_id.to_owned(),
+                            mode: "emergency".to_owned(),
+                            reason: "a drill".to_owned(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn run_identity_reset(
+        &self,
+        who: Option<&str>,
+        request_id: &str,
+        plan_id: &str,
+        plan_digest: &str,
+    ) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    "/host/v1/identity/reset/run",
+                    who,
+                    Some(json!({
+                        "request_id": request_id,
+                        "plan_id": plan_id,
+                        "plan_digest": plan_digest,
+                    })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.identity()
+                    .await
+                    .run_identity_reset(Self::grpc_request(
+                        who,
+                        host_v1::RunIdentityResetRequest {
+                            request_id: request_id.to_owned(),
+                            plan_id: plan_id.to_owned(),
+                            plan_digest: plan_digest.to_owned(),
                         },
                     ))
                     .await,
@@ -1071,6 +1412,89 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "plan the revocation of a revoked key",
         transport.plan_key_revoke(admin, ring, "kp2", &first).await,
     ));
+
+    // The memberships (WP-4.1): what a Host answers before any peer enrolled.
+    steps.push((
+        "list the memberships",
+        transport.list_members(admin, None).await,
+    ));
+    steps.push((
+        "list the memberships of an unknown status",
+        transport.list_members(admin, Some("gone")).await,
+    ));
+    steps.push((
+        "list the invitations as a stranger",
+        transport.list_invites(Some(STRANGER)).await,
+    ));
+    let invited = transport.create_invite(admin, "i1").await;
+    steps.push(("invite a Host", invited.clone()));
+    steps.push((
+        "invite again under the same request id",
+        transport.create_invite(admin, "i1").await,
+    ));
+    steps.push(("list the invitations", transport.list_invites(admin).await));
+    let invite_id = member(&invited, &["invite_id"]).to_owned();
+    let deleted = transport.delete_invite(admin, &invite_id, "d1").await;
+    let retried = transport.delete_invite(admin, &invite_id, "d1").await;
+    assert_eq!(
+        retried, deleted,
+        "a retried delete returns the stored receipt"
+    );
+    steps.push(("delete the invitation", deleted));
+    steps.push((
+        "delete an unknown invitation",
+        transport
+            .delete_invite(admin, "0190a5c3-0000-7000-8000-000000000011", "d2")
+            .await,
+    ));
+    steps.push((
+        "read an unknown membership",
+        transport
+            .get_member(admin, "0190a5c3-0000-7000-8000-000000000022")
+            .await,
+    ));
+    steps.push((
+        "read a malformed membership id",
+        transport.get_member(admin, "not-an-id").await,
+    ));
+    steps.push((
+        "suspend an unknown membership",
+        transport
+            .suspend_member(admin, "0190a5c3-0000-7000-8000-000000000022", "s1")
+            .await,
+    ));
+    steps.push((
+        "join without an outbound peer client",
+        transport.join_membership(admin, "j1").await,
+    ));
+
+    // The identity reset (WP-4.1), last: it leaves the facade's identity retired.
+    steps.push((
+        "plan an identity reset as a stranger",
+        transport.plan_identity_reset(Some(STRANGER), "ir0").await,
+    ));
+    let planned = transport.plan_identity_reset(admin, "ir1").await;
+    let plan_id = member(&planned, &["plan_id"]).to_owned();
+    let plan_digest = member(&planned, &["plan_digest"]).to_owned();
+    steps.push(("plan an identity reset", planned));
+    steps.push((
+        "run an identity reset with a wrong digest",
+        transport
+            .run_identity_reset(admin, "rr0", &plan_id, &"00".repeat(32))
+            .await,
+    ));
+    let reset = transport
+        .run_identity_reset(admin, "rr1", &plan_id, &plan_digest)
+        .await;
+    let retried = transport
+        .run_identity_reset(admin, "rr1", &plan_id, &plan_digest)
+        .await;
+    assert_eq!(retried, reset, "a retried reset answers what it answered");
+    steps.push(("run the identity reset", reset));
+    steps.push((
+        "read the identity after its reset",
+        transport.identity_document(admin).await,
+    ));
     steps
 }
 
@@ -1101,6 +1525,12 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
     );
     grpc.add_service(
         served_v1::key_service_server::KeyServiceServer::with_interceptor(
+            served.clone(),
+            bearer_interceptor,
+        ),
+    );
+    grpc.add_service(
+        served_v1::membership_service_server::MembershipServiceServer::with_interceptor(
             served.clone(),
             bearer_interceptor,
         ),
@@ -1140,6 +1570,12 @@ fn schema_of(case: &str) -> &'static str {
         "rotate the operations ring" | "rotate the operations ring again" => "RingRotated",
         "plan a key revocation" => "KeyRevokePlan",
         "run the key revocation" => "KeyRevoked",
+        "list the memberships" => "Members",
+        "invite a Host" => "InviteCreated",
+        "list the invitations" => "Invites",
+        "delete the invitation" => "InviteDeleted",
+        "plan an identity reset" => "IdentityResetPlan",
+        "run the identity reset" => "IdentityReset",
         other => panic!("`{other}` answered and names no schema"),
     }
 }
@@ -1165,10 +1601,11 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     }
     assert!(answered >= 9, "{answered} answers were checked");
 
-    // The refusal bodies, read raw: a conflict with its revision, a denial.
-    let Transport::Rest(router) = &rest else {
-        unreachable!()
-    };
+    // The refusal bodies, read raw: a conflict with its revision, a denial. On a facade of their
+    // own, since the script ends by resetting the identity of its own.
+    let router = host_api::http::routes(facade("schemas-raw"), Disclosure::Minimal)
+        .layer(ActorLayer::new(Arc::new(Bearers)));
+    let router = &router;
     let raw = |method: &'static str,
                path: &'static str,
                who: Option<&'static str>,
@@ -1396,6 +1833,99 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
             .find(|(name, _)| *name == "list the key rings as nobody"),
         Some((_, Outcome::Answered(_)))
     ));
+    // The memberships (WP-4.1).
+    for (case, class, code) in [
+        (
+            "list the memberships of an unknown status",
+            "validation",
+            common::INVALID_ARGUMENT,
+        ),
+        (
+            "invite again under the same request id",
+            "conflict",
+            host::INVITE_TOKEN_SHOWN,
+        ),
+        (
+            "delete an unknown invitation",
+            "not_found",
+            host::INVITE_UNKNOWN,
+        ),
+        (
+            "read an unknown membership",
+            "not_found",
+            host::MEMBERSHIP_UNKNOWN,
+        ),
+        (
+            "read a malformed membership id",
+            "validation",
+            common::INVALID_ARGUMENT,
+        ),
+        (
+            "suspend an unknown membership",
+            "not_found",
+            host::MEMBERSHIP_UNKNOWN,
+        ),
+        (
+            "join without an outbound peer client",
+            "unavailable",
+            host::PEER_CLIENT_UNCONFIGURED,
+        ),
+    ] {
+        assert_eq!(refused(case), (class.to_owned(), code.to_owned()), "{case}");
+    }
+    assert_eq!(
+        refused("list the invitations as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    for (case, class, code) in [
+        (
+            "plan an identity reset as a stranger",
+            "",
+            common::FORBIDDEN,
+        ),
+        (
+            "run an identity reset with a wrong digest",
+            "validation",
+            host::PLAN_DIGEST_MISMATCH,
+        ),
+        (
+            "read the identity after its reset",
+            "unavailable",
+            host::IDENTITY_UNAVAILABLE,
+        ),
+    ] {
+        assert_eq!(refused(case), (class.to_owned(), code.to_owned()), "{case}");
+    }
+    // An enrollment is never a request of its own.
+    let Transport::Rest(router) = &rest else {
+        unreachable!("the REST transport")
+    };
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/host/v1/members/enroll")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{}"))
+                .expect("a request"),
+        )
+        .await
+        .expect("answered");
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response
+        .into_body()
+        .collect()
+        .await
+        .expect("reads")
+        .to_bytes();
+    assert_eq!(
+        reduced_http(StatusCode::SERVICE_UNAVAILABLE, &body),
+        Outcome::Refused {
+            class: "unavailable".to_owned(),
+            code: host::PEER_SESSIONS_UNSERVEABLE.to_owned(),
+        }
+    );
 }
 
 /// The REST binding's own shapes: a stale revision carries the current one, a closed body

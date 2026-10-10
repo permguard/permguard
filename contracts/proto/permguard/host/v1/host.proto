@@ -73,6 +73,10 @@ service MembershipService {
   rpc RunMemberRevoke(RunMemberRevokeRequest) returns (RunMemberRevokeResponse);
   // `GET /host/v1/members/{id}/sessions`.
   rpc ListMemberSessions(ListMemberSessionsRequest) returns (ListMemberSessionsResponse);
+  // `POST /host/v1/memberships/join`: this Host, as a member, enrols with a coordinator (WP-4.1).
+  rpc JoinMembership(JoinMembershipRequest) returns (JoinMembershipResponse);
+  // `POST /host/v1/memberships/{id}/sync`: this Host, as a member, fetches its manifests (WP-4.1).
+  rpc SyncMembership(SyncMembershipRequest) returns (SyncMembershipResponse);
 }
 
 // REST group: grants.
@@ -212,10 +216,63 @@ message RotateIdentityResponse {
   // The succession record to the new epoch, COSE_Sign1.
   bytes succession = 2;
 }
-message PlanIdentityResetRequest {}
-message PlanIdentityResetResponse {}
-message RunIdentityResetRequest {}
-message RunIdentityResetResponse {}
+// `POST /host/v1/identity/reset/plan` (WP-4.1), under `identity.admin`.
+message PlanIdentityResetRequest {
+  string request_id = 1;
+  // `normal` or `emergency`.
+  string mode = 2;
+  string reason = 3;
+}
+message PlanIdentityResetResponse {
+  string plan_id = 1;
+  string plan_digest = 2;
+  string expires = 3;
+  // The identity epoch the plan was made at.
+  uint64 revision = 4;
+  string mode = 5;
+  repeated ResetMembership memberships = 6;
+}
+// One live membership, and what a reset does to it.
+message ResetMembership {
+  string membership_id = 1;
+  string role = 2;
+  string status = 3;
+  MembershipHost peer = 4;
+  optional string address = 5;
+  // `revoke_remote`, `revoke_local` or `reject_local`.
+  string step = 6;
+}
+// `POST /host/v1/identity/reset/run` (WP-4.1), under `identity.admin`.
+message RunIdentityResetRequest {
+  string request_id = 1;
+  string plan_id = 2;
+  string plan_digest = 3;
+}
+message RunIdentityResetResponse {
+  Receipt receipt = 1;
+  string old_host_id = 2;
+  string host_id = 3;
+  string fingerprint = 4;
+  string witness = 5;
+  repeated ResetEnded ended = 6;
+  repeated ResetOrphaned orphaned = 7;
+  // Always true: the process serves the new identity after a restart.
+  bool restart_required = 8;
+}
+// A membership the reset ended, with its last manifest, COSE_Sign1.
+message ResetEnded {
+  string membership_id = 1;
+  string role = 2;
+  string status = 3;
+  uint64 epoch = 4;
+  optional bytes manifest = 5;
+}
+// A membership the reset left `orphaned`: its coordinator revokes it out of band.
+message ResetOrphaned {
+  string membership_id = 1;
+  MembershipHost coordinator = 2;
+  optional string address = 3;
+}
 // `GET /host/v1/ring-bindings` (WP-3.1), under `identity.read`.
 message ListRingBindingsRequest {}
 message ListRingBindingsResponse {
@@ -229,32 +286,260 @@ message RingBinding {
   // COSE_Sign1 `permguard.host.ring-binding.v1`.
   bytes binding = 3;
 }
-message CreateInviteRequest {}
-message CreateInviteResponse {}
+// `POST /host/v1/members/invites` (WP-4.1), under `membership.admin`.
+message CreateInviteRequest {
+  string request_id = 1;
+  string selector = 2;
+  repeated MembershipTask tasks = 3;
+  // RFC 3339; 24 hours from now when absent, at most 7 days.
+  optional string expires = 4;
+  optional string expected_fingerprint = 5;
+  optional string min_assurance = 6;
+  // 1 when absent: an invitation is used once.
+  optional uint64 max_uses = 7;
+}
+message CreateInviteResponse {
+  Receipt receipt = 1;
+  string invite_id = 2;
+  // 256 random bits: answered once, held nowhere.
+  bytes token = 3;
+  // RFC 3339.
+  string expires = 4;
+}
+// One task a membership grants.
+message MembershipTask {
+  string task_id = 1;
+  // `policy.mirror`, `decisions.ship`, `events.ship`, `events.import`, `audit.checkpoints`,
+  // `zone.secrets`.
+  string type = 2;
+  // The roles the type fixes: answered; on a request, empty or the type's own.
+  string provider_role = 3;
+  string consumer_role = 4;
+  string selector = 5;
+  repeated string resource_types = 6;
+  bool required = 7;
+  TaskLimits limits = 8;
+  repeated string assurance_requirements = 9;
+}
+// A task's limits.
+message TaskLimits {
+  uint64 max_body_bytes = 1;
+  uint64 max_concurrency = 2;
+  uint64 max_rate_per_minute = 3;
+  uint64 max_batch_records = 4;
+  uint64 retention_seconds = 5;
+}
+// `GET /host/v1/members/invites` (WP-4.1), under `membership.read`.
 message ListInvitesRequest {}
-message ListInvitesResponse {}
-message DeleteInviteRequest {}
-message DeleteInviteResponse {}
-message ListMembersRequest {}
-message ListMembersResponse {}
-message GetMemberRequest {}
-message GetMemberResponse {}
-message ApproveMemberRequest {}
-message ApproveMemberResponse {}
-message RejectMemberRequest {}
-message RejectMemberResponse {}
-message SuspendMemberRequest {}
-message SuspendMemberResponse {}
-message ResumeMemberRequest {}
-message ResumeMemberResponse {}
-message FenceMemberRequest {}
-message FenceMemberResponse {}
-message PlanMemberRevokeRequest {}
-message PlanMemberRevokeResponse {}
-message RunMemberRevokeRequest {}
-message RunMemberRevokeResponse {}
+message ListInvitesResponse {
+  repeated Invite invites = 1;
+}
+// One invitation, never its token nor anything that signs for it.
+message Invite {
+  string invite_id = 1;
+  // Was the token's hash: it signed for the token (WP-4.1 review).
+  reserved 2;
+  reserved "token_hash";
+  string selector = 3;
+  repeated MembershipTask tasks = 4;
+  string expires = 5;
+  optional string expected_fingerprint = 6;
+  optional string min_assurance = 7;
+  uint64 max_uses = 8;
+  // `issued`, `consumed`, `expired` or `revoked`.
+  string status = 9;
+  string created_at = 10;
+  string created_by = 11;
+}
+// `DELETE /host/v1/members/invites/{id}` (WP-4.1), under `membership.admin`.
+message DeleteInviteRequest {
+  string invite_id = 1;
+  string request_id = 2;
+}
+message DeleteInviteResponse {
+  Receipt receipt = 1;
+}
+// `GET /host/v1/members?status=` (WP-4.1), under `membership.read`: empty is every status.
+message ListMembersRequest {
+  string status = 1;
+}
+message ListMembersResponse {
+  repeated Member members = 1;
+}
+// `GET /host/v1/members/{id}` (WP-4.1), under `membership.read`.
+message GetMemberRequest {
+  string membership_id = 1;
+}
+message GetMemberResponse {
+  Member member = 1;
+}
+// One membership, as an operator reads it.
+message Member {
+  string membership_id = 1;
+  // This Host's role in it: `coordinator` or `member`.
+  string role = 2;
+  string status = 3;
+  // One more at every manifest; 0 while pending.
+  uint64 epoch = 4;
+  // What `expected_revision` names.
+  uint64 revision = 5;
+  MembershipHost coordinator = 6;
+  MembershipHost member = 7;
+  string selector = 8;
+  repeated MembershipTask tasks = 9;
+  string member_assurance = 10;
+  // Absent while pending.
+  LeasePolicy lease_policy = 11;
+  // The manifest in force, COSE_Sign1; absent while pending.
+  optional bytes manifest = 12;
+  string updated_at = 13;
+  // The last task session: sessions come with WP-4.3.
+  optional string last_session_at = 14;
+}
+// A Host as a membership pins it.
+message MembershipHost {
+  string host_id = 1;
+  uint64 epoch = 2;
+  // The first fingerprint: the identity's pin.
+  string fingerprint = 3;
+}
+// The lease policy a manifest signs.
+message LeasePolicy {
+  uint64 max_session_seconds = 1;
+  uint64 offline_grace_seconds = 2;
+  uint64 clock_skew_seconds = 3;
+  uint64 dormant_after_seconds = 4;
+  uint64 revoke_after_seconds = 5;
+}
+// A selector and tasks: an approval's narrowing, a join's request.
+message MembershipScope {
+  string selector = 1;
+  repeated MembershipTask tasks = 2;
+}
+// `POST /host/v1/members/{id}/approve` (WP-4.1), under `membership.admin`.
+message ApproveMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  // A narrowing of the request, never wider.
+  MembershipScope narrow = 4;
+  LeasePolicy lease_policy = 5;
+}
+message ApproveMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  // The manifest issued, COSE_Sign1.
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/reject` (WP-4.1), under `membership.admin`.
+message RejectMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  optional string reason = 4;
+}
+message RejectMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/suspend` (WP-4.1), under `membership.admin`.
+message SuspendMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  optional string reason = 4;
+}
+message SuspendMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/resume` (WP-4.1), under `membership.admin`.
+message ResumeMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  optional string reason = 4;
+}
+message ResumeMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/fence` (WP-4.1), under `membership.admin`.
+message FenceMemberRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  uint64 expected_revision = 3;
+  optional string reason = 4;
+}
+message FenceMemberResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
+// `POST /host/v1/members/{id}/revoke/plan` (WP-4.1), under `membership.admin`.
+message PlanMemberRevokeRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  string reason = 3;
+  optional uint64 expected_revision = 4;
+}
+message PlanMemberRevokeResponse {
+  string plan_id = 1;
+  string plan_digest = 2;
+  string expires = 3;
+  uint64 revision = 4;
+}
+// `POST /host/v1/members/{id}/revoke/run` (WP-4.1), under `membership.admin`.
+message RunMemberRevokeRequest {
+  string membership_id = 1;
+  string request_id = 2;
+  string plan_id = 3;
+  string plan_digest = 4;
+}
+message RunMemberRevokeResponse {
+  Receipt receipt = 1;
+  string status = 2;
+  uint64 epoch = 3;
+  bytes manifest = 4;
+}
 message ListMemberSessionsRequest {}
 message ListMemberSessionsResponse {}
+// `POST /host/v1/memberships/join` (WP-4.1), under `membership.admin`: the coordinator, the
+// invitation and its token, from the coordinator's operator out of band.
+message JoinMembershipRequest {
+  string request_id = 1;
+  MembershipCoordinator coordinator = 2;
+  string invite_id = 3;
+  // Never kept.
+  bytes token = 4;
+  MembershipScope requested = 5;
+}
+// Where and who the coordinator is.
+message MembershipCoordinator {
+  // `https://<host>:<port>`.
+  string address = 1;
+  string host_id = 2;
+  string fingerprint = 3;
+}
+message JoinMembershipResponse {
+  Member member = 1;
+}
+// `POST /host/v1/memberships/{id}/sync` (WP-4.1), under `membership.admin`.
+message SyncMembershipRequest {
+  string membership_id = 1;
+  string request_id = 2;
+}
+message SyncMembershipResponse {
+  Member member = 1;
+}
 // `GET /host/v1/grants?principal&selector`: both filters optional, exact matches.
 message ListGrantsRequest {
   string principal = 1;
@@ -440,7 +725,9 @@ message GetKeyBundleResponse {
   string bundle_digest = 4;
   // How many items the whole bundle holds.
   uint64 total = 5;
-  // This page's items, canonical CBOR each, in the bundle's digest order.
+  // This page's items, canonical CBOR each, in the bundle's digest order: identity, key,
+  // binding, revocation, and the peer and peers items of the members this Host coordinates
+  // (WP-4.1).
   repeated bytes items = 6;
   // The cursor of the next page; absent on the last one.
   optional string next_cursor = 7;

@@ -101,6 +101,7 @@ fn the_session_messages_and_proofs_are_the_bytes_the_independent_generator_compu
         operation: Operation::Enroll,
         membership_id: None,
         task: None,
+        request_digest: None,
     };
     let hello_bytes = hello.encode().expect("encodes");
     assert_eq!(hello_bytes, hex(&v["hello"]["bytes"]));
@@ -138,6 +139,7 @@ fn the_session_messages_and_proofs_are_the_bytes_the_independent_generator_compu
         hello_digest: hello_digest(&hello_bytes),
         challenge_digest: challenge_digest(&challenge_bytes),
         signer: Role::Initiator,
+        request_digest: None,
     };
     let responder = Transcript {
         signer: Role::Responder,
@@ -185,6 +187,7 @@ fn transcript(
         hello_digest: hello_digest(&hex(&v["hello"]["bytes"])),
         challenge_digest: challenge_digest(challenge),
         signer,
+        request_digest: None,
     }
     .encode()
     .expect("encodes")

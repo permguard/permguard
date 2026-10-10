@@ -115,6 +115,11 @@ impl HostApi {
                 "no Host identity is open on this process",
             ));
         };
+        if context.identity.is_retired() {
+            return Err(unserveable(
+                "the Host identity was reset: this process proves nothing with it".to_owned(),
+            ));
+        }
         // One proof exchange authenticates one connection: a second channel on it is refused.
         if !binding.claim() {
             return Err(unserveable(
@@ -198,6 +203,7 @@ mod tests {
             metrics: permguard_core::Metrics::new(
                 Arc::clone(&counted) as Arc<dyn permguard_core::metrics::Recorder>
             ),
+            service: None,
         };
         api.peer_sessions = PeerSessions {
             report: served,

@@ -32,6 +32,9 @@ Its `refused` cases are proofs a verifier must refuse against the transcript it 
 `keys.json` freezes a key ring's records (WP-3.1): a ring key's RFC 7638 thumbprint, its `<ring>:<thumbprint>` kid and published JWK, the key-set statement and digest, the `prepublished` and `activated` journal entries, `ring.cbor`, and the identity-signed ring binding.
 `keys.py` computes them under the owner decisions of 2026-10-08, the identity signing with the RFC 8032 section 7.1 test 1 key at epoch 1 and the ring holding the test 2 key; `crates/permguard-host/tests/keys_vectors.rs` reproduces them and verifies the binding.
 
+`membership.json` freezes the membership records (WP-4.1): an invitation, the token proof, a member's ring statement, the enrollment request and its digest, the enrollment `hello` and transcript carrying it, the pending membership, the genesis manifest and its successor under the coordinator's `host.operations` key, and three chained journal entries.
+`membership.py` computes them under the owner decisions of 2026-10-09, the coordinator's identity and operations keys the RFC 8032 section 7.1 test 1 and test 2 keys, the member's identity the test 3 key and its ring the test 1024 key; `crates/permguard-host/tests/membership_vectors.rs` reproduces them.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.

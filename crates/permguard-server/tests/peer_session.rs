@@ -123,6 +123,19 @@ fn host(root: &Path) -> Host {
         permguard_host::authz::store::now() * 1000,
     )
     .expect("provisioned");
+    // A reset provisions the next identity in the same `keys/`.
+    let keys = directories(&volume)
+        .expect("the identity directory")
+        .1
+        .path()
+        .to_path_buf();
+    let identity = identity.with_provisioner(Arc::new(move |_| {
+        Ok(
+            Arc::new(FileKeyProvider::new(permguard_host::storage::Dir::open(
+                &keys,
+            )?)) as Arc<dyn permguard_host::keys::KeyProvider>,
+        )
+    }));
     Host {
         volume,
         identity: Arc::new(identity),
@@ -151,6 +164,7 @@ impl Host {
             declared_assurance: AssuranceProfile::Development,
             audit: None,
             metrics: permguard_core::Metrics::none(),
+            service: None,
         }
     }
 
@@ -181,6 +195,7 @@ impl Host {
                 report,
                 context: Some(self.context(peers)),
             },
+            memberships: None,
         }));
         let (certificate, key) = pki.issue("server", "localhost");
         let settings = TlsSettings::new(&certificate, &key).with_client_ca(pki.authority());
@@ -209,9 +224,11 @@ fn localhost() -> ServerName<'static> {
 fn request(peer: &Identity) -> Request {
     Request {
         peer: peer.host_id(),
-        operation: Operation::Enroll,
+        operation: Operation::Task,
         membership_id: None,
         task: None,
+        request_digest: None,
+        pin: None,
     }
 }
 
@@ -458,4 +475,518 @@ async fn an_established_channel_carries_more_than_the_body_limit_frame_by_frame(
     }
     drop(connection);
     listener.stop(Duration::from_secs(5)).await.expect("stops");
+}
+
+/// One side of a membership (WP-4.1): a Host whose facade composes its memberships, its rings,
+/// a mutation journal and an administrator, served on a listener whose certificate names
+/// `127.0.0.1`.
+struct Side {
+    host: Host,
+    api: Arc<HostApi>,
+    listener: Surface,
+}
+
+const ADMIN: &str = "spiffe://acme/operators/root";
+
+fn admin() -> permguard_core::authz::Actor {
+    permguard_core::authz::Actor::Authenticated(permguard_core::authz::ActorContext::new(
+        permguard_core::authz::Principal::new(ADMIN).expect("a principal"),
+        permguard_core::authz::Credential::SanUri,
+        None,
+    ))
+}
+
+async fn side(
+    root: &Path,
+    pki: &Pki,
+    stem: &str,
+    ring: &'static str,
+    capabilities: permguard_host::membership::Capabilities,
+) -> Side {
+    use permguard_core::authz::{Principal, Resource, Selector, operations};
+
+    let host = host(root);
+    let (store, _) = GrantStore::open(&host.volume).expect("the grant store opens");
+    let mutations = Arc::new(
+        permguard_host::operations::mutation::Mutations::open_offline(&host.volume, "test")
+            .expect("the mutation journal opens"),
+    );
+    permguard_host::operations::grants::issue(
+        &mutations,
+        &store,
+        permguard_host::operations::journal::Initiator::System("test".to_owned()),
+        permguard_host::authz::Issue {
+            principal: Principal::new(ADMIN).expect("a principal"),
+            operations: operations::ALL
+                .iter()
+                .map(|operation| (*operation).to_owned())
+                .collect(),
+            selector: Selector::under(Resource::host()),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            issued_by: "test".to_owned(),
+            expires_at: None,
+        },
+        permguard_host::authz::store::now(),
+    )
+    .expect("the administrator is issued");
+    let (replay, _) =
+        Replay::open(&host.volume, permguard_host::authz::store::now()).expect("the replay");
+    let ring = Arc::new(
+        permguard_host::keys::ring::Ring::open(
+            &host.volume,
+            ring,
+            Suite::Ed25519Sha256V1,
+            permguard_host::keys::ring::Policy {
+                publish_ahead: Duration::from_secs(600),
+                rotate_every: Duration::from_secs(3600),
+                retain: Duration::from_secs(7200),
+            },
+            Arc::clone(&host.time),
+        )
+        .expect("the ring opens")
+        .with_binder(host.identity.clone()),
+    );
+    permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
+    let keys = Arc::new(permguard_host::keys::registry::Registry::new(
+        Some(Arc::clone(&host.identity)),
+        vec![ring],
+    ));
+    let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
+    let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
+    peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
+    let context = Context {
+        identity: Arc::clone(&host.identity),
+        peers,
+        time: Arc::clone(&host.time),
+        declared_assurance: AssuranceProfile::Production,
+        audit: None,
+        metrics: permguard_core::Metrics::none(),
+        service: Some(Arc::new(
+            permguard_host::membership::service::Coordinating {
+                store: Arc::clone(&members),
+                mutations: Arc::clone(&mutations),
+                identity: Arc::clone(&host.identity),
+                keys: Arc::clone(&keys),
+                capabilities: capabilities.clone(),
+                time: Arc::clone(&host.time),
+            },
+        )),
+    };
+    // The listener's own certificate is the member's client identity, its client CA the
+    // anchors a coordinator is verified against.
+    let (certificate, key) = pki.issue(stem, "127.0.0.1");
+    let settings = TlsSettings::new(&certificate, &key).with_client_ca(pki.authority());
+    let connector = permguard_server::host_api::peer::member_client(Some(&settings))
+        .expect("the peer client")
+        .map(|tls| {
+            Arc::new(permguard_server::host_api::peer::PeerConnector::new(
+                context.clone(),
+                tls,
+            )) as Arc<dyn permguard_host::membership::member::Connector>
+        });
+    assert!(connector.is_some(), "a client CA makes a peer client");
+    let api = Arc::new(HostApi::new(Composition {
+        authorization: Arc::new(Authorization::new(Arc::clone(&store), &[])),
+        store: Some(store),
+        replay,
+        keys,
+        health: Health::new(),
+        assurance: Assurance::of(
+            &permguard_core::assurance::Assurance::new(AssuranceProfile::Production, [])
+                .report(&[]),
+        ),
+        effective: Effective {
+            revision: 0,
+            settings: Vec::new(),
+        },
+        trail: "test".to_owned(),
+        mutations: Some(mutations),
+        identity: Some(Arc::clone(&host.identity)),
+        time: Arc::clone(&host.time),
+        peer_sessions: PeerSessions {
+            report: SERVED,
+            context: Some(context),
+        },
+        memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
+            store: members,
+            capabilities,
+            connector,
+        })),
+    }));
+    let listener = Surface::listener(
+        "host-api",
+        "127.0.0.1:0",
+        permguard_server::host_api::routes(Arc::clone(&api), Disclosure::Full),
+    )
+    .tls(Some(&settings))
+    .streaming([permguard_server::host_api::peer::channel_path()])
+    .start()
+    .await
+    .expect("the listener binds");
+    Side {
+        host,
+        api,
+        listener,
+    }
+}
+
+fn decisions() -> permguard_host::api::members::TaskView {
+    permguard_host::api::members::TaskView {
+        task_id: "decisions".to_owned(),
+        task_type: "decisions.ship".to_owned(),
+        provider_role: None,
+        consumer_role: None,
+        selector: "plane/data/*".to_owned(),
+        resource_types: vec!["decision".to_owned()],
+        required: true,
+        limits: permguard_host::api::members::LimitsView {
+            max_body_bytes: 1 << 20,
+            max_concurrency: 4,
+            max_rate_per_minute: 600,
+            max_batch_records: 1000,
+            retention_seconds: 86_400,
+        },
+        assurance_requirements: Vec::new(),
+    }
+}
+
+fn join_of(
+    coordinator: &Side,
+    invited: &permguard_host::api::members::InviteCreated,
+    request_id: &str,
+) -> permguard_host::api::members::JoinMembership {
+    permguard_host::api::members::JoinMembership {
+        request_id: request_id.to_owned(),
+        coordinator: permguard_host::api::members::CoordinatorView {
+            address: format!(
+                "https://127.0.0.1:{}",
+                coordinator.listener.address().port()
+            ),
+            host_id: coordinator.host.identity.host_id_text(),
+            fingerprint: coordinator.host.identity.first_fingerprint().to_owned(),
+        },
+        invite_id: invited.invite_id.clone(),
+        token: invited.token.clone(),
+        requested: permguard_host::api::members::NarrowView {
+            selector: "plane/data/*".to_owned(),
+            tasks: vec![decisions()],
+        },
+    }
+}
+
+fn code(refusal: &permguard_host::api::Refusal) -> &str {
+    refusal.error().expect("a domain refusal").code()
+}
+
+/// Two Hosts over loopback mutual TLS (WP-4.1): the member joins on a proven session whose
+/// exporter binds its token proof, the coordinator approves, suspends and revokes, and every
+/// manifest reaches the member on a sync, verified against the coordinator it pinned at join.
+#[tokio::test]
+async fn a_member_joins_a_coordinator_over_mutual_tls_and_follows_its_manifests() {
+    use permguard_host::api::members::{
+        ApproveMember, ChangeMember, CreateInvite, PlanMemberRevoke, RunMemberRevoke,
+        SyncMembership,
+    };
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("membership");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
+                min_assurance: Some("production".to_owned()),
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let joined = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join"))
+        .await
+        .expect("joined");
+    assert_eq!(
+        (joined.status.as_str(), joined.role.as_str()),
+        ("pending", "member")
+    );
+    let id = joined.membership_id.clone();
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    assert_eq!(
+        (pending.status.as_str(), pending.role.as_str()),
+        ("pending", "coordinator")
+    );
+    assert_eq!(pending.member.host_id, member.host.identity.host_id_text());
+
+    // A retried join answers what it recorded; the spent token enrols nobody else.
+    let again = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join-again"))
+        .await
+        .expect("answered locally");
+    assert_eq!(again.membership_id, id);
+    let stranger = side(
+        &root.join("stranger"),
+        &pki,
+        "stranger",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let refused = stranger
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "steal"))
+        .await
+        .expect_err("the token was used, and named another Host");
+    assert_eq!(code(&refused), codes::host::ENROLLMENT_REFUSED);
+
+    // Pending on the member until the coordinator decides.
+    let synced = member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "s0".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    assert_eq!((synced.status.as_str(), synced.epoch), ("pending", 0));
+
+    let approved = coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+            },
+        )
+        .await
+        .expect("approved");
+    let synced = member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "s1".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    assert_eq!((synced.status.as_str(), synced.epoch), ("active", 1));
+    assert_eq!(synced.manifest.as_deref(), Some(approved.manifest.as_str()));
+
+    let suspended = coordinator
+        .api
+        .suspend_member(
+            &admin(),
+            &id,
+            ChangeMember {
+                request_id: "suspend".to_owned(),
+                expected_revision: approved.receipt.revision,
+                reason: Some("maintenance".to_owned()),
+            },
+        )
+        .await
+        .expect("suspended");
+    let planned = coordinator
+        .api
+        .plan_member_revoke(
+            &admin(),
+            &id,
+            PlanMemberRevoke {
+                request_id: "plan".to_owned(),
+                reason: "decommissioned".to_owned(),
+                expected_revision: Some(suspended.receipt.revision),
+            },
+        )
+        .await
+        .expect("planned");
+    coordinator
+        .api
+        .run_member_revoke(
+            &admin(),
+            &id,
+            RunMemberRevoke {
+                request_id: "run".to_owned(),
+                plan_id: planned.plan_id,
+                plan_digest: planned.plan_digest,
+            },
+        )
+        .await
+        .expect("revoked");
+    // Both successors in one sync, each the exact successor of the last.
+    let synced = member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "s2".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    assert_eq!((synced.status.as_str(), synced.epoch), ("revoked", 3));
+
+    for side in [coordinator, member, stranger] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
+}
+
+/// A normal identity reset on the member (WP-4.1): the coordinator, reached over mutual TLS,
+/// revokes the membership and its revoked manifest is the member's receipt; nothing is orphaned.
+#[tokio::test]
+async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
+    use permguard_host::api::members::{ApproveMember, CreateInvite};
+    use permguard_host::api::reset::{PlanIdentityReset, RunIdentityReset};
+    use permguard_host::membership::Capabilities;
+    use permguard_host::membership::record::{Role, TaskType};
+
+    let root = scratch("member-reset");
+    let pki = Pki::new(&root);
+    let coordinator = side(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: None,
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let joined = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join"))
+        .await
+        .expect("joined");
+    let id = joined.membership_id;
+    let revision = coordinator
+        .api
+        .member(&admin(), &id)
+        .expect("read")
+        .revision;
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: revision,
+                narrow: None,
+                lease_policy: None,
+            },
+        )
+        .await
+        .expect("approved");
+
+    let old = member.host.identity.host_id_text();
+    let planned = member
+        .api
+        .plan_identity_reset(
+            &admin(),
+            PlanIdentityReset {
+                request_id: "plan".to_owned(),
+                mode: "normal".to_owned(),
+                reason: "a drill".to_owned(),
+            },
+        )
+        .await
+        .expect("planned");
+    assert_eq!(planned.memberships.len(), 1);
+    assert_eq!(planned.memberships[0].step, "revoke_remote");
+    let done = member
+        .api
+        .run_identity_reset(
+            &admin(),
+            RunIdentityReset {
+                request_id: "run".to_owned(),
+                plan_id: planned.plan_id,
+                plan_digest: planned.plan_digest,
+            },
+        )
+        .await
+        .expect("reset");
+    assert!(done.orphaned.is_empty(), "the coordinator acknowledged");
+    assert_eq!(done.ended.len(), 1);
+    assert_eq!(
+        (done.ended[0].role.as_str(), done.ended[0].status.as_str()),
+        ("member", "revoked")
+    );
+    assert!(done.ended[0].manifest.is_some(), "the receipt is kept");
+    assert_eq!(done.old_host_id, old);
+    assert_ne!(done.host_id, old);
+    assert_eq!(
+        coordinator.api.member(&admin(), &id).expect("read").status,
+        "revoked"
+    );
+    // The member's rings retired with its identity: their public records kept.
+    assert!(
+        root.join(format!("member/host/keys/retired/{old}/data.attest/public"))
+            .is_dir()
+    );
+
+    for side in [coordinator, member] {
+        side.listener
+            .stop(Duration::from_secs(5))
+            .await
+            .expect("stops");
+    }
 }

@@ -141,7 +141,20 @@ impl HostApi {
     }
 
     /// The Host identity, or the refusal a route without one answers.
-    fn host_identity(&self) -> Result<&Identity, Refusal> {
+    pub(super) fn host_identity(&self) -> Result<&Identity, Refusal> {
+        let identity = self.open_identity()?;
+        if identity.is_retired() {
+            return Err(Refusal::new(
+                ErrorClass::Unavailable,
+                codes::host::IDENTITY_UNAVAILABLE,
+                "the Host identity was reset: restart the process to serve the new one",
+            ));
+        }
+        Ok(identity)
+    }
+
+    /// The identity open in this process, retired or not.
+    pub(super) fn open_identity(&self) -> Result<&Identity, Refusal> {
         self.identity.as_deref().ok_or_else(|| {
             Refusal::new(
                 ErrorClass::Unavailable,

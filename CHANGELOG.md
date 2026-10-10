@@ -98,7 +98,8 @@ is cut.
   `admin.peer_sessions` (`PERMGUARD_ADMIN_PEER_SESSIONS`) is `end_to_end`, the default on a listener with `admin.tls.client_ca`, or `disabled`, the default otherwise; a deployment behind a TLS-terminating proxy or sidecar states `disabled`.
   `GET /host/v1/status` and `/.well-known/server-configuration` publish `peer_sessions: {served, reason}`.
   Every session established or refused is a `host.session.established` or `host.session.refused` record in the security trail, and is counted in `permguard_host_peer_sessions_total`.
-  No operation uses a session yet: memberships and their tasks come later, and a task message on an established session answers `not_served_yet`.
+  The operations are `enroll` and `membership`, which carry one request whose digest the `hello` names and both proofs sign, and `task`; a task message on an established session answers `not_served_yet`.
+  A peer no pin names may open only an `enroll` session; a membership pins its peer for every other one.
 
 - **Secrets are witnessed, and zone keys are derived per zone, purpose and scope.**
   Every root a Host resolves is at least 32 bytes and is witnessed per reference and version in `host/state/witness/<reference>/<version>`, and per role and version in `host/state/witness/by-role/<role>/<version>`: other material under a version already seen refuses the start, whichever reference names it, and a new key takes a new version.
@@ -122,6 +123,31 @@ is cut.
   `permguard_host::keys::bundle::verify` checks a bundle offline from the identity's first fingerprint, the one `permguard host identity provision` printed: every ring must be bound at its frontier epoch by the current identity key, so a superseded identity key vouches for nothing; a key, a binding or a revocation outside the frontier is refused.
   Each ring now keeps every binding it issues in `host/keys/<ring>/bindings/<seq>.cose`, by its journal entry; a binding from before this version is issued again at the next start.
   A Host without `operations.keys` has nothing to sign the manifest, and answers `503`.
+
+- **Memberships between Hosts: `host/members/` on the volume.**
+  A coordinator invites a Host with `POST /host/v1/members/invites` under the new operation `membership.admin`: the answer carries a 256-bit token once, and the coordinator keeps only the public key of an Ed25519 pair the token derives, so nothing it holds or lists can enroll in the member's place (`GET /host/v1/members/invites` lists invitations by id; `DELETE …/{id}?request_id=` revokes one; a retried create answers `409 invite_token_shown`).
+  An invitation offers a selector and tasks, expires within 7 days (24 hours by default), is used once, and may name the one Host it expects (`expected_fingerprint`) and the least profile it accepts (`min_assurance`).
+  The member joins with `POST /host/v1/memberships/join`: its server opens a peer session to the coordinator's Host listener, presenting its own `admin.tls` certificate and verifying the coordinator against `admin.tls.client_ca`, and signs the token proof there, bound to that TLS connection; without `admin.tls.client_ca` a join answers `503 peer_client_unconfigured`.
+  The listener's certificate is then a client certificate too: one whose extended key usage names `serverAuth` alone is refused by the coordinator; give it `clientAuth` as well.
+  The membership is `pending` on both sides; the coordinator approves it (`POST /host/v1/members/{id}/approve`, narrowing the request when it wants, never widening it: `membership_widened`), rejects, suspends, resumes, fences or revokes it in two steps, each a security mutation answering the signed manifest of a new epoch.
+  The manifest is a COSE_Sign1 `permguard.membership.manifest.v1` under the coordinator's `host.operations` key: the two Hosts pinned by their first fingerprints, the tasks with their limits, the lease policy, the rings each side signs with and the digest of the manifest before it.
+  The member fetches its manifests with `POST /host/v1/memberships/{id}/sync` and accepts each only as the exact successor of the one it holds, a transition the table allows, no wider than it asked and not past its `not_after`; two manifests of one epoch are `manifest_equivocation`.
+  A membership pins its peer for every session only while active; pending or suspended, only to read its manifests; once ended, it lets its member read the manifest that ended it.
+  `GET /host/v1/members?status=` and `GET …/{id}` list both roles under the new operation `membership.read`; `POST /host/v1/members/enroll` answers `503`, since an enrollment runs only inside a peer session.
+  A task that names assurance requirements is refused at approval (`assurance_unavailable`), and so is a task no Plane of the coordinator acts in (`task_unserved`): no Plane declares its task handlers yet.
+  Every change is a `host.membership.*` record in the security trail; the records are canonical CBOR (`contracts/cbor/membership.json`), and the gRPC side is `permguard.host.v1.MembershipService`.
+
+- **An identity reset: `POST /host/v1/identity/reset/plan` and `…/reset/run`.**
+  Under `identity.admin`, a reset retires the Host identity for a new `host_id`; it is never a rename.
+  The run first asks each coordinator to revoke the memberships this Host is a member of and keeps the revoked manifests as receipts; a `normal` reset that does not reach them all answers `409 identity_reset_incomplete` naming them and changes nothing, an `emergency` one marks those memberships `orphaned` and names their coordinators in `orphaned[]`.
+  The memberships it coordinates are ended here and its invitations revoked, then the identity and the key rings are retired: they sign nothing more, their public records are kept in `host/identity/retired/<old host_id>/` and `host/keys/retired/<old host_id>/<ring>/`, their private keys are destroyed, and a new identity is provisioned under the same custody; each ring starts from a new key at the next start, so verifiers pin the Host and its rings again.
+  A pending membership the member asks to revoke is rejected by its coordinator, and that rejection is the receipt.
+  The process then reports `degraded: identity` and serves the new identity once restarted; a deployment pinning `host.identity.witness` sets the new witness the run answers.
+  `permguard host identity reset plan --out <file>` and `reset run --confirm-file <file>` do the emergency reset offline, with no coordinator reached; an interrupted reset refuses the start until `reset run`, with no plan, completes it.
+
+- **A verification bundle carries the members a Host coordinates.**
+  A bundle for a resource an active membership's task covers also carries its member: the manifest, the member's identity as its enrollment session proved it and the ring statements the manifest pins (`peer` items, listed by one `peers` item whose count and digest the frontier names, at most 8192 memberships per bundle).
+  `permguard_host::keys::bundle::verify` walks from the coordinator's pin to the member's keys, so one bundle verifies both Hosts' signatures.
 
 ### Changed
 

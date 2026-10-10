@@ -26,7 +26,9 @@ pub mod config;
 pub mod grants;
 pub mod identity;
 pub mod keys;
+pub mod members;
 pub mod replay;
+pub mod reset;
 pub mod sessions;
 pub mod status;
 
@@ -215,6 +217,8 @@ pub struct Composition {
     pub time: Arc<crate::time::TimeGuard>,
     /// Peer Host sessions on the listener (WP-2.3).
     pub peer_sessions: sessions::PeerSessions,
+    /// The memberships (WP-4.1); without them the membership routes are `unavailable`.
+    pub memberships: Option<Arc<members::MembershipService>>,
 }
 
 /// The Host API facade: one instance per process, shared by both transports.
@@ -232,6 +236,7 @@ pub struct HostApi {
     identity: Option<Arc<crate::identity::Identity>>,
     time: Arc<crate::time::TimeGuard>,
     peer_sessions: sessions::PeerSessions,
+    memberships: Option<Arc<members::MembershipService>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -260,6 +265,7 @@ impl HostApi {
             identity: composition.identity,
             time: composition.time,
             peer_sessions: composition.peer_sessions,
+            memberships: composition.memberships,
         }
     }
 
@@ -610,6 +616,17 @@ pub(crate) mod testing {
                     .expect("the identity")
                     .1,
             ));
+        // A reset provisions the next identity in the same `keys/`, under the file provider.
+        let keys = crate::identity::directories(&volume)
+            .expect("the identity")
+            .1
+            .path()
+            .to_path_buf();
+        let provisioner: crate::identity::reset::Provisioner = Arc::new(move |_| {
+            Ok(Arc::new(crate::keys::FileKeyProvider::new(
+                crate::storage::Dir::open(&keys)?,
+            )) as Arc<dyn crate::keys::KeyProvider>)
+        });
         let identity = Arc::new(
             if crate::identity::is_provisioned(&volume).expect("read") {
                 crate::identity::Identity::open(&volume, provider)
@@ -622,7 +639,8 @@ pub(crate) mod testing {
                     crate::authz::store::now() * 1000,
                 )
             }
-            .expect("the identity opens"),
+            .expect("the identity opens")
+            .with_provisioner(provisioner),
         );
         mutations
             .recover(&crate::identity::Identities(&identity))
@@ -655,6 +673,10 @@ pub(crate) mod testing {
         mutations
             .recover(&registry)
             .expect("the key mutations recover");
+        let memberships = crate::membership::Store::open(&volume).expect("the memberships open");
+        mutations
+            .recover(&crate::membership::Memberships(&memberships))
+            .expect("the membership mutations recover");
         let admin = Principal::new(ADMIN).expect("a principal");
         if !store
             .records()
@@ -712,6 +734,15 @@ pub(crate) mod testing {
             identity: Some(identity),
             time,
             peer_sessions: sessions::PeerSessions::none(),
+            memberships: Some(Arc::new(members::MembershipService {
+                store: memberships,
+                // The coordinator's Planes consume shipped decisions (WP-4.4 registers them).
+                capabilities: crate::membership::Capabilities::default().declare(
+                    crate::membership::record::TaskType::DecisionsShip,
+                    crate::membership::record::Role::Coordinator,
+                ),
+                connector: None,
+            })),
         });
         (api, store, volume)
     }

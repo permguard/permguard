@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 15] = [
+const REGISTRIES: [&str; 16] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -46,6 +46,7 @@ const REGISTRIES: [&str; 15] = [
     "keys-bundle.json",
     "layout.json",
     "manifest.json",
+    "membership.json",
     "mutation.json",
     "notp.json",
     "objects.json",
@@ -760,7 +761,9 @@ fn identity_samples() -> Vec<Sample> {
 }
 
 fn keys_bundle_samples() -> Vec<Sample> {
-    use permguard_host::keys::bundle::{Frontier, Item, Manifest, RingFrontier};
+    use permguard_host::keys::bundle::{
+        Frontier, Item, Manifest, PeerFrontier, PeerSet, RingFrontier,
+    };
     use permguard_host::keys::record::State;
 
     let kid = "data.attest:FtIu-VbGrfe_KB6CH7GNwODB72MNxj_ml11dEvO-7kk";
@@ -782,6 +785,15 @@ fn keys_bundle_samples() -> Vec<Sample> {
                 key_set_digest: [8; 32],
             },
         ],
+        peers: None,
+    };
+    let with_peers = Frontier {
+        peers: Some(PeerSet {
+            seq: 4,
+            count: 1,
+            digest: [7; 32],
+        }),
+        ..frontier.clone()
     };
     let revocation = |compromised_at| Item::Revocation {
         ring: "data.attest".to_owned(),
@@ -843,9 +855,54 @@ fn keys_bundle_samples() -> Vec<Sample> {
             items(),
         ),
         sample(
+            "peer_item",
+            Item::Peer {
+                manifest: vec![0x84],
+                presentation: vec![0xA0],
+                statements: vec![permguard_host::membership::record::RingStatement {
+                    ring: "data.attest".to_owned(),
+                    epoch: 1,
+                    suite: permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+                    keys: vec!["{}".to_owned()],
+                    binding: vec![0x84],
+                }],
+                coordinator: vec![permguard_host::membership::record::RingStatement {
+                    ring: "host.operations".to_owned(),
+                    epoch: 1,
+                    suite: permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+                    keys: vec!["{}".to_owned()],
+                    binding: vec![0x84],
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
+            "peers_item",
+            Item::Peers {
+                entries: vec![PeerFrontier {
+                    membership_id: ZONE_ID,
+                    epoch: 2,
+                    manifest_digest: [7; 32],
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            items(),
+        ),
+        sample(
             "frontier",
             frontier.encode().expect("encodes"),
             &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Frontier::decode(bytes)))),
+        ),
+        sample(
+            "frontier",
+            with_peers.encode().expect("encodes"),
+            &["frontier.peers"],
             Some(Box::new(|bytes: &[u8]| verdict(Frontier::decode(bytes)))),
         ),
         sample(
@@ -862,6 +919,229 @@ fn keys_bundle_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))),
+        ),
+    ]
+}
+
+fn membership_samples() -> Vec<Sample> {
+    use permguard_core::assurance::AssuranceProfile;
+    use permguard_core::authz::Selector;
+    use permguard_host::membership::record::{
+        Action, EnrollAnswer, EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Limits,
+        Manifest, MembershipAnswer, MembershipRequest, Pending, RingPin, RingStatement, Role,
+        Status, Task, TaskType, chain,
+    };
+    use permguard_objects::crypto::suite::Suite;
+    use permguard_objects::digest::Digest;
+
+    let host = |id: [u8; 16]| HostRef {
+        host_id: id,
+        epoch: 1,
+        fingerprint: format!("sha256:{}", "ab".repeat(32)),
+    };
+    let task = Task {
+        task_id: "decisions".to_owned(),
+        task_type: TaskType::DecisionsShip,
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        resource_types: vec!["decision".to_owned()],
+        required: true,
+        limits: Limits {
+            max_body_bytes: 1024,
+            max_concurrency: 2,
+            max_rate_per_minute: 60,
+            max_batch_records: 10,
+            retention_seconds: 3600,
+        },
+        assurance_requirements: Vec::new(),
+    };
+    let statement = RingStatement {
+        ring: "data.attest".to_owned(),
+        epoch: 1,
+        suite: Suite::Ed25519Sha256V1,
+        keys: vec!["{}".to_owned()],
+        binding: vec![0x84],
+    };
+    let manifest = |epoch: u64| Manifest {
+        membership_id: SCOPE_ID,
+        coordinator: host(HOST_ID),
+        member: host(ZONE_ID),
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![task.clone()],
+        member_assurance: AssuranceProfile::Production,
+        min_assurance: (epoch > 1).then_some(AssuranceProfile::Development),
+        ring_pins: vec![RingPin {
+            owner: Role::Member,
+            ring: "data.attest".to_owned(),
+            epoch: 1,
+            key_set_digest: [9; 32],
+            binding: vec![0x84],
+        }],
+        epoch,
+        lease_policy: LeasePolicy {
+            max_session_seconds: 3600,
+            offline_grace_seconds: 600,
+            clock_skew_seconds: 30,
+            dormant_after_seconds: 86_400,
+            revoke_after_seconds: 172_800,
+        },
+        previous: (epoch > 1).then(|| Digest::compute(b"genesis")),
+        issued_at: 1_800_000_000,
+        not_after: 1_831_536_000,
+        status: Status::Active,
+    };
+    let invitation = |optional: bool| Invitation {
+        invite_id: SCOPE_ID,
+        token_key: [2; 32],
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![task.clone()],
+        expires: 1_800_086_400,
+        expected_fingerprint: optional.then(|| format!("sha256:{}", "cd".repeat(32))),
+        min_assurance: optional.then_some(AssuranceProfile::Production),
+        max_uses: 1,
+        created_at: 1_800_000_000,
+        created_by: "spiffe://acme/operators/root".to_owned(),
+    };
+    let pending = |optional: bool| Pending {
+        membership_id: SCOPE_ID,
+        invite_id: SCOPE_ID,
+        coordinator: host(HOST_ID),
+        member: host(ZONE_ID),
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![task.clone()],
+        member_assurance: AssuranceProfile::Production,
+        ring_statements: vec![statement.clone()],
+        requested_at: 1_800_000_000,
+        coordinator_address: optional.then(|| "https://coordinator:7443".to_owned()),
+        identity: optional.then(|| vec![0xA0]),
+    };
+    let entry = |optional: bool| Entry {
+        seq: 2,
+        kind: Kind::Manifest,
+        subject: SCOPE_ID,
+        epoch: optional.then_some(1),
+        at: 1_800_000_000,
+        operation_id: optional.then_some([5; 16]),
+        previous: chain(None),
+        detail: optional.then(|| vec![0x84]),
+        statements: if optional {
+            vec![statement.clone()]
+        } else {
+            Vec::new()
+        },
+    };
+    let request = |held: Option<u64>| MembershipRequest {
+        action: Action::Fetch,
+        membership_id: SCOPE_ID,
+        held_epoch: held,
+    };
+    let decoder =
+        |decode: fn(&[u8]) -> Result<(), String>| -> Option<Decoder> { Some(Box::new(decode)) };
+    vec![
+        sample(
+            "manifest",
+            manifest(1).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(Manifest::decode(bytes))),
+        ),
+        sample(
+            "manifest",
+            manifest(2).encode().expect("encodes"),
+            &["manifest.min_assurance", "manifest.previous"],
+            decoder(|bytes| verdict(Manifest::decode(bytes))),
+        ),
+        sample(
+            "invitation",
+            invitation(true).encode().expect("encodes"),
+            &[
+                "invitation.expected_fingerprint",
+                "invitation.min_assurance",
+            ],
+            decoder(|bytes| verdict(Invitation::decode(bytes))),
+        ),
+        sample(
+            "invitation",
+            invitation(false).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(Invitation::decode(bytes))),
+        ),
+        sample(
+            "enroll_request",
+            EnrollRequest {
+                invite_id: SCOPE_ID,
+                token_proof: [1; 64],
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+                tasks: vec![task.clone()],
+                member: host(ZONE_ID),
+                ring_statements: vec![statement.clone()],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(EnrollRequest::decode(bytes))),
+        ),
+        sample(
+            "pending",
+            pending(true).encode().expect("encodes"),
+            &["pending.coordinator_address", "pending.identity"],
+            decoder(|bytes| verdict(Pending::decode(bytes))),
+        ),
+        sample(
+            "pending",
+            pending(false).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(Pending::decode(bytes))),
+        ),
+        sample(
+            "enroll_answer",
+            EnrollAnswer {
+                membership_id: SCOPE_ID,
+                status: Status::Pending,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(EnrollAnswer::decode(bytes))),
+        ),
+        sample(
+            "membership_request",
+            request(Some(1)).encode().expect("encodes"),
+            &["membership_request.held_epoch"],
+            decoder(|bytes| verdict(MembershipRequest::decode(bytes))),
+        ),
+        sample(
+            "membership_request",
+            request(None).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(MembershipRequest::decode(bytes))),
+        ),
+        sample(
+            "membership_answer",
+            MembershipAnswer {
+                status: Status::Active,
+                manifests: vec![vec![0x84]],
+                ring_statements: vec![statement.clone()],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(MembershipAnswer::decode(bytes))),
+        ),
+        sample(
+            "journal_entry",
+            entry(true).encode().expect("encodes"),
+            &[
+                "journal_entry.epoch",
+                "journal_entry.operation_id",
+                "journal_entry.detail",
+                "journal_entry.statements",
+            ],
+            decoder(|bytes| verdict(Entry::decode(bytes))),
+        ),
+        sample(
+            "journal_entry",
+            entry(false).encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(Entry::decode(bytes))),
         ),
     ]
 }
@@ -1006,11 +1286,15 @@ fn session_samples() -> Vec<Sample> {
         operation: Operation::Enroll,
         membership_id: None,
         task: None,
+        request_digest: Some(permguard_host::membership::record::request_digest(
+            b"request",
+        )),
     };
     let scoped = Hello {
         operation: Operation::Task,
         membership_id: Some("m-1".to_owned()),
         task: Some("replicate".to_owned()),
+        request_digest: None,
         ..hello.clone()
     };
     let transcript = Transcript {
@@ -1028,12 +1312,16 @@ fn session_samples() -> Vec<Sample> {
         hello_digest: hello_digest(b"hello"),
         challenge_digest: challenge_digest(b"challenge"),
         signer: Role::Initiator,
+        request_digest: Some(permguard_host::membership::record::request_digest(
+            b"request",
+        )),
     };
     let scoped_transcript = Transcript {
         membership_id: Some("m-1".to_owned()),
         task: Some("replicate".to_owned()),
         operation: Operation::Task,
         signer: Role::Responder,
+        request_digest: None,
         ..transcript.clone()
     };
     let hellos =
@@ -1055,7 +1343,12 @@ fn session_samples() -> Vec<Sample> {
                 verdict(Presentation::decode(bytes))
             })),
         ),
-        sample("hello", hello.encode().expect("encodes"), &[], hellos()),
+        sample(
+            "hello",
+            hello.encode().expect("encodes"),
+            &["hello.request_digest"],
+            hellos(),
+        ),
         sample(
             "hello",
             scoped.encode().expect("encodes"),
@@ -1079,7 +1372,7 @@ fn session_samples() -> Vec<Sample> {
         sample(
             "transcript",
             transcript.encode().expect("encodes"),
-            &[],
+            &["transcript.request_digest"],
             transcripts(),
         ),
         sample(
@@ -1601,6 +1894,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "session.json" => session_samples(),
         "keys.json" => keys_samples(),
         "keys-bundle.json" => keys_bundle_samples(),
+        "membership.json" => membership_samples(),
         other => panic!("{other} has no samples: wire it into `samples`"),
     }
 }
@@ -2130,6 +2424,16 @@ fn test_key_ring_records_match_their_registry() {
 #[test]
 fn test_key_ring_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("keys.json");
+}
+
+#[test]
+fn test_membership_records_match_their_registry() {
+    assert_samples_match("membership.json");
+}
+
+#[test]
+fn test_membership_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("membership.json");
 }
 
 #[test]

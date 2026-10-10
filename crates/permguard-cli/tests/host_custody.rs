@@ -196,3 +196,152 @@ fn the_identity_is_provisioned_opened_and_rotated_sealed_under_the_servers_custo
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The offline emergency reset (WP-4.1): planned to a file, run against it, a new identity under
+/// the same custody; the plan confirms one state of the volume and no other.
+#[test]
+fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_custody() {
+    const KEK: &str = "0123456789abcdef0123456789abcdef";
+    let dir = scratch("reset");
+    let volume = dir.join("volume");
+    let config = dir.join("server.yml");
+    std::fs::write(
+        &config,
+        "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    \
+         env_prefix: KEKCLI\n  keys:\n    custody: file\n    kek_ref: host-kek\n",
+    )
+    .expect("the configuration writes");
+    let volume_arg = volume.to_str().expect("utf-8");
+    let config_arg = config.to_str().expect("utf-8");
+    let plan = dir.join("reset.plan");
+    let plan_arg = plan.to_str().expect("utf-8");
+    let host = |args: &[&str]| {
+        let mut all = vec!["-o", "json", "host", "identity"];
+        all.extend_from_slice(args);
+        all.extend_from_slice(&["--volume", volume_arg, "--server-config", config_arg]);
+        run(&dir, KEK, &all)
+    };
+
+    let provisioned = json(&host(&["provision"]));
+    let planned = json(&host(&[
+        "reset", "plan", "--reason", "a drill", "--out", plan_arg,
+    ]));
+    assert_eq!(planned["host_id"], provisioned["host_id"]);
+    assert_eq!(planned["mode"], "emergency");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&plan)
+            .expect("written")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "the plan is its owner's alone");
+    }
+    // A second plan does not overwrite the first.
+    assert!(
+        !host(&["reset", "plan", "--reason", "again", "--out", plan_arg])
+            .status
+            .success()
+    );
+
+    // An edited plan is refused.
+    let edited = dir.join("edited.plan");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&plan).expect("the plan")).expect("JSON");
+    value["reason"] = serde_json::json!("another reason");
+    std::fs::write(&edited, serde_json::to_vec(&value).expect("JSON")).expect("written");
+    let refused = host(&[
+        "reset",
+        "run",
+        "--confirm-file",
+        edited.to_str().expect("utf-8"),
+    ]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("edited"), "{}", stderr(&refused));
+
+    let reset = json(&host(&["reset", "run", "--confirm-file", plan_arg]));
+    assert_eq!(reset["old_host_id"], provisioned["host_id"]);
+    assert_ne!(reset["host_id"], provisioned["host_id"]);
+    assert_ne!(reset["witness"], provisioned["witness"]);
+    let shown = json(&host(&["show"]));
+    assert_eq!(shown["host_id"], reset["host_id"]);
+    assert_eq!(shown["epoch"], 1);
+    let key = std::fs::read(volume.join("host/identity/keys/1.key")).expect("the new key");
+    assert_ne!(key.first(), Some(&0x30), "the new key is sealed too");
+    let retired = volume.join(format!(
+        "host/identity/retired/{}",
+        provisioned["host_id"].as_str().expect("a host id")
+    ));
+    for kept in ["INIT", "identity.cose", "RESET", "keys-1.pub"] {
+        assert!(retired.join(kept).is_file(), "{kept}");
+    }
+
+    // The plan named the identity that is gone: it confirms nothing now.
+    let stale = host(&["reset", "run", "--confirm-file", plan_arg]);
+    assert!(!stale.status.success());
+    assert!(
+        stderr(&stale).contains("changed since the plan"),
+        "{}",
+        stderr(&stale)
+    );
+}
+
+/// A reset a crash interrupted after its marker (WP-4.1): the identity refuses to open, and
+/// `reset run`, with no plan, completes it.
+#[test]
+fn an_interrupted_reset_is_completed_by_reset_run_without_a_plan() {
+    const KEK: &str = "0123456789abcdef0123456789abcdef";
+    let dir = scratch("resume");
+    let volume = dir.join("volume");
+    let config = dir.join("server.yml");
+    std::fs::write(
+        &config,
+        "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    \
+         env_prefix: KEKCLI\n  keys:\n    custody: file\n    kek_ref: host-kek\n",
+    )
+    .expect("the configuration writes");
+    let volume_arg = volume.to_str().expect("utf-8");
+    let config_arg = config.to_str().expect("utf-8");
+    let host = |args: &[&str]| {
+        let mut all = vec!["-o", "json", "host", "identity"];
+        all.extend_from_slice(args);
+        all.extend_from_slice(&["--volume", volume_arg, "--server-config", config_arg]);
+        run(&dir, KEK, &all)
+    };
+    let provisioned = json(&host(&["provision"]));
+    let old = provisioned["host_id"]
+        .as_str()
+        .expect("a host id")
+        .to_owned();
+
+    // What a reset leaves when it stops after its marker: the evidence kept, the marker written.
+    let identity = volume.join("host/identity");
+    let retired = identity.join(format!("retired/{old}"));
+    std::fs::create_dir_all(&retired).expect("created");
+    std::fs::copy(identity.join("INIT"), retired.join("INIT")).expect("kept");
+    std::fs::write(retired.join("RESET"), [0xA0]).expect("recorded");
+    let raw: Vec<u8> = (0..16)
+        .map(|at| {
+            let hex = old.replace('-', "");
+            u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).expect("hex")
+        })
+        .collect();
+    std::fs::write(identity.join("RESETTING"), raw).expect("marked");
+
+    let refused = host(&["show"]);
+    assert!(!refused.status.success());
+    assert!(
+        stderr(&refused).contains("reset run"),
+        "{}",
+        stderr(&refused)
+    );
+    // No plan is needed to complete it.
+    let resumed = json(&host(&["reset", "run"]));
+    assert_eq!(resumed["old_host_id"], old.as_str());
+    assert_ne!(resumed["host_id"], old.as_str());
+    let shown = json(&host(&["show"]));
+    assert_eq!(shown["host_id"], resumed["host_id"]);
+    assert!(!identity.join("RESETTING").exists(), "the marker is gone");
+    // And with nothing under way, a run without a plan is a usage error.
+    assert!(!host(&["reset", "run"]).status.success());
+}
