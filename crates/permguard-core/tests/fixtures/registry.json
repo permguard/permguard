@@ -28,6 +28,7 @@
     "assurance.RELAX_GRPC_TRANSPORT_PARITY_PARTIAL": "grpc.transport_parity_partial",
     "assurance.RELAX_SCHEMA_REGO_INPUT_ABSENT": "schema.rego_input_absent",
     "assurance.RELAX_TLS_1_2_COMPAT": "tls.1_2_compat",
+    "assurance.RELAX_TLS_TERMINATED_UPSTREAM": "tls.terminated_upstream",
     "assurance.RUNTIME_EXPERIMENTAL_FORBIDDEN": "runtime.experimental_forbidden",
     "assurance.RUNTIME_EXPERIMENTAL_GATED": "runtime.experimental_gated",
     "assurance.SCHEMA_PARTITION": "schema.partition",

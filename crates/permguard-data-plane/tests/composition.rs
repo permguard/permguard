@@ -279,3 +279,57 @@ fn the_data_plane_cannot_declare_what_only_the_host_identity_signs() {
         .register(permguard_data_plane::module().declaration(&config(&[])))
         .expect("the data plane declares nothing reserved");
 }
+
+/// WP-2.11: the composed binary, under the default `production` profile, refuses a public listener
+/// serving in the clear on every interface before it binds anything, naming the listener and the
+/// two ways out.
+#[test]
+fn the_composed_binary_refuses_a_public_listener_in_the_clear_beyond_loopback() {
+    let dir = std::env::temp_dir().join(format!(
+        "permguard-data-plane-clear-listener-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("the scratch directory is created");
+    let config = dir.join("config.yml");
+    std::fs::write(
+        &config,
+        format!(
+            "working_dir: {}\ndataPlane:\n  public:\n    http:\n      addr: 0.0.0.0:0\n",
+            dir.display()
+        ),
+    )
+    .expect("the configuration is written");
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_permguard-data-plane"));
+    for (variable, _) in std::env::vars_os() {
+        if variable.to_string_lossy().starts_with("PERMGUARD_") {
+            command.env_remove(variable);
+        }
+    }
+    let mut child = command
+        .arg(&config)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary runs");
+    // A process that did not refuse would serve until stopped: bounded, then failed.
+    let started = std::time::Instant::now();
+    while child.try_wait().expect("waitable").is_none() {
+        if started.elapsed() > std::time::Duration::from_secs(30) {
+            let _ = child.kill();
+            panic!("the binary started serving a public listener in the clear");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().expect("its output");
+    assert!(!output.status.success(), "{output:?}");
+    let text = String::from_utf8_lossy(&output.stderr).into_owned()
+        + String::from_utf8_lossy(&output.stdout).as_ref();
+    assert!(text.contains("the data-http listener"), "{text}");
+    assert!(
+        text.contains(permguard_core::domains::assurance::RELAX_TLS_TERMINATED_UPSTREAM),
+        "{text}"
+    );
+    assert!(!text.contains("panicked"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

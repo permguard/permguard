@@ -293,3 +293,24 @@ the setting.
 {{- end }}
 {{- end }}
 {{- end }}
+
+
+{{- /*
+A public listener secured by nothing (WP-2.11).
+
+Outside `developmentMode` a Plane public listener beyond loopback serves TLS, or the deployment says
+an ingress or a mesh sidecar terminates TLS in front of it; the process refuses anything else from
+the `production` profile up. Said here, at render, rather than as a pod that never becomes ready.
+*/ -}}
+{{- if not .Values.developmentMode }}
+{{- range $component, $plane := dict "controlPlane" .Values.controlPlane "dataPlane" .Values.dataPlane "allInOne" .Values.allInOne }}
+{{- if $plane.enabled }}
+{{- if and $plane.tls.secretName $plane.tls.terminatedUpstream }}
+{{- fail (printf "%s.tls names a Secret to serve TLS with and says TLS is terminated upstream: state one of them." $component) }}
+{{- end }}
+{{- if not (or $plane.tls.secretName $plane.tls.terminatedUpstream) }}
+{{- fail (printf "%s serves its public listener on every interface and %s.tls states neither a Secret (%s.tls.secretName, a kubernetes.io/tls Secret) nor that an ingress or a mesh sidecar terminates TLS in front of it (%s.tls.terminatedUpstream=true): outside developmentMode the process refuses a public listener in the clear." $component $component $component $component) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

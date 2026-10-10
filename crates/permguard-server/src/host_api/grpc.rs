@@ -603,6 +603,17 @@ impl OperationsService for Served {
                 served: status.peer_sessions.served,
                 reason: status.peer_sessions.reason,
             }),
+            listeners: status
+                .listeners
+                .into_iter()
+                .map(|listener| v1::HostListener {
+                    name: listener.name,
+                    class: listener.class,
+                    authentication: listener.authentication,
+                    client_allow: listener.client_allow,
+                    tls_min_version: listener.tls_min_version,
+                })
+                .collect(),
         }))
     }
 

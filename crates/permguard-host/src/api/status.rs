@@ -101,6 +101,36 @@ pub struct StatusView {
     pub assurance: Assurance,
     /// Whether the listener serves peer Host sessions (WP-2.3).
     pub peer_sessions: super::sessions::PeerSessionsView,
+    /// Every listener of the process, sorted by name, and what it demands of its clients
+    /// (WP-2.11).
+    pub listeners: Vec<ListenerView>,
+}
+
+/// One listener of the process (WP-2.11): never its address, certificate or peers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListenerView {
+    pub name: String,
+    /// `host`, `plane_public` or `telemetry`.
+    pub class: String,
+    /// `none`, `tls`, `mutual_tls` or `upstream_tls`.
+    pub authentication: String,
+    pub client_allow: bool,
+    /// `1.2` or `1.3` when the process serves TLS on it; present even when null, as every member
+    /// of the status document is.
+    #[serde(default)]
+    pub tls_min_version: Option<String>,
+}
+
+impl From<&permguard_core::ListenerReport> for ListenerView {
+    fn from(report: &permguard_core::ListenerReport) -> Self {
+        Self {
+            name: report.name.clone(),
+            class: report.class.as_str().to_owned(),
+            authentication: report.authentication.as_str().to_owned(),
+            client_allow: report.client_allow,
+            tls_min_version: report.tls_min_version.map(ToOwned::to_owned),
+        }
+    }
 }
 
 impl HostApi {
@@ -121,6 +151,7 @@ impl HostApi {
             components: report.components.into_iter().map(Into::into).collect(),
             assurance: self.assurance.clone(),
             peer_sessions: self.peer_sessions(),
+            listeners: self.listeners.iter().map(Into::into).collect(),
         }
     }
 }
@@ -144,6 +175,17 @@ mod tests {
                 served: false,
                 reason: Some("no_listener".to_owned())
             }
+        );
+        // WP-2.11: every listener the composition names, as it names it.
+        assert_eq!(
+            status.listeners,
+            vec![ListenerView {
+                name: "host-api".to_owned(),
+                class: "host".to_owned(),
+                authentication: "mutual_tls".to_owned(),
+                client_allow: true,
+                tls_min_version: Some("1.3".to_owned()),
+            }]
         );
         assert!(status.components.iter().any(|c| c.component == HOST));
         assert_eq!(status.state, status.components[0].state);

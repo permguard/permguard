@@ -258,6 +258,7 @@ pub mod assurance {
     pub const RELAX_GRPC_TRANSPORT_PARITY_PARTIAL: &str = "grpc.transport_parity_partial";
     pub const RELAX_TLS_1_2_COMPAT: &str = "tls.1_2_compat";
     pub const RELAX_CUSTODY_PLAINTEXT: &str = "custody.plaintext";
+    pub const RELAX_TLS_TERMINATED_UPSTREAM: &str = "tls.terminated_upstream";
 }
 
 /// Format labels of files the Host writes, bound into their associated data.
@@ -586,6 +587,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         (
             "assurance.RELAX_CUSTODY_PLAINTEXT",
             assurance::RELAX_CUSTODY_PLAINTEXT,
+        ),
+        (
+            "assurance.RELAX_TLS_TERMINATED_UPSTREAM",
+            assurance::RELAX_TLS_TERMINATED_UPSTREAM,
         ),
         ("format.SEALED_KEY_V1", format::SEALED_KEY_V1),
         ("format.AUTHZ_SNAPSHOT_V1", format::AUTHZ_SNAPSHOT_V1),

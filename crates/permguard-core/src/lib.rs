@@ -38,6 +38,7 @@ pub mod identity;
 pub mod keys;
 pub mod lifecycle;
 pub mod limits;
+pub mod listener;
 pub mod logging;
 pub mod metrics;
 pub mod mirrors;
@@ -73,6 +74,7 @@ pub use keys::{
     Signature, SigningRing,
 };
 pub use limits::{Limits, PeerBlock};
+pub use listener::{ListenerAuthentication, ListenerClass, ListenerReport};
 pub use logging::{LogFormat, LogLevel};
 pub use metrics::{Aggregate, Kind, Label, Metric, Metrics, Reading, Recorder, Sample};
 pub use peer::{

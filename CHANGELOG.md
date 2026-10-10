@@ -173,7 +173,32 @@ is cut.
   A held membership shows `held_epoch` in `GET /host/v1/members/{id}`.
   `GET /host/v1/members/{id}/sessions` (gRPC `ListMemberSessions`) lists the open sessions with both boot ids; `POST /host/v1/tasks/{task}/session` answers `503`, the task session running on the PeerChannel only.
 
+- **Every listener says what it demands of its clients: `listeners[]`.**
+  `/.well-known/server-configuration` and `GET /host/v1/status` (gRPC `GetStatus`) list each listener of the process, sorted by name: `name` (`host-api`, `telemetry`, `control-http`, `data-grpc`, `control-http-grpc` for one listener serving both), `class` (`host`, `plane_public`, `telemetry`), `authentication` (`none`, `tls`, `mutual_tls`, `upstream_tls`), `client_allow` and `tls_min_version`.
+  No address, certificate or peer is named.
+
+- **The TLS suites are named, not inherited.**
+  Every listener and the peer client negotiate only TLS 1.3 AES-256-GCM, AES-128-GCM and CHACHA20-POLY1305, TLS 1.2 ECDHE with AES-GCM or CHACHA20-POLY1305 where a `min_version: "1.2"` allows it, and the X25519, P-256 and P-384 groups: the set offered today, which a library upgrade can no longer widen.
+
+- **The peer client checks the coordinator's certificate against `admin.tls.crl`.**
+  A member reaching its coordinators applies the Host listener's revocation list as the listener does (the end entity only, a list past its `nextUpdate` refusing), and reads its certificate, key, authorities and list again for every connection: a renewed certificate or a new list applies to the next session without a restart.
+  Material the member cannot read is answered as its own `peer_client_unconfigured`, never as the coordinator's refusal.
+
 ### Changed
+
+- **From `production`, a Plane public listener serves TLS beyond loopback, or says who does: `tls.terminated_upstream`.**
+  A Plane public listener (`public.*` or a Plane's `public.http`/`public.grpc`) serving in the clear on a bind that is not loopback no longer starts under `production` or `regulated`.
+  Serve TLS (`tls.cert` and `tls.key`), or, behind an ingress or a mesh sidecar that terminates TLS, declare `tls.terminated_upstream: true` on the endpoint or `public.tls.terminated_upstream` for the process (`PERMGUARD_<PLANE>_<HTTP|GRPC>_TLS_TERMINATED_UPSTREAM`, `PERMGUARD_PUBLIC_TLS_TERMINATED_UPSTREAM`).
+  The declaration is the relaxation `tls.terminated_upstream`, published in `assurance.relaxations[]` and refused under `regulated`; beside TLS the process serves itself it is refused; the Host listener refuses it outright, a peer session signing its own connection.
+  The shipped templates now serve TLS on the public listeners, with the declaration as a commented alternative; `development` and loopback binds are unchanged.
+
+- **The Helm chart states how each public listener is secured: `<component>.tls`.**
+  `controlPlane.tls`, `dataPlane.tls` and `allInOne.tls` take a `secretName` (a `kubernetes.io/tls` Secret, mounted at `/etc/permguard-tls`, served on HTTP and gRPC, the published URLs then `https`) or `terminatedUpstream: true` (the declaration above).
+  Outside `developmentMode`, `helm template` and `helm install` refuse a values file that states neither, or both; `values-production.yaml` names example Secrets.
+  A data plane the chart points at a control plane serving TLS verifies it with its own Secret's `ca.crt`.
+
+- **From `production`, the telemetry listener on a public IP serves TLS.**
+  `host.addr` naming a public IP literal without `host.tls.cert` no longer starts under `production` or `regulated`; a wildcard (`0.0.0.0`, `[::]`), a private, link-local or loopback address, or a host name, starts as before with its startup report.
 
 - **`keys export --directory` reads a ring on the volume: `<volume>/host/keys/<ring>`.**
   The offline export answered that the build could not export a ring; it now reads the ring's journal on a stopped volume and prints its epoch, its key-set digest, `keys` (the JWKS of the published set the digest covers), `retained` (every other key it ever published, with its state) and `revoked` (the revocations); never a private key, and never a revoked key among `keys`.
@@ -316,6 +341,7 @@ is cut.
 
 ### Fixed
 
+- `admin.tls.allow` is refused whenever the file states it; the check used to run only when `realms_from` was set.
 - An object is never overwritten (H-06).
   The Control Plane's object store, a Data Plane mirror and a CLI workspace publish each object through one storage library, without replacement.
   Pushing the same object twice, at once or not, writes it once and rewrites nothing.

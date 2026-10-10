@@ -189,15 +189,30 @@ controls must not decide what this deployment publishes about itself.
 {{- if $plane.advertisedUrl -}}
 {{ $plane.advertisedUrl | trimSuffix "/" }}
 {{- else -}}
-{{- $scheme := ternary "https" "http" (dig "public" "http" "tls" "enabled" false $plane.extraConfig) -}}
+{{- $scheme := ternary "https" "http" (or (not (empty $plane.tls.secretName)) (eq (toString (dig "public" "http" "tls" "enabled" false $plane.extraConfig)) "true")) -}}
 {{ $scheme }}://{{ include "permguard.fullname" $root }}-{{ $component }}:{{ $plane.ports.http }}
 {{- end -}}
 {{- end -}}
 
 {{- define "permguard.controlPlaneUrl" -}}
+{{- /* `https` once the control plane serves TLS itself (WP-2.11): a mirror then names its CA. */ -}}
 {{- if .Values.allInOne.enabled -}}
-http://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}
+{{ ternary "https" "http" (not (empty .Values.allInOne.tls.secretName)) }}://{{ include "permguard.fullname" . }}-all-in-one:{{ .Values.allInOne.ports.controlHttp }}
 {{- else -}}
-http://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
+{{ ternary "https" "http" (not (empty .Values.controlPlane.tls.secretName)) }}://{{ include "permguard.fullname" . }}-control-plane:{{ .Values.controlPlane.ports.http }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The TLS block of a public listener (WP-2.11), from a component's `tls` values: the mounted Secret's
+certificate and key, or the declaration that an ingress or a sidecar terminates TLS in front of it.
+Empty in neither case, which `checks.yaml` refuses outside `developmentMode`.
+*/}}
+{{- define "permguard.publicTls" -}}
+{{- if .secretName }}
+cert: /etc/permguard-tls/tls.crt
+key: /etc/permguard-tls/tls.key
+{{- else if .terminatedUpstream }}
+terminated_upstream: true
+{{- end }}
+{{- end }}

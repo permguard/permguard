@@ -5,6 +5,10 @@
 # allowed namespaces and sizing) in the deployment repository that owns the cluster.
 
 controlPlane:
+  # TLS from a `kubernetes.io/tls` Secret the deployment repository creates (WP-2.11); or, behind an
+  # ingress or a mesh sidecar that terminates TLS, `terminatedUpstream: true` instead.
+  tls:
+    secretName: permguard-control-plane-tls
   # One, and not a compromise: see the note beside `controlPlane.replicaCount` in values.yaml. The
   # budget below and a fast restart are what availability means here until the catalog lives in
   # something that arbitrates.
@@ -67,6 +71,9 @@ controlPlane:
       #         decisions: { log: { enabled: "true" } }
 
 dataPlane:
+  # TLS from a `kubernetes.io/tls` Secret, as the control plane (WP-2.11).
+  tls:
+    secretName: permguard-data-plane-tls
   replicaCount: 3
   resources:
     requests:

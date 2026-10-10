@@ -285,20 +285,23 @@ jobs:
         run: helm lint charts/permguard
       # Rendered in every shape the chart supports, because a template that only works with the
       # default values is a template that breaks the first time somebody turns something on.
+      # Outside developmentMode every public listener states its TLS (WP-2.11): each shape below
+      # says how, a Secret for some and an upstream termination for others.
       - name: render every shape
         run: |
           set -euo pipefail
+          tls="--set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
           for values in \
-            "" \
+            "${tls}" \
             "--values charts/permguard/values-production.yaml" \
-            "--set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
-            "--set persistence.enabled=true,dataPlane.persistence.enabled=false" \
-            "--set persistence.enabled=true,dataPlane.replicaCount=1" \
-            "--set metrics.serviceMonitor.enabled=true" \
-            "--set dataPlane.autoscaling.enabled=true" \
-            "--set image.registry=ghcr.io" \
+            "${tls} --set allInOne.enabled=true,controlPlane.enabled=false,dataPlane.enabled=false" \
+            "${tls} --set persistence.enabled=true,dataPlane.persistence.enabled=false" \
+            "${tls} --set persistence.enabled=true,dataPlane.replicaCount=1" \
+            "${tls} --set metrics.serviceMonitor.enabled=true" \
+            "${tls} --set dataPlane.autoscaling.enabled=true" \
+            "${tls} --set image.registry=ghcr.io" \
             "--set developmentMode=true,autogenerate=true"; do
-            echo "helm template ${values:-(defaults)}"
+            echo "helm template ${values}"
             # shellcheck disable=SC2086
             helm template permguard charts/permguard ${values} > /dev/null
           done
@@ -307,11 +310,23 @@ jobs:
       - name: the chart refuses the all-in-one beside the planes
         run: |
           set -euo pipefail
-          if helm template permguard charts/permguard --set allInOne.enabled=true > /dev/null 2>&1; then
+          tls="--set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.terminatedUpstream=true,allInOne.tls.secretName=permguard-all-in-one-tls"
+          # A public listener secured by nothing, outside developmentMode, is refused at render
+          # (WP-2.11), and so is one stating both ways at once.
+          if helm template permguard charts/permguard > /dev/null 2>&1; then
+            echo "the chart rendered public listeners in the clear outside developmentMode" >&2
+            exit 1
+          fi
+          if helm template permguard charts/permguard ${tls} \
+               --set dataPlane.tls.secretName=permguard-data-plane-tls > /dev/null 2>&1; then
+            echo "the chart rendered a listener with a Secret and an upstream termination" >&2
+            exit 1
+          fi
+          if helm template permguard charts/permguard ${tls} --set allInOne.enabled=true > /dev/null 2>&1; then
             echo "the chart rendered a mixed all-in-one + planes shape it must refuse" >&2
             exit 1
           fi
-          if helm template permguard charts/permguard \
+          if helm template permguard charts/permguard ${tls} \
                --set controlPlane.enabled=false --set dataPlane.enabled=false > /dev/null 2>&1; then
             echo "the chart rendered an install that installs nothing" >&2
             exit 1
@@ -320,7 +335,7 @@ jobs:
           # other. The chart gives a component one claim, so persistence and replication are only
           # compatible where each replica gets its own state — and asking for the other shape has
           # to fail at template time rather than in a cluster at three in the morning.
-          if helm template permguard charts/permguard \
+          if helm template permguard charts/permguard ${tls} \
                --set persistence.enabled=true > /dev/null 2>&1; then
             echo "the chart rendered a replicated data plane sharing one volume" >&2
             exit 1
@@ -329,7 +344,7 @@ jobs:
           # behind one Service either fight over a volume or diverge. An autoscaler that can reach
           # more than one replica is asking for exactly that, so it is refused the same way a
           # replicaCount above one is.
-          if helm template permguard charts/permguard \
+          if helm template permguard charts/permguard ${tls} \
                --set controlPlane.autoscaling.enabled=true > /dev/null 2>&1; then
             echo "the chart rendered a control plane that can autoscale past one replica" >&2
             exit 1
@@ -344,7 +359,7 @@ jobs:
       # has no shell, so the step failed before it validated anything. A container that carries one
       # binary is the point of that image; expecting a shell inside it was the mistake.
       - name: render the chart for validation
-        run: helm template permguard charts/permguard > rendered.yaml
+        run: helm template permguard charts/permguard --set controlPlane.tls.secretName=permguard-control-plane-tls,dataPlane.tls.secretName=permguard-data-plane-tls > rendered.yaml
       - uses: docker://ghcr.io/yannh/kubeconform@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e # latest, 2026-08
         with:
           args: -strict -summary -ignore-missing-schemas /github/workspace/rendered.yaml

@@ -22,7 +22,8 @@
 //! * adding a revocation list makes that authority able to take a certificate back before it
 //!   expires, which is the difference between a compromised client being cut off today and being
 //!   cut off whenever its certificate happened to run out;
-//! * the protocol floor defaults to 1.3, and 1.2 has to be asked for by name.
+//! * the protocol floor defaults to 1.3, and 1.2 has to be asked for by name;
+//! * the suites and key-exchange groups are the ones [`provider`] names, never a provider's default.
 //!
 //! # What revocation is checked against
 //!
@@ -50,6 +51,7 @@ mod guard;
 mod identity;
 mod material;
 mod measure;
+mod policy;
 mod reload;
 mod request;
 mod surface;
@@ -65,6 +67,7 @@ pub use material::{load_certificates, load_key, load_revocations, server_config}
 pub use measure::{
     ACCEPTED, CERTIFICATE_EXPIRY, CONNECTIONS, CRL_EXPIRY, LATENCY, REFUSED, REQUESTS,
 };
+pub use policy::{CIPHER_SUITES, provider};
 pub use reload::{Reloaded, reload_all};
 pub use request::RequestId;
 pub use surface::{Listener, Surface};

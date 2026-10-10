@@ -380,41 +380,97 @@ pub async fn initiate(
     })
 }
 
-/// The client configuration a member reaches its coordinators with (WP-4.1, owner decision of
-/// 2026-10-09): the Host listener's own certificate and key as its client identity, the
-/// listener's `client_ca` as the anchors a coordinator's certificate is verified against, and
-/// TLS 1.3 only, since the session signs the connection's exporter. `None` without a client CA:
-/// a join is then `peer_client_unconfigured`.
+/// The client a member reaches its coordinators with (WP-4.1, owner decision of 2026-10-09): the
+/// Host listener's own certificate and key as its client identity, the listener's `client_ca` as
+/// the anchors a coordinator's certificate is verified against, and TLS 1.3 only, since the
+/// session signs the connection's exporter. With the listener's `crl`, a coordinator whose
+/// certificate the list names is refused, the list's own expiry enforced as the listener does
+/// (WP-2.11, owner decision of 2026-10-10). The configuration is built again for every
+/// connection, so a renewed certificate or a new list reaches the next session without a restart.
+#[derive(Debug, Clone)]
+pub struct PeerClient {
+    settings: permguard_core::TlsSettings,
+}
+
+impl PeerClient {
+    /// The configuration of the next connection, read from the material as it is now.
+    pub fn config(&self) -> anyhow::Result<Arc<rustls::ClientConfig>> {
+        let settings = &self.settings;
+        let client_ca = settings
+            .client_ca()
+            .ok_or_else(|| anyhow::anyhow!("the peer client has no client CA"))?;
+        let mut roots = rustls::RootCertStore::empty();
+        for certificate in permguard_transport::load_certificates(client_ca)? {
+            roots.add(certificate).map_err(|error| {
+                anyhow::anyhow!(
+                    "adding {} to the peer anchors: {error}",
+                    client_ca.display()
+                )
+            })?;
+        }
+        let mut verifier = rustls::client::WebPkiServerVerifier::builder_with_provider(
+            Arc::new(roots),
+            permguard_transport::provider(),
+        );
+        if let Some(crl) = settings.crl() {
+            // The coordinator's own certificate, as the listener checks its clients: the
+            // authority above it is trusted by configuration, and a list past its `nextUpdate`
+            // refuses rather than vouches.
+            verifier = verifier
+                .with_crls(permguard_transport::load_revocations(crl)?)
+                .only_check_end_entity_revocation()
+                .enforce_revocation_expiration();
+        }
+        let verifier = verifier
+            .build()
+            .map_err(|error| anyhow::anyhow!("the peer client's verifier: {error}"))?;
+        let config = rustls::ClientConfig::builder_with_provider(permguard_transport::provider())
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .map_err(|error| anyhow::anyhow!("the TLS versions of the peer client: {error}"))?
+            .with_webpki_verifier(verifier)
+            .with_client_auth_cert(
+                permguard_transport::load_certificates(settings.certificate())?,
+                permguard_transport::load_key(settings.key())?,
+            )
+            .map_err(|error| anyhow::anyhow!("the client identity of the peer client: {error}"))?;
+        Ok(Arc::new(config))
+    }
+}
+
+impl PeerClient {
+    /// The configuration of the next connection, its files read off the async runtime. Material
+    /// this Host cannot read is its own fault, never the coordinator's: `peer_client_unconfigured`
+    /// (WP-2.11). It is read for every connection whatever `tls.reload` says, a renewal reaching
+    /// the next session.
+    async fn connection_config(&self) -> Result<Arc<rustls::ClientConfig>, Refusal> {
+        let client = self.clone();
+        let built = tokio::task::spawn_blocking(move || client.config())
+            .await
+            .map_err(|error| anyhow::anyhow!("reading the peer client's material: {error}"))
+            .and_then(|built| built);
+        built.map_err(|error| Refusal {
+            code: codes::host::PEER_CLIENT_UNCONFIGURED,
+            reason: format!("the peer client's TLS material cannot be used: {error:#}"),
+        })
+    }
+}
+
+/// The peer client of the Host listener's `settings`, its material read once here so a mistake
+/// stops the start. `None` without a client CA: a join is then `peer_client_unconfigured`.
 pub fn member_client(
     settings: Option<&permguard_core::TlsSettings>,
-) -> anyhow::Result<Option<Arc<rustls::ClientConfig>>> {
+) -> anyhow::Result<Option<PeerClient>> {
     let Some(settings) = settings else {
         return Ok(None);
     };
-    let Some(client_ca) = settings.client_ca() else {
+    if settings.client_ca().is_none() {
         return Ok(None);
-    };
-    let mut roots = rustls::RootCertStore::empty();
-    for certificate in permguard_transport::load_certificates(client_ca)? {
-        roots.add(certificate).map_err(|error| {
-            anyhow::anyhow!(
-                "adding {} to the peer anchors: {error}",
-                client_ca.display()
-            )
-        })?;
     }
-    let config = rustls::ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_protocol_versions(&[&rustls::version::TLS13])
-    .map_err(|error| anyhow::anyhow!("the TLS versions of the peer client: {error}"))?
-    .with_root_certificates(roots)
-    .with_client_auth_cert(
-        permguard_transport::load_certificates(settings.certificate())?,
-        permguard_transport::load_key(settings.key())?,
-    )
-    .map_err(|error| anyhow::anyhow!("the client identity of the peer client: {error}"))?;
-    Ok(Some(Arc::new(config)))
+    let client = PeerClient {
+        settings: settings.clone(),
+    };
+    client.config()?;
+    Ok(Some(client))
 }
 
 /// How a member reaches its coordinators (WP-4.1): one connection, one session and one request
@@ -422,12 +478,12 @@ pub fn member_client(
 /// any, bound to the connection's exporter.
 pub struct PeerConnector {
     context: Context,
-    tls: Arc<rustls::ClientConfig>,
+    tls: PeerClient,
 }
 
 impl PeerConnector {
     /// A connector initiating with `context` over `tls`.
-    pub fn new(context: Context, tls: Arc<rustls::ClientConfig>) -> Self {
+    pub fn new(context: Context, tls: PeerClient) -> Self {
         Self { context, tls }
     }
 
@@ -454,7 +510,8 @@ impl PeerConnector {
         // never holds a request.
         let connection = tokio::time::timeout(HANDSHAKE, async {
             let (address, name) = endpoint(&target.address).await?;
-            Connection::open(address, name, &self.tls)
+            let tls = self.tls.connection_config().await?;
+            Connection::open(address, name, &tls)
                 .await
                 .map_err(refusal_of)
         })
@@ -549,7 +606,8 @@ impl PeerConnector {
     async fn open_task_once(&self, target: Target, open: TaskOpen) -> Result<TaskOpened, Refusal> {
         let connection = tokio::time::timeout(HANDSHAKE, async {
             let (address, name) = endpoint(&target.address).await?;
-            Connection::open(address, name, &self.tls)
+            let tls = self.tls.connection_config().await?;
+            Connection::open(address, name, &tls)
                 .await
                 .map_err(refusal_of)
         })

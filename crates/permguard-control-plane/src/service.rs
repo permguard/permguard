@@ -1448,6 +1448,37 @@ mod tests {
                     served: true,
                     reason: Some(permguard_core::PeerSessionsReport::TLS_1_2_REFUSED),
                 },
+                // Every class and authentication, a TLS minimum present and absent (WP-2.11).
+                listeners: vec![
+                    permguard_core::ListenerReport::of(
+                        "control-http-grpc",
+                        permguard_core::ListenerClass::PlanePublic,
+                        None,
+                        true,
+                        false,
+                    ),
+                    permguard_core::ListenerReport::of(
+                        "data-http",
+                        permguard_core::ListenerClass::PlanePublic,
+                        Some(&permguard_core::TlsSettings::new("c", "k")),
+                        false,
+                        false,
+                    ),
+                    permguard_core::ListenerReport::of(
+                        "host-api",
+                        permguard_core::ListenerClass::Host,
+                        Some(&permguard_core::TlsSettings::new("c", "k").with_client_ca("ca")),
+                        false,
+                        true,
+                    ),
+                    permguard_core::ListenerReport::of(
+                        "telemetry",
+                        permguard_core::ListenerClass::Telemetry,
+                        None,
+                        false,
+                        false,
+                    ),
+                ],
             },
         );
         let written: serde_json::Value = serde_json::from_str(
@@ -1469,6 +1500,7 @@ mod tests {
                     served: true,
                     reason: None,
                 },
+                listeners: Vec::new(),
             },
         );
 

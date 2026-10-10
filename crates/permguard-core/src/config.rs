@@ -163,6 +163,12 @@ pub const SETTING_PUBLIC_TLS_MIN_VERSION: &str = "PERMGUARD_PUBLIC_TLS_MIN_VERSI
 /// requires [`SETTING_PUBLIC_TLS_CLIENT_CA`]: without a demanded certificate there is no identity to
 /// check, and a list nothing can satisfy is a misconfiguration, not a policy.
 pub const SETTING_PUBLIC_TLS_ALLOW: &str = "PERMGUARD_PUBLIC_TLS_ALLOW";
+/// Whether an ingress or a mesh sidecar terminates TLS in front of the public surface, which then
+/// serves in the clear (WP-2.11, owner decision of 2026-10-10). Without it, from `production` up a
+/// Plane public listener in the clear on a bind that is not loopback is refused at Bootstrap. It
+/// is the relaxation `tls.terminated_upstream`, which `regulated` refuses, and is published as
+/// the listener's `upstream_tls` authentication. Never beside TLS the process serves itself.
+pub const SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM: &str = "PERMGUARD_PUBLIC_TLS_TERMINATED_UPSTREAM";
 /// Whether the public surface discloses the build it is: version and commit on `/version` and in
 /// gRPC `GetInfo`. On by default — `permguard inspect` is built on it — and a deployment that would
 /// rather not hand fingerprinting material to whoever can open a socket turns it off; the plane and
@@ -1207,6 +1213,7 @@ pub struct Config {
     admin_addr: Option<String>,
     admin_allow: Vec<AllowedPeer>,
     disclose_build: bool,
+    public_tls_terminated_upstream: bool,
     error_detail: Option<Disclosure>,
     log_level: LogLevel,
     log_format: LogFormat,
@@ -1396,6 +1403,7 @@ impl Default for Config {
             admin_addr: None,
             admin_allow: Vec::new(),
             disclose_build: true,
+            public_tls_terminated_upstream: false,
             error_detail: None,
             log_level: LogLevel::default(),
             log_format: LogFormat::default(),
@@ -1841,6 +1849,16 @@ produce: use `EdDSA` or `ES256`"
             );
         }
 
+        // The same kind of mistake: two statements about the public surface that contradict each
+        // other (WP-2.11).
+        if self.public_tls_terminated_upstream && self.public_tls.is_some() {
+            bail!(
+                "`public.tls.terminated_upstream` says an ingress or a sidecar terminates TLS in \
+                 front of the public surface, and `public.tls.cert` makes it serve TLS itself: \
+                 state one of them"
+            );
+        }
+
         let declared_addresses = self.declared_addresses()?;
 
         // A process serving only the Server Host operations surface, or only the Host listener
@@ -1894,6 +1912,7 @@ produce: use `EdDSA` or `ES256`"
         self.validate_admin_advertised_url()?;
         self.validate_host_identity()?;
         self.validate_admin_access()?;
+        self.validate_listener_classes()?;
         self.validate_key_lifecycle()?;
         self.validate_custody()?;
         self.validate_realms()?;
@@ -2004,6 +2023,56 @@ produce: use `EdDSA` or `ES256`"
         }
 
         Ok(())
+    }
+
+    /// The listener classes this configuration decides alone (WP-2.11, owner decisions of
+    /// 2026-10-10): from `production` up, the telemetry listener in the clear on a public IP
+    /// literal. The Plane public listeners are checked where their endpoints resolve, by the
+    /// server's startup check.
+    fn validate_listener_classes(&self) -> Result<()> {
+        let production = self
+            .assurance_profile
+            .at_least(crate::assurance::AssuranceProfile::Production);
+        if production
+            && self.telemetry_tls.is_none()
+            && let Some(address) = self.telemetry_addr()
+            && crate::listener::ip_literal(address).is_some_and(crate::listener::is_public_ip)
+        {
+            bail!(
+                "the telemetry listener is bound to {address}, a public address, in the clear: \
+                 bind it to loopback, a private address or every interface behind the \
+                 deployment's network policy, or set `host.tls.cert`; from the `production` \
+                 profile up nothing outside that trust reaches it unencrypted"
+            );
+        }
+        Ok(())
+    }
+
+    /// The listeners this configuration states alone, the Host listener and telemetry, as
+    /// discovery and `GET /host/v1/status` publish them (WP-2.11); the server adds each Plane's.
+    pub fn core_listeners(&self) -> Vec<crate::listener::ListenerReport> {
+        use crate::listener::{HOST_LISTENER, ListenerClass, ListenerReport, TELEMETRY_LISTENER};
+
+        let mut listeners = Vec::new();
+        if self.admin_addr().is_some() {
+            listeners.push(ListenerReport::of(
+                HOST_LISTENER,
+                ListenerClass::Host,
+                self.admin_tls.as_ref(),
+                false,
+                !self.admin_allow.is_empty(),
+            ));
+        }
+        if self.telemetry_addr().is_some() {
+            listeners.push(ListenerReport::of(
+                TELEMETRY_LISTENER,
+                ListenerClass::Telemetry,
+                self.telemetry_tls.as_ref(),
+                false,
+                false,
+            ));
+        }
+        listeners
     }
 
     /// Refuses an administrative surface that anybody can reach and nobody has been named for.
@@ -2893,6 +2962,11 @@ produce: use `EdDSA` or `ES256`"
         self.log_format
     }
 
+    /// Whether TLS is terminated in front of the public surface (WP-2.11).
+    pub fn public_tls_terminated_upstream(&self) -> bool {
+        self.public_tls_terminated_upstream
+    }
+
     /// Returns the TLS material of the public surface, with its paths already resolved.
     pub fn public_tls(&self) -> Option<TlsSettings> {
         self.resolved_tls(self.public_tls.as_ref())
@@ -2938,7 +3012,8 @@ produce: use `EdDSA` or `ES256`"
     }
 
     /// The relaxations the values in force amount to, derived rather than declared (owner
-    /// decision, 2026-10-06): a TLS minimum of 1.2 on any listener is `tls.1_2_compat`; an enabled
+    /// decision, 2026-10-06): a TLS minimum of 1.2 on any listener is `tls.1_2_compat`; a declared
+    /// upstream TLS termination is `tls.terminated_upstream` (WP-2.11); an enabled
     /// key ring is `custody.plaintext`, every key manager of this build keeping plaintext files
     /// until the custody providers of WP-3.2. `TODO(WP-3.2)`: a custody provider names its own.
     /// The evidence modes, the Rego input schema and the gRPC decoders publish theirs with the
@@ -2960,6 +3035,16 @@ produce: use `EdDSA` or `ES256`"
         });
         if core_tls || declared_tls {
             in_force.push(Relaxation::Tls12Compat);
+        }
+        // A declared upstream termination, the process's or a Plane endpoint's (WP-2.11): stated,
+        // so in force whether or not its listener is bound.
+        let terminated = self.public_tls_terminated_upstream
+            || self.declared_values.iter().any(|(key, value)| {
+                // A value that does not read as false counts: erring toward publishing and refusing.
+                key.ends_with("_TLS_TERMINATED_UPSTREAM") && !matches!(parse_bool(value), Ok(false))
+            });
+        if terminated {
+            in_force.push(Relaxation::TlsTerminatedUpstream);
         }
         // Every ring this build can configure: the operations ring, the two Plane signing rings,
         // and each realm's token and operations rings (a realm's token ring is on by default).
@@ -3904,6 +3989,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_ADMIN_PEER_SESSIONS => Some(self.admin_peer_sessions().as_str().to_owned()),
             SETTING_ADMIN_ALLOW => lines(self.admin_allow.iter().map(ToString::to_string)),
             SETTING_PUBLIC_DISCLOSE_BUILD => b(self.disclose_build),
+            SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM => b(self.public_tls_terminated_upstream),
             SETTING_PUBLIC_ERROR_DETAIL => Some(self.error_detail().as_str().to_owned()),
             SETTING_LOG_LEVEL => Some(self.log_level.as_str().to_owned()),
             SETTING_LOG_FORMAT => Some(self.log_format.as_str().to_owned()),
@@ -4316,6 +4402,11 @@ produce: use `EdDSA` or `ES256`"
         if let Some(value) = settings.get(SETTING_PUBLIC_DISCLOSE_BUILD) {
             self.disclose_build = parse_bool(value)
                 .with_context(|| format!("reading {SETTING_PUBLIC_DISCLOSE_BUILD}"))?;
+        }
+
+        if let Some(value) = settings.get(SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM) {
+            self.public_tls_terminated_upstream = parse_bool(value)
+                .with_context(|| format!("reading {SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM}"))?;
         }
 
         if let Some(value) = settings.get(SETTING_PUBLIC_ERROR_DETAIL) {
@@ -5458,7 +5549,7 @@ fn parse_allowed(value: &str) -> Result<Vec<AllowedPeer>> {
 /// being asked — *did the deployment write something only this machine can reach* — is answered by
 /// what was written. Anything unrecognised is treated as reachable, which is the safe direction to
 /// be wrong in.
-fn is_loopback(address: &str) -> bool {
+pub(crate) fn is_loopback(address: &str) -> bool {
     let host = match address.rsplit_once(':') {
         Some((host, _)) => host,
         None => address,
@@ -5627,6 +5718,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_PUBLIC_TLS_CRL,
     SETTING_PUBLIC_TLS_KEY,
     SETTING_PUBLIC_TLS_MIN_VERSION,
+    SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM,
     SETTING_SECRETS_DIRECTORY,
     SETTING_SECRETS_ENV_PREFIX,
     SETTING_SECRETS_COORDINATOR_ROOT_REF,

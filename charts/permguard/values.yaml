@@ -41,6 +41,18 @@ controlPlane:
     http: 6443
     grpc: 6443
     telemetry: 5443
+  # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
+  # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
+  # of it; `templates/checks.yaml` refuses a values file that says neither, or both.
+  #   secretName: a `kubernetes.io/tls` Secret, mounted at /etc/permguard-tls: HTTP and gRPC serve
+  #     TLS with its `tls.crt` and `tls.key`, and the published URLs say `https`. A data plane the
+  #     chart points at this control plane verifies it with its own Secret's `ca.crt`.
+  #   terminatedUpstream: true renders `tls.terminated_upstream`: the listener serves in the clear
+  #     behind what terminates TLS, published as `upstream_tls` and the relaxation
+  #     `tls.terminated_upstream`, which the `regulated` profile refuses.
+  tls:
+    secretName: ""
+    terminatedUpstream: false
   service:
     type: ClusterIP
     annotations: {}
@@ -159,6 +171,18 @@ dataPlane:
     grpc: 7443
     # Pods have independent network namespaces, so every Server Host uses the canonical port.
     telemetry: 5443
+  # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
+  # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
+  # of it; `templates/checks.yaml` refuses a values file that says neither, or both.
+  #   secretName: a `kubernetes.io/tls` Secret, mounted at /etc/permguard-tls: HTTP and gRPC serve
+  #     TLS with its `tls.crt` and `tls.key`, and the published URLs say `https`. A data plane the
+  #     chart points at this control plane verifies it with its own Secret's `ca.crt`.
+  #   terminatedUpstream: true renders `tls.terminated_upstream`: the listener serves in the clear
+  #     behind what terminates TLS, published as `upstream_tls` and the relaxation
+  #     `tls.terminated_upstream`, which the `regulated` profile refuses.
+  tls:
+    secretName: ""
+    terminatedUpstream: false
   service:
     type: ClusterIP
     annotations: {}
@@ -246,6 +270,17 @@ allInOne:
     controlHttp: 6443
     dataHttp: 7443
     telemetry: 5443
+  # How the public listener is secured (WP-2.11). Outside `developmentMode` a public listener beyond
+  # loopback serves TLS, or the deployment says an ingress or a mesh sidecar terminates TLS in front
+  # of it; `templates/checks.yaml` refuses a values file that says neither, or both.
+  #   secretName: a `kubernetes.io/tls` Secret, mounted at /etc/permguard-tls: both Planes, HTTP and gRPC, serve
+  #     TLS with its `tls.crt` and `tls.key`.
+  #   terminatedUpstream: true renders `tls.terminated_upstream`: the listener serves in the clear
+  #     behind what terminates TLS, published as `upstream_tls` and the relaxation
+  #     `tls.terminated_upstream`, which the `regulated` profile refuses.
+  tls:
+    secretName: ""
+    terminatedUpstream: false
   service:
     type: ClusterIP
     annotations: {}

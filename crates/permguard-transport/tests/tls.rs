@@ -191,6 +191,40 @@ fn test_the_protocol_floor_is_what_the_settings_asked_for() {
     assert_eq!(modern.alpn_protocols, permissive.alpn_protocols);
 }
 
+#[test]
+fn test_the_listener_serves_with_the_pinned_policy() {
+    // WP-2.11: every listener, mutual or not, at either floor, negotiates only what the policy
+    // names, never what the provider would offer by default.
+    let pki = Pki::new("policy");
+    let (certificate, key) = self_signed(&pki, "server");
+    let authority = pki.write("ca.pem", &pki.authority.pem());
+    let pinned: Vec<String> = permguard_transport::CIPHER_SUITES
+        .iter()
+        .map(|suite| format!("{:?}", suite.suite()))
+        .collect();
+    for settings in [
+        TlsSettings::new(&certificate, &key),
+        TlsSettings::new(&certificate, &key).with_min_version(TlsVersion::V1_2),
+        TlsSettings::new(&certificate, &key).with_client_ca(&authority),
+    ] {
+        let config = server_config(&settings).expect("it builds");
+        let served: Vec<String> = config
+            .crypto_provider()
+            .cipher_suites
+            .iter()
+            .map(|suite| format!("{:?}", suite.suite()))
+            .collect();
+        assert_eq!(served, pinned);
+        let groups: Vec<String> = config
+            .crypto_provider()
+            .kx_groups
+            .iter()
+            .map(|group| format!("{:?}", group.name()))
+            .collect();
+        assert_eq!(groups, ["X25519", "secp256r1", "secp384r1"]);
+    }
+}
+
 /// Connects and completes a TLS handshake, returning what the server said.
 async fn speak_tls(address: SocketAddr, config: rustls::ClientConfig) -> Result<String, String> {
     let connector = TlsConnector::from(Arc::new(config));

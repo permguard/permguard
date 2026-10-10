@@ -25,14 +25,17 @@ data:
     the chart states both: without the second, every discovery document this deployment serves
     would name `0.0.0.0`, and every client that followed a link would go nowhere.
     */ -}}
-    {{- $public := dict "public" (dict
-          "http" (dict
-            "enabled" true
-            "addr" (printf "0.0.0.0:%d" (int $plane.ports.http))
-            "advertised_url" (include "permguard.advertisedUrl" (dict "root" $ "component" $component))
-          )
-          "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.grpc)))
-    ) }}
+    {{- $http := dict
+          "enabled" true
+          "addr" (printf "0.0.0.0:%d" (int $plane.ports.http))
+          "advertised_url" (include "permguard.advertisedUrl" (dict "root" $ "component" $component))
+    }}
+    {{- $grpc := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $plane.ports.grpc)) }}
+    {{- with (include "permguard.publicTls" $plane.tls | fromYaml) }}
+    {{- $_ := set $http "tls" . }}
+    {{- $_ := set $grpc "tls" . }}
+    {{- end }}
+    {{- $public := dict "public" (dict "http" $http "grpc" $grpc) }}
     {{- $_ := set $config $section $public }}
     {{- $merged := mergeOverwrite $config ($plane.extraConfig | default dict) }}
     {{- /*
@@ -43,7 +46,15 @@ data:
     */ -}}
     {{- $mirrors := dig "dataPlane" "mirrors" dict $merged }}
     {{- if and (eq $component "data-plane") $mirrors (not (dig "servers" list $mirrors)) }}
-    {{- $_ := set $mirrors "servers" (list (dict "url" (include "permguard.controlPlaneUrl" $))) }}
+    {{- $server := dict "url" (include "permguard.controlPlaneUrl" $) }}
+    {{- /*
+    A control plane serving TLS from its Secret is verified against the authority the data plane's
+    own Secret carries as `ca.crt` (one issuer signing both, as cert-manager writes it) (WP-2.11).
+    */ -}}
+    {{- if and (hasPrefix "https://" $server.url) $plane.tls.secretName }}
+    {{- $_ := set $server "tls" (dict "ca_file" "/etc/permguard-tls/ca.crt") }}
+    {{- end }}
+    {{- $_ := set $mirrors "servers" (list $server) }}
     {{- end }}
     {{- toYaml $merged | nindent 4 }}
 ---
@@ -65,13 +76,17 @@ data:
           "log" (dict "level" .Values.logging.level "format" .Values.logging.format)
           "telemetry" (dict "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.telemetry)))
           "runtime" (dict "planes" (list "control" "data"))
-          "controlPlane" (dict "public" (dict
-              "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.controlHttp)))
-              "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.controlHttp)))))
-          "dataPlane" (dict "public" (dict
-              "http" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.dataHttp)))
-              "grpc" (dict "enabled" true "addr" (printf "0.0.0.0:%d" (int .Values.allInOne.ports.dataHttp)))))
     }}
+    {{- $tls := include "permguard.publicTls" .Values.allInOne.tls | fromYaml }}
+    {{- range $section, $port := dict "controlPlane" .Values.allInOne.ports.controlHttp "dataPlane" .Values.allInOne.ports.dataHttp }}
+    {{- $http := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $port)) }}
+    {{- $grpc := dict "enabled" true "addr" (printf "0.0.0.0:%d" (int $port)) }}
+    {{- if $tls }}
+    {{- $_ := set $http "tls" $tls }}
+    {{- $_ := set $grpc "tls" $tls }}
+    {{- end }}
+    {{- $_ := set $config $section (dict "public" (dict "http" $http "grpc" $grpc)) }}
+    {{- end }}
     {{- $merged := mergeOverwrite $config (.Values.allInOne.extraConfig | default dict) }}
     {{- toYaml $merged | nindent 4 }}
 {{- end }}

@@ -1872,6 +1872,9 @@ impl App {
                     report: config.peer_sessions(),
                     context: Some(session_context.clone()),
                 },
+                // Every listener and what it demands of its clients (WP-2.11), as discovery
+                // publishes them.
+                listeners: crate::plane::listeners::listeners(config),
                 memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
                     store: Arc::clone(&members),
                     capabilities: capabilities.clone(),

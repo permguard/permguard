@@ -40,6 +40,8 @@ pub const SETTING_CONTROL_HTTP_TLS_CLIENT_CA: &str = "PERMGUARD_CONTROL_HTTP_TLS
 pub const SETTING_CONTROL_HTTP_TLS_CRL: &str = "PERMGUARD_CONTROL_HTTP_TLS_CRL";
 pub const SETTING_CONTROL_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_CONTROL_HTTP_TLS_MIN_VERSION";
 pub const SETTING_CONTROL_HTTP_TLS_ALLOW: &str = "PERMGUARD_CONTROL_HTTP_TLS_ALLOW";
+pub const SETTING_CONTROL_HTTP_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_CONTROL_HTTP_TLS_TERMINATED_UPSTREAM";
 pub const SETTING_CONTROL_GRPC_ENABLED: &str = "PERMGUARD_CONTROL_GRPC_ENABLED";
 pub const SETTING_CONTROL_GRPC_ADDR: &str = "PERMGUARD_CONTROL_GRPC_ADDR";
 pub const SETTING_CONTROL_GRPC_TLS_ENABLED: &str = "PERMGUARD_CONTROL_GRPC_TLS_ENABLED";
@@ -49,6 +51,8 @@ pub const SETTING_CONTROL_GRPC_TLS_CLIENT_CA: &str = "PERMGUARD_CONTROL_GRPC_TLS
 pub const SETTING_CONTROL_GRPC_TLS_CRL: &str = "PERMGUARD_CONTROL_GRPC_TLS_CRL";
 pub const SETTING_CONTROL_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_CONTROL_GRPC_TLS_MIN_VERSION";
 pub const SETTING_CONTROL_GRPC_TLS_ALLOW: &str = "PERMGUARD_CONTROL_GRPC_TLS_ALLOW";
+pub const SETTING_CONTROL_GRPC_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_CONTROL_GRPC_TLS_TERMINATED_UPSTREAM";
 
 /// Runtime setting keys for data-plane public addresses.
 /// Where this plane tells the world to reach it, when that is not where it binds.
@@ -67,6 +71,8 @@ pub const SETTING_DATA_HTTP_TLS_CLIENT_CA: &str = "PERMGUARD_DATA_HTTP_TLS_CLIEN
 pub const SETTING_DATA_HTTP_TLS_CRL: &str = "PERMGUARD_DATA_HTTP_TLS_CRL";
 pub const SETTING_DATA_HTTP_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_HTTP_TLS_MIN_VERSION";
 pub const SETTING_DATA_HTTP_TLS_ALLOW: &str = "PERMGUARD_DATA_HTTP_TLS_ALLOW";
+pub const SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM";
 pub const SETTING_DATA_GRPC_ENABLED: &str = "PERMGUARD_DATA_GRPC_ENABLED";
 pub const SETTING_DATA_GRPC_ADDR: &str = "PERMGUARD_DATA_GRPC_ADDR";
 pub const SETTING_DATA_GRPC_TLS_ENABLED: &str = "PERMGUARD_DATA_GRPC_TLS_ENABLED";
@@ -76,6 +82,8 @@ pub const SETTING_DATA_GRPC_TLS_CLIENT_CA: &str = "PERMGUARD_DATA_GRPC_TLS_CLIEN
 pub const SETTING_DATA_GRPC_TLS_CRL: &str = "PERMGUARD_DATA_GRPC_TLS_CRL";
 pub const SETTING_DATA_GRPC_TLS_MIN_VERSION: &str = "PERMGUARD_DATA_GRPC_TLS_MIN_VERSION";
 pub const SETTING_DATA_GRPC_TLS_ALLOW: &str = "PERMGUARD_DATA_GRPC_TLS_ALLOW";
+pub const SETTING_DATA_GRPC_TLS_TERMINATED_UPSTREAM: &str =
+    "PERMGUARD_DATA_GRPC_TLS_TERMINATED_UPSTREAM";
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlaneSettingKeys {
@@ -109,6 +117,8 @@ pub struct PlaneTlsKeys {
     pub(crate) crl: &'static str,
     pub(crate) allow: &'static str,
     pub(crate) min_version: &'static str,
+    /// An ingress or a sidecar terminates TLS in front of the endpoint (WP-2.11).
+    pub(crate) terminated_upstream: &'static str,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -132,6 +142,7 @@ impl PlaneSettingKeys {
                 crl: SETTING_CONTROL_HTTP_TLS_CRL,
                 allow: SETTING_CONTROL_HTTP_TLS_ALLOW,
                 min_version: SETTING_CONTROL_HTTP_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_CONTROL_HTTP_TLS_TERMINATED_UPSTREAM,
             },
         },
         grpc: PlaneEndpointKeys {
@@ -146,6 +157,7 @@ impl PlaneSettingKeys {
                 crl: SETTING_CONTROL_GRPC_TLS_CRL,
                 allow: SETTING_CONTROL_GRPC_TLS_ALLOW,
                 min_version: SETTING_CONTROL_GRPC_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_CONTROL_GRPC_TLS_TERMINATED_UPSTREAM,
             },
         },
         keys_enabled: permguard_core::config::SETTING_CONTROL_KEYS_ENABLED,
@@ -166,6 +178,7 @@ impl PlaneSettingKeys {
                 crl: SETTING_DATA_HTTP_TLS_CRL,
                 allow: SETTING_DATA_HTTP_TLS_ALLOW,
                 min_version: SETTING_DATA_HTTP_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM,
             },
         },
         grpc: PlaneEndpointKeys {
@@ -180,6 +193,7 @@ impl PlaneSettingKeys {
                 crl: SETTING_DATA_GRPC_TLS_CRL,
                 allow: SETTING_DATA_GRPC_TLS_ALLOW,
                 min_version: SETTING_DATA_GRPC_TLS_MIN_VERSION,
+                terminated_upstream: SETTING_DATA_GRPC_TLS_TERMINATED_UPSTREAM,
             },
         },
         keys_enabled: permguard_core::config::SETTING_DATA_KEYS_ENABLED,
@@ -190,7 +204,7 @@ impl PlaneSettingKeys {
         PlaneAddresses::settings(self.http, self.grpc)
     }
 
-    pub(crate) const fn settings(self) -> [&'static str; 21] {
+    pub(crate) const fn settings(self) -> [&'static str; 23] {
         let http = self.http.settings();
         let grpc = self.grpc.settings();
 
@@ -204,6 +218,7 @@ impl PlaneSettingKeys {
             http[6],
             http[7],
             http[8],
+            http[9],
             grpc[0],
             grpc[1],
             grpc[2],
@@ -213,6 +228,7 @@ impl PlaneSettingKeys {
             grpc[6],
             grpc[7],
             grpc[8],
+            grpc[9],
             self.keys_enabled,
             self.keys_directory,
             // HTTP only: a discovery document publishes HTTP addresses.
@@ -225,7 +241,7 @@ impl PlaneSettingKeys {
 }
 
 impl PlaneEndpointKeys {
-    pub(crate) const fn settings(self) -> [&'static str; 9] {
+    pub(crate) const fn settings(self) -> [&'static str; 10] {
         [
             self.enabled,
             self.addr,
@@ -236,6 +252,7 @@ impl PlaneEndpointKeys {
             self.tls.crl,
             self.tls.allow,
             self.tls.min_version,
+            self.tls.terminated_upstream,
         ]
     }
 }
@@ -428,6 +445,12 @@ fn push_tls_settings(settings: &mut Vec<(String, String)>, keys: PlaneTlsKeys, t
     if let Some(enabled) = &tls.enabled {
         settings.push((keys.enabled.to_owned(), enabled.as_setting_value()));
     }
+    if let Some(terminated) = &tls.terminated_upstream {
+        settings.push((
+            keys.terminated_upstream.to_owned(),
+            terminated.as_setting_value(),
+        ));
+    }
 
     // A list is one setting whose value has lines in it: `dn:` entries contain commas, so the
     // newline is the only safe separator.
@@ -566,8 +589,9 @@ pub(crate) fn parse_bool(value: &str) -> Result<bool> {
     }
 }
 
-pub(crate) fn tls_for(config: &Config, keys: PlaneTlsKeys) -> Result<Option<TlsSettings>> {
-    let has_setting = [
+/// Whether the endpoint of `keys` states any TLS material or policy of its own.
+fn states_tls(config: &Config, keys: PlaneTlsKeys) -> bool {
+    [
         keys.enabled,
         keys.cert,
         keys.key,
@@ -577,9 +601,37 @@ pub(crate) fn tls_for(config: &Config, keys: PlaneTlsKeys) -> Result<Option<TlsS
         keys.min_version,
     ]
     .into_iter()
-    .any(|key| config.setting(key).is_some());
+    .any(|key| config.setting(key).is_some())
+}
 
-    if !has_setting {
+/// The endpoint's own `tls.terminated_upstream`, when it states one.
+fn own_termination(config: &Config, keys: PlaneTlsKeys) -> Result<Option<bool>> {
+    config
+        .setting(keys.terminated_upstream)
+        .map(|value| {
+            parse_bool(value).with_context(|| format!("reading {}", keys.terminated_upstream))
+        })
+        .transpose()
+}
+
+/// Whether the endpoint of `keys` declares an upstream TLS termination (WP-2.11): its own setting;
+/// otherwise the process's `public.tls.terminated_upstream`, but only where the endpoint also
+/// takes the process's `public.tls`, stating no TLS of its own.
+pub(crate) fn terminated_upstream_for(config: &Config, keys: PlaneTlsKeys) -> Result<bool> {
+    Ok(match own_termination(config, keys)? {
+        Some(declared) => declared,
+        None if states_tls(config, keys) => false,
+        None => config.public_tls_terminated_upstream(),
+    })
+}
+
+pub(crate) fn tls_for(config: &Config, keys: PlaneTlsKeys) -> Result<Option<TlsSettings>> {
+    if !states_tls(config, keys) {
+        // An endpoint whose one TLS statement is that something upstream terminates it serves
+        // the clear, rather than the process's `public.tls` (WP-2.11).
+        if own_termination(config, keys)? == Some(true) {
+            return Ok(None);
+        }
         return Ok(config.public_tls());
     }
 
@@ -808,6 +860,10 @@ struct TlsSection {
     allow: Option<Vec<String>>,
     #[serde(default)]
     min_version: Option<String>,
+    /// An ingress or a sidecar terminates TLS in front of the endpoint, which serves in the clear
+    /// (WP-2.11): the relaxation `tls.terminated_upstream`.
+    #[serde(default)]
+    terminated_upstream: Option<EndpointValue>,
 }
 
 #[derive(Debug, Deserialize)]

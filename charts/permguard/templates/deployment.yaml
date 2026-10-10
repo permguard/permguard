@@ -111,6 +111,11 @@ spec:
             # The root filesystem is read-only, so anything that wants a temporary file needs this.
             - name: tmp
               mountPath: /tmp
+            {{- if $plane.tls.secretName }}
+            - name: public-tls
+              mountPath: /etc/permguard-tls
+              readOnly: true
+            {{- end }}
             {{- with $plane.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -137,6 +142,11 @@ spec:
         remove that, and they stay generic on purpose — a `tls.existingSecret` shortcut would have
         to guess key names, mount paths and which of several files a given deployment uses.
         */ -}}
+        {{- if $plane.tls.secretName }}
+        - name: public-tls
+          secret:
+            secretName: {{ $plane.tls.secretName }}
+        {{- end }}
         {{- with $plane.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -266,6 +276,11 @@ spec:
               mountPath: /var/lib/permguard
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.allInOne.tls.secretName }}
+            - name: public-tls
+              mountPath: /etc/permguard-tls
+              readOnly: true
+            {{- end }}
             {{- with .Values.allInOne.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -281,6 +296,11 @@ spec:
             claimName: {{ include "permguard.fullname" . }}-all-in-one
         {{- else }}
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.allInOne.tls.secretName }}
+        - name: public-tls
+          secret:
+            secretName: {{ .Values.allInOne.tls.secretName }}
         {{- end }}
         {{- with .Values.allInOne.extraVolumes }}
         {{- toYaml . | nindent 8 }}

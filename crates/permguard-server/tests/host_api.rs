@@ -238,6 +238,27 @@ fn facade(tag: &str) -> Arc<HostApi> {
             std::time::Duration::from_secs(30),
         )),
         peer_sessions: permguard_host::api::sessions::PeerSessions::none(),
+        // A listener of each authentication shape, with and without a TLS minimum (WP-2.11).
+        listeners: vec![
+            permguard_core::ListenerReport::of(
+                "data-http",
+                permguard_core::ListenerClass::PlanePublic,
+                None,
+                true,
+                false,
+            ),
+            permguard_core::ListenerReport::of(
+                "host-api",
+                permguard_core::ListenerClass::Host,
+                Some(
+                    &permguard_core::TlsSettings::new("c", "k")
+                        .with_client_ca("ca")
+                        .with_min_version(permguard_core::TlsVersion::V1_2),
+                ),
+                false,
+                true,
+            ),
+        ],
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: members,
             capabilities: permguard_host::membership::Capabilities::default(),

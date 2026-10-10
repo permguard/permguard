@@ -87,6 +87,60 @@ impl Pki {
         )
     }
 
+    /// `stem`'s certificate for `name` under `serial`, written over any earlier one; already
+    /// expired when `expired` (WP-2.11).
+    fn issue_serial(&self, stem: &str, name: &str, serial: u64, expired: bool) {
+        let mut params = rcgen::CertificateParams::new(vec![name.to_owned()]).expect("parameters");
+        params.serial_number = Some(rcgen::SerialNumber::from(serial));
+        if expired {
+            params.not_before = rcgen::date_time_ymd(2020, 1, 1);
+            params.not_after = rcgen::date_time_ymd(2021, 1, 1);
+        }
+        let key = rcgen::KeyPair::generate().expect("a key");
+        let issuer = rcgen::Issuer::from_params(&self.authority_params, &self.authority_key);
+        let certificate = params.signed_by(&key, &issuer).expect("signed");
+        self.write(&format!("{stem}.pem"), &certificate.pem());
+        self.write(&format!("{stem}.key"), &key.serialize_pem());
+    }
+
+    /// A revocation list taking `serials` back, written as `stem`.
+    fn revoke(&self, stem: &str, serials: &[u64]) -> PathBuf {
+        let params = rcgen::CertificateRevocationListParams {
+            this_update: rcgen::date_time_ymd(2020, 1, 1),
+            next_update: rcgen::date_time_ymd(2099, 1, 1),
+            crl_number: rcgen::SerialNumber::from(1_u64),
+            issuing_distribution_point: None,
+            revoked_certs: serials
+                .iter()
+                .map(|serial| rcgen::RevokedCertParams {
+                    serial_number: rcgen::SerialNumber::from(*serial),
+                    revocation_time: rcgen::date_time_ymd(2020, 6, 1),
+                    reason_code: Some(rcgen::RevocationReason::KeyCompromise),
+                    invalidity_date: None,
+                })
+                .collect(),
+            key_identifier_method: rcgen::KeyIdMethod::Sha256,
+        };
+        let issuer = rcgen::Issuer::from_params(&self.authority_params, &self.authority_key);
+        let list = params.signed_by(&issuer).expect("the list is signed");
+        self.write(stem, &list.pem().expect("PEM"))
+    }
+
+    /// A revocation list whose `nextUpdate` has passed, written as `stem`.
+    fn revoke_expired(&self, stem: &str) -> PathBuf {
+        let params = rcgen::CertificateRevocationListParams {
+            this_update: rcgen::date_time_ymd(2020, 1, 1),
+            next_update: rcgen::date_time_ymd(2021, 1, 1),
+            crl_number: rcgen::SerialNumber::from(2_u64),
+            issuing_distribution_point: None,
+            revoked_certs: Vec::new(),
+            key_identifier_method: rcgen::KeyIdMethod::Sha256,
+        };
+        let issuer = rcgen::Issuer::from_params(&self.authority_params, &self.authority_key);
+        let list = params.signed_by(&issuer).expect("the list is signed");
+        self.write(stem, &list.pem().expect("PEM"))
+    }
+
     /// A client configuration presenting `stem`'s certificate.
     fn client(&self, stem: &str) -> rustls::ClientConfig {
         let (certificate, key) = self.issue(stem, stem);
@@ -195,10 +249,15 @@ impl Host {
                 report,
                 context: Some(self.context(peers)),
             },
+            listeners: Vec::new(),
             memberships: None,
         }));
-        let (certificate, key) = pki.issue("server", "localhost");
-        let settings = TlsSettings::new(&certificate, &key).with_client_ca(pki.authority());
+        pki.issue_serial("server", "localhost", SERVER_SERIAL, false);
+        let settings = TlsSettings::new(
+            pki.directory.join("server.pem"),
+            pki.directory.join("server.key"),
+        )
+        .with_client_ca(pki.authority());
         Surface::listener(
             "host-api",
             "127.0.0.1:0",
@@ -211,6 +270,9 @@ impl Host {
         .expect("the listener binds")
     }
 }
+
+/// The serial of every test listener's own certificate, so a list can name it.
+const SERVER_SERIAL: u64 = 7001;
 
 const SERVED: PeerSessionsReport = PeerSessionsReport {
     served: true,
@@ -524,6 +586,18 @@ async fn side(
     ring: &'static str,
     capabilities: permguard_host::membership::Capabilities,
 ) -> Side {
+    side_with(root, pki, stem, ring, capabilities, None).await
+}
+
+/// A side whose listener, and peer client, check `crl` (WP-2.11).
+async fn side_with(
+    root: &Path,
+    pki: &Pki,
+    stem: &str,
+    ring: &'static str,
+    capabilities: permguard_host::membership::Capabilities,
+    crl: Option<PathBuf>,
+) -> Side {
     use permguard_core::authz::{Principal, Resource, Selector, operations};
 
     let host = host(root);
@@ -606,7 +680,10 @@ async fn side(
     // The listener's own certificate is the member's client identity, its client CA the
     // anchors a coordinator is verified against.
     let (certificate, key) = pki.issue(stem, "127.0.0.1");
-    let settings = TlsSettings::new(&certificate, &key).with_client_ca(pki.authority());
+    let mut settings = TlsSettings::new(&certificate, &key).with_client_ca(pki.authority());
+    if let Some(crl) = crl {
+        settings = settings.with_crl(crl);
+    }
     let connector = permguard_server::host_api::peer::member_client(Some(&settings))
         .expect("the peer client")
         .map(|tls| {
@@ -638,6 +715,7 @@ async fn side(
             report: SERVED,
             context: Some(context),
         },
+        listeners: Vec::new(),
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: Arc::clone(&members),
             capabilities,
@@ -1182,5 +1260,218 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
         tokio::time::sleep(Duration::from_millis(50)).await;
         waited += 1;
     }
+    let _ = (&coordinator.listener, &member.listener);
+}
+
+/// WP-2.11: the member's peer client checks the coordinator against the listener's revocation
+/// list, read again for every connection: a list naming the coordinator's certificate refuses
+/// the next connection of the same client, with no restart.
+#[tokio::test]
+async fn a_member_refuses_a_coordinator_whose_certificate_its_list_revokes() {
+    let root = scratch("revoked-coordinator");
+    let pki = Pki::new(&root);
+    let coordinator = host(&root.join("coordinator"));
+    let member = host(&root.join("member"));
+    let listener = coordinator.listen(&pki, &[&member.identity], SERVED).await;
+    pki.issue_serial("member", "member", 8001, false);
+    let crl = pki.revoke("member.crl", &[]);
+    let settings = TlsSettings::new(
+        pki.directory.join("member.pem"),
+        pki.directory.join("member.key"),
+    )
+    .with_client_ca(pki.authority())
+    .with_crl(&crl);
+    let client = permguard_server::host_api::peer::member_client(Some(&settings))
+        .expect("the peer client builds")
+        .expect("a client CA makes one");
+    let config = client.config().expect("the material reads");
+    // The pinned algorithm policy, as every listener's.
+    let suites: Vec<String> = config
+        .crypto_provider()
+        .cipher_suites
+        .iter()
+        .map(|suite| format!("{:?}", suite.suite()))
+        .collect();
+    let pinned: Vec<String> = permguard_transport::CIPHER_SUITES
+        .iter()
+        .map(|suite| format!("{:?}", suite.suite()))
+        .collect();
+    assert_eq!(suites, pinned);
+    Connection::open(listener.address(), localhost(), &config)
+        .await
+        .map(drop)
+        .unwrap_or_else(|error| panic!("nothing is revoked yet: {error:?}"));
+
+    pki.revoke("member.crl", &[SERVER_SERIAL]);
+    let config = client.config().expect("the material reads again");
+    match Connection::open(listener.address(), localhost(), &config).await {
+        Err(PeerError::Transport(detail)) => {
+            assert!(detail.contains("Revoked"), "{detail}");
+        }
+        Err(other) => panic!("refused for another reason: {other:?}"),
+        Ok(_) => panic!("a coordinator its list revokes was trusted"),
+    }
+    // A list past its `nextUpdate` refuses rather than vouches, as the listener's does.
+    pki.revoke_expired("member.crl");
+    let config = client.config().expect("the material reads again");
+    match Connection::open(listener.address(), localhost(), &config).await {
+        Err(PeerError::Transport(detail)) => {
+            assert!(detail.contains("revocation list expired"), "{detail}");
+        }
+        Err(other) => panic!("refused for another reason: {other:?}"),
+        Ok(_) => panic!("an expired list vouched for the coordinator"),
+    }
+    let _ = &listener;
+}
+
+/// WP-2.11 Part 2 step 3: an enrolled member whose certificate is then revoked, or expired,
+/// cannot establish a task session; its certificate valid again, it can. The coordinator's
+/// listener refuses at the handshake, and the member's client takes the certificate on disk at
+/// every connection.
+#[tokio::test]
+async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
+    use permguard_host::api::members::{ApproveMember, CreateInvite, SyncMembership};
+    use permguard_host::membership::member::Member;
+    use permguard_host::membership::record::{Role, TaskType};
+    use permguard_host::membership::{Capabilities, MembershipError};
+
+    const REVOKED: u64 = 9001;
+    let root = scratch("revoked-member");
+    let pki = Pki::new(&root);
+    let crl = pki.revoke("coordinator.crl", &[REVOKED]);
+    let coordinator = side_with(
+        &root.join("coordinator"),
+        &pki,
+        "coordinator",
+        "host.operations",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator),
+        Some(crl),
+    )
+    .await;
+    let member = side(
+        &root.join("member"),
+        &pki,
+        "member",
+        "data.attest",
+        Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
+    )
+    .await;
+    let invited = coordinator
+        .api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                request_id: "invite".to_owned(),
+                selector: "plane/data/*".to_owned(),
+                tasks: vec![decisions()],
+                expires: None,
+                expected_fingerprint: Some(member.host.identity.first_fingerprint().to_owned()),
+                min_assurance: None,
+                max_uses: 1,
+            },
+        )
+        .await
+        .expect("invited");
+    let id = member
+        .api
+        .join_membership(&admin(), join_of(&coordinator, &invited, "join"))
+        .await
+        .expect("joined")
+        .membership_id;
+    let pending = coordinator.api.member(&admin(), &id).expect("enrolled");
+    coordinator
+        .api
+        .approve_member(
+            &admin(),
+            &id,
+            ApproveMember {
+                request_id: "approve".to_owned(),
+                expected_revision: pending.revision,
+                narrow: None,
+                lease_policy: None,
+                assurance: None,
+            },
+        )
+        .await
+        .expect("approved");
+    member
+        .api
+        .sync_membership(
+            &admin(),
+            &id,
+            SyncMembership {
+                request_id: "sync".to_owned(),
+            },
+        )
+        .await
+        .expect("synced");
+    let capabilities = Capabilities::default().declare(TaskType::DecisionsShip, Role::Member);
+    let acting = Member {
+        store: &member.members,
+        mutations: &member.mutations,
+        identity: &member.host.identity,
+        rings: member.keys.rings(),
+        capabilities: &capabilities,
+        connector: member.connector.as_deref().expect("a peer client"),
+        declared_assurance: AssuranceProfile::Production,
+        time: &member.host.time,
+    };
+    let membership_id = coordinator
+        .members
+        .memberships()
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("one membership");
+    let open = || {
+        acting.open_task(
+            permguard_host::operations::journal::Initiator::System("test".to_owned()),
+            &membership_id,
+            "decisions",
+            "plane/data/zone/z1",
+            Vec::new(),
+        )
+    };
+    drop(open().await.expect("a lease under a valid certificate"));
+    let wait_closed = || async {
+        let mut waited = 0;
+        while !coordinator.tasks.live.of(&membership_id).is_empty() {
+            assert!(waited < 100, "the session was not dropped");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            waited += 1;
+        }
+    };
+    wait_closed().await;
+
+    for (case, serial, expired) in [("revoked", REVOKED, false), ("expired", 9002, true)] {
+        pki.issue_serial("member", "127.0.0.1", serial, expired);
+        match open().await {
+            Err(MembershipError::Remote { code, reason }) => {
+                // The coordinator's handshake, never this Host's own material.
+                assert_eq!(code, codes::common::UNAVAILABLE, "{case}: {reason}");
+                assert!(
+                    reason.contains("Certificate") || reason.contains("certificate"),
+                    "{case}: {reason}"
+                );
+            }
+            Err(other) => panic!("{case}: refused for another reason: {other}"),
+            Ok(_) => panic!("{case}: a task session was established"),
+        }
+        assert!(
+            coordinator.tasks.live.of(&membership_id).is_empty(),
+            "{case}: the coordinator holds no session"
+        );
+    }
+    // Material this Host cannot read is its own fault: another code, before any connection.
+    std::fs::write(pki.directory.join("member.key"), "not a key").expect("written");
+    match open().await {
+        Err(MembershipError::Remote { code, .. }) => {
+            assert_eq!(code, codes::host::PEER_CLIENT_UNCONFIGURED);
+        }
+        Err(other) => panic!("refused for another reason: {other}"),
+        Ok(_) => panic!("a task session without a usable key"),
+    }
+    pki.issue_serial("member", "127.0.0.1", 9003, false);
+    drop(open().await.expect("valid again, a lease"));
     let _ = (&coordinator.listener, &member.listener);
 }

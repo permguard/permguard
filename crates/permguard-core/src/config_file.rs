@@ -51,12 +51,12 @@ use crate::config::{
     SETTING_PUBLIC_HTTP_ADDR, SETTING_PUBLIC_HTTP_ENABLED, SETTING_PUBLIC_PATH_PREFIX,
     SETTING_PUBLIC_TLS_ALLOW, SETTING_PUBLIC_TLS_CERT, SETTING_PUBLIC_TLS_CLIENT_CA,
     SETTING_PUBLIC_TLS_CRL, SETTING_PUBLIC_TLS_KEY, SETTING_PUBLIC_TLS_MIN_VERSION,
-    SETTING_SECRETS_COORDINATOR_ROOT_REF, SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX,
-    SETTING_SECRETS_PROVIDER, SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT,
-    SETTING_SHUTDOWN_TIMEOUT, SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL,
-    SETTING_TELEMETRY_TLS_CERT, SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION,
-    SETTING_TIME_MAX_CLOCK_SKEW, SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL,
-    SETTING_WORKING_DIR,
+    SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM, SETTING_SECRETS_COORDINATOR_ROOT_REF,
+    SETTING_SECRETS_DIRECTORY, SETTING_SECRETS_ENV_PREFIX, SETTING_SECRETS_PROVIDER,
+    SETTING_SECRETS_ZONE_KEY_VERSION, SETTING_SHUTDOWN_DRAIN_TIMEOUT, SETTING_SHUTDOWN_TIMEOUT,
+    SETTING_TELEMETRY_ADDR, SETTING_TELEMETRY_ADVERTISED_URL, SETTING_TELEMETRY_TLS_CERT,
+    SETTING_TELEMETRY_TLS_KEY, SETTING_TELEMETRY_TLS_MIN_VERSION, SETTING_TIME_MAX_CLOCK_SKEW,
+    SETTING_TLS_RELOAD, SETTING_TLS_RELOAD_INTERVAL, SETTING_WORKING_DIR,
 };
 use crate::realm::{
     ClaimMapping, ExchangeProfileClaims, ExchangeProfileConfig, ExchangeProfilePrivileges,
@@ -608,6 +608,10 @@ struct TlsSection {
     crl: Option<String>,
     #[serde(default)]
     min_version: Option<String>,
+    /// An ingress or a mesh sidecar terminates TLS in front of the surface (WP-2.11): read on the
+    /// public surface only; the Host listener never serves behind one.
+    #[serde(default)]
+    terminated_upstream: Option<String>,
 }
 
 /// How transport material is treated while the server runs, across every surface at once.
@@ -1069,7 +1073,34 @@ impl ConfigFile {
 
     /// Parses configuration-file text.
     pub fn parse(text: &str) -> Result<Self> {
-        Ok(serde_norway::from_str(text)?)
+        let file: Self = serde_norway::from_str(text)?;
+        file.check_shape()?;
+        Ok(file)
+    }
+
+    /// Members the file may spell but no surface reads, refused by name rather than ignored.
+    fn check_shape(&self) -> Result<()> {
+        if self
+            .admin
+            .tls
+            .allow
+            .as_ref()
+            .is_some_and(|list| !list.is_empty())
+        {
+            anyhow::bail!(
+                "`admin.tls.allow` is not read: the administrative surface's peers are listed under \
+                 `admin.allow`"
+            );
+        }
+        if self.admin.tls.terminated_upstream.is_some() {
+            anyhow::bail!(
+                "`admin.tls.terminated_upstream` is refused: a peer session signs the exporter of \
+                 this process's own TLS connection, so the Host listener never serves behind a \
+                 proxy or sidecar that terminates TLS"
+            );
+        }
+
+        Ok(())
     }
 
     /// Reads the one-realm files in the directory `realms_from` names, appending each to `realms`.
@@ -1159,19 +1190,6 @@ impl ConfigFile {
             }
 
             self.realms.push(realm);
-        }
-
-        if self
-            .admin
-            .tls
-            .allow
-            .as_ref()
-            .is_some_and(|list| !list.is_empty())
-        {
-            anyhow::bail!(
-                "`admin.tls.allow` is not read: the administrative surface's peers are listed under \
-                 `admin.allow`"
-            );
         }
 
         Ok(())
@@ -1269,6 +1287,10 @@ impl ConfigFile {
             ),
             (SETTING_LIMITS_BODY_BYTES, self.limits.body_bytes.as_ref()),
             (SETTING_PUBLIC_TLS_CRL, self.public.tls.crl.as_ref()),
+            (
+                SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM,
+                self.public.tls.terminated_upstream.as_ref(),
+            ),
             (SETTING_PUBLIC_TLS_ALLOW, public_allow.as_ref()),
             (
                 SETTING_PUBLIC_DISCLOSE_BUILD,

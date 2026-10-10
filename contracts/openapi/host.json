@@ -4322,6 +4322,14 @@
           "peer_sessions": {
             "$ref": "#/components/schemas/PeerSessions",
             "x-grpc-field": "peer_sessions"
+          },
+          "listeners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HostListener"
+            },
+            "description": "Every listener of the process, sorted by name, with its class and what it demands of its clients (WP-2.11).",
+            "x-grpc-field": "listeners"
           }
         },
         "required": [
@@ -4331,11 +4339,71 @@
           "degraded",
           "components",
           "assurance",
-          "peer_sessions"
+          "peer_sessions",
+          "listeners"
         ],
         "additionalProperties": false,
         "description": "What `GET /host/v1/status` answers.",
         "x-grpc-message": "permguard.host.v1.GetStatusResponse"
+      },
+      "HostListener": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The surface: `host-api`, `telemetry`, or a Plane's `<plane>-<protocol>` (`control-http`, `data-grpc`, `control-http-grpc` for one listener serving both).",
+            "x-grpc-field": "name"
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "host",
+              "plane_public",
+              "telemetry"
+            ],
+            "description": "The listener class (WP-2.11): `host` (TLS, mTLS, Host proof for peers, Host grants for operators), `plane_public` (TLS or a declared upstream termination, deny by default) or `telemetry` (loopback or private bind, TLS outside that trust).",
+            "x-grpc-field": "class"
+          },
+          "authentication": {
+            "type": "string",
+            "enum": [
+              "none",
+              "tls",
+              "mutual_tls",
+              "upstream_tls"
+            ],
+            "description": "What the listener demands of a client before a route: `none` (the clear), `tls` (TLS the process serves), `mutual_tls` (a client certificate demanded) or `upstream_tls` (the clear behind an ingress or a sidecar the deployment declares terminates TLS: the relaxation `tls.terminated_upstream`).",
+            "x-grpc-field": "authentication"
+          },
+          "client_allow": {
+            "type": "boolean",
+            "description": "Whether an allow list names which authenticated clients it answers.",
+            "x-grpc-field": "client_allow"
+          },
+          "tls_min_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "1.2",
+              "1.3",
+              null
+            ],
+            "description": "The TLS minimum when the process serves TLS on it; `null` otherwise.",
+            "x-grpc-field": "tls_min_version"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "authentication",
+          "client_allow",
+          "tls_min_version"
+        ],
+        "additionalProperties": false,
+        "description": "One listener of the process and what it demands of its clients (WP-2.11): never its address, certificate or peers.",
+        "x-grpc-message": "permguard.host.v1.HostListener"
       },
       "Setting": {
         "type": "object",

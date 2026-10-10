@@ -172,27 +172,28 @@ controlPlane:
     http:
       enabled: true
       addr: 0.0.0.0:6443
-      # tls:
-      #   enabled: false
-      #   cert: tls/control-http-server.pem
-      #   key: tls/control-http-server.key
-      #   client_ca: tls/control-http-clients.pem
-      #   crl: tls/control-http-clients.crl
-      #   allow:
-      #     - cn:the-billing-service
-      #   min_version: "1.3"
+      # From the `production` profile a public listener beyond loopback serves TLS, or the
+      # deployment says an ingress or a mesh sidecar terminates TLS in front of it (WP-2.11).
+      # HTTP and gRPC share this address, so they state the same block.
+      tls:
+        cert: tls/control-server.pem
+        key: tls/control-server.key
+        # client_ca: tls/clients.pem
+        # crl: tls/clients.crl
+        # allow:                          # who, of everybody client_ca signed, this endpoint answers
+        #   - cn:the-billing-service      # empty/absent: the handshake is the whole decision
+        #   - sha256:<fingerprint>
+        # min_version: "1.3"
+        # Behind an ingress or a sidecar that terminates TLS, replace cert and key with this line,
+        # in this block and in the gRPC one below alike: published as `upstream_tls`, it is the
+        # relaxation `tls.terminated_upstream`, refused by `regulated`.
+        # terminated_upstream: true
     grpc:
       enabled: true
       addr: 0.0.0.0:6443
-      # tls:
-      #   enabled: false
-      #   cert: tls/control-grpc-server.pem
-      #   key: tls/control-grpc-server.key
-      #   client_ca: tls/control-grpc-clients.pem
-      #   crl: tls/control-grpc-clients.crl
-      #   allow:
-      #     - cn:the-billing-service
-      #   min_version: "1.3"
+      tls:
+        cert: tls/control-server.pem
+        key: tls/control-server.key
 
   # ── Keeping the store from growing forever ───────────────────────────────────────────────────
   # A content-addressed store only ever adds. A push uploads its objects and *then* commits, so a
@@ -246,27 +247,28 @@ dataPlane:
     http:
       enabled: true
       addr: 0.0.0.0:7443
-      # tls:
-      #   enabled: false
-      #   cert: tls/data-http-server.pem
-      #   key: tls/data-http-server.key
-      #   client_ca: tls/data-http-clients.pem
-      #   crl: tls/data-http-clients.crl
-      #   allow:
-      #     - cn:the-billing-service
-      #   min_version: "1.3"
+      # From the `production` profile a public listener beyond loopback serves TLS, or the
+      # deployment says an ingress or a mesh sidecar terminates TLS in front of it (WP-2.11).
+      # HTTP and gRPC share this address, so they state the same block.
+      tls:
+        cert: tls/data-server.pem
+        key: tls/data-server.key
+        # client_ca: tls/clients.pem
+        # crl: tls/clients.crl
+        # allow:                          # who, of everybody client_ca signed, this endpoint answers
+        #   - cn:the-billing-service      # empty/absent: the handshake is the whole decision
+        #   - sha256:<fingerprint>
+        # min_version: "1.3"
+        # Behind an ingress or a sidecar that terminates TLS, replace cert and key with this line,
+        # in this block and in the gRPC one below alike: published as `upstream_tls`, it is the
+        # relaxation `tls.terminated_upstream`, refused by `regulated`.
+        # terminated_upstream: true
     grpc:
       enabled: true
       addr: 0.0.0.0:7443
-      # tls:
-      #   enabled: false
-      #   cert: tls/data-grpc-server.pem
-      #   key: tls/data-grpc-server.key
-      #   client_ca: tls/data-grpc-clients.pem
-      #   crl: tls/data-grpc-clients.crl
-      #   allow:
-      #     - cn:the-billing-service
-      #   min_version: "1.3"
+      tls:
+        cert: tls/data-server.pem
+        key: tls/data-server.key
 
   # ── What this plane mirrors ──────────────────────────────────────────────────────────────────
   # Sync belongs to the data plane: it is the plane that answers decisions that needs the policies,

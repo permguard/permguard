@@ -413,6 +413,7 @@ pub fn server_configuration_document(config: &Config) -> String {
             .flatten(),
         assurance: config.assurance().report(&config.relaxations_in_force()),
         peer_sessions: config.peer_sessions(),
+        listeners: super::listeners::listeners(config),
     };
 
     // A document assembled from values cannot be malformed by one of them; a document assembled
@@ -454,6 +455,9 @@ pub struct ServerConfiguration {
     /// Whether the Host listener serves peer Host sessions, and why not (WP-2.3): a deployment
     /// behind a TLS-terminating proxy states `admin.peer_sessions: disabled`, and this says so.
     pub peer_sessions: permguard_core::PeerSessionsReport,
+    /// Every listener of the process, sorted by name, and what it demands of its clients
+    /// (WP-2.11): what no listener widens silently is said here.
+    pub listeners: Vec<permguard_core::ListenerReport>,
     /// The operations ring as a JWKS, when this deployment publishes keys at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jwks_uri: Option<String>,
@@ -643,6 +647,36 @@ mod document_tests {
                 "added_controls": ["tls.1_3_only"],
                 "relaxations": ["custody.plaintext"]
             })
+        );
+    }
+
+    #[test]
+    fn the_registry_publishes_every_listener_and_its_authentication() {
+        // WP-2.11: what each listener demands, the Plane public ones included, sorted by name,
+        // and nothing that says where it is.
+        use permguard_core::config::{SETTING_ASSURANCE_PROFILE, SETTING_TELEMETRY_ADDR};
+        let document: serde_json::Value =
+            serde_json::from_str(&server_configuration_document(&config_with(&[
+                (SETTING_ASSURANCE_PROFILE, "development"),
+                (SETTING_TELEMETRY_ADDR, "127.0.0.1:5443"),
+                (SETTING_CONTROL_HTTP_ADDR, "127.0.0.1:6443"),
+                (SETTING_CONTROL_GRPC_ADDR, "127.0.0.1:6443"),
+                (SETTING_DATA_HTTP_ADDR, "0.0.0.0:7443"),
+                (SETTING_DATA_HTTP_TLS_TERMINATED_UPSTREAM, "true"),
+            ])))
+            .expect("JSON");
+        assert_eq!(
+            document["listeners"],
+            serde_json::json!([
+                {"name": "control-http-grpc", "class": "plane_public", "authentication": "none", "client_allow": false},
+                {"name": "data-http", "class": "plane_public", "authentication": "upstream_tls", "client_allow": false},
+                {"name": "telemetry", "class": "telemetry", "authentication": "none", "client_allow": false},
+            ])
+        );
+        // Beside `custody.plaintext`, which `development` keeps its keys under.
+        assert_eq!(
+            document["assurance"]["relaxations"],
+            serde_json::json!(["custody.plaintext", "tls.terminated_upstream"])
         );
     }
 

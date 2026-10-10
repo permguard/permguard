@@ -280,16 +280,20 @@ pub enum Relaxation {
     GrpcTransportParityPartial,
     Tls12Compat,
     CustodyPlaintext,
+    /// A Plane public listener serving in the clear behind an ingress or a sidecar that terminates
+    /// TLS (WP-2.11).
+    TlsTerminatedUpstream,
 }
 
 impl Relaxation {
     /// Every relaxation.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::EvidenceBestEffort,
         Self::SchemaRegoInputAbsent,
         Self::GrpcTransportParityPartial,
         Self::Tls12Compat,
         Self::CustodyPlaintext,
+        Self::TlsTerminatedUpstream,
     ];
 
     /// The stable name discovery publishes.
@@ -300,6 +304,7 @@ impl Relaxation {
             Self::GrpcTransportParityPartial => names::RELAX_GRPC_TRANSPORT_PARITY_PARTIAL,
             Self::Tls12Compat => names::RELAX_TLS_1_2_COMPAT,
             Self::CustodyPlaintext => names::RELAX_CUSTODY_PLAINTEXT,
+            Self::TlsTerminatedUpstream => names::RELAX_TLS_TERMINATED_UPSTREAM,
         }
     }
 
@@ -311,6 +316,9 @@ impl Relaxation {
             Self::GrpcTransportParityPartial => Control::GrpcStrictDecoder,
             Self::Tls12Compat => Control::Tls13Only,
             Self::CustodyPlaintext => Control::CustodyEncrypted,
+            // A process that terminates no TLS cannot hold its listener to TLS 1.3 end to end
+            // (WP-2.11 interpretation): no new control.
+            Self::TlsTerminatedUpstream => Control::Tls13Only,
         }
     }
 
@@ -490,6 +498,7 @@ mod tests {
             (Relaxation::GrpcTransportParityPartial, [true, true, false]),
             (Relaxation::Tls12Compat, [true, true, false]),
             (Relaxation::CustodyPlaintext, [true, false, false]),
+            (Relaxation::TlsTerminatedUpstream, [true, true, false]),
         ];
         for (relaxation, permitted) in expected {
             for (profile, permitted) in [Development, Production, Regulated]

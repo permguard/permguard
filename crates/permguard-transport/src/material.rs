@@ -51,7 +51,9 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
         TlsVersion::V1_3 => &[&rustls::version::TLS13],
     };
 
-    let builder = ServerConfig::builder_with_protocol_versions(versions);
+    let builder = ServerConfig::builder_with_provider(crate::policy::provider())
+        .with_protocol_versions(versions)
+        .context("the pinned algorithm policy refuses these TLS versions")?;
 
     let mut config = match settings.client_ca() {
         Some(client_ca) => {
@@ -62,7 +64,10 @@ pub(crate) fn build(settings: &TlsSettings) -> Result<(Arc<ServerConfig>, String
                 })?;
             }
 
-            let mut verifier = WebPkiClientVerifier::builder(Arc::new(roots));
+            let mut verifier = WebPkiClientVerifier::builder_with_provider(
+                Arc::new(roots),
+                crate::policy::provider(),
+            );
 
             if let Some(path) = settings.crl() {
                 let revoked = load_revocations(path)?;

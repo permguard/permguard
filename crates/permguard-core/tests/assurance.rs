@@ -22,7 +22,10 @@ fn config(settings: &[(&str, &str)]) -> Config {
     all.extend_from_slice(settings);
     Config::from_layers(
         BuildSettings::new("1.2.3", "2026", "Build Holder"),
-        ["PERMGUARD_DATA_HTTP_TLS_MIN_VERSION"],
+        [
+            "PERMGUARD_DATA_HTTP_TLS_MIN_VERSION",
+            "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM",
+        ],
         Layers::new().with_file(
             all.iter()
                 .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
@@ -315,4 +318,57 @@ fn the_evidence_classes_are_ordered_weakest_first_by_their_stable_names() {
         assert_eq!(name.parse::<EvidenceClass>(), Ok(class));
     }
     assert!("approved".parse::<EvidenceClass>().is_err());
+}
+
+/// WP-2.11: a declared upstream TLS termination, the process's or a Plane endpoint's, is the
+/// relaxation `tls.terminated_upstream`: published below `regulated`, refused at it and wherever
+/// `tls.1_3_only` was added.
+#[test]
+fn test_an_upstream_termination_is_a_relaxation_regulated_refuses() {
+    for declared in [
+        SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM,
+        "PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM",
+    ] {
+        let relaxed = config(&[
+            (SETTING_ASSURANCE_PROFILE, "production"),
+            (declared, "true"),
+        ]);
+        relaxed.validate().expect("permitted under production");
+        assert_eq!(
+            relaxed.relaxations_in_force(),
+            vec![Relaxation::TlsTerminatedUpstream],
+            "{declared}"
+        );
+        assert_eq!(
+            relaxed
+                .assurance()
+                .report(&relaxed.relaxations_in_force())
+                .relaxations,
+            vec!["tls.terminated_upstream"]
+        );
+        let why = refusal(&regulated(&[(declared, "true")]));
+        assert!(
+            why.contains("tls.terminated_upstream") && why.contains("tls.1_3_only"),
+            "{why}"
+        );
+        let ratcheted = config(&[
+            (SETTING_ASSURANCE_ADDED_CONTROLS, "tls.1_3_only"),
+            (declared, "true"),
+        ]);
+        assert!(refusal(&ratcheted).contains("tls.terminated_upstream"));
+        let stated_false = config(&[
+            (SETTING_ASSURANCE_PROFILE, "production"),
+            (declared, "false"),
+        ]);
+        assert!(stated_false.relaxations_in_force().is_empty(), "{declared}");
+        // A value that does not read as false errs toward publishing and refusing.
+        let unreadable = config(&[
+            (SETTING_ASSURANCE_PROFILE, "production"),
+            ("PERMGUARD_DATA_HTTP_TLS_TERMINATED_UPSTREAM", "perhaps"),
+        ]);
+        assert_eq!(
+            unreadable.relaxations_in_force(),
+            vec![Relaxation::TlsTerminatedUpstream]
+        );
+    }
 }

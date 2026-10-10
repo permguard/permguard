@@ -57,28 +57,28 @@ dataPlane:
     http:
       enabled: true
       addr: 0.0.0.0:7443
-      # tls:
-      #   enabled: false
-      #   cert: tls/http-server.pem
-      #   key: tls/http-server.key
-      #   client_ca: tls/http-clients.pem
-      #   crl: tls/http-clients.crl
-      #   allow:                          # who, of everybody client_ca signed, this endpoint answers
-      #     - cn:the-billing-service      # empty/absent: the handshake is the whole decision
-      #     - sha256:<fingerprint>
-      #   min_version: "1.3"
+      # From the `production` profile a public listener beyond loopback serves TLS, or the
+      # deployment says an ingress or a mesh sidecar terminates TLS in front of it (WP-2.11).
+      # HTTP and gRPC share this address, so they state the same block.
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
+        # client_ca: tls/clients.pem
+        # crl: tls/clients.crl
+        # allow:                          # who, of everybody client_ca signed, this endpoint answers
+        #   - cn:the-billing-service      # empty/absent: the handshake is the whole decision
+        #   - sha256:<fingerprint>
+        # min_version: "1.3"
+        # Behind an ingress or a sidecar that terminates TLS, replace cert and key with this line,
+        # in this block and in the gRPC one below alike: published as `upstream_tls`, it is the
+        # relaxation `tls.terminated_upstream`, refused by `regulated`.
+        # terminated_upstream: true
     grpc:
       enabled: true
       addr: 0.0.0.0:7443
-      # tls:
-      #   enabled: false
-      #   cert: tls/grpc-server.pem
-      #   key: tls/grpc-server.key
-      #   client_ca: tls/grpc-clients.pem
-      #   crl: tls/grpc-clients.crl
-      #   allow:
-      #     - cn:the-billing-service
-      #   min_version: "1.3"
+      tls:
+        cert: tls/server.pem
+        key: tls/server.key
 
   # ── What this plane mirrors ──────────────────────────────────────────────────────────────────
   # Sync belongs to the data plane: it is the plane that answers decisions that needs the policies,

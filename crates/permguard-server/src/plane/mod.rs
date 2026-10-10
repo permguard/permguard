@@ -39,6 +39,7 @@ use crate::{App, DefaultServerHost};
 
 pub mod discovery;
 pub mod factories;
+pub mod listeners;
 pub mod settings;
 
 pub use discovery::{
@@ -267,6 +268,62 @@ impl PlaneTls {
             Self::Setting { keys } => tls_for(config, keys),
         }
     }
+
+    /// Whether the endpoint declares an upstream TLS termination (WP-2.11).
+    fn terminated_upstream(self, config: &Config) -> Result<bool> {
+        match self {
+            Self::Public => Ok(config.public_tls_terminated_upstream()),
+            Self::Setting { keys } => settings::terminated_upstream_for(config, keys),
+        }
+    }
+}
+
+impl PlaneAddresses {
+    /// The listeners these addresses resolve to under `config`: none, one serving HTTP and gRPC on
+    /// a shared address, or one per protocol. `description` names the plane in a refusal.
+    pub(crate) fn endpoints(
+        &self,
+        config: &Config,
+        description: &str,
+    ) -> Result<Vec<listeners::Endpoint>> {
+        // Both protocols' TLS is read whether or not its address is bound, as the start always
+        // did: a malformed setting stops the start even on an endpoint left off.
+        let http_tls = (
+            self.http_tls.resolve(config)?,
+            self.http_tls.terminated_upstream(config)?,
+        );
+        let grpc_tls = (
+            self.grpc_tls.resolve(config)?,
+            self.grpc_tls.terminated_upstream(config)?,
+        );
+        let endpoint =
+            |addr: String, protocol, policy: &(Option<TlsSettings>, bool)| listeners::Endpoint {
+                addr,
+                protocol,
+                tls: policy.0.clone(),
+                terminated_upstream: policy.1,
+            };
+        let http = self.http.resolve(config)?;
+        let grpc = self.grpc.resolve(config)?;
+        Ok(match (http, grpc) {
+            (None, None) => Vec::new(),
+            (Some(addr), Some(grpc)) if addr == grpc => {
+                if http_tls != grpc_tls {
+                    anyhow::bail!(
+                        "{description} HTTP and gRPC share `{addr}` but declare different TLS \
+                         policies: use the same TLS policy or split the HTTP and gRPC addresses"
+                    );
+                }
+                vec![endpoint(addr, listeners::SHARED, &http_tls)]
+            }
+            (Some(addr), Some(grpc)) => vec![
+                endpoint(addr, listeners::HTTP, &http_tls),
+                endpoint(grpc, listeners::GRPC, &grpc_tls),
+            ],
+            (Some(addr), None) => vec![endpoint(addr, listeners::HTTP, &http_tls)],
+            (None, Some(addr)) => vec![endpoint(addr, listeners::GRPC, &grpc_tls)],
+        })
+    }
 }
 
 /// A plane mounted as a lifecycle service.
@@ -317,44 +374,21 @@ impl Service for PlaneService {
             }
 
             let plane_context = PlaneContext::new(context, self.module.id());
-            let http_addr = self.addresses.http.resolve(context.config())?;
-            let grpc_addr = self.addresses.grpc.resolve(context.config())?;
-            let http_tls = self.addresses.http_tls.resolve(context.config())?;
-            let grpc_tls = self.addresses.grpc_tls.resolve(context.config())?;
-
-            let surfaces = match (http_addr, grpc_addr, http_tls, grpc_tls) {
-                (None, None, _, _) => {
+            let endpoints = self
+                .addresses
+                .endpoints(context.config(), self.module.description())?;
+            match endpoints.as_slice() {
+                [] => {
                     info!(
                         event.name = "plane.disabled",
                         component = self.module.component(),
                         plane = self.module.id(),
                         "no plane address is configured"
                     );
-
                     // Still watched: its background work runs, and its phase is what discovery
                     // and readiness report.
-                    Vec::new()
                 }
-                (Some(addr), Some(grpc), http_tls, grpc_tls) if addr == grpc => {
-                    if http_tls != grpc_tls {
-                        anyhow::bail!(
-                            "{} HTTP and gRPC share `{addr}` but declare different TLS policies: \
-                             use the same TLS policy or split the HTTP and gRPC addresses",
-                            self.module.description()
-                        );
-                    }
-
-                    vec![(
-                        addr,
-                        "http+grpc",
-                        shared_port(
-                            self.module.http_routes(&plane_context),
-                            self.module.grpc_routes(&plane_context),
-                        ),
-                        http_tls,
-                    )]
-                }
-                (Some(addr), Some(grpc), http_tls, grpc_tls) => {
+                [http, grpc] => {
                     // One plane, one role port is the documented shape; two addresses is a
                     // deliberate override and stays one, but it should never be an accident a
                     // deployment discovers from a firewall rule.
@@ -362,44 +396,28 @@ impl Service for PlaneService {
                         event.name = "plane.split_ports",
                         component = self.module.component(),
                         plane = self.module.id(),
-                        http = %addr,
-                        grpc = %grpc,
+                        http = %http.addr,
+                        grpc = %grpc.addr,
                         "this plane splits HTTP and gRPC across two addresses; the canonical \
                          shape is one role port serving both"
                     );
-
-                    vec![
-                        (
-                            addr,
-                            "http",
+                }
+                _ => {}
+            }
+            let surfaces: Vec<_> = endpoints
+                .into_iter()
+                .map(|endpoint| {
+                    let router = match endpoint.protocol {
+                        listeners::SHARED => shared_port(
                             self.module.http_routes(&plane_context),
-                            http_tls,
-                        ),
-                        (
-                            grpc,
-                            "grpc",
                             self.module.grpc_routes(&plane_context),
-                            grpc_tls,
                         ),
-                    ]
-                }
-                (Some(addr), None, http_tls, _) => {
-                    vec![(
-                        addr,
-                        "http",
-                        self.module.http_routes(&plane_context),
-                        http_tls,
-                    )]
-                }
-                (None, Some(addr), _, grpc_tls) => {
-                    vec![(
-                        addr,
-                        "grpc",
-                        self.module.grpc_routes(&plane_context),
-                        grpc_tls,
-                    )]
-                }
-            };
+                        listeners::HTTP => self.module.http_routes(&plane_context),
+                        _ => self.module.grpc_routes(&plane_context),
+                    };
+                    (endpoint.addr, endpoint.protocol, router, endpoint.tls)
+                })
+                .collect();
 
             // Initialize: the listeners bind, and until the plane is Ready every domain route
             // they serve refuses with the phase. A plane still waiting for a requirement stays in
@@ -735,6 +753,15 @@ impl PlaneServer {
 
             Ok(())
         });
+
+        // Every Plane public listener against its class, before anything binds (WP-2.11): the
+        // planes as this server registered them, whatever addresses they were given.
+        let registered: Vec<(&'static str, PlaneAddresses)> = self
+            .planes
+            .iter()
+            .map(|plane| (plane.module.id(), plane.addresses))
+            .collect();
+        app = app.with_startup_check(move |config| listeners::check(config, &registered));
 
         for plane in self.planes {
             // What this plane requires of the configuration, before anything binds — but only

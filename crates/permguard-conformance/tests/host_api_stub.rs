@@ -59,6 +59,8 @@ const SHAPED: &[&str] = &[
     "PeerFrame",
     "PeerRefusal",
     "PeerSessions",
+    // The listener classes (WP-2.11).
+    "HostListener",
     "ListRingBindingsResponse",
     "RingBinding",
     "RotateKeyRingRequest",

@@ -217,6 +217,9 @@ pub struct Composition {
     pub time: Arc<crate::time::TimeGuard>,
     /// Peer Host sessions on the listener (WP-2.3).
     pub peer_sessions: sessions::PeerSessions,
+    /// Every listener of the process and what it demands of its clients, as the status route
+    /// publishes them (WP-2.11).
+    pub listeners: Vec<permguard_core::ListenerReport>,
     /// The memberships (WP-4.1); without them the membership routes are `unavailable`.
     pub memberships: Option<Arc<members::MembershipService>>,
 }
@@ -236,6 +239,7 @@ pub struct HostApi {
     identity: Option<Arc<crate::identity::Identity>>,
     time: Arc<crate::time::TimeGuard>,
     peer_sessions: sessions::PeerSessions,
+    listeners: Vec<permguard_core::ListenerReport>,
     memberships: Option<Arc<members::MembershipService>>,
 }
 
@@ -265,6 +269,7 @@ impl HostApi {
             identity: composition.identity,
             time: composition.time,
             peer_sessions: composition.peer_sessions,
+            listeners: composition.listeners,
             memberships: composition.memberships,
         }
     }
@@ -759,6 +764,13 @@ pub(crate) mod testing {
             identity: Some(identity),
             time,
             peer_sessions: sessions::PeerSessions::none(),
+            listeners: vec![permguard_core::ListenerReport::of(
+                permguard_core::listener::HOST_LISTENER,
+                permguard_core::ListenerClass::Host,
+                Some(&permguard_core::TlsSettings::new("c", "k").with_client_ca("ca")),
+                false,
+                true,
+            )],
             memberships: Some(Arc::new(members::MembershipService {
                 store: memberships,
                 // The coordinator's Planes consume shipped decisions (WP-4.4 registers them).

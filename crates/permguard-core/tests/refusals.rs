@@ -622,3 +622,80 @@ fn test_the_custody_defaults_follow_the_profile() {
     assert_eq!(production.keys_kek_version(), "v1");
     assert_eq!(production.keys_kms_mount(), "transit");
 }
+
+#[test]
+fn test_a_telemetry_listener_on_a_public_address_without_tls_is_refused_from_production() {
+    // WP-2.11: the telemetry class stays inside the host and its private networks unless it
+    // serves TLS; development keeps the startup report.
+    for address in ["203.0.113.7:5443", "[2001:db8::7]:5443"] {
+        for profile in ["production", "regulated"] {
+            let why = refusal(&serving(&[
+                (SETTING_ASSURANCE_PROFILE, profile),
+                (SETTING_TELEMETRY_ADDR, address),
+            ]));
+            assert!(why.contains(address), "{profile}: {why}");
+            assert!(why.contains("host.tls.cert"), "{profile}: {why}");
+        }
+        serving(&[(SETTING_TELEMETRY_ADDR, address)])
+            .validate()
+            .unwrap_or_else(|error| panic!("{address} in development: {error:#}"));
+    }
+}
+
+#[test]
+fn test_a_telemetry_listener_on_a_wildcard_private_or_named_address_starts() {
+    for address in [
+        "0.0.0.0:5443",
+        "[::]:5443",
+        "127.0.0.1:5443",
+        "10.0.0.7:5443",
+        "192.168.1.9:5443",
+        "[fd00::7]:5443",
+        "permguard:5443",
+    ] {
+        serving(&[
+            (SETTING_ASSURANCE_PROFILE, "production"),
+            (SETTING_TELEMETRY_ADDR, address),
+        ])
+        .validate()
+        .unwrap_or_else(|error| panic!("{address} was refused: {error:#}"));
+    }
+}
+
+#[test]
+fn test_the_host_listener_takes_no_upstream_termination() {
+    // WP-2.11: a peer session signs this process's own exporter, so no setting lets the Host
+    // listener sit behind a terminating proxy; the public surface may say so, never beside TLS.
+    let refused = permguard_core::ConfigFile::parse(
+        "admin:\n  addr: 127.0.0.1:5444\n  tls:\n    terminated_upstream: true\n",
+    )
+    .expect_err("the Host listener never serves behind one");
+    assert!(
+        format!("{refused:#}").contains("admin.tls.terminated_upstream"),
+        "{refused:#}"
+    );
+    let refused =
+        permguard_core::ConfigFile::parse("admin:\n  tls:\n    allow: [\"cn:operator\"]\n")
+            .expect_err("read nowhere");
+    assert!(
+        format!("{refused:#}").contains("admin.allow"),
+        "{refused:#}"
+    );
+    let file =
+        permguard_core::ConfigFile::parse("public:\n  tls:\n    terminated_upstream: true\n")
+            .expect("the public surface may declare it");
+    assert!(
+        file.settings().contains(&(
+            SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM.to_owned(),
+            "true".to_owned()
+        )),
+        "{:?}",
+        file.settings()
+    );
+    let why = refusal(&serving(&[
+        (SETTING_PUBLIC_TLS_TERMINATED_UPSTREAM, "true"),
+        (SETTING_PUBLIC_TLS_CERT, "tls/server.pem"),
+        (SETTING_PUBLIC_TLS_KEY, "tls/server.key"),
+    ]));
+    assert!(why.contains("public.tls.terminated_upstream"), "{why}");
+}

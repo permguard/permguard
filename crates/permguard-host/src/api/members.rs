@@ -789,6 +789,12 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
             codes::host::IDENTITY_RESET_INCOMPLETE => {
                 (ErrorClass::Conflict, codes::host::IDENTITY_RESET_INCOMPLETE)
             }
+            // This Host's own peer client could not be used (WP-2.11): said as such, the detail
+            // kept internal.
+            codes::host::PEER_CLIENT_UNCONFIGURED => (
+                ErrorClass::Unavailable,
+                codes::host::PEER_CLIENT_UNCONFIGURED,
+            ),
             _ => (ErrorClass::Unavailable, codes::common::UNAVAILABLE),
         };
         return Refusal::Api(
