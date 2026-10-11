@@ -5580,6 +5580,16 @@
             },
             "description": "Registered control names the task depends on, each appraised under the coordinator's policy (WP-4.2). Optional on a request; absent is none.",
             "x-grpc-field": "assurance_requirements"
+          },
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "The contract version both sides speak (WP-4.4): always present in an answer; a request that leaves it out means 1.",
+            "x-grpc-field": "version"
           }
         },
         "required": [
@@ -6023,7 +6033,7 @@
               "string",
               "null"
             ],
-            "description": "The last task session, RFC 3339: `null` until task sessions exist (WP-4.3).",
+            "description": "The coordinator's last session of any task, RFC 3339, from its own clock; `null` on a member or before the first (WP-4.4).",
             "x-grpc-field": "last_session_at"
           },
           "assurance": {
@@ -6058,6 +6068,14 @@
             "minimum": 1,
             "description": "Held for review since a peer named this epoch, which this coordinator never issued: no task, no fence, no resumption, only revocation (WP-4.3); `null` when not held.",
             "x-grpc-field": "held_epoch"
+          },
+          "task_progress": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskObserved"
+            },
+            "description": "Per task, what the coordinator observed: its last session and the member's last report, labelled member-reported (WP-4.4); empty on a member.",
+            "x-grpc-field": "task_progress"
           }
         },
         "required": [
@@ -6080,8 +6098,159 @@
           "held_epoch"
         ],
         "additionalProperties": false,
-        "description": "One membership, as an operator reads it. Dormancy and member-reported progress arrive with the leases and the task handlers (WP-4.3, WP-4.4).",
+        "description": "One membership, as an operator reads it: per task, the coordinator's last session and the member-reported progress (WP-4.4); dormancy arrives with WP-4.6.",
         "x-grpc-message": "permguard.host.v1.Member"
+      },
+      "ProgressResource": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource the member reports on.",
+            "x-grpc-field": "resource"
+          },
+          "state": {
+            "type": "string",
+            "description": "What the member says of it.",
+            "x-grpc-field": "state"
+          },
+          "frontier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member's frontier, as it states it. Optional; `null` is absent.",
+            "x-grpc-field": "frontier"
+          },
+          "checkpoint_digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The checkpoint the member says it verified last, `sha256:<hex>`. Optional; `null` is absent.",
+            "x-grpc-field": "checkpoint_digest"
+          },
+          "verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the member says it verified, RFC 3339; never the coordinator's time. Optional; `null` is absent.",
+            "x-grpc-field": "verified_at"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, when the member says. Optional; `null` is absent.",
+            "x-grpc-field": "reason"
+          }
+        },
+        "required": [
+          "resource",
+          "state"
+        ],
+        "additionalProperties": false,
+        "description": "One resource of a member's report, as the member stated it (WP-4.4).",
+        "x-grpc-message": "permguard.host.v1.ProgressResource"
+      },
+      "MemberReported": {
+        "type": "object",
+        "properties": {
+          "report_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The member's number for the report, monotonic.",
+            "x-grpc-field": "report_seq"
+          },
+          "manifest_epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The epoch the member reported under.",
+            "x-grpc-field": "manifest_epoch"
+          },
+          "member_boot_id": {
+            "type": "string",
+            "description": "The member's incarnation that reported, hex.",
+            "x-grpc-field": "member_boot_id"
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the member says it reported, RFC 3339.",
+            "x-grpc-field": "reported_at"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this coordinator received the report, RFC 3339.",
+            "x-grpc-field": "received_at"
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressResource"
+            },
+            "description": "What the member says of each resource.",
+            "x-grpc-field": "resources"
+          }
+        },
+        "required": [
+          "report_seq",
+          "manifest_epoch",
+          "member_boot_id",
+          "reported_at",
+          "received_at",
+          "resources"
+        ],
+        "additionalProperties": false,
+        "description": "A member's last report of one task: what it says it did, not proof that it is reachable (WP-4.4).",
+        "x-grpc-message": "permguard.host.v1.MemberReported"
+      },
+      "TaskObserved": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "The task.",
+            "x-grpc-field": "task_id"
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The last session leased for the task, from the coordinator's clock, RFC 3339. Optional; `null` is absent.",
+            "x-grpc-field": "last_session_at"
+          },
+          "member_reported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberReported"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member's last report; `null` before the first.",
+            "x-grpc-field": "member_reported"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Whether the report is older than the lease policy's `max_session_seconds`, or of another epoch.",
+            "x-grpc-field": "stale"
+          }
+        },
+        "required": [
+          "task_id",
+          "stale"
+        ],
+        "additionalProperties": false,
+        "description": "What a coordinator observed of one task (WP-4.4).",
+        "x-grpc-message": "permguard.host.v1.TaskObserved"
       },
       "Members": {
         "type": "object",

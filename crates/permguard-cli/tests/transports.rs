@@ -161,6 +161,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
 
 fn ledger() -> proto::Ledger {
     proto::Ledger {
+        serving_members: Vec::new(),
         id: "l-1".into(),
         zone_id: "z-1".into(),
         name: "main-ledger".into(),

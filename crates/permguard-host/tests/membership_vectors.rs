@@ -9,11 +9,21 @@
 use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Selector;
 use permguard_core::domains::protected;
+use permguard_host::membership::record::{Capability, ContractRole, MessageKind};
 use permguard_host::membership::record::{
     EnrollRequest, Entry, HostRef, Invitation, Kind, LeasePolicy, Limits, Manifest, Pending,
     RingPin, RingStatement, Role, Status, Task, TaskType, chain, manifest_digest, request_digest,
 };
 use permguard_host::membership::{token_proof, token_public};
+
+/// The member's one contract: the provider of `decisions.ship`, version 1 (WP-4.4).
+fn capability() -> Capability {
+    Capability {
+        task_type: TaskType::DecisionsShip,
+        version: 1,
+        role: ContractRole::Provider,
+    }
+}
 use permguard_host::session::record::{Hello, Operation, Role as SessionRole, Transcript};
 use permguard_objects::cose::Sign1;
 use permguard_objects::crypto::suite::Suite;
@@ -49,6 +59,7 @@ const AT: u64 = 1_800_000_000;
 
 fn task() -> Task {
     Task {
+        version: 1,
         task_id: "decisions".to_owned(),
         task_type: TaskType::DecisionsShip,
         selector: Selector::parse("plane/data/*").expect("a selector"),
@@ -114,6 +125,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         binding: hex(&v["ring_statement"]["binding"]),
     };
     let request = EnrollRequest {
+        capabilities: vec![capability()],
         invite_id,
         token_proof: proof,
         selector: Selector::parse("plane/data/*").expect("a selector"),
@@ -210,6 +222,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
     );
 
     let pending = Pending {
+        capabilities: vec![capability()],
         membership_id,
         invite_id,
         coordinator,
@@ -489,6 +502,7 @@ fn the_task_session_records_are_the_bytes_the_independent_generator_computed() {
     };
     assert_eq!(answer.encode().expect("encodes"), hex(&t["lease_answer"]));
     let message = TaskMessage {
+        kind: MessageKind::Handler,
         membership_id,
         task_id: "decisions".to_owned(),
         epoch: 1,
@@ -550,4 +564,137 @@ fn the_task_session_records_are_the_bytes_the_independent_generator_computed() {
     assert_eq!(held.epoch, Some(7));
     assert_eq!(held.previous, chain(Some(&hex(&v["journal"]["third"]))));
     assert_eq!(held.encode().expect("encodes"), hex(&t["held"]));
+}
+
+/// The task router's records (WP-4.4): a progress report, its message and answer, the report as
+/// the coordinator keeps it, the last session, a watch's request, event and heartbeat, and a
+/// replay entry.
+#[test]
+fn the_task_router_records_are_the_bytes_the_independent_generator_computed() {
+    use permguard_host::membership::record::{
+        KeptProgress, LastSession, ProgressAnswer, ProgressResource, ReplayEntry, TaskAnswer,
+        TaskMessage, TaskProgress, WatchEvent, WatchHint, WatchRequest,
+    };
+
+    let v = vectors();
+    let r = &v["router"];
+    let t = &v["task"];
+    let membership_id = id(&v["membership_id"]);
+    let member_boot_id = id(&t["member_boot_id"]);
+    let checkpoint = Digest::parse(&text(&r["checkpoint"])).expect("a digest");
+    let progress = TaskProgress {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        manifest_epoch: 1,
+        member_boot_id,
+        report_seq: 7,
+        reported_at: AT + 40,
+        resources: vec![
+            ProgressResource {
+                resource: text(&t["resource"]),
+                state: "serving".to_owned(),
+                frontier: Some("42".to_owned()),
+                checkpoint_digest: Some(checkpoint.clone()),
+                verified_at: Some(AT + 39),
+                reason: Some("the last round verified".to_owned()),
+            },
+            ProgressResource {
+                resource: "plane/data/zone/z2".to_owned(),
+                state: "stale".to_owned(),
+                frontier: None,
+                checkpoint_digest: None,
+                verified_at: None,
+                reason: None,
+            },
+        ],
+    };
+    let bytes = progress.encode().expect("encodes");
+    assert_eq!(bytes, hex(&r["progress"]));
+    assert_eq!(TaskProgress::decode(&bytes).expect("decodes"), progress);
+
+    let message = TaskMessage {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "progress-7".to_owned(),
+        body: bytes.clone(),
+        kind: MessageKind::Progress,
+    };
+    assert_eq!(
+        message.encode().expect("encodes"),
+        hex(&r["progress_message"])
+    );
+    assert_eq!(
+        TaskMessage::decode(&hex(&r["progress_message"])).expect("decodes"),
+        message
+    );
+    let answer = ProgressAnswer {
+        report_seq: 7,
+        received_at: AT + 41,
+    };
+    assert_eq!(
+        answer.encode().expect("encodes"),
+        hex(&r["progress_answer"])
+    );
+    let kept = KeptProgress {
+        report: bytes,
+        received_at: AT + 41,
+    };
+    assert_eq!(kept.encode().expect("encodes"), hex(&r["kept_progress"]));
+    assert_eq!(
+        KeptProgress::decode(&hex(&r["kept_progress"])).expect("decodes"),
+        kept
+    );
+    let last = LastSession {
+        at: AT + 20,
+        member_boot_id,
+    };
+    assert_eq!(last.encode().expect("encodes"), hex(&r["last_session"]));
+
+    // Positions given out of order encode in order, as the generator wrote them.
+    let watch = WatchRequest {
+        positions: vec![
+            ("zone/z1/ledger/l2".to_owned(), 9),
+            ("zone/z1/ledger/l1".to_owned(), 3),
+        ],
+    };
+    assert_eq!(watch.encode().expect("encodes"), hex(&r["watch_request"]));
+    let event = WatchEvent {
+        hints: vec![WatchHint {
+            key: "zone/z1/ledger/l1".to_owned(),
+            head: checkpoint.to_string(),
+            counter: 4,
+        }],
+    };
+    assert_eq!(event.encode().expect("encodes"), hex(&r["watch_event"]));
+    assert_eq!(
+        WatchEvent::decode(&hex(&r["watch_event"])).expect("decodes"),
+        event
+    );
+    assert_eq!(
+        WatchEvent { hints: Vec::new() }.encode().expect("encodes"),
+        hex(&r["heartbeat"])
+    );
+
+    let message_bytes = hex(&t["task_message"]);
+    let entry = ReplayEntry {
+        task_id: "decisions".to_owned(),
+        request_id: "r-1".to_owned(),
+        message_digest: permguard_host::membership::replay::message_digest(
+            &message_bytes,
+            &text(&t["resource"]),
+        ),
+        answer: TaskAnswer {
+            request_id: "r-1".to_owned(),
+            body: b"echo:hello".to_vec(),
+        }
+        .encode()
+        .expect("encodes"),
+        seq: 1030,
+    };
+    assert_eq!(entry.encode().expect("encodes"), hex(&r["replay_entry"]));
+    assert_eq!(
+        ReplayEntry::decode(&hex(&r["replay_entry"])).expect("decodes"),
+        entry
+    );
 }

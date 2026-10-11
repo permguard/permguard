@@ -1,6 +1,6 @@
 {
-  "artifact": "Membership records (WP-4.1) assurance appraisal (WP-4.2) and task sessions (WP-4.3): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
-  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) and of 2026-10-10 (assurance appraisal, task sessions and leases); crates/permguard-host/src/membership/record.rs",
+  "artifact": "Membership records (WP-4.1) assurance appraisal (WP-4.2) task sessions (WP-4.3) and the task router (WP-4.4): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
+  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) of 2026-10-10 (assurance appraisal, task sessions and leases) and of 2026-10-11 (versioned contracts, progress, watches, the replay window); crates/permguard-host/src/membership/record.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "host_ref": {
@@ -32,7 +32,8 @@
         { "label": 6, "name": "resource_types", "type": "array<text>", "occurs": "required" },
         { "label": 7, "name": "required", "type": "bool", "occurs": "required" },
         { "label": 8, "name": "limits", "type": "map:limits", "occurs": "required" },
-        { "label": 9, "name": "assurance_requirements", "type": "array<text>", "occurs": "required", "note": "registered control names (WP-2.8), each appraised under the coordinator's policy" }
+        { "label": 9, "name": "assurance_requirements", "type": "array<text>", "occurs": "required", "note": "registered control names (WP-2.8), each appraised under the coordinator's policy" },
+        { "label": 10, "name": "version", "type": "uint", "occurs": "required", "note": "the contract version both sides speak, 1 to 65535 (WP-4.4)" }
       ]
     },
     "lease_policy": {
@@ -108,7 +109,8 @@
         { "label": 3, "name": "selector", "type": "text", "occurs": "required" },
         { "label": 4, "name": "tasks", "type": "array<map:task>", "occurs": "required" },
         { "label": 5, "name": "member", "type": "map:host_ref", "occurs": "required" },
-        { "label": 6, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" }
+        { "label": 6, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" },
+        { "label": 7, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member registered, in order, each once, at most 64 (WP-4.4)" }
       ]
     },
     "pending": {
@@ -124,7 +126,8 @@
         { "label": 8, "name": "ring_statements", "type": "array<map:ring_statement>", "occurs": "required" },
         { "label": 9, "name": "requested_at", "type": "uint", "occurs": "required" },
         { "label": 10, "name": "coordinator_address", "type": "text", "occurs": "optional", "note": "the member's copy: `https://<host>:<port>`" },
-        { "label": 11, "name": "identity", "type": "bytes", "occurs": "optional", "note": "the coordinator's copy: the member's presentation its enrollment session proved (session.json presentation)" }
+        { "label": 11, "name": "identity", "type": "bytes", "occurs": "optional", "note": "the coordinator's copy: the member's presentation its enrollment session proved (session.json presentation)" },
+        { "label": 12, "name": "capabilities", "type": "array<map:capability>", "occurs": "required", "note": "the contracts the member declared in its request (WP-4.4)" }
       ]
     },
     "enroll_answer": {
@@ -259,7 +262,8 @@
         { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the lease's" },
         { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the lease's: below the current one is stale, above it unknown" },
         { "label": 4, "name": "request_id", "type": "text", "occurs": "required", "note": "1 to 128 printable bytes" },
-        { "label": 5, "name": "body", "type": "bytes", "occurs": "required", "note": "at most 448 KiB, inside one 512 KiB peer frame, and within the task's signed max_body_bytes" }
+        { "label": 5, "name": "body", "type": "bytes", "occurs": "required", "note": "at most 448 KiB, inside one 512 KiB peer frame, and within the task's signed max_body_bytes" },
+        { "label": 6, "name": "kind", "type": "text", "occurs": "optional", "note": "`progress` or `watch`; absent for a message the task's handler answers (WP-4.4)" }
       ]
     },
     "task_answer": {
@@ -267,6 +271,95 @@
       "fields": [
         { "label": 1, "name": "request_id", "type": "text", "occurs": "required", "note": "the message's" },
         { "label": 2, "name": "body", "type": "bytes", "occurs": "required" }
+      ]
+    },
+    "capability": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "type", "type": "text", "occurs": "required", "note": "a task type" },
+        { "label": 2, "name": "version", "type": "uint", "occurs": "required", "note": "1 to 65535" },
+        { "label": 3, "name": "role", "type": "text", "occurs": "required", "note": "`provider` (the handler) or `consumer` (the client)" }
+      ]
+    },
+    "task_progress": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the session's" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the session's" },
+        { "label": 3, "name": "manifest_epoch", "type": "uint", "occurs": "required", "note": "the session's lease epoch" },
+        { "label": 4, "name": "member_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the session's" },
+        { "label": 5, "name": "report_seq", "type": "uint", "occurs": "required", "note": "above the one the coordinator holds" },
+        { "label": 6, "name": "reported_at", "type": "uint", "occurs": "required", "note": "the member's clock, Unix seconds" },
+        { "label": 7, "name": "resources", "type": "array<map:progress_resource>", "occurs": "required", "note": "at most 256; the whole report at most 64 KiB" }
+      ]
+    },
+    "progress_resource": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "resource", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "state", "type": "text", "occurs": "required", "note": "1 to 128 printable bytes, the member's word" },
+        { "label": 3, "name": "frontier", "type": "text", "occurs": "optional", "note": "at most 512 bytes" },
+        { "label": 4, "name": "checkpoint_digest", "type": "text", "occurs": "optional", "note": "`sha256:<hex>`" },
+        { "label": 5, "name": "verified_at", "type": "uint", "occurs": "optional", "note": "the member's clock, never rewritten by the coordinator" },
+        { "label": 6, "name": "reason", "type": "text", "occurs": "optional", "note": "at most 512 bytes" }
+      ]
+    },
+    "progress_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "report_seq", "type": "uint", "occurs": "required" },
+        { "label": 2, "name": "received_at", "type": "uint", "occurs": "required", "note": "the coordinator's clock" }
+      ]
+    },
+    "kept_progress": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "report", "type": "bytes", "occurs": "required", "note": "the task_progress exactly as received" },
+        { "label": 2, "name": "received_at", "type": "uint", "occurs": "required" }
+      ]
+    },
+    "last_session": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "at", "type": "uint", "occurs": "required", "note": "the coordinator's clock at the lease" },
+        { "label": 2, "name": "member_boot_id", "type": "bytes", "occurs": "required", "note": "16 bytes" }
+      ]
+    },
+    "watch_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "positions", "type": "array<map:watch_position>", "occurs": "required", "note": "in key order, each key once, at most 1024" }
+      ]
+    },
+    "watch_position": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "key", "type": "text", "occurs": "required", "note": "1 to 256 printable bytes" },
+        { "label": 2, "name": "counter", "type": "uint", "occurs": "required" }
+      ]
+    },
+    "watch_event": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "hints", "type": "array<map:watch_hint>", "occurs": "required", "note": "in key order; empty for a heartbeat" }
+      ]
+    },
+    "watch_hint": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "key", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "head", "type": "text", "occurs": "required", "note": "1 to 256 printable bytes" },
+        { "label": 3, "name": "counter", "type": "uint", "occurs": "required", "note": "the newest wins" }
+      ]
+    },
+    "replay_entry": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "task_id", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "request_id", "type": "text", "occurs": "required" },
+        { "label": 3, "name": "message_digest", "type": "bytes", "occurs": "required", "note": "32 bytes: SHA-256 of the task message's bytes followed by the session's resource" },
+        { "label": 4, "name": "answer", "type": "bytes", "occurs": "required", "note": "the encoded task_answer" },
+        { "label": 5, "name": "seq", "type": "uint", "occurs": "required", "note": "the slot is seq modulo 1024" }
       ]
     }
   },
@@ -280,5 +373,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry"]
 }

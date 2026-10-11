@@ -84,6 +84,7 @@ pub(crate) async fn enrolled_requiring(
         rings: api.keys.rings(),
     };
     let request = EnrollRequest {
+        capabilities: crate::membership::tests::member_capabilities(),
         invite_id: id_of(&created.invite_id).expect("an id"),
         token_proof: token_proof(
             &token,
@@ -1469,6 +1470,7 @@ async fn the_live_sessions_of_a_membership_name_their_boot_ids() {
                 expires_at: 1_800_003_600,
             },
             1_800_000_000,
+            u64::MAX,
         )
         .expect("opened");
     let listed = api.member_sessions(&admin(), &id).expect("listed").sessions;
@@ -1504,6 +1506,7 @@ async fn the_live_sessions_of_a_membership_name_their_boot_ids() {
                 expires_at: 2_000,
             },
             1_000,
+            u64::MAX,
         )
         .expect("opened");
     assert!(
@@ -1557,4 +1560,159 @@ async fn a_held_membership_shows_the_epoch_it_was_held_at() {
     let view = api.member(&admin(), &id).expect("read");
     assert_eq!(view.held_epoch, Some(4));
     assert_eq!(view.status, "active", "held, not suspended by a manifest");
+}
+
+/// WP-4.4: what a coordinator observed of each task shows beside the membership, the member's
+/// report apart from its receipt; a ledger the mirror task covers names the member serving it.
+#[tokio::test]
+async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
+    use crate::keys::ring::CONTROL_ATTEST;
+    use crate::membership::record::{LastSession, ProgressResource, TaskProgress, TaskType};
+
+    let root = scratch("members-progress");
+    let (api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS, CONTROL_ATTEST]);
+    let member = Host::new("progress-api-m");
+    let mut mirror = decisions("plane/data/*");
+    mirror.task_id = "mirror".to_owned();
+    mirror.task_type = TaskType::PolicyMirror;
+    mirror.resource_types = vec!["ledger".to_owned()];
+    let created = api
+        .create_invite(
+            &admin(),
+            CreateInvite {
+                tasks: vec![TaskView::from(&mirror)],
+                ..create("enrol-1", Some(&member))
+            },
+        )
+        .await
+        .expect("invited");
+    let token = URL_SAFE_NO_PAD.decode(&created.token).expect("base64url");
+    let identity = api.identity.as_deref().expect("an identity");
+    let memberships = api.memberships.as_deref().expect("memberships");
+    let pending = memberships
+        .store
+        .check_enroll(
+            &Coordinator {
+                identity,
+                rings: api.keys.rings(),
+            },
+            &Enrolling {
+                peer: &member.verified(),
+                presentation: &member.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &EnrollRequest {
+                capabilities: crate::membership::tests::member_capabilities(),
+                invite_id: id_of(&created.invite_id).expect("an id"),
+                token_proof: token_proof(
+                    &token,
+                    &identity.host_id(),
+                    &member.identity.host_id(),
+                    &EXPORTER,
+                ),
+                selector: selector("plane/data/*").expect("a selector"),
+                tasks: vec![mirror],
+                member: member.host_ref(),
+                ring_statements: Vec::new(),
+            },
+            now(),
+        )
+        .expect("the enrollment checks");
+    memberships
+        .store
+        .enroll(&Applying::for_tests(71), &pending, now())
+        .expect("enrolled");
+    let id = uuid_text(&pending.membership_id);
+    let revision = api.member(&admin(), &id).expect("read").revision;
+    api.approve_member(
+        &admin(),
+        &id,
+        ApproveMember {
+            request_id: "approve-1".to_owned(),
+            expected_revision: revision,
+            narrow: None,
+            lease_policy: None,
+            assurance: None,
+        },
+    )
+    .await
+    .expect("approved");
+
+    // Nothing observed yet: no session, no report.
+    let view = api.member(&admin(), &id).expect("read");
+    assert_eq!(view.task_progress.len(), 1);
+    assert!(view.last_session_at.is_none());
+    assert!(view.task_progress[0].member_reported.is_none() && !view.task_progress[0].stale);
+
+    let at = api.time.now_secs();
+    memberships
+        .store
+        .keep_last_session(
+            &pending.membership_id,
+            "mirror",
+            &LastSession {
+                at,
+                member_boot_id: [0xB1; 16],
+            },
+        )
+        .expect("kept");
+    let report = TaskProgress {
+        membership_id: pending.membership_id,
+        task_id: "mirror".to_owned(),
+        manifest_epoch: 1,
+        member_boot_id: [0xB1; 16],
+        report_seq: 1,
+        reported_at: at - 30,
+        resources: vec![ProgressResource {
+            resource: "plane/data/zone/z1".to_owned(),
+            state: "serving".to_owned(),
+            frontier: None,
+            checkpoint_digest: Some(permguard_objects::digest::Digest::compute(b"head")),
+            verified_at: Some(at - 40),
+            reason: None,
+        }],
+    };
+    memberships
+        .store
+        .keep_progress(&report, &report.encode().expect("encodes"), at)
+        .expect("kept");
+    let view = api.member(&admin(), &id).expect("read");
+    let observed = &view.task_progress[0];
+    assert_eq!(observed.task_id, "mirror");
+    assert_eq!(observed.last_session_at, Some(rfc3339(at)));
+    assert_eq!(view.last_session_at, Some(rfc3339(at)));
+    let reported = observed.member_reported.as_ref().expect("reported");
+    assert_eq!(reported.report_seq, 1);
+    assert_eq!(reported.reported_at, rfc3339(at - 30), "the member's time");
+    assert_eq!(reported.received_at, rfc3339(at), "the coordinator's");
+    assert_eq!(
+        reported.resources[0].verified_at,
+        Some(rfc3339(at - 40)),
+        "never rewritten as the receipt"
+    );
+    assert!(!observed.stale);
+
+    // The ledger the mirror task covers names its member, member-reported.
+    let ledger = permguard_core::authz::Resource::parse("plane/data/zone/z1").expect("a resource");
+    let serving = api.serving_members(&ledger);
+    assert_eq!(serving.len(), 1);
+    let one = &serving[0];
+    assert_eq!(one.membership_id, id);
+    assert_eq!(one.task_id, "mirror");
+    assert_eq!(one.host_id, uuid_text(&member.identity.host_id()));
+    assert_eq!(one.declared_assurance, "production");
+    assert!(one.assurance_binding_status.is_none());
+    assert_eq!(one.lease_state, "none", "no session open");
+    assert_eq!(one.last_session_at, Some(rfc3339(at)));
+    let progress = one.progress.as_ref().expect("reported");
+    assert_eq!(progress.state.as_deref(), Some("serving"));
+    assert_eq!(
+        progress.checkpoint_digest,
+        Some(permguard_objects::digest::Digest::compute(b"head").to_string())
+    );
+    // Outside the task's selector, nobody serves it.
+    let elsewhere =
+        permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");
+    assert!(api.serving_members(&elsewhere).is_empty());
 }

@@ -61,15 +61,29 @@ pub(crate) fn list(
     Ok(window.apply(ledgers))
 }
 
-pub(crate) fn get(
+/// The ledger with the members this Host coordinates whose `policy.mirror` task covers it
+/// (WP-4.4): `GetLedger`'s answer, authorized as `get` is.
+pub(crate) fn get_served(
     facade: &CatalogFacade,
     actor: &Actor,
     zone: &str,
     ledger: &str,
-) -> Result<Ledger, Refusal> {
-    facade
-        .resolve_ledger(actor, operations::CATALOG_READ, zone, ledger)
-        .map(|(_, ledger)| ledger)
+) -> Result<super::serving::LedgerServed, Refusal> {
+    let (zone, ledger) = facade.resolve_ledger(actor, operations::CATALOG_READ, zone, ledger)?;
+    let serving_members = facade
+        .host
+        .as_ref()
+        .map(|host| {
+            host.serving_members(&super::ledger_resource(&zone.id, &ledger.id))
+                .into_iter()
+                .map(super::serving::ServingMember::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(super::serving::LedgerServed {
+        ledger,
+        serving_members,
+    })
 }
 
 #[tracing::instrument(name = "ledger.rename", skip_all)]

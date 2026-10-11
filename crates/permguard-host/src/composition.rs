@@ -117,7 +117,7 @@ pub struct Declaration {
     audit: Vec<(&'static str, &'static [&'static str])>,
     zone_keys: Vec<crate::secrets::ZonePurpose>,
     streams: Vec<String>,
-    tasks: Vec<String>,
+    tasks: Vec<crate::membership::record::Capability>,
     scope_schemas: Vec<String>,
 }
 
@@ -163,10 +163,29 @@ impl Declaration {
         self
     }
 
-    /// Declares a task type this Plane handles.
-    pub fn handles_task(mut self, task: impl Into<String>) -> Self {
-        self.tasks.push(task.into());
+    /// Declares that this Plane provides `task` at `version`: the provider's handler (WP-4.4).
+    pub fn handles_task(mut self, task: crate::membership::record::TaskType, version: u64) -> Self {
+        self.tasks.push(crate::membership::record::Capability {
+            task_type: task,
+            version,
+            role: crate::membership::record::ContractRole::Provider,
+        });
         self
+    }
+
+    /// Declares that this Plane consumes `task` at `version`: the consumer's client (WP-4.4).
+    pub fn uses_task(mut self, task: crate::membership::record::TaskType, version: u64) -> Self {
+        self.tasks.push(crate::membership::record::Capability {
+            task_type: task,
+            version,
+            role: crate::membership::record::ContractRole::Consumer,
+        });
+        self
+    }
+
+    /// The task contracts this declaration registers (WP-4.4).
+    pub fn task_contracts(&self) -> &[crate::membership::record::Capability] {
+        &self.tasks
     }
 
     /// Declares a resource scope schema this Plane owns.
@@ -242,6 +261,7 @@ impl std::error::Error for CompositionError {}
 
 /// The Host: every generic capability, implemented once.
 pub struct Host {
+    memberships: Option<Arc<dyn ServingMembers>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
@@ -260,6 +280,7 @@ struct Claims {
 /// Builds the [`Host`] from the collaborators composition resolved.
 #[derive(Default)]
 pub struct HostBuilder {
+    memberships: Option<Arc<dyn ServingMembers>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
@@ -309,8 +330,16 @@ impl HostBuilder {
         self
     }
 
+    /// Who serves a resource under this Host's memberships (WP-4.4): handed to the Plane that
+    /// provides `policy.mirror`.
+    pub fn memberships(mut self, memberships: Arc<dyn ServingMembers>) -> Self {
+        self.memberships = Some(memberships);
+        self
+    }
+
     pub fn build(self) -> Host {
         Host {
+            memberships: self.memberships,
             rings: self.rings,
             recorder: self.recorder,
             authorization: self.authorization,
@@ -375,12 +404,20 @@ impl Host {
                     .iter()
                     .map(|name| ("stream descriptor", name.clone())),
             );
-            claimed.extend(
-                declaration
-                    .tasks
-                    .iter()
-                    .map(|name| ("task type", name.clone())),
-            );
+            // One Plane provides a task type, and one consumes it, whatever the versions.
+            let mut sides: Vec<(&'static str, String)> = declaration
+                .tasks
+                .iter()
+                .map(|contract| {
+                    (
+                        "task contract",
+                        format!("{} {}", contract.task_type.as_str(), contract.role.as_str()),
+                    )
+                })
+                .collect();
+            sides.sort();
+            sides.dedup();
+            claimed.extend(sides);
             claimed.extend(
                 declaration
                     .scope_schemas
@@ -453,6 +490,15 @@ impl Host {
                 .clone()
                 .unwrap_or_else(|| Arc::new(Authorization::closed())),
             time: Arc::clone(&self.time),
+            memberships: declaration
+                .tasks
+                .iter()
+                .any(|contract| {
+                    contract.task_type == crate::membership::record::TaskType::PolicyMirror
+                        && contract.role == crate::membership::record::ContractRole::Provider
+                })
+                .then(|| self.memberships.clone())
+                .flatten(),
         })
     }
 }
@@ -471,6 +517,26 @@ pub struct Registration {
     host_id: Option<[u8; 16]>,
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
+    memberships: Option<Arc<dyn ServingMembers>>,
+}
+
+/// Who serves a resource under this Host's memberships, and what was observed of them: the Host
+/// API answers it (WP-4.4).
+pub trait ServingMembers: Send + Sync {
+    /// The members this Host coordinates whose `policy.mirror` task covers `resource`.
+    fn serving_members(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Vec<crate::api::members::ServingMemberView>;
+}
+
+impl ServingMembers for crate::api::HostApi {
+    fn serving_members(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Vec<crate::api::members::ServingMemberView> {
+        crate::api::HostApi::serving_members(self, resource)
+    }
 }
 
 impl std::fmt::Debug for Registration {
@@ -542,6 +608,18 @@ impl Registration {
     /// key a Plane derives from its own root.
     pub fn host_id(&self) -> Option<[u8; 16]> {
         self.host_id
+    }
+
+    /// The members serving `resource` (WP-4.4): empty for a Plane that does not provide
+    /// `policy.mirror`, or a Host without memberships.
+    pub fn serving_members(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Vec<crate::api::members::ServingMemberView> {
+        self.memberships
+            .as_ref()
+            .map(|memberships| memberships.serving_members(resource))
+            .unwrap_or_default()
     }
 
     fn undeclared(&self, what: String) -> CompositionError {
@@ -1232,7 +1310,7 @@ mod tests {
         host.register(
             Declaration::new("control")
                 .produces_stream("permguard.decisions")
-                .handles_task("notp.mirror")
+                .handles_task(crate::membership::record::TaskType::PolicyMirror, 1)
                 .owns_scope_schema("zone")
                 .audits::<CatalogActions>(),
         )
@@ -1243,8 +1321,9 @@ mod tests {
                 "stream descriptor",
             ),
             (
-                Declaration::new("data").handles_task("notp.mirror"),
-                "task type",
+                Declaration::new("data")
+                    .handles_task(crate::membership::record::TaskType::PolicyMirror, 2),
+                "task contract",
             ),
             (
                 Declaration::new("data").owns_scope_schema("zone"),
@@ -1365,5 +1444,42 @@ mod tests {
             "{refused}"
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Each side of a task type is one Plane's (WP-4.4): the provider of `policy.mirror` and its
+    /// consumer may be two Planes, a second provider may not, and a Plane declaring two versions
+    /// of its side claims it once.
+    #[test]
+    fn a_task_contract_is_declared_by_one_plane_alone() {
+        use crate::membership::record::{Capability, ContractRole, TaskType};
+
+        let host = self::host();
+        let control = Declaration::new("control")
+            .handles_task(TaskType::PolicyMirror, 1)
+            .handles_task(TaskType::PolicyMirror, 2)
+            .uses_task(TaskType::DecisionsShip, 1);
+        assert_eq!(
+            control.task_contracts()[2],
+            Capability {
+                task_type: TaskType::DecisionsShip,
+                version: 1,
+                role: ContractRole::Consumer,
+            }
+        );
+        host.register(control)
+            .expect("one Plane, two versions of its side");
+        host.register(
+            Declaration::new("data")
+                .uses_task(TaskType::PolicyMirror, 1)
+                .handles_task(TaskType::DecisionsShip, 1),
+        )
+        .expect("the other sides");
+        let refused = host
+            .register(Declaration::new("audit").handles_task(TaskType::PolicyMirror, 3))
+            .expect_err("a second provider");
+        assert!(
+            matches!(&refused, CompositionError::Collision { what: "task contract", name, .. } if name == "policy.mirror provider"),
+            "{refused}"
+        );
     }
 }

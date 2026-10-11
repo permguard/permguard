@@ -33,10 +33,13 @@
 
 pub mod appraisal;
 pub mod member;
+pub mod progress;
 pub mod record;
+pub mod replay;
 pub mod reset;
 pub mod service;
 pub mod task;
+pub mod watch;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -161,7 +164,7 @@ pub enum MembershipError {
     Transition { from: Status, to: Status },
     /// An approval asked for more than the request.
     Widened(String),
-    /// No Plane declared the task (WP-4.4 fills the registry).
+    /// A side of a task neither this Host nor its peer registered at the task's version (WP-4.4).
     TaskUnserved(String),
     /// A control wants a verifier this Host has not registered, or the evidence names one it does
     /// not know (WP-4.2).
@@ -184,6 +187,8 @@ pub enum MembershipError {
     Remote { code: String, reason: String },
     /// The membership is held for review: only its revocation moves it (WP-4.3).
     Held(String),
+    /// A progress report not above the one held (WP-4.4).
+    OutOfOrder(String),
 }
 
 impl fmt::Display for MembershipError {
@@ -212,6 +217,7 @@ impl fmt::Display for MembershipError {
                 write!(f, "the coordinator answered `{code}`: {reason}")
             }
             Self::Held(detail) => write!(f, "held for review: {detail}"),
+            Self::OutOfOrder(detail) => write!(f, "out of order: {detail}"),
         }
     }
 }
@@ -238,21 +244,65 @@ impl MembershipError {
     }
 }
 
-/// The task types this Host can act in, by role: what the Planes declare in the composition
-/// (owner decision of 2026-10-09; WP-4.4 registers the real handlers). Approval refuses a task
-/// the coordinator cannot act in.
+/// The task contracts this Host registered (WP-4.4, owner decisions of 2026-10-11): each a type,
+/// the version it speaks and whether it is the provider's handler or the consumer's client, as
+/// the Planes and the Host declare them in the composition. Approval refuses a task unless the
+/// coordinator registered its side of the task's exact version and the member declared the other
+/// side in its request (the task-capability invariant); a member refuses to ask for a task it
+/// registered no side of.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Capabilities(BTreeSet<(TaskType, Role)>);
+pub struct Capabilities(BTreeSet<record::Capability>);
 
 impl Capabilities {
-    /// Declares that this Host acts as `role` in `task`.
-    pub fn declare(mut self, task: TaskType, role: Role) -> Self {
-        self.0.insert((task, role));
+    /// Registers a contract.
+    pub fn register(mut self, capability: record::Capability) -> Self {
+        self.0.insert(capability);
         self
     }
 
-    pub fn acts(&self, task: TaskType, role: Role) -> bool {
-        self.0.contains(&(task, role))
+    /// Declares that this Host acts as `role` in `task` at version 1: the side the role takes.
+    pub fn declare(self, task: TaskType, role: Role) -> Self {
+        self.register(record::Capability {
+            task_type: task,
+            version: 1,
+            role: record::ContractRole::of(task, role),
+        })
+    }
+
+    /// Whether this Host registered the side `role` takes in `task` at `version`.
+    pub fn acts(&self, task: TaskType, version: u64, role: Role) -> bool {
+        self.0.contains(&record::Capability {
+            task_type: task,
+            version,
+            role: record::ContractRole::of(task, role),
+        })
+    }
+
+    /// Every contract registered, in order.
+    pub fn list(&self) -> Vec<record::Capability> {
+        self.0.iter().copied().collect()
+    }
+
+    /// The contracts the Host itself serves, both sides at version 1 (WP-4.4, owner decision):
+    /// `audit.checkpoints` and `zone.secrets`, whose provider is no Plane.
+    pub fn host() -> Self {
+        [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
+            .into_iter()
+            .fold(Self::default(), |capabilities, task| {
+                capabilities
+                    .declare(task, Role::Coordinator)
+                    .declare(task, Role::Member)
+            })
+    }
+
+    /// These and the contracts `declaration` registers.
+    pub fn with_declared(self, declaration: &crate::composition::Declaration) -> Self {
+        declaration
+            .task_contracts()
+            .iter()
+            .fold(self, |capabilities, contract| {
+                capabilities.register(*contract)
+            })
     }
 }
 
@@ -330,6 +380,10 @@ pub struct Store {
     /// Set by an identity reset once it starts settling: no invitation, enrollment, approval or
     /// join is taken from then on in this process.
     fenced: std::sync::atomic::AtomicBool,
+    /// Serializes a progress report's check and write (WP-4.4).
+    keeping: Mutex<()>,
+    /// The replay windows read so far, by membership and task (WP-4.4).
+    windows: Mutex<BTreeMap<([u8; 16], String), replay::Window>>,
 }
 
 impl fmt::Debug for Store {
@@ -430,6 +484,7 @@ fn task_within(asked: &Task, offered: &Task) -> bool {
         && asked.limits.within(&offered.limits)
         && asked.required == offered.required
         && asked.assurance_requirements == offered.assurance_requirements
+        && asked.version == offered.version
 }
 
 /// Checks `tasks` within `selector` and, when `offered` is given, each a narrowing of the offered
@@ -945,6 +1000,8 @@ impl Store {
             state: RwLock::new(state),
             writing: Mutex::new(()),
             fenced: std::sync::atomic::AtomicBool::new(false),
+            keeping: Mutex::new(()),
+            windows: Mutex::new(BTreeMap::new()),
         }))
     }
 
@@ -1444,6 +1501,7 @@ impl Store {
             requested_at: now,
             coordinator_address: None,
             identity: Some(presented(enrolling)?),
+            capabilities: request.capabilities.clone(),
         })
         .and_then(|pending| {
             // What the journal keeps stays within a record's bound, its entry's fields included.
@@ -1533,11 +1591,29 @@ impl Store {
             }
             None => (held.request.selector.clone(), held.request.tasks.clone()),
         };
+        // The task-capability invariant: the coordinator's side registered here, the member's
+        // declared in its request, both at the task's exact version.
         for task in &tasks {
-            if !capabilities.acts(task.task_type, Role::Coordinator) {
+            let ours = record::ContractRole::of(task.task_type, Role::Coordinator);
+            if !capabilities.acts(task.task_type, task.version, Role::Coordinator) {
                 return Err(MembershipError::TaskUnserved(format!(
-                    "no Plane of this Host acts in `{}` as the coordinator",
-                    task.task_type.as_str()
+                    "no Plane of this Host registered the {} of `{}` version {}",
+                    ours.as_str(),
+                    task.task_type.as_str(),
+                    task.version
+                )));
+            }
+            let theirs = record::Capability {
+                task_type: task.task_type,
+                version: task.version,
+                role: record::ContractRole::of(task.task_type, Role::Member),
+            };
+            if !held.request.capabilities.contains(&theirs) {
+                return Err(MembershipError::TaskUnserved(format!(
+                    "the member registered no {} of `{}` version {}",
+                    theirs.role.as_str(),
+                    task.task_type.as_str(),
+                    task.version
                 )));
             }
         }

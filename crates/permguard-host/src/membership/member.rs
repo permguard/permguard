@@ -24,8 +24,8 @@ use permguard_core::authz::Selector;
 
 use super::record::{
     Action, EnrollAnswer, EnrollRequest, HostRef, Lease, LeaseAnswer, LeaseRequest,
-    MembershipAnswer, MembershipRequest, Pending, Role, Status, Task, TaskAnswer, TaskMessage,
-    channel_binding,
+    MembershipAnswer, MembershipRequest, MessageKind, Pending, ProgressAnswer, Role, Status, Task,
+    TaskAnswer, TaskMessage, TaskProgress, WatchEvent, WatchRequest, channel_binding,
 };
 use super::{
     AUDIT_JOINED, AUDIT_SYNCED, Capabilities, DOMAIN, Held, JOIN, MembershipError, SYNC, Store,
@@ -89,6 +89,10 @@ pub struct TaskOpened {
 /// dropped.
 pub trait TaskChannel: Send {
     fn exchange(&mut self, message: Vec<u8>) -> BoxFuture<'_, Result<Vec<u8>, Refusal>>;
+
+    /// The next frame the coordinator sends unasked, on a session that became a watch (WP-4.4):
+    /// a refusal when it ends the watch or sends nothing within the transport's bound.
+    fn receive(&mut self) -> BoxFuture<'_, Result<Vec<u8>, Refusal>>;
 }
 
 /// Opens one session to a coordinator, sends one request, reads one answer.
@@ -132,6 +136,8 @@ pub enum TaskState {
 pub struct MemberTask {
     pub lease: Lease,
     channel: Box<dyn TaskChannel>,
+    /// The request id of the watch this session became (WP-4.4).
+    watch: Option<String>,
 }
 
 impl MemberTask {
@@ -148,12 +154,69 @@ impl MemberTask {
         request_id: &str,
         body: Vec<u8>,
     ) -> Result<Vec<u8>, MembershipError> {
+        self.exchange(MessageKind::Handler, request_id, body).await
+    }
+
+    /// Reports `progress` for this session's task (WP-4.4): the coordinator keeps it, exactly, with
+    /// the time it arrived, and answers both.
+    pub async fn report(
+        &mut self,
+        progress: &TaskProgress,
+    ) -> Result<ProgressAnswer, MembershipError> {
+        let request_id = format!("progress-{}", progress.report_seq);
+        let answer = self
+            .exchange(MessageKind::Progress, &request_id, progress.encode()?)
+            .await?;
+        Ok(ProgressAnswer::decode(&answer)?)
+    }
+
+    /// Turns this session into a watch from `positions`, the counter held per key (WP-4.4): the
+    /// coordinator answers at once, then sends hints and heartbeats, read with
+    /// [`MemberTask::next_event`]. The session takes no other message.
+    pub async fn watch(&mut self, positions: Vec<(String, u64)>) -> Result<(), MembershipError> {
+        let request_id = "watch".to_owned();
+        let answer = self
+            .exchange(
+                MessageKind::Watch,
+                &request_id,
+                WatchRequest { positions }.encode()?,
+            )
+            .await?;
+        WatchEvent::decode(&answer)?;
+        self.watch = Some(request_id);
+        Ok(())
+    }
+
+    /// The next event of this session's watch: hints, or none for a heartbeat.
+    pub async fn next_event(&mut self) -> Result<WatchEvent, MembershipError> {
+        let Some(request_id) = self.watch.clone() else {
+            return Err(MembershipError::Invalid(
+                "this session is not a watch".to_owned(),
+            ));
+        };
+        let frame = self.channel.receive().await.map_err(remote)?;
+        let answer = TaskAnswer::decode(&frame)?;
+        if answer.request_id != request_id {
+            return Err(MembershipError::Unverified(
+                "the event names another request".to_owned(),
+            ));
+        }
+        Ok(WatchEvent::decode(&answer.body)?)
+    }
+
+    async fn exchange(
+        &mut self,
+        kind: MessageKind,
+        request_id: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, MembershipError> {
         let message = TaskMessage {
             membership_id: self.lease.membership_id,
             task_id: self.lease.task_id.clone(),
             epoch: self.lease.epoch,
             request_id: request_id.to_owned(),
             body,
+            kind,
         }
         .encode()?;
         let answer = self.channel.exchange(message).await.map_err(remote)?;
@@ -249,10 +312,15 @@ impl Member<'_> {
             ));
         }
         for task in &join.tasks {
-            if !self.capabilities.acts(task.task_type, Role::Member) {
+            if !self
+                .capabilities
+                .acts(task.task_type, task.version, Role::Member)
+            {
                 return Err(MembershipError::TaskUnserved(format!(
-                    "no Plane of this Host acts in `{}` as the member",
-                    task.task_type.as_str()
+                    "no Plane of this Host registered the {} of `{}` version {}",
+                    super::record::ContractRole::of(task.task_type, Role::Member).as_str(),
+                    task.task_type.as_str(),
+                    task.version
                 )));
             }
         }
@@ -278,6 +346,8 @@ impl Member<'_> {
             (join.selector.clone(), join.tasks.clone(), join.invite_id);
         let request_member = member.clone();
         let request_statements = statements.clone();
+        let capabilities = self.capabilities.list();
+        let request_capabilities = capabilities.clone();
         let build: super::member::Build = Box::new(move |exporter| {
             EnrollRequest {
                 invite_id,
@@ -291,6 +361,7 @@ impl Member<'_> {
                 tasks,
                 member: request_member,
                 ring_statements: request_statements,
+                capabilities: request_capabilities.clone(),
             }
             .encode()
             .map_err(|error| Refusal {
@@ -335,6 +406,7 @@ impl Member<'_> {
             requested_at: now,
             coordinator_address: Some(join.coordinator.address),
             identity: None,
+            capabilities,
         };
         let id = pending.membership_id;
         let outcome = self
@@ -621,6 +693,7 @@ impl Member<'_> {
         }
         self.store.keep_lease(id, task_id, &answer.lease)?;
         Ok(MemberTask {
+            watch: None,
             lease,
             channel: opened.channel,
         })

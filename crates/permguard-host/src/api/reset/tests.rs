@@ -46,6 +46,7 @@ fn joined(api: &HostApi, coordinator: &Host) -> [u8; 16] {
         .join(
             &Applying::for_tests(80),
             &Pending {
+                capabilities: crate::membership::tests::member_capabilities(),
                 membership_id,
                 invite_id: [0x6c; 16],
                 coordinator: coordinator.host_ref(),

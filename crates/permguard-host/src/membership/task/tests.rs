@@ -204,6 +204,7 @@ impl CoordinatorSession {
 
     fn message(&self) -> TaskMessage {
         TaskMessage {
+            kind: crate::membership::record::MessageKind::Handler,
             membership_id: self.task.lease.membership_id,
             task_id: self.task.lease.task_id.clone(),
             epoch: self.task.lease.epoch,
@@ -1113,4 +1114,650 @@ async fn a_lease_granting_other_limits_than_the_manifest_is_refused_by_the_membe
         matches!(refused, MembershipError::Unverified(_)),
         "{refused}"
     );
+}
+
+/// A decisions task under `plane/data/*` with `edit` applied to it.
+fn decisions_with(
+    edit: impl FnOnce(&mut crate::membership::record::Task),
+) -> crate::membership::record::Task {
+    let mut task = crate::membership::tests::decisions("plane/data/*");
+    edit(&mut task);
+    task
+}
+
+/// WP-4.4: the task's signed `max_concurrency` bounds its open sessions; one closing frees a
+/// place.
+#[tokio::test]
+async fn a_session_over_the_tasks_concurrency_is_refused_task_busy() {
+    let (c, m) = (Side::new("busy-c", true), Side::new("busy-m", false));
+    let task = decisions_with(|task| task.limits.max_concurrency = 1);
+    let id = crate::membership::tests::protocol::active_with(&c, &m, task, &[], &[]).await;
+    let connector = loopback(&m, &c);
+    let first = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let refused = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .err()
+        .expect("busy");
+    assert_eq!(code_of(&refused), codes::host::TASK_BUSY);
+    assert_eq!(c.tasks.live.of(&id).len(), 1, "no second session");
+    drop(first);
+    member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("a place again");
+}
+
+/// WP-4.4: the task's signed `max_rate_per_minute` bounds its messages, the session kept; the
+/// window slides with the coordinator's clock.
+#[tokio::test]
+async fn messages_over_the_tasks_rate_are_refused_and_the_session_kept() {
+    let m = Side::new("rate-m", false);
+    let (wall, mono, c) = timed_coordinator("rate-c");
+    let task = decisions_with(|task| task.limits.max_rate_per_minute = 2);
+    let id = crate::membership::tests::protocol::active_with(&c, &m, task, &[], &[]).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.send("r-1", b"a".to_vec()).await.expect("first");
+    task.send("r-2", b"b".to_vec()).await.expect("second");
+    let refused = task
+        .send("r-3", b"c".to_vec())
+        .await
+        .expect_err("over the rate");
+    assert_eq!(code_of(&refused), codes::host::RATE_LIMITED);
+    let step = 61;
+    wall.jump(i64::try_from(step).expect("in range"));
+    mono.advance(Duration::from_secs(step));
+    assert_eq!(
+        task.send("r-4", b"d".to_vec())
+            .await
+            .expect("the window slid"),
+        b"echo:d"
+    );
+}
+
+/// WP-4.4: the handler is told the task's version and the limits it applies itself.
+#[tokio::test]
+async fn the_handler_is_given_the_batch_and_retention_limits() {
+    let (c, m) = (Side::new("context-c", true), Side::new("context-m", false));
+    let task = decisions_with(|task| {
+        task.limits.max_batch_records = 77;
+        task.limits.retention_seconds = 3_600;
+    });
+    let id = crate::membership::tests::protocol::active_with(&c, &m, task, &[], &[]).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    assert_eq!(
+        task.send("r-1", b"context?".to_vec())
+            .await
+            .expect("answered"),
+        b"version=1 batch=77 retention=3600"
+    );
+}
+
+/// WP-4.4: a message reaches the handler registered for its task's version; a declared
+/// version no handler serves yet answers `not_served_yet`, the session kept.
+#[tokio::test]
+async fn a_message_reaches_the_handler_of_its_tasks_version() {
+    let (c, m) = (Side::new("version-c", true), Side::new("version-m", false));
+    let task = decisions_with(|task| task.version = 2);
+    let id = crate::membership::tests::protocol::active_with(&c, &m, task, &[], &[]).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let refused = task
+        .send("r-1", b"hello".to_vec())
+        .await
+        .expect_err("no handler of version 2");
+    assert_eq!(code_of(&refused), codes::host::NOT_SERVED_YET);
+    // The session holds: a progress report still lands.
+    task.report(&progress(&task, 1)).await.expect("kept");
+}
+
+/// WP-4.4: an identical repeat is answered its stored answer without reaching the handler, a
+/// restart included; the same request id with another message is refused, the session kept.
+#[tokio::test]
+async fn an_identical_repeat_is_answered_its_stored_answer_across_a_restart() {
+    use crate::membership::replay::{Gate, message_digest};
+
+    let (c, m) = (Side::new("replay-c", true), Side::new("replay-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let first = task.send("r-1", b"hello".to_vec()).await.expect("answered");
+    assert_eq!(
+        task.send("r-1", b"hello".to_vec()).await.expect("replayed"),
+        first
+    );
+    // The handler is not reached again: its count stays.
+    let counted = task.send("r-c", b"count?".to_vec()).await.expect("counted");
+    assert_eq!(
+        task.send("r-c", b"count?".to_vec())
+            .await
+            .expect("replayed"),
+        counted
+    );
+    // An answer over the bound is refused, kept nowhere, the session kept.
+    let refused = task
+        .send("r-big", b"big?".to_vec())
+        .await
+        .expect_err("over the bound");
+    assert_eq!(code_of(&refused), codes::common::UNAVAILABLE);
+    let refused = task
+        .send("r-1", b"another".to_vec())
+        .await
+        .expect_err("the id answered another message");
+    assert_eq!(code_of(&refused), codes::host::REQUEST_ID_REUSED);
+    assert_eq!(
+        task.send("r-2", b"kept".to_vec())
+            .await
+            .expect("the session holds"),
+        b"echo:kept"
+    );
+    // Read back by a store opened again, as after a restart.
+    let message = crate::membership::record::TaskMessage {
+        membership_id: id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "r-1".to_owned(),
+        body: b"hello".to_vec(),
+        kind: crate::membership::record::MessageKind::Handler,
+    }
+    .encode()
+    .expect("encodes");
+    let reopened = crate::membership::Store::open(c.host.volume()).expect("reopened");
+    let Gate::Replay(stored) = reopened
+        .gate(&id, "decisions", "r-1", &message_digest(&message, RESOURCE))
+        .expect("read")
+    else {
+        panic!("the answer is kept on disk")
+    };
+    let answer = crate::membership::record::TaskAnswer::decode(&stored).expect("an answer");
+    assert_eq!(answer.body, first);
+}
+
+/// Remembers `answer` to `request_id` of task `t` of `id`, as a handler's answer is kept.
+fn remembered(store: &crate::membership::Store, id: &[u8; 16], request_id: &str, digest: [u8; 32]) {
+    use crate::membership::replay::Gate;
+    let Gate::New(reservation) = store.gate(id, "t", request_id, &digest).expect("read") else {
+        panic!("a new request")
+    };
+    store.remember(reservation, b"answer").expect("kept");
+}
+
+/// WP-4.4: the window keeps the last 1024 answers of a task; an older one is forgotten.
+#[test]
+fn the_replay_window_forgets_what_is_older_than_it() {
+    use crate::membership::replay::{Gate, WINDOW};
+
+    let host = crate::membership::tests::Host::new("window");
+    let id = [0x42; 16];
+    for at in 0..=WINDOW {
+        remembered(&host.store, &id, &format!("r-{at}"), [0; 32]);
+    }
+    let reopened = crate::membership::Store::open(host.volume()).expect("reopened");
+    assert!(
+        matches!(
+            reopened.gate(&id, "t", "r-0", &[0; 32]).expect("read"),
+            Gate::New(_)
+        ),
+        "slid out of the window"
+    );
+    assert!(matches!(
+        reopened.gate(&id, "t", "r-1", &[0; 32]).expect("read"),
+        Gate::Replay(answer) if answer == b"answer"
+    ));
+    assert!(matches!(
+        reopened.gate(&id, "t", "r-1", &[1; 32]).expect("read"),
+        Gate::Reused
+    ));
+}
+
+/// WP-4.4 (review): a request being answered is refused to a second session naming it, until
+/// its answer is kept; a reservation dropped unkept frees the id.
+#[test]
+fn a_request_being_answered_is_refused_to_a_concurrent_repeat() {
+    use crate::membership::replay::Gate;
+
+    let host = crate::membership::tests::Host::new("in-flight");
+    let id = [0x43; 16];
+    let Gate::New(first) = host.store.gate(&id, "t", "r-1", &[0; 32]).expect("read") else {
+        panic!("a new request")
+    };
+    assert!(
+        matches!(
+            host.store.gate(&id, "t", "r-1", &[0; 32]).expect("read"),
+            Gate::Reused
+        ),
+        "the same id while it is answered"
+    );
+    drop(first);
+    let Gate::New(again) = host.store.gate(&id, "t", "r-1", &[0; 32]).expect("read") else {
+        panic!("freed by the drop")
+    };
+    host.store.remember(again, b"answer").expect("kept");
+    assert!(matches!(
+        host.store.gate(&id, "t", "r-1", &[0; 32]).expect("read"),
+        Gate::Replay(_)
+    ));
+}
+
+/// WP-4.4 (review): a temporary a crash left is swept and a slot that does not read is skipped,
+/// so the task keeps answering; the requests they held are no longer remembered.
+#[test]
+fn a_leftover_temporary_or_a_bad_slot_does_not_close_the_task() {
+    use crate::membership::replay::Gate;
+
+    let host = crate::membership::tests::Host::new("bad-slot");
+    let id = [0x44; 16];
+    remembered(&host.store, &id, "r-0", [0; 32]);
+    remembered(&host.store, &id, "r-1", [0; 32]);
+    let dir = host
+        .volume()
+        .host()
+        .path()
+        .join("members/replay")
+        .join("44".repeat(16))
+        .join("t");
+    std::fs::write(dir.join(".tmp-0002.cbor"), b"half a write").expect("a temporary");
+    std::fs::write(dir.join("0000.cbor"), b"not a slot").expect("corrupted");
+    let reopened = crate::membership::Store::open(host.volume()).expect("reopened");
+    assert!(
+        matches!(
+            reopened.gate(&id, "t", "r-1", &[0; 32]).expect("read"),
+            Gate::Replay(_)
+        ),
+        "the good slot still answers"
+    );
+    assert!(
+        matches!(
+            reopened.gate(&id, "t", "r-0", &[0; 32]).expect("read"),
+            Gate::New(_)
+        ),
+        "the bad one is forgotten"
+    );
+    assert!(!dir.join(".tmp-0002.cbor").exists(), "the temporary swept");
+}
+
+fn progress(
+    task: &crate::membership::member::MemberTask,
+    seq: u64,
+) -> crate::membership::record::TaskProgress {
+    crate::membership::record::TaskProgress {
+        membership_id: task.lease.membership_id,
+        task_id: task.lease.task_id.clone(),
+        manifest_epoch: task.lease.epoch,
+        member_boot_id: task.lease.member_boot_id,
+        report_seq: seq,
+        reported_at: 1_800_000_000 + seq,
+        resources: vec![crate::membership::record::ProgressResource {
+            resource: RESOURCE.to_owned(),
+            state: "serving".to_owned(),
+            frontier: None,
+            checkpoint_digest: None,
+            verified_at: Some(1_799_999_000),
+            reason: None,
+        }],
+    }
+}
+
+/// WP-4.4: a progress report is kept exactly, with the coordinator's `received_at`, before it
+/// is answered; a report not above the one held is refused, the session kept.
+#[tokio::test]
+async fn a_progress_report_is_kept_with_its_received_at_and_a_lower_seq_is_refused() {
+    let m = Side::new("progress-m", false);
+    let (wall, mono, c) = timed_coordinator("progress-c");
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let step = 5;
+    wall.jump(i64::try_from(step).expect("in range"));
+    mono.advance(Duration::from_secs(step));
+    let report = progress(&task, 3);
+    let answer = task.report(&report).await.expect("kept");
+    assert_eq!(answer.report_seq, 3);
+    assert_eq!(answer.received_at, c.context.time.now_secs());
+    let (held, received_at) = c
+        .host
+        .store
+        .progress(&id, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held, report, "the exact report");
+    assert_eq!(received_at, answer.received_at);
+    assert_ne!(
+        held.resources[0].verified_at,
+        Some(received_at),
+        "the member's time is not the coordinator's"
+    );
+    for seq in [3, 2] {
+        let refused = task
+            .report(&progress(&task, seq))
+            .await
+            .expect_err("not above the held one");
+        assert_eq!(code_of(&refused), codes::host::REPORT_OUT_OF_ORDER);
+    }
+    task.report(&progress(&task, 4)).await.expect("above it");
+    assert_eq!(
+        task.send("r-1", b"kept".to_vec())
+            .await
+            .expect("the session holds"),
+        b"echo:kept"
+    );
+}
+
+/// WP-4.4: a report names its session's membership, task, epoch and incarnation, or is refused.
+#[tokio::test]
+async fn a_report_naming_another_epoch_or_boot_id_is_refused() {
+    let (c, m) = (
+        Side::new("misreport-c", true),
+        Side::new("misreport-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let mut other_epoch = progress(&task, 1);
+    other_epoch.manifest_epoch = 2;
+    let mut other_boot = progress(&task, 1);
+    other_boot.member_boot_id = [0xEE; 16];
+    let mut other_task = progress(&task, 1);
+    other_task.task_id = "other".to_owned();
+    let mut other_membership = progress(&task, 1);
+    other_membership.membership_id = [0x99; 16];
+    for report in [other_epoch, other_boot, other_task, other_membership] {
+        let refused = task.report(&report).await.expect_err("another session's");
+        assert_eq!(code_of(&refused), codes::common::INVALID_ARGUMENT);
+    }
+    assert!(
+        c.host
+            .store
+            .progress(&id, "decisions")
+            .expect("read")
+            .is_none(),
+        "nothing kept"
+    );
+}
+
+/// WP-4.4: every lease writes the task's last session, from the coordinator's clock and with
+/// the member's incarnation.
+#[tokio::test]
+async fn last_session_at_is_written_at_each_lease_issued() {
+    let m = Side::new("last-m", false);
+    let (wall, mono, c) = timed_coordinator("last-c");
+    let id = active(&c, &m, None).await;
+    assert!(
+        c.host
+            .store
+            .last_session(&id, "decisions")
+            .expect("read")
+            .is_none(),
+        "no session yet"
+    );
+    let connector = loopback(&m, &c);
+    let first = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    let last = c
+        .host
+        .store
+        .last_session(&id, "decisions")
+        .expect("read")
+        .expect("written");
+    assert_eq!(last.at, first.lease.issued_at);
+    assert_eq!(last.member_boot_id, m.host.identity.boot_id());
+    drop(first);
+    // Within the member's skew: a later lease it still accepts.
+    let step = 20;
+    wall.jump(i64::try_from(step).expect("in range"));
+    mono.advance(Duration::from_secs(step));
+    let second = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased again");
+    let last = c
+        .host
+        .store
+        .last_session(&id, "decisions")
+        .expect("read")
+        .expect("written");
+    assert_eq!(last.at, second.lease.issued_at);
+}
+
+/// WP-4.4: a report older than the lease policy's `max_session_seconds`, or of another epoch,
+/// is stale; silence leaves nothing reported and nothing stale.
+#[tokio::test]
+async fn a_report_past_its_session_bound_is_stale_and_silence_changes_nothing() {
+    use crate::membership::progress::stale;
+
+    assert!(!stale(1, 1_000, 1, 3_600, 4_600));
+    assert!(stale(1, 1_000, 1, 3_600, 4_601), "past its session bound");
+    assert!(stale(1, 1_000, 2, 3_600, 1_001), "of another epoch");
+
+    let m = Side::new("stale-m", false);
+    let (wall, mono, c) = timed_coordinator("stale-c");
+    let id = active(&c, &m, None).await;
+    let manifest = || {
+        c.host
+            .store
+            .membership(&id)
+            .expect("held")
+            .manifest
+            .expect("active")
+            .0
+    };
+    let silent = c
+        .host
+        .store
+        .observed(&manifest(), c.context.time.now_secs())
+        .expect("read");
+    assert_eq!(silent.len(), 1);
+    assert!(
+        silent[0].progress.is_none() && !silent[0].stale && silent[0].last_session_at.is_none()
+    );
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.report(&progress(&task, 1)).await.expect("kept");
+    let fresh = c
+        .host
+        .store
+        .observed(&manifest(), c.context.time.now_secs())
+        .expect("read");
+    assert!(!fresh[0].stale);
+    let step = manifest().lease_policy.max_session_seconds + 1;
+    wall.jump(i64::try_from(step).expect("in range"));
+    mono.advance(Duration::from_secs(step));
+    let late = c
+        .host
+        .store
+        .observed(&manifest(), c.context.time.now_secs())
+        .expect("read");
+    assert!(late[0].stale, "past the session bound");
+    assert_eq!(
+        late[0].progress, fresh[0].progress,
+        "the report itself unchanged"
+    );
+}
+
+/// WP-4.4: a watch takes its session; hints the hub publishes for its task and resource arrive
+/// coalesced by key, the newest counter winning, never one the member already holds; a quiet
+/// watch heartbeats.
+#[tokio::test]
+async fn a_watch_coalesces_by_key_and_sends_heartbeats_while_quiet() {
+    use crate::membership::record::{TaskType, WatchHint};
+    use permguard_core::authz::Resource;
+
+    let (c, m) = (Side::new("watch-c", true), Side::new("watch-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.watch(vec![("l1".to_owned(), 3)])
+        .await
+        .expect("watching");
+    assert_eq!(c.tasks.hub.live(), 1);
+    let hint = |key: &str, counter| WatchHint {
+        key: key.to_owned(),
+        head: format!("head-{counter}"),
+        counter,
+    };
+    let here = Resource::parse(RESOURCE).expect("a resource");
+    let elsewhere = Resource::parse("plane/data/zone/z2").expect("a resource");
+    // Already held, another task type, outside the lease's resource: none delivered.
+    c.tasks
+        .hub
+        .publish(TaskType::DecisionsShip, &here, &hint("l1", 3));
+    c.tasks
+        .hub
+        .publish(TaskType::EventsShip, &here, &hint("l1", 9));
+    c.tasks
+        .hub
+        .publish(TaskType::DecisionsShip, &elsewhere, &hint("l1", 9));
+    assert!(
+        task.next_event()
+            .await
+            .expect("a heartbeat")
+            .hints
+            .is_empty(),
+        "nothing for this watch: a heartbeat"
+    );
+    // Two advances of one key coalesce; another key rides along.
+    c.tasks
+        .hub
+        .publish(TaskType::DecisionsShip, &here, &hint("l1", 4));
+    c.tasks
+        .hub
+        .publish(TaskType::DecisionsShip, &here, &hint("l1", 6));
+    c.tasks
+        .hub
+        .publish(TaskType::DecisionsShip, &here, &hint("l2", 1));
+    let event = task.next_event().await.expect("hints");
+    assert_eq!(event.hints, vec![hint("l1", 6), hint("l2", 1)]);
+    // The session belongs to the watch now.
+    let refused = task
+        .send("r-1", b"hello".to_vec())
+        .await
+        .expect_err("a watch's session");
+    assert_eq!(code_of(&refused), codes::common::INVALID_ARGUMENT);
+    drop(task);
+    assert_eq!(c.tasks.hub.live(), 0, "the watch went with its session");
+}
+
+/// WP-4.4: a queue past its bound ends the watch `watch_overflow`; a fence ends it
+/// `epoch_stale`.
+#[tokio::test]
+async fn a_watch_ends_on_overflow_and_on_a_fence() {
+    use crate::membership::record::{MAX_WATCH_KEYS, Status, TaskType, WatchHint};
+    use permguard_core::authz::Resource;
+
+    let here = Resource::parse(RESOURCE).expect("a resource");
+    let (c, m) = (
+        Side::new("overflow-c", true),
+        Side::new("overflow-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.watch(Vec::new()).await.expect("watching");
+    for at in 0..=MAX_WATCH_KEYS {
+        c.tasks.hub.publish(
+            TaskType::DecisionsShip,
+            &here,
+            &WatchHint {
+                key: format!("k{at:05}"),
+                head: "h".to_owned(),
+                counter: 1,
+            },
+        );
+    }
+    let ended = task.next_event().await.expect_err("overflowed");
+    assert_eq!(code_of(&ended), codes::host::WATCH_OVERFLOW);
+
+    let (c, m) = (Side::new("fenced-c", true), Side::new("fenced-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.watch(Vec::new()).await.expect("watching");
+    move_to(&c, &id, Status::Suspended, 61);
+    let ended = task.next_event().await.expect_err("fenced");
+    assert_eq!(code_of(&ended), codes::host::EPOCH_STALE);
+}
+
+/// WP-4.4 (review): a restarted member numbers its reports from anew; the incarnation's own
+/// order holds.
+#[test]
+fn a_restarted_member_numbers_its_reports_from_anew() {
+    let host = crate::membership::tests::Host::new("renumber");
+    let report = |boot: u8, seq: u64| crate::membership::record::TaskProgress {
+        membership_id: [0x45; 16],
+        task_id: "decisions".to_owned(),
+        manifest_epoch: 1,
+        member_boot_id: [boot; 16],
+        report_seq: seq,
+        reported_at: 1_800_000_000,
+        resources: Vec::new(),
+    };
+    let keep = |progress: &crate::membership::record::TaskProgress| {
+        host.store.keep_progress(
+            progress,
+            &progress.encode().expect("encodes"),
+            1_800_000_001,
+        )
+    };
+    keep(&report(0xA1, 5)).expect("kept");
+    keep(&report(0xB2, 1)).expect("a new incarnation starts again");
+    assert!(matches!(
+        keep(&report(0xB2, 1)),
+        Err(MembershipError::OutOfOrder(_))
+    ));
+}
+
+/// WP-4.4 (review): a watch ends when its lease does.
+#[tokio::test]
+async fn a_watch_ends_with_its_lease() {
+    let m = Side::new("watch-lease-m", false);
+    let (wall, mono, c) = timed_coordinator("watch-lease-c");
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    task.watch(Vec::new()).await.expect("watching");
+    let step = task.lease.expires_at - task.lease.issued_at;
+    wall.jump(i64::try_from(step).expect("in range"));
+    mono.advance(Duration::from_secs(step));
+    let ended = task.next_event().await.expect_err("expired");
+    assert_eq!(code_of(&ended), codes::host::LEASE_EXPIRED);
 }

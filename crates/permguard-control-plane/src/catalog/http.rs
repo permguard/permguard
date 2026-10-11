@@ -208,7 +208,7 @@ async fn get_ledger(
     answer(
         &facade,
         StatusCode::OK,
-        ledgers::get(&facade, &actor, &zone, &ledger),
+        ledgers::get_served(&facade, &actor, &zone, &ledger),
     )
 }
 
@@ -267,6 +267,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         routes(CatalogFacade {
+            host: None,
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
@@ -447,6 +448,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         let routes = routes(CatalogFacade {
+            host: None,
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
@@ -521,6 +523,7 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&root);
         let routes = routes(CatalogFacade {
+            host: None,
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),
@@ -587,6 +590,45 @@ mod tests {
     /// JSON a client sends and checked as that same JSON; `Zone` and `Ledger` are the public
     /// types, built through the catalog itself. The one `assert_covered` of the document lives
     /// here because this is the only place that sees all three.
+    /// A member serving a ledger, with every optional member when `full`.
+    fn serving_member(full: bool) -> super::super::serving::ServingMember {
+        use permguard_host::api::members::{
+            AssuranceView, ClaimView, ServingMemberView, ServingProgressView,
+        };
+        ServingMemberView {
+            host_id: "01a3185c-5000-7111-9111-111111111111".to_owned(),
+            membership_id: "01a3185c-5000-7444-8444-444444444444".to_owned(),
+            task_id: "mirror".to_owned(),
+            declared_assurance: "production".to_owned(),
+            assurance_binding_status: full.then(|| AssuranceView {
+                verdict: "accepted".to_owned(),
+                current: true,
+                policy_revision: "sha256:00".to_owned(),
+                task_ids: vec!["mirror".to_owned()],
+                claims: vec![ClaimView {
+                    control: "custody.hsm".to_owned(),
+                    class: "attested".to_owned(),
+                    by: "tpm-quote".to_owned(),
+                }],
+                appraised_by: "spiffe://acme/operators/root".to_owned(),
+                issued_at: "2027-01-15T00:00:00Z".to_owned(),
+                expires_at: "2027-02-14T00:00:00Z".to_owned(),
+                binding_digest: "sha256:11".to_owned(),
+            }),
+            lease_state: if full { "live" } else { "none" }.to_owned(),
+            last_session_at: full.then(|| "2027-01-15T00:00:20Z".to_owned()),
+            progress: full.then(|| ServingProgressView {
+                report_seq: 7,
+                reported_at: "2027-01-15T00:00:40Z".to_owned(),
+                received_at: "2027-01-15T00:00:41Z".to_owned(),
+                state: Some("serving".to_owned()),
+                checkpoint_digest: Some("sha256:22".to_owned()),
+                stale: false,
+            }),
+        }
+        .into()
+    }
+
     #[test]
     fn test_the_catalog_wire_types_match_openapi_catalog() {
         use permguard_conformance::schema::Document;
@@ -621,7 +663,107 @@ mod tests {
 
         doc.check("Zone", &zone);
         doc.check("Ledger", &ledger);
+        // `GetLedger`'s answer: the ledger with a member serving it, every optional member
+        // present, then one with none (WP-4.4).
+        let served = super::super::serving::LedgerServed {
+            ledger: ledger.clone(),
+            serving_members: vec![serving_member(true), serving_member(false)],
+        };
+        doc.check("Ledger", &served);
 
         doc.assert_covered();
+    }
+
+    /// WP-4.4: `GET …/ledgers/{ledger}` answers the members the Host's composition names for the
+    /// ledger's resource, the same rows a gRPC `GetLedger` carries; a list or a create carries
+    /// none, and a plane that does not provide `policy.mirror` is handed none.
+    #[tokio::test]
+    async fn get_ledger_lists_the_members_serving_it_with_their_reported_progress() {
+        use permguard_host::composition::{Declaration, Host, ServingMembers};
+        use permguard_host::membership::record::TaskType;
+
+        /// Names one member for exactly the resource it was told about.
+        struct Named(std::sync::Mutex<Option<permguard_core::authz::Resource>>);
+
+        impl ServingMembers for Named {
+            fn serving_members(
+                &self,
+                resource: &permguard_core::authz::Resource,
+            ) -> Vec<permguard_host::api::members::ServingMemberView> {
+                *self.0.lock().expect("lock") = Some(resource.clone());
+                vec![permguard_host::api::members::ServingMemberView {
+                    host_id: "member".to_owned(),
+                    membership_id: "membership".to_owned(),
+                    task_id: "mirror".to_owned(),
+                    declared_assurance: "production".to_owned(),
+                    assurance_binding_status: None,
+                    lease_state: "live".to_owned(),
+                    last_session_at: Some("2027-01-15T00:00:20Z".to_owned()),
+                    progress: None,
+                }]
+            }
+        }
+
+        let named = Arc::new(Named(std::sync::Mutex::new(None)));
+        let host = Host::builder()
+            .memberships(Arc::clone(&named) as Arc<dyn ServingMembers>)
+            .build();
+        let provider = host
+            .register(Declaration::new("control").handles_task(TaskType::PolicyMirror, 1))
+            .expect("registered");
+        let other = host
+            .register(Declaration::new("data").uses_task(TaskType::PolicyMirror, 1))
+            .expect("registered");
+        assert!(
+            other
+                .serving_members(
+                    &permguard_core::authz::Resource::parse("plane/data").expect("a resource")
+                )
+                .is_empty(),
+            "a plane that does not provide the mirror is handed nobody"
+        );
+
+        let root =
+            std::env::temp_dir().join(format!("permguard-catalog-serving-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let routes = routes(CatalogFacade {
+            host: Some(Arc::new(provider)),
+            authorization: Arc::new(permguard_host::composition::Authorization::permissive()),
+            catalog: Arc::new(FileCatalog::new(root)),
+            recorder: None,
+            disclosure: Disclosure::Minimal,
+            audit_refusals: false,
+            metrics: permguard_core::metrics::Metrics::none(),
+        });
+        let (_, created) = send(&routes, "POST", "/v1/zones", Some(r#"{"name":"delivery"}"#)).await;
+        let zone: serde_json::Value = serde_json::from_str(&created).expect("json");
+        let (_, created) = send(
+            &routes,
+            "POST",
+            "/v1/zones/delivery/ledgers",
+            Some(r#"{"name":"policies"}"#),
+        )
+        .await;
+        let ledger: serde_json::Value = serde_json::from_str(&created).expect("json");
+        assert!(
+            ledger.get("serving_members").is_none(),
+            "a create carries none"
+        );
+
+        let (status, body) =
+            send(&routes, "GET", "/v1/zones/delivery/ledgers/policies", None).await;
+        assert_eq!(status, 200, "{body}");
+        let got: serde_json::Value = serde_json::from_str(&body).expect("json");
+        assert_eq!(got["id"], ledger["id"]);
+        assert_eq!(got["serving_members"][0]["task_id"], "mirror");
+        assert_eq!(got["serving_members"][0]["lease_state"], "live");
+        assert_eq!(
+            named.0.lock().expect("lock").clone(),
+            Some(super::super::ledger_resource(
+                zone["id"].as_str().expect("an id"),
+                ledger["id"].as_str().expect("an id")
+            )),
+            "asked about the ledger's own resource"
+        );
     }
 }

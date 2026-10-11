@@ -546,6 +546,30 @@
       "kind": "refusal",
       "class": "conflict"
     },
+    "host.TASK_BUSY": {
+      "code": "task_busy",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.RATE_LIMITED": {
+      "code": "rate_limited",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
+    "host.REPORT_OUT_OF_ORDER": {
+      "code": "report_out_of_order",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.WATCH_OVERFLOW": {
+      "code": "watch_overflow",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "unavailable"
+    },
     "host.ENROLLMENT_REFUSED": {
       "code": "enrollment_refused",
       "contract": "6-contracts/8-contract-host-api.md",

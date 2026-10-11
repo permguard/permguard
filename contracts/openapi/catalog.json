@@ -966,6 +966,14 @@
             "minimum": 0,
             "description": "Seconds since the Unix epoch.",
             "x-grpc-field": "updated_at"
+          },
+          "serving_members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServingMember"
+            },
+            "description": "On `GET …/ledgers/{ledger}` only: the members this Host coordinates whose `policy.mirror` task covers the ledger, with what it observed of them (WP-4.4). Assignment and observations, not a guarantee that a member serves now; absent from every other answer.",
+            "x-grpc-field": "serving_members"
           }
         },
         "required": [
@@ -979,6 +987,212 @@
         "additionalProperties": false,
         "description": "One ledger, inside one zone.",
         "x-grpc-message": "permguard.control.v1.Ledger"
+      },
+      "ServingMember": {
+        "type": "object",
+        "properties": {
+          "host_id": {
+            "type": "string",
+            "description": "The member Host.",
+            "x-grpc-field": "host_id"
+          },
+          "membership_id": {
+            "type": "string",
+            "description": "The membership that assigns it.",
+            "x-grpc-field": "membership_id"
+          },
+          "task_id": {
+            "type": "string",
+            "description": "The `policy.mirror` task that covers the ledger.",
+            "x-grpc-field": "task_id"
+          },
+          "declared_assurance": {
+            "type": "string",
+            "description": "What the member declared: a compatibility claim, never rendered as verified.",
+            "x-grpc-field": "declared_assurance"
+          },
+          "assurance_binding_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServingAssurance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The coordinator's appraisal, without its evidence; `null` when the manifest signs no binding.",
+            "x-grpc-field": "assurance_binding_status"
+          },
+          "lease_state": {
+            "type": "string",
+            "enum": [
+              "live",
+              "none"
+            ],
+            "description": "`live` while a session's lease runs, `none` otherwise.",
+            "x-grpc-field": "lease_state"
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "The last session leased for the task, from the coordinator's clock, RFC 3339. Optional; `null` is absent.",
+            "x-grpc-field": "last_session_at"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServingProgress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member's last report, member-reported; `null` before the first.",
+            "x-grpc-field": "progress"
+          }
+        },
+        "required": [
+          "host_id",
+          "membership_id",
+          "task_id",
+          "declared_assurance",
+          "lease_state"
+        ],
+        "additionalProperties": false,
+        "description": "One member assigned to serve a ledger (WP-4.4).",
+        "x-grpc-message": "permguard.control.v1.ServingMember"
+      },
+      "ServingAssurance": {
+        "type": "object",
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "revoked"
+            ],
+            "description": "The binding's verdict.",
+            "x-grpc-field": "verdict"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether it admits tasks now.",
+            "x-grpc-field": "current"
+          },
+          "policy_revision": {
+            "type": "string",
+            "description": "The appraisal policy's revision.",
+            "x-grpc-field": "policy_revision"
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServingClaim"
+            },
+            "description": "The claims accepted.",
+            "x-grpc-field": "claims"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the binding stops admitting, RFC 3339.",
+            "x-grpc-field": "expires_at"
+          }
+        },
+        "required": [
+          "verdict",
+          "current",
+          "policy_revision",
+          "claims",
+          "expires_at"
+        ],
+        "additionalProperties": false,
+        "description": "An assurance binding's status, without its evidence (WP-4.4).",
+        "x-grpc-message": "permguard.control.v1.ServingAssurance"
+      },
+      "ServingClaim": {
+        "type": "object",
+        "properties": {
+          "control": {
+            "type": "string",
+            "description": "A registered control.",
+            "x-grpc-field": "control"
+          },
+          "class": {
+            "type": "string",
+            "description": "The class of evidence accepted.",
+            "x-grpc-field": "class"
+          },
+          "by": {
+            "type": "string",
+            "description": "Who vouches: the profile declared, the verifier or the approving operator.",
+            "x-grpc-field": "by"
+          }
+        },
+        "required": [
+          "control",
+          "class",
+          "by"
+        ],
+        "additionalProperties": false,
+        "description": "One accepted claim (WP-4.4).",
+        "x-grpc-message": "permguard.control.v1.ServingClaim"
+      },
+      "ServingProgress": {
+        "type": "object",
+        "properties": {
+          "report_seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The member's number for the report.",
+            "x-grpc-field": "report_seq"
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the member says it reported, RFC 3339.",
+            "x-grpc-field": "reported_at"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the coordinator received it, RFC 3339.",
+            "x-grpc-field": "received_at"
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the member says of this ledger; `null` when the report does not name it. Optional; `null` is absent.",
+            "x-grpc-field": "state"
+          },
+          "checkpoint_digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The checkpoint the member says it verified last. Optional; `null` is absent.",
+            "x-grpc-field": "checkpoint_digest"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Past its session bound, or of another epoch: explicitly stale.",
+            "x-grpc-field": "stale"
+          }
+        },
+        "required": [
+          "report_seq",
+          "reported_at",
+          "received_at",
+          "stale"
+        ],
+        "additionalProperties": false,
+        "description": "A member's last report of a ledger, member-reported (WP-4.4).",
+        "x-grpc-message": "permguard.control.v1.ServingProgress"
       }
     }
   },

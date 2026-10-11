@@ -65,6 +65,8 @@ pub fn code_of(error: &MembershipError) -> &'static str {
         MembershipError::AssuranceRefused(_) => codes::host::ASSURANCE_REFUSED,
         MembershipError::AssuranceUnavailable(_) => codes::host::ASSURANCE_UNAVAILABLE,
         MembershipError::Held(_) => codes::host::MEMBERSHIP_HELD,
+        MembershipError::OutOfOrder(_) => codes::host::REPORT_OUT_OF_ORDER,
+        MembershipError::TaskUnserved(_) => codes::host::TASK_UNSERVED,
         _ => codes::common::INVALID_ARGUMENT,
     }
 }

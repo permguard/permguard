@@ -38,6 +38,7 @@ fn task_in(task: v1::MembershipTask) -> TaskView {
             retention_seconds: limits.retention_seconds,
         },
         assurance_requirements: task.assurance_requirements,
+        version: (task.version != 0).then_some(task.version),
     }
 }
 
@@ -58,6 +59,7 @@ fn task_out(task: TaskView) -> v1::MembershipTask {
             retention_seconds: task.limits.retention_seconds,
         }),
         assurance_requirements: task.assurance_requirements,
+        version: task.version.unwrap_or(1),
     }
 }
 
@@ -158,6 +160,34 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
         last_session_at: view.last_session_at,
         assurance: view.assurance.map(assurance_out),
         held_epoch: view.held_epoch,
+        task_progress: view
+            .task_progress
+            .into_iter()
+            .map(|task| v1::TaskObserved {
+                task_id: task.task_id,
+                last_session_at: task.last_session_at,
+                member_reported: task.member_reported.map(|report| v1::MemberReported {
+                    report_seq: report.report_seq,
+                    manifest_epoch: report.manifest_epoch,
+                    member_boot_id: report.member_boot_id,
+                    reported_at: report.reported_at,
+                    received_at: report.received_at,
+                    resources: report
+                        .resources
+                        .into_iter()
+                        .map(|resource| v1::ProgressResource {
+                            resource: resource.resource,
+                            state: resource.state,
+                            frontier: resource.frontier,
+                            checkpoint_digest: resource.checkpoint_digest,
+                            verified_at: resource.verified_at,
+                            reason: resource.reason,
+                        })
+                        .collect(),
+                }),
+                stale: task.stale,
+            })
+            .collect(),
         appraisal: view
             .appraisal
             .map(|appraisal| {
@@ -705,6 +735,7 @@ mod tests {
         };
         let nonce = [0xA7_u8; 32];
         let view = MemberView {
+            task_progress: Vec::new(),
             membership_id: "0190a5c3-0000-7000-8000-000000000044".to_owned(),
             role: "coordinator".to_owned(),
             status: "active".to_owned(),

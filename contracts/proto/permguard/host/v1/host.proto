@@ -327,6 +327,8 @@ message MembershipTask {
   bool required = 7;
   TaskLimits limits = 8;
   repeated string assurance_requirements = 9;
+  // The contract version both sides speak (WP-4.4); 0 on a request means 1.
+  uint64 version = 10;
 }
 // A task's limits.
 message TaskLimits {
@@ -400,7 +402,7 @@ message Member {
   // The manifest in force, COSE_Sign1; absent while pending.
   optional bytes manifest = 12;
   string updated_at = 13;
-  // The last task session: sessions come with WP-4.3.
+  // The coordinator's last session of any task, from its own clock (WP-4.4).
   optional string last_session_at = 14;
   // The assurance binding the manifest signs; absent when it signs none (WP-4.2).
   AssuranceBinding assurance = 15;
@@ -408,6 +410,39 @@ message Member {
   AppraisalState appraisal = 16;
   // Held for review since a peer named this epoch, never issued; absent when not held (WP-4.3).
   optional uint64 held_epoch = 17;
+  // Per task, the coordinator's last session and the member's last report (WP-4.4).
+  repeated TaskObserved task_progress = 18;
+}
+// What a coordinator observed of one task (WP-4.4).
+message TaskObserved {
+  string task_id = 1;
+  // The last session leased for the task, from the coordinator's clock.
+  optional string last_session_at = 2;
+  // The member's last report, member-reported; absent before the first.
+  MemberReported member_reported = 3;
+  // Past its session bound, or of another epoch.
+  bool stale = 4;
+}
+// A member's last report of one task: what it says, not proof that it is reachable (WP-4.4).
+message MemberReported {
+  uint64 report_seq = 1;
+  uint64 manifest_epoch = 2;
+  // Hex.
+  string member_boot_id = 3;
+  // When the member says it reported.
+  string reported_at = 4;
+  // When the coordinator received it.
+  string received_at = 5;
+  repeated ProgressResource resources = 6;
+}
+// One resource of a member's report, as the member stated it (WP-4.4).
+message ProgressResource {
+  string resource = 1;
+  string state = 2;
+  optional string frontier = 3;
+  optional string checkpoint_digest = 4;
+  optional string verified_at = 5;
+  optional string reason = 6;
 }
 // An assurance binding, as an operator reads it (WP-4.2).
 message AssuranceBinding {

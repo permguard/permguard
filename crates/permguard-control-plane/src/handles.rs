@@ -8,6 +8,7 @@
 //! | signs `HeadStatementV1`           | `Signer<HeadStatementV1>`       | NOTP head statements, the JWKS   |
 //! | reads the public set of `data.attest` | `PublicKeys`                | verifying a local producer       |
 //! | audit schema [`ControlPlaneAudit`] | `AuditHandle<ControlPlaneAudit>` | catalog, NOTP, GC                |
+//! | task contracts (WP-4.4)           | none                            | approval's task capability       |
 //!
 //! The plane never sees a key manager, the audit recorder or the secret store: only these.
 
@@ -52,13 +53,21 @@ pub(crate) type Audit = AuditHandle<ControlPlaneAudit>;
 
 /// What this plane declares to the Host.
 pub(crate) fn declaration() -> Declaration {
+    use permguard_host::membership::record::TaskType;
+
+    // The task contracts this plane serves at the Host's listener (WP-4.4, owner decision): their
+    // bodies answer `not_served_yet` until their packages bring the semantics.
     Declaration::new(PLANE)
         .signs::<HeadStatementV1>()
         .reads_public_keys(DATA_ATTEST)
         .audits::<ControlPlaneAudit>()
+        .handles_task(TaskType::PolicyMirror, 1)
+        .handles_task(TaskType::EventsImport, 1)
+        .uses_task(TaskType::DecisionsShip, 1)
+        .uses_task(TaskType::EventsShip, 1)
 }
 
-fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
+pub(crate) fn registration(context: &PlaneContext<'_>) -> Option<Arc<Registration>> {
     context.handles::<Registration>()
 }
 
@@ -159,5 +168,35 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{action}` is not registered with the Host"));
             assert_eq!(schema.root, CONTROL, "{action}");
         }
+    }
+}
+
+#[cfg(test)]
+mod task_contract_tests {
+    #![allow(clippy::expect_used)]
+
+    use permguard_host::membership::record::{ContractRole, TaskType};
+
+    /// The task contracts this plane registers, version 1 (WP-4.4, owner decision).
+    #[test]
+    fn the_plane_declares_its_task_contracts() {
+        let declaration = super::declaration();
+        let contracts: Vec<(TaskType, ContractRole)> = declaration
+            .task_contracts()
+            .iter()
+            .map(|contract| {
+                assert_eq!(contract.version, 1);
+                (contract.task_type, contract.role)
+            })
+            .collect();
+        assert_eq!(
+            contracts,
+            vec![
+                (TaskType::PolicyMirror, ContractRole::Provider),
+                (TaskType::EventsImport, ContractRole::Provider),
+                (TaskType::DecisionsShip, ContractRole::Consumer),
+                (TaskType::EventsShip, ContractRole::Consumer),
+            ]
+        );
     }
 }

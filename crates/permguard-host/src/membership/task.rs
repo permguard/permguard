@@ -31,8 +31,11 @@ use permguard_objects::cose::Sign1;
 
 use super::appraisal::{Appraisal, Evidence};
 use super::record::{
-    Lease, LeaseAnswer, LeaseRequest, Status, TaskAnswer, TaskMessage, TaskType, channel_binding,
+    LastSession, Lease, LeaseAnswer, LeaseRequest, Limits, MessageKind, ProgressAnswer, Status,
+    TaskAnswer, TaskMessage, TaskProgress, TaskType, WatchRequest, channel_binding,
 };
+use super::replay::{Gate, message_digest};
+use super::watch::{Hub, LeaseFence, Watch};
 use super::{
     APPRAISE, AUDIT_APPRAISED, AUDIT_SUSPENDED, DOMAIN, Held, MembershipError, Offered, SUSPEND,
 };
@@ -42,7 +45,7 @@ use crate::keys::ring::HOST_OPERATIONS;
 use crate::operations::journal::Initiator;
 use crate::operations::mutation::{Applied, Begin, Failure, Outcome};
 use crate::session::record::EXPORTER_BYTES;
-use crate::session::{Refusal, Session, TaskRefusal, TaskSession};
+use crate::session::{Refusal, Session, TaskRefusal, TaskSession, Watching};
 
 /// A lease was issued (`security`).
 pub const AUDIT_LEASE_ISSUED: &str = "host.membership.lease_issued";
@@ -75,6 +78,15 @@ pub struct LiveSessions {
     next: Mutex<u64>,
 }
 
+/// Why a session was not opened.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Unopened {
+    /// Another incarnation of the member holds this open session.
+    Clone(Live),
+    /// The task holds its signed `max_concurrency` of running sessions.
+    Busy,
+}
+
 /// Holds one session open; dropped with its connection.
 #[derive(Debug)]
 pub struct Opened {
@@ -101,20 +113,29 @@ impl Drop for Opened {
 
 impl LiveSessions {
     /// Opens `live` for `membership_id`, unless another incarnation of the member holds an open
-    /// session whose lease runs at `now`: that one is answered.
+    /// session whose lease runs at `now` (that one is answered), or its task already holds
+    /// `max_concurrency` running sessions (WP-4.4).
     pub(crate) fn open(
         self: &Arc<Self>,
         membership_id: [u8; 16],
         live: Live,
         now: u64,
-    ) -> Result<Opened, Live> {
+        max_concurrency: u64,
+    ) -> Result<Opened, Unopened> {
         let mut sessions = self.sessions.lock().unwrap_or_else(PoisonError::into_inner);
         let open = sessions.entry(membership_id).or_default();
         if let Some(other) = open
             .values()
             .find(|other| other.member_boot_id != live.member_boot_id && now < other.expires_at)
         {
-            return Err(other.clone());
+            return Err(Unopened::Clone(other.clone()));
+        }
+        let running = open
+            .values()
+            .filter(|other| other.task_id == live.task_id && now < other.expires_at)
+            .count();
+        if u64::try_from(running).unwrap_or(u64::MAX) >= max_concurrency {
+            return Err(Unopened::Busy);
         }
         let key = {
             let mut next = self.next.lock().unwrap_or_else(PoisonError::into_inner);
@@ -158,21 +179,28 @@ pub struct TaskContext {
     pub membership_id: [u8; 16],
     pub task_id: String,
     pub task_type: TaskType,
+    /// The contract version the task speaks (WP-4.4).
+    pub version: u64,
     pub epoch: u64,
     pub resource: String,
     pub member: [u8; 16],
     pub request_id: String,
+    /// The task's signed limits: `max_batch_records` and `retention_seconds` are the handler's
+    /// to apply (WP-4.4, owner decision).
+    pub limits: Limits,
 }
 
-/// The handler a Plane registers for a task type (WP-4.4 registers the real ones).
+/// The handler a Plane registers for a task type and version (WP-4.4; none ships before
+/// WP-4.7 and WP-7.x, so a declared contract answers `not_served_yet` until then).
 pub trait TaskHandler: Send + Sync {
     /// Answers one message's body, or refuses it with a stable code; the session stays open.
     fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal>;
 }
 
-/// The task handlers by task type.
+/// The task handlers by task type and contract version (WP-4.4). A contract a Plane declared
+/// without registering its handler answers `not_served_yet`.
 #[derive(Clone, Default)]
-pub struct TaskHandlers(BTreeMap<TaskType, Arc<dyn TaskHandler>>);
+pub struct TaskHandlers(BTreeMap<(TaskType, u64), Arc<dyn TaskHandler>>);
 
 impl std::fmt::Debug for TaskHandlers {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -181,18 +209,70 @@ impl std::fmt::Debug for TaskHandlers {
 }
 
 impl TaskHandlers {
-    pub fn register(mut self, task: TaskType, handler: Arc<dyn TaskHandler>) -> Self {
-        self.0.insert(task, handler);
+    pub fn register(mut self, task: TaskType, version: u64, handler: Arc<dyn TaskHandler>) -> Self {
+        self.0.insert((task, version), handler);
         self
     }
 }
 
-/// What the coordinator's task sessions share: the open sessions, the appraisal and the handlers.
-#[derive(Debug, Default)]
+/// What the coordinator's task sessions share: the open sessions, the appraisal, the handlers, the
+/// rate windows and the watches.
+#[derive(Debug)]
 pub struct Tasks {
     pub live: Arc<LiveSessions>,
     pub appraisal: Arc<Appraisal>,
     pub handlers: TaskHandlers,
+    /// The messages of the last minute, by membership and task (WP-4.4).
+    pub rates: Rates,
+    /// Where handlers publish watch hints (WP-4.4).
+    pub hub: Arc<Hub>,
+    /// How long a quiet watch waits before its heartbeat.
+    pub watch_heartbeat: std::time::Duration,
+}
+
+impl Default for Tasks {
+    fn default() -> Self {
+        Self {
+            live: Arc::default(),
+            appraisal: Arc::default(),
+            handlers: TaskHandlers::default(),
+            rates: Rates::default(),
+            hub: Arc::default(),
+            watch_heartbeat: super::watch::HEARTBEAT,
+        }
+    }
+}
+
+/// When each of a task's messages of the last minute arrived, by membership and task.
+type Taken = BTreeMap<([u8; 16], String), std::collections::VecDeque<u64>>;
+
+/// The messages each task took in its last minute, against its signed `max_rate_per_minute`.
+#[derive(Debug, Default)]
+pub struct Rates(Mutex<Taken>);
+
+impl Rates {
+    /// Counts one message of `task_id` of `membership_id` at `now`, unless the task took
+    /// `max_per_minute` in the minute before.
+    fn admit(
+        &self,
+        membership_id: &[u8; 16],
+        task_id: &str,
+        max_per_minute: u64,
+        now: u64,
+    ) -> bool {
+        let mut rates = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let taken = rates
+            .entry((*membership_id, task_id.to_owned()))
+            .or_default();
+        while taken.front().is_some_and(|at| at.saturating_add(60) <= now) {
+            taken.pop_front();
+        }
+        if u64::try_from(taken.len()).unwrap_or(u64::MAX) >= max_per_minute {
+            return false;
+        }
+        taken.push_back(now);
+        true
+    }
 }
 
 fn refusal(code: &'static str, reason: impl Into<String>) -> Refusal {
@@ -571,7 +651,8 @@ impl super::service::Coordinating {
             ));
         }
 
-        // Open, the clone check repeated under the lock that inserts.
+        // Open, the clone check repeated under the lock that inserts, the task's signed
+        // concurrency with it (WP-4.4).
         let opened = match self.tasks.live.open(
             id,
             Live {
@@ -583,9 +664,21 @@ impl super::service::Coordinating {
                 expires_at,
             },
             now,
+            task.limits.max_concurrency,
         ) {
             Ok(opened) => opened,
-            Err(other) => return Err(self.clone_alarm(peer, &id, &request, &other, now)),
+            Err(Unopened::Clone(other)) => {
+                return Err(self.clone_alarm(peer, &id, &request, &other, now));
+            }
+            Err(Unopened::Busy) => {
+                return Err(refusal(
+                    codes::host::TASK_BUSY,
+                    format!(
+                        "the task holds its {} running session(s): open one when another closes",
+                        task.limits.max_concurrency
+                    ),
+                ));
+            }
         };
 
         let lease = Lease {
@@ -605,6 +698,18 @@ impl super::service::Coordinating {
             binding_digest: admitted.binding,
         };
         let envelope = sign_lease(&operations, &lease).map_err(of)?;
+        // The coordinator's own clock of the task's sessions, what `last_session_at` shows and
+        // dormancy reads: kept before the lease is recorded and answered (WP-4.4).
+        self.store
+            .keep_last_session(
+                &id,
+                &request.task_id,
+                &LastSession {
+                    at: now,
+                    member_boot_id: request.member_boot_id,
+                },
+            )
+            .map_err(|error| refusal(codes::common::UNAVAILABLE, error.to_string()))?;
         // No lease without its record: the trail refusing it refuses the lease (fail closed).
         let (boot, coordinator_boot) = (hex(&request.member_boot_id), hex(&coordinator_boot_id));
         let who = subject(&peer.host_id);
@@ -628,6 +733,7 @@ impl super::service::Coordinating {
                     format!("the lease could not be recorded: {error}"),
                 )
             })?;
+
         let answer = LeaseAnswer {
             lease: envelope,
             manifest: revised,
@@ -641,6 +747,9 @@ impl super::service::Coordinating {
                 peer: peer.clone(),
                 lease,
                 task_type: task.task_type,
+                version: task.version,
+                watch: None,
+                watching: false,
                 _opened: opened,
             }),
         ))
@@ -717,14 +826,165 @@ struct CoordinatorTask {
     peer: Verified,
     lease: Lease,
     task_type: TaskType,
+    version: u64,
+    /// The watch this session became, until the transport takes it.
+    watch: Option<Box<dyn Watching>>,
+    /// Whether the session became a watch: it takes no other message.
+    watching: bool,
     _opened: Opened,
+}
+
+fn kept(code: &'static str, reason: impl Into<String>) -> TaskRefusal {
+    TaskRefusal {
+        refusal: refusal(code, reason),
+        end: false,
+    }
+}
+
+impl CoordinatorTask {
+    /// Keeps a progress report the member sent for this session's task (WP-4.4).
+    fn progress(&self, message: &TaskMessage, now: u64) -> Result<Vec<u8>, TaskRefusal> {
+        let report = TaskProgress::decode(&message.body)
+            .map_err(|error| kept(codes::common::INVALID_ARGUMENT, error.0))?;
+        if report.membership_id != self.lease.membership_id
+            || report.task_id != self.lease.task_id
+            || report.manifest_epoch != self.lease.epoch
+            || report.member_boot_id != self.lease.member_boot_id
+        {
+            return Err(kept(
+                codes::common::INVALID_ARGUMENT,
+                "the report names another membership, task, epoch or incarnation than its session",
+            ));
+        }
+        self.coordinating
+            .store
+            .keep_progress(&report, &message.body, now)
+            .map_err(|error| kept(super::service::code_of(&error), error.to_string()))?;
+        let body = ProgressAnswer {
+            report_seq: report.report_seq,
+            received_at: now,
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))?;
+        TaskAnswer {
+            request_id: message.request_id.clone(),
+            body,
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
+    }
+
+    /// Turns the session into a watch (WP-4.4): one per session, its answer an empty event.
+    fn watch(&mut self, message: &TaskMessage) -> Result<Vec<u8>, TaskRefusal> {
+        let request = WatchRequest::decode(&message.body)
+            .map_err(|error| kept(codes::common::INVALID_ARGUMENT, error.0))?;
+        let parts = &self.coordinating;
+        let queue = parts
+            .tasks
+            .hub
+            .subscribe(self.task_type, &self.lease, &request)
+            .map_err(|error| ended(codes::common::INVALID_ARGUMENT, error))?;
+        let mut watch = Watch {
+            queue,
+            request_id: message.request_id.clone(),
+            fence: Box::new(LeaseFence {
+                store: Arc::clone(&parts.store),
+                time: Arc::clone(&parts.time),
+                lease: self.lease.clone(),
+            }),
+            heartbeat: parts.tasks.watch_heartbeat,
+        };
+        let answer = watch
+            .heartbeat()
+            .map_err(|refusal| TaskRefusal { refusal, end: true })?;
+        self.watch = Some(Box::new(watch));
+        self.watching = true;
+        Ok(answer)
+    }
+
+    /// Answers a message for the task's handler through the replay gate (WP-4.4).
+    fn handled(&self, message: &TaskMessage, bytes: &[u8]) -> Result<Vec<u8>, TaskRefusal> {
+        let parts = &self.coordinating;
+        let id = &self.lease.membership_id;
+        let digest = message_digest(bytes, &self.lease.resource);
+        let reservation = match parts
+            .store
+            .gate(id, &self.lease.task_id, &message.request_id, &digest)
+            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?
+        {
+            Gate::Replay(answer) => return Ok(answer),
+            Gate::Reused => {
+                return Err(kept(
+                    codes::host::REQUEST_ID_REUSED,
+                    "this request id answered another message, or is being answered",
+                ));
+            }
+            Gate::New(reservation) => reservation,
+        };
+        let Some(handler) = parts.tasks.handlers.0.get(&(self.task_type, self.version)) else {
+            return Err(kept(
+                codes::host::NOT_SERVED_YET,
+                "no handler serves this task's version yet",
+            ));
+        };
+        let context = TaskContext {
+            membership_id: self.lease.membership_id,
+            task_id: self.lease.task_id.clone(),
+            task_type: self.task_type,
+            version: self.version,
+            epoch: self.lease.epoch,
+            resource: self.lease.resource.clone(),
+            member: self.peer.host_id,
+            request_id: message.request_id.clone(),
+            limits: self.lease.limits,
+        };
+        let body = handler
+            .handle(&context, &message.body)
+            .map_err(|refusal| TaskRefusal {
+                refusal,
+                end: false,
+            })?;
+        // An answer the member could not read, nor the window keep, is never sent.
+        if body.len() > super::record::MAX_BODY_BYTES {
+            tracing::error!(
+                event.name = "host.membership.task_answer_oversized",
+                component = "host",
+                task_type = self.task_type.as_str(),
+                bytes = body.len(),
+                "a task handler answered over the task message bound"
+            );
+            return Err(kept(
+                codes::common::UNAVAILABLE,
+                "the handler's answer is over the task message bound",
+            ));
+        }
+        let answer = TaskAnswer {
+            request_id: message.request_id.clone(),
+            body,
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))?;
+        // Kept before it is answered: a repeat after a crash before this reaches the handler
+        // again, which a handler's own idempotency answers.
+        parts
+            .store
+            .remember(reservation, &answer)
+            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?;
+        Ok(answer)
+    }
 }
 
 impl TaskSession for CoordinatorTask {
     fn message(&mut self, bytes: &[u8]) -> Result<Vec<u8>, TaskRefusal> {
-        let parts = &self.coordinating;
+        if self.watching {
+            return Err(ended(
+                codes::common::INVALID_ARGUMENT,
+                "the session belongs to its watch",
+            ));
+        }
         let message = TaskMessage::decode(bytes)
             .map_err(|error| ended(codes::common::INVALID_ARGUMENT, error.0))?;
+        let parts = &self.coordinating;
         if message.membership_id != self.lease.membership_id
             || message.task_id != self.lease.task_id
         {
@@ -763,47 +1023,35 @@ impl TaskSession for CoordinatorTask {
                 "the lease expired: open a new session",
             ));
         }
-        // The task's signed limit on a body (the task-limits invariant).
+        // The task's signed limits on a body and on the messages a minute (the task-limits
+        // invariant).
         if u64::try_from(message.body.len()).unwrap_or(u64::MAX) > self.lease.limits.max_body_bytes
         {
-            return Err(TaskRefusal {
-                refusal: refusal(
-                    codes::common::INVALID_ARGUMENT,
-                    "the body is over the task's signed `max_body_bytes`",
-                ),
-                end: false,
-            });
+            return Err(kept(
+                codes::common::INVALID_ARGUMENT,
+                "the body is over the task's signed `max_body_bytes`",
+            ));
         }
-        let Some(handler) = parts.tasks.handlers.0.get(&self.task_type) else {
-            return Err(TaskRefusal {
-                refusal: refusal(
-                    codes::host::NOT_SERVED_YET,
-                    "no handler serves this task yet",
-                ),
-                end: false,
-            });
-        };
-        let context = TaskContext {
-            membership_id: self.lease.membership_id,
-            task_id: self.lease.task_id.clone(),
-            task_type: self.task_type,
-            epoch: self.lease.epoch,
-            resource: self.lease.resource.clone(),
-            member: self.peer.host_id,
-            request_id: message.request_id.clone(),
-        };
-        let body = handler
-            .handle(&context, &message.body)
-            .map_err(|refusal| TaskRefusal {
-                refusal,
-                end: false,
-            })?;
-        TaskAnswer {
-            request_id: message.request_id,
-            body,
+        if !parts.tasks.rates.admit(
+            &self.lease.membership_id,
+            &self.lease.task_id,
+            self.lease.limits.max_rate_per_minute,
+            now,
+        ) {
+            return Err(kept(
+                codes::host::RATE_LIMITED,
+                "the task is over its signed `max_rate_per_minute`",
+            ));
         }
-        .encode()
-        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
+        match message.kind {
+            MessageKind::Progress => self.progress(&message, now),
+            MessageKind::Watch => self.watch(&message),
+            MessageKind::Handler => self.handled(&message, bytes),
+        }
+    }
+
+    fn take_watch(&mut self) -> Option<Box<dyn Watching>> {
+        self.watch.take()
     }
 }
 

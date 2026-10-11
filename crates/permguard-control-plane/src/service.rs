@@ -293,6 +293,7 @@ impl PlaneModule for ControlPlaneModule {
                     audit_refusals: context.config().audit_refusals(),
                     metrics: context.metrics().clone(),
                     authorization: crate::handles::authorization(context),
+                    host: crate::handles::registration(context),
                 };
                 // The holdings gauges start truthful, not at zero.
                 facade.refresh_holdings();
@@ -356,6 +357,7 @@ impl PlaneModule for ControlPlaneModule {
                 audit_refusals: context.config().audit_refusals(),
                 metrics: context.metrics().clone(),
                 authorization: crate::handles::authorization(context),
+                host: crate::handles::registration(context),
             }));
         }
 

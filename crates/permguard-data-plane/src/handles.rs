@@ -10,6 +10,7 @@
 //! | audit schema [`DataPlaneAudit`]       | `AuditHandle<DataPlaneAudit>`    | decisions, mirrors             |
 //! | zone keys `decision.commitment`       | `ZoneHandle`                     | input tags, per ledger         |
 //! | zone keys `audit.pseudonym`           | `ZoneHandle`                     | decision subjects, per zone    |
+//! | task contracts (WP-4.4)               | none                             | approval's task capability     |
 //!
 //! The plane never sees a key manager, the audit recorder, the secret store, a root or a key's
 //! bytes: only these (WP-3.3 for the zone keys).
@@ -40,10 +41,17 @@ pub type Audit = AuditHandle<DataPlaneAudit>;
 /// subjects' pseudonyms only when the decision log is on, so a plane that keeps no log MACs under
 /// nothing (WP-3.3).
 pub(crate) fn declaration(config: &Config) -> Declaration {
+    use permguard_host::membership::record::TaskType;
+
+    // The task contracts this plane takes part in as a member (WP-4.4, owner decision).
     let declaration = Declaration::new(PLANE)
         .signs::<DecisionBatchV1>()
         .signs::<EventBatchV1>()
-        .audits::<DataPlaneAudit>();
+        .audits::<DataPlaneAudit>()
+        .uses_task(TaskType::PolicyMirror, 1)
+        .uses_task(TaskType::EventsImport, 1)
+        .handles_task(TaskType::DecisionsShip, 1)
+        .handles_task(TaskType::EventsShip, 1);
     if config.log_enabled() {
         declaration
             .uses_zone_key(ZonePurpose::DecisionCommitment)
@@ -145,5 +153,35 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{action}` is not registered with the Host"));
             assert_eq!(schema.root, DATA, "{action}");
         }
+    }
+}
+
+#[cfg(test)]
+mod task_contract_tests {
+    #![allow(clippy::expect_used)]
+
+    use permguard_host::membership::record::{ContractRole, TaskType};
+
+    /// The task contracts this plane registers, version 1 (WP-4.4, owner decision).
+    #[test]
+    fn the_plane_declares_its_task_contracts() {
+        let declaration = super::declaration(&permguard_core::Config::default());
+        let contracts: Vec<(TaskType, ContractRole)> = declaration
+            .task_contracts()
+            .iter()
+            .map(|contract| {
+                assert_eq!(contract.version, 1);
+                (contract.task_type, contract.role)
+            })
+            .collect();
+        assert_eq!(
+            contracts,
+            vec![
+                (TaskType::PolicyMirror, ContractRole::Consumer),
+                (TaskType::EventsImport, ContractRole::Consumer),
+                (TaskType::DecisionsShip, ContractRole::Provider),
+                (TaskType::EventsShip, ContractRole::Provider),
+            ]
+        );
     }
 }

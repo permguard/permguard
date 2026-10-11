@@ -63,7 +63,7 @@ const REVOKE: &str = "members.revoke";
 /// What the composition hands the facade for the memberships.
 pub struct MembershipService {
     pub store: Arc<Store>,
-    /// The task types this Host's Planes act in (WP-4.4 fills it).
+    /// The task contracts this Host and its Planes registered (WP-4.4).
     pub capabilities: Capabilities,
     /// How this Host reaches a coordinator; without one, a join and a sync are
     /// `peer_client_unconfigured`.
@@ -121,6 +121,9 @@ pub struct TaskView {
     pub limits: LimitsView,
     #[serde(default)]
     pub assurance_requirements: Vec<String>,
+    /// The contract version both sides speak (WP-4.4); 1 when a request leaves it out.
+    #[serde(default)]
+    pub version: Option<u64>,
 }
 
 impl From<&Task> for TaskView {
@@ -141,6 +144,7 @@ impl From<&Task> for TaskView {
                 retention_seconds: task.limits.retention_seconds,
             },
             assurance_requirements: task.assurance_requirements.clone(),
+            version: Some(task.version),
         }
     }
 }
@@ -186,6 +190,7 @@ impl TaskView {
                 retention_seconds: self.limits.retention_seconds,
             },
             assurance_requirements: self.assurance_requirements.clone(),
+            version: self.version.unwrap_or(1),
         };
         task.check().map_err(|error| invalid(error.0))?;
         Ok(task)
@@ -389,7 +394,8 @@ pub struct MemberView {
     /// The manifest in force, COSE_Sign1 base64url; `null` while pending.
     pub manifest: Option<String>,
     pub updated_at: String,
-    /// The last task session, from the session journal: comes with WP-4.4.
+    /// The coordinator's last session of any task, from its own clock; `null` on a member or
+    /// before the first (WP-4.4).
     pub last_session_at: Option<String>,
     /// The assurance binding the manifest signs; `null` when it signs none (WP-4.2).
     #[serde(default)]
@@ -402,6 +408,134 @@ pub struct MemberView {
     /// task until it is revoked (WP-4.3); `null` when not held.
     #[serde(default)]
     pub held_epoch: Option<u64>,
+    /// Per task, what the coordinator observed: its last session and the member's last report,
+    /// labelled member-reported (WP-4.4); empty on a member.
+    #[serde(default)]
+    pub task_progress: Vec<TaskObservedView>,
+}
+
+/// One resource of a member's report, as the member stated it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgressResourceView {
+    pub resource: String,
+    pub state: String,
+    #[serde(default)]
+    pub frontier: Option<String>,
+    #[serde(default)]
+    pub checkpoint_digest: Option<String>,
+    /// When the member says it verified, RFC 3339; never the coordinator's time.
+    #[serde(default)]
+    pub verified_at: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// A member's last report of one task: what it says it did, not proof that it is reachable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberReportedView {
+    pub report_seq: u64,
+    pub manifest_epoch: u64,
+    /// The member's incarnation that reported, hex.
+    pub member_boot_id: String,
+    /// When the member says it reported, RFC 3339.
+    pub reported_at: String,
+    /// When this coordinator received it, RFC 3339.
+    pub received_at: String,
+    pub resources: Vec<ProgressResourceView>,
+}
+
+/// What a coordinator observed of one task.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskObservedView {
+    pub task_id: String,
+    /// The last session leased for the task, from the coordinator's clock, RFC 3339.
+    #[serde(default)]
+    pub last_session_at: Option<String>,
+    /// The member's last report; `null` before the first.
+    #[serde(default)]
+    pub member_reported: Option<MemberReportedView>,
+    /// Whether that report is past its session bound or of another epoch.
+    pub stale: bool,
+}
+
+impl MemberReportedView {
+    fn of(report: &crate::membership::record::TaskProgress, received_at: u64) -> Self {
+        Self {
+            report_seq: report.report_seq,
+            manifest_epoch: report.manifest_epoch,
+            member_boot_id: report
+                .member_boot_id
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+            reported_at: rfc3339(report.reported_at),
+            received_at: rfc3339(received_at),
+            resources: report
+                .resources
+                .iter()
+                .map(|resource| ProgressResourceView {
+                    resource: resource.resource.clone(),
+                    state: resource.state.clone(),
+                    frontier: resource.frontier.clone(),
+                    checkpoint_digest: resource.checkpoint_digest.as_ref().map(ToString::to_string),
+                    verified_at: resource.verified_at.map(rfc3339),
+                    reason: resource.reason.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl TaskObservedView {
+    fn of(observed: &crate::membership::progress::Observed) -> Self {
+        Self {
+            task_id: observed.task_id.clone(),
+            last_session_at: observed.last_session_at.map(rfc3339),
+            member_reported: observed
+                .progress
+                .as_ref()
+                .map(|(report, received_at)| MemberReportedView::of(report, *received_at)),
+            stale: observed.stale,
+        }
+    }
+}
+
+/// A member's last report of one resource, as the catalog shows it (WP-4.4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingProgressView {
+    pub report_seq: u64,
+    /// When the member says it reported, RFC 3339.
+    pub reported_at: String,
+    /// When the coordinator received it, RFC 3339.
+    pub received_at: String,
+    /// What the member says of the resource; `null` when the report does not name it.
+    #[serde(default)]
+    pub state: Option<String>,
+    /// The checkpoint the member says it verified last.
+    #[serde(default)]
+    pub checkpoint_digest: Option<String>,
+    pub stale: bool,
+}
+
+/// One member assigned to serve a resource, as `GetLedger` shows it: assignment and
+/// observations, not a guarantee that it serves now (WP-4.4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServingMemberView {
+    pub host_id: String,
+    pub membership_id: String,
+    pub task_id: String,
+    /// What the member declared, never rendered as verified.
+    pub declared_assurance: String,
+    /// The coordinator's appraisal; `null` when the manifest signs no binding.
+    #[serde(default)]
+    pub assurance_binding_status: Option<AssuranceView>,
+    /// `live` while a session's lease runs, `none` otherwise.
+    pub lease_state: String,
+    #[serde(default)]
+    pub last_session_at: Option<String>,
+    /// The member's last report, labelled member-reported; `null` before the first.
+    #[serde(default)]
+    pub progress: Option<ServingProgressView>,
 }
 
 /// One claim of a binding, without the record it cites.
@@ -455,6 +589,7 @@ struct Viewing<'a> {
     appraisal: &'a Appraisal,
     coordinator: Option<[u8; 16]>,
     now: u64,
+    store: &'a Store,
 }
 
 impl AssuranceView {
@@ -543,6 +678,20 @@ impl MemberView {
                         .collect(),
                 })
             });
+        // What the coordinator observed of each task: a store that cannot be read shows nothing
+        // rather than a guess.
+        let task_progress: Vec<TaskObservedView> = match (&held.manifest, held.role) {
+            (Some((manifest, ..)), Role::Coordinator) => viewing
+                .store
+                .observed(manifest, viewing.now)
+                .map(|observed| observed.iter().map(TaskObservedView::of).collect())
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        let last_session_at = task_progress
+            .iter()
+            .filter_map(|task| task.last_session_at.clone())
+            .max();
         Self {
             membership_id: uuid_text(&held.request.membership_id),
             role: held.role.as_str().to_owned(),
@@ -563,10 +712,11 @@ impl MemberView {
                 .as_ref()
                 .map(|(_, envelope, _)| URL_SAFE_NO_PAD.encode(envelope)),
             updated_at: rfc3339(held.updated_at),
-            last_session_at: None,
+            last_session_at,
             assurance,
             appraisal,
             held_epoch: held.held_epoch,
+            task_progress,
         }
     }
 }
@@ -810,7 +960,8 @@ pub fn refusal_of(error: MembershipError) -> Refusal {
         MembershipError::Transition { .. }
         | MembershipError::Equivocation(_)
         | MembershipError::NotSuccessor(_)
-        | MembershipError::Held(_) => ErrorClass::Conflict,
+        | MembershipError::Held(_)
+        | MembershipError::OutOfOrder(_) => ErrorClass::Conflict,
         MembershipError::AssuranceUnavailable(_)
         | MembershipError::Ring(_)
         | MembershipError::Storage(_) => ErrorClass::Unavailable,
@@ -870,6 +1021,7 @@ impl HostApi {
                 .ok()
                 .map(crate::identity::Identity::host_id),
             now: self.time.now_secs(),
+            store: &memberships.store,
         }
     }
 
@@ -1150,6 +1302,89 @@ impl HostApi {
             .membership(&id_of(id)?)
             .ok_or_else(|| refusal_of(MembershipError::Unknown(format!("no membership `{id}`"))))?;
         Ok(MemberView::of(&held, &self.viewing(memberships)))
+    }
+
+    /// The members this Host coordinates whose active `policy.mirror` task covers `resource`,
+    /// with what it observed of them (WP-4.4): what the Control Plane's `GetLedger` answers
+    /// beside a ledger, authorized there. Empty without a membership store.
+    pub fn serving_members(
+        &self,
+        resource: &permguard_core::authz::Resource,
+    ) -> Vec<ServingMemberView> {
+        let Ok(memberships) = self.memberships() else {
+            return Vec::new();
+        };
+        let viewing = self.viewing(memberships);
+        let mut serving = Vec::new();
+        for (id, held) in memberships.store.memberships() {
+            let Some((manifest, ..)) = held.manifest.as_ref() else {
+                continue;
+            };
+            if held.role != Role::Coordinator
+                || held.status != Status::Active
+                || held.held_epoch.is_some()
+            {
+                continue;
+            }
+            let live = memberships.live.of(&id);
+            let observed_all = memberships
+                .store
+                .observed(manifest, viewing.now)
+                .unwrap_or_default();
+            for task in manifest.tasks.iter().filter(|task| {
+                task.task_type == TaskType::PolicyMirror && task.selector.contains(resource)
+            }) {
+                let observed = observed_all
+                    .iter()
+                    .find(|observed| observed.task_id == task.task_id)
+                    .cloned();
+                let target = resource.to_string();
+                let progress = observed.as_ref().and_then(|observed| {
+                    let (report, received_at) = observed.progress.as_ref()?;
+                    let named = report
+                        .resources
+                        .iter()
+                        .find(|named| named.resource == target);
+                    Some(ServingProgressView {
+                        report_seq: report.report_seq,
+                        reported_at: rfc3339(report.reported_at),
+                        received_at: rfc3339(*received_at),
+                        state: named.map(|named| named.state.clone()),
+                        checkpoint_digest: named
+                            .and_then(|named| named.checkpoint_digest.as_ref())
+                            .map(ToString::to_string),
+                        stale: observed.stale,
+                    })
+                });
+                serving.push(ServingMemberView {
+                    host_id: uuid_text(&held.request.member.host_id),
+                    membership_id: uuid_text(&id),
+                    task_id: task.task_id.clone(),
+                    declared_assurance: held.request.member_assurance.as_str().to_owned(),
+                    assurance_binding_status: manifest.assurance_binding.as_ref().map(|binding| {
+                        AssuranceView::of(
+                            binding,
+                            viewing.appraisal.is_current(binding, viewing.now),
+                        )
+                    }),
+                    lease_state: if live
+                        .iter()
+                        .any(|open| open.task_id == task.task_id && viewing.now < open.expires_at)
+                    {
+                        "live"
+                    } else {
+                        "none"
+                    }
+                    .to_owned(),
+                    last_session_at: observed
+                        .as_ref()
+                        .and_then(|observed| observed.last_session_at)
+                        .map(rfc3339),
+                    progress,
+                });
+            }
+        }
+        serving
     }
 
     /// `GET /host/v1/members/{id}/sessions`: the open task sessions of a membership this Host

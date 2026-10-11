@@ -101,6 +101,7 @@ fn member() -> HostRef {
 
 fn task(id: &str, requirements: &[Control]) -> Task {
     Task {
+        version: 1,
         task_id: id.to_owned(),
         task_type: TaskType::DecisionsShip,
         selector: Selector::parse("plane/data/*").expect("a selector"),

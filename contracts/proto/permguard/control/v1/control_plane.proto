@@ -100,6 +100,56 @@ message Ledger {
   uint64 updated_at = 5;
   // The ledger's default ref — a reference into its git-like store.
   string default_ref = 6;
+  // On GetLedger only: the members this Host coordinates whose `policy.mirror` task covers the
+  // ledger, with what it observed of them; assignment and observations, not a guarantee that a
+  // member serves now (WP-4.4).
+  repeated ServingMember serving_members = 7;
+}
+
+// One member assigned to serve a ledger (WP-4.4).
+message ServingMember {
+  string host_id = 1;
+  string membership_id = 2;
+  string task_id = 3;
+  // What the member declared, never rendered as verified.
+  string declared_assurance = 4;
+  // The coordinator's appraisal; absent when the manifest signs no binding.
+  ServingAssurance assurance_binding_status = 5;
+  // `live` while a session's lease runs, `none` otherwise.
+  string lease_state = 6;
+  optional string last_session_at = 7;
+  // The member's last report, member-reported; absent before the first.
+  ServingProgress progress = 8;
+}
+
+// An assurance binding's status, without its evidence (WP-4.4).
+message ServingAssurance {
+  // `accepted` or `revoked`.
+  string verdict = 1;
+  // Whether it admits tasks now.
+  bool current = 2;
+  string policy_revision = 3;
+  repeated ServingClaim claims = 4;
+  string expires_at = 5;
+}
+
+// One accepted claim: the control, the class of evidence, and who vouches (WP-4.4).
+message ServingClaim {
+  string control = 1;
+  string class = 2;
+  string by = 3;
+}
+
+// A member's last report of one ledger (WP-4.4).
+message ServingProgress {
+  uint64 report_seq = 1;
+  // When the member says it reported.
+  string reported_at = 2;
+  // When the coordinator received it.
+  string received_at = 3;
+  optional string state = 4;
+  optional string checkpoint_digest = 5;
+  bool stale = 6;
 }
 
 message CreateZoneRequest { string name = 1; }

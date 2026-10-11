@@ -56,6 +56,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("the catalog volume exists");
         CatalogFacade {
+            host: None,
             authorization: std::sync::Arc::new(
                 permguard_host::composition::Authorization::permissive(),
             ),

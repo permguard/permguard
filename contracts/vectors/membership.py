@@ -3,8 +3,8 @@
 
 """Independent generator for contracts/vectors/membership.json (WP-4.1).
 
-Computes the membership records from the owner decisions of 2026-10-09 (the label tables in
-status.md) with Python's standard library and `cryptography`, never by calling the Rust codecs, so
+Computes the membership records from the owner decisions of 2026-10-09, 2026-10-10 and
+2026-10-11 (the label tables in status.md) with Python's standard library and `cryptography`, never by calling the Rust codecs, so
 the Rust tests compare two implementations. The coordinator's `host.operations` key is the RFC 8032
 section 7.1 test 2 key, its identity the test 1 key; the member's identity is the test 3 key and
 its data.attest key the test 1024 key.
@@ -77,7 +77,9 @@ coordinator_ref = {1: COORDINATOR, 2: 1, 3: fingerprint(COORDINATOR_PUB)}
 member_ref = {1: MEMBER, 2: 1, 3: fingerprint(MEMBER_PUB)}
 limits = {1: 1_048_576, 2: 4, 3: 600, 4: 1000, 5: 2_592_000}
 task = {1: "decisions", 2: "decisions.ship", 3: "member", 4: "coordinator", 5: "plane/data/*",
-        6: ["decision"], 7: True, 8: limits, 9: []}
+        6: ["decision"], 7: True, 8: limits, 9: [], 10: 1}
+# The member's registered contracts (WP-4.4): the provider of decisions.ship, version 1.
+capabilities = [{1: "decisions.ship", 2: 1, 3: "provider"}]
 lease_policy = {1: 3600, 2: 86_400, 3: 30, 4: 2_592_000, 5: 7_776_000}
 
 invitation = cbor({1: INVITE_ID, 2: TOKEN_PUB, 3: "plane/data/*", 4: [task], 5: AT + 86_400,
@@ -107,7 +109,7 @@ ring_binding = sign1(_MEMBER_KEY, "permguard.host.ring-binding.v1", b"1",
 ring_statement = {1: RING, 2: 1, 3: SUITE, 4: [ring_jwk], 5: ring_binding}
 
 request = cbor({1: INVITE_ID, 2: token_proof, 3: "plane/data/*", 4: [task], 5: member_ref,
-                6: [ring_statement]})
+                6: [ring_statement], 7: capabilities})
 request_digest = digest(b"permguard.membership.request.v1\n", request)
 
 # The member's hello and the transcript of an enrollment session: 9 request_digest in the hello,
@@ -142,7 +144,8 @@ successor = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid
 
 # The pending membership an enrollment creates.
 pending = cbor({1: MEMBERSHIP_ID, 2: INVITE_ID, 3: coordinator_ref, 4: member_ref,
-                5: "plane/data/*", 6: [task], 7: "production", 8: [ring_statement], 9: AT + 1})
+                5: "plane/data/*", 6: [task], 7: "production", 8: [ring_statement], 9: AT + 1,
+                12: capabilities})
 
 # Three journal entries, each carrying the record it concerns and chained to the one before; the
 # first to the digest of an empty journal.
@@ -220,7 +223,29 @@ lease_answer_revised = cbor({1: lease_bound, 2: assured})
 held = cbor({1: 4, 2: "held", 3: MEMBERSHIP_ID, 4: 7, 5: AT + 30,
              7: digest(b"permguard.membership.journal.v1\n", third)})
 
-out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2) and task sessions (WP-4.3); see README.md and membership.py",
+# The task router (WP-4.4): a progress report with every optional label of a resource and one
+# without, its message, the answer, the report as the coordinator keeps it, the last session, a
+# watch request and an event with hints, and a replay entry.
+CHECKPOINT = "sha256:" + hashlib.sha256(b"checkpoint 42").hexdigest()
+progress = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: MEMBER_BOOT, 5: 7, 6: AT + 40,
+                 7: [{1: RESOURCE, 2: "serving", 3: "42", 4: CHECKPOINT, 5: AT + 39,
+                      6: "the last round verified"},
+                     {1: "plane/data/zone/z2", 2: "stale"}]})
+progress_message = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: "progress-7", 5: progress,
+                         6: "progress"})
+progress_answer = cbor({1: 7, 2: AT + 41})
+kept_progress = cbor({1: progress, 2: AT + 41})
+last_session = cbor({1: AT + 20, 2: MEMBER_BOOT})
+watch_request = cbor({1: [{1: "zone/z1/ledger/l1", 2: 3}, {1: "zone/z1/ledger/l2", 2: 9}]})
+watch_event = cbor({1: [{1: "zone/z1/ledger/l1", 2: CHECKPOINT, 3: 4}]})
+heartbeat = cbor({1: []})
+# The message's digest is taken with the session's resource, so an answer over one resource is
+# never served over another.
+replay_entry = cbor({1: "decisions", 2: "r-1",
+                     3: hashlib.sha256(task_message + RESOURCE.encode()).digest(),
+                     4: task_answer, 5: 1030})
+
+out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), task sessions (WP-4.3) and the task router (WP-4.4); see README.md and membership.py",
        "coordinator": {"host_id": COORDINATOR.hex(), "seed": SEED_COORDINATOR,
                        "public_key": COORDINATOR_PUB.hex(), "fingerprint": fingerprint(COORDINATOR_PUB)},
        "member": {"host_id": MEMBER.hex(), "seed": SEED_MEMBER, "public_key": MEMBER_PUB.hex(),
@@ -257,7 +282,13 @@ out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2) and
                 "task_answer": task_answer.hex(), "held": held.hex(),
                 "lease_request_evidence": lease_request_evidence.hex(),
                 "lease_bound": {"payload": lease_bound_payload.hex(), "cose_sign1": lease_bound.hex()},
-                "lease_answer_revised": lease_answer_revised.hex()}}
+                "lease_answer_revised": lease_answer_revised.hex()},
+       "router": {"capabilities_member": "decisions.ship provider 1",
+                  "progress": progress.hex(), "progress_message": progress_message.hex(),
+                  "progress_answer": progress_answer.hex(), "kept_progress": kept_progress.hex(),
+                  "last_session": last_session.hex(), "watch_request": watch_request.hex(),
+                  "watch_event": watch_event.hex(), "heartbeat": heartbeat.hex(),
+                  "replay_entry": replay_entry.hex(), "checkpoint": CHECKPOINT}}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

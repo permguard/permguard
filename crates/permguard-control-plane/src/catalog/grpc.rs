@@ -31,6 +31,7 @@ fn wire_ledger(ledger: permguard_core::Ledger) -> v1::Ledger {
         default_ref: ledger.default_ref,
         created_at: ledger.created_at,
         updated_at: ledger.updated_at,
+        serving_members: Vec::new(),
     }
 }
 
@@ -152,11 +153,17 @@ impl ZoneCatalog for CatalogFacade {
     ) -> Answer<v1::LedgerResponse> {
         let actor = permguard_transport::actor_of(request.extensions());
         let request = request.into_inner();
-        let ledger = ledgers::get(self, &actor, &request.zone, &request.ledger)
+        let served = ledgers::get_served(self, &actor, &request.zone, &request.ledger)
             .map_err(|error| self.refuse(error))?;
+        let mut ledger = wire_ledger(served.ledger);
+        ledger.serving_members = served
+            .serving_members
+            .into_iter()
+            .map(super::serving::wire)
+            .collect();
 
         Ok(Response::new(v1::LedgerResponse {
-            ledger: Some(wire_ledger(ledger)),
+            ledger: Some(ledger),
         }))
     }
 
@@ -257,6 +264,7 @@ mod tests {
         )
         .expect("issued");
         let facade = CatalogFacade {
+            host: None,
             catalog,
             recorder: None,
             disclosure: Disclosure::Minimal,

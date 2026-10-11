@@ -830,11 +830,17 @@ pub(crate) mod testing {
             audit: None,
             memberships: Some(Arc::new(members::MembershipService {
                 store: memberships,
-                // The coordinator's Planes consume shipped decisions (WP-4.4 registers them).
-                capabilities: crate::membership::Capabilities::default().declare(
-                    crate::membership::record::TaskType::DecisionsShip,
-                    crate::membership::record::Role::Coordinator,
-                ),
+                // The coordinator's Planes consume shipped decisions and provide the mirror, as a
+                // Control Plane declares (WP-4.4).
+                capabilities: crate::membership::Capabilities::default()
+                    .declare(
+                        crate::membership::record::TaskType::DecisionsShip,
+                        crate::membership::record::Role::Coordinator,
+                    )
+                    .declare(
+                        crate::membership::record::TaskType::PolicyMirror,
+                        crate::membership::record::Role::Coordinator,
+                    ),
                 connector: None,
                 // A fixed policy and a verifier that checks its nonce: tasks requiring none of
                 // these controls are untouched (WP-4.2).

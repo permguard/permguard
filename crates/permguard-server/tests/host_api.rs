@@ -1658,7 +1658,11 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     let elsewhere = receipt_of(&other_plan);
     let other_plan_id = member(&other_plan, &["plan_id"]).to_owned();
     steps.push(("plan a revocation", planned.clone()));
-    steps.push(("list the plans", transport.list_plans(admin).await));
+    // Listed by plan id, which each stack mints at random: compared in revision order.
+    steps.push((
+        "list the plans",
+        by_revision(transport.list_plans(admin).await),
+    ));
     steps.push((
         "list the plans as a stranger",
         transport.list_plans(Some(STRANGER)).await,
@@ -2057,6 +2061,17 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
     for ((case, rest), (_, grpc)) in over_rest.into_iter().zip(over_grpc) {
         assert_parity(case, rest.masked(MINTED), grpc.masked(MINTED));
     }
+}
+
+/// A plans list in revision order, which both transports share.
+fn by_revision(outcome: Outcome) -> Outcome {
+    let Outcome::Answered(mut value) = outcome else {
+        return outcome;
+    };
+    if let Some(plans) = value.get_mut("plans").and_then(Value::as_array_mut) {
+        plans.sort_by_key(|plan| plan.get("revision").and_then(Value::as_u64));
+    }
+    Outcome::Answered(value)
 }
 
 /// The schema of `host.json` each answered step of the script conforms to.

@@ -406,6 +406,14 @@ pub mod host {
     pub const CLONE_SUSPECTED: &str = "clone_suspected";
     /// The membership is held for review after a message from an epoch the coordinator never issued: no task, no fence and no resumption: only its revocation (WP-4.3).
     pub const MEMBERSHIP_HELD: &str = "membership_held";
+    /// The task already holds as many open sessions as its signed `max_concurrency`: no lease until one closes (WP-4.4).
+    pub const TASK_BUSY: &str = "task_busy";
+    /// A task message over its task's signed `max_rate_per_minute`: refused, the session kept (WP-4.4).
+    pub const RATE_LIMITED: &str = "rate_limited";
+    /// A progress report whose `report_seq` is not above the one the coordinator holds: refused, the session kept (WP-4.4).
+    pub const REPORT_OUT_OF_ORDER: &str = "report_out_of_order";
+    /// A watch whose queue overflowed: the session ends, and the member runs an ordinary round (WP-4.4).
+    pub const WATCH_OVERFLOW: &str = "watch_overflow";
     /// An enrollment is refused: the invitation, its proof, the expected member or the request; the peer is told no more (WP-4.1).
     pub const ENROLLMENT_REFUSED: &str = "enrollment_refused";
     /// A membership manifest with the epoch held and another digest: equivocation (WP-4.1).
@@ -715,6 +723,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::LEASE_EXPIRED,
         host::CLONE_SUSPECTED,
         host::MEMBERSHIP_HELD,
+        host::TASK_BUSY,
+        host::RATE_LIMITED,
+        host::REPORT_OUT_OF_ORDER,
+        host::WATCH_OVERFLOW,
         host::ENROLLMENT_REFUSED,
         host::MANIFEST_EQUIVOCATION,
         host::MANIFEST_NOT_SUCCESSOR,

@@ -91,6 +91,7 @@ fn zone(id: &str, name: &str) -> proto::Zone {
 
 fn ledger(id: &str, zone_id: &str, name: &str) -> proto::Ledger {
     proto::Ledger {
+        serving_members: Vec::new(),
         id: id.into(),
         zone_id: zone_id.into(),
         name: name.into(),

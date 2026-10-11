@@ -56,6 +56,8 @@ pub fn channel_path() -> String {
 }
 /// How many frames wait to be sent on one channel.
 const QUEUE: usize = 8;
+/// How long a member waits for its watch's next frame: three heartbeats (WP-4.4).
+const WATCH_SILENCE: Duration = Duration::from_secs(45);
 
 /// A frame as the session reads it; `None` for a frame that carries nothing.
 pub(crate) fn frame_of(frame: v1::PeerFrame) -> Option<Frame> {
@@ -166,9 +168,64 @@ pub(crate) fn respond(
                     return;
                 }
             }
+            // A task session that became a watch belongs to it from here (WP-4.4).
+            if let Some(watch) = responder.take_watch() {
+                serve_watch(watch, &mut inbound, &sender).await;
+                return;
+            }
         }
     });
     stream_of(receiver)
+}
+
+/// Sends what `watch` yields until it ends: hints when queued, a heartbeat when quiet. Anything
+/// the member sends, or its closing, ends the watch; a refusal is sent as its code.
+async fn serve_watch(
+    mut watch: Box<dyn permguard_host::session::Watching>,
+    inbound: &mut Streaming<v1::PeerFrame>,
+    sender: &mpsc::Sender<Result<v1::PeerFrame, tonic::Status>>,
+) {
+    let notify = Arc::new(tokio::sync::Notify::new());
+    let waker = Arc::clone(&notify);
+    watch.on_hint(Box::new(move || waker.notify_one()));
+    loop {
+        let frame = match watch.poll() {
+            Ok(Some(frame)) => Some(frame),
+            Ok(None) => {
+                tokio::select! {
+                    () = notify.notified() => None,
+                    () = tokio::time::sleep(watch.interval()) => match watch.heartbeat() {
+                        Ok(frame) => Some(frame),
+                        Err(refusal) => {
+                            let _ = sender.send(Ok(refused(&refusal))).await;
+                            return;
+                        }
+                    },
+                    // The session belongs to its watch: anything the member sends ends it, as
+                    // the in-process session answers.
+                    next = inbound.message() => {
+                        if matches!(next, Ok(Some(_))) {
+                            let _ = sender
+                                .send(Ok(wire_of(Frame::Refusal {
+                                    code: codes::common::INVALID_ARGUMENT.to_owned(),
+                                })))
+                                .await;
+                        }
+                        return;
+                    }
+                }
+            }
+            Err(refusal) => {
+                let _ = sender.send(Ok(refused(&refusal))).await;
+                return;
+            }
+        };
+        if let Some(frame) = frame
+            && sender.send(Ok(wire_of(Frame::Task(frame)))).await.is_err()
+        {
+            return;
+        }
+    }
 }
 
 fn refused(refusal: &Refusal) -> v1::PeerFrame {
@@ -597,6 +654,22 @@ impl TaskChannel for PeerTask {
                 Ok(Ok(_)) => Err(unreachable_peer("the coordinator closed the task session")),
                 Ok(Err(error)) => Err(refusal_of(error)),
                 Err(_) => Err(unreachable_peer("the coordinator did not answer in time")),
+            }
+        })
+    }
+
+    fn receive(&mut self) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, Refusal>> {
+        Box::pin(async move {
+            match tokio::time::timeout(WATCH_SILENCE, self.connection.receive()).await {
+                Ok(Ok(Some(Frame::Task(frame)))) => Ok(frame),
+                Ok(Ok(Some(Frame::Refusal { code }))) => {
+                    Err(answered(&code, "the coordinator ended the watch"))
+                }
+                Ok(Ok(_)) => Err(unreachable_peer("the coordinator closed the watch")),
+                Ok(Err(error)) => Err(refusal_of(error)),
+                Err(_) => Err(unreachable_peer(
+                    "the watch fell silent past three heartbeats",
+                )),
             }
         })
     }

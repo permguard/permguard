@@ -19,6 +19,17 @@ is cut.
 
 ### Added
 
+- **The Host task router: versioned task contracts, signed limits, progress, watches and the replay gate.**
+  A membership's task now signs the contract `version` both sides speak, and a member declares the contracts it registered in its enrollment request.
+  Approval refuses a task unless this Host registered its side of that exact version and the member declared the other side (`task_unserved`); the Control Plane provides `policy.mirror` and `events.import` and consumes `decisions.ship` and `events.ship`, the Data Plane the opposite roles, the Host itself `audit.checkpoints` and `zone.secrets`, so a Host without a Control Plane refuses `policy.mirror`.
+  A message reaches the handler registered for its task's version, and a declared contract whose handler is not there yet answers `not_served_yet`.
+  The task's signed limits are enforced: `max_concurrency` open sessions (`task_busy` at the lease), `max_rate_per_minute` messages (`rate_limited`, the session kept), the batch and retention limits handed to the handler.
+  An identical repeat of a request is answered its stored answer from a window of 1024 per task under `host/members/replay/`, a restart included; the same request id with another message is `request_id_reused`.
+  A member reports progress on its task session; the coordinator keeps the exact report with its `received_at` under `host/members/progress/` (`report_out_of_order` below the one held) and writes `last_session_at` at every lease.
+  `GET /host/v1/members` and `…/{id}` show, per task, the last session and the member-reported progress with its staleness, and the Control Plane's `GetLedger` answers `serving_members[]`, assignment and observations rather than a guarantee.
+  A member may turn a task session into a watch: hints a handler publishes arrive coalesced by key, the newest counter winning, with a heartbeat every 15 seconds; an overflowing queue ends it `watch_overflow`.
+  The new records are registered in `contracts/cbor/membership.json` with golden vectors.
+
 - **Plan receipts and dual control for destructive operations.**
   Every two-step operation of the Host API (grant, key and membership revocation, identity reset) now answers a plan receipt, a COSE_Sign1 `permguard.operation.plan.v1` under the Host's `host.operations` key, binding the operation, the exact target, the revision, the planner, what the plan changes, its expiry and a nonce.
   The run presents the receipt, in place of `plan_id` and `plan_digest`; it is matched byte for byte against the plan the Host holds, run once, by the planner alone.

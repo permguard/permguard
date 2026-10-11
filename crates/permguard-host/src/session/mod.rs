@@ -188,6 +188,27 @@ pub trait Service: Send + Sync {
 pub trait TaskSession: Send {
     /// Answers one task message; a refusal that ends the session says so.
     fn message(&mut self, request: &[u8]) -> Result<Vec<u8>, TaskRefusal>;
+
+    /// The watch this session became with the message just answered, taken once (WP-4.4): the
+    /// transport then sends what it yields, and the session takes no other message.
+    fn take_watch(&mut self) -> Option<Box<dyn Watching>> {
+        None
+    }
+}
+
+/// A task session that became a watch (WP-4.4): what the transport sends until it ends. The
+/// transport owns the waiting: it sends what [`Watching::poll`] yields, waits for the wake it
+/// registered or for [`Watching::interval`], and sends a heartbeat when nothing came.
+pub trait Watching: Send {
+    /// The hints queued, as a frame to send, `None` when nothing is queued, or the refusal that
+    /// ends the watch.
+    fn poll(&mut self) -> Result<Option<Vec<u8>>, Refusal>;
+    /// A heartbeat frame, or the refusal that ends the watch.
+    fn heartbeat(&mut self) -> Result<Vec<u8>, Refusal>;
+    /// Calls `wake` whenever a hint is queued.
+    fn on_hint(&self, wake: Box<dyn Fn() + Send + Sync>);
+    /// How long a quiet watch waits before its heartbeat.
+    fn interval(&self) -> std::time::Duration;
 }
 
 /// A task message refused: answered with its code, the session kept unless `end`.
@@ -487,6 +508,14 @@ impl Responder {
         match &self.state {
             Responding::Established(proven) => Some(&proven.session),
             Responding::Served(session) | Responding::Task(session, _) => Some(session),
+            _ => None,
+        }
+    }
+
+    /// The watch the task session became with its last message, taken once (WP-4.4).
+    pub fn take_watch(&mut self) -> Option<Box<dyn Watching>> {
+        match &mut self.state {
+            Responding::Task(_, task) => task.take_watch(),
             _ => None,
         }
     }

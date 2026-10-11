@@ -8,7 +8,8 @@
 //! | ------------------ | --------------------------------------------------------------------------------------------- |
 //! | host_ref           | {1 host_id, 2 epoch, 3 fingerprint}                                                           |
 //! | limits             | {1 max_body_bytes, 2 max_concurrency, 3 max_rate_per_minute, 4 max_batch_records, 5 retention_seconds} |
-//! | task               | {1 task_id, 2 type, 3 provider_role, 4 consumer_role, 5 selector, 6 resource_types, 7 required, 8 limits, 9 assurance_requirements} |
+//! | task               | {1 task_id, 2 type, 3 provider_role, 4 consumer_role, 5 selector, 6 resource_types, 7 required, 8 limits, 9 assurance_requirements, 10 version} (10: WP-4.4) |
+//! | capability         | {1 type, 2 version, 3 role}: a contract a Host registered, `provider` or `consumer` (WP-4.4) |
 //! | lease_policy       | {1 max_session_seconds, 2 offline_grace_seconds, 3 clock_skew_seconds, 4 dormant_after_seconds, 5 revoke_after_seconds} |
 //! | ring_pin           | {1 owner, 2 ring, 3 epoch, 4 key_set_digest, 5 binding}                                       |
 //! | ring_statement     | {1 ring, 2 epoch, 3 suite, 4 keys, 5 binding}                                                 |
@@ -21,11 +22,19 @@
 //! | lease_request      | {1 membership_id, 2 task_id, 3 epoch, 4 resource, 5 member_boot_id, 6? evidence} (WP-4.3)     |
 //! | lease payload      | {1 membership_id, 2 task_id, 3 epoch, 4 coordinator, 5 member, 6 coordinator_boot_id, 7 member_boot_id, 8 selector, 9 resource, 10 limits, 11 issued_at, 12 expires_at, 13 channel_binding, 14? binding_digest} (WP-4.3) |
 //! | lease_answer       | {1 lease, 2? manifest} (WP-4.3)                                                               |
-//! | task_message       | {1 membership_id, 2 task_id, 3 epoch, 4 request_id, 5 body} (WP-4.3)                          |
+//! | task_message       | {1 membership_id, 2 task_id, 3 epoch, 4 request_id, 5 body, 6? kind} (WP-4.3; 6: WP-4.4)      |
 //! | task_answer        | {1 request_id, 2 body} (WP-4.3)                                                               |
+//! | task_progress      | {1 membership_id, 2 task_id, 3 manifest_epoch, 4 member_boot_id, 5 report_seq, 6 reported_at, 7 resources} (WP-4.4) |
+//! | progress_resource  | {1 resource, 2 state, 3? frontier, 4? checkpoint_digest, 5? verified_at, 6? reason} (WP-4.4)   |
+//! | progress_answer    | {1 report_seq, 2 received_at} (WP-4.4)                                                        |
+//! | kept_progress      | {1 report, 2 received_at}: `progress/<membership_id>/<task_id>.cbor` (WP-4.4)                 |
+//! | last_session       | {1 at, 2 member_boot_id}: `progress/<membership_id>/<task_id>.session` (WP-4.4)               |
+//! | watch_request      | {1 positions [{1 key, 2 counter}]} (WP-4.4)                                                   |
+//! | watch_event        | {1 hints [{1 key, 2 head, 3 counter}]}, empty a heartbeat (WP-4.4)                            |
+//! | replay_entry       | {1 task_id, 2 request_id, 3 message_digest, 4 answer, 5 seq}: `replay/<membership_id>/` (WP-4.4) |
 //! | invitation         | {1 invite_id, 2 token_key, 3 selector, 4 tasks, 5 expires, 6? expected_fingerprint, 7? min_assurance, 8 max_uses, 9 created_at, 10 created_by} |
-//! | enrollment request | {1 invite_id, 2 token_proof, 3 selector, 4 tasks, 5 member, 6 ring_statements}            |
-//! | pending membership | {1 membership_id, 2 invite_id, 3 coordinator, 4 member, 5 selector, 6 tasks, 7 member_assurance, 8 ring_statements, 9 requested_at, 10? coordinator_address, 11? identity} |
+//! | enrollment request | {1 invite_id, 2 token_proof, 3 selector, 4 tasks, 5 member, 6 ring_statements, 7 capabilities} (7: WP-4.4) |
+//! | pending membership | {1 membership_id, 2 invite_id, 3 coordinator, 4 member, 5 selector, 6 tasks, 7 member_assurance, 8 ring_statements, 9 requested_at, 10? coordinator_address, 11? identity, 12 capabilities} (12: WP-4.4) |
 //! | enroll answer      | {1 membership_id, 2 status}                                                                   |
 //! | membership request | {1 action, 2 membership_id, 3? held_epoch}                                                    |
 //! | membership answer  | {1 status, 2 manifests, 3 ring_statements}                                                    |
@@ -58,6 +67,20 @@ pub const MAX_KEYS: usize = 64;
 pub const MAX_NAME_BYTES: usize = 128;
 /// The longest reason an operator gives for an approval.
 pub const MAX_REASON_BYTES: usize = 512;
+/// The highest version a task contract takes (WP-4.4).
+pub const MAX_CONTRACT_VERSION: u64 = 65_535;
+/// The most contracts one Host declares (WP-4.4).
+pub const MAX_CAPABILITIES: usize = 64;
+/// The most resources one progress report carries (WP-4.4, owner decision).
+pub const MAX_PROGRESS_RESOURCES: usize = 256;
+/// The most bytes one progress report takes (WP-4.4, owner decision).
+pub const MAX_PROGRESS_BYTES: usize = 64 * 1024;
+/// The most keys a watch tracks (WP-4.4, owner decision).
+pub const MAX_WATCH_KEYS: usize = 1024;
+/// The longest watch key or head.
+pub const MAX_WATCH_TEXT_BYTES: usize = 256;
+/// The most bytes a progress answer or a last session takes.
+pub const MAX_SMALL_RECORD_BYTES: usize = 128;
 
 /// Which side of a membership a role is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -310,6 +333,8 @@ pub struct Task {
     pub required: bool,
     pub limits: Limits,
     pub assurance_requirements: Vec<String>,
+    /// The contract version both sides speak (WP-4.4, owner decision), from 1.
+    pub version: u64,
 }
 
 fn names(values: &[String]) -> Value {
@@ -346,6 +371,7 @@ impl Task {
             (Value::Int(7), Value::Bool(self.required)),
             (Value::Int(8), self.limits.value()?),
             (Value::Int(9), names(&self.assurance_requirements)),
+            (Value::Int(10), uint(self.version)?),
         ]))
     }
 
@@ -365,6 +391,7 @@ impl Task {
             required: map.boolean(7)?,
             limits: Limits::read(map.value(8)?)?,
             assurance_requirements: map.texts(9)?,
+            version: map.uint(10)?,
         };
         map.finish()?;
         if provider != task_type.provider() || consumer != task_type.consumer() {
@@ -397,8 +424,126 @@ impl Task {
         for requirement in &self.assurance_requirements {
             name(requirement, "an assurance requirement")?;
         }
-        Ok(())
+        // Both are enforced (WP-4.4): a 0 would refuse every session or every message.
+        if self.limits.max_concurrency == 0 || self.limits.max_rate_per_minute == 0 {
+            return Err(RecordError(
+                "a task's `max_concurrency` and `max_rate_per_minute` are at least 1".to_owned(),
+            ));
+        }
+        check_version(self.version)
     }
+}
+
+fn check_version(version: u64) -> Result<(), RecordError> {
+    if version == 0 || version > MAX_CONTRACT_VERSION {
+        return Err(RecordError(format!(
+            "a task contract's version is 1 to {MAX_CONTRACT_VERSION}"
+        )));
+    }
+    Ok(())
+}
+
+/// Which side of a task a contract serves: the provider's handler or the consumer's client
+/// (WP-4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ContractRole {
+    Provider,
+    Consumer,
+}
+
+impl ContractRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Provider => "provider",
+            Self::Consumer => "consumer",
+        }
+    }
+
+    /// The side `role` takes in `task`.
+    pub fn of(task: TaskType, role: Role) -> Self {
+        if task.provider() == role {
+            Self::Provider
+        } else {
+            Self::Consumer
+        }
+    }
+}
+
+impl FromStr for ContractRole {
+    type Err = RecordError;
+
+    fn from_str(text: &str) -> Result<Self, RecordError> {
+        match text {
+            "provider" => Ok(Self::Provider),
+            "consumer" => Ok(Self::Consumer),
+            _ => Err(RecordError(format!("`{text}` is not a contract role"))),
+        }
+    }
+}
+
+/// A task contract a Host registered (WP-4.4, owner decision): what the member declares in its
+/// enrollment request and the coordinator holds of itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Capability {
+    pub task_type: TaskType,
+    pub version: u64,
+    pub role: ContractRole,
+}
+
+impl Capability {
+    fn value(&self) -> Result<Value, RecordError> {
+        Ok(Value::Map(vec![
+            (
+                Value::Int(1),
+                Value::Text(self.task_type.as_str().to_owned()),
+            ),
+            (Value::Int(2), uint(self.version)?),
+            (Value::Int(3), Value::Text(self.role.as_str().to_owned())),
+        ]))
+    }
+
+    fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "a capability")?;
+        let capability = Self {
+            task_type: map.text(1)?.parse()?,
+            version: map.uint(2)?,
+            role: map.text(3)?.parse()?,
+        };
+        map.finish()?;
+        check_version(capability.version)?;
+        Ok(capability)
+    }
+}
+
+/// Reads a Host's capabilities: at most [`MAX_CAPABILITIES`], in order, each once.
+fn read_capabilities(values: Vec<Value>) -> Result<Vec<Capability>, RecordError> {
+    if values.len() > MAX_CAPABILITIES {
+        return Err(RecordError(format!(
+            "at most {MAX_CAPABILITIES} capabilities"
+        )));
+    }
+    let capabilities: Vec<Capability> = values
+        .into_iter()
+        .map(Capability::read)
+        .collect::<Result<_, _>>()?;
+    if !sorted_unique(&capabilities) {
+        return Err(RecordError(
+            "capabilities are listed in order, each once".to_owned(),
+        ));
+    }
+    Ok(capabilities)
+}
+
+fn capabilities_value(capabilities: &[Capability]) -> Result<Value, RecordError> {
+    let mut sorted = capabilities.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    Ok(Value::Array(
+        sorted
+            .iter()
+            .map(Capability::value)
+            .collect::<Result<_, _>>()?,
+    ))
 }
 
 /// Reads the tasks of a record: at most [`MAX_TASKS`], ids unique.
@@ -1115,6 +1260,8 @@ pub struct EnrollRequest {
     pub tasks: Vec<Task>,
     pub member: HostRef,
     pub ring_statements: Vec<RingStatement>,
+    /// The contracts the member registered (WP-4.4).
+    pub capabilities: Vec<Capability>,
 }
 
 impl EnrollRequest {
@@ -1126,6 +1273,7 @@ impl EnrollRequest {
             (Value::Int(4), tasks_value(&self.tasks)?),
             (Value::Int(5), self.member.value()?),
             (Value::Int(6), statements_value(&self.ring_statements)?),
+            (Value::Int(7), capabilities_value(&self.capabilities)?),
         ])
     }
 
@@ -1139,6 +1287,7 @@ impl EnrollRequest {
             tasks: read_tasks(map.array(4)?)?,
             member: HostRef::read(map.value(5)?)?,
             ring_statements: read_statements(map.array(6)?)?,
+            capabilities: read_capabilities(map.array(7)?)?,
         };
         map.finish()?;
         Ok(request)
@@ -1169,6 +1318,8 @@ pub struct Pending {
     /// The member's identity as its enrollment session proved it, the session's presentation
     /// bytes: the coordinator's copy only, what a verification bundle carries of the member.
     pub identity: Option<Vec<u8>>,
+    /// The contracts the member declared in its request (WP-4.4).
+    pub capabilities: Vec<Capability>,
 }
 
 impl Pending {
@@ -1193,6 +1344,7 @@ impl Pending {
         if let Some(identity) = &self.identity {
             pairs.push((Value::Int(11), Value::Bytes(identity.clone())));
         }
+        pairs.push((Value::Int(12), capabilities_value(&self.capabilities)?));
         encode(pairs)
     }
 
@@ -1211,6 +1363,7 @@ impl Pending {
             requested_at: map.uint(9)?,
             coordinator_address: map.optional_text(10)?,
             identity: map.optional_bytes(11)?,
+            capabilities: read_capabilities(map.array(12)?)?,
         };
         map.finish()?;
         Ok(pending)
@@ -1745,17 +1898,58 @@ pub struct TaskMessage {
     pub epoch: u64,
     pub request_id: String,
     pub body: Vec<u8>,
+    /// What the message is (WP-4.4): one for the task's handler unless it says otherwise.
+    pub kind: MessageKind,
+}
+
+/// What a task message carries (WP-4.4, owner decision): label 6 is absent for the handler's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageKind {
+    /// A message the task's handler answers.
+    Handler,
+    /// A [`TaskProgress`] report.
+    Progress,
+    /// A [`WatchRequest`]: the session then belongs to the watch.
+    Watch,
+}
+
+impl MessageKind {
+    fn label(self) -> Option<&'static str> {
+        match self {
+            Self::Handler => None,
+            Self::Progress => Some("progress"),
+            Self::Watch => Some("watch"),
+        }
+    }
+
+    fn parse(text: Option<String>) -> Result<Self, RecordError> {
+        match text.as_deref() {
+            None => Ok(Self::Handler),
+            Some("progress") => Ok(Self::Progress),
+            Some("watch") => Ok(Self::Watch),
+            Some(other) => Err(RecordError(format!("`{other}` is not a task message kind"))),
+        }
+    }
 }
 
 impl TaskMessage {
     pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
-        encode(vec![
-            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
-            (Value::Int(2), Value::Text(self.task_id.clone())),
-            (Value::Int(3), uint(self.epoch)?),
-            (Value::Int(4), Value::Text(self.request_id.clone())),
-            (Value::Int(5), Value::Bytes(self.body.clone())),
-        ])
+        encode(
+            [
+                (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+                (Value::Int(2), Value::Text(self.task_id.clone())),
+                (Value::Int(3), uint(self.epoch)?),
+                (Value::Int(4), Value::Text(self.request_id.clone())),
+                (Value::Int(5), Value::Bytes(self.body.clone())),
+            ]
+            .into_iter()
+            .chain(
+                self.kind
+                    .label()
+                    .map(|kind| (Value::Int(6), Value::Text(kind.to_owned()))),
+            )
+            .collect(),
+        )
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
@@ -1769,6 +1963,7 @@ impl TaskMessage {
             epoch: map.uint(3)?,
             request_id: request_id(map.text(4)?)?,
             body: body(map.bytes(5)?)?,
+            kind: MessageKind::parse(map.optional_text(6)?)?,
         };
         map.finish()?;
         Ok(message)
@@ -1801,5 +1996,413 @@ impl TaskAnswer {
         };
         map.finish()?;
         Ok(answer)
+    }
+}
+
+fn small(bytes: &[u8], what: &str) -> Result<(), RecordError> {
+    if bytes.len() > MAX_SMALL_RECORD_BYTES {
+        return Err(RecordError(format!("{what} is out of its bound")));
+    }
+    Ok(())
+}
+
+fn body_bound(bytes: &[u8], what: &str) -> Result<(), RecordError> {
+    if bytes.len() > MAX_BODY_BYTES {
+        return Err(RecordError(format!("{what} is out of its bound")));
+    }
+    Ok(())
+}
+
+/// Printable text of 1 to `most` bytes.
+fn bounded_text(text: String, most: usize, what: &str) -> Result<String, RecordError> {
+    if text.is_empty() || text.len() > most || text.chars().any(char::is_control) {
+        return Err(RecordError(format!(
+            "{what} is printable text of 1 to {most} bytes"
+        )));
+    }
+    Ok(text)
+}
+
+/// One resource of a progress report, as the member states it (WP-4.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProgressResource {
+    pub resource: String,
+    pub state: String,
+    pub frontier: Option<String>,
+    pub checkpoint_digest: Option<Digest>,
+    pub verified_at: Option<u64>,
+    pub reason: Option<String>,
+}
+
+impl ProgressResource {
+    fn value(&self) -> Result<Value, RecordError> {
+        let mut pairs = vec![
+            (Value::Int(1), Value::Text(self.resource.clone())),
+            (Value::Int(2), Value::Text(self.state.clone())),
+        ];
+        if let Some(frontier) = &self.frontier {
+            pairs.push((Value::Int(3), Value::Text(frontier.clone())));
+        }
+        if let Some(digest) = &self.checkpoint_digest {
+            pairs.push((Value::Int(4), Value::Text(digest.to_string())));
+        }
+        if let Some(verified_at) = self.verified_at {
+            pairs.push((Value::Int(5), uint(verified_at)?));
+        }
+        if let Some(reason) = &self.reason {
+            pairs.push((Value::Int(6), Value::Text(reason.clone())));
+        }
+        Ok(Value::Map(pairs))
+    }
+
+    fn read(value: Value) -> Result<Self, RecordError> {
+        let mut map = Labelled::from_value(value, "a progress resource")?;
+        let resource = Self {
+            resource: resource(map.text(1)?)?,
+            state: bounded_text(map.text(2)?, MAX_NAME_BYTES, "a progress state")?,
+            frontier: map
+                .optional_text(3)?
+                .map(|text| bounded_text(text, MAX_REASON_BYTES, "a frontier"))
+                .transpose()?,
+            checkpoint_digest: map.optional_digest(4)?,
+            verified_at: map.optional_uint(5)?,
+            reason: map
+                .optional_text(6)?
+                .map(|text| bounded_text(text, MAX_REASON_BYTES, "a reason"))
+                .transpose()?,
+        };
+        map.finish()?;
+        Ok(resource)
+    }
+}
+
+/// What a member last reported doing for one task (the membership's task progress, WP-4.4):
+/// never proof that it is reachable, kept exactly as sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskProgress {
+    pub membership_id: [u8; 16],
+    pub task_id: String,
+    pub manifest_epoch: u64,
+    pub member_boot_id: [u8; 16],
+    pub report_seq: u64,
+    pub reported_at: u64,
+    pub resources: Vec<ProgressResource>,
+}
+
+impl TaskProgress {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        if self.resources.len() > MAX_PROGRESS_RESOURCES {
+            return Err(RecordError(format!(
+                "a progress report carries at most {MAX_PROGRESS_RESOURCES} resources"
+            )));
+        }
+        let bytes = encode(vec![
+            (Value::Int(1), Value::Bytes(self.membership_id.to_vec())),
+            (Value::Int(2), Value::Text(self.task_id.clone())),
+            (Value::Int(3), uint(self.manifest_epoch)?),
+            (Value::Int(4), Value::Bytes(self.member_boot_id.to_vec())),
+            (Value::Int(5), uint(self.report_seq)?),
+            (Value::Int(6), uint(self.reported_at)?),
+            (
+                Value::Int(7),
+                Value::Array(
+                    self.resources
+                        .iter()
+                        .map(ProgressResource::value)
+                        .collect::<Result<_, _>>()?,
+                ),
+            ),
+        ])?;
+        if bytes.len() > MAX_PROGRESS_BYTES {
+            return Err(RecordError(format!(
+                "a progress report takes at most {MAX_PROGRESS_BYTES} bytes"
+            )));
+        }
+        Ok(bytes)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_PROGRESS_BYTES {
+            return Err(RecordError(format!(
+                "a progress report takes at most {MAX_PROGRESS_BYTES} bytes"
+            )));
+        }
+        let mut map = Labelled::read(bytes, "a progress report")?;
+        let membership_id = map.id(1)?;
+        let task_id = task_id(map.text(2)?)?;
+        let manifest_epoch = map.uint(3)?;
+        let member_boot_id = map.fixed(4)?;
+        let report_seq = map.uint(5)?;
+        let reported_at = map.uint(6)?;
+        let resources = map.array(7)?;
+        if resources.len() > MAX_PROGRESS_RESOURCES {
+            return Err(RecordError(format!(
+                "a progress report carries at most {MAX_PROGRESS_RESOURCES} resources"
+            )));
+        }
+        let progress = Self {
+            membership_id,
+            task_id,
+            manifest_epoch,
+            member_boot_id,
+            report_seq,
+            reported_at,
+            resources: resources
+                .into_iter()
+                .map(ProgressResource::read)
+                .collect::<Result<_, _>>()?,
+        };
+        map.finish()?;
+        Ok(progress)
+    }
+}
+
+/// What the coordinator answers a progress report it kept (WP-4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProgressAnswer {
+    pub report_seq: u64,
+    pub received_at: u64,
+}
+
+impl ProgressAnswer {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), uint(self.report_seq)?),
+            (Value::Int(2), uint(self.received_at)?),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        small(bytes, "a progress answer")?;
+        let mut map = Labelled::read(bytes, "a progress answer")?;
+        let answer = Self {
+            report_seq: map.uint(1)?,
+            received_at: map.uint(2)?,
+        };
+        map.finish()?;
+        Ok(answer)
+    }
+}
+
+/// A progress report as the coordinator keeps it: the exact bytes and when they arrived.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeptProgress {
+    pub report: Vec<u8>,
+    pub received_at: u64,
+}
+
+impl KeptProgress {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Bytes(self.report.clone())),
+            (Value::Int(2), uint(self.received_at)?),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_PROGRESS_BYTES + 64 {
+            return Err(RecordError(
+                "a kept progress report is out of its bound".to_owned(),
+            ));
+        }
+        let mut map = Labelled::read(bytes, "a kept progress report")?;
+        let kept = Self {
+            report: map.bytes(1)?,
+            received_at: map.uint(2)?,
+        };
+        map.finish()?;
+        TaskProgress::decode(&kept.report)?;
+        Ok(kept)
+    }
+}
+
+/// The last session a coordinator leased for one task, from its own clock (WP-4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LastSession {
+    pub at: u64,
+    pub member_boot_id: [u8; 16],
+}
+
+impl LastSession {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), uint(self.at)?),
+            (Value::Int(2), Value::Bytes(self.member_boot_id.to_vec())),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        small(bytes, "a last session")?;
+        let mut map = Labelled::read(bytes, "a last session")?;
+        let last = Self {
+            at: map.uint(1)?,
+            member_boot_id: map.fixed(2)?,
+        };
+        map.finish()?;
+        Ok(last)
+    }
+}
+
+fn watch_key(text: String) -> Result<String, RecordError> {
+    bounded_text(text, MAX_WATCH_TEXT_BYTES, "a watch key")
+}
+
+/// What a member opens a watch with (WP-4.4): the counter it holds per key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchRequest {
+    pub positions: Vec<(String, u64)>,
+}
+
+impl WatchRequest {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut positions = self.positions.clone();
+        positions.sort();
+        encode(vec![(
+            Value::Int(1),
+            Value::Array(
+                positions
+                    .iter()
+                    .map(|(key, counter)| {
+                        Ok(Value::Map(vec![
+                            (Value::Int(1), Value::Text(key.clone())),
+                            (Value::Int(2), uint(*counter)?),
+                        ]))
+                    })
+                    .collect::<Result<_, RecordError>>()?,
+            ),
+        )])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        body_bound(bytes, "a watch request")?;
+        let mut map = Labelled::read(bytes, "a watch request")?;
+        let values = map.array(1)?;
+        map.finish()?;
+        if values.len() > MAX_WATCH_KEYS {
+            return Err(RecordError(format!(
+                "a watch tracks at most {MAX_WATCH_KEYS} keys"
+            )));
+        }
+        let mut positions = Vec::with_capacity(values.len());
+        for value in values {
+            let mut position = Labelled::from_value(value, "a watch position")?;
+            let key = watch_key(position.text(1)?)?;
+            let counter = position.uint(2)?;
+            position.finish()?;
+            positions.push((key, counter));
+        }
+        if !positions.windows(2).all(|pair| pair[0].0 < pair[1].0) {
+            return Err(RecordError(
+                "a watch names its keys in order, each once".to_owned(),
+            ));
+        }
+        Ok(Self { positions })
+    }
+}
+
+/// One hint of a watch: a key advanced to `head` at `counter`; it grants nothing (WP-4.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchHint {
+    pub key: String,
+    pub head: String,
+    pub counter: u64,
+}
+
+/// What a watch sends: the hints coalesced since the last event, none for a heartbeat (WP-4.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchEvent {
+    pub hints: Vec<WatchHint>,
+}
+
+impl WatchEvent {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut hints = self.hints.clone();
+        hints.sort_by(|a, b| a.key.cmp(&b.key));
+        encode(vec![(
+            Value::Int(1),
+            Value::Array(
+                hints
+                    .iter()
+                    .map(|hint| {
+                        Ok(Value::Map(vec![
+                            (Value::Int(1), Value::Text(hint.key.clone())),
+                            (Value::Int(2), Value::Text(hint.head.clone())),
+                            (Value::Int(3), uint(hint.counter)?),
+                        ]))
+                    })
+                    .collect::<Result<_, RecordError>>()?,
+            ),
+        )])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        body_bound(bytes, "a watch event")?;
+        let mut map = Labelled::read(bytes, "a watch event")?;
+        let values = map.array(1)?;
+        map.finish()?;
+        if values.len() > MAX_WATCH_KEYS {
+            return Err(RecordError(format!(
+                "a watch event carries at most {MAX_WATCH_KEYS} hints"
+            )));
+        }
+        let mut hints = Vec::with_capacity(values.len());
+        for value in values {
+            let mut hint = Labelled::from_value(value, "a watch hint")?;
+            let read = WatchHint {
+                key: watch_key(hint.text(1)?)?,
+                head: bounded_text(hint.text(2)?, MAX_WATCH_TEXT_BYTES, "a watch head")?,
+                counter: hint.uint(3)?,
+            };
+            hint.finish()?;
+            hints.push(read);
+        }
+        if !hints.windows(2).all(|pair| pair[0].key < pair[1].key) {
+            return Err(RecordError(
+                "a watch event names its keys in order, each once".to_owned(),
+            ));
+        }
+        Ok(Self { hints })
+    }
+}
+
+/// One answered request in a membership's replay window (WP-4.4, owner decision): an identical
+/// repeat is answered `answer` without reaching the handler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayEntry {
+    pub task_id: String,
+    pub request_id: String,
+    /// SHA-256 of the task message's bytes followed by the session's resource.
+    pub message_digest: [u8; 32],
+    /// The encoded task answer.
+    pub answer: Vec<u8>,
+    /// Its place in the task's window: the slot is `seq` modulo the window.
+    pub seq: u64,
+}
+
+impl ReplayEntry {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Text(self.task_id.clone())),
+            (Value::Int(2), Value::Text(self.request_id.clone())),
+            (Value::Int(3), Value::Bytes(self.message_digest.to_vec())),
+            (Value::Int(4), Value::Bytes(self.answer.clone())),
+            (Value::Int(5), uint(self.seq)?),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        if bytes.len() > MAX_BODY_BYTES + 1024 {
+            return Err(RecordError("a replay entry is out of its bound".to_owned()));
+        }
+        let mut map = Labelled::read(bytes, "a replay entry")?;
+        let entry = Self {
+            task_id: task_id(map.text(1)?)?,
+            request_id: request_id(map.text(2)?)?,
+            message_digest: map.fixed(3)?,
+            answer: map.bytes(4)?,
+            seq: map.uint(5)?,
+        };
+        map.finish()?;
+        Ok(entry)
     }
 }

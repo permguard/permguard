@@ -132,6 +132,10 @@ const SHAPED: &[&str] = &[
     "ListMemberSessionsRequest",
     "ListMemberSessionsResponse",
     "MemberSession",
+    // The task router's observations (WP-4.4).
+    "TaskObserved",
+    "MemberReported",
+    "ProgressResource",
     "PlanMemberRevokeRequest",
     "PlanMemberRevokeResponse",
     "RunMemberRevokeRequest",

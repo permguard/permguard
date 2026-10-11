@@ -31,6 +31,7 @@ fn limits() -> Limits {
 
 pub(crate) fn task(id: &str, task_type: TaskType, selector: &str) -> Task {
     Task {
+        version: 1,
         task_id: id.to_owned(),
         task_type,
         selector: Selector::parse(selector).expect("a selector"),
@@ -96,6 +97,7 @@ fn every_record_reads_back_and_refuses_a_foreign_label() {
         binding: vec![0x80],
     };
     let pending = Pending {
+        capabilities: crate::membership::tests::member_capabilities(),
         membership_id: host(0x44).host_id,
         invite_id: host(0x33).host_id,
         coordinator: host(0x11),
@@ -109,6 +111,7 @@ fn every_record_reads_back_and_refuses_a_foreign_label() {
         identity: Some(vec![0xA0]),
     };
     let request = EnrollRequest {
+        capabilities: crate::membership::tests::member_capabilities(),
         invite_id: host(0x33).host_id,
         token_proof: [1; 64],
         selector: Selector::parse("plane/data/*").expect("a selector"),
@@ -550,6 +553,7 @@ fn the_task_session_records_read_back_and_refuse_what_they_forbid() {
     }
 
     let message = TaskMessage {
+        kind: MessageKind::Handler,
         membership_id: host(0x44).host_id,
         task_id: "decisions".to_owned(),
         epoch: 1,
@@ -597,4 +601,231 @@ fn the_task_session_records_read_back_and_refuse_what_they_forbid() {
     let bytes = answer.encode().expect("encodes");
     assert_eq!(LeaseAnswer::decode(&bytes).expect("reads back"), answer);
     assert!(LeaseAnswer::decode(&foreign(&bytes)).is_err());
+}
+
+fn report() -> TaskProgress {
+    TaskProgress {
+        membership_id: host(0x44).host_id,
+        task_id: "decisions".to_owned(),
+        manifest_epoch: 1,
+        member_boot_id: [0xB1; 16],
+        report_seq: 7,
+        reported_at: 1_800_000_040,
+        resources: vec![ProgressResource {
+            resource: "plane/data/zone/z1".to_owned(),
+            state: "serving".to_owned(),
+            frontier: Some("42".to_owned()),
+            checkpoint_digest: Some(Digest::compute(b"checkpoint")),
+            verified_at: Some(1_800_000_039),
+            reason: Some("verified".to_owned()),
+        }],
+    }
+}
+
+/// WP-4.4: a progress report, its answer and what the coordinator keeps read back, refuse a
+/// foreign label, an unknown message kind, and a report out of its bounds.
+#[test]
+fn a_progress_report_round_trips_and_refuses_what_it_does_not_name() {
+    let report = report();
+    let bytes = report.encode().expect("encodes");
+    assert_eq!(TaskProgress::decode(&bytes).expect("reads back"), report);
+    assert!(TaskProgress::decode(&foreign(&bytes)).is_err());
+    for refused in [
+        TaskProgress {
+            task_id: "Decisions".to_owned(),
+            ..report.clone()
+        },
+        TaskProgress {
+            resources: vec![ProgressResource {
+                state: String::new(),
+                ..report.resources[0].clone()
+            }],
+            ..report.clone()
+        },
+        TaskProgress {
+            resources: vec![ProgressResource {
+                resource: "not a resource".to_owned(),
+                ..report.resources[0].clone()
+            }],
+            ..report.clone()
+        },
+    ] {
+        let encoded = refused.encode().expect("encodes");
+        assert!(TaskProgress::decode(&encoded).is_err(), "{refused:?}");
+    }
+    let answer = ProgressAnswer {
+        report_seq: 7,
+        received_at: 1_800_000_041,
+    };
+    let encoded = answer.encode().expect("encodes");
+    assert_eq!(
+        ProgressAnswer::decode(&encoded).expect("reads back"),
+        answer
+    );
+    assert!(ProgressAnswer::decode(&foreign(&encoded)).is_err());
+    let kept = KeptProgress {
+        report: bytes.clone(),
+        received_at: 1_800_000_041,
+    };
+    let encoded = kept.encode().expect("encodes");
+    assert_eq!(KeptProgress::decode(&encoded).expect("reads back"), kept);
+    // What is kept is a report, or nothing reads back.
+    assert!(
+        KeptProgress::decode(
+            &KeptProgress {
+                report: b"not a report".to_vec(),
+                received_at: 1,
+            }
+            .encode()
+            .expect("encodes")
+        )
+        .is_err()
+    );
+    // A message names its kind only when it is not the handler's, and only a known one.
+    let message = TaskMessage {
+        kind: MessageKind::Progress,
+        membership_id: report.membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "progress-7".to_owned(),
+        body: bytes,
+    };
+    let encoded = message.encode().expect("encodes");
+    assert_eq!(TaskMessage::decode(&encoded).expect("reads back"), message);
+    let Value::Map(mut pairs) = cbor::decode_canonical(&encoded).expect("cbor") else {
+        panic!("a map")
+    };
+    for (label, value) in &mut pairs {
+        if *label == Value::Int(6) {
+            *value = Value::Text("handler".to_owned());
+        }
+    }
+    assert!(
+        TaskMessage::decode(&cbor::encode(&Value::Map(pairs)).expect("encodes")).is_err(),
+        "the handler's kind is the absent label, never spelled"
+    );
+}
+
+/// WP-4.4: a report takes at most 256 resources and 64 KiB, each refused before it is parsed.
+#[test]
+fn a_progress_report_over_its_bound_is_refused() {
+    let resource = report().resources[0].clone();
+    let many = TaskProgress {
+        resources: vec![resource; MAX_PROGRESS_RESOURCES + 1],
+        ..report()
+    };
+    assert!(many.encode().is_err(), "the encoder refuses it too");
+    assert!(TaskProgress::decode(&vec![0xA0; MAX_PROGRESS_BYTES + 1]).is_err());
+    let at_bound = TaskProgress {
+        resources: vec![report().resources[0].clone(); MAX_PROGRESS_RESOURCES],
+        ..report()
+    };
+    let encoded = at_bound.encode().expect("within its bounds");
+    assert!(encoded.len() <= MAX_PROGRESS_BYTES);
+    assert_eq!(
+        TaskProgress::decode(&encoded).expect("reads back"),
+        at_bound
+    );
+}
+
+/// WP-4.4: a watch's request and events read back in key order, refuse keys out of order or
+/// twice, and a heartbeat is an event without hints.
+#[test]
+fn a_watch_request_and_its_hints_round_trip() {
+    let request = WatchRequest {
+        positions: vec![("a".to_owned(), 1), ("b".to_owned(), 2)],
+    };
+    let encoded = request.encode().expect("encodes");
+    assert_eq!(WatchRequest::decode(&encoded).expect("reads back"), request);
+    assert!(WatchRequest::decode(&foreign(&encoded)).is_err());
+    let event = WatchEvent {
+        hints: vec![WatchHint {
+            key: "a".to_owned(),
+            head: "h".to_owned(),
+            counter: 3,
+        }],
+    };
+    let encoded = event.encode().expect("encodes");
+    assert_eq!(WatchEvent::decode(&encoded).expect("reads back"), event);
+    let heartbeat = WatchEvent { hints: Vec::new() };
+    assert_eq!(
+        WatchEvent::decode(&heartbeat.encode().expect("encodes")).expect("reads back"),
+        heartbeat
+    );
+    // Keys out of order, or twice, are refused: one encoding.
+    let unordered = Value::Map(vec![(
+        Value::Int(1),
+        Value::Array(vec![
+            Value::Map(vec![
+                (Value::Int(1), Value::Text("b".to_owned())),
+                (Value::Int(2), Value::Int(1)),
+            ]),
+            Value::Map(vec![
+                (Value::Int(1), Value::Text("a".to_owned())),
+                (Value::Int(2), Value::Int(1)),
+            ]),
+        ]),
+    )]);
+    assert!(WatchRequest::decode(&cbor::encode(&unordered).expect("encodes")).is_err());
+    assert!(WatchRequest::decode(&vec![0xA0; MAX_BODY_BYTES + 1]).is_err());
+}
+
+/// WP-4.4: a Host's capabilities are listed in order, each once, at a version from 1.
+#[test]
+fn capabilities_are_listed_in_order_and_each_once() {
+    let capability = |version| Capability {
+        task_type: TaskType::DecisionsShip,
+        version,
+        role: ContractRole::Provider,
+    };
+    let encoded =
+        capabilities_value(&[capability(2), capability(1), capability(1)]).expect("encodes");
+    let Value::Array(values) = encoded.clone() else {
+        panic!("an array")
+    };
+    assert_eq!(
+        read_capabilities(values).expect("reads back"),
+        vec![capability(1), capability(2)],
+        "sorted, the duplicate gone"
+    );
+    let Value::Array(mut values) = encoded else {
+        panic!("an array")
+    };
+    values.reverse();
+    assert!(read_capabilities(values).is_err(), "out of order");
+    assert!(Capability::read(capability(0).value().expect("encodes")).is_err());
+    assert_eq!(
+        ContractRole::of(TaskType::PolicyMirror, Role::Coordinator),
+        ContractRole::Provider
+    );
+    assert_eq!(
+        ContractRole::of(TaskType::DecisionsShip, Role::Coordinator),
+        ContractRole::Consumer
+    );
+}
+
+/// WP-4.4 (review): a task's concurrency and rate are enforced, so neither may be 0.
+#[test]
+fn a_task_refuses_a_zero_concurrency_or_rate() {
+    let task = |edit: fn(&mut Limits)| {
+        let mut limits = limits();
+        edit(&mut limits);
+        Task {
+            version: 1,
+            task_id: "decisions".to_owned(),
+            task_type: TaskType::DecisionsShip,
+            selector: permguard_core::authz::Selector::parse("plane/data/*").expect("a selector"),
+            resource_types: Vec::new(),
+            required: true,
+            limits,
+            assurance_requirements: Vec::new(),
+        }
+    };
+    assert!(task(|_| {}).check().is_ok());
+    assert!(task(|limits| limits.max_concurrency = 0).check().is_err());
+    assert!(
+        task(|limits| limits.max_rate_per_minute = 0)
+            .check()
+            .is_err()
+    );
 }

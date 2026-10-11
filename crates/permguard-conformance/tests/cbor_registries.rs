@@ -924,6 +924,29 @@ fn keys_bundle_samples() -> Vec<Sample> {
     ]
 }
 
+/// A progress report naming every optional label of a resource (WP-4.4).
+fn progress_sample() -> Vec<u8> {
+    use permguard_host::membership::record::{ProgressResource, TaskProgress};
+    TaskProgress {
+        membership_id: SCOPE_ID,
+        task_id: "decisions".to_owned(),
+        manifest_epoch: 1,
+        member_boot_id: [0xB1; 16],
+        report_seq: 7,
+        reported_at: 1_800_000_040,
+        resources: vec![ProgressResource {
+            resource: "plane/data/zone/z1".to_owned(),
+            state: "serving".to_owned(),
+            frontier: Some("42".to_owned()),
+            checkpoint_digest: Some(permguard_objects::digest::Digest::compute(b"checkpoint")),
+            verified_at: Some(1_800_000_039),
+            reason: Some("verified".to_owned()),
+        }],
+    }
+    .encode()
+    .expect("encodes")
+}
+
 fn membership_samples() -> Vec<Sample> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_core::assurance::{Control, EvidenceClass};
@@ -945,6 +968,7 @@ fn membership_samples() -> Vec<Sample> {
         fingerprint: format!("sha256:{}", "ab".repeat(32)),
     };
     let task = Task {
+        version: 1,
         task_id: "decisions".to_owned(),
         task_type: TaskType::DecisionsShip,
         selector: Selector::parse("plane/data/*").expect("a selector"),
@@ -1064,6 +1088,11 @@ fn membership_samples() -> Vec<Sample> {
         created_by: "spiffe://acme/operators/root".to_owned(),
     };
     let pending = |optional: bool| Pending {
+        capabilities: vec![permguard_host::membership::record::Capability {
+            task_type: permguard_host::membership::record::TaskType::DecisionsShip,
+            version: 1,
+            role: permguard_host::membership::record::ContractRole::Provider,
+        }],
         membership_id: SCOPE_ID,
         invite_id: SCOPE_ID,
         coordinator: host(HOST_ID),
@@ -1225,6 +1254,7 @@ fn membership_samples() -> Vec<Sample> {
         sample(
             "task_message",
             TaskMessage {
+                kind: permguard_host::membership::record::MessageKind::Progress,
                 membership_id: SCOPE_ID,
                 task_id: "decisions".to_owned(),
                 epoch: 1,
@@ -1233,7 +1263,7 @@ fn membership_samples() -> Vec<Sample> {
             }
             .encode()
             .expect("encodes"),
-            &[],
+            &["task_message.kind"],
             decoder(|bytes| verdict(TaskMessage::decode(bytes))),
         ),
         sample(
@@ -1246,6 +1276,158 @@ fn membership_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             decoder(|bytes| verdict(TaskAnswer::decode(bytes))),
+        ),
+        sample(
+            "task_progress",
+            progress_sample(),
+            &[
+                "progress_resource.frontier",
+                "progress_resource.checkpoint_digest",
+                "progress_resource.verified_at",
+                "progress_resource.reason",
+            ],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::TaskProgress::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "task_progress",
+            permguard_host::membership::record::TaskProgress {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                manifest_epoch: 1,
+                member_boot_id: [0xB1; 16],
+                report_seq: 8,
+                reported_at: 1_800_000_050,
+                resources: vec![permguard_host::membership::record::ProgressResource {
+                    resource: "plane/data/zone/z2".to_owned(),
+                    state: "stale".to_owned(),
+                    frontier: None,
+                    checkpoint_digest: None,
+                    verified_at: None,
+                    reason: None,
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::TaskProgress::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "task_message",
+            TaskMessage {
+                kind: permguard_host::membership::record::MessageKind::Handler,
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                epoch: 1,
+                request_id: "r-2".to_owned(),
+                body: b"hello".to_vec(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(TaskMessage::decode(bytes))),
+        ),
+        sample(
+            "progress_answer",
+            permguard_host::membership::record::ProgressAnswer {
+                report_seq: 7,
+                received_at: 1_800_000_041,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::ProgressAnswer::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "kept_progress",
+            permguard_host::membership::record::KeptProgress {
+                report: progress_sample(),
+                received_at: 1_800_000_041,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::KeptProgress::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "last_session",
+            permguard_host::membership::record::LastSession {
+                at: 1_800_000_020,
+                member_boot_id: [0xB1; 16],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::LastSession::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "watch_request",
+            permguard_host::membership::record::WatchRequest {
+                positions: vec![("zone/z1/ledger/l1".to_owned(), 3)],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::WatchRequest::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "watch_event",
+            permguard_host::membership::record::WatchEvent {
+                hints: vec![permguard_host::membership::record::WatchHint {
+                    key: "zone/z1/ledger/l1".to_owned(),
+                    head: "sha256:00".to_owned(),
+                    counter: 4,
+                }],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::WatchEvent::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "replay_entry",
+            permguard_host::membership::record::ReplayEntry {
+                task_id: "decisions".to_owned(),
+                request_id: "r-1".to_owned(),
+                message_digest: [0x5A; 32],
+                answer: b"answer".to_vec(),
+                seq: 1030,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::ReplayEntry::decode(
+                    bytes,
+                ))
+            }),
         ),
         sample(
             "invitation",
@@ -1265,6 +1447,11 @@ fn membership_samples() -> Vec<Sample> {
         sample(
             "enroll_request",
             EnrollRequest {
+                capabilities: vec![permguard_host::membership::record::Capability {
+                    task_type: permguard_host::membership::record::TaskType::DecisionsShip,
+                    version: 1,
+                    role: permguard_host::membership::record::ContractRole::Provider,
+                }],
                 invite_id: SCOPE_ID,
                 token_proof: [1; 64],
                 selector: Selector::parse("plane/data/*").expect("a selector"),

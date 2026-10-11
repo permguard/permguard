@@ -9,9 +9,10 @@ use libfuzzer_sys::fuzz_target;
 
 use permguard_core::assurance::EvidenceClass;
 use permguard_host::membership::record::{
-    Action, EnrollAnswer, EnrollRequest, Entry, Invitation, Kind, Lease, LeaseAnswer, LeaseRequest,
-    Manifest, MembershipAnswer, MembershipRequest, Pending, Role, Status, TaskAnswer, TaskMessage,
-    TaskType, Verdict,
+    Action, ContractRole, EnrollAnswer, EnrollRequest, Entry, Invitation, KeptProgress, Kind,
+    LastSession, Lease, LeaseAnswer, LeaseRequest, Manifest, MembershipAnswer, MembershipRequest,
+    Pending, ProgressAnswer, ReplayEntry, Role, Status, TaskAnswer, TaskMessage, TaskProgress,
+    TaskType, Verdict, WatchEvent, WatchRequest,
 };
 
 fuzz_target!(|data: &[u8]| {
@@ -56,6 +57,28 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(record) = TaskAnswer::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
+    // The task router's records (WP-4.4).
+    if let Ok(record) = TaskProgress::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = ProgressAnswer::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = KeptProgress::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = LastSession::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = WatchRequest::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = WatchEvent::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = ReplayEntry::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
     // The tokens a record or a Host API request names: whatever reads back spells itself.
     if let Ok(text) = std::str::from_utf8(data) {
         if let Ok(role) = Role::from_str(text) {
@@ -69,6 +92,9 @@ fuzz_target!(|data: &[u8]| {
         }
         if let Ok(verdict) = Verdict::from_str(text) {
             assert_eq!(verdict.as_str(), text);
+        }
+        if let Ok(role) = ContractRole::from_str(text) {
+            assert_eq!(role.as_str(), text);
         }
         // An evidence class reads its name around white space, as the policy setting is written.
         if let Ok(class) = EvidenceClass::from_str(text) {

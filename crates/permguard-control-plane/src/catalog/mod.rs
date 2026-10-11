@@ -114,6 +114,7 @@ pub(crate) mod grpc;
 pub(crate) mod http;
 pub(crate) mod ledgers;
 mod parity;
+pub(crate) mod serving;
 pub(crate) mod zones;
 
 use std::sync::Arc;
@@ -152,6 +153,9 @@ pub(crate) struct CatalogFacade {
     /// The Host's authorization, which every catalog operation decides with before it looks
     /// anything up (WP-2.4).
     pub(crate) authorization: Arc<permguard_host::composition::Authorization>,
+    /// This plane's handles, through which the Host tells the members serving a ledger
+    /// (WP-4.4); `None` when no Host registered the plane.
+    pub(crate) host: Option<Arc<permguard_host::composition::Registration>>,
 }
 
 /// The resource of this plane, and of its zones and ledgers, in the Host's tree.

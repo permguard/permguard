@@ -206,6 +206,7 @@ pub(crate) const EXPORTER: [u8; 32] = [0xE1; 32];
 
 pub(crate) fn decisions(selector: &str) -> Task {
     Task {
+        version: 1,
         task_id: "decisions".to_owned(),
         task_type: TaskType::DecisionsShip,
         selector: Selector::parse(selector).expect("a selector"),
@@ -224,6 +225,18 @@ pub(crate) fn decisions(selector: &str) -> Task {
 
 fn capabilities() -> Capabilities {
     Capabilities::default().declare(TaskType::DecisionsShip, Role::Coordinator)
+}
+
+/// Every contract at version 1, both sides: what a member declares when a test does not care.
+pub(crate) fn member_capabilities() -> Vec<crate::membership::record::Capability> {
+    TaskType::ALL
+        .into_iter()
+        .fold(Capabilities::default(), |capabilities, task| {
+            capabilities
+                .declare(task, Role::Coordinator)
+                .declare(task, Role::Member)
+        })
+        .list()
 }
 
 /// An approval that brings nothing for the tasks' controls: what a task requiring none needs.
@@ -274,6 +287,7 @@ fn request(
     exporter: &[u8; 32],
 ) -> EnrollRequest {
     EnrollRequest {
+        capabilities: member_capabilities(),
         invite_id: invitation.invite_id,
         token_proof: token_proof(
             token,
@@ -873,8 +887,46 @@ pub(crate) mod protocol {
             _context: &crate::membership::task::TaskContext,
             body: &[u8],
         ) -> Result<Vec<u8>, crate::session::Refusal> {
+            // How often it was reached, so a test tells a replay from a second answer (WP-4.4).
+            if body == b"count?" {
+                static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let count = COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                return Ok(format!("count={count}").into_bytes());
+            }
+            // An answer over the task message bound, which the router never sends.
+            if body == b"big?" {
+                return Ok(vec![0; crate::membership::record::MAX_BODY_BYTES + 1]);
+            }
+            // What the handler is told: the version and the limits it applies (WP-4.4).
+            if body == b"context?" {
+                return Ok(format!(
+                    "version={} batch={} retention={}",
+                    _context.version,
+                    _context.limits.max_batch_records,
+                    _context.limits.retention_seconds
+                )
+                .into_bytes());
+            }
             Ok([b"echo:".as_slice(), body].concat())
         }
+    }
+
+    /// What the protocol harness registers on `role`'s side: `decisions.ship` at versions 1 and
+    /// 2 and `events.ship` at 1 (WP-4.4).
+    pub(crate) fn harness(role: Role) -> Capabilities {
+        [
+            (TaskType::DecisionsShip, 1),
+            (TaskType::DecisionsShip, 2),
+            (TaskType::EventsShip, 1),
+        ]
+        .into_iter()
+        .fold(Capabilities::default(), |capabilities, (task, version)| {
+            capabilities.register(record::Capability {
+                task_type: task,
+                version,
+                role: record::ContractRole::of(task, role),
+            })
+        })
     }
 
     pub(crate) struct Side {
@@ -917,10 +969,13 @@ pub(crate) mod protocol {
                 host.rings.clone(),
             ));
             let tasks = Arc::new(crate::membership::task::Tasks {
-                live: Arc::default(),
                 appraisal: Arc::new(appraisal::tests::appraisal()),
-                handlers: crate::membership::task::TaskHandlers::default()
-                    .register(TaskType::DecisionsShip, Arc::new(Echo)),
+                handlers: crate::membership::task::TaskHandlers::default().register(
+                    TaskType::DecisionsShip,
+                    1,
+                    Arc::new(Echo),
+                ),
+                ..crate::membership::task::Tasks::default()
             });
             let service = service.then(|| {
                 Arc::new(Coordinating {
@@ -960,9 +1015,11 @@ pub(crate) mod protocol {
         pub(crate) tamper: bool,
     }
 
-    /// An open task session in memory: the coordinator's responder, kept with the session.
+    /// An open task session in memory: the coordinator's responder, kept with the session, and
+    /// the watch it became.
     struct LoopTask {
         responder: Responder,
+        watch: Option<Box<dyn crate::session::Watching>>,
     }
 
     impl crate::membership::member::TaskChannel for LoopTask {
@@ -980,6 +1037,28 @@ pub(crate) mod protocol {
                     other => panic!("an answer, not {other:?}"),
                 },
                 Err(refusal) => Err(refusal),
+            };
+            if let Some(watch) = self.responder.take_watch() {
+                self.watch = Some(watch);
+            }
+            Box::pin(std::future::ready(result))
+        }
+
+        /// What the watch yields now: its hints, else a heartbeat, as the transport would send
+        /// them without waiting.
+        fn receive(
+            &mut self,
+        ) -> permguard_core::BoxFuture<'_, Result<Vec<u8>, crate::session::Refusal>> {
+            let result = match self.watch.as_mut() {
+                Some(watch) => match watch.poll() {
+                    Ok(Some(frame)) => Ok(frame),
+                    Ok(None) => watch.heartbeat(),
+                    Err(refusal) => Err(refusal),
+                },
+                None => Err(crate::session::Refusal {
+                    code: permguard_core::codes::common::INVALID_ARGUMENT,
+                    reason: "no watch".to_owned(),
+                }),
             };
             Box::pin(std::future::ready(result))
         }
@@ -1083,7 +1162,10 @@ pub(crate) mod protocol {
                     // `tamper` reports another connection than the one the lease was bound to.
                     exporter: if self.tamper { [0xE2; 32] } else { exporter },
                     answer,
-                    channel: Box::new(LoopTask { responder }),
+                    channel: Box::new(LoopTask {
+                        responder,
+                        watch: None,
+                    }),
                 })
             })();
             Box::pin(std::future::ready(result))
@@ -1096,9 +1178,7 @@ pub(crate) mod protocol {
             mutations: &side.mutations,
             identity: &side.host.identity,
             rings: &side.host.rings,
-            capabilities: Box::leak(Box::new(
-                Capabilities::default().declare(TaskType::DecisionsShip, Role::Member),
-            )),
+            capabilities: Box::leak(Box::new(harness(Role::Member))),
             connector,
             declared_assurance: AssuranceProfile::Production,
             time: &side.context.time,
@@ -1228,7 +1308,7 @@ pub(crate) mod protocol {
             .store
             .check_approve(
                 &c.host.coordinator(),
-                &capabilities(),
+                &harness(Role::Coordinator),
                 &id,
                 None,
                 None,
@@ -1847,4 +1927,221 @@ fn an_enrollment_too_large_to_keep_is_refused_before_anything_is_written() {
             .memberships()
             .is_empty()
     );
+}
+
+/// Enrolls `member` with `coordinator` for `task` alone, the member declaring `declared`: the
+/// pending membership's id (WP-4.4).
+fn enroll_task(
+    coordinator: &Host,
+    member: &Host,
+    task: Task,
+    declared: Vec<record::Capability>,
+) -> [u8; 16] {
+    let (invitation, token) = coordinator
+        .store
+        .invite(
+            &Applying::for_tests(1),
+            NewInvite {
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+                tasks: vec![task.clone()],
+                expires: None,
+                expected_fingerprint: Some(member.identity.first_fingerprint().to_owned()),
+                min_assurance: Some(AssuranceProfile::Production),
+            },
+            "operator",
+            now(),
+        )
+        .expect("invited");
+    let statements = rings_needed(std::slice::from_ref(&task))
+        .into_iter()
+        .filter(|(owner, _)| *owner == Role::Member)
+        .map(|(_, ring)| member.statement(ring))
+        .collect();
+    let request = EnrollRequest {
+        capabilities: declared,
+        invite_id: invitation.invite_id,
+        token_proof: token_proof(
+            &token,
+            &coordinator.identity.host_id(),
+            &member.identity.host_id(),
+            &EXPORTER,
+        ),
+        selector: Selector::parse("plane/data/*").expect("a selector"),
+        tasks: vec![task],
+        member: member.host_ref(),
+        ring_statements: statements,
+    };
+    let verified = member.verified();
+    let pending = coordinator
+        .store
+        .check_enroll(
+            &coordinator.coordinator(),
+            &Enrolling {
+                peer: &verified,
+                presentation: &member.presentation(),
+                declared_assurance: AssuranceProfile::Production,
+                exporter: &EXPORTER,
+            },
+            &request,
+            now(),
+        )
+        .expect("the enrollment checks");
+    coordinator
+        .store
+        .enroll(&Applying::for_tests(2), &pending, now())
+        .expect("enrolled");
+    pending.membership_id
+}
+
+fn unserved(result: Result<impl std::fmt::Debug, MembershipError>) -> String {
+    match result {
+        Err(MembershipError::TaskUnserved(detail)) => detail,
+        other => panic!("refused `task_unserved`, not {other:?}"),
+    }
+}
+
+/// F-29 (WP-4.4): a Host whose Planes register no `policy.mirror` provider, no Control Plane,
+/// refuses the task at approval; the Control Plane's declaration registers it.
+#[test]
+fn a_host_without_the_policy_mirror_provider_is_refused_at_approval() {
+    let (c, m) = (Host::new("f29-c"), Host::new("f29-m"));
+    let mut mirror = decisions("plane/data/*");
+    mirror.task_id = "mirror".to_owned();
+    mirror.task_type = TaskType::PolicyMirror;
+    mirror.resource_types = vec!["ledger".to_owned()];
+    let id = enroll_task(&c, &m, mirror, member_capabilities());
+    let approve = |capabilities: &Capabilities| {
+        c.store.check_approve(
+            &c.coordinator(),
+            capabilities,
+            &id,
+            None,
+            None,
+            &offered_nothing(),
+            None,
+            now(),
+        )
+    };
+    // The Host's own contracts and a Data Plane's: nothing provides `policy.mirror`.
+    let data_only = Capabilities::host().with_declared(
+        &crate::composition::Declaration::new("data")
+            .uses_task(TaskType::PolicyMirror, 1)
+            .handles_task(TaskType::DecisionsShip, 1),
+    );
+    let refused = unserved(approve(&data_only));
+    assert!(
+        refused.contains("provider of `policy.mirror` version 1"),
+        "{refused}"
+    );
+    // With the Control Plane's declaration the capability holds; whatever else approval checks
+    // comes after it.
+    let with_control = data_only.with_declared(
+        &crate::composition::Declaration::new("control").handles_task(TaskType::PolicyMirror, 1),
+    );
+    assert!(
+        !matches!(
+            approve(&with_control),
+            Err(MembershipError::TaskUnserved(_))
+        ),
+        "the provider is registered"
+    );
+}
+
+/// WP-4.4: the member's side of a task is what it declared in its request: none, or the wrong
+/// side, refuses the approval.
+#[test]
+fn approval_refuses_a_member_without_the_matching_client_contract() {
+    let side = |role| record::Capability {
+        task_type: TaskType::DecisionsShip,
+        version: 1,
+        role,
+    };
+    for declared in [Vec::new(), vec![side(record::ContractRole::Consumer)]] {
+        let (c, m) = (Host::new("client-c"), Host::new("client-m"));
+        let id = enroll_task(&c, &m, decisions("plane/data/*"), declared);
+        let refused = unserved(c.store.check_approve(
+            &c.coordinator(),
+            &capabilities(),
+            &id,
+            None,
+            None,
+            &offered_nothing(),
+            None,
+            now(),
+        ));
+        assert!(
+            refused.contains("the member registered no provider of `decisions.ship` version 1"),
+            "{refused}"
+        );
+    }
+    let (c, m) = (Host::new("client-ok-c"), Host::new("client-ok-m"));
+    let id = enroll_task(
+        &c,
+        &m,
+        decisions("plane/data/*"),
+        vec![side(record::ContractRole::Provider)],
+    );
+    c.store
+        .check_approve(
+            &c.coordinator(),
+            &capabilities(),
+            &id,
+            None,
+            None,
+            &offered_nothing(),
+            None,
+            now(),
+        )
+        .expect("both sides registered");
+}
+
+/// WP-4.4: the version is the task's, signed: a side registered at another version serves
+/// nothing, and an approval may not change it.
+#[test]
+fn approval_refuses_a_version_the_provider_did_not_register() {
+    let (c, m) = (Host::new("version-c"), Host::new("version-m"));
+    let mut second = decisions("plane/data/*");
+    second.version = 2;
+    let member_side = |version| record::Capability {
+        task_type: TaskType::DecisionsShip,
+        version,
+        role: record::ContractRole::Provider,
+    };
+    let id = enroll_task(&c, &m, second.clone(), vec![member_side(1), member_side(2)]);
+    let approve = |capabilities: &Capabilities, narrow: Option<&Narrow>| {
+        c.store.check_approve(
+            &c.coordinator(),
+            capabilities,
+            &id,
+            narrow,
+            None,
+            &offered_nothing(),
+            None,
+            now(),
+        )
+    };
+    // The coordinator consumes version 1 only.
+    let refused = unserved(approve(&capabilities(), None));
+    assert!(
+        refused.contains("consumer of `decisions.ship` version 2"),
+        "{refused}"
+    );
+    let both = capabilities().register(record::Capability {
+        task_type: TaskType::DecisionsShip,
+        version: 2,
+        role: record::ContractRole::Consumer,
+    });
+    let (manifest, _, _) = approve(&both, None).expect("version 2 on both sides");
+    assert_eq!(manifest.tasks[0].version, 2);
+    // A narrowing that changes the version widens it.
+    assert!(matches!(
+        approve(
+            &both,
+            Some(&Narrow {
+                selector: Selector::parse("plane/data/*").expect("a selector"),
+                tasks: vec![decisions("plane/data/*")],
+            })
+        ),
+        Err(MembershipError::Widened(_))
+    ));
 }

@@ -658,12 +658,14 @@ async fn side_with(
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
     let tasks = Arc::new(permguard_host::membership::task::Tasks {
-        live: Arc::default(),
-        appraisal: Arc::default(),
         handlers: permguard_host::membership::task::TaskHandlers::default().register(
             permguard_host::membership::record::TaskType::DecisionsShip,
+            1,
             Arc::new(Echo),
         ),
+        // A quiet watch heartbeats soon, so a test sees one.
+        watch_heartbeat: Duration::from_millis(300),
+        ..permguard_host::membership::task::Tasks::default()
     });
     let peers = Arc::new(Peers::open(&host.volume, &[]).expect("the peers"));
     peers.with_source(Arc::clone(&members) as Arc<dyn permguard_host::session::peers::PinSource>);
@@ -758,6 +760,7 @@ async fn side_with(
 
 fn decisions() -> permguard_host::api::members::TaskView {
     permguard_host::api::members::TaskView {
+        version: None,
         task_id: "decisions".to_owned(),
         task_type: "decisions.ship".to_owned(),
         provider_role: None,
@@ -1267,6 +1270,44 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
         waited += 1;
+    }
+
+    // A watch on its own session (WP-4.4): a hint the coordinator publishes is pushed to the
+    // member over the same connection, and a quiet watch heartbeats.
+    let mut watching = acting
+        .open_task(
+            permguard_host::operations::journal::Initiator::System("test".to_owned()),
+            &membership_id,
+            "decisions",
+            "plane/data/zone/z1",
+            Vec::new(),
+        )
+        .await
+        .expect("a second lease");
+    watching
+        .watch(vec![("l1".to_owned(), 1)])
+        .await
+        .expect("watching");
+    let hint = permguard_host::membership::record::WatchHint {
+        key: "l1".to_owned(),
+        head: "head-2".to_owned(),
+        counter: 2,
+    };
+    coordinator.tasks.hub.publish(
+        TaskType::DecisionsShip,
+        &permguard_core::authz::Resource::parse("plane/data/zone/z1").expect("a resource"),
+        &hint,
+    );
+    let event = watching.next_event().await.expect("pushed");
+    assert_eq!(event.hints, vec![hint]);
+    let quiet = watching.next_event().await.expect("a heartbeat");
+    assert!(quiet.hints.is_empty());
+    // The session belongs to its watch: a message on it is refused over the wire too.
+    match watching.send("r-late", b"late".to_vec()).await {
+        Err(permguard_host::membership::MembershipError::Remote { code, .. }) => {
+            assert_eq!(code, permguard_core::codes::common::INVALID_ARGUMENT);
+        }
+        other => panic!("refused, not {other:?}"),
     }
     let _ = (&coordinator.listener, &member.listener);
 }
