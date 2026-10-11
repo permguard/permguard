@@ -22,6 +22,7 @@ pub mod host_api;
 pub mod logging;
 pub mod offline;
 pub mod plane;
+pub mod repin;
 pub mod signal;
 pub mod time;
 pub mod witness;

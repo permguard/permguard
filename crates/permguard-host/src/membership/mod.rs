@@ -35,6 +35,7 @@ pub mod appraisal;
 pub mod member;
 pub mod progress;
 pub mod record;
+pub mod repin;
 pub mod replay;
 pub mod reset;
 pub mod service;
@@ -367,6 +368,8 @@ struct State {
     statements: BTreeMap<([u8; 16], u64), Vec<RingStatement>>,
     /// `(revision, target)` of every entry an operation made.
     operations: BTreeMap<[u8; 16], (u64, String)>,
+    /// The cutovers to re-pinned sets, by membership and ring (WP-4.5).
+    cutovers: BTreeMap<([u8; 16], String), repin::CutoverState>,
 }
 
 /// The membership store of one Host.
@@ -753,7 +756,7 @@ pub fn verify_manifest(
     let pin = claimed
         .ring_pins
         .iter()
-        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS)
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS && !pin.retiring)
         .ok_or_else(|| {
             MembershipError::Unverified(
                 "the manifest pins no coordinator `host.operations`".to_owned(),
@@ -809,7 +812,7 @@ pub(crate) fn pinned_kids(manifest: &Manifest, statements: &[RingStatement]) -> 
     let Some(pin) = manifest
         .ring_pins
         .iter()
-        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS)
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS && !pin.retiring)
     else {
         return Vec::new();
     };
@@ -839,7 +842,7 @@ pub fn verify_lease(
     let pin = manifest
         .ring_pins
         .iter()
-        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS)
+        .find(|pin| pin.owner == Role::Coordinator && pin.ring == HOST_OPERATIONS && !pin.retiring)
         .ok_or_else(|| {
             MembershipError::Unverified(
                 "the manifest pins no coordinator `host.operations`".to_owned(),
@@ -1699,6 +1702,7 @@ impl Store {
                 epoch: statement.epoch,
                 key_set_digest: binding.key_set_digest,
                 binding: statement.binding,
+                retiring: false,
             });
         }
         Ok((pins, statements))
@@ -1711,6 +1715,7 @@ impl Store {
         applying: &Applying<'_>,
         coordinator: &Coordinator<'_>,
         manifest: &Manifest,
+        presented: &[RingStatement],
         now: u64,
     ) -> Result<(Vec<u8>, Digest), MembershipError> {
         // The coordinator's statements of the rings it pins, as they stand at this signature: a
@@ -1729,6 +1734,23 @@ impl Store {
                 )));
             }
             statements.push(statement);
+        }
+        // The member's statements of the sets it pins, so its keys stay readable whatever the
+        // pins become (WP-4.5): the one a re-pin brings, else one journaled before, else the one
+        // its enrollment presented.
+        for pin in manifest
+            .ring_pins
+            .iter()
+            .filter(|pin| pin.owner == Role::Member)
+        {
+            let statement = presented
+                .iter()
+                .find(|statement| statement.ring == pin.ring && statement.binding == pin.binding)
+                .cloned()
+                .or_else(|| self.member_statement(&manifest.membership_id, pin));
+            if let Some(statement) = statement {
+                statements.push(statement);
+            }
         }
         let envelope = sign_manifest(coordinator.ring(HOST_OPERATIONS)?, manifest)?;
         let digest = manifest_digest(&envelope);
@@ -1765,7 +1787,7 @@ impl Store {
                 to: manifest.status,
             });
         }
-        self.issue(&writing, applying, coordinator, manifest, now)
+        self.issue(&writing, applying, coordinator, manifest, &[], now)
     }
 
     /// The successor of `id`'s manifest with `status`: for reject (a genesis in status
@@ -1839,10 +1861,21 @@ impl Store {
                 next.issued_at = now;
                 next.not_after = now + MANIFEST_LIFETIME_SECONDS;
                 next.status = to;
-                // The coordinator's own pins follow its rings as they are now.
+                // The coordinator's own pins follow its rings as they are now; the member's are
+                // what its last re-pin left, retiring sets included (WP-4.5).
                 let tasks = next.tasks.clone();
                 let (pins, _) = self.pins_for(coordinator, &held.request, &tasks)?;
-                next.ring_pins = pins;
+                next.ring_pins = pins
+                    .into_iter()
+                    .filter(|pin| pin.owner == Role::Coordinator)
+                    .chain(
+                        manifest
+                            .ring_pins
+                            .iter()
+                            .filter(|pin| pin.owner == Role::Member)
+                            .cloned(),
+                    )
+                    .collect();
                 Ok(next)
             }
         }
@@ -1854,6 +1887,19 @@ impl Store {
         applying: &Applying<'_>,
         coordinator: &Coordinator<'_>,
         manifest: &Manifest,
+        now: u64,
+    ) -> Result<(Vec<u8>, Digest), MembershipError> {
+        self.transition_with(applying, coordinator, manifest, &[], now)
+    }
+
+    /// [`Self::transition`], journaling beside the manifest the member's statements a re-pin
+    /// presented (WP-4.5).
+    pub fn transition_with(
+        &self,
+        applying: &Applying<'_>,
+        coordinator: &Coordinator<'_>,
+        manifest: &Manifest,
+        presented: &[RingStatement],
         now: u64,
     ) -> Result<(Vec<u8>, Digest), MembershipError> {
         let writing = self.begin();
@@ -1873,7 +1919,7 @@ impl Store {
                  enroll again"
             )));
         }
-        self.issue(&writing, applying, coordinator, manifest, now)
+        self.issue(&writing, applying, coordinator, manifest, presented, now)
     }
 
     /// Checks an appraisal of an active membership without writing: its successor, a new epoch,
@@ -2382,6 +2428,21 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                 ));
             }
             held.held_epoch = Some(held.held_epoch.unwrap_or(0).max(seen));
+            held.revision += 1;
+            held.updated_at = entry.at;
+            revision = held.revision;
+        }
+        Kind::Cutover | Kind::Acknowledged => {
+            let held = state
+                .memberships
+                .get_mut(&entry.subject)
+                .ok_or_else(|| corrupt("a cutover of no membership".to_owned()))?;
+            let detail = entry
+                .detail
+                .as_deref()
+                .ok_or_else(|| corrupt("a cutover entry carries its record".to_owned()))?;
+            repin::apply(&mut state.cutovers, entry.subject, entry.kind, detail)
+                .map_err(|error| corrupt(error.to_string()))?;
             held.revision += 1;
             held.updated_at = entry.at;
             revision = held.revision;

@@ -1559,6 +1559,10 @@ fn every_membership_action_is_a_registered_mutation() {
         AUDIT_JOINED,
         AUDIT_SYNCED,
         AUDIT_ORPHANED,
+        repin::AUDIT_REPINNED,
+        repin::AUDIT_CUTOVER,
+        repin::AUDIT_ACKNOWLEDGED,
+        repin::AUDIT_PIN_RETIRED,
     ] {
         let schema = crate::audit::REGISTRY
             .iter()

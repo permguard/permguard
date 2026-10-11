@@ -245,7 +245,31 @@ replay_entry = cbor({1: "decisions", 2: "r-1",
                      3: hashlib.sha256(task_message + RESOURCE.encode()).digest(),
                      4: task_answer, 5: 1030})
 
-out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), task sessions (WP-4.3) and the task router (WP-4.4); see README.md and membership.py",
+# The ring re-pin (WP-4.5): the member's data.attest moved to epoch 2 (the same key, a new set),
+# its statement the body of a `repin` message; the manifest at epoch 2 pins it and keeps the set
+# it replaced retiring; a cutover, an acknowledgement and a delivery.
+ring_digest2 = hashlib.sha256(b"permguard.key-set.v1\n" + cbor(
+    {"ring": RING, "epoch": 2, "algorithm": SUITE, "keys_by_thumbprint": [ring_thumbprint]})).digest()
+ring_binding2 = sign1(_MEMBER_KEY, "permguard.host.ring-binding.v1", b"1",
+                      cbor({1: MEMBER, 2: RING, 3: 2, 4: ring_digest2, 5: SUITE, 6: AT + 100,
+                            7: AT + 100 + 30 * 86400}))
+ring_statement2 = cbor({1: RING, 2: 2, 3: SUITE, 4: [ring_jwk], 5: ring_binding2})
+repin_message = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 1, 4: "repin-data.attest-2",
+                      5: ring_statement2, 6: "repin"})
+pin2 = {1: "member", 2: RING, 3: 2, 4: ring_digest2, 5: ring_binding2}
+retiring_pin = dict(pin); retiring_pin[6] = True
+repinned_payload = cbor({1: MEMBERSHIP_ID, 2: coordinator_ref, 3: member_ref, 4: "plane/data/*",
+                         5: [task], 6: "production", 9: [pin2, retiring_pin], 10: 2,
+                         11: lease_policy, 12: genesis_digest, 13: AT + 101,
+                         14: AT + 101 + 365 * 86_400, 15: "active"})
+repinned = sign1(OPERATIONS, "permguard.membership.manifest.v1", operations_kid, repinned_payload)
+cutover = cbor({1: RING, 2: 2, 3: [{1: "permguard.decisions", 2: 41}, {1: "permguard.events", 2: 7}]})
+cutover_message = cbor({1: MEMBERSHIP_ID, 2: "decisions", 3: 2, 4: "cutover-data.attest-2",
+                        5: cutover, 6: "cutover"})
+acknowledgement = cbor({1: RING, 2: 2, 3: "permguard.decisions", 4: 40})
+delivered = cbor({1: 2, 2: AT + 102})
+
+out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), task sessions (WP-4.3), the task router (WP-4.4) and the ring re-pin (WP-4.5); see README.md and membership.py",
        "coordinator": {"host_id": COORDINATOR.hex(), "seed": SEED_COORDINATOR,
                        "public_key": COORDINATOR_PUB.hex(), "fingerprint": fingerprint(COORDINATOR_PUB)},
        "member": {"host_id": MEMBER.hex(), "seed": SEED_MEMBER, "public_key": MEMBER_PUB.hex(),
@@ -288,7 +312,12 @@ out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), ta
                   "progress_answer": progress_answer.hex(), "kept_progress": kept_progress.hex(),
                   "last_session": last_session.hex(), "watch_request": watch_request.hex(),
                   "watch_event": watch_event.hex(), "heartbeat": heartbeat.hex(),
-                  "replay_entry": replay_entry.hex(), "checkpoint": CHECKPOINT}}
+                  "replay_entry": replay_entry.hex(), "checkpoint": CHECKPOINT},
+       "repin": {"ring_digest": ring_digest2.hex(), "binding": ring_binding2.hex(),
+                 "ring_statement": ring_statement2.hex(), "repin_message": repin_message.hex(),
+                 "manifest": {"payload": repinned_payload.hex(), "cose_sign1": repinned.hex()},
+                 "cutover": cutover.hex(), "cutover_message": cutover_message.hex(),
+                 "acknowledgement": acknowledgement.hex(), "delivered": delivered.hex()}}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

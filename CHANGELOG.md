@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **Ring re-pin across memberships, both directions, without a restart.**
+  A member whose ring moved sends its new ring statement on a task session (`kind: repin`); the coordinator verifies the binding under the member's pinned identity and its continuity, issues the manifest at the next epoch with the new pin and the replaced one kept `retiring`, and answers a new lease on the same connection, so the session goes on.
+  The exact current set is an idempotent retry; a lower epoch (`manifest_not_successor`) or another set at the pinned epoch (`manifest_equivocation`) is refused and recorded, and a further move waits for the first grace to end.
+  The member then sends its cutover, the first sequence of each stream under the new set (`kind: cutover`), journaled before it is answered; below each stream's cutover only the retiring set verifies, at or above it only the new one.
+  Once the stream consumer acknowledges every stream's old spans, a manifest revision drops the retiring pin.
+  A ring's prepublished key takes over only once every active membership pins its epoch: the member's re-pinned manifest persisted, or, for the coordinator's own rings, every membership revised and delivered to its member by a lease or a sync; a pass every minute revises the coordinated memberships and re-pins the member's rings.
+  The re-pin's records are registered in `contracts/cbor/membership.json` with golden vectors; applying the cutover to the streams arrives with WP-5.2.
+
 - **The Host task router: versioned task contracts, signed limits, progress, watches and the replay gate.**
   A membership's task now signs the contract `version` both sides speak, and a member declares the contracts it registered in its enrollment request.
   Approval refuses a task unless this Host registered its side of that exact version and the member declared the other side (`task_unserved`); the Control Plane provides `policy.mirror` and `events.import` and consumes `decisions.ship` and `events.ship`, the Data Plane the opposite roles, the Host itself `audit.checkpoints` and `zone.secrets`, so a Host without a Control Plane refuses `policy.mirror`.

@@ -63,6 +63,7 @@ fn manifest(epoch: u64) -> Manifest {
         min_assurance: Some(AssuranceProfile::Development),
         assurance_binding: None,
         ring_pins: vec![RingPin {
+            retiring: false,
             owner: Role::Coordinator,
             ring: "host.operations".to_owned(),
             epoch: 3,
@@ -828,4 +829,92 @@ fn a_task_refuses_a_zero_concurrency_or_rate() {
             .check()
             .is_err()
     );
+}
+
+/// WP-4.5: a manifest pins one current set per owner and ring, and a retiring one only beside a
+/// current set of a later epoch; a cutover names 1 to 64 streams, in order, each once.
+#[test]
+fn a_retiring_pin_needs_a_later_current_set_and_a_cutover_names_its_streams_once() {
+    let pin = |epoch: u64, retiring: bool| RingPin {
+        owner: Role::Member,
+        ring: "data.attest".to_owned(),
+        epoch,
+        key_set_digest: [epoch as u8; 32],
+        binding: vec![0x84],
+        retiring,
+    };
+    let with = |pins: Vec<RingPin>| Manifest {
+        ring_pins: pins,
+        ..manifest(2)
+    };
+    let good = with(vec![pin(2, false), pin(1, true)]);
+    let bytes = good.encode().expect("encodes");
+    assert_eq!(Manifest::decode(&bytes).expect("reads back"), good);
+    for refused in [
+        vec![pin(2, false), pin(1, false)],
+        vec![pin(1, true)],
+        vec![pin(1, false), pin(2, true)],
+        vec![pin(3, false), pin(2, true), pin(1, true)],
+    ] {
+        let encoded = with(refused.clone()).encode().expect("encodes");
+        assert!(Manifest::decode(&encoded).is_err(), "{refused:?}");
+    }
+    // Label 6 is `true` or absent, never `false`.
+    let Value::Map(mut pairs) = pin(1, true).value().expect("a value") else {
+        panic!("a map")
+    };
+    for (label, value) in &mut pairs {
+        if *label == Value::Int(6) {
+            *value = Value::Bool(false);
+        }
+    }
+    assert!(RingPin::read(Value::Map(pairs)).is_err());
+
+    let cutover = Cutover {
+        ring: "data.attest".to_owned(),
+        epoch: 2,
+        streams: vec![("a".to_owned(), 1), ("b".to_owned(), 2)],
+    };
+    let bytes = cutover.encode().expect("encodes");
+    assert_eq!(Cutover::decode(&bytes).expect("reads back"), cutover);
+    assert!(Cutover::decode(&foreign(&bytes)).is_err());
+    // A member signing no stream under the ring cuts over with none (after the review).
+    let none = Cutover {
+        streams: Vec::new(),
+        ..cutover.clone()
+    };
+    assert_eq!(
+        Cutover::decode(&none.encode().expect("encodes")).expect("reads back"),
+        none
+    );
+    let twice = Value::Map(vec![
+        (Value::Int(1), Value::Text("data.attest".to_owned())),
+        (Value::Int(2), Value::Int(2)),
+        (
+            Value::Int(3),
+            Value::Array(vec![
+                Value::Map(vec![
+                    (Value::Int(1), Value::Text("a".to_owned())),
+                    (Value::Int(2), Value::Int(1)),
+                ]),
+                Value::Map(vec![
+                    (Value::Int(1), Value::Text("a".to_owned())),
+                    (Value::Int(2), Value::Int(2)),
+                ]),
+            ]),
+        ),
+    ]);
+    assert!(Cutover::decode(&cbor::encode(&twice).expect("encodes")).is_err());
+    let acknowledgement = Acknowledgement {
+        ring: "data.attest".to_owned(),
+        epoch: 2,
+        stream: "a".to_owned(),
+        through_seq: 0,
+    };
+    let bytes = acknowledgement.encode().expect("encodes");
+    assert_eq!(
+        Acknowledgement::decode(&bytes).expect("reads back"),
+        acknowledgement
+    );
+    assert!(Acknowledgement::decode(&vec![0xA0; 2048]).is_err());
 }

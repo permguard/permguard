@@ -1824,6 +1824,10 @@ impl App {
         // Who serves a ledger under this Host's memberships, for the Plane that provides
         // `policy.mirror` (WP-4.4); none without a Host listener.
         let mut serving: Option<Arc<permguard_host::api::HostApi>> = None;
+        // The coordinator side of the re-pin pass, with the Host API's member side (WP-4.5).
+        let mut repinning_coordinator: Option<
+            Arc<permguard_host::membership::service::Coordinating>,
+        > = None;
         if config.admin_addr().is_some() {
             use permguard_host::api::{Assurance, Composition, Effective, HostApi, Replay};
 
@@ -1886,7 +1890,7 @@ impl App {
             });
             // What a coordinator serves on a proven session: an enrollment, a manifest fetch, a
             // revocation asked by its member, and its task sessions.
-            let coordinating = permguard_host::membership::service::Coordinating {
+            let coordinating = Arc::new(permguard_host::membership::service::Coordinating {
                 store: Arc::clone(&members),
                 mutations: Arc::clone(&mutations),
                 identity: Arc::clone(&host_identity),
@@ -1894,7 +1898,15 @@ impl App {
                 capabilities: capabilities.clone(),
                 time: Arc::clone(&time),
                 tasks: Arc::clone(&tasks),
-            };
+            });
+            // No ring of this Host activates a prepublished key before every membership pins its
+            // epoch (WP-4.5).
+            for ring in key_registry.rings() {
+                ring.set_gate(Arc::new(permguard_host::membership::repin::PinGate {
+                    store: Arc::clone(&members),
+                }));
+            }
+            repinning_coordinator = Some(Arc::clone(&coordinating));
             let session_context = permguard_host::session::Context {
                 identity: Arc::clone(&host_identity),
                 peers,
@@ -1902,7 +1914,7 @@ impl App {
                 declared_assurance: config.assurance().profile(),
                 audit: Some(Arc::clone(&audit_engine)),
                 metrics: context.metrics().clone(),
-                service: Some(Arc::new(coordinating)),
+                service: Some(coordinating as Arc<dyn permguard_host::session::Service>),
             };
             // How this Host, as a member, reaches its coordinators: over the Host listener's own
             // certificate, verifying them against its client CA; without one, a join is refused.
@@ -1965,6 +1977,12 @@ impl App {
         let _ticking = crate::time::tick(Arc::clone(&time));
         // The ended days a stopped process left unsealed, sealed now and every hour after.
         let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
+        let _repinning = match (repinning_coordinator, serving.as_ref()) {
+            (Some(coordinating), Some(api)) => {
+                Some(crate::repin::drive(coordinating, Arc::clone(api)))
+            }
+            _ => None,
+        };
         let mut host = permguard_host::composition::Host::builder()
             .audit(recorder)
             .authorization(authorization)

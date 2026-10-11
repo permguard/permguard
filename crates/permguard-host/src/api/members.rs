@@ -1939,6 +1939,38 @@ impl HostApi {
         Ok((memberships, connector))
     }
 
+    /// Re-pins every ring of this Host its memberships as a member pin at an older epoch
+    /// (WP-4.5): the server's periodic pass. Nothing without a peer client.
+    pub async fn repin_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .repin_due(crate::operations::journal::Initiator::System(
+                "host".to_owned(),
+            ))
+            .await
+    }
+
+    /// Ends the grace of this Host's rings that its memberships as a member keep retiring, once
+    /// each ring activated its new key (WP-4.5): the server's periodic pass.
+    pub async fn cutover_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .cutover_due(crate::operations::journal::Initiator::System(
+                "host".to_owned(),
+            ))
+            .await
+    }
+
     pub(super) fn acting_member<'a>(
         &'a self,
         memberships: &'a MembershipService,

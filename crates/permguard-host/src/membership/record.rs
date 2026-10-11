@@ -11,7 +11,7 @@
 //! | task               | {1 task_id, 2 type, 3 provider_role, 4 consumer_role, 5 selector, 6 resource_types, 7 required, 8 limits, 9 assurance_requirements, 10 version} (10: WP-4.4) |
 //! | capability         | {1 type, 2 version, 3 role}: a contract a Host registered, `provider` or `consumer` (WP-4.4) |
 //! | lease_policy       | {1 max_session_seconds, 2 offline_grace_seconds, 3 clock_skew_seconds, 4 dormant_after_seconds, 5 revoke_after_seconds} |
-//! | ring_pin           | {1 owner, 2 ring, 3 epoch, 4 key_set_digest, 5 binding}                                       |
+//! | ring_pin           | {1 owner, 2 ring, 3 epoch, 4 key_set_digest, 5 binding, 6? retiring} (6: WP-4.5)             |
 //! | ring_statement     | {1 ring, 2 epoch, 3 suite, 4 keys, 5 binding}                                                 |
 //! | manifest payload   | {1 membership_id, 2 coordinator, 3 member, 4 selector, 5 tasks, 6 member_assurance, 7? min_assurance, 8? assurance_binding, 9 ring_pins, 10 epoch, 11 lease_policy, 12? previous_manifest_digest, 13 issued_at, 14 not_after, 15 status} |
 //! | claim              | {1 control, 2 class, 3 by, 4? record} (WP-4.2)                                                |
@@ -31,6 +31,9 @@
 //! | last_session       | {1 at, 2 member_boot_id}: `progress/<membership_id>/<task_id>.session` (WP-4.4)               |
 //! | watch_request      | {1 positions [{1 key, 2 counter}]} (WP-4.4)                                                   |
 //! | watch_event        | {1 hints [{1 key, 2 head, 3 counter}]}, empty a heartbeat (WP-4.4)                            |
+//! | cutover            | {1 ring, 2 epoch, 3 streams [{1 stream, 2 from_seq}]} (WP-4.5)                              |
+//! | acknowledgement    | {1 ring, 2 epoch, 3 stream, 4 through_seq} (WP-4.5)                                         |
+//! | delivered          | {1 epoch, 2 at}: `progress/<membership_id>/manifest.delivered` (WP-4.5)                     |
 //! | replay_entry       | {1 task_id, 2 request_id, 3 message_digest, 4 answer, 5 seq}: `replay/<membership_id>/` (WP-4.4) |
 //! | invitation         | {1 invite_id, 2 token_key, 3 selector, 4 tasks, 5 expires, 6? expected_fingerprint, 7? min_assurance, 8 max_uses, 9 created_at, 10 created_by} |
 //! | enrollment request | {1 invite_id, 2 token_proof, 3 selector, 4 tasks, 5 member, 6 ring_statements, 7 capabilities} (7: WP-4.4) |
@@ -546,6 +549,34 @@ fn capabilities_value(capabilities: &[Capability]) -> Result<Value, RecordError>
     ))
 }
 
+/// A manifest's pins: one current set per owner and ring, and at most one retiring set beside
+/// it, of a lower epoch (WP-4.5).
+fn check_pins(pins: Vec<RingPin>) -> Result<Vec<RingPin>, RecordError> {
+    for pin in &pins {
+        let same = |retiring: bool| {
+            pins.iter()
+                .filter(|other| {
+                    other.owner == pin.owner && other.ring == pin.ring && other.retiring == retiring
+                })
+                .collect::<Vec<_>>()
+        };
+        if same(pin.retiring).len() != 1 {
+            return Err(RecordError(format!(
+                "the {} `{}` is pinned twice",
+                pin.owner.as_str(),
+                pin.ring
+            )));
+        }
+        if pin.retiring && !same(false).iter().any(|current| current.epoch > pin.epoch) {
+            return Err(RecordError(format!(
+                "a retiring `{}` needs a current set of a later epoch",
+                pin.ring
+            )));
+        }
+    }
+    Ok(pins)
+}
+
 /// Reads the tasks of a record: at most [`MAX_TASKS`], ids unique.
 fn read_tasks(values: Vec<Value>) -> Result<Vec<Task>, RecordError> {
     if values.len() > MAX_TASKS {
@@ -629,17 +660,25 @@ pub struct RingPin {
     pub epoch: u64,
     pub key_set_digest: [u8; 32],
     pub binding: Vec<u8>,
+    /// The set a re-pin replaced, kept to verify the spans below each stream's cutover until
+    /// they are acknowledged (WP-4.5, owner decision); label 6 present only when set.
+    pub retiring: bool,
 }
 
 impl RingPin {
     fn value(&self) -> Result<Value, RecordError> {
-        Ok(Value::Map(vec![
-            (Value::Int(1), Value::Text(self.owner.as_str().to_owned())),
-            (Value::Int(2), Value::Text(self.ring.clone())),
-            (Value::Int(3), uint(self.epoch)?),
-            (Value::Int(4), Value::Bytes(self.key_set_digest.to_vec())),
-            (Value::Int(5), Value::Bytes(self.binding.clone())),
-        ]))
+        Ok(Value::Map(
+            vec![
+                (Value::Int(1), Value::Text(self.owner.as_str().to_owned())),
+                (Value::Int(2), Value::Text(self.ring.clone())),
+                (Value::Int(3), uint(self.epoch)?),
+                (Value::Int(4), Value::Bytes(self.key_set_digest.to_vec())),
+                (Value::Int(5), Value::Bytes(self.binding.clone())),
+            ]
+            .into_iter()
+            .chain(self.retiring.then_some((Value::Int(6), Value::Bool(true))))
+            .collect(),
+        ))
     }
 
     fn read(value: Value) -> Result<Self, RecordError> {
@@ -650,6 +689,15 @@ impl RingPin {
             epoch: map.uint(3)?,
             key_set_digest: map.fixed(4)?,
             binding: map.bytes(5)?,
+            retiring: match map.optional_value(6)? {
+                None => false,
+                Some(Value::Bool(true)) => true,
+                Some(_) => {
+                    return Err(RecordError(
+                        "a ring pin's label 6 is `true` or absent".to_owned(),
+                    ));
+                }
+            },
         };
         map.finish()?;
         Ok(pin)
@@ -811,10 +859,11 @@ impl Manifest {
                 .optional_value(8)?
                 .map(AssuranceBinding::read)
                 .transpose()?,
-            ring_pins: pins
-                .into_iter()
-                .map(RingPin::read)
-                .collect::<Result<_, _>>()?,
+            ring_pins: check_pins(
+                pins.into_iter()
+                    .map(RingPin::read)
+                    .collect::<Result<_, _>>()?,
+            )?,
             epoch: map.uint(10)?,
             lease_policy: LeasePolicy::read(map.value(11)?)?,
             previous: map.optional_digest(12)?,
@@ -1515,6 +1564,11 @@ pub enum Kind {
     /// The coordinator saw an epoch it never issued: the membership is held for review until
     /// revoked (WP-4.3); the entry's epoch is the one seen.
     Held,
+    /// A member's cutover to a re-pinned set; the detail is the [`Cutover`] (WP-4.5).
+    Cutover,
+    /// A stream's spans under a retiring set acknowledged; the detail is the
+    /// [`Acknowledgement`] (WP-4.5).
+    Acknowledged,
 }
 
 impl Kind {
@@ -1527,6 +1581,8 @@ impl Kind {
             Self::Joined => "joined",
             Self::Orphaned => "orphaned",
             Self::Held => "held",
+            Self::Cutover => "cutover",
+            Self::Acknowledged => "acknowledged",
         }
     }
 }
@@ -1543,6 +1599,8 @@ impl FromStr for Kind {
             Self::Joined,
             Self::Orphaned,
             Self::Held,
+            Self::Cutover,
+            Self::Acknowledged,
         ]
         .into_iter()
         .find(|kind| kind.as_str() == text)
@@ -1911,6 +1969,10 @@ pub enum MessageKind {
     Progress,
     /// A [`WatchRequest`]: the session then belongs to the watch.
     Watch,
+    /// A [`RingStatement`] the member's ring moved to: the re-pin (WP-4.5).
+    Repin,
+    /// A [`Cutover`] fixing each stream's first sequence under the new set (WP-4.5).
+    Cutover,
 }
 
 impl MessageKind {
@@ -1919,6 +1981,8 @@ impl MessageKind {
             Self::Handler => None,
             Self::Progress => Some("progress"),
             Self::Watch => Some("watch"),
+            Self::Repin => Some("repin"),
+            Self::Cutover => Some("cutover"),
         }
     }
 
@@ -1927,6 +1991,8 @@ impl MessageKind {
             None => Ok(Self::Handler),
             Some("progress") => Ok(Self::Progress),
             Some("watch") => Ok(Self::Watch),
+            Some("repin") => Ok(Self::Repin),
+            Some("cutover") => Ok(Self::Cutover),
             Some(other) => Err(RecordError(format!("`{other}` is not a task message kind"))),
         }
     }
@@ -2405,4 +2471,169 @@ impl ReplayEntry {
         map.finish()?;
         Ok(entry)
     }
+}
+
+/// The most streams one cutover names (WP-4.5).
+pub const MAX_STREAMS: usize = 64;
+/// The longest stream name.
+pub const MAX_STREAM_BYTES: usize = 256;
+
+impl RingStatement {
+    /// The statement's bytes, as a re-pin carries it (WP-4.5).
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let Value::Map(pairs) = self.value()? else {
+            return Err(RecordError("a ring statement is a map".to_owned()));
+        };
+        encode(pairs)
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a ring statement")?;
+        let value = permguard_objects::cbor::decode_canonical(bytes)
+            .map_err(|error| RecordError(format!("a ring statement: {error}")))?;
+        Self::read(value)
+    }
+}
+
+fn ring_name(text: String) -> Result<String, RecordError> {
+    bounded_text(text, MAX_NAME_BYTES, "a ring")
+}
+
+/// A member's cutover to the set a re-pin accepted: the first sequence each stream signs under
+/// it (WP-4.5, owner decision); the old set verifies only below.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cutover {
+    pub ring: String,
+    /// The ring epoch the re-pin accepted.
+    pub epoch: u64,
+    /// `(stream, from_seq)`, in stream order, each once.
+    pub streams: Vec<(String, u64)>,
+}
+
+impl Cutover {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        let mut streams = self.streams.clone();
+        streams.sort();
+        encode(vec![
+            (Value::Int(1), Value::Text(self.ring.clone())),
+            (Value::Int(2), uint(self.epoch)?),
+            (
+                Value::Int(3),
+                Value::Array(
+                    streams
+                        .iter()
+                        .map(|(stream, from)| {
+                            Ok(Value::Map(vec![
+                                (Value::Int(1), Value::Text(stream.clone())),
+                                (Value::Int(2), uint(*from)?),
+                            ]))
+                        })
+                        .collect::<Result<_, RecordError>>()?,
+                ),
+            ),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        bounded(bytes, "a cutover")?;
+        let mut map = Labelled::read(bytes, "a cutover")?;
+        let ring = ring_name(map.text(1)?)?;
+        let epoch = map.uint(2)?;
+        let values = map.array(3)?;
+        map.finish()?;
+        // None when the member signs no stream under the ring (owner decision, after the review).
+        if values.len() > MAX_STREAMS {
+            return Err(RecordError(format!(
+                "a cutover names at most {MAX_STREAMS} streams"
+            )));
+        }
+        let mut streams = Vec::with_capacity(values.len());
+        for value in values {
+            let mut stream = Labelled::from_value(value, "a cutover stream")?;
+            let name = bounded_text(stream.text(1)?, MAX_STREAM_BYTES, "a stream")?;
+            let from = stream.uint(2)?;
+            stream.finish()?;
+            streams.push((name, from));
+        }
+        if !streams.windows(2).all(|pair| pair[0].0 < pair[1].0) {
+            return Err(RecordError(
+                "a cutover names its streams in order, each once".to_owned(),
+            ));
+        }
+        Ok(Self {
+            ring,
+            epoch,
+            streams,
+        })
+    }
+}
+
+/// One stream's spans under a retiring set, acknowledged through `through_seq` (WP-4.5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Acknowledgement {
+    pub ring: String,
+    pub epoch: u64,
+    pub stream: String,
+    pub through_seq: u64,
+}
+
+impl Acknowledgement {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), Value::Text(self.ring.clone())),
+            (Value::Int(2), uint(self.epoch)?),
+            (Value::Int(3), Value::Text(self.stream.clone())),
+            (Value::Int(4), uint(self.through_seq)?),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        small_bounded(bytes, "an acknowledgement")?;
+        let mut map = Labelled::read(bytes, "an acknowledgement")?;
+        let acknowledgement = Self {
+            ring: ring_name(map.text(1)?)?,
+            epoch: map.uint(2)?,
+            stream: bounded_text(map.text(3)?, MAX_STREAM_BYTES, "a stream")?,
+            through_seq: map.uint(4)?,
+        };
+        map.finish()?;
+        Ok(acknowledgement)
+    }
+}
+
+/// The last manifest epoch a coordinator delivered to its member, by a lease or a sync (WP-4.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Delivered {
+    pub epoch: u64,
+    pub at: u64,
+}
+
+impl Delivered {
+    pub fn encode(&self) -> Result<Vec<u8>, RecordError> {
+        encode(vec![
+            (Value::Int(1), uint(self.epoch)?),
+            (Value::Int(2), uint(self.at)?),
+        ])
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, RecordError> {
+        small(bytes, "a delivery")?;
+        let mut map = Labelled::read(bytes, "a delivery")?;
+        let delivered = Self {
+            epoch: map.uint(1)?,
+            at: map.uint(2)?,
+        };
+        map.finish()?;
+        Ok(delivered)
+    }
+}
+
+/// The most bytes an acknowledgement takes: two names and two numbers.
+const MAX_ACKNOWLEDGEMENT_BYTES: usize = 1024;
+
+fn small_bounded(bytes: &[u8], what: &str) -> Result<(), RecordError> {
+    if bytes.len() > MAX_ACKNOWLEDGEMENT_BYTES {
+        return Err(RecordError(format!("{what} is out of its bound")));
+    }
+    Ok(())
 }

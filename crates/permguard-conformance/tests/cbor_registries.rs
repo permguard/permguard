@@ -1039,13 +1039,24 @@ fn membership_samples() -> Vec<Sample> {
         member_assurance: AssuranceProfile::Production,
         min_assurance: (epoch > 1).then_some(AssuranceProfile::Development),
         assurance_binding: (epoch > 1).then(|| binding.clone()),
-        ring_pins: vec![RingPin {
+        // Past genesis the member re-pinned its ring: the replaced set retiring beside it.
+        ring_pins: std::iter::once(RingPin {
+            retiring: false,
+            owner: Role::Member,
+            ring: "data.attest".to_owned(),
+            epoch: if epoch > 1 { 2 } else { 1 },
+            key_set_digest: [9; 32],
+            binding: vec![0x84],
+        })
+        .chain((epoch > 1).then(|| RingPin {
+            retiring: true,
             owner: Role::Member,
             ring: "data.attest".to_owned(),
             epoch: 1,
-            key_set_digest: [9; 32],
+            key_set_digest: [8; 32],
             binding: vec![0x84],
-        }],
+        }))
+        .collect(),
         epoch,
         lease_policy: LeasePolicy {
             max_session_seconds: 3600,
@@ -1142,8 +1153,58 @@ fn membership_samples() -> Vec<Sample> {
                 "manifest.previous",
                 "manifest.assurance_binding",
                 "claim.record",
+                "ring_pin.retiring",
             ],
             decoder(|bytes| verdict(Manifest::decode(bytes))),
+        ),
+        sample(
+            "ring_statement",
+            statement.encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(RingStatement::decode(bytes))),
+        ),
+        sample(
+            "cutover",
+            permguard_host::membership::record::Cutover {
+                ring: "data.attest".to_owned(),
+                epoch: 2,
+                streams: vec![
+                    ("permguard.decisions".to_owned(), 41),
+                    ("permguard.events".to_owned(), 7),
+                ],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::record::Cutover::decode(bytes))),
+        ),
+        sample(
+            "acknowledgement",
+            permguard_host::membership::record::Acknowledgement {
+                ring: "data.attest".to_owned(),
+                epoch: 2,
+                stream: "permguard.decisions".to_owned(),
+                through_seq: 40,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| {
+                verdict(permguard_host::membership::record::Acknowledgement::decode(
+                    bytes,
+                ))
+            }),
+        ),
+        sample(
+            "delivered",
+            permguard_host::membership::record::Delivered {
+                epoch: 2,
+                at: 1_800_000_100,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(permguard_host::membership::record::Delivered::decode(bytes))),
         ),
         sample(
             "operator_approval",

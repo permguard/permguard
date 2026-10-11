@@ -247,6 +247,13 @@ impl Binder for crate::identity::Identity {
     }
 }
 
+/// What a ring asks before a prepublished key takes over from the active one (WP-4.5, owner
+/// decision): every peer that verifies the ring holds the pin of its epoch.
+pub trait ActivationGate: Send + Sync {
+    /// Whether `ring`, at `epoch`, may activate its prepublished key now.
+    fn may_activate(&self, ring: &str, epoch: u64) -> bool;
+}
+
 /// Where a ring's transitions are recorded besides its journal: the `operations` audit.
 pub trait Recorder: Send + Sync {
     fn record(&self, ring: &str, entry: &Entry);
@@ -683,6 +690,8 @@ pub struct Ring {
     stopped: AtomicBool,
     /// Set when an identity reset retired the ring: it signs nothing more in this process.
     retired: AtomicBool,
+    /// Asked before a prepublished key takes over (WP-4.5); none lets every one take over.
+    gate: RwLock<Option<Arc<dyn ActivationGate>>>,
 }
 
 impl fmt::Debug for Ring {
@@ -868,8 +877,15 @@ impl Ring {
             serial: Mutex::new(()),
             stopped: AtomicBool::new(false),
             retired: AtomicBool::new(false),
+            gate: RwLock::new(None),
         };
         Ok(opened)
+    }
+
+    /// Asks `gate` before a prepublished key takes over from the active one (WP-4.5): set once the
+    /// memberships the ring is pinned by are open.
+    pub fn set_gate(&self, gate: Arc<dyn ActivationGate>) {
+        *self.gate.write().unwrap_or_else(PoisonError::into_inner) = Some(gate);
     }
 
     /// Signs the ring's bindings with `binder`.
@@ -1239,6 +1255,24 @@ impl Ring {
             let Some(due) = due else {
                 break;
             };
+            // A key takes over only once every peer holds the pin of this epoch (WP-4.5); until
+            // then the active key goes on signing.
+            if active.is_some()
+                && let Some(gate) = self
+                    .gate
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone()
+                && !gate.may_activate(self.id, self.read().epoch)
+            {
+                tracing::info!(
+                    event.name = "host.keys.activation_held",
+                    component = "host",
+                    ring = self.id,
+                    "a prepublished key waits for every peer to hold its pin"
+                );
+                break;
+            }
             let activated = match &active {
                 Some(active) => {
                     let retired = self.entry(Kind::Retired, active, 0, now);

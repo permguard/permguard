@@ -264,6 +264,28 @@ pub const REGISTRY: &[ActionSchema] = &[
         phases: false,
     },
     mutation("host.membership.held", HOST),
+    // The ring re-pin (WP-4.5): the re-pin, the cutover, an acknowledgement and the retiring
+    // pin's drop, each a mutation; a rollback or an equivocation an observation.
+    mutation("host.membership.repinned", HOST),
+    mutation("host.membership.cutover", HOST),
+    mutation("host.membership.acknowledged", HOST),
+    mutation("host.membership.pin_retired", HOST),
+    ActionSchema {
+        action: "host.membership.repin_rollback",
+        class: Class::Security,
+        root: HOST,
+        facts: &[("ring", FactType::Text(128)), ("epoch", FactType::Uint)],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
+    ActionSchema {
+        action: "host.membership.repin_equivocation",
+        class: Class::Security,
+        root: HOST,
+        facts: &[("ring", FactType::Text(128)), ("epoch", FactType::Uint)],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
     // Assurance appraisal (WP-4.2): an appraisal a mutation; each operator approval it takes a
     // record of its own inside that operation, with its principal, scope, reason and expiry; no
     // evidence is ever a fact.

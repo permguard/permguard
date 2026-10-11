@@ -174,6 +174,7 @@ fn the_membership_records_are_the_bytes_the_independent_generator_computed() {
         min_assurance: None,
         assurance_binding: None,
         ring_pins: vec![RingPin {
+            retiring: false,
             owner: Role::Member,
             ring: "data.attest".to_owned(),
             epoch: 1,
@@ -696,5 +697,120 @@ fn the_task_router_records_are_the_bytes_the_independent_generator_computed() {
     assert_eq!(
         ReplayEntry::decode(&hex(&r["replay_entry"])).expect("decodes"),
         entry
+    );
+}
+
+/// The ring re-pin's records (WP-4.5): the member's statement at its ring's next epoch as a
+/// `repin` message carries it, the manifest that pins it with the replaced set retiring, a cutover
+/// and its message, an acknowledgement and a delivery.
+#[test]
+fn the_ring_repin_records_are_the_bytes_the_independent_generator_computed() {
+    use permguard_host::membership::record::{Acknowledgement, Cutover, Delivered, TaskMessage};
+
+    let v = vectors();
+    let r = &v["repin"];
+    let membership_id = id(&v["membership_id"]);
+    let statement = RingStatement {
+        ring: "data.attest".to_owned(),
+        epoch: 2,
+        suite: Suite::Ed25519Sha256V1,
+        keys: vec![text(&v["ring_statement"]["jwk"])],
+        binding: hex(&r["binding"]),
+    };
+    let bytes = statement.encode().expect("encodes");
+    assert_eq!(bytes, hex(&r["ring_statement"]));
+    assert_eq!(RingStatement::decode(&bytes).expect("decodes"), statement);
+    let message = TaskMessage {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+        request_id: "repin-data.attest-2".to_owned(),
+        body: bytes,
+        kind: MessageKind::Repin,
+    };
+    assert_eq!(message.encode().expect("encodes"), hex(&r["repin_message"]));
+
+    // The re-pinned manifest: the new set current, the one it replaced retiring.
+    let envelope = hex(&r["manifest"]["cose_sign1"]);
+    let payload = Sign1::decode(&envelope)
+        .expect("a COSE_Sign1")
+        .verify(
+            Suite::Ed25519Sha256V1,
+            &hex(&v["operations"]["public_key"]),
+            protected::MEMBERSHIP_MANIFEST,
+        )
+        .expect("verifies under the operations key")
+        .to_vec();
+    assert_eq!(payload, hex(&r["manifest"]["payload"]));
+    let manifest = Manifest::decode(&payload).expect("decodes");
+    let genesis = hex(&v["manifest_genesis"]["cose_sign1"]);
+    assert_eq!(manifest.previous, Some(manifest_digest(&genesis)));
+    let ring_digest: [u8; 32] = hex(&r["ring_digest"]).try_into().expect("32 bytes");
+    let old_digest: [u8; 32] = hex(&v["ring_statement"]["digest"])
+        .try_into()
+        .expect("32 bytes");
+    assert_eq!(
+        manifest.ring_pins,
+        vec![
+            RingPin {
+                owner: Role::Member,
+                ring: "data.attest".to_owned(),
+                epoch: 2,
+                key_set_digest: ring_digest,
+                binding: hex(&r["binding"]),
+                retiring: false,
+            },
+            RingPin {
+                owner: Role::Member,
+                ring: "data.attest".to_owned(),
+                epoch: 1,
+                key_set_digest: old_digest,
+                binding: hex(&v["ring_statement"]["binding"]),
+                retiring: true,
+            },
+        ]
+    );
+    assert_eq!(manifest.encode().expect("encodes"), payload);
+
+    let cutover = Cutover {
+        ring: "data.attest".to_owned(),
+        epoch: 2,
+        streams: vec![
+            ("permguard.events".to_owned(), 7),
+            ("permguard.decisions".to_owned(), 41),
+        ],
+    };
+    let bytes = cutover.encode().expect("encodes");
+    assert_eq!(bytes, hex(&r["cutover"]));
+    let message = TaskMessage {
+        membership_id,
+        task_id: "decisions".to_owned(),
+        epoch: 2,
+        request_id: "cutover-data.attest-2".to_owned(),
+        body: bytes,
+        kind: MessageKind::Cutover,
+    };
+    assert_eq!(
+        message.encode().expect("encodes"),
+        hex(&r["cutover_message"])
+    );
+    let acknowledgement = Acknowledgement {
+        ring: "data.attest".to_owned(),
+        epoch: 2,
+        stream: "permguard.decisions".to_owned(),
+        through_seq: 40,
+    };
+    assert_eq!(
+        acknowledgement.encode().expect("encodes"),
+        hex(&r["acknowledgement"])
+    );
+    assert_eq!(
+        Delivered {
+            epoch: 2,
+            at: AT + 102,
+        }
+        .encode()
+        .expect("encodes"),
+        hex(&r["delivered"])
     );
 }

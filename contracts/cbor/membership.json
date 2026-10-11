@@ -1,6 +1,6 @@
 {
-  "artifact": "Membership records (WP-4.1) assurance appraisal (WP-4.2) task sessions (WP-4.3) and the task router (WP-4.4): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
-  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) of 2026-10-10 (assurance appraisal, task sessions and leases) and of 2026-10-11 (versioned contracts, progress, watches, the replay window); crates/permguard-host/src/membership/record.rs",
+  "artifact": "Membership records (WP-4.1) assurance appraisal (WP-4.2) task sessions (WP-4.3) the task router (WP-4.4) and the ring re-pin (WP-4.5): the manifest payload, signed as a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs by the coordinator's host.operations key, content type permguard.membership.manifest.v1, its kid that key's <ring>:<thumbprint>; the invitation, the pending membership and the journal entry the store keeps under host/members/; the enrollment and membership requests and answers a peer session carries",
+  "authority": "1-architecture/3-architecture-server-host-membership.md, 6-contracts/8-contract-host-api.md (Membership), owner decisions of 2026-10-09 (files, byte shapes, token proof, request digest, manifest delivery, identity reset) of 2026-10-10 (assurance appraisal, task sessions and leases) and of 2026-10-11 (versioned contracts, progress, watches, the replay window; the re-pin, the retiring pin, the cutover, the activation gate); crates/permguard-host/src/membership/record.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "host_ref": {
@@ -53,7 +53,8 @@
         { "label": 2, "name": "ring", "type": "text", "occurs": "required" },
         { "label": 3, "name": "epoch", "type": "uint", "occurs": "required" },
         { "label": 4, "name": "key_set_digest", "type": "bytes", "occurs": "required", "note": "32 bytes (key-set.json)" },
-        { "label": 5, "name": "binding", "type": "bytes", "occurs": "required", "note": "the owner's ring binding, COSE_Sign1 (keys.json ring_binding)" }
+        { "label": 5, "name": "binding", "type": "bytes", "occurs": "required", "note": "the owner's ring binding, COSE_Sign1 (keys.json ring_binding)" },
+        { "label": 6, "name": "retiring", "type": "bool", "occurs": "optional", "note": "`true` for the set a re-pin replaced, kept until every stream's spans below its cutover are acknowledged; absent otherwise (WP-4.5)" }
       ]
     },
     "ring_statement": {
@@ -157,7 +158,7 @@
       "keys": "int",
       "fields": [
         { "label": 1, "name": "seq", "type": "uint", "occurs": "required", "note": "from 1" },
-        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "invited, invite_revoked, enrolled, manifest, joined, orphaned or held" },
+        { "label": 2, "name": "kind", "type": "text", "occurs": "required", "note": "invited, invite_revoked, enrolled, manifest, joined, orphaned, held, cutover or acknowledged" },
         { "label": 3, "name": "subject", "type": "bytes", "occurs": "required", "note": "the invitation's or the membership's id" },
         { "label": 4, "name": "epoch", "type": "uint", "occurs": "optional", "note": "a manifest's epoch; for `held`, the epoch the peer named" },
         { "label": 5, "name": "at", "type": "uint", "occurs": "required" },
@@ -263,7 +264,7 @@
         { "label": 3, "name": "epoch", "type": "uint", "occurs": "required", "note": "the lease's: below the current one is stale, above it unknown" },
         { "label": 4, "name": "request_id", "type": "text", "occurs": "required", "note": "1 to 128 printable bytes" },
         { "label": 5, "name": "body", "type": "bytes", "occurs": "required", "note": "at most 448 KiB, inside one 512 KiB peer frame, and within the task's signed max_body_bytes" },
-        { "label": 6, "name": "kind", "type": "text", "occurs": "optional", "note": "`progress` or `watch`; absent for a message the task's handler answers (WP-4.4)" }
+        { "label": 6, "name": "kind", "type": "text", "occurs": "optional", "note": "`progress`, `watch` (WP-4.4), `repin` or `cutover` (WP-4.5); absent for a message the task's handler answers" }
       ]
     },
     "task_answer": {
@@ -352,6 +353,37 @@
         { "label": 3, "name": "counter", "type": "uint", "occurs": "required", "note": "the newest wins" }
       ]
     },
+    "cutover": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ring", "type": "text", "occurs": "required", "note": "the member's ring a re-pin replaced" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required", "note": "the ring epoch the re-pin accepted" },
+        { "label": 3, "name": "streams", "type": "array<map:cutover_stream>", "occurs": "required", "note": "at most 64, in stream order, each once; none when the member signs no stream under the ring" }
+      ]
+    },
+    "cutover_stream": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "stream", "type": "text", "occurs": "required", "note": "1 to 256 printable bytes" },
+        { "label": 2, "name": "from_seq", "type": "uint", "occurs": "required", "note": "the first sequence signed under the new set: the old one verifies only below it" }
+      ]
+    },
+    "acknowledgement": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "ring", "type": "text", "occurs": "required" },
+        { "label": 2, "name": "epoch", "type": "uint", "occurs": "required", "note": "the cutover's" },
+        { "label": 3, "name": "stream", "type": "text", "occurs": "required" },
+        { "label": 4, "name": "through_seq", "type": "uint", "occurs": "required", "note": "the stream's spans under the retiring set taken through it" }
+      ]
+    },
+    "delivered": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "epoch", "type": "uint", "occurs": "required", "note": "the last manifest epoch the member received, by a lease or a sync" },
+        { "label": 2, "name": "at", "type": "uint", "occurs": "required", "note": "the coordinator's clock" }
+      ]
+    },
     "replay_entry": {
       "keys": "int",
       "fields": [
@@ -373,5 +405,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered"]
 }

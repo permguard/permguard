@@ -23,7 +23,7 @@ use permguard_core::assurance::AssuranceProfile;
 use permguard_core::authz::Selector;
 
 use super::record::{
-    Action, EnrollAnswer, EnrollRequest, HostRef, Lease, LeaseAnswer, LeaseRequest,
+    Action, Cutover, EnrollAnswer, EnrollRequest, HostRef, Lease, LeaseAnswer, LeaseRequest,
     MembershipAnswer, MembershipRequest, MessageKind, Pending, ProgressAnswer, Role, Status, Task,
     TaskAnswer, TaskMessage, TaskProgress, WatchEvent, WatchRequest, channel_binding,
 };
@@ -136,6 +136,8 @@ pub enum TaskState {
 pub struct MemberTask {
     pub lease: Lease,
     channel: Box<dyn TaskChannel>,
+    /// The coordinator as the session proved it: what a re-pin's manifest and lease verify under.
+    peer: crate::identity::Verified,
     /// The request id of the watch this session became (WP-4.4).
     watch: Option<String>,
 }
@@ -168,6 +170,28 @@ impl MemberTask {
             .exchange(MessageKind::Progress, &request_id, progress.encode()?)
             .await?;
         Ok(ProgressAnswer::decode(&answer)?)
+    }
+
+    /// Sends `body` as a message of `kind`, for tests that send what a member never would.
+    #[cfg(test)]
+    pub(crate) async fn exchange_for_tests(
+        &mut self,
+        kind: MessageKind,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, MembershipError> {
+        self.exchange(kind, "test", body).await
+    }
+
+    /// Sends `cutover`, the first sequence of each stream under a re-pinned set (WP-4.5): answered
+    /// once the coordinator journaled it.
+    pub async fn cutover(&mut self, cutover: &Cutover) -> Result<(), MembershipError> {
+        self.exchange(
+            MessageKind::Cutover,
+            &format!("cutover-{}-{}", cutover.ring, cutover.epoch),
+            cutover.encode()?,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Turns this session into a watch from `positions`, the counter held per key (WP-4.4): the
@@ -556,11 +580,295 @@ impl Member<'_> {
         self.ask(initiator, id, Action::Revoke).await
     }
 
+    /// Accepts `envelope`, a revision the coordinator answered on a task session, as the exact
+    /// successor of the manifest held.
+    fn accept_revision(
+        &self,
+        initiator: Initiator,
+        id: &[u8; 16],
+        peer: &crate::identity::Verified,
+        envelope: Vec<u8>,
+        now: u64,
+    ) -> Result<(), MembershipError> {
+        let held = self.store.membership(id).ok_or_else(|| {
+            MembershipError::Unknown(format!("no membership `{}`", uuid_text(id)))
+        })?;
+        let statements = self.store.statements_held(id, held.epoch());
+        let accepted = self.store.check_sync(
+            id,
+            peer,
+            &MembershipAnswer {
+                status: Status::Active,
+                manifests: vec![envelope],
+                ring_statements: statements.clone(),
+            },
+            now,
+        )?;
+        for (manifest, envelope, digest) in accepted {
+            self.mutations
+                .run(
+                    Begin {
+                        domain: DOMAIN,
+                        operation: SYNC,
+                        action: AUDIT_SYNCED,
+                        initiator: initiator.clone(),
+                        request: None,
+                        target: Some(uuid_text(id)),
+                    },
+                    |applying| {
+                        self.store
+                            .accept_with(applying, &manifest, &envelope, &digest, &statements, now)
+                            .map_err(failure)?;
+                        Ok(Applied {
+                            revision: 0,
+                            target: Some(uuid_text(id)),
+                            value: (),
+                        })
+                    },
+                )
+                .map_err(engine)?;
+        }
+        Ok(())
+    }
+
+    /// Re-pins this Host's `ring` on the membership of `task` (WP-4.5): the statement of the
+    /// ring's current set, the manifest the coordinator answers accepted as the exact successor
+    /// carrying it, and the new lease on the same connection, which the session goes on under.
+    /// Only once this returns may the ring's prepublished key take over.
+    pub async fn repin(
+        &self,
+        initiator: Initiator,
+        task: &mut MemberTask,
+        ring: &str,
+    ) -> Result<(), MembershipError> {
+        let id = task.lease.membership_id;
+        let statement = super::statement_of(
+            self.rings
+                .iter()
+                .find(|held| held.id() == ring)
+                .ok_or_else(|| MembershipError::Ring(format!("this Host composes no `{ring}`")))?,
+        )?;
+        let answer = task
+            .exchange(
+                MessageKind::Repin,
+                &format!("repin-{ring}-{}", statement.epoch),
+                statement.encode()?,
+            )
+            .await?;
+        let answer = LeaseAnswer::decode(&answer)?;
+        let envelope = answer.manifest.ok_or_else(|| {
+            MembershipError::Unverified("the re-pin answered no manifest".to_owned())
+        })?;
+        let now = self.time.now_secs();
+        let peer = task.peer.clone();
+        // A revision this Host cannot verify with the statements it holds (the coordinator's own
+        // rings moved since) is fetched with them by a sync (after the review).
+        if let Err(MembershipError::Unverified(_)) =
+            self.accept_revision(initiator.clone(), &id, &peer, envelope, now)
+        {
+            self.sync(initiator, &id).await?;
+        }
+        let held = self.store.membership(&id).ok_or_else(|| {
+            MembershipError::Storage("the membership is no longer held".to_owned())
+        })?;
+        let Some((manifest, ..)) = &held.manifest else {
+            return Err(MembershipError::Storage("no manifest held".to_owned()));
+        };
+        // The manifest pins the set this Host presented, and keeps the one it replaced retiring.
+        let pinned = manifest.ring_pins.iter().any(|pin| {
+            pin.owner == Role::Member
+                && pin.ring == ring
+                && !pin.retiring
+                && pin.epoch == statement.epoch
+                && pin.binding == statement.binding
+        });
+        if !pinned {
+            return Err(MembershipError::Unverified(format!(
+                "the manifest does not pin the `{ring}` set this Host presented"
+            )));
+        }
+        let statements = self.store.statements_held(&id, manifest.epoch);
+        let lease = super::verify_lease(&answer.lease, &peer, manifest, &statements)?;
+        let skew = manifest.lease_policy.clock_skew_seconds;
+        let same = Lease {
+            epoch: task.lease.epoch,
+            issued_at: task.lease.issued_at,
+            ..lease.clone()
+        } == task.lease;
+        if !same || lease.epoch != manifest.epoch || lease.issued_at > now.saturating_add(skew) {
+            return Err(MembershipError::Unverified(
+                "the re-pin's lease is not this session's at the manifest's epoch".to_owned(),
+            ));
+        }
+        self.store.keep_lease(&id, &lease.task_id, &answer.lease)?;
+        task.lease = lease;
+        Ok(())
+    }
+
+    /// A task session of `id` on the first of `tasks` that takes one, over its selector's prefix.
+    async fn any_session(
+        &self,
+        initiator: &Initiator,
+        id: &[u8; 16],
+        tasks: &[Task],
+    ) -> Result<MemberTask, MembershipError> {
+        let mut last = MembershipError::Invalid("the membership grants no task".to_owned());
+        for task in tasks {
+            match self
+                .open_task(
+                    initiator.clone(),
+                    id,
+                    &task.task_id,
+                    &task.selector.prefix().to_string(),
+                    Vec::new(),
+                )
+                .await
+            {
+                Ok(session) => return Ok(session),
+                Err(error) => last = error,
+            }
+        }
+        Err(last)
+    }
+
+    /// Ends the grace of every ring of this Host that an active membership it is a member of keeps
+    /// retiring, once the ring activated its new key: a stream-less cutover, this Host signing no
+    /// stream before WP-5.x (owner decision, after the review). Answers how many were sent.
+    pub async fn cutover_due(&self, initiator: Initiator) -> usize {
+        let mut done = 0;
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member || held.status != Status::Active {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for pin in manifest
+                .ring_pins
+                .iter()
+                .filter(|pin| pin.owner == Role::Member && !pin.retiring)
+            {
+                let retiring = manifest.ring_pins.iter().any(|other| {
+                    other.owner == Role::Member && other.ring == pin.ring && other.retiring
+                });
+                // Activated: the ring holds no key waiting to take over.
+                let activated = self
+                    .rings
+                    .iter()
+                    .find(|ring| ring.id() == pin.ring)
+                    .and_then(|ring| ring.view().ok())
+                    .is_some_and(|view| {
+                        view.keys
+                            .iter()
+                            .all(|key| key.state != crate::keys::record::State::Prepublished)
+                    });
+                if !retiring || !activated {
+                    continue;
+                }
+                let sent = async {
+                    let mut session = self.any_session(&initiator, &id, &manifest.tasks).await?;
+                    session
+                        .cutover(&Cutover {
+                            ring: pin.ring.clone(),
+                            epoch: pin.epoch,
+                            streams: Vec::new(),
+                        })
+                        .await
+                }
+                .await;
+                match sent {
+                    Ok(()) => done += 1,
+                    Err(error) => tracing::warn!(
+                        event.name = "host.membership.cutover_failed",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        ring = %pin.ring,
+                        error = %error,
+                        "a ring's cutover could not be sent: the next pass tries again"
+                    ),
+                }
+            }
+        }
+        done
+    }
+
+    /// Re-pins every ring of this Host that an active membership it is a member of pins at an
+    /// older epoch (WP-4.5): one task session per ring and membership, on the first task that
+    /// takes one. A failure is logged and the next one tried; answers how many were re-pinned.
+    pub async fn repin_due(&self, initiator: Initiator) -> usize {
+        let mut done = 0;
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member || held.status != Status::Active {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            for pin in manifest
+                .ring_pins
+                .iter()
+                .filter(|pin| pin.owner == Role::Member && !pin.retiring)
+            {
+                let lagging = self
+                    .rings
+                    .iter()
+                    .find(|ring| ring.id() == pin.ring)
+                    .and_then(|ring| super::statement_of(ring).ok())
+                    .is_some_and(|statement| statement.epoch > pin.epoch);
+                if !lagging {
+                    continue;
+                }
+                let repinned = async {
+                    let mut session = self.any_session(&initiator, &id, &manifest.tasks).await?;
+                    self.repin(initiator.clone(), &mut session, &pin.ring).await
+                }
+                .await;
+                match repinned {
+                    Ok(()) => done += 1,
+                    Err(error) => tracing::warn!(
+                        event.name = "host.membership.repin_failed",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        ring = %pin.ring,
+                        error = %error,
+                        "a ring could not be re-pinned: the next pass tries again, and its key waits"
+                    ),
+                }
+            }
+        }
+        done
+    }
+
     /// Opens a task session of `id` over `resource` (WP-4.3): only the member opens one. The
     /// lease is verified under the coordinator's pinned operations key, bound to this
     /// connection and this incarnation, and kept; evidence, when given, is appraised first and
     /// the revised manifest accepted as the exact successor.
+    /// A coordinator that moved past the epoch held is synced with once, and the session asked
+    /// for again (WP-4.5, after the review: its own rings re-pinned).
     pub async fn open_task(
+        &self,
+        initiator: Initiator,
+        id: &[u8; 16],
+        task_id: &str,
+        resource: &str,
+        evidence: Vec<(String, Vec<u8>)>,
+    ) -> Result<MemberTask, MembershipError> {
+        match self
+            .open_task_once(initiator.clone(), id, task_id, resource, evidence.clone())
+            .await
+        {
+            Err(MembershipError::Remote { code, .. })
+                if code == permguard_core::codes::host::EPOCH_STALE =>
+            {
+                self.sync(initiator.clone(), id).await?;
+                self.open_task_once(initiator, id, task_id, resource, evidence)
+                    .await
+            }
+            other => other,
+        }
+    }
+
+    async fn open_task_once(
         &self,
         initiator: Initiator,
         id: &[u8; 16],
@@ -609,48 +917,7 @@ impl Member<'_> {
         let now = self.time.now_secs();
         // A revision the appraisal at the session issued: the exact successor, accepted first.
         if let Some(envelope) = answer.manifest {
-            let statements = self.store.statements_held(id, held.epoch());
-            let accepted = self.store.check_sync(
-                id,
-                &opened.peer,
-                &MembershipAnswer {
-                    status: Status::Active,
-                    manifests: vec![envelope],
-                    ring_statements: statements.clone(),
-                },
-                now,
-            )?;
-            for (manifest, envelope, digest) in accepted {
-                self.mutations
-                    .run(
-                        Begin {
-                            domain: DOMAIN,
-                            operation: SYNC,
-                            action: AUDIT_SYNCED,
-                            initiator: initiator.clone(),
-                            request: None,
-                            target: Some(uuid_text(id)),
-                        },
-                        |applying| {
-                            self.store
-                                .accept_with(
-                                    applying,
-                                    &manifest,
-                                    &envelope,
-                                    &digest,
-                                    &statements,
-                                    now,
-                                )
-                                .map_err(failure)?;
-                            Ok(Applied {
-                                revision: 0,
-                                target: Some(uuid_text(id)),
-                                value: (),
-                            })
-                        },
-                    )
-                    .map_err(engine)?;
-            }
+            self.accept_revision(initiator.clone(), id, &opened.peer, envelope, now)?;
         }
         let held = self.store.membership(id).ok_or_else(|| {
             MembershipError::Storage("the membership is no longer held".to_owned())
@@ -693,6 +960,7 @@ impl Member<'_> {
         }
         self.store.keep_lease(id, task_id, &answer.lease)?;
         Ok(MemberTask {
+            peer: opened.peer.clone(),
             watch: None,
             lease,
             channel: opened.channel,

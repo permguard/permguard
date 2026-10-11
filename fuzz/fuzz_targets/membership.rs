@@ -9,9 +9,9 @@ use libfuzzer_sys::fuzz_target;
 
 use permguard_core::assurance::EvidenceClass;
 use permguard_host::membership::record::{
-    Action, ContractRole, EnrollAnswer, EnrollRequest, Entry, Invitation, KeptProgress, Kind,
+    Acknowledgement, Action, ContractRole, Cutover, Delivered, EnrollAnswer, EnrollRequest, Entry, Invitation, KeptProgress, Kind,
     LastSession, Lease, LeaseAnswer, LeaseRequest, Manifest, MembershipAnswer, MembershipRequest,
-    Pending, ProgressAnswer, ReplayEntry, Role, Status, TaskAnswer, TaskMessage, TaskProgress,
+    Pending, ProgressAnswer, ReplayEntry, RingStatement, Role, Status, TaskAnswer, TaskMessage, TaskProgress,
     TaskType, Verdict, WatchEvent, WatchRequest,
 };
 
@@ -77,6 +77,19 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     if let Ok(record) = ReplayEntry::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    // The ring re-pin's records (WP-4.5).
+    if let Ok(record) = RingStatement::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = Cutover::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = Acknowledgement::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = Delivered::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     // The tokens a record or a Host API request names: whatever reads back spells itself.

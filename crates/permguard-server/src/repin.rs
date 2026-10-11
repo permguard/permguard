@@ -1,0 +1,72 @@
+// Copyright (c) 2022 Nitro Agility S.r.l.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The ring re-pin pass (WP-4.5): every minute, the memberships this Host coordinates are revised
+//! when its own rings moved, and its rings that its memberships as a member pin at an older epoch
+//! are re-pinned on a task session. The rings' activation gate waits for both.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use permguard_host::api::HostApi;
+use permguard_host::membership::service::Coordinating;
+
+/// How often the pass runs.
+pub const PASS: Duration = Duration::from_secs(60);
+
+/// The running pass; dropping it stops it.
+pub struct Repinning(tokio::task::JoinHandle<()>);
+
+impl Drop for Repinning {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Runs the pass now and every [`PASS`] until the handle is dropped.
+pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>) -> Repinning {
+    Repinning(tokio::spawn(async move {
+        let mut interval = tokio::time::interval(PASS);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            interval.tick().await;
+            let revising = Arc::clone(&coordinating);
+            match tokio::task::spawn_blocking(move || {
+                revising
+                    .revise_coordinated()
+                    .and_then(|revised| Ok(revised + revising.retire_due()?))
+            })
+            .await
+            {
+                Ok(Ok(0)) => {}
+                Ok(Ok(revised)) => tracing::info!(
+                    event.name = "host.membership.coordinated_repinned",
+                    component = "host",
+                    memberships = revised,
+                    "the memberships this Host coordinates now pin its moved rings"
+                ),
+                Ok(Err(error)) => tracing::warn!(
+                    event.name = "host.membership.coordinated_repin_failed",
+                    component = "host",
+                    error = %error,
+                    "a membership could not be revised for this Host's rings; the next pass tries again"
+                ),
+                Err(error) => tracing::error!(
+                    event.name = "host.membership.coordinated_repin_failed",
+                    component = "host",
+                    error = %error,
+                    "the coordinator's re-pin pass stopped; the next pass tries again"
+                ),
+            }
+            let repinned = api.repin_due().await + api.cutover_due().await;
+            if repinned > 0 {
+                tracing::info!(
+                    event.name = "host.membership.member_repinned",
+                    component = "host",
+                    rings = repinned,
+                    "this Host's moved rings are re-pinned with its coordinators"
+                );
+            }
+        }
+    }))
+}

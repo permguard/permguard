@@ -57,6 +57,10 @@ pub const AUDIT_EPOCH_UNKNOWN: &str = "host.membership.epoch_unknown";
 pub const AUDIT_CLONE_ALARM: &str = "host.membership.clone_alarm";
 /// A membership held for review, a mutation of the store.
 pub const AUDIT_HELD: &str = "host.membership.held";
+/// A re-pin presenting a set below the pin (`security`, WP-4.5).
+pub const AUDIT_REPIN_ROLLBACK: &str = "host.membership.repin_rollback";
+/// A re-pin presenting another set at the pinned epoch (`security`, WP-4.5).
+pub const AUDIT_REPIN_EQUIVOCATION: &str = "host.membership.repin_equivocation";
 /// The operation that holds a membership for review.
 pub const HOLD: &str = "members.hold";
 
@@ -93,6 +97,22 @@ pub struct Opened {
     sessions: Arc<LiveSessions>,
     membership_id: [u8; 16],
     key: u64,
+}
+
+impl Opened {
+    /// The epoch the session's lease now runs under: a re-pin leases it again (WP-4.5).
+    fn set_epoch(&self, epoch: u64) {
+        if let Some(live) = self
+            .sessions
+            .sessions
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_mut(&self.membership_id)
+            .and_then(|open| open.get_mut(&self.key))
+        {
+            live.epoch = epoch;
+        }
+    }
 }
 
 impl Drop for Opened {
@@ -710,6 +730,16 @@ impl super::service::Coordinating {
                 },
             )
             .map_err(|error| refusal(codes::common::UNAVAILABLE, error.to_string()))?;
+        // The member holds this manifest now: what the activation gate waits for (WP-4.5).
+        self.store
+            .keep_delivered(
+                &id,
+                &super::record::Delivered {
+                    epoch: manifest.epoch,
+                    at: now,
+                },
+            )
+            .map_err(|error| refusal(codes::common::UNAVAILABLE, error.to_string()))?;
         // No lease without its record: the trail refusing it refuses the lease (fail closed).
         let (boot, coordinator_boot) = (hex(&request.member_boot_id), hex(&coordinator_boot_id));
         let who = subject(&peer.host_id);
@@ -869,6 +899,122 @@ impl CoordinatorTask {
         TaskAnswer {
             request_id: message.request_id.clone(),
             body,
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
+    }
+
+    /// Re-pins the member's ring the message's statement names (WP-4.5): the manifest at the next
+    /// epoch, answered with a new lease on this connection, so the session goes on.
+    fn repin(&mut self, message: &TaskMessage, now: u64) -> Result<Vec<u8>, TaskRefusal> {
+        let statement = super::record::RingStatement::decode(&message.body)
+            .map_err(|error| kept(codes::common::INVALID_ARGUMENT, error.0))?;
+        let id = self.lease.membership_id;
+        let target = uuid_text(&id);
+        if let Err(error) = self.coordinating.repin(&self.peer, &id, &statement, now) {
+            // A set presented as current below the pin, or two sets at one epoch, is recorded.
+            let observed = match &error {
+                MembershipError::NotSuccessor(_) => Some(AUDIT_REPIN_ROLLBACK),
+                MembershipError::Equivocation(_) => Some(AUDIT_REPIN_EQUIVOCATION),
+                _ => None,
+            };
+            if let Some(action) = observed {
+                self.coordinating.observe(
+                    action,
+                    &self.peer,
+                    &target,
+                    &[
+                        ("ring", Fact::Text(&statement.ring)),
+                        ("epoch", Fact::Uint(statement.epoch)),
+                    ],
+                );
+            }
+            return Err(kept(super::service::code_of(&error), error.to_string()));
+        }
+        let parts = &self.coordinating;
+        let held = parts
+            .store
+            .membership(&id)
+            .ok_or_else(|| ended(codes::host::MEMBERSHIP_UNKNOWN, "the membership is gone"))?;
+        let Some((manifest, envelope, _)) = held.manifest else {
+            return Err(ended(codes::common::UNAVAILABLE, "no manifest held"));
+        };
+        let operations = parts
+            .keys
+            .rings()
+            .iter()
+            .find(|ring| ring.id() == HOST_OPERATIONS)
+            .cloned()
+            .ok_or_else(|| ended(codes::common::UNAVAILABLE, "no `host.operations` ring"))?;
+        let lease = Lease {
+            epoch: manifest.epoch,
+            issued_at: now,
+            ..self.lease.clone()
+        };
+        let signed = sign_lease(&operations, &lease)
+            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?;
+        parts
+            .store
+            .keep_delivered(
+                &id,
+                &super::record::Delivered {
+                    epoch: manifest.epoch,
+                    at: now,
+                },
+            )
+            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?;
+        let (boot, coordinator_boot) =
+            (hex(&lease.member_boot_id), hex(&lease.coordinator_boot_id));
+        parts
+            .mutations
+            .project(
+                &AuditEvent::new(
+                    AUDIT_LEASE_ISSUED,
+                    Subject::System(&subject(&self.peer.host_id)),
+                )
+                .on(&target)
+                .with_outcome(AuditOutcome::Ok)
+                .with_facts(&[
+                    ("task", Fact::Text(&lease.task_id)),
+                    ("epoch", Fact::Uint(lease.epoch)),
+                    ("resource", Fact::Text(&lease.resource)),
+                    ("member_boot_id", Fact::Text(&boot)),
+                    ("coordinator_boot_id", Fact::Text(&coordinator_boot)),
+                    ("expires_at", Fact::Uint(lease.expires_at)),
+                ]),
+            )
+            .map_err(|error| {
+                ended(
+                    codes::host::AUDIT_UNAVAILABLE,
+                    format!("the lease could not be recorded: {error}"),
+                )
+            })?;
+        self._opened.set_epoch(manifest.epoch);
+        self.lease = lease;
+        let body = LeaseAnswer {
+            lease: signed,
+            manifest: Some(envelope),
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))?;
+        TaskAnswer {
+            request_id: message.request_id.clone(),
+            body,
+        }
+        .encode()
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
+    }
+
+    /// Journals the member's cutover before it is answered (WP-4.5).
+    fn cutover(&self, message: &TaskMessage, now: u64) -> Result<Vec<u8>, TaskRefusal> {
+        let cutover = super::record::Cutover::decode(&message.body)
+            .map_err(|error| kept(codes::common::INVALID_ARGUMENT, error.0))?;
+        self.coordinating
+            .cutover(&self.peer, &self.lease.membership_id, &cutover, now)
+            .map_err(|error| kept(super::service::code_of(&error), error.to_string()))?;
+        TaskAnswer {
+            request_id: message.request_id.clone(),
+            body: Vec::new(),
         }
         .encode()
         .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
@@ -1047,6 +1193,8 @@ impl TaskSession for CoordinatorTask {
             MessageKind::Progress => self.progress(&message, now),
             MessageKind::Watch => self.watch(&message),
             MessageKind::Handler => self.handled(&message, bytes),
+            MessageKind::Repin => self.repin(&message, now),
+            MessageKind::Cutover => self.cutover(&message, now),
         }
     }
 

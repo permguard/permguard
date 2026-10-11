@@ -225,9 +225,27 @@ impl Coordinating {
                     .map_err(engine)?;
             }
         }
-        self.store
+        let answer = self
+            .store
             .answer(&coordinator, &id, &peer.host_id, request.held_epoch)
-            .map_err(of)?
+            .map_err(of)?;
+        // The member holds the manifest in force now: what the activation gate waits for
+        // (WP-4.5).
+        if let Some(epoch) = self
+            .store
+            .membership(&id)
+            .and_then(|held| held.manifest.map(|(manifest, ..)| manifest.epoch))
+            && let Err(error) = self.store.keep_delivered(
+                &id,
+                &super::record::Delivered {
+                    epoch,
+                    at: self.time.now_secs(),
+                },
+            )
+        {
+            return Err(refusal(codes::common::UNAVAILABLE, error.to_string()));
+        }
+        answer
             .encode()
             .map_err(|error| refusal(codes::common::UNAVAILABLE, error.0))
     }

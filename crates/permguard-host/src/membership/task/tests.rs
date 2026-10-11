@@ -240,20 +240,25 @@ async fn a_stale_epoch_is_rejected_and_audited() {
     assert!(recorded.contains(&("presented".to_owned(), "1".to_owned())));
     assert!(recorded.contains(&("current".to_owned(), "2".to_owned())));
     assert!(c.tasks.live.of(&id).is_empty(), "the session ended");
-    // A lease asked at the old epoch is refused too; synced, the member is leased again.
+    // A lease asked at the old epoch is refused too, and audited; the member syncs on that
+    // refusal and is leased again (WP-4.5, after the review).
     drop(task);
-    let refused = member
-        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
-        .await
-        .err()
-        .expect("stale");
-    assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
-    member.sync(who(), &id).await.expect("synced");
+    let stale = |side: &Side| {
+        side.trail
+            .facts
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter(|(action, _)| action == AUDIT_EPOCH_STALE)
+            .count()
+    };
+    let before = stale(&c);
     let task = member
         .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
         .await
-        .expect("leased at the new epoch");
+        .expect("synced, then leased at the new epoch");
     assert_eq!(task.lease.epoch, 2);
+    assert_eq!(stale(&c), before + 1, "the stale lease request is audited");
 }
 
 #[tokio::test]
@@ -412,17 +417,14 @@ async fn a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new
     drop(m);
     let connector = loopback(&restored, &c);
     let member = member(&restored, &connector);
-    let refused = member
-        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
-        .await
-        .err()
-        .expect("stale");
-    assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
-    member.sync(who(), &id).await.expect("synced");
+    // Refused as stale, audited, then synced and leased (WP-4.5, after the review).
     let task = member
         .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
         .await
         .expect("a fresh lease");
+    let recorded = facts(&c, AUDIT_EPOCH_STALE);
+    assert!(recorded.contains(&("presented".to_owned(), "1".to_owned())));
+    assert!(recorded.contains(&("current".to_owned(), "2".to_owned())));
     assert_eq!(task.lease.epoch, 2, "the fence confirmed, no new epoch");
     assert_eq!(task.lease.member_boot_id, restored.host.identity.boot_id());
 }
