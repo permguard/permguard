@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 16] = [
+const REGISTRIES: [&str; 17] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -50,6 +50,7 @@ const REGISTRIES: [&str; 16] = [
     "mutation.json",
     "notp.json",
     "objects.json",
+    "operation-plan.json",
     "sealed-key.json",
     "session.json",
 ];
@@ -2086,6 +2087,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "grant.json" => grant_samples(),
         "layout.json" => layout_samples(),
         "audit.json" => audit_samples(),
+        "operation-plan.json" => operation_plan_samples(),
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
         "session.json" => session_samples(),
@@ -2193,6 +2195,56 @@ fn audit_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Anchor::decode(bytes)))),
+        ),
+    ]
+}
+
+fn operation_plan_samples() -> Vec<Sample> {
+    use permguard_host::operations::plan::{
+        Approval, KEYS_REVOKE, PlanReceipt, plan_body, plan_digest,
+    };
+
+    let parameters = [("reason", "drill"), ("compromised_at", "1800000000")];
+    let digest = plan_digest(KEYS_REVOKE, "host.operations:kid", 3, &parameters);
+    vec![
+        sample(
+            "plan_receipt",
+            PlanReceipt {
+                plan_id: SCOPE_ID,
+                operation: KEYS_REVOKE.to_owned(),
+                target: "host.operations:kid".to_owned(),
+                revision: 3,
+                principal: "spiffe://acme/operators/root".to_owned(),
+                plan_digest: digest.clone(),
+                expires: 1_800_086_400,
+                nonce: ZONE_ID,
+                approvals_required: 1,
+                host_id: HOST_ID,
+                created_at: 1_800_000_000,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(PlanReceipt::decode(bytes)))),
+        ),
+        sample(
+            "plan_approval",
+            Approval {
+                plan_digest: digest,
+                principal: "spiffe://acme/operators/second".to_owned(),
+                approved_at: 1_800_000_100,
+                host_id: HOST_ID,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Approval::decode(bytes)))),
+        ),
+        sample(
+            "plan_body",
+            plan_body(KEYS_REVOKE, "host.operations:kid", 3, &parameters),
+            &[],
+            None,
         ),
     ]
 }
@@ -2693,6 +2745,16 @@ fn test_audit_records_match_their_registry() {
 #[test]
 fn test_audit_records_refuse_unknown_labels() {
     assert_unknown_labels_refused("audit.json");
+}
+
+#[test]
+fn test_operation_plan_records_match_their_registry() {
+    assert_samples_match("operation-plan.json");
+}
+
+#[test]
+fn test_operation_plan_records_refuse_unknown_labels() {
+    assert_unknown_labels_refused("operation-plan.json");
 }
 
 #[test]

@@ -343,6 +343,12 @@ pub mod host {
     pub const PLAN_DIGEST_MISMATCH: &str = "plan_digest_mismatch";
     /// The plan has passed its expiry, or was already run.
     pub const PLAN_EXPIRED: &str = "plan_expired";
+    /// A run below the approvals its plan requires (WP-3.9).
+    pub const PLAN_APPROVALS_MISSING: &str = "plan_approvals_missing";
+    /// The planner approving its own plan (WP-3.9).
+    pub const PLAN_SELF_APPROVAL: &str = "plan_self_approval";
+    /// An approval the plan holds already, or does not need (WP-3.9).
+    pub const PLAN_APPROVAL_REFUSED: &str = "plan_approval_refused";
     /// The principal has more requests in flight, or arriving faster, than its bound allows.
     pub const PRINCIPAL_BOUND_EXCEEDED: &str = "principal_bound_exceeded";
     /// The grant store is not open on this process: no volume holds one.
@@ -681,6 +687,9 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         host::PLAN_UNKNOWN,
         host::PLAN_DIGEST_MISMATCH,
         host::PLAN_EXPIRED,
+        host::PLAN_APPROVALS_MISSING,
+        host::PLAN_SELF_APPROVAL,
+        host::PLAN_APPROVAL_REFUSED,
         host::PRINCIPAL_BOUND_EXCEEDED,
         host::GRANT_STORE_UNAVAILABLE,
         host::REPLAY_UNAVAILABLE,

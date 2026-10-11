@@ -167,6 +167,10 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.grant.revoke_planned", HOST),
     mutation("host.grant.revoked", HOST),
     mutation("host.grant.expired", HOST),
+    // An approval of a plan (WP-3.9): a mutation of the plan's domain.
+    mutation("host.plan.approved", HOST),
+    // A plan consumed ahead of its change (WP-3.9): the offline reset's.
+    mutation("host.plan.consumed", HOST),
     // The Host identity (WP-2.2): its provisioning, and each rotation a mutation.
     action("host.identity.provisioned", Class::Security, HOST),
     mutation("host.identity.rotated", HOST),

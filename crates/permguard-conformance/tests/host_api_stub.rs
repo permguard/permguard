@@ -72,6 +72,13 @@ const SHAPED: &[&str] = &[
     // The verification bundle (WP-3.4).
     "GetKeyBundleRequest",
     "GetKeyBundleResponse",
+    // The plans store (WP-3.9).
+    "ListPlansRequest",
+    "ListPlansResponse",
+    "OperationPlan",
+    "OperationPlanApproval",
+    "ApprovePlanRequest",
+    "ApprovePlanResponse",
     // The audit routes (WP-3.7).
     "ListAuditRecordsRequest",
     "ListAuditRecordsResponse",

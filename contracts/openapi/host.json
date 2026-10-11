@@ -267,7 +267,7 @@
         "description": "Under `identity.admin` on the Host (WP-4.1). Each coordinator asked to revoke the memberships this Host is a member of; the memberships it coordinates ended here; the identity retired, its public evidence kept under `host/identity/retired/`, its private keys destroyed and a new identity provisioned. The process signs nothing more and serves the new identity after a restart.",
         "requestBody": {
           "required": true,
-          "description": "The envelope's request id and the plan, as the plan step answered it.",
+          "description": "The envelope's request id, and the receipt the plan step answered.",
           "content": {
             "application/json": {
               "schema": {
@@ -288,7 +288,7 @@
             }
           },
           "400": {
-            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the receipt is not one, or not the one the plan step answered (`invalid_argument`, `plan_digest_mismatch`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -335,7 +335,7 @@
             }
           },
           "409": {
-            "description": "A normal reset some coordinator did not acknowledge, the identity unchanged (`identity_reset_incomplete`); the identity or a membership moved since the plan (`revision_mismatch`); the plan expired or ran (`plan_expired`); or the request id was reused (`request_id_reused`).",
+            "description": "A normal reset some coordinator did not acknowledge, the identity unchanged (`identity_reset_incomplete`); the identity or a membership moved since the plan (`revision_mismatch`); the plan expired or ran (`plan_expired`); or the request id was reused (`request_id_reused`); the plan holds fewer approvals than it requires (`plan_approvals_missing`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -646,7 +646,7 @@
       "post": {
         "operationId": "planGrantRevoke",
         "summary": "Plan the revocation of a grant",
-        "description": "Under `authz.admin` on the Host. The first step of a destructive operation: the plan is held by the server and consumed once by the run (owner decision, 2026-10-06). `TODO(WP-3.9)`: the COSE_Sign1 plan receipt and dual control.",
+        "description": "Under `authz.admin` on the Host. The first step of a destructive operation: the plan is held by the server and consumed once by the run (owner decision, 2026-10-06). The plan answers its receipt, COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, which the run presents (WP-3.9); without `operations.keys` the plan is refused (`unavailable`).",
         "parameters": [
           {
             "name": "id",
@@ -781,7 +781,7 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "The envelope's request id, and the plan as answered.",
+          "description": "The envelope's request id, and the receipt the plan step answered.",
           "content": {
             "application/json": {
               "schema": {
@@ -802,7 +802,7 @@
             }
           },
           "400": {
-            "description": "The body is not the request's shape or the id is malformed (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "description": "The body is not the request's shape or the id is malformed (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the receipt is not one, or not the one the plan step answered (`invalid_argument`, `plan_digest_mismatch`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -849,7 +849,7 @@
             }
           },
           "409": {
-            "description": "The plan expired or was already run (`plan_expired`), the grant is already terminal (`grant_terminal`), the grant revision moved since the plan (`revision_mismatch`, `revision` carried), or the request id was reused (`request_id_reused`).",
+            "description": "The plan expired or was already run (`plan_expired`), the grant is already terminal (`grant_terminal`), the grant revision moved since the plan (`revision_mismatch`, `revision` carried), or the request id was reused (`request_id_reused`); the plan holds fewer approvals than it requires (`plan_approvals_missing`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1379,7 +1379,7 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "The envelope's request id, and the plan as answered.",
+          "description": "The envelope's request id, and the receipt the plan step answered.",
           "content": {
             "application/json": {
               "schema": {
@@ -1400,7 +1400,7 @@
             }
           },
           "400": {
-            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`); `host.identity` named (`ring_not_mutable`).",
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the receipt is not one, or not the one the plan step answered (`invalid_argument`, `plan_digest_mismatch`); `host.identity` named (`ring_not_mutable`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1447,7 +1447,7 @@
             }
           },
           "409": {
-            "description": "The key is revoked already (`key_revoked`), the ring moved since the plan (`revision_mismatch`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`).",
+            "description": "The key is revoked already (`key_revoked`), the ring moved since the plan (`revision_mismatch`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`); the plan holds fewer approvals than it requires (`plan_approvals_missing`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2921,7 +2921,7 @@
         ],
         "requestBody": {
           "required": true,
-          "description": "The envelope's request id and the plan, as the plan step answered it.",
+          "description": "The envelope's request id, and the receipt the plan step answered.",
           "content": {
             "application/json": {
               "schema": {
@@ -2942,7 +2942,7 @@
             }
           },
           "400": {
-            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the plan digest is not the one answered (`plan_digest_mismatch`).",
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`); the receipt is not one, or not the one the plan step answered (`invalid_argument`, `plan_digest_mismatch`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2989,7 +2989,7 @@
             }
           },
           "409": {
-            "description": "The membership moved since the plan (`revision_mismatch`), cannot be revoked from its status (`membership_transition_refused`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`).",
+            "description": "The membership moved since the plan (`revision_mismatch`), cannot be revoked from its status (`membership_transition_refused`), the plan expired or ran (`plan_expired`), or the request id was reused (`request_id_reused`); the plan holds fewer approvals than it requires (`plan_approvals_missing`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3764,6 +3764,211 @@
         },
         "x-grpc-rpc": "permguard.host.v1.EvidenceService/ExportAudit"
       }
+    },
+    "/host/v1/plans": {
+      "get": {
+        "operationId": "listPlans",
+        "summary": "The plans store",
+        "description": "Under the operation's grant on the Host, plan by plan (WP-3.9): a plan is listed to a principal holding `authz.admin` for a grant revocation, `keys.admin` for a key revocation, `membership.admin` for a membership revocation and `identity.admin` for an identity reset; a principal holding none of them is refused.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "ready",
+                "consumed",
+                "expired"
+              ]
+            },
+            "description": "Only the plans in this status.",
+            "x-grpc-field": "status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plans.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The status is not one (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ListPlans"
+      }
+    },
+    "/host/v1/plans/{id}/approve": {
+      "post": {
+        "operationId": "approvePlan",
+        "summary": "Approve a plan",
+        "description": "Under the plan's operation grant on the Host (WP-3.9). Records one approval per principal, attested by the Host as a COSE_Sign1 `permguard.operation.approval.v1` under `host.operations` and recorded `host.plan.approved` in the `security` trail. The planner cannot approve its own plan, and a plan holding every approval it requires takes no more.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The plan's id, 32 hex characters.",
+            "x-grpc-field": "plan_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The envelope's request id.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovePlanBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approval, with the plan; a retry with the same request id answers the stored result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanApproved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not the request's shape (`invalid_argument`); the request id is absent or out of bounds (`request_id_required`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No plan has that id (`plan_unknown`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The planner's own approval (`plan_self_approval`); an approval the principal gave already, or one the plan does not need (`plan_approval_refused`); the plan expired or was run (`plan_expired`); the request id was reused (`request_id_reused`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The mutation was applied, or may have been, and could not be recorded (`mutation_unrecorded`): read the current state before retrying, or retry with the same `request_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "This Host runs without `operations.keys`, so nothing attests the approval (`unavailable`), the mutation journal is unavailable (`replay_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.OperationsService/ApprovePlan"
+      }
     }
   },
   "components": {
@@ -4128,18 +4333,18 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "The server-held plan's id.",
+            "description": "The plan's id, 32 hex characters: what `POST /host/v1/plans/{id}/approve` names.",
             "x-grpc-field": "plan_id"
           },
           "plan_digest": {
             "type": "string",
-            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "description": "What the plan changes, `sha256:<hex>`: SHA-256 over `permguard.operation.plan-body.v1\\n` and the canonical CBOR of its operation, target, revision and parameters; what each approval names.",
             "x-grpc-field": "plan_digest"
           },
           "expires": {
             "type": "string",
             "format": "date-time",
-            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made, a day when it requires approvals.",
             "x-grpc-field": "expires"
           },
           "revision": {
@@ -4147,16 +4352,29 @@
             "minimum": 0,
             "description": "The grant revision the plan was made against; the run is a `conflict` when it moved.",
             "x-grpc-field": "revision"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding, binding the planner, the exact target, the revision, the plan digest, the expiry, a nonce and the operation (WP-3.9).",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many principals other than the planner, holding the operation's grant, must approve the plan (`POST /host/v1/plans/{id}/approve`) before it runs: 1 for an identity reset and a key revocation with `operations.dual_control` in force, 0 otherwise.",
+            "x-grpc-field": "approvals_required"
           }
         },
         "required": [
           "plan_id",
           "plan_digest",
           "expires",
-          "revision"
+          "revision",
+          "receipt",
+          "approvals_required"
         ],
         "additionalProperties": false,
-        "description": "What a plan answers: a server-held plan, consumed once by its run. `TODO(WP-3.9)`: the client-held COSE_Sign1 `permguard.operation.plan.v1` receipt.",
+        "description": "What a plan answers: a server-held plan, consumed once by its run, with the receipt its run presents (WP-3.9).",
         "x-grpc-message": "permguard.host.v1.PlanGrantRevokeResponse"
       },
       "RunRevokeBody": {
@@ -4169,21 +4387,16 @@
             "description": "The caller's name for this mutation; a retry is answered with the stored receipt.",
             "x-grpc-field": "request_id"
           },
-          "plan_id": {
+          "receipt": {
             "type": "string",
-            "description": "The plan the plan step answered.",
-            "x-grpc-field": "plan_id"
-          },
-          "plan_digest": {
-            "type": "string",
-            "description": "Its digest, as answered.",
-            "x-grpc-field": "plan_digest"
+            "minLength": 1,
+            "description": "The receipt the plan step answered, byte for byte, base64url without padding; presented by the planner it names, once the approvals it requires are given.",
+            "x-grpc-field": "receipt"
           }
         },
         "required": [
           "request_id",
-          "plan_id",
-          "plan_digest"
+          "receipt"
         ],
         "additionalProperties": false,
         "description": "What `POST /host/v1/grants/{id}/revoke/run` carries. A closed body.",
@@ -5148,18 +5361,18 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "The server-held plan's id.",
+            "description": "The plan's id, 32 hex characters: what `POST /host/v1/plans/{id}/approve` names.",
             "x-grpc-field": "plan_id"
           },
           "plan_digest": {
             "type": "string",
-            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "description": "What the plan changes, `sha256:<hex>`: SHA-256 over `permguard.operation.plan-body.v1\\n` and the canonical CBOR of its operation, target, revision and parameters; what each approval names.",
             "x-grpc-field": "plan_digest"
           },
           "expires": {
             "type": "string",
             "format": "date-time",
-            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made, a day when it requires approvals.",
             "x-grpc-field": "expires"
           },
           "revision": {
@@ -5167,16 +5380,29 @@
             "minimum": 0,
             "description": "The ring epoch the plan was made against; the run is a `conflict` when it moved.",
             "x-grpc-field": "revision"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding, binding the planner, the exact target, the revision, the plan digest, the expiry, a nonce and the operation (WP-3.9).",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many principals other than the planner, holding the operation's grant, must approve the plan (`POST /host/v1/plans/{id}/approve`) before it runs: 1 for an identity reset and a key revocation with `operations.dual_control` in force, 0 otherwise.",
+            "x-grpc-field": "approvals_required"
           }
         },
         "required": [
           "plan_id",
           "plan_digest",
           "expires",
-          "revision"
+          "revision",
+          "receipt",
+          "approvals_required"
         ],
         "additionalProperties": false,
-        "description": "What a key revocation plan answers: a server-held plan bound to the key, the reason and the compromise time, consumed once by its run.",
+        "description": "What a key revocation plan answers: a server-held plan bound to the key, the reason and the compromise time, consumed once by its run, with the receipt its run presents (WP-3.9).",
         "x-grpc-message": "permguard.host.v1.PlanKeyRevokeResponse"
       },
       "RunKeyRevokeBody": {
@@ -5189,21 +5415,16 @@
             "description": "The caller's name for this mutation; a retry is answered with the stored receipt.",
             "x-grpc-field": "request_id"
           },
-          "plan_id": {
+          "receipt": {
             "type": "string",
-            "description": "The plan the plan step answered.",
-            "x-grpc-field": "plan_id"
-          },
-          "plan_digest": {
-            "type": "string",
-            "description": "Its digest, as answered.",
-            "x-grpc-field": "plan_digest"
+            "minLength": 1,
+            "description": "The receipt the plan step answered, byte for byte, base64url without padding; presented by the planner it names, once the approvals it requires are given.",
+            "x-grpc-field": "receipt"
           }
         },
         "required": [
           "request_id",
-          "plan_id",
-          "plan_digest"
+          "receipt"
         ],
         "additionalProperties": false,
         "description": "What `POST /host/v1/keys/{ring}/revoke/run` carries. A closed body.",
@@ -6352,18 +6573,18 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "The server-held plan's id.",
+            "description": "The plan's id, 32 hex characters: what `POST /host/v1/plans/{id}/approve` names.",
             "x-grpc-field": "plan_id"
           },
           "plan_digest": {
             "type": "string",
-            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "description": "What the plan changes, `sha256:<hex>`: SHA-256 over `permguard.operation.plan-body.v1\\n` and the canonical CBOR of its operation, target, revision and parameters; what each approval names.",
             "x-grpc-field": "plan_digest"
           },
           "expires": {
             "type": "string",
             "format": "date-time",
-            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made, a day when it requires approvals.",
             "x-grpc-field": "expires"
           },
           "revision": {
@@ -6371,16 +6592,29 @@
             "minimum": 0,
             "description": "The membership revision the plan was made against; the run is a `conflict` when it moved.",
             "x-grpc-field": "revision"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding, binding the planner, the exact target, the revision, the plan digest, the expiry, a nonce and the operation (WP-3.9).",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many principals other than the planner, holding the operation's grant, must approve the plan (`POST /host/v1/plans/{id}/approve`) before it runs: 1 for an identity reset and a key revocation with `operations.dual_control` in force, 0 otherwise.",
+            "x-grpc-field": "approvals_required"
           }
         },
         "required": [
           "plan_id",
           "plan_digest",
           "expires",
-          "revision"
+          "revision",
+          "receipt",
+          "approvals_required"
         ],
         "additionalProperties": false,
-        "description": "What a membership revocation plan answers: a server-held plan, consumed once by its run.",
+        "description": "What a membership revocation plan answers: a server-held plan, consumed once by its run, with the receipt its run presents (WP-3.9).",
         "x-grpc-message": "permguard.host.v1.PlanMemberRevokeResponse"
       },
       "RunMemberRevokeBody": {
@@ -6393,21 +6627,16 @@
             "description": "The caller's name for this mutation; a retry answers the stored receipt.",
             "x-grpc-field": "request_id"
           },
-          "plan_id": {
+          "receipt": {
             "type": "string",
-            "description": "The plan the plan step answered.",
-            "x-grpc-field": "plan_id"
-          },
-          "plan_digest": {
-            "type": "string",
-            "description": "Its digest, as answered.",
-            "x-grpc-field": "plan_digest"
+            "minLength": 1,
+            "description": "The receipt the plan step answered, byte for byte, base64url without padding; presented by the planner it names, once the approvals it requires are given.",
+            "x-grpc-field": "receipt"
           }
         },
         "required": [
           "request_id",
-          "plan_id",
-          "plan_digest"
+          "receipt"
         ],
         "additionalProperties": false,
         "description": "What `POST /host/v1/members/{id}/revoke/run` carries. A closed body.",
@@ -6637,18 +6866,18 @@
         "properties": {
           "plan_id": {
             "type": "string",
-            "description": "The server-held plan's id.",
+            "description": "The plan's id, 32 hex characters: what `POST /host/v1/plans/{id}/approve` names.",
             "x-grpc-field": "plan_id"
           },
           "plan_digest": {
             "type": "string",
-            "description": "The plan's digest, SHA-256 hex; the run step presents it back.",
+            "description": "What the plan changes, `sha256:<hex>`: SHA-256 over `permguard.operation.plan-body.v1\\n` and the canonical CBOR of its operation, target, revision and parameters; what each approval names.",
             "x-grpc-field": "plan_digest"
           },
           "expires": {
             "type": "string",
             "format": "date-time",
-            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made.",
+            "description": "When the plan can no longer be run, RFC 3339: ten minutes after it was made, a day when it requires approvals.",
             "x-grpc-field": "expires"
           },
           "revision": {
@@ -6673,6 +6902,17 @@
             },
             "description": "Every live membership.",
             "x-grpc-field": "memberships"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt the run presents: COSE_Sign1 `permguard.operation.plan.v1` under `host.operations`, base64url without padding, binding the planner, the exact target, the revision, the plan digest, the expiry, a nonce and the operation (WP-3.9).",
+            "x-grpc-field": "receipt"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many principals other than the planner, holding the operation's grant, must approve the plan (`POST /host/v1/plans/{id}/approve`) before it runs: 1 for an identity reset and a key revocation with `operations.dual_control` in force, 0 otherwise.",
+            "x-grpc-field": "approvals_required"
           }
         },
         "required": [
@@ -6681,10 +6921,12 @@
           "expires",
           "revision",
           "mode",
-          "memberships"
+          "memberships",
+          "receipt",
+          "approvals_required"
         ],
         "additionalProperties": false,
-        "description": "What an identity reset plan answers.",
+        "description": "What an identity reset plan answers, with the receipt its run presents (WP-3.9).",
         "x-grpc-message": "permguard.host.v1.PlanIdentityResetResponse"
       },
       "RunIdentityResetBody": {
@@ -6697,21 +6939,16 @@
             "description": "The caller's name for this mutation; a retry answers what the run answered.",
             "x-grpc-field": "request_id"
           },
-          "plan_id": {
+          "receipt": {
             "type": "string",
-            "description": "The plan the plan step answered.",
-            "x-grpc-field": "plan_id"
-          },
-          "plan_digest": {
-            "type": "string",
-            "description": "Its digest, as answered.",
-            "x-grpc-field": "plan_digest"
+            "minLength": 1,
+            "description": "The receipt the plan step answered, byte for byte, base64url without padding; presented by the planner it names, once the approvals it requires are given.",
+            "x-grpc-field": "receipt"
           }
         },
         "required": [
           "request_id",
-          "plan_id",
-          "plan_digest"
+          "receipt"
         ],
         "additionalProperties": false,
         "description": "What `POST /host/v1/identity/reset/run` carries. A closed body.",
@@ -7716,6 +7953,192 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/audit/{class}/export` answers (WP-3.7).",
         "x-grpc-message": "permguard.host.v1.ExportAuditResponse"
+      },
+      "PlanApprovalView": {
+        "type": "object",
+        "properties": {
+          "principal": {
+            "type": "string",
+            "description": "The principal who approved.",
+            "x-grpc-field": "principal"
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When, RFC 3339.",
+            "x-grpc-field": "approved_at"
+          },
+          "approval": {
+            "type": "string",
+            "description": "The Host's attestation, COSE_Sign1 `permguard.operation.approval.v1` under `host.operations` over the plan digest, the principal, the time and the Host, base64url without padding.",
+            "x-grpc-field": "approval"
+          }
+        },
+        "required": [
+          "principal",
+          "approved_at",
+          "approval"
+        ],
+        "additionalProperties": false,
+        "description": "One approval of a plan (WP-3.9).",
+        "x-grpc-message": "permguard.host.v1.OperationPlanApproval"
+      },
+      "PlanView": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "The plan's id, 32 hex characters.",
+            "x-grpc-field": "plan_id"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "grant.revoke",
+              "keys.revoke",
+              "membership.revoke",
+              "identity.reset"
+            ],
+            "description": "What the plan does.",
+            "x-grpc-field": "operation"
+          },
+          "target": {
+            "type": "string",
+            "description": "The exact resource the receipt names.",
+            "x-grpc-field": "target"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The target's revision or epoch the plan was made at.",
+            "x-grpc-field": "revision"
+          },
+          "principal": {
+            "type": "string",
+            "description": "The planner, who alone runs it.",
+            "x-grpc-field": "principal"
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "What the plan changes, `sha256:<hex>`.",
+            "x-grpc-field": "plan_digest"
+          },
+          "expires": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it can no longer be approved or run, RFC 3339.",
+            "x-grpc-field": "expires"
+          },
+          "approvals_required": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many approvals it requires.",
+            "x-grpc-field": "approvals_required"
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanApprovalView"
+            },
+            "description": "The approvals given, one per principal.",
+            "x-grpc-field": "approvals"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "consumed",
+              "expired"
+            ],
+            "description": "`pending` below its approvals, `ready` to run, `consumed` once run, `expired` past its expiry; a plan stays listed for the replay window past its expiry, then goes.",
+            "x-grpc-field": "status"
+          },
+          "receipt": {
+            "type": "string",
+            "description": "The receipt, COSE_Sign1 `permguard.operation.plan.v1`, base64url without padding: the planner's capability, given to the planner alone and empty for anyone else.",
+            "x-grpc-field": "receipt"
+          }
+        },
+        "required": [
+          "plan_id",
+          "operation",
+          "target",
+          "revision",
+          "principal",
+          "plan_digest",
+          "expires",
+          "approvals_required",
+          "approvals",
+          "status",
+          "receipt"
+        ],
+        "additionalProperties": false,
+        "description": "One plan of the plans store (WP-3.9).",
+        "x-grpc-message": "permguard.host.v1.OperationPlan"
+      },
+      "PlanList": {
+        "type": "object",
+        "properties": {
+          "plans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanView"
+            },
+            "description": "The plans whose operation the caller may do on the Host, by id.",
+            "x-grpc-field": "plans"
+          }
+        },
+        "required": [
+          "plans"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/plans` answers (WP-3.9).",
+        "x-grpc-message": "permguard.host.v1.ListPlansResponse"
+      },
+      "ApprovePlanBody": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this mutation; a retry is answered with the stored result.",
+            "x-grpc-field": "request_id"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "additionalProperties": false,
+        "description": "What `POST /host/v1/plans/{id}/approve` carries. A closed body.",
+        "x-grpc-message": "permguard.host.v1.ApprovePlanRequest",
+        "x-grpc-only": [
+          "plan_id"
+        ],
+        "x-grpc-note": "`plan_id` travels in the path on REST."
+      },
+      "PlanApproved": {
+        "type": "object",
+        "properties": {
+          "receipt": {
+            "$ref": "#/components/schemas/Receipt",
+            "description": "The mutation's receipt.",
+            "x-grpc-field": "receipt"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PlanView",
+            "description": "The plan with the approval.",
+            "x-grpc-field": "plan"
+          }
+        },
+        "required": [
+          "receipt",
+          "plan"
+        ],
+        "additionalProperties": false,
+        "description": "What an approval answers (WP-3.9).",
+        "x-grpc-message": "permguard.host.v1.ApprovePlanResponse"
       }
     }
   },

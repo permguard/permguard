@@ -546,6 +546,8 @@ impl MembershipService for Served {
             plan_digest: planned.plan_digest,
             expires: planned.expires,
             revision: planned.revision,
+            receipt: raw(&planned.receipt)?,
+            approvals_required: planned.approvals_required,
         }))
     }
 
@@ -562,8 +564,7 @@ impl MembershipService for Served {
                 &asked.membership_id,
                 RunMemberRevoke {
                     request_id: asked.request_id,
-                    plan_id: asked.plan_id,
-                    plan_digest: asked.plan_digest,
+                    receipt: super::b64(&asked.receipt),
                 },
             )
             .await

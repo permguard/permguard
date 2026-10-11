@@ -1,0 +1,161 @@
+{
+  "artifact": "Plan receipt and approval (WP-3.9): the payloads of a COSE_Sign1 `permguard.operation.plan.v1` and of a COSE_Sign1 `permguard.operation.approval.v1`, each of the profile in crates/permguard-objects/src/cose.rs and signed by the Host's host.operations key under its <ring>:<thumbprint> kid; and the plan body whose digest both name",
+  "authority": "1-architecture/9-architecture-patterns.md P9, 6-contracts/8-contract-host-api.md (plan receipt, dual control), owner decisions of 2026-10-11 (labels, types, approvals); crates/permguard-host/src/operations/plan.rs (PlanReceipt, Approval, plan_digest)",
+  "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
+  "maps": {
+    "plan_receipt": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "plan_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the plan"
+        },
+        {
+          "label": 2,
+          "name": "operation",
+          "type": "text",
+          "occurs": "required",
+          "note": "`grant.revoke`, `keys.revoke`, `membership.revoke` or `identity.reset`"
+        },
+        {
+          "label": 3,
+          "name": "target",
+          "type": "text",
+          "occurs": "required",
+          "note": "the exact resource"
+        },
+        {
+          "label": 4,
+          "name": "revision",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the target's revision or epoch the plan was made at"
+        },
+        {
+          "label": 5,
+          "name": "principal",
+          "type": "text",
+          "occurs": "required",
+          "note": "the planner, who alone runs it"
+        },
+        {
+          "label": 6,
+          "name": "plan_digest",
+          "type": "text",
+          "occurs": "required",
+          "note": "`sha256:<hex>` over `permguard.operation.plan-body.v1\\n` and the canonical `plan_body`"
+        },
+        {
+          "label": 7,
+          "name": "expires",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch; 10 minutes on, a day when approvals are required"
+        },
+        {
+          "label": 8,
+          "name": "nonce",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes"
+        },
+        {
+          "label": 9,
+          "name": "approvals_required",
+          "type": "uint",
+          "occurs": "required",
+          "note": "how many principals other than the planner must approve"
+        },
+        {
+          "label": 10,
+          "name": "host_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the Host"
+        },
+        {
+          "label": 11,
+          "name": "created_at",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch"
+        }
+      ]
+    },
+    "plan_approval": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "plan_digest",
+          "type": "text",
+          "occurs": "required",
+          "note": "the plan digest the approval names"
+        },
+        {
+          "label": 2,
+          "name": "principal",
+          "type": "text",
+          "occurs": "required",
+          "note": "the principal who approved, authenticated by the Host"
+        },
+        {
+          "label": 3,
+          "name": "approved_at",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch"
+        },
+        {
+          "label": 4,
+          "name": "host_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the Host that attests it"
+        }
+      ]
+    },
+    "plan_body": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "operation",
+          "type": "text",
+          "occurs": "required",
+          "note": "as the receipt names it"
+        },
+        {
+          "label": 2,
+          "name": "target",
+          "type": "text",
+          "occurs": "required",
+          "note": "as the receipt names it"
+        },
+        {
+          "label": 3,
+          "name": "revision",
+          "type": "uint",
+          "occurs": "required",
+          "note": "as the receipt names it"
+        },
+        {
+          "label": 4,
+          "name": "parameters",
+          "type": "map<text,text>",
+          "occurs": "required",
+          "note": "what else the plan fixes: a key revocation's `reason` and `compromised_at`, a membership revocation's `reason`, a reset's `mode`, `memberships` and `reason`; empty allowed"
+        }
+      ]
+    }
+  },
+  "arrays": {},
+  "root": [
+    "plan_receipt",
+    "plan_approval",
+    "plan_body"
+  ]
+}

@@ -2,40 +2,44 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! `--confirm-file <receipt>`: the plan a run consumes, read whole from the file the plan step
-//! wrote (TC-1). A receipt never travels in argv; what it holds is never echoed in a refusal,
-//! which names the file and what is wrong with it, and nothing it contains.
+//! wrote (TC-1), since WP-3.9 the COSE plan receipt itself. A receipt never travels in argv; what
+//! it holds is never echoed in a refusal, which names the file and what is wrong with it, and
+//! nothing it contains.
 
 use std::path::Path;
 
-use serde::de::DeserializeOwned;
-
 use crate::failure::Failure;
 
-/// Reads the receipt `confirm_file` names as a `what`: refused when no file was named, when it
-/// cannot be read, when it is empty, or when it is not a `what`.
-pub fn read<T: DeserializeOwned>(confirm_file: Option<&Path>, what: &str) -> Result<T, Failure> {
+/// Reads the receipt `confirm_file` names as raw bytes, a `what` of at most `most` bytes: refused
+/// when no file was named, when it cannot be read, when it is empty or larger. What it holds is
+/// the caller's to check, and never echoed.
+pub fn read_bytes(
+    confirm_file: Option<&Path>,
+    what: &str,
+    most: usize,
+) -> Result<Vec<u8>, Failure> {
     let path = confirm_file.ok_or_else(|| {
         Failure::usage(format!(
             "--confirm-file names the {what} the plan step wrote"
         ))
     })?;
-    let bytes = std::fs::read(path)
-        .map_err(|error| Failure::usage(format!("--confirm-file {}: {error}", path.display())))?;
-    if bytes.iter().all(u8::is_ascii_whitespace) {
+    let size = std::fs::metadata(path)
+        .map_err(|error| Failure::usage(format!("--confirm-file {}: {error}", path.display())))?
+        .len();
+    if size == 0 {
         return Err(Failure::usage(format!(
             "--confirm-file {} is empty",
             path.display()
         )));
     }
-    serde_json::from_slice(&bytes).map_err(|error| {
-        // The position, never the bytes: a receipt may carry what only its owner should see.
-        Failure::usage(format!(
-            "--confirm-file {} is not a {what} (line {}, column {})",
-            path.display(),
-            error.line(),
-            error.column()
-        ))
-    })
+    if size > most as u64 {
+        return Err(Failure::usage(format!(
+            "--confirm-file {} is {size} bytes; a {what} takes up to {most}",
+            path.display()
+        )));
+    }
+    std::fs::read(path)
+        .map_err(|error| Failure::usage(format!("--confirm-file {}: {error}", path.display())))
 }
 
 #[cfg(test)]
@@ -44,41 +48,36 @@ mod tests {
 
     use super::*;
 
-    #[derive(serde::Deserialize, Debug)]
-    struct Receipt {
-        #[allow(dead_code)]
-        plan_id: String,
-    }
-
     #[test]
-    fn a_confirm_file_is_read_whole_and_never_echoed() {
+    fn a_confirm_file_is_read_whole_within_its_bound() {
         let dir = std::env::temp_dir().join(format!("permguard-confirm-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("created");
         let good = dir.join("good.plan");
-        std::fs::write(&good, r#"{"plan_id":"p-1"}"#).expect("written");
-        assert!(read::<Receipt>(Some(&good), "plan").is_ok(), "a plan reads");
+        std::fs::write(&good, [0x84, 0x40, 0xA0]).expect("written");
+        let Ok(read) = read_bytes(Some(&good), "plan", 16) else {
+            panic!("a plan reads")
+        };
+        assert_eq!(read, vec![0x84, 0x40, 0xA0]);
 
-        let Err(missing) = read::<Receipt>(None, "plan") else {
+        let Err(missing) = read_bytes(None, "plan", 16) else {
             panic!("nothing named")
         };
         assert_eq!(missing.status, crate::failure::EXIT_USAGE);
         let empty = dir.join("empty.plan");
-        std::fs::write(&empty, "  \n").expect("written");
-        assert!(
-            read::<Receipt>(Some(&empty), "plan")
-                .expect_err("empty")
-                .message
-                .contains("is empty")
-        );
+        std::fs::write(&empty, []).expect("written");
+        let Err(empty) = read_bytes(Some(&empty), "plan", 16) else {
+            panic!("empty")
+        };
+        assert!(empty.message.contains("is empty"), "{}", empty.message);
         let secret = "capability-0123456789-do-not-print";
-        let garbage = dir.join("garbage.plan");
-        std::fs::write(&garbage, format!("{{\"plan_id\": {secret}}}")).expect("written");
-        let Err(refused) = read::<Receipt>(Some(&garbage), "plan") else {
-            panic!("not a plan")
+        let large = dir.join("large.plan");
+        std::fs::write(&large, secret).expect("written");
+        let Err(refused) = read_bytes(Some(&large), "plan", 16) else {
+            panic!("over its bound")
         };
         assert!(
-            refused.message.contains("is not a plan"),
+            refused.message.contains("takes up to 16"),
             "{}",
             refused.message
         );

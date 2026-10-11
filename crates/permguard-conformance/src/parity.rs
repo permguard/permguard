@@ -40,7 +40,9 @@ pub enum Outcome {
 
 impl Outcome {
     /// The value with each named member's value replaced by `"<minted>"` at every depth:
-    /// identifiers and timestamps a mutation mints, which two separate calls cannot share.
+    /// identifiers and timestamps a mutation mints, which two separate calls cannot share. A
+    /// member whose value is an object is walked instead, so one name can be minted bytes in one
+    /// answer and a structure in another.
     ///
     /// Replaced rather than removed, so a member that one transport omits still makes the two
     /// outcomes differ.
@@ -58,7 +60,9 @@ fn mask(value: Value, members: &[&str]) -> Value {
         Value::Object(map) => Value::Object(
             map.into_iter()
                 .map(|(name, value)| {
-                    if members.contains(&name.as_str()) {
+                    // An object under a minted name is walked, not hidden: a mutation's
+                    // `receipt` object shares its name with a plan's `receipt` bytes.
+                    if members.contains(&name.as_str()) && !value.is_object() {
                         (name, Value::String("<minted>".to_owned()))
                     } else {
                         (name, mask(value, members))

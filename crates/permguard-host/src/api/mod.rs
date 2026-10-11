@@ -28,6 +28,7 @@ pub mod grants;
 pub mod identity;
 pub mod keys;
 pub mod members;
+pub mod plans;
 pub mod replay;
 pub mod reset;
 pub mod sessions;
@@ -608,7 +609,54 @@ pub(crate) mod testing {
     /// A facade whose store holds one administrator with every Host operation, on a volume that
     /// outlives the test (the claim is leaked on purpose: the store keeps the directory open).
     pub(crate) fn facade(tag: &str) -> HostApi {
-        facade_with(tag, Vec::new())
+        // `host.operations` signs the plan receipts (WP-3.9).
+        facade_with(tag, vec![crate::keys::ring::HOST_OPERATIONS])
+    }
+
+    /// `receipt` with its signature's last byte changed: the same plan, not the bytes the plan
+    /// step answered.
+    pub(crate) fn tampered(receipt: &str) -> String {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let mut bytes = URL_SAFE_NO_PAD.decode(receipt).expect("a receipt");
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        URL_SAFE_NO_PAD.encode(bytes)
+    }
+
+    /// A well-formed receipt of a plan nobody made.
+    pub(crate) fn unknown_receipt() -> String {
+        use base64::Engine as _;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let receipt = crate::operations::plan::PlanReceipt {
+            plan_id: [0x11; 16],
+            operation: crate::operations::plan::GRANT_REVOKE.to_owned(),
+            target: "nothing".to_owned(),
+            revision: 0,
+            principal: ADMIN.to_owned(),
+            plan_digest: crate::operations::plan::plan_digest(
+                crate::operations::plan::GRANT_REVOKE,
+                "nothing",
+                0,
+                &[],
+            ),
+            expires: u64::MAX >> 2,
+            nonce: [0; 16],
+            approvals_required: 0,
+            host_id: [0; 16],
+            created_at: 0,
+        };
+        let envelope = permguard_objects::cose::Sign1::sign_with(
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            permguard_core::domains::protected::OPERATION_PLAN,
+            b"host.operations:none",
+            receipt.encode().expect("encodes"),
+            |_| Ok(vec![0; 64]),
+        )
+        .expect("an envelope")
+        .encode()
+        .expect("encodes");
+        URL_SAFE_NO_PAD.encode(envelope)
     }
 
     pub(crate) fn facade_with(tag: &str, rings: Vec<&'static str>) -> HostApi {
@@ -740,6 +788,9 @@ pub(crate) mod testing {
         }
         let (replay, _) =
             Replay::open(&volume, crate::authz::store::now()).expect("the replay journal opens");
+        mutations
+            .recover(&replay)
+            .expect("the plans' mutations recover");
         let authorization = Arc::new(Authorization::new(
             Arc::clone(&store),
             &[PublicGrant::new(

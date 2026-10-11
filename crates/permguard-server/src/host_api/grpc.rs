@@ -62,6 +62,12 @@ fn grant(view: api::GrantView) -> v1::Grant {
     }
 }
 
+/// Bytes gRPC carries raw, as the facade reads them: base64url.
+fn b64(bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
 /// The bytes of a member the facade answers base64url, as gRPC carries them.
 fn raw(text: &str) -> Result<Vec<u8>, Status> {
     use base64::Engine as _;
@@ -91,6 +97,33 @@ fn ring_out(view: api::RingView) -> Result<v1::GetKeyRingResponse, Status> {
                 r#use: key.usage,
             })
             .collect(),
+    })
+}
+
+/// One plan of the plans store as gRPC carries it.
+fn plan_out(plan: api::plans::PlanView) -> Result<v1::OperationPlan, Status> {
+    Ok(v1::OperationPlan {
+        plan_id: plan.plan_id,
+        operation: plan.operation,
+        target: plan.target,
+        revision: plan.revision,
+        principal: plan.principal,
+        plan_digest: plan.plan_digest,
+        expires: plan.expires,
+        approvals_required: plan.approvals_required,
+        approvals: plan
+            .approvals
+            .into_iter()
+            .map(|approval| {
+                Ok(v1::OperationPlanApproval {
+                    principal: approval.principal,
+                    approved_at: approval.approved_at,
+                    approval: raw(&approval.approval)?,
+                })
+            })
+            .collect::<Result<_, Status>>()?,
+        status: plan.status,
+        receipt: raw(&plan.receipt)?,
     })
 }
 
@@ -205,6 +238,8 @@ impl IdentityService for Served {
             plan_digest: planned.plan_digest,
             expires: planned.expires,
             revision: planned.revision,
+            receipt: raw(&planned.receipt)?,
+            approvals_required: planned.approvals_required,
             mode: planned.mode,
             memberships: planned
                 .memberships
@@ -233,8 +268,7 @@ impl IdentityService for Served {
                 &actor,
                 api::reset::RunIdentityReset {
                     request_id: asked.request_id,
-                    plan_id: asked.plan_id,
-                    plan_digest: asked.plan_digest,
+                    receipt: b64(&asked.receipt),
                 },
             )
             .await
@@ -370,6 +404,8 @@ impl GrantService for Served {
             plan_digest: planned.plan_digest,
             expires: planned.expires,
             revision: planned.revision,
+            receipt: raw(&planned.receipt)?,
+            approvals_required: planned.approvals_required,
         }))
     }
 
@@ -386,8 +422,7 @@ impl GrantService for Served {
                 &asked.grant_id,
                 api::RunRevoke {
                     request_id: asked.request_id,
-                    plan_id: asked.plan_id,
-                    plan_digest: asked.plan_digest,
+                    receipt: b64(&asked.receipt),
                 },
             )
             .await
@@ -485,6 +520,8 @@ impl KeyService for Served {
             plan_digest: planned.plan_digest,
             expires: planned.expires,
             revision: planned.revision,
+            receipt: raw(&planned.receipt)?,
+            approvals_required: planned.approvals_required,
         }))
     }
 
@@ -501,8 +538,7 @@ impl KeyService for Served {
                 &asked.ring,
                 api::RunKeyRevoke {
                     request_id: asked.request_id,
-                    plan_id: asked.plan_id,
-                    plan_digest: asked.plan_digest,
+                    receipt: b64(&asked.receipt),
                 },
             )
             .await
@@ -736,15 +772,44 @@ impl OperationsService for Served {
 
     async fn list_plans(
         &self,
-        _request: Request<v1::ListPlansRequest>,
+        request: Request<v1::ListPlansRequest>,
     ) -> Answer<v1::ListPlansResponse> {
-        Err(unimplemented("the plans"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let status = (!asked.status.is_empty()).then_some(asked.status);
+        let listed = self
+            .api
+            .plans(&actor, status.as_deref())
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::ListPlansResponse {
+            plans: listed
+                .plans
+                .into_iter()
+                .map(plan_out)
+                .collect::<Result<_, _>>()?,
+        }))
     }
 
     async fn approve_plan(
         &self,
-        _request: Request<v1::ApprovePlanRequest>,
+        request: Request<v1::ApprovePlanRequest>,
     ) -> Answer<v1::ApprovePlanResponse> {
-        Err(unimplemented("plan approval"))
+        let actor = permguard_transport::actor_of(request.extensions());
+        let asked = request.into_inner();
+        let approved = self
+            .api
+            .approve_plan(
+                &actor,
+                &asked.plan_id,
+                api::plans::ApprovePlan {
+                    request_id: asked.request_id,
+                },
+            )
+            .await
+            .map_err(|refusal| self.refuse(refusal))?;
+        Ok(Response::new(v1::ApprovePlanResponse {
+            receipt: Some(receipt(approved.receipt)),
+            plan: Some(plan_out(approved.plan)?),
+        }))
     }
 }

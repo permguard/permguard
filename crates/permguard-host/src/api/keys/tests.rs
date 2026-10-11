@@ -132,7 +132,7 @@ fn plan(request_id: &str, kid: &str, reason: &str) -> PlanKeyRevoke {
 
 #[tokio::test]
 async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
-    let api = facade_with("keys-revoke", vec![DATA_ATTEST]);
+    let api = facade_with("keys-revoke", vec![HOST_OPERATIONS, DATA_ATTEST]);
     let kid = api.ring(DATA_ATTEST).expect("public").keys[0].kid.clone();
 
     for (name, bad) in [
@@ -185,8 +185,7 @@ async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
             DATA_ATTEST,
             RunKeyRevoke {
                 request_id: "x1".to_owned(),
-                plan_id: planned.plan_id.clone(),
-                plan_digest: "0".repeat(64),
+                receipt: crate::api::testing::tampered(&planned.receipt),
             },
         )
         .await
@@ -198,8 +197,7 @@ async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
             CONTROL_ATTEST,
             RunKeyRevoke {
                 request_id: "x2".to_owned(),
-                plan_id: planned.plan_id.clone(),
-                plan_digest: planned.plan_digest.clone(),
+                receipt: planned.receipt.clone(),
             },
         )
         .await
@@ -212,8 +210,7 @@ async fn a_revocation_is_planned_then_run_and_the_key_leaves_the_set() {
             DATA_ATTEST,
             RunKeyRevoke {
                 request_id: "x3".to_owned(),
-                plan_id: planned.plan_id.clone(),
-                plan_digest: planned.plan_digest.clone(),
+                receipt: planned.receipt.clone(),
             },
         )
         .await
@@ -340,8 +337,7 @@ async fn the_bundle_pages_keep_one_signed_frontier_and_verify_offline() {
         DATA_ATTEST,
         RunKeyRevoke {
             request_id: "br".to_owned(),
-            plan_id: planned.plan_id,
-            plan_digest: planned.plan_digest,
+            receipt: planned.receipt,
         },
     )
     .await

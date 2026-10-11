@@ -42,6 +42,47 @@ fn json(output: &Output) -> serde_json::Value {
     serde_json::from_slice(&output.stdout).expect("the JSON output parses")
 }
 
+/// A `file` custody whose key-encryption key `kek` is a file of a `directory` secret store, so
+/// this process opens the same keys the command does; `assurance` is appended as given.
+fn file_custody(dir: &Path, kek: &str, assurance: &str) -> PathBuf {
+    let secrets = dir.join("secrets");
+    std::fs::create_dir_all(&secrets).expect("the secrets directory");
+    std::fs::write(secrets.join("host-kek"), kek).expect("the key-encryption key");
+    let config = dir.join("server.yml");
+    std::fs::write(
+        &config,
+        format!(
+            "public:\n  http: 0.0.0.0:5556\n{assurance}operations:\n  secrets:\n    provider: \
+             directory\n    directory: {}\n  keys:\n    custody: file\n    kek_ref: host-kek\n",
+            secrets.display()
+        ),
+    )
+    .expect("the configuration writes");
+    config
+}
+
+/// What the server's first start does to every ring of `volume`: its first key signs at once.
+/// The offline commands never activate a key themselves.
+fn first_start(volume: &Path, config: &Path) {
+    use permguard_server::offline;
+    let config = offline::config(env!("CARGO_PKG_VERSION"), Some(config)).expect("the config");
+    let held = permguard_host::storage::volume::Volume::claim(
+        volume,
+        permguard_core::assurance::AssuranceProfile::Development,
+    )
+    .expect("the volume");
+    let custodian = offline::custodian(&config, &held).expect("the custody");
+    let host_id = permguard_host::identity::host_id_of(&held)
+        .expect("read")
+        .expect("provisioned");
+    let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+        config.time_max_clock_skew(),
+    ));
+    for ring in offline::rings(&config, &held, host_id, None, &custodian, time).expect("rings") {
+        ring.maintain_now().expect("maintained");
+    }
+}
+
 #[test]
 fn the_identity_is_provisioned_opened_and_rotated_sealed_under_the_servers_custody() {
     const KEK: &str = "0123456789abcdef0123456789abcdef";
@@ -197,20 +238,15 @@ fn the_identity_is_provisioned_opened_and_rotated_sealed_under_the_servers_custo
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// The offline emergency reset (WP-4.1): planned to a file, run against it, a new identity under
-/// the same custody; the plan confirms one state of the volume and no other.
+/// The offline emergency reset (WP-4.1, WP-3.9): its COSE plan receipt written to a file only its
+/// owner reads, run against it once, a new identity under the same custody; the receipt confirms
+/// one state of the volume and no other.
 #[test]
-fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_custody() {
+fn the_offline_reset_writes_a_receipt_readable_by_its_owner_only_and_runs_it() {
     const KEK: &str = "0123456789abcdef0123456789abcdef";
     let dir = scratch("reset");
     let volume = dir.join("volume");
-    let config = dir.join("server.yml");
-    std::fs::write(
-        &config,
-        "public:\n  http: 0.0.0.0:5556\noperations:\n  secrets:\n    provider: environment\n    \
-         env_prefix: KEKCLI\n  keys:\n    custody: file\n    kek_ref: host-kek\n",
-    )
-    .expect("the configuration writes");
+    let config = file_custody(&dir, KEK, "");
     let volume_arg = volume.to_str().expect("utf-8");
     let config_arg = config.to_str().expect("utf-8");
     let plan = dir.join("reset.plan");
@@ -223,11 +259,31 @@ fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_
     };
 
     let provisioned = json(&host(&["provision"]));
+    // `host.operations` signs the receipt, and has no key before the server's first start.
+    let early = host(&["reset", "plan", "--reason", "a drill", "--out", plan_arg]);
+    assert!(!early.status.success());
+    assert!(
+        stderr(&early).contains("start the server once"),
+        "{}",
+        stderr(&early)
+    );
+    assert!(!plan.exists(), "nothing written");
+    first_start(&volume, &config);
     let planned = json(&host(&[
         "reset", "plan", "--reason", "a drill", "--out", plan_arg,
     ]));
     assert_eq!(planned["host_id"], provisioned["host_id"]);
     assert_eq!(planned["mode"], "emergency");
+    assert_eq!(planned["approvals_required"], 0);
+    assert!(
+        planned["plan_digest"]
+            .as_str()
+            .expect("a digest")
+            .starts_with("sha256:")
+    );
+    // The file is the COSE_Sign1 receipt itself: an array of four.
+    let receipt = std::fs::read(&plan).expect("the receipt");
+    assert_eq!(receipt.first(), Some(&0x84), "a COSE_Sign1");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
@@ -244,12 +300,12 @@ fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_
             .success()
     );
 
-    // An edited plan is refused.
+    // An edited receipt is refused: it is not the one the plan step wrote.
     let edited = dir.join("edited.plan");
-    let mut value: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&plan).expect("the plan")).expect("JSON");
-    value["reason"] = serde_json::json!("another reason");
-    std::fs::write(&edited, serde_json::to_vec(&value).expect("JSON")).expect("written");
+    let mut altered = receipt.clone();
+    let last = altered.len() - 1;
+    altered[last] ^= 0x01;
+    std::fs::write(&edited, &altered).expect("written");
     let refused = host(&[
         "reset",
         "run",
@@ -257,7 +313,27 @@ fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_
         edited.to_str().expect("utf-8"),
     ]);
     assert!(!refused.status.success());
-    assert!(stderr(&refused).contains("edited"), "{}", stderr(&refused));
+    assert!(
+        stderr(&refused).contains("not the one the plan step answered"),
+        "{}",
+        stderr(&refused)
+    );
+
+    // The identity rotated since the plan: its receipt confirms nothing, and is not spent.
+    json(&host(&["rotate", "--expected-epoch", "1"]));
+    let moved = host(&["reset", "run", "--confirm-file", plan_arg]);
+    assert!(!moved.status.success());
+    assert!(
+        stderr(&moved).contains("changed since the plan"),
+        "{}",
+        stderr(&moved)
+    );
+    let fresh = dir.join("fresh.plan");
+    let plan_arg = fresh.to_str().expect("utf-8");
+    let replanned = json(&host(&[
+        "reset", "plan", "--reason", "a drill", "--out", plan_arg,
+    ]));
+    assert_eq!(replanned["epoch"], 2);
 
     let reset = json(&host(&["reset", "run", "--confirm-file", plan_arg]));
     assert_eq!(reset["old_host_id"], provisioned["host_id"]);
@@ -276,14 +352,56 @@ fn the_offline_reset_retires_the_identity_and_provisions_another_under_the_same_
         assert!(retired.join(kept).is_file(), "{kept}");
     }
 
-    // The plan named the identity that is gone: it confirms nothing now.
+    // The receipt was spent by the run: it confirms nothing now.
     let stale = host(&["reset", "run", "--confirm-file", plan_arg]);
     assert!(!stale.status.success());
-    assert!(
-        stderr(&stale).contains("changed since the plan"),
-        "{}",
-        stderr(&stale)
+    assert!(stderr(&stale).contains("already run"), "{}", stderr(&stale));
+}
+
+/// Under `operations.dual_control` the offline reset's receipt requires an approval the Host API
+/// records (WP-3.9): without it the run is refused and the receipt stays unspent.
+#[test]
+fn under_dual_control_the_offline_reset_is_refused_until_approved() {
+    const KEK: &str = "0123456789abcdef0123456789abcdef";
+    let dir = scratch("reset-dual");
+    let volume = dir.join("volume");
+    let config = file_custody(
+        &dir,
+        KEK,
+        "assurance:\n  added_controls: [operations.dual_control]\n",
     );
+    let volume_arg = volume.to_str().expect("utf-8");
+    let config_arg = config.to_str().expect("utf-8");
+    let plan = dir.join("reset.plan");
+    let plan_arg = plan.to_str().expect("utf-8");
+    let host = |args: &[&str]| {
+        let mut all = vec!["-o", "json", "host", "identity"];
+        all.extend_from_slice(args);
+        all.extend_from_slice(&["--volume", volume_arg, "--server-config", config_arg]);
+        run(&dir, KEK, &all)
+    };
+
+    let provisioned = json(&host(&["provision"]));
+    first_start(&volume, &config);
+    let planned = json(&host(&[
+        "reset", "plan", "--reason", "a drill", "--out", plan_arg,
+    ]));
+    assert_eq!(planned["approvals_required"], 1);
+    for _ in 0..2 {
+        let refused = host(&["reset", "run", "--confirm-file", plan_arg]);
+        assert!(!refused.status.success());
+        assert!(
+            stderr(&refused).contains("requires 1 approval(s) and holds 0"),
+            "{}",
+            stderr(&refused)
+        );
+    }
+    let shown = json(&host(&["show"]));
+    assert_eq!(
+        shown["host_id"], provisioned["host_id"],
+        "nothing was reset"
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// A reset a crash interrupted after its marker (WP-4.1): the identity refuses to open, and

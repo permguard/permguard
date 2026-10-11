@@ -233,6 +233,10 @@ message PlanIdentityResetResponse {
   uint64 revision = 4;
   string mode = 5;
   repeated ResetMembership memberships = 6;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 7;
+  // How many principals other than the planner must approve it before it runs.
+  uint64 approvals_required = 8;
 }
 // One live membership, and what a reset does to it.
 message ResetMembership {
@@ -246,9 +250,10 @@ message ResetMembership {
 }
 // `POST /host/v1/identity/reset/run` (WP-4.1), under `identity.admin`.
 message RunIdentityResetRequest {
+  reserved 2, 3;
   string request_id = 1;
-  string plan_id = 2;
-  string plan_digest = 3;
+  // The receipt the plan step answered (WP-3.9).
+  bytes receipt = 4;
 }
 message RunIdentityResetResponse {
   Receipt receipt = 1;
@@ -580,13 +585,18 @@ message PlanMemberRevokeResponse {
   string plan_digest = 2;
   string expires = 3;
   uint64 revision = 4;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 5;
+  // How many principals other than the planner must approve it before it runs.
+  uint64 approvals_required = 6;
 }
 // `POST /host/v1/members/{id}/revoke/run` (WP-4.1), under `membership.admin`.
 message RunMemberRevokeRequest {
+  reserved 3, 4;
   string membership_id = 1;
   string request_id = 2;
-  string plan_id = 3;
-  string plan_digest = 4;
+  // The receipt the plan step answered (WP-3.9).
+  bytes receipt = 5;
 }
 message RunMemberRevokeResponse {
   Receipt receipt = 1;
@@ -710,13 +720,18 @@ message PlanGrantRevokeResponse {
   string expires = 3;
   // The grant revision the plan was made against.
   uint64 revision = 4;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 5;
+  // How many principals other than the planner must approve it before it runs.
+  uint64 approvals_required = 6;
 }
 // `POST /host/v1/grants/{id}/revoke/run`.
 message RunGrantRevokeRequest {
+  reserved 3, 4;
   string grant_id = 1;
   string request_id = 2;
-  string plan_id = 3;
-  string plan_digest = 4;
+  // The receipt the plan step answered (WP-3.9).
+  bytes receipt = 5;
 }
 message RunGrantRevokeResponse {
   Receipt receipt = 1;
@@ -791,13 +806,18 @@ message PlanKeyRevokeResponse {
   string expires = 3;
   // The ring epoch the plan was made against.
   uint64 revision = 4;
+  // The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1` (WP-3.9).
+  bytes receipt = 5;
+  // How many principals other than the planner must approve it before it runs.
+  uint64 approvals_required = 6;
 }
 // `POST /host/v1/keys/{ring}/revoke/run` (WP-3.1), under `keys.admin`.
 message RunKeyRevokeRequest {
+  reserved 3, 4;
   string ring = 1;
   string request_id = 2;
-  string plan_id = 3;
-  string plan_digest = 4;
+  // The receipt the plan step answered (WP-3.9).
+  bytes receipt = 5;
 }
 message RunKeyRevokeResponse {
   Receipt receipt = 1;
@@ -1078,7 +1098,47 @@ message GetStorageQuotaRequest {}
 message GetStorageQuotaResponse {}
 message ProbeStorageRequest {}
 message ProbeStorageResponse {}
-message ListPlansRequest {}
-message ListPlansResponse {}
-message ApprovePlanRequest {}
-message ApprovePlanResponse {}
+// `GET /host/v1/plans?status` (WP-3.9): the plans whose operation the caller may do.
+message ListPlansRequest {
+  // `pending`, `ready`, `consumed` or `expired`; empty is every status.
+  string status = 1;
+}
+message ListPlansResponse {
+  repeated OperationPlan plans = 1;
+}
+// One plan of the plans store (WP-3.9).
+message OperationPlan {
+  string plan_id = 1;
+  // `grant.revoke`, `keys.revoke`, `membership.revoke` or `identity.reset`.
+  string operation = 2;
+  string target = 3;
+  uint64 revision = 4;
+  // The planner.
+  string principal = 5;
+  string plan_digest = 6;
+  // RFC 3339.
+  string expires = 7;
+  uint64 approvals_required = 8;
+  repeated OperationPlanApproval approvals = 9;
+  // `pending`, `ready`, `consumed` or `expired`; listed for the replay window past its expiry.
+  string status = 10;
+  // COSE_Sign1 `permguard.operation.plan.v1`, to the planner alone; empty for anyone else.
+  bytes receipt = 11;
+}
+// One approval of a plan, attested by the Host (WP-3.9).
+message OperationPlanApproval {
+  string principal = 1;
+  // RFC 3339.
+  string approved_at = 2;
+  // COSE_Sign1 `permguard.operation.approval.v1`.
+  bytes approval = 3;
+}
+// `POST /host/v1/plans/{id}/approve` (WP-3.9), under the plan's operation grant.
+message ApprovePlanRequest {
+  string plan_id = 1;
+  string request_id = 2;
+}
+message ApprovePlanResponse {
+  Receipt receipt = 1;
+  OperationPlan plan = 2;
+}

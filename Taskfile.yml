@@ -169,6 +169,7 @@ tasks:
       - python3 contracts/vectors/keys.py | diff - contracts/vectors/keys.json
       - python3 contracts/vectors/membership.py | diff - contracts/vectors/membership.json
       - python3 contracts/vectors/audit.py | diff - contracts/vectors/audit.json
+      - python3 contracts/vectors/plan.py | diff - contracts/vectors/plan.json
 
   check:systems:
     desc: Check that the Makefile and the Taskfile offer the same commands.

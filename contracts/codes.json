@@ -366,6 +366,18 @@
       "kind": "refusal",
       "class": "unavailable"
     },
+    "host.PLAN_APPROVALS_MISSING": {
+      "code": "plan_approvals_missing",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.PLAN_APPROVAL_REFUSED": {
+      "code": "plan_approval_refused",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
     "host.PLAN_DIGEST_MISMATCH": {
       "code": "plan_digest_mismatch",
       "contract": "6-contracts/8-contract-host-api.md",
@@ -374,6 +386,12 @@
     },
     "host.PLAN_EXPIRED": {
       "code": "plan_expired",
+      "contract": "6-contracts/8-contract-host-api.md",
+      "kind": "refusal",
+      "class": "conflict"
+    },
+    "host.PLAN_SELF_APPROVAL": {
+      "code": "plan_self_approval",
       "contract": "6-contracts/8-contract-host-api.md",
       "kind": "refusal",
       "class": "conflict"

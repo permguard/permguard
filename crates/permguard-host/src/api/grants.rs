@@ -4,9 +4,9 @@
 //! The grants of the Host API, under `authz.admin` on the Host: `GET /host/v1/grants`,
 //! `POST /host/v1/grants`, and the two-step revocation `revoke/plan` then `revoke/run`.
 //!
-//! The plan step writes a server-held plan into the replay journal and answers its id and
-//! digest; the run step presents both, and the plan is consumed once (owner decision,
-//! 2026-10-06). `TODO(WP-3.9)`: the client-held COSE_Sign1 plan receipt and dual control.
+//! The plan step keeps the plan in the replay journal and answers its receipt, a COSE_Sign1
+//! `permguard.operation.plan.v1` under `host.operations`; the run step presents the receipt, and
+//! the plan is consumed once (owner decision, 2026-10-06; WP-3.9, [`super::plans`]).
 //! Every mutation is one operation of the security-mutation transaction (WP-3.6): its intent,
 //! its audit records and the answer a retry learns live in `host/audit/mutations/`, and the
 //! revision a caller expects is compared under the grant journal's lock.
@@ -14,12 +14,11 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 
 use permguard_core::authz::{Actor, Principal, Selector, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::replay::{PLAN_LIFETIME, Plan, mint_id};
+use super::replay::Plan;
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::authz::{AuthzError, GrantId, GrantRecord, Issue, Status};
 use crate::operations::grants::{
@@ -117,11 +116,16 @@ pub struct PlanRevoke {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Planned {
     pub plan_id: String,
+    /// What the plan changes, `sha256:<hex>`: what each approval names (WP-3.9).
     pub plan_digest: String,
     /// RFC 3339: when the plan can no longer be run.
     pub expires: String,
     /// The grant revision the plan was made against.
     pub revision: u64,
+    /// The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1`, base64url.
+    pub receipt: String,
+    /// How many principals other than the planner must approve it before it runs.
+    pub approvals_required: u64,
 }
 
 /// `POST /host/v1/grants/{id}/revoke/run`.
@@ -130,8 +134,8 @@ pub struct Planned {
 pub struct RunRevoke {
     #[serde(default)]
     pub request_id: String,
-    pub plan_id: String,
-    pub plan_digest: String,
+    /// The receipt the plan step answered.
+    pub receipt: String,
 }
 
 /// What a run answers: the receipt and the grant as revoked.
@@ -276,38 +280,31 @@ impl HostApi {
             || current().map(|_| ()),
             |applying| {
                 let record = current().map_err(Failure::Refused)?;
-                let expires = now.saturating_add(PLAN_LIFETIME.as_secs());
-                let plan_id = mint_id().map_err(Failure::Refused)?;
-                let digest = plan_digest(
-                    &plan_id,
-                    REVOKE,
-                    &record.grant_id.to_string(),
-                    record.revision,
-                    admitted.principal.as_str(),
-                    expires,
-                );
-                self.replay
-                    .plan(
+                let issued = self
+                    .issue_plan(
                         applying,
-                        Plan {
-                            plan_id: plan_id.clone(),
-                            operation: REVOKE.to_owned(),
+                        super::plans::Issue {
+                            kind: crate::operations::plan::GRANT_REVOKE,
+                            internal: REVOKE,
+                            stored_target: record.grant_id.to_string(),
                             target: record.grant_id.to_string(),
                             revision: record.revision,
-                            digest: digest.clone(),
-                            expires,
-                            principal: admitted.principal.as_str().to_owned(),
+                            parameters: &[],
+                            principal: &admitted.principal,
                         },
+                        now,
                     )
                     .map_err(Failure::Refused)?;
                 Ok(Applied {
                     revision: record.revision,
                     target: Some(record.grant_id.to_string()),
                     value: Planned {
-                        plan_id,
-                        plan_digest: digest,
-                        expires: rfc3339(expires),
+                        plan_id: issued.plan.plan_id,
+                        plan_digest: issued.plan_digest,
+                        expires: rfc3339(issued.expires),
                         revision: record.revision,
+                        receipt: issued.receipt,
+                        approvals_required: issued.approvals_required,
                     },
                 })
             },
@@ -335,21 +332,12 @@ impl HostApi {
         let target = (grant_id, &run);
         // The plan is read and checked before the operation begins (step 1).
         let presented = || -> Result<Plan, Refusal> {
-            let plan = self
-                .replay
-                .plan_of(&admitted.principal, &run.plan_id, now)?;
+            let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
             if plan.operation != REVOKE || plan.target != id.to_string() {
                 return Err(Refusal::new(
                     ErrorClass::NotFound,
                     codes::host::PLAN_UNKNOWN,
                     "no plan of that id is held for this grant",
-                ));
-            }
-            if plan.digest != run.plan_digest {
-                return Err(Refusal::new(
-                    ErrorClass::Validation,
-                    codes::host::PLAN_DIGEST_MISMATCH,
-                    "the plan digest presented is not the one the plan step answered",
                 ));
             }
             Ok(plan)
@@ -378,9 +366,9 @@ impl HostApi {
                     .map_err(|error| failure(error, refusal_of))?;
                 // The grant is terminal now, so a plan left unconsumed can never run again; its
                 // marker only spares the caller a `grant_terminal` for `plan_expired`.
-                if let Err(error) = self
-                    .replay
-                    .consume(applying, &admitted.principal, &run.plan_id)
+                if let Err(error) =
+                    self.replay
+                        .consume(applying, &admitted.principal, &plan.plan_id)
                 {
                     tracing::warn!(
                         event.name = "host.plan_unconsumed",
@@ -471,34 +459,6 @@ fn bounded(create: &CreateGrant) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// The digest of a plan: what the run step must present back.
-pub(super) fn plan_digest(
-    plan_id: &str,
-    operation: &str,
-    target: &str,
-    revision: u64,
-    principal: &str,
-    expires: u64,
-) -> String {
-    let mut hasher = Sha256::new();
-    for part in [
-        plan_id,
-        operation,
-        target,
-        &revision.to_string(),
-        principal,
-        &expires.to_string(),
-    ] {
-        hasher.update(part.len().to_be_bytes());
-        hasher.update(part.as_bytes());
-    }
-    let mut text = String::with_capacity(64);
-    for byte in hasher.finalize() {
-        text.push_str(&format!("{byte:02x}"));
-    }
-    text
-}
-
 fn grant_of(store: &crate::authz::GrantStore, id: GrantId) -> Result<GrantRecord, Refusal> {
     store
         .records()
@@ -568,7 +528,7 @@ fn refusal_of(error: AuthzError) -> Refusal {
     }
 }
 
-pub(super) fn rfc3339(seconds: u64) -> String {
+pub fn rfc3339(seconds: u64) -> String {
     permguard_core::time::to_rfc3339(i64::try_from(seconds).unwrap_or(i64::MAX))
 }
 
@@ -719,8 +679,7 @@ mod tests {
                 &grant_id,
                 RunRevoke {
                     request_id: "x1".to_owned(),
-                    plan_id: planned.plan_id.clone(),
-                    plan_digest: "00".repeat(32),
+                    receipt: crate::api::testing::tampered(&planned.receipt),
                 },
             )
             .await
@@ -740,8 +699,7 @@ mod tests {
                 &other.grant.grant_id,
                 RunRevoke {
                     request_id: "x2".to_owned(),
-                    plan_id: planned.plan_id.clone(),
-                    plan_digest: planned.plan_digest.clone(),
+                    receipt: planned.receipt.clone(),
                 },
             )
             .await
@@ -752,8 +710,7 @@ mod tests {
         );
         let run = RunRevoke {
             request_id: "r1".to_owned(),
-            plan_id: planned.plan_id.clone(),
-            plan_digest: planned.plan_digest.clone(),
+            receipt: planned.receipt.clone(),
         };
         let revoked = api
             .run_revoke(&admin(), &grant_id, run.clone())
@@ -774,8 +731,7 @@ mod tests {
                 &grant_id,
                 RunRevoke {
                     request_id: "r2".to_owned(),
-                    plan_id: planned.plan_id.clone(),
-                    plan_digest: planned.plan_digest.clone(),
+                    receipt: planned.receipt.clone(),
                 },
             )
             .await
@@ -860,12 +816,12 @@ mod tests {
     async fn the_replayed_answer_survives_a_restart() {
         let root = scratch("grants-restart");
         let created = {
-            let (api, _, _volume) = reopen(&root, Vec::new());
+            let (api, _, _volume) = reopen(&root, vec![crate::keys::ring::HOST_OPERATIONS]);
             api.create_grant(&admin(), create("r1", "spiffe://acme/alice"))
                 .await
                 .expect("created")
         };
-        let (api, _, _volume) = reopen(&root, Vec::new());
+        let (api, _, _volume) = reopen(&root, vec![crate::keys::ring::HOST_OPERATIONS]);
         let again = api
             .create_grant(&admin(), create("r1", "spiffe://acme/alice"))
             .await
@@ -883,7 +839,11 @@ mod tests {
     fn facade_auditing(tag: &str) -> (HostApi, std::sync::Arc<Recording>, std::path::PathBuf) {
         let trail = std::sync::Arc::new(Recording::default());
         let root = scratch(tag);
-        let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+        let (api, _, volume) = reopen_with(
+            &root,
+            vec![crate::keys::ring::HOST_OPERATIONS],
+            std::sync::Arc::clone(&trail),
+        );
         std::mem::forget(volume);
         (api, trail, root)
     }
@@ -928,8 +888,7 @@ mod tests {
             &grant_id,
             RunRevoke {
                 request_id: "r1".to_owned(),
-                plan_id: planned.plan_id,
-                plan_digest: planned.plan_digest,
+                receipt: planned.receipt,
             },
         )
         .await
@@ -1061,7 +1020,11 @@ mod tests {
         let trail = std::sync::Arc::new(Recording::default());
         let root = scratch("grants-commit-fails");
         let journal = {
-            let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+            let (api, _, volume) = reopen_with(
+                &root,
+                vec![crate::keys::ring::HOST_OPERATIONS],
+                std::sync::Arc::clone(&trail),
+            );
             let journal = volume
                 .host()
                 .path()
@@ -1087,7 +1050,11 @@ mod tests {
         };
         assert!(journal.is_dir());
         // A restart: the intent is open, the store shows its operation, recovery commits it.
-        let (api, store, _volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+        let (api, store, _volume) = reopen_with(
+            &root,
+            vec![crate::keys::ring::HOST_OPERATIONS],
+            std::sync::Arc::clone(&trail),
+        );
         let alice: Vec<_> = store
             .records()
             .into_iter()
@@ -1200,7 +1167,11 @@ mod tests {
         let trail = std::sync::Arc::new(Recording::default());
         let root = scratch("grants-run-reconciled");
         let run = {
-            let (api, _, volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+            let (api, _, volume) = reopen_with(
+                &root,
+                vec![crate::keys::ring::HOST_OPERATIONS],
+                std::sync::Arc::clone(&trail),
+            );
             let journal = volume
                 .host()
                 .path()
@@ -1223,8 +1194,7 @@ mod tests {
                 .expect("planned");
             let run = RunRevoke {
                 request_id: "r1".to_owned(),
-                plan_id: planned.plan_id,
-                plan_digest: planned.plan_digest,
+                receipt: planned.receipt,
             };
             let armed = std::sync::Arc::new(std::sync::Mutex::new(None));
             let holder = std::sync::Arc::clone(&armed);
@@ -1243,7 +1213,11 @@ mod tests {
             (created.grant.grant_id, run)
         };
         let (grant_id, run) = run;
-        let (api, store, _volume) = reopen_with(&root, Vec::new(), std::sync::Arc::clone(&trail));
+        let (api, store, _volume) = reopen_with(
+            &root,
+            vec![crate::keys::ring::HOST_OPERATIONS],
+            std::sync::Arc::clone(&trail),
+        );
         let revoked = api
             .run_revoke(&admin(), &grant_id, run)
             .await
@@ -1284,20 +1258,5 @@ mod tests {
         long.constraints = BTreeMap::from([("k".to_owned(), "v".repeat(MAX_CONSTRAINT_BYTES + 1))]);
         assert!(api.create_grant(&admin(), long).await.is_err());
         assert_eq!(api.grants(&admin(), None, None).expect("l").grants.len(), 1);
-    }
-
-    #[test]
-    fn the_plan_digest_binds_every_part() {
-        let base = plan_digest("p", REVOKE, "g", 1, "alice", 10);
-        assert_ne!(base, plan_digest("q", REVOKE, "g", 1, "alice", 10));
-        assert_ne!(base, plan_digest("p", REVOKE, "h", 1, "alice", 10));
-        assert_ne!(base, plan_digest("p", REVOKE, "g", 2, "alice", 10));
-        assert_ne!(base, plan_digest("p", REVOKE, "g", 1, "bob", 10));
-        assert_ne!(base, plan_digest("p", REVOKE, "g", 1, "alice", 11));
-        // Length-prefixed, so a boundary cannot move.
-        assert_ne!(
-            plan_digest("ab", "c", "g", 1, "a", 1),
-            plan_digest("a", "bc", "g", 1, "a", 1)
-        );
     }
 }

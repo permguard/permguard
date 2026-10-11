@@ -167,6 +167,7 @@ impl Control {
                 | Self::RuntimeExperimentalForbidden
                 | Self::CustodyEncrypted
                 | Self::IdentityWitness
+                | Self::OperationsDualControl
         )
     }
 

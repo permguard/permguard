@@ -75,6 +75,9 @@ const MINTED: &[&str] = &[
     "host_id",
     "fingerprint",
     "witness",
+    // The plan receipts and approvals each facade signed with its own key (WP-3.9).
+    "receipt",
+    "approval",
     // The audit records each facade wrote, at its own time and boot (WP-3.7).
     "record",
     // And the `keys export` document of each facade's own operations ring.
@@ -301,6 +304,45 @@ fn facade(tag: &str) -> Arc<HostApi> {
             live: Arc::default(),
         })),
     }))
+}
+
+/// The receipt a plan answered, base64url: REST answers it so, gRPC as bytes.
+fn receipt_of(planned: &Outcome) -> String {
+    use base64::Engine as _;
+    let Outcome::Answered(value) = planned else {
+        panic!("the plan was refused: {planned:?}")
+    };
+    match &value["receipt"] {
+        Value::String(text) => text.clone(),
+        Value::Array(bytes) => base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            bytes
+                .iter()
+                .map(|byte| {
+                    byte.as_u64()
+                        .and_then(|byte| u8::try_from(byte).ok())
+                        .expect("a byte")
+                })
+                .collect::<Vec<u8>>(),
+        ),
+        other => panic!("a receipt: {other}"),
+    }
+}
+
+/// A receipt as gRPC carries it.
+fn receipt_bytes(receipt: &str) -> Vec<u8> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(receipt)
+        .unwrap_or_else(|_| receipt.as_bytes().to_vec())
+}
+
+/// `receipt` with its signature's last byte changed: the same plan, other bytes.
+fn tampered(receipt: &str) -> String {
+    use base64::Engine as _;
+    let mut bytes = receipt_bytes(receipt);
+    let last = bytes.len() - 1;
+    bytes[last] ^= 1;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
 /// One transport of the Host API, driven as a client would drive it.
@@ -1062,8 +1104,7 @@ impl Transport {
         &self,
         who: Option<&str>,
         request_id: &str,
-        plan_id: &str,
-        plan_digest: &str,
+        receipt: &str,
     ) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -1073,8 +1114,7 @@ impl Transport {
                     who,
                     Some(json!({
                         "request_id": request_id,
-                        "plan_id": plan_id,
-                        "plan_digest": plan_digest,
+                        "receipt": receipt,
                     })),
                 )
                 .await
@@ -1086,8 +1126,7 @@ impl Transport {
                         who,
                         host_v1::RunIdentityResetRequest {
                             request_id: request_id.to_owned(),
-                            plan_id: plan_id.to_owned(),
-                            plan_digest: plan_digest.to_owned(),
+                            receipt: receipt_bytes(receipt),
                         },
                     ))
                     .await,
@@ -1142,8 +1181,7 @@ impl Transport {
         who: Option<&str>,
         grant_id: &str,
         request_id: &str,
-        plan_id: &str,
-        plan_digest: &str,
+        receipt: &str,
     ) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -1153,8 +1191,7 @@ impl Transport {
                     who,
                     Some(json!({
                         "request_id": request_id,
-                        "plan_id": plan_id,
-                        "plan_digest": plan_digest,
+                        "receipt": receipt,
                     })),
                 )
                 .await
@@ -1167,8 +1204,7 @@ impl Transport {
                         host_v1::RunGrantRevokeRequest {
                             grant_id: grant_id.to_owned(),
                             request_id: request_id.to_owned(),
-                            plan_id: plan_id.to_owned(),
-                            plan_digest: plan_digest.to_owned(),
+                            receipt: receipt_bytes(receipt),
                         },
                     ))
                     .await,
@@ -1324,8 +1360,7 @@ impl Transport {
         who: Option<&str>,
         ring: &str,
         request_id: &str,
-        plan_id: &str,
-        plan_digest: &str,
+        receipt: &str,
     ) -> Outcome {
         match self {
             Self::Rest(_) => {
@@ -1335,8 +1370,7 @@ impl Transport {
                     who,
                     Some(json!({
                         "request_id": request_id,
-                        "plan_id": plan_id,
-                        "plan_digest": plan_digest,
+                        "receipt": receipt,
                     })),
                 )
                 .await
@@ -1349,8 +1383,48 @@ impl Transport {
                         host_v1::RunKeyRevokeRequest {
                             ring: ring.to_owned(),
                             request_id: request_id.to_owned(),
+                            receipt: receipt_bytes(receipt),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn list_plans(&self, who: Option<&str>) -> Outcome {
+        match self {
+            Self::Rest(_) => self.rest("GET", "/host/v1/plans", who, None).await,
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .list_plans(Self::grpc_request(
+                        who,
+                        host_v1::ListPlansRequest::default(),
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn approve_plan(&self, who: Option<&str>, plan_id: &str, request_id: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "POST",
+                    &format!("/host/v1/plans/{plan_id}/approve"),
+                    who,
+                    Some(json!({ "request_id": request_id })),
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.operations()
+                    .await
+                    .approve_plan(Self::grpc_request(
+                        who,
+                        host_v1::ApprovePlanRequest {
                             plan_id: plan_id.to_owned(),
-                            plan_digest: plan_digest.to_owned(),
+                            request_id: request_id.to_owned(),
                         },
                     ))
                     .await,
@@ -1561,11 +1635,12 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
             .await,
     ));
     steps.push(("list the grants after", transport.list_grants(admin).await));
+    let carol = transport
+        .create_grant_full(admin, "r5", "spiffe://acme/carol")
+        .await;
     steps.push((
         "create a grant with an expiry and a constraint",
-        transport
-            .create_grant_full(admin, "r5", "spiffe://acme/carol")
-            .await,
+        carol.clone(),
     ));
     steps.push((
         "create a grant with an expiry in the past",
@@ -1575,33 +1650,47 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
     ));
     let grant_id = member(&created, &["grant", "grant_id"]).to_owned();
     let planned = transport.plan_revoke(admin, &grant_id, "p1").await;
-    let plan_id = member(&planned, &["plan_id"]).to_owned();
-    let plan_digest = member(&planned, &["plan_digest"]).to_owned();
+    let receipt = receipt_of(&planned);
+    // A plan of another grant: its receipt authorizes nothing about this one (WP-3.9).
+    let other_plan = transport
+        .plan_revoke(admin, member(&carol, &["grant", "grant_id"]), "p0")
+        .await;
+    let elsewhere = receipt_of(&other_plan);
+    let other_plan_id = member(&other_plan, &["plan_id"]).to_owned();
     steps.push(("plan a revocation", planned.clone()));
+    steps.push(("list the plans", transport.list_plans(admin).await));
+    steps.push((
+        "list the plans as a stranger",
+        transport.list_plans(Some(STRANGER)).await,
+    ));
+    steps.push((
+        "approve the own plan",
+        transport.approve_plan(admin, &other_plan_id, "a0").await,
+    ));
     steps.push((
         "run with a wrong digest",
         transport
-            .run_revoke(admin, &grant_id, "x1", &plan_id, &"00".repeat(32))
+            .run_revoke(admin, &grant_id, "x1", &tampered(&receipt))
             .await,
     ));
     steps.push((
         "run with an unknown plan",
         transport
-            .run_revoke(admin, &grant_id, "x2", &"11".repeat(16), &plan_digest)
+            .run_revoke(admin, &grant_id, "x2", &elsewhere)
             .await,
     ));
     let revoked = transport
-        .run_revoke(admin, &grant_id, "run1", &plan_id, &plan_digest)
+        .run_revoke(admin, &grant_id, "run1", &receipt)
         .await;
     let retried = transport
-        .run_revoke(admin, &grant_id, "run1", &plan_id, &plan_digest)
+        .run_revoke(admin, &grant_id, "run1", &receipt)
         .await;
     assert_eq!(retried, revoked, "a retried run returns the stored receipt");
     steps.push(("run the revocation", revoked));
     steps.push((
         "run the consumed plan again",
         transport
-            .run_revoke(admin, &grant_id, "run2", &plan_id, &plan_digest)
+            .run_revoke(admin, &grant_id, "run2", &receipt)
             .await,
     ));
     steps.push((
@@ -1743,14 +1832,11 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.rotate_ring(admin, ring, "k2", 2).await,
     ));
     let planned = transport.plan_key_revoke(admin, ring, "kp1", &first).await;
-    let plan_id = member(&planned, &["plan_id"]).to_owned();
-    let plan_digest = member(&planned, &["plan_digest"]).to_owned();
+    let receipt = receipt_of(&planned);
     steps.push(("plan a key revocation", planned));
     steps.push((
         "run the key revocation",
-        transport
-            .run_key_revoke(admin, ring, "kr1", &plan_id, &plan_digest)
-            .await,
+        transport.run_key_revoke(admin, ring, "kr1", &receipt).await,
     ));
     steps.push((
         "plan the revocation of a revoked key",
@@ -1894,21 +1980,16 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         transport.plan_identity_reset(Some(STRANGER), "ir0").await,
     ));
     let planned = transport.plan_identity_reset(admin, "ir1").await;
-    let plan_id = member(&planned, &["plan_id"]).to_owned();
-    let plan_digest = member(&planned, &["plan_digest"]).to_owned();
+    let receipt = receipt_of(&planned);
     steps.push(("plan an identity reset", planned));
     steps.push((
         "run an identity reset with a wrong digest",
         transport
-            .run_identity_reset(admin, "rr0", &plan_id, &"00".repeat(32))
+            .run_identity_reset(admin, "rr0", &tampered(&receipt))
             .await,
     ));
-    let reset = transport
-        .run_identity_reset(admin, "rr1", &plan_id, &plan_digest)
-        .await;
-    let retried = transport
-        .run_identity_reset(admin, "rr1", &plan_id, &plan_digest)
-        .await;
+    let reset = transport.run_identity_reset(admin, "rr1", &receipt).await;
+    let retried = transport.run_identity_reset(admin, "rr1", &receipt).await;
     assert_eq!(retried, reset, "a retried reset answers what it answered");
     steps.push(("run the identity reset", reset));
     steps.push((
@@ -1988,6 +2069,7 @@ fn schema_of(case: &str) -> &'static str {
         "list the key rings" | "list the key rings as nobody" => "KeyRings",
         "read the operations ring" => "KeyRing",
         "read the verification bundle" | "read the next page of the bundle" => "KeyBundlePage",
+        "list the plans" => "PlanList",
         "read the audit records" => "AuditRecordPage",
         "read the audit checkpoints" => "AuditCheckpoints",
         "export the audit trail" => "AuditExportPage",
@@ -2129,7 +2211,7 @@ async fn every_rest_answer_conforms_to_the_host_api_document() {
     );
     document.check_json(
         "RunRevokeBody",
-        &json!({ "request_id": "r", "plan_id": "p", "plan_digest": "d" }),
+        &json!({ "request_id": "r", "receipt": "r" }),
     );
 }
 
@@ -2186,6 +2268,14 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
     assert_eq!(
         refused("run with an unknown plan"),
         ("not_found".to_owned(), host::PLAN_UNKNOWN.to_owned())
+    );
+    assert_eq!(
+        refused("approve the own plan"),
+        ("conflict".to_owned(), host::PLAN_SELF_APPROVAL.to_owned())
+    );
+    assert_eq!(
+        refused("list the plans as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
     );
     assert_eq!(
         refused("read the audit records of an unknown class"),

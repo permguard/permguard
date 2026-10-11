@@ -83,6 +83,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `mutation.json`       | security mutation journal entries and snapshot     | `mutation_intent`, `mutation_commit`, `mutation_failed`, `mutation_projected`, `mutation_snapshot` |
 | `identity.json`       | Host identity document, succession, `INIT`, `BOOT` | `identity_document`, `succession_record`, `init`, `boot`                                           |
 | `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |
+| `operation-plan.json` | plan receipt, approval and the plan body           | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
 
 `notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body that the control plane writes inline and the client reads with a private closed decoder.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.

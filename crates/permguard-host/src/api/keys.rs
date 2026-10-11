@@ -25,8 +25,8 @@ use permguard_core::authz::{Actor, operations};
 use permguard_core::keys::{Jwk, KEY_SET_MAX_AGE};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{Planned, plan_digest, rfc3339};
-use super::replay::{PLAN_LIFETIME, Plan, mint_id};
+use super::grants::{Planned, rfc3339};
+use super::replay::Plan;
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::keys::bundle::{self, BundleError, MAX_MANIFEST_BYTES, PAGE_DEFAULT, PAGE_MAX, Source};
 use crate::keys::record::MAX_REASON_BYTES;
@@ -192,8 +192,8 @@ pub struct PlanKeyRevoke {
 pub struct RunKeyRevoke {
     #[serde(default)]
     pub request_id: String,
-    pub plan_id: String,
-    pub plan_digest: String,
+    /// The receipt the plan step answered.
+    pub receipt: String,
 }
 
 /// What a run answers.
@@ -540,39 +540,36 @@ impl HostApi {
             || current().map(|_| ()),
             |applying| {
                 let epoch = current().map_err(Failure::Refused)?;
-                let expires = now.saturating_add(PLAN_LIFETIME.as_secs());
-                let plan_id = mint_id().map_err(Failure::Refused)?;
-                let held = revocation.target();
-                let digest = plan_digest(
-                    &plan_id,
-                    REVOKE,
-                    &held,
-                    epoch,
-                    admitted.principal.as_str(),
-                    expires,
-                );
-                self.replay
-                    .plan(
+                let compromised = revocation.compromised_at.map(|at| at.to_string());
+                let mut parameters = vec![("reason", revocation.reason.as_str())];
+                if let Some(at) = compromised.as_deref() {
+                    parameters.push(("compromised_at", at));
+                }
+                let issued = self
+                    .issue_plan(
                         applying,
-                        Plan {
-                            plan_id: plan_id.clone(),
-                            operation: REVOKE.to_owned(),
-                            target: held,
+                        super::plans::Issue {
+                            kind: crate::operations::plan::KEYS_REVOKE,
+                            internal: REVOKE,
+                            stored_target: revocation.target(),
+                            target: revocation.kid.clone(),
                             revision: epoch,
-                            digest: digest.clone(),
-                            expires,
-                            principal: admitted.principal.as_str().to_owned(),
+                            parameters: &parameters,
+                            principal: &admitted.principal,
                         },
+                        now,
                     )
                     .map_err(Failure::Refused)?;
                 Ok(Applied {
                     revision: epoch,
                     target: Some(plan.kid.clone()),
                     value: Planned {
-                        plan_id,
-                        plan_digest: digest,
-                        expires: rfc3339(expires),
+                        plan_id: issued.plan.plan_id,
+                        plan_digest: issued.plan_digest,
+                        expires: rfc3339(issued.expires),
                         revision: epoch,
+                        receipt: issued.receipt,
+                        approvals_required: issued.approvals_required,
                     },
                 })
             },
@@ -598,9 +595,7 @@ impl HostApi {
         let now = self.time.now_secs();
         let target = (name, &run);
         let presented = || -> Result<(Plan, Revocation), Refusal> {
-            let plan = self
-                .replay
-                .plan_of(&admitted.principal, &run.plan_id, now)?;
+            let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
             let revocation = Revocation::parse(&plan.target)
                 .filter(|revocation| plan.operation == REVOKE && revocation.ring == name)
                 .ok_or_else(|| {
@@ -610,13 +605,6 @@ impl HostApi {
                         "no plan of that id is held for this ring",
                     )
                 })?;
-            if plan.digest != run.plan_digest {
-                return Err(Refusal::new(
-                    ErrorClass::Validation,
-                    codes::host::PLAN_DIGEST_MISMATCH,
-                    "the plan digest presented is not the one the plan step answered",
-                ));
-            }
             Ok((plan, revocation))
         };
         let kid = presented().ok().map(|(_, revocation)| revocation.kid);
@@ -642,9 +630,9 @@ impl HostApi {
                         plan.revision,
                     )
                     .map_err(failure_of)?;
-                if let Err(error) = self
-                    .replay
-                    .consume(applying, &admitted.principal, &run.plan_id)
+                if let Err(error) =
+                    self.replay
+                        .consume(applying, &admitted.principal, &plan.plan_id)
                 {
                     tracing::warn!(
                         event.name = "host.plan_unconsumed",

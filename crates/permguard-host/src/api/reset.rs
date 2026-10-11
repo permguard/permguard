@@ -23,9 +23,8 @@ use serde::{Deserialize, Serialize};
 use permguard_core::authz::{Actor, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{plan_digest, rfc3339, unreachable_reconciliation};
+use super::grants::{rfc3339, unreachable_reconciliation};
 use super::members::{HostView, refusal_of};
-use super::replay::{PLAN_LIFETIME, Plan, mint_id};
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::identity::record::uuid_text;
 use crate::identity::reset::{AUDIT_RESET, AUDIT_RESET_PLANNED, RESET_PLAN, RESET_RUN};
@@ -111,6 +110,7 @@ impl ResetMembership {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentityResetPlan {
     pub plan_id: String,
+    /// What the plan changes, `sha256:<hex>`: what each approval names (WP-3.9).
     pub plan_digest: String,
     /// RFC 3339: when the plan can no longer be run.
     pub expires: String,
@@ -118,6 +118,10 @@ pub struct IdentityResetPlan {
     pub revision: u64,
     pub mode: String,
     pub memberships: Vec<ResetMembership>,
+    /// The receipt the run presents, COSE_Sign1 `permguard.operation.plan.v1`, base64url.
+    pub receipt: String,
+    /// How many principals other than the planner must approve it before it runs.
+    pub approvals_required: u64,
 }
 
 /// `POST /host/v1/identity/reset/run`.
@@ -125,8 +129,8 @@ pub struct IdentityResetPlan {
 #[serde(deny_unknown_fields)]
 pub struct RunIdentityReset {
     pub request_id: String,
-    pub plan_id: String,
-    pub plan_digest: String,
+    /// The receipt the plan step answered.
+    pub receipt: String,
 }
 
 /// A membership the reset ended, with its last manifest: a coordinator's revocation receipt, or
@@ -242,45 +246,43 @@ impl HostApi {
             || Ok(()),
             |applying| {
                 let planned = settle::plan(&memberships.store);
-                let held = format!("{}\n{}", mode.as_str(), settle::digest_target(&planned));
+                let bound = settle::digest_target(&planned);
+                let held = format!("{}\n{bound}", mode.as_str());
                 let revision = identity.epoch();
-                let expires = now.saturating_add(PLAN_LIFETIME.as_secs());
-                let plan_id = mint_id().map_err(Failure::Refused)?;
-                let digest = plan_digest(
-                    &plan_id,
-                    RESET,
-                    &held,
-                    revision,
-                    admitted.principal.as_str(),
-                    expires,
-                );
-                self.replay
-                    .plan(
+                let issued = self
+                    .issue_plan(
                         applying,
-                        Plan {
-                            plan_id: plan_id.clone(),
-                            operation: RESET.to_owned(),
-                            target: held,
+                        super::plans::Issue {
+                            kind: crate::operations::plan::IDENTITY_RESET,
+                            internal: RESET,
+                            stored_target: held,
+                            target: identity.host_id_text(),
                             revision,
-                            digest: digest.clone(),
-                            expires,
-                            principal: admitted.principal.as_str().to_owned(),
+                            parameters: &[
+                                ("mode", mode.as_str()),
+                                ("memberships", bound.as_str()),
+                                ("reason", plan.reason.as_str()),
+                            ],
+                            principal: &admitted.principal,
                         },
+                        now,
                     )
                     .map_err(Failure::Refused)?;
                 Ok(Applied {
                     revision,
                     target: target.clone(),
                     value: IdentityResetPlan {
-                        plan_id,
-                        plan_digest: digest,
-                        expires: rfc3339(expires),
+                        plan_id: issued.plan.plan_id,
+                        plan_digest: issued.plan_digest,
+                        expires: rfc3339(issued.expires),
                         revision,
                         mode: mode.as_str().to_owned(),
                         memberships: planned
                             .iter()
                             .map(|(id, held, step)| ResetMembership::of(id, held, *step))
                             .collect(),
+                        receipt: issued.receipt,
+                        approvals_required: issued.approvals_required,
                     },
                 })
             },
@@ -321,21 +323,12 @@ impl HostApi {
         }
         let memberships = self.memberships()?;
         let now = self.time.now_secs();
-        let plan = self
-            .replay
-            .plan_of(&admitted.principal, &run.plan_id, now)?;
+        let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
         if plan.operation != RESET {
             return Err(Refusal::new(
                 ErrorClass::NotFound,
                 codes::host::PLAN_UNKNOWN,
                 "no reset plan of that id is held",
-            ));
-        }
-        if plan.digest != run.plan_digest {
-            return Err(Refusal::new(
-                ErrorClass::Validation,
-                codes::host::PLAN_DIGEST_MISMATCH,
-                "the plan digest presented is not the one the plan step answered",
             ));
         }
         let (mode, bound) = plan
@@ -469,9 +462,9 @@ impl HostApi {
                             .with_internal(other.to_string()),
                         )),
                     })?;
-                if let Err(error) = self
-                    .replay
-                    .consume(applying, &admitted.principal, &run.plan_id)
+                if let Err(error) =
+                    self.replay
+                        .consume(applying, &admitted.principal, &plan.plan_id)
                 {
                     tracing::warn!(
                         event.name = "host.plan_unconsumed",

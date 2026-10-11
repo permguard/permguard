@@ -578,25 +578,24 @@ fn identity(
     Ok(ExitCode::from(EXIT_READY))
 }
 
-/// The plan an offline reset writes and its run confirms (WP-4.1): what it binds is the Host,
-/// its epoch, the reason and every live membership at its revision.
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+/// What an offline reset's plan step answers (WP-4.1, WP-3.9): the receipt it wrote binds the
+/// Host, its epoch, the reason and every live membership at its revision.
+#[derive(Debug, Serialize)]
 struct ResetPlan {
-    kind: String,
     mode: String,
     host_id: String,
     epoch: u64,
     reason: String,
     memberships: Vec<ResetPlanned>,
-    /// The memberships as the plan bound them: `<id>:<revision>`, in id order.
-    bound: String,
-    /// SHA-256 over every member above.
-    digest: String,
+    plan_id: String,
+    plan_digest: String,
+    /// RFC 3339.
+    expires: String,
+    /// The approvals the Host API must record before the run, under `operations.dual_control`.
+    approvals_required: u64,
 }
 
-#[derive(Debug, Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Serialize)]
 struct ResetPlanned {
     membership_id: String,
     role: String,
@@ -608,32 +607,24 @@ struct ResetPlanned {
     address: Option<String>,
 }
 
-const RESET_PLAN_KIND: &str = permguard_core::domains::format::IDENTITY_RESET_PLAN_V1;
+/// The mode an offline reset runs in: no coordinator is reached.
+const RESET_MODE: &str = "emergency";
 
-impl ResetPlan {
-    fn digest_of(&self) -> String {
-        let mut bytes = Vec::new();
-        for part in [
-            self.kind.as_str(),
-            self.mode.as_str(),
-            self.host_id.as_str(),
-            &self.epoch.to_string(),
-            self.reason.as_str(),
-            self.bound.as_str(),
-        ] {
-            bytes.extend_from_slice(&(part.len() as u64).to_be_bytes());
-            bytes.extend_from_slice(part.as_bytes());
-        }
-        permguard_objects::digest::Digest::compute(&bytes).to_string()
-    }
+/// What a Host API refusal says, for a CLI failure.
+fn refusal_text(refusal: &permguard_host::api::Refusal) -> String {
+    refusal
+        .error()
+        .map_or_else(|| "denied".to_owned(), ToString::to_string)
 }
 
 impl Report for ResetPlan {
     fn render_terminal(&self, out: &mut dyn std::io::Write) -> std::io::Result<()> {
         writeln!(out, "Host identity reset planned (emergency, offline)")?;
-        writeln!(out, "host_id  {}", self.host_id)?;
-        writeln!(out, "epoch    {}", self.epoch)?;
-        writeln!(out, "digest   {}", self.digest)?;
+        writeln!(out, "host_id   {}", self.host_id)?;
+        writeln!(out, "epoch     {}", self.epoch)?;
+        writeln!(out, "plan_id   {}", self.plan_id)?;
+        writeln!(out, "digest    {}", self.plan_digest)?;
+        writeln!(out, "expires   {}", self.expires)?;
         for held in &self.memberships {
             writeln!(
                 out,
@@ -650,6 +641,14 @@ impl Report for ResetPlan {
             )?;
         }
         writeln!(out)?;
+        if self.approvals_required > 0 {
+            writeln!(
+                out,
+                "The plan requires {} approval(s) before it runs, each by another holder of \
+                 `identity.admin`: `POST /host/v1/plans/{}/approve` on the Host API.",
+                self.approvals_required, self.plan_id
+            )?;
+        }
         writeln!(
             out,
             "No coordinator is reached offline: every membership marked `orphan` stays active for \
@@ -709,17 +708,17 @@ impl Report for ResetReport {
     }
 }
 
-/// The plan of `held`'s state: its identity and every live membership.
+/// The plan of `held`'s state: its identity and every live membership, and the memberships as it
+/// binds them, `<id>:<revision>` in id order. The receipt's fields are the plan step's to fill.
 fn reset_plan(
     identity: &permguard_host::identity::Identity,
     store: &permguard_host::membership::Store,
     reason: String,
-) -> ResetPlan {
+) -> (ResetPlan, String) {
     use permguard_host::membership::reset::{self as settle, Step};
     let planned = settle::plan(store);
-    let mut plan = ResetPlan {
-        kind: RESET_PLAN_KIND.to_owned(),
-        mode: "emergency".to_owned(),
+    let plan = ResetPlan {
+        mode: RESET_MODE.to_owned(),
         host_id: identity.host_id_text(),
         epoch: identity.epoch(),
         reason,
@@ -744,11 +743,12 @@ fn reset_plan(
                 }
             })
             .collect(),
-        bound: settle::digest_target(&planned),
-        digest: String::new(),
+        plan_id: String::new(),
+        plan_digest: String::new(),
+        expires: String::new(),
+        approvals_required: 0,
     };
-    plan.digest = plan.digest_of();
-    plan
+    (plan, settle::digest_target(&planned))
 }
 
 fn reset(
@@ -768,18 +768,118 @@ fn reset(
     };
     match action {
         ResetAction::Plan { reason, out } => {
+            use permguard_host::api::plans::{Issue, sign_plan};
+            use permguard_host::operations::mutation::{Applied, Begin, Failure as Refused};
+            use permguard_host::operations::plan::{IDENTITY_RESET, PlanSigner};
+
             if reason.is_empty() || reason.len() > 256 || reason.chars().any(char::is_control) {
                 return Err(Failure::usage(
                     "--reason is printable text of 1 to 256 bytes",
                 ));
             }
             let (_store, held) = open(&volume, trace)?;
+            let config =
+                permguard_server::offline::config(env!("CARGO_PKG_VERSION"), server_config)
+                    .map_err(|error| Failure::usage(format!("--server-config: {error:#}")))?;
+            let custodian = custodian(&held, server_config)?;
             let opened = open_identity(&held, server_config)?;
-            let plan = reset_plan(&opened, open_members(&held)?.as_ref(), reason);
-            let bytes = serde_json::to_vec_pretty(&plan)
-                .map_err(|error| Failure::internal(format!("writing the plan: {error}")))?;
-            write_new(&out, &bytes)?;
-            trace.say(format!("plan written to {}", out.display()));
+            let mutations =
+                Mutations::open_offline_as(&held, env!("CARGO_PKG_VERSION"), Some(&opened))
+                    .map_err(|error| {
+                        Failure::unavailable(format!("opening the mutation journal: {error}"))
+                    })?;
+            let store = open_members(&held)?;
+            mutations
+                .recover(&identity::Identities(&opened))
+                .and_then(|_| mutations.recover(&permguard_host::membership::Memberships(&store)))
+                .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
+            let (mut plan, bound) = reset_plan(&opened, &store, reason);
+
+            // The receipt is signed by the volume's `host.operations`, as the Host API's are.
+            let time = std::sync::Arc::new(permguard_host::time::TimeGuard::system(
+                config.time_max_clock_skew(),
+            ));
+            let rings = permguard_server::offline::rings(
+                &config,
+                &held,
+                opened.host_id(),
+                None,
+                &custodian,
+                time,
+            )
+            .map_err(|error| Failure::unavailable(format!("the key rings: {error:#}")))?;
+            let signer = rings
+                .iter()
+                .find(|ring| ring.id() == permguard_host::keys::ring::HOST_OPERATIONS);
+            let planner = Principal::new(INITIATOR)
+                .map_err(|error| Failure::internal(format!("the planner: {error}")))?;
+            let issued = sign_plan(
+                signer.map(|ring| ring.as_ref() as &dyn PlanSigner),
+                Issue {
+                    kind: IDENTITY_RESET,
+                    internal: IDENTITY_RESET,
+                    stored_target: format!("{RESET_MODE}\n{bound}"),
+                    target: opened.host_id_text(),
+                    revision: opened.epoch(),
+                    parameters: &[
+                        ("mode", RESET_MODE),
+                        ("memberships", bound.as_str()),
+                        ("reason", plan.reason.as_str()),
+                    ],
+                    principal: &planner,
+                },
+                opened.host_id(),
+                config
+                    .assurance()
+                    .requires(permguard_core::assurance::Control::OperationsDualControl),
+                now,
+            )
+            .map_err(|refusal| {
+                // A ring is given its first key by the server's start, which records it: never
+                // here.
+                let remedy = if signer.is_some() {
+                    "start the server once, which activates the ring's first key and records it"
+                } else {
+                    "configure `operations.keys` in the server's configuration, \
+                     `--server-config <file>`"
+                };
+                Failure::unavailable(format!("{}: {remedy}", refusal_text(&refusal)))
+            })?;
+
+            // The plans store the Host API reads, approvals included; then the receipt file, so
+            // an `--out` already there records nothing; then the plan.
+            let replay = open_plans(&held, &mutations, now)?;
+            write_new(&out, &issued.envelope)?;
+            let target = Some(format!("reset:{}", opened.host_id_text()));
+            let recorded = mutations.run(
+                Begin {
+                    domain: identity::DOMAIN,
+                    operation: identity::reset::RESET_PLAN,
+                    action: identity::reset::AUDIT_RESET_PLANNED,
+                    initiator: Initiator::System(INITIATOR.to_owned()),
+                    request: None,
+                    target: target.clone(),
+                },
+                |applying| {
+                    replay
+                        .plan(applying, issued.plan.clone())
+                        .map_err(|refusal| Refused::Refused(refusal_text(&refusal)))?;
+                    Ok(Applied {
+                        revision: opened.epoch(),
+                        target,
+                        value: (),
+                    })
+                },
+            );
+            if let Err(error) = recorded {
+                let _ = std::fs::remove_file(&out);
+                return Err(Failure::unavailable(format!("recording the plan: {error}")));
+            }
+            plan.plan_id = issued.plan.plan_id.clone();
+            plan.plan_digest = issued.plan_digest;
+            plan.expires = permguard_host::api::grants::rfc3339(issued.expires);
+            plan.approvals_required = issued.approvals_required;
+            trace.say(format!("plan receipt written to {}", out.display()));
             render(&plan, globals.output, trace)?;
             std::mem::forget(held);
         }
@@ -841,12 +941,11 @@ fn reset(
                 std::mem::forget(held);
                 return Ok(());
             }
-            let plan: ResetPlan = crate::confirm::read(confirm_file.as_deref(), "reset plan")?;
-            if plan.kind != RESET_PLAN_KIND || plan.digest != plan.digest_of() {
-                return Err(Failure::usage(
-                    "--confirm-file is not a reset plan `reset plan` wrote, or it was edited",
-                ));
-            }
+            let receipt = crate::confirm::read_bytes(
+                confirm_file.as_deref(),
+                "reset receipt",
+                permguard_host::operations::plan::MAX_ENVELOPE_BYTES,
+            )?;
             let opened = std::sync::Arc::new(
                 open_identity(&held, server_config)?.with_provisioner(provisioner),
             );
@@ -860,12 +959,49 @@ fn reset(
                 .recover(&identity::Identities(&opened))
                 .and_then(|_| mutations.recover(&permguard_host::membership::Memberships(&store)))
                 .map_err(|error| Failure::unavailable(format!("recovering: {error}")))?;
-            let current = reset_plan(&opened, &store, plan.reason.clone());
-            if current.digest != plan.digest {
-                return Err(Failure::usage(
-                    "the identity or its memberships changed since the plan: plan again",
-                ));
+
+            // The receipt the plan step wrote, held in the plans store, neither run nor expired,
+            // its approvals given; the volume as it bound it.
+            let replay = open_plans(&held, &mutations, now)?;
+            let planner = Principal::new(INITIATOR)
+                .map_err(|error| Failure::internal(format!("the planner: {error}")))?;
+            let plan = permguard_host::api::plans::held_plan(&replay, &planner, &receipt, now)
+                .map_err(|refusal| {
+                    Failure::usage(format!(
+                        "--confirm-file {}: {}",
+                        confirm_file
+                            .as_deref()
+                            .map(Path::display)
+                            .map(|shown| shown.to_string())
+                            .unwrap_or_default(),
+                        refusal_text(&refusal)
+                    ))
+                })?;
+            let bound = plan
+                .target
+                .strip_prefix(RESET_MODE)
+                .and_then(|rest| rest.strip_prefix('\n'));
+            let (_, current) = reset_plan(&opened, &store, String::new());
+            match bound {
+                Some(bound)
+                    if plan.kind == permguard_host::operations::plan::IDENTITY_RESET
+                        && plan.operation == permguard_host::operations::plan::IDENTITY_RESET =>
+                {
+                    if plan.revision != opened.epoch() || bound != current {
+                        return Err(Failure::usage(
+                            "the identity or its memberships changed since the plan: plan again",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(Failure::usage(
+                        "--confirm-file is not an offline reset's receipt",
+                    ));
+                }
             }
+            // Spent before anything changes: an interrupted reset completes without it.
+            permguard_host::api::plans::consume_plan(&mutations, &replay, &planner, &plan)
+                .map_err(|error| Failure::unavailable(format!("consuming the plan: {error}")))?;
             // Every ring the server composes: `host.operations` signs the manifests that end
             // the memberships this Host coordinates, and every ring retires with the identity.
             let rings = permguard_server::offline::rings(
@@ -922,6 +1058,20 @@ fn reset(
         }
     }
     Ok(())
+}
+
+/// The plans store of `held`, its operations a crash left open resolved.
+fn open_plans(
+    held: &Volume,
+    mutations: &Mutations,
+    now: u64,
+) -> Result<permguard_host::api::Replay, Failure> {
+    let (replay, _) = permguard_host::api::Replay::open(held, now)
+        .map_err(|error| Failure::unavailable(format!("opening the plans: {error}")))?;
+    mutations
+        .recover(&replay)
+        .map_err(|error| Failure::unavailable(format!("recovering the plans: {error}")))?;
+    Ok(replay)
 }
 
 /// Writes `bytes` to a new file at `path`, readable by its owner only.

@@ -71,6 +71,26 @@
       "fuzz": "audit_checkpoint"
     },
     {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/plan.rs",
+      "item": "PlanReceipt::decode",
+      "entry": "permguard_host::operations::plan::PlanReceipt::decode",
+      "max_input_bytes": 16384,
+      "limit": "`operations::plan::MAX_ENVELOPE_BYTES`, checked by the decoder before it parses: a plan receipt's payload, from the receipt an operator presents to run a destructive operation (read before its bytes are matched against the plan the Host holds) or from the offline reset's receipt file (WP-3.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "operation_plan"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/operations/plan.rs",
+      "item": "Approval::decode",
+      "entry": "permguard_host::operations::plan::Approval::decode",
+      "max_input_bytes": 16384,
+      "limit": "`operations::plan::MAX_ENVELOPE_BYTES`, checked by the decoder before it parses: an operator's approval of a plan, from the Host's own plans store or an approval a verifier holds (WP-3.9)",
+      "enforced_at_decoder": true,
+      "fuzz": "operation_plan"
+    },
+    {
       "crate": "permguard-objects",
       "source": "crates/permguard-objects/src/manifest.rs",
       "item": "Manifest::decode",

@@ -266,11 +266,7 @@ fn added_controls_are_read_by_name_and_an_unknown_one_is_refused() {
 /// enforces only at its floor cannot be added below it.
 #[test]
 fn a_control_enforced_only_at_its_floor_cannot_be_added_below_it() {
-    for control in [
-        "custody.hsm",
-        "schema.rego_input",
-        "operations.dual_control",
-    ] {
+    for control in ["custody.hsm", "schema.rego_input"] {
         let why = refusal(&config(&[
             (SETTING_ASSURANCE_PROFILE, "production"),
             (SETTING_ASSURANCE_ADDED_CONTROLS, control),
@@ -281,6 +277,14 @@ fn a_control_enforced_only_at_its_floor_cannot_be_added_below_it() {
     regulated(&[(SETTING_ASSURANCE_ADDED_CONTROLS, "custody.hsm")])
         .validate()
         .expect("a control of the own profile");
+    // The plan receipts enforce dual control wherever it is in force (WP-3.9): a production
+    // deployment may add it.
+    config(&[
+        (SETTING_ASSURANCE_PROFILE, "production"),
+        (SETTING_ASSURANCE_ADDED_CONTROLS, "operations.dual_control"),
+    ])
+    .validate()
+    .expect("dual control added below its floor");
     // `custody.encrypted` is enforced at Bootstrap, so a development machine may add it.
     let why = refusal(&config(&[
         (SETTING_ASSURANCE_PROFILE, "development"),

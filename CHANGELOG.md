@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **Plan receipts and dual control for destructive operations.**
+  Every two-step operation of the Host API (grant, key and membership revocation, identity reset) now answers a plan receipt, a COSE_Sign1 `permguard.operation.plan.v1` under the Host's `host.operations` key, binding the operation, the exact target, the revision, the planner, what the plan changes, its expiry and a nonce.
+  The run presents the receipt, in place of `plan_id` and `plan_digest`; it is matched byte for byte against the plan the Host holds, run once, by the planner alone.
+  Without `operations.keys` a plan is refused `unavailable`.
+  Where `operations.dual_control` is in force (required by `regulated`, and now addable below it), an identity reset and a key revocation require one approval by another holder of the operation's grant before they run, and their plan lives 24 hours instead of 10 minutes.
+  `GET /host/v1/plans?status` lists the plans whose operation the caller may do, and `POST /host/v1/plans/{id}/approve` records an approval, attested by the Host as a COSE_Sign1 `permguard.operation.approval.v1` and recorded `host.plan.approved`; the planner cannot approve its own plan (`plan_self_approval`), and a run short of its approvals is refused `plan_approvals_missing`.
+  The offline `permguard host identity reset plan --out <file>` now writes the same receipt, readable by its owner only, and `reset run --confirm-file <file>` spends it before the reset; it needs a `host.operations` key the server's start activated, and under dual control an approval through the Host API.
+  The receipt, the approval and what a plan changes are registered in `contracts/cbor/operation-plan.json`, with golden vectors in `contracts/vectors/plan.json`.
+
 - **Audit checkpoints, anchored retention, reads and offline verification.**
   Every ended UTC day of every audit trail is sealed by a checkpoint, `checkpoints/YYYY-MM-DD.cose`: a COSE_Sign1 `permguard.audit.checkpoint.v1` under the Host's `host.operations` key, naming the day's first and last record, the last record's digest and the digest of the trail's checkpoint before it.
   A day is sealed when the next one starts, at start and every hour, and on demand up to the last record (`YYYY-MM-DD.<seq>.cose`); a sealed day takes no more records, whatever the clock says.

@@ -89,6 +89,8 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/audit/{class}/records", get(audit_records))
         .route("/host/v1/audit/{class}/checkpoints", get(audit_checkpoints))
         .route("/host/v1/audit/{class}/export", get(audit_export))
+        .route("/host/v1/plans", get(list_plans))
+        .route("/host/v1/plans/{id}/approve", post(approve_plan))
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
@@ -481,6 +483,32 @@ async fn member_sessions(
         &served,
         StatusCode::OK,
         served.api.member_sessions(&actor, &id),
+    )
+}
+
+async fn list_plans(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let filters = query_members(query.as_deref(), &["status"]);
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.plans(&actor, filters[0].as_deref()),
+    )
+}
+
+async fn approve_plan(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(id): Path<String>,
+    Closed(approve): Closed<permguard_host::api::plans::ApprovePlan>,
+) -> Response {
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.approve_plan(&actor, &id, approve).await,
     )
 }
 

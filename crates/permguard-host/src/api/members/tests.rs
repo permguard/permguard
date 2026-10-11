@@ -343,8 +343,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
             &id,
             RunMemberRevoke {
                 request_id: "life-11".to_owned(),
-                plan_id: planned.plan_id.clone(),
-                plan_digest: "00".repeat(32),
+                receipt: crate::api::testing::tampered(&planned.receipt),
             },
         )
         .await
@@ -356,8 +355,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
             &id,
             RunMemberRevoke {
                 request_id: "life-12".to_owned(),
-                plan_id: planned.plan_id.clone(),
-                plan_digest: planned.plan_digest.clone(),
+                receipt: planned.receipt.clone(),
             },
         )
         .await
@@ -369,8 +367,7 @@ async fn a_membership_walks_its_lifecycle_and_every_manifest_verifies_at_the_mem
             &id,
             RunMemberRevoke {
                 request_id: "life-13".to_owned(),
-                plan_id: planned.plan_id,
-                plan_digest: planned.plan_digest,
+                receipt: planned.receipt,
             },
         )
         .await
@@ -969,8 +966,7 @@ async fn every_admin_route_is_denied_without_membership_admin() {
                 &id,
                 RunMemberRevoke {
                     request_id: "x".to_owned(),
-                    plan_id: "11".repeat(16),
-                    plan_digest: "00".repeat(32),
+                    receipt: crate::api::testing::unknown_receipt(),
                 },
             )
             .await

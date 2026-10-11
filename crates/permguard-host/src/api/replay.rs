@@ -20,7 +20,15 @@
 //! A plan of a two-step mutation (`revoke/plan`, then `revoke/run`) lives in the same journal:
 //! the plan step writes `{plan_id, operation, target, revision, digest, expires, principal}`, the
 //! run step consumes it once, each inside its operation of the security-mutation transaction
-//! (WP-3.6). `TODO(WP-3.9)`: the client-held COSE plan receipt replaces the server-held plan.
+//! (WP-3.6). Since WP-3.9 a plan also keeps the receipt the plan step answered, which the run
+//! must present byte for byte, how many approvals it requires and each approval the Host attested;
+//! a consumed plan is kept, marked, until it would have expired, so the plans store lists it.
+//! Every plan, consumed or not, is kept one [`WINDOW`] past its expiry, so the plans store lists
+//! it `expired` for that long before it goes.
+//!
+//! An approval, and a plan the offline reset consumes ahead of its change, are operations of the
+//! [`DOMAIN`] domain, which this journal is: each writes its operation id beside what it records,
+//! so recovery commits an operation whose frame is durable and fails one whose frame is not.
 //!
 //! Since WP-3.6 the answers a retry learns are the mutation journal's commits; the results this
 //! journal holds from before answer until their window ends, and no new one is written.
@@ -40,12 +48,15 @@ use permguard_core::authz::Principal;
 use permguard_core::{ErrorClass, codes};
 
 use super::Refusal;
-use crate::operations::mutation::Applying;
+use crate::operations::journal::OperationId;
+use crate::operations::mutation::{Applying, Domain, Observed};
 use crate::storage::StorageError;
 use crate::storage::dir::Dir;
 use crate::storage::journal::{Journal, Options, Recovery};
 use crate::storage::volume::Volume;
 
+/// The mutation domain of approvals and of plans consumed ahead of their change (WP-3.9).
+pub const DOMAIN: &str = "plans";
 /// The directory below `host/`.
 pub const DIRECTORY: &str = "state";
 /// The journal directory below [`DIRECTORY`].
@@ -71,6 +82,8 @@ const FRAME_RESULT: u16 = 1;
 const FRAME_PLAN: u16 = 2;
 /// A plan consumed by its run step.
 const FRAME_PLAN_CONSUMED: u16 = 3;
+/// An approval of a plan (WP-3.9).
+const FRAME_PLAN_APPROVED: u16 = 4;
 
 /// What the journal refuses with.
 #[derive(Debug)]
@@ -122,7 +135,7 @@ struct StoredResult {
 }
 
 /// A server-held plan: what `revoke/plan` wrote and `revoke/run` presents.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub plan_id: String,
     pub operation: String,
@@ -131,6 +144,38 @@ pub struct Plan {
     pub digest: String,
     pub expires: u64,
     pub principal: String,
+    /// The operation as the receipt names it (WP-3.9); empty for a plan made before.
+    #[serde(default)]
+    pub kind: String,
+    /// The receipt the plan step answered, base64url, which the run presents back.
+    #[serde(default)]
+    pub receipt: String,
+    #[serde(default)]
+    pub approvals_required: u64,
+    #[serde(default)]
+    pub approvals: Vec<PlanApproval>,
+    #[serde(default)]
+    pub created_at: u64,
+}
+
+/// One principal's approval of a plan, as the Host attested it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanApproval {
+    pub principal: String,
+    pub approved_at: u64,
+    /// COSE_Sign1 `permguard.operation.approval.v1`, base64url.
+    pub envelope: String,
+    /// The operation that recorded it, which recovery looks for.
+    #[serde(default)]
+    pub operation_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Approved {
+    plan_id: String,
+    /// The planner, whose plan it is.
+    principal: String,
+    approval: PlanApproval,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,12 +285,12 @@ impl Replay {
             fresh.append(FRAME_RESULT, &encode(result)?)?;
         }
         for plan in state.plans.values() {
-            if plan.expires > now {
+            if kept(plan.expires, now) {
                 fresh.append(FRAME_PLAN, &encode(plan)?)?;
             }
         }
         for ((principal, plan_id), expires) in &state.consumed {
-            if *expires > now {
+            if kept(*expires, now) {
                 fresh.append(
                     FRAME_PLAN_CONSUMED,
                     &encode(&Consumed {
@@ -459,9 +504,69 @@ impl Replay {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.plans.remove(&key);
         state.consumed.insert(key, expires);
         Ok(())
+    }
+
+    /// Records `approval` of the plan `plan_id` of `planner`, durably, inside the approval's
+    /// operation (WP-3.9).
+    pub fn approve(
+        &self,
+        _applying: &Applying<'_>,
+        planner: &str,
+        plan_id: &str,
+        approval: PlanApproval,
+    ) -> Result<(), ReplayError> {
+        let approved = Approved {
+            plan_id: plan_id.to_owned(),
+            principal: planner.to_owned(),
+            approval: approval.clone(),
+        };
+        let bytes = encode(&approved)?;
+        let mut journal = self
+            .journal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        journal.append(FRAME_PLAN_APPROVED, &bytes)?;
+        drop(journal);
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(plan) = state
+            .plans
+            .get_mut(&(planner.to_owned(), plan_id.to_owned()))
+        {
+            plan.approvals.push(approval);
+        }
+        Ok(())
+    }
+
+    /// The plan `plan_id`, whoever made it, and whether it was run: what an approval reads.
+    pub fn find(&self, plan_id: &str) -> Option<(Plan, bool)> {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state
+            .plans
+            .iter()
+            .find(|((_, held), _)| held == plan_id)
+            .map(|(key, plan)| (plan.clone(), state.consumed.contains_key(key)))
+    }
+
+    /// Every plan held, made since WP-3.9, and whether it was run: what the plans store lists.
+    pub fn plans(&self) -> Vec<(Plan, bool)> {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state
+            .plans
+            .iter()
+            .filter(|(_, plan)| !plan.kind.is_empty())
+            .map(|(key, plan)| (plan.clone(), state.consumed.contains_key(key)))
+            .collect()
     }
 
     /// How many results are held, for the tests and the start-up record.
@@ -488,7 +593,7 @@ fn apply(state: &mut State, kind: u16, payload: &[u8], now: u64) -> Result<bool,
         }
         FRAME_PLAN => {
             let plan: Plan = decode(payload)?;
-            if plan.expires <= now {
+            if !kept(plan.expires, now) {
                 return Ok(false);
             }
             state
@@ -499,12 +604,24 @@ fn apply(state: &mut State, kind: u16, payload: &[u8], now: u64) -> Result<bool,
         FRAME_PLAN_CONSUMED => {
             let consumed: Consumed = decode(payload)?;
             let key = (consumed.principal, consumed.plan_id);
-            state.plans.remove(&key);
-            if consumed.expires <= now {
+            if !kept(consumed.expires, now) {
+                state.plans.remove(&key);
                 return Ok(false);
             }
             state.consumed.insert(key, consumed.expires);
             Ok(true)
+        }
+        FRAME_PLAN_APPROVED => {
+            let approved: Approved = decode(payload)?;
+            let key = (approved.principal, approved.plan_id);
+            match state.plans.get_mut(&key) {
+                Some(plan) => {
+                    plan.approvals.push(approved.approval);
+                    Ok(true)
+                }
+                // The plan went with its window: the approval goes too.
+                None => Ok(false),
+            }
         }
         other => Err(ReplayError::Malformed(format!(
             "the replay journal holds a frame of unknown kind {other}"
@@ -546,8 +663,56 @@ fn prune(state: &mut State, now: u64) {
             held.retain(|request_id| *request_id != key.1);
         }
     }
-    state.plans.retain(|_, plan| plan.expires > now);
-    state.consumed.retain(|_, expires| *expires > now);
+    state.plans.retain(|_, plan| kept(plan.expires, now));
+    state.consumed.retain(|_, expires| kept(*expires, now));
+}
+
+/// Whether a plan expiring at `expires`, or its consumed marker, is still kept at `now`: one
+/// [`WINDOW`] past its expiry, listed `expired` meanwhile.
+fn kept(expires: u64, now: u64) -> bool {
+    expires.saturating_add(WINDOW.as_secs()) > now
+}
+
+impl Domain for Replay {
+    fn name(&self) -> &'static str {
+        DOMAIN
+    }
+
+    /// An approval shows as the plan `target` holding one recorded by `operation_id`; a plan
+    /// consumed ahead of its change, `consume:<plan_id>`, as that plan consumed.
+    fn observe(&self, operation_id: &OperationId, target: Option<&str>) -> Option<Observed> {
+        let target = target?;
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(plan_id) = target.strip_prefix("consume:") {
+            let (key, _) = state
+                .consumed
+                .iter()
+                .find(|((_, held), _)| held == plan_id)?;
+            let revision = state.plans.get(key).map_or(0, |plan| plan.revision);
+            return Some(Observed {
+                revision,
+                target: Some(target.to_owned()),
+            });
+        }
+        let recorded = operation_id.to_string();
+        state
+            .plans
+            .iter()
+            .find(|((_, held), plan)| {
+                held == target
+                    && plan
+                        .approvals
+                        .iter()
+                        .any(|approval| approval.operation_id == recorded)
+            })
+            .map(|(_, plan)| Observed {
+                revision: plan.revision,
+                target: Some(target.to_owned()),
+            })
+    }
 }
 
 /// An empty journal under [`PLACEHOLDER`], held for the instant of a swap.
@@ -785,6 +950,7 @@ mod tests {
             digest: "abc".to_owned(),
             expires: 2_000,
             principal: "alice".to_owned(),
+            ..Plan::default()
         };
         replay
             .plan(&Applying::for_tests(1), plan.clone())
@@ -822,6 +988,101 @@ mod tests {
         );
     }
 
+    /// An approval and a consumption ahead of the change are operations of the plans domain:
+    /// recovery finds each by what it wrote (WP-3.9), and an approval survives a restart.
+    #[test]
+    fn an_approval_survives_a_restart_and_recovery_finds_it_by_its_operation() {
+        let root = scratch("replay-approval");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
+        let alice = principal("alice");
+        let plan = Plan {
+            plan_id: "p1".to_owned(),
+            operation: "identity.reset".to_owned(),
+            target: "t".to_owned(),
+            revision: 3,
+            digest: "abc".to_owned(),
+            expires: 2_000,
+            principal: "alice".to_owned(),
+            kind: "identity.reset".to_owned(),
+            approvals_required: 1,
+            ..Plan::default()
+        };
+        replay
+            .plan(&Applying::for_tests(1), plan.clone())
+            .expect("planned");
+        let approving = Applying::for_tests(2);
+        let approval = PlanApproval {
+            principal: "bob".to_owned(),
+            approved_at: 1_100,
+            envelope: "e".to_owned(),
+            operation_id: approving.operation_id().to_string(),
+        };
+        replay
+            .approve(&approving, "alice", "p1", approval.clone())
+            .expect("approved");
+        drop(replay);
+
+        let (replay, _) = Replay::open(&volume, 1_200).expect("reopens");
+        assert_eq!(
+            replay.plan_of(&alice, "p1", 1_200).expect("held").approvals,
+            vec![approval]
+        );
+        assert_eq!(replay.name(), DOMAIN);
+        let found = replay
+            .observe(&approving.operation_id(), Some("p1"))
+            .expect("the approval is found");
+        assert_eq!(found.revision, 3);
+        assert!(
+            replay
+                .observe(&Applying::for_tests(3).operation_id(), Some("p1"))
+                .is_none(),
+            "an operation that wrote nothing is not found"
+        );
+        assert!(replay.observe(&approving.operation_id(), None).is_none());
+        assert!(
+            replay
+                .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
+                .is_none(),
+            "not consumed yet"
+        );
+        replay
+            .consume(&Applying::for_tests(4), &alice, "p1")
+            .expect("consumed");
+        assert!(
+            replay
+                .observe(&Applying::for_tests(4).operation_id(), Some("consume:p1"))
+                .is_some()
+        );
+    }
+
+    /// An expired plan is kept one window past its expiry, so the plans store lists it, then goes.
+    #[test]
+    fn an_expired_plan_is_listed_for_one_window_then_dropped() {
+        let root = scratch("replay-expired");
+        let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+        let (replay, _) = Replay::open(&volume, 1_000).expect("opens");
+        let plan = Plan {
+            plan_id: "p1".to_owned(),
+            operation: "grants.revoke".to_owned(),
+            target: "g1".to_owned(),
+            expires: 2_000,
+            principal: "alice".to_owned(),
+            kind: "grant.revoke".to_owned(),
+            ..Plan::default()
+        };
+        replay.plan(&Applying::for_tests(1), plan).expect("planned");
+        drop(replay);
+        let within = 2_000 + WINDOW.as_secs() - 1;
+        let (replay, _) = Replay::open(&volume, within).expect("reopens");
+        assert_eq!(replay.plans().len(), 1, "listed while expired");
+        assert!(replay.plan_of(&principal("alice"), "p1", within).is_err());
+        drop(replay);
+        let (replay, _) =
+            Replay::open(&volume, 2_000 + WINDOW.as_secs()).expect("reopens past the window");
+        assert!(replay.plans().is_empty());
+    }
+
     #[test]
     fn a_consumed_plan_stays_consumed_across_a_compaction() {
         let root = scratch("replay-consumed-compact");
@@ -834,6 +1095,7 @@ mod tests {
             digest: "d".to_owned(),
             expires: crate::authz::store::now() + 3_600,
             principal: "alice".to_owned(),
+            ..Plan::default()
         };
         {
             let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");

@@ -43,6 +43,9 @@ pub mod digest {
     pub const AUDIT_CHECKPOINT: &str = "permguard.audit.checkpoint.v1\n";
     /// The MAC of an audit read's cursor, under a key of the process (WP-3.7).
     pub const AUDIT_CURSOR: &str = "permguard.audit.cursor.v1\n";
+    /// What a plan changes: its operation, target, revision and parameters, as its receipt and
+    /// each approval name them (WP-3.9).
+    pub const OPERATION_PLAN_BODY: &str = "permguard.operation.plan-body.v1\n";
     /// The external witness of a Host identity: over `INIT`, `VOLUME_ID` and the first identity
     /// fingerprint (WP-2.2).
     pub const HOST_IDENTITY_WITNESS: &str = "permguard.host.identity.witness.v1\n";
@@ -119,6 +122,8 @@ pub mod protected {
     pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1";
     pub const MEMBERSHIP_LEASE: &str = "permguard.membership.lease.v1";
     pub const OPERATION_PLAN: &str = "permguard.operation.plan.v1";
+    /// The Host's attestation of one principal's approval of a plan (WP-3.9).
+    pub const OPERATION_APPROVAL: &str = "permguard.operation.approval.v1";
     pub const SNAPSHOT_MANIFEST: &str = "permguard.snapshot.manifest.v1";
     pub const LEDGER_EXPORT: &str = "permguard.ledger.export.v1";
     pub const STREAM_RUN: &str = "permguard.stream.run.v1";
@@ -342,6 +347,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
         ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),
         ("digest.AUDIT_CURSOR", digest::AUDIT_CURSOR),
+        ("digest.OPERATION_PLAN_BODY", digest::OPERATION_PLAN_BODY),
         (
             "digest.HOST_IDENTITY_WITNESS",
             digest::HOST_IDENTITY_WITNESS,
@@ -415,6 +421,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ),
         ("protected.MEMBERSHIP_LEASE", protected::MEMBERSHIP_LEASE),
         ("protected.OPERATION_PLAN", protected::OPERATION_PLAN),
+        (
+            "protected.OPERATION_APPROVAL",
+            protected::OPERATION_APPROVAL,
+        ),
         ("protected.SNAPSHOT_MANIFEST", protected::SNAPSHOT_MANIFEST),
         ("protected.LEDGER_EXPORT", protected::LEDGER_EXPORT),
         ("protected.STREAM_RUN", protected::STREAM_RUN),

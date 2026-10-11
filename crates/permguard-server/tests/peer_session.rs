@@ -628,25 +628,33 @@ async fn side_with(
     .expect("the administrator is issued");
     let (replay, _) =
         Replay::open(&host.volume, permguard_host::authz::store::now()).expect("the replay");
-    let ring = Arc::new(
-        permguard_host::keys::ring::Ring::open(
-            &host.volume,
-            ring,
-            Suite::Ed25519Sha256V1,
-            permguard_host::keys::ring::Policy {
-                publish_ahead: Duration::from_secs(600),
-                rotate_every: Duration::from_secs(3600),
-                retain: Duration::from_secs(7200),
-            },
-            Arc::clone(&host.time),
-        )
-        .expect("the ring opens")
-        .with_binder(host.identity.clone()),
-    );
-    permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
+    let open_ring = |id: &'static str| {
+        let ring = Arc::new(
+            permguard_host::keys::ring::Ring::open(
+                &host.volume,
+                id,
+                Suite::Ed25519Sha256V1,
+                permguard_host::keys::ring::Policy {
+                    publish_ahead: Duration::from_secs(600),
+                    rotate_every: Duration::from_secs(3600),
+                    retain: Duration::from_secs(7200),
+                },
+                Arc::clone(&host.time),
+            )
+            .expect("the ring opens")
+            .with_binder(host.identity.clone()),
+        );
+        permguard_core::KeyManager::maintain(ring.as_ref()).expect("the ring is maintained");
+        ring
+    };
+    let mut rings = vec![open_ring(ring)];
+    // `host.operations` signs the plan receipts of either side (WP-3.9).
+    if ring != permguard_host::keys::ring::HOST_OPERATIONS {
+        rings.push(open_ring(permguard_host::keys::ring::HOST_OPERATIONS));
+    }
     let keys = Arc::new(permguard_host::keys::registry::Registry::new(
         Some(Arc::clone(&host.identity)),
-        vec![ring],
+        rings,
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
     let tasks = Arc::new(permguard_host::membership::task::Tasks {
@@ -958,8 +966,7 @@ async fn a_member_joins_a_coordinator_over_mutual_tls_and_follows_its_manifests(
             &id,
             RunMemberRevoke {
                 request_id: "run".to_owned(),
-                plan_id: planned.plan_id,
-                plan_digest: planned.plan_digest,
+                receipt: planned.receipt,
             },
         )
         .await
@@ -1077,8 +1084,7 @@ async fn a_members_normal_reset_is_acknowledged_by_its_coordinator() {
             &admin(),
             RunIdentityReset {
                 request_id: "run".to_owned(),
-                plan_id: planned.plan_id,
-                plan_digest: planned.plan_digest,
+                receipt: planned.receipt,
             },
         )
         .await

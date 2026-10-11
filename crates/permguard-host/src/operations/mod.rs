@@ -16,3 +16,4 @@
 pub mod grants;
 pub mod journal;
 pub mod mutation;
+pub mod plan;

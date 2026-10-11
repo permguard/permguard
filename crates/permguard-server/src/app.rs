@@ -1831,6 +1831,10 @@ impl App {
                 )
             })?;
             let replay = replay.with_time(Arc::clone(&time));
+            // An approval a crash left open is committed when its frame is durable (WP-3.9).
+            mutations
+                .recover(&replay)
+                .context("recovering the plans' mutations a crash left open")?;
             tracing::info!(
                 event.name = "host_api.replay_opened",
                 component = "server",

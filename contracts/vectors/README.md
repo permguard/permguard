@@ -38,6 +38,9 @@ Its `refused` cases are proofs a verifier must refuse against the transcript it 
 `audit.json` freezes the audit's checkpoint records (WP-3.7): an audit record and its digest, the checkpoint sealing its day and an on-demand checkpoint of the next day chained to it, both COSE_Sign1 `permguard.audit.checkpoint.v1` under a `host.operations` key with their envelope digests, and the anchor naming the first.
 `audit.py` computes them under the owner decisions of 2026-10-07 and 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/audit_vectors.rs` reproduces them and verifies both envelopes with the published key.
 
+`plan.json` freezes a destructive operation's plan records (WP-3.9): a key revocation's plan body and digest, the plan receipt naming it, COSE_Sign1 `permguard.operation.plan.v1`, and a second operator's approval, COSE_Sign1 `permguard.operation.approval.v1`, both under a `host.operations` key.
+`plan.py` computes them under the owner decisions of 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/plan_vectors.rs` reproduces them, verifies both envelopes with the published key and refuses each in the other's place.
+
 ## How the values were computed
 
 `generate.py` computes every value with Python's standard library and the `cryptography` package, from the published rules, without calling the Rust codecs.

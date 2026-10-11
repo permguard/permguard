@@ -389,30 +389,44 @@ impl Keys {
     /// chains over it (owner decision of 2026-10-11, after the review), which only the chain
     /// shows.
     pub fn verify(&self, envelope: &[u8]) -> std::result::Result<Signed, String> {
-        if envelope.len() > MAX_CHECKPOINT_BYTES {
+        let (payload, kid, revoked) =
+            self.verify_envelope(envelope, protected::AUDIT_CHECKPOINT, MAX_CHECKPOINT_BYTES)?;
+        let checkpoint = Checkpoint::decode(&payload).map_err(|error| error.to_string())?;
+        Ok(Signed {
+            checkpoint,
+            kid,
+            revoked,
+        })
+    }
+
+    /// Verifies a COSE_Sign1 of `content_type`, at most `most` bytes, signed by a key of the set
+    /// under its kid, and answers its payload, the kid and whether that key was revoked since:
+    /// what a checkpoint, a plan receipt and an approval are each checked with.
+    pub fn verify_envelope(
+        &self,
+        envelope: &[u8],
+        content_type: &str,
+        most: usize,
+    ) -> std::result::Result<(Vec<u8>, String, bool), String> {
+        if envelope.len() > most {
             return Err(format!(
-                "{} bytes; a checkpoint takes up to {MAX_CHECKPOINT_BYTES}",
+                "{} bytes; a `{content_type}` takes up to {most}",
                 envelope.len()
             ));
         }
         let sign1 = Sign1::decode(envelope).map_err(|error| error.to_string())?;
         let header = sign1.header().map_err(|error| error.to_string())?;
         let kid = String::from_utf8(header.kid)
-            .map_err(|_| "the checkpoint's kid is not text".to_owned())?;
+            .map_err(|_| "the envelope's kid is not text".to_owned())?;
         let revoked = self.revoked.contains(&kid);
         let (suite, public_key) = self
             .keys
             .get(&kid)
-            .ok_or_else(|| format!("the checkpoint is signed by `{kid}`, a key the set lacks"))?;
+            .ok_or_else(|| format!("signed by `{kid}`, a key the set lacks"))?;
         let payload = sign1
-            .verify(*suite, public_key, protected::AUDIT_CHECKPOINT)
+            .verify(*suite, public_key, content_type)
             .map_err(|error| error.to_string())?;
-        let checkpoint = Checkpoint::decode(payload).map_err(|error| error.to_string())?;
-        Ok(Signed {
-            checkpoint,
-            kid,
-            revoked,
-        })
+        Ok((payload.to_vec(), kid, revoked))
     }
 }
 

@@ -34,8 +34,8 @@ use permguard_core::assurance::{AssuranceProfile, Control};
 use permguard_core::authz::{Actor, Selector, operations};
 use permguard_core::{ErrorClass, codes};
 
-use super::grants::{Planned, plan_digest, rfc3339};
-use super::replay::{PLAN_LIFETIME, Plan, mint_id};
+use super::grants::{Planned, rfc3339};
+use super::replay::Plan;
 use super::{HostApi, Mutation, Receipt, Refusal};
 use crate::identity::record::uuid_text;
 use crate::membership::appraisal::{self, Appraisal, Approval, Evidence};
@@ -738,8 +738,8 @@ pub struct PlanMemberRevoke {
 #[serde(deny_unknown_fields)]
 pub struct RunMemberRevoke {
     pub request_id: String,
-    pub plan_id: String,
-    pub plan_digest: String,
+    /// The receipt the plan step answered.
+    pub receipt: String,
 }
 
 /// `POST /host/v1/memberships/join`.
@@ -1588,38 +1588,31 @@ impl HostApi {
             || current().map(|_| ()),
             |applying| {
                 let revision = current().map_err(Failure::Refused)?;
-                let expires = now.saturating_add(PLAN_LIFETIME.as_secs());
-                let plan_id = mint_id().map_err(Failure::Refused)?;
-                let digest = plan_digest(
-                    &plan_id,
-                    REVOKE,
-                    &target,
-                    revision,
-                    admitted.principal.as_str(),
-                    expires,
-                );
-                self.replay
-                    .plan(
+                let issued = self
+                    .issue_plan(
                         applying,
-                        Plan {
-                            plan_id: plan_id.clone(),
-                            operation: REVOKE.to_owned(),
-                            target: target.clone(),
+                        super::plans::Issue {
+                            kind: crate::operations::plan::MEMBERSHIP_REVOKE,
+                            internal: REVOKE,
+                            stored_target: target.clone(),
+                            target: id.to_owned(),
                             revision,
-                            digest: digest.clone(),
-                            expires,
-                            principal: admitted.principal.as_str().to_owned(),
+                            parameters: &[("reason", plan.reason.as_str())],
+                            principal: &admitted.principal,
                         },
+                        now,
                     )
                     .map_err(Failure::Refused)?;
                 Ok(Applied {
                     revision,
                     target: Some(id.to_owned()),
                     value: Planned {
-                        plan_id,
-                        plan_digest: digest,
-                        expires: rfc3339(expires),
+                        plan_id: issued.plan.plan_id,
+                        plan_digest: issued.plan_digest,
+                        expires: rfc3339(issued.expires),
                         revision,
+                        receipt: issued.receipt,
+                        approvals_required: issued.approvals_required,
                     },
                 })
             },
@@ -1640,21 +1633,12 @@ impl HostApi {
         let membership_id = id_of(id)?;
         let now = self.time.now_secs();
         let presented = || -> Result<Plan, Refusal> {
-            let plan = self
-                .replay
-                .plan_of(&admitted.principal, &run.plan_id, now)?;
+            let plan = self.presented_plan(&admitted.principal, &run.receipt, now)?;
             if plan.operation != REVOKE || plan.target.split('\n').next() != Some(id) {
                 return Err(Refusal::new(
                     ErrorClass::NotFound,
                     codes::host::PLAN_UNKNOWN,
                     "no plan of that id is held for this membership",
-                ));
-            }
-            if plan.digest != run.plan_digest {
-                return Err(Refusal::new(
-                    ErrorClass::Validation,
-                    codes::host::PLAN_DIGEST_MISMATCH,
-                    "the plan digest presented is not the one the plan step answered",
                 ));
             }
             Ok(plan)
@@ -1688,9 +1672,9 @@ impl HostApi {
                     .store
                     .transition(applying, &coordinator, &manifest, now)
                     .map_err(failure)?;
-                if let Err(error) = self
-                    .replay
-                    .consume(applying, &admitted.principal, &run.plan_id)
+                if let Err(error) =
+                    self.replay
+                        .consume(applying, &admitted.principal, &plan.plan_id)
                 {
                     tracing::warn!(
                         event.name = "host.plan_unconsumed",

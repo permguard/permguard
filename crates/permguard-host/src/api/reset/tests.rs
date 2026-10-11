@@ -27,8 +27,7 @@ fn plan(request_id: &str, mode: &str) -> PlanIdentityReset {
 fn run(request_id: &str, planned: &IdentityResetPlan) -> RunIdentityReset {
     RunIdentityReset {
         request_id: request_id.to_owned(),
-        plan_id: planned.plan_id.clone(),
-        plan_digest: planned.plan_digest.clone(),
+        receipt: planned.receipt.clone(),
     }
 }
 
@@ -233,11 +232,72 @@ async fn a_reset_plan_is_refused_without_its_grant_or_with_an_unknown_mode() {
             &admin(),
             RunIdentityReset {
                 request_id: "r".to_owned(),
-                plan_id: "11".repeat(16),
-                plan_digest: "00".repeat(32),
+                receipt: crate::api::testing::unknown_receipt(),
             },
         )
         .await
         .expect_err("no such plan");
     assert_eq!(code(&unknown), codes::host::PLAN_UNKNOWN);
+}
+
+/// Under dual control a reset runs once another holder of `identity.admin` approved its plan
+/// (WP-3.9).
+#[tokio::test]
+async fn under_dual_control_a_reset_runs_once_another_operator_approved_it() {
+    use crate::api::grants::CreateGrant;
+    use crate::api::plans::ApprovePlan;
+
+    const SECOND: &str = "spiffe://acme/operators/second";
+    let root = scratch("reset-dual");
+    let (mut api, _, _volume) = reopen(&root, vec![HOST_OPERATIONS]);
+    api.assurance.profile = "regulated".to_owned();
+    let old = api.identity.as_deref().expect("an identity").host_id_text();
+
+    let planned = api
+        .plan_identity_reset(&admin(), plan("plan-1", "emergency"))
+        .await
+        .expect("planned");
+    assert_eq!(planned.approvals_required, 1);
+    let refused = api
+        .run_identity_reset(&admin(), run("run-1", &planned))
+        .await
+        .expect_err("not approved");
+    assert_eq!(code(&refused), codes::host::PLAN_APPROVALS_MISSING);
+
+    api.create_grant(
+        &admin(),
+        CreateGrant {
+            request_id: "g-second".to_owned(),
+            expected_revision: None,
+            principal: SECOND.to_owned(),
+            operations: vec![permguard_core::authz::operations::IDENTITY_ADMIN.to_owned()],
+            selector: permguard_core::authz::Selector::under(
+                permguard_core::authz::Resource::host(),
+            )
+            .to_string(),
+            resource_types: vec!["*".to_owned()],
+            constraints: Default::default(),
+            expires_at: None,
+        },
+    )
+    .await
+    .expect("granted");
+    let approved = api
+        .approve_plan(
+            &crate::api::testing::actor(SECOND),
+            &planned.plan_id,
+            ApprovePlan {
+                request_id: "a-1".to_owned(),
+            },
+        )
+        .await
+        .expect("approved");
+    assert_eq!(approved.plan.status, "ready");
+
+    let done = api
+        .run_identity_reset(&admin(), run("run-2", &planned))
+        .await
+        .expect("reset once approved");
+    assert_eq!(done.old_host_id, old);
+    assert_ne!(done.host_id, old);
 }
