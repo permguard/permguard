@@ -75,6 +75,10 @@ const MINTED: &[&str] = &[
     "host_id",
     "fingerprint",
     "witness",
+    // The audit records each facade wrote, at its own time and boot (WP-3.7).
+    "record",
+    // And the `keys export` document of each facade's own operations ring.
+    "verification_keys",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -206,6 +210,35 @@ fn facade(tag: &str) -> Arc<HostApi> {
         vec![ring],
     ));
     let members = permguard_host::membership::Store::open(&volume).expect("the memberships open");
+    // Two `operations` records of the Host in the trail the audit routes read (WP-3.7): the
+    // offline mutation journal writes `security:host` through an engine of its own.
+    let audit = Arc::new(
+        permguard_host::audit::Engine::open(
+            &volume,
+            permguard_host::audit::Stamp::draw(
+                identity.host_id(),
+                "9.9.9",
+                permguard_host::audit::config_revision([]),
+            )
+            .expect("a stamp"),
+            Arc::new(permguard_host::time::TimeGuard::system(
+                std::time::Duration::from_secs(30),
+            )),
+            None,
+        )
+        .expect("the audit engine opens"),
+    );
+    for _ in 0..2 {
+        audit
+            .append(
+                &permguard_core::AuditEvent::new(
+                    "server.start",
+                    permguard_core::Subject::System("host"),
+                ),
+                None,
+            )
+            .expect("an operations record");
+    }
     // The volume stays claimed for the life of the test process: the store holds its directory.
     std::mem::forget(volume);
     Arc::new(HostApi::new(Composition {
@@ -259,6 +292,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
                 true,
             ),
         ],
+        audit: Some(audit),
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: members,
             capabilities: permguard_host::membership::Capabilities::default(),
@@ -371,6 +405,98 @@ impl Transport {
         ))
         .await
         .expect("the gRPC endpoint answers")
+    }
+
+    async fn evidence(
+        &self,
+    ) -> host_v1::evidence_service_client::EvidenceServiceClient<tonic::transport::Channel> {
+        host_v1::evidence_service_client::EvidenceServiceClient::connect(format!(
+            "http://{}",
+            self.grpc_url()
+        ))
+        .await
+        .expect("the gRPC endpoint answers")
+    }
+
+    async fn audit_records(&self, who: Option<&str>, class: &str, resource: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "GET",
+                    &format!("/host/v1/audit/{class}/records?resource={resource}"),
+                    who,
+                    None,
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.evidence()
+                    .await
+                    .list_audit_records(Self::grpc_request(
+                        who,
+                        host_v1::ListAuditRecordsRequest {
+                            class: class.to_owned(),
+                            resource: resource.to_owned(),
+                            ..Default::default()
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn audit_checkpoints(&self, who: Option<&str>, class: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "GET",
+                    &format!("/host/v1/audit/{class}/checkpoints?resource=host"),
+                    who,
+                    None,
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.evidence()
+                    .await
+                    .list_audit_checkpoints(Self::grpc_request(
+                        who,
+                        host_v1::ListAuditCheckpointsRequest {
+                            class: class.to_owned(),
+                            resource: "host".to_owned(),
+                            period: String::new(),
+                        },
+                    ))
+                    .await,
+            ),
+        }
+    }
+
+    async fn audit_export(&self, who: Option<&str>, class: &str) -> Outcome {
+        match self {
+            Self::Rest(_) => {
+                self.rest(
+                    "GET",
+                    &format!("/host/v1/audit/{class}/export?resource=host"),
+                    who,
+                    None,
+                )
+                .await
+            }
+            Self::Grpc(_) => reduced_grpc(
+                self.evidence()
+                    .await
+                    .export_audit(Self::grpc_request(
+                        who,
+                        host_v1::ExportAuditRequest {
+                            class: class.to_owned(),
+                            resource: "host".to_owned(),
+                            ..Default::default()
+                        },
+                    ))
+                    .await,
+            ),
+        }
     }
 
     async fn keys(
@@ -1537,6 +1663,32 @@ async fn script(transport: &Transport) -> Vec<(&'static str, Outcome)> {
         "read the bundle from a cursor without its frontier",
         transport.key_bundle(admin, "host", None, Some("2")).await,
     ));
+    steps.push((
+        "read the audit records",
+        transport.audit_records(admin, "operations", "host").await,
+    ));
+    steps.push((
+        "read the audit records of an unknown class",
+        transport.audit_records(admin, "bogus", "host").await,
+    ));
+    steps.push((
+        "read the audit records as a stranger",
+        transport
+            .audit_records(Some(STRANGER), "operations", "host")
+            .await,
+    ));
+    steps.push((
+        "read the audit records of a resource out of the grammar",
+        transport.audit_records(admin, "operations", "zone:x").await,
+    ));
+    steps.push((
+        "read the audit checkpoints",
+        transport.audit_checkpoints(admin, "operations").await,
+    ));
+    steps.push((
+        "export the audit trail",
+        transport.audit_export(admin, "operations").await,
+    ));
     steps.push(("read the status", transport.status(admin).await));
     steps.push((
         "read the status as a stranger",
@@ -1804,6 +1956,12 @@ async fn both_transports_answer_the_same_vectors_and_replay_the_same_mutations()
         ),
     );
     grpc.add_service(
+        served_v1::evidence_service_server::EvidenceServiceServer::with_interceptor(
+            served.clone(),
+            bearer_interceptor,
+        ),
+    );
+    grpc.add_service(
         served_v1::operations_service_server::OperationsServiceServer::with_interceptor(
             served,
             bearer_interceptor,
@@ -1830,6 +1988,9 @@ fn schema_of(case: &str) -> &'static str {
         "list the key rings" | "list the key rings as nobody" => "KeyRings",
         "read the operations ring" => "KeyRing",
         "read the verification bundle" | "read the next page of the bundle" => "KeyBundlePage",
+        "read the audit records" => "AuditRecordPage",
+        "read the audit checkpoints" => "AuditCheckpoints",
+        "export the audit trail" => "AuditExportPage",
         "read the status" => "HostStatus",
         "read the effective configuration" => "EffectiveConfig",
         "read the configuration revisions" => "ConfigRevisions",
@@ -2026,6 +2187,38 @@ async fn the_rest_vectors_refuse_with_the_contract_codes() {
         refused("run with an unknown plan"),
         ("not_found".to_owned(), host::PLAN_UNKNOWN.to_owned())
     );
+    assert_eq!(
+        refused("read the audit records of an unknown class"),
+        ("validation".to_owned(), common::INVALID_ARGUMENT.to_owned())
+    );
+    assert_eq!(
+        refused("read the audit records as a stranger"),
+        (String::new(), common::FORBIDDEN.to_owned())
+    );
+    // A bound that does not read is refused once the resource is admitted, never before.
+    for (who, expected) in [
+        (
+            Some(STRANGER),
+            (String::new(), common::FORBIDDEN.to_owned()),
+        ),
+        (
+            Some(ADMIN),
+            ("validation".to_owned(), common::INVALID_ARGUMENT.to_owned()),
+        ),
+    ] {
+        let answer = rest
+            .rest(
+                "GET",
+                "/host/v1/audit/operations/records?resource=host&from=yesterday",
+                who,
+                None,
+            )
+            .await;
+        match answer {
+            Outcome::Refused { class, code } => assert_eq!((class, code), expected),
+            other => panic!("not refused: {other:?}"),
+        }
+    }
     assert_eq!(
         refused("run the consumed plan again"),
         ("conflict".to_owned(), host::PLAN_EXPIRED.to_owned())

@@ -234,7 +234,8 @@ type RealmFactory = Box<dyn Fn(&Config, &RealmConfig) -> Result<Realm> + Send + 
 ///
 /// Registered by the binary for the same reason as everything else: this crate knows that a trail
 /// can be verified, and only the composition root knows what the trail is made of.
-type AuditVerifier = Box<dyn Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync>;
+type AuditVerifier =
+    Box<dyn Fn(&Path, Option<&Path>, Option<&Path>) -> Result<String> + Send + Sync>;
 
 /// What a Plane declares to the Host under a configuration, when the configuration selects it.
 type PlaneDeclarationFactory = Box<
@@ -302,6 +303,7 @@ pub struct App {
     audit_factory: Option<AuditSinkFactory>,
     realm_factory: Option<RealmFactory>,
     audit_verifier: Option<AuditVerifier>,
+    checkpoint_witness: Option<Arc<dyn permguard_host::audit::checkpoint::CheckpointWitness>>,
     verified_trees: Vec<VerifiedTree>,
     /// Every subsystem laid out by the storage library this build reads, and at which versions
     /// (WP-1.9): what a volume's manifests are checked against before the server serves.
@@ -347,6 +349,7 @@ impl App {
             audit_factory: None,
             realm_factory: None,
             audit_verifier: None,
+            checkpoint_witness: None,
             verified_trees: Vec::new(),
             layouts: Vec::new(),
             plane_declarations: Vec::new(),
@@ -501,9 +504,20 @@ impl App {
     /// because nothing looked at it.
     pub fn with_audit_verifier<F>(mut self, verifier: F) -> Self
     where
-        F: Fn(&Path, Option<&Path>) -> Result<String> + Send + Sync + 'static,
+        F: Fn(&Path, Option<&Path>, Option<&Path>) -> Result<String> + Send + Sync + 'static,
     {
         self.audit_verifier = Some(Box::new(verifier));
+
+        self
+    }
+
+    /// Registers the external witness asked to co-sign every audit checkpoint (WP-3.7): none
+    /// ships, and a build that registers none seals its checkpoints alone.
+    pub fn with_checkpoint_witness(
+        mut self,
+        witness: Arc<dyn permguard_host::audit::checkpoint::CheckpointWitness>,
+    ) -> Self {
+        self.checkpoint_witness = Some(witness);
 
         self
     }
@@ -827,8 +841,13 @@ impl App {
             Action::Serve(args) => self.serve(config, args.config_file(), out).await,
             Action::Named(Command::Version) => self.version(config, out),
             Action::Named(Command::Audit {
-                what: AuditCommand::Verify { directory, keys },
-            }) => self.verify_audit(directory, keys.as_deref(), out),
+                what:
+                    AuditCommand::Verify {
+                        directory,
+                        keys,
+                        checkpoint,
+                    },
+            }) => self.verify_audit(directory, keys.as_deref(), checkpoint.as_deref(), out),
             Action::Named(Command::Keys {
                 what: KeysCommand::Export { directory },
             }) => self.export_keys(directory, out),
@@ -847,6 +866,7 @@ impl App {
         &self,
         directory: &Path,
         keys: Option<&Path>,
+        checkpoint: Option<&Path>,
         out: &mut dyn Write,
     ) -> Result<()> {
         let verifier = self
@@ -854,7 +874,7 @@ impl App {
             .as_ref()
             .context("this build cannot check an audit trail")?;
 
-        let summary = verifier(directory, keys)
+        let summary = verifier(directory, keys, checkpoint)
             .with_context(|| format!("checking the audit trail in {}", directory.display()))?;
 
         writeln!(out, "{summary}").context("writing the result")?;
@@ -1591,9 +1611,16 @@ impl App {
                     })?,
             )
         };
-        // `access` and `operations` day files older than `audit.retention` go; `security` ones
-        // stay until WP-3.7's checkpoints (owner decision of 2026-10-07).
+        // Sealed `access` and `operations` days older than `audit.retention` go; sealed
+        // `security` ones only past `audit.retention_security`, kept for ever when it is unset
+        // (owner decisions of 2026-10-07 and 2026-10-11).
         audit_engine.retain_for(config.audit_retention());
+        if let Some(retention) = config.audit_retention_security() {
+            audit_engine.retain_security_for(retention);
+        }
+        if let Some(witness) = &self.checkpoint_witness {
+            audit_engine.witness_with(Arc::clone(witness));
+        }
         let also = match config.audit_destination() {
             permguard_core::AuditDestination::Tracing => Some(destination),
             permguard_core::AuditDestination::File => None,
@@ -1686,6 +1713,13 @@ impl App {
         let keys = self
             .keys_for(config, &opener)
             .context("opening the host.operations key ring")?;
+        // Every ended day of every trail sealed under `host.operations` (WP-3.7); without the
+        // ring nothing is sealed, so nothing is deleted.
+        if let Some(ring) = &keys {
+            audit_engine
+                .seal_with(Arc::clone(ring)
+                    as Arc<dyn permguard_host::audit::checkpoint::CheckpointSigner>);
+        }
         let control_signing_keys = self
             .control_signing_keys_for(config, &opener)
             .context("opening the control.attest key ring")?;
@@ -1875,6 +1909,7 @@ impl App {
                 // Every listener and what it demands of its clients (WP-2.11), as discovery
                 // publishes them.
                 listeners: crate::plane::listeners::listeners(config),
+                audit: Some(Arc::clone(&audit_engine)),
                 memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
                     store: Arc::clone(&members),
                     capabilities: capabilities.clone(),
@@ -1896,6 +1931,8 @@ impl App {
             Some(recorder.clone()),
         )));
         let _ticking = crate::time::tick(Arc::clone(&time));
+        // The ended days a stopped process left unsealed, sealed now and every hour after.
+        let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
         let mut host = permguard_host::composition::Host::builder()
             .audit(recorder)
             .authorization(authorization)

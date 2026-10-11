@@ -31,6 +31,36 @@
       "fuzz": "object_decode"
     },
     {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/audit/checkpoint.rs",
+      "item": "Checkpoint::decode",
+      "entry": "permguard_host::audit::checkpoint::Checkpoint::decode",
+      "max_input_bytes": 16384,
+      "limit": "`audit::checkpoint::MAX_CHECKPOINT_BYTES`, checked by the decoder before it parses: an audit checkpoint's payload, from the Host's own `checkpoints/`, from a stopped volume `audit verify` reads, or from a checkpoint a verifier holds (WP-3.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "audit_checkpoint"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/audit/checkpoint.rs",
+      "item": "Anchor::decode",
+      "entry": "permguard_host::audit::checkpoint::Anchor::decode",
+      "max_input_bytes": 16384,
+      "limit": "`audit::checkpoint::MAX_CHECKPOINT_BYTES`, checked by the decoder before it parses: a trail's `ANCHOR.cbor`, on the Host's own volume or a stopped volume `audit verify` reads (WP-3.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "audit_checkpoint"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/audit/checkpoint.rs",
+      "item": "Keys::verify",
+      "entry": "permguard_host::audit::checkpoint::Keys::verify",
+      "max_input_bytes": 16384,
+      "limit": "`audit::checkpoint::MAX_CHECKPOINT_BYTES`, checked before the envelope is decoded: a checkpoint's COSE_Sign1 from a stopped volume or an export, verified against the `host.operations` keys kept apart (WP-3.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "audit_checkpoint"
+    },
+    {
       "crate": "permguard-objects",
       "source": "crates/permguard-objects/src/manifest.rs",
       "item": "Manifest::decode",

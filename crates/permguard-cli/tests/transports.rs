@@ -912,6 +912,7 @@ fn host_listener(dir: &Path, pki: &Pki) -> SocketAddr {
             false,
             false,
         )],
+        audit: None,
         memberships: None,
     }));
     std::mem::forget(volume);

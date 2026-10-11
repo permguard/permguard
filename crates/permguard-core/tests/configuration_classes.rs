@@ -96,6 +96,8 @@ fn every_core_setting_renders_under_the_defaults() {
             SETTING_ADMIN_TLS_MIN_VERSION,
             SETTING_ASSURANCE_ADDED_CONTROLS,
             SETTING_AUDIT_PSEUDONYM_KEY_REF,
+            // Unset is the default: `security` days kept for ever (WP-3.7).
+            SETTING_AUDIT_RETENTION_SECURITY,
             SETTING_HOST_IDENTITY_SUITE,
             SETTING_HOST_IDENTITY_WITNESS,
             SETTING_HOST_PEERS,

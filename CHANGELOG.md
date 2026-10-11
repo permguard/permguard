@@ -19,6 +19,20 @@ is cut.
 
 ### Added
 
+- **Audit checkpoints, anchored retention, reads and offline verification.**
+  Every ended UTC day of every audit trail is sealed by a checkpoint, `checkpoints/YYYY-MM-DD.cose`: a COSE_Sign1 `permguard.audit.checkpoint.v1` under the Host's `host.operations` key, naming the day's first and last record, the last record's digest and the digest of the trail's checkpoint before it.
+  A day is sealed when the next one starts, at start and every hour, and on demand up to the last record (`YYYY-MM-DD.<seq>.cose`); a sealed day takes no more records, whatever the clock says.
+  A checkpoint that cannot be signed leaves the record standing and degrades `audit_checkpoint` until the next sweep seals it.
+  Without `operations.keys` nothing is sealed.
+  Retention now deletes sealed days only, writing `ANCHOR.cbor` (the first sequence kept and the seal of the last day deleted) first; checkpoints are never deleted.
+  The new `audit.retention_security` (`PERMGUARD_AUDIT_RETENTION_SECURITY`) bounds `security` days; unset, they are kept for ever, as before, and a bound under one day is refused.
+  `GET /host/v1/audit/{class}/records`, `…/checkpoints` and `…/export`, and the `EvidenceService` rpcs, read one trail under the new operation `audit.read` on its resource: canonical records beside their digests, the gaps a page cannot show (retention, an `access` queue's drops, missing records), a frontier an export keeps across pages, a cursor this process authenticates, and the checkpoints with the `host.operations` set and its `keys export` document.
+  `audit verify --directory <volume> [--keys <file>] [--checkpoint <file>]` checks every trail of a stopped volume: chain, checkpoints, anchors and coverage, with the `host.operations` keys `keys export` printed and kept apart, or the volume's own, reported as not independent.
+  With `--checkpoint`, a checkpoint copied off the volume earlier, the trail it names is verified from it, so a history rewritten since is found even when the volume's key signed the rewrite.
+  A checkpoint signed by a key revoked since stands, as a warning, when a later checkpoint by a key that is not revoked chains over it; an ended day left unsealed, or a directory holding no trail, fails, and a failure exits non-zero.
+  A composition may register a witness that co-signs each checkpoint (`<name>.witness.cose`); none ships, and an unanswered witness degrades `audit_witness` without holding a checkpoint back.
+  Checkpoints stay on the volume: shipping them off it is a later change.
+
 - **The Host listener: `admin.addr` serves the Host API.**
   The `admin` section, which was read and refused, is now the Host listener: `/host/v1` and `permguard.host.v1` on one port, over TLS, with `admin.tls` and `admin.allow` as before.
   It serves the grants: `GET` and `POST /host/v1/grants`, then the two-step `revoke/plan` and `revoke/run`.
@@ -67,7 +81,7 @@ is cut.
   With `audit.pseudonym` on, a principal is pseudonymised per resource: the Control Plane's and the Data Plane's trails do not correlate, but every tenant of one Plane shares its root until a Plane narrows its records to a tenant's resource.
   With it off, a principal is masked in the trail, as in every other sink.
   `access` and `operations` day files older than `audit.retention` are dropped; `security` ones are kept until checkpoints exist.
-  The new trails carry no signed seal or checkpoint yet (WP-3.7), and `audit verify` does not read them yet.
+  The new trails carry no signed seal or checkpoint yet (WP-3.7), and `audit verify` does not read them yet; see the checkpoints entry above.
 
 - **Grant mutations are one transaction with their audit records.**
   Every grant issue, revocation plan and run, expiry and bootstrap — from the Host API, the offline `permguard host grants`, or the Host itself — is an operation of the security-mutation journal in `host/audit/mutations/`.

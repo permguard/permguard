@@ -47,6 +47,8 @@
     "capability.TEMPORAL_V1ALPHA1_SCHEMA_DERIVED_PINS": "urn:permguard:pdp:temporal:v1alpha1:schema-derived-pins",
     "capability.TEMPORAL_V1ALPHA1_STORE_IN_PAYLOAD": "urn:permguard:pdp:temporal:v1alpha1:store-in-payload",
     "capability.TEMPORAL_V1ALPHA1_TYPED_EVENTS": "urn:permguard:pdp:temporal:v1alpha1:typed-events",
+    "digest.AUDIT_CHECKPOINT": "permguard.audit.checkpoint.v1\n",
+    "digest.AUDIT_CURSOR": "permguard.audit.cursor.v1\n",
     "digest.AUDIT_PSEUDONYM": "permguard.audit.pseudonym.v1\n",
     "digest.AUDIT_RECORD": "permguard.audit.record.v1\n",
     "digest.DECISION_RECORD": "permguard.decision.v1\n",

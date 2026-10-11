@@ -267,17 +267,24 @@ pub enum AuditCommand {
     /// Named here and implemented by the binary, like every other collaborator: this crate knows
     /// that a trail can be verified, and the composition root knows what a trail is.
     Verify {
-        /// Directory the trail was written to.
+        /// The Host's volume, or its `host/audit/trails` directory.
         #[arg(long, value_name = "DIRECTORY")]
         directory: PathBuf,
 
-        /// Key set to check the seals' signatures against, as a JWKS document.
+        /// The `host.operations` public keys kept apart from the volume, as `keys export` prints
+        /// them or as a JWKS document, to check the checkpoints' signatures against.
         ///
-        /// Optional, and pointedly not defaulted to the local key ring: verifying a seal against
-        /// keys taken from the machine under suspicion checks a signature against a key the same
-        /// attacker could have replaced. Point it at a copy you trust.
+        /// Without it the keys the volume publishes are used and the report says it is not
+        /// independent: verifying a checkpoint against keys taken from the machine under
+        /// suspicion checks a signature against a key the same attacker could have replaced.
         #[arg(long, value_name = "JWKS")]
         keys: Option<PathBuf>,
+
+        /// A checkpoint envelope kept outside the volume (`checkpoints/<name>.cose` as it was
+        /// copied): the trail it names is verified from it to the newest record, so a history
+        /// rewritten since is found whatever the volume holds now.
+        #[arg(long, value_name = "COSE")]
+        checkpoint: Option<PathBuf>,
     },
 }
 

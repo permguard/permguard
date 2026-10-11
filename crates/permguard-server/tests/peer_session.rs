@@ -250,6 +250,7 @@ impl Host {
                 context: Some(self.context(peers)),
             },
             listeners: Vec::new(),
+            audit: None,
             memberships: None,
         }));
         pki.issue_serial("server", "localhost", SERVER_SERIAL, false);
@@ -716,6 +717,7 @@ async fn side_with(
             context: Some(context),
         },
         listeners: Vec::new(),
+        audit: None,
         memberships: Some(Arc::new(permguard_host::api::members::MembershipService {
             store: Arc::clone(&members),
             capabilities,

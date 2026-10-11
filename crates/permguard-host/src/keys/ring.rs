@@ -894,6 +894,12 @@ impl Ring {
         self.suite
     }
 
+    /// What `keys export` prints for this ring: its published and retained public keys and its
+    /// revocations, read from its journal (WP-3.7: what an audit export verifies offline with).
+    pub fn export_document(&self) -> Result<String, RingError> {
+        export(self.dir.path())
+    }
+
     /// The ring epoch: `0` before its first key.
     pub fn epoch(&self) -> u64 {
         self.read().epoch

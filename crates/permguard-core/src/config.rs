@@ -322,9 +322,12 @@ pub const SETTING_AUDIT_SINK: &str = "PERMGUARD_AUDIT_SINK";
 /// Runtime setting key for the directory the file sink writes to.
 pub const SETTING_AUDIT_DIRECTORY: &str = "PERMGUARD_AUDIT_DIRECTORY";
 
-/// Runtime setting key for how long a day of `access` and `operations` audit records is kept;
-/// `security` days are kept until checkpoints exist (WP-3.5).
+/// Runtime setting key for how long a sealed day of `access` and `operations` audit records is
+/// kept (WP-3.5, WP-3.7).
 pub const SETTING_AUDIT_RETENTION: &str = "PERMGUARD_AUDIT_RETENTION";
+/// Runtime setting key for how long a sealed day of `security` audit records is kept; unset, for
+/// ever (WP-3.7, owner decision of 2026-10-11).
+pub const SETTING_AUDIT_RETENTION_SECURITY: &str = "PERMGUARD_AUDIT_RETENTION_SECURITY";
 /// Whether refused operations are recorded in the audit trail as well as the log.
 ///
 /// Off by default: the trail records what changed the world, and a caller's mistakes change
@@ -1312,6 +1315,7 @@ pub struct Config {
     notp_ledger_quota_bytes: u64,
     audit_directory: Option<String>,
     audit_retention: Duration,
+    audit_retention_security: Option<Duration>,
     audit_pseudonym_enabled: bool,
     audit_pseudonym_key_ref: Option<SecretRef>,
     audit_pseudonym_key_version: String,
@@ -1491,6 +1495,7 @@ impl Default for Config {
             notp_ledger_quota_bytes: DEFAULT_NOTP_LEDGER_QUOTA_BYTES,
             audit_directory: None,
             audit_retention: DEFAULT_AUDIT_RETENTION,
+            audit_retention_security: None,
             audit_pseudonym_enabled: false,
             audit_pseudonym_key_ref: None,
             audit_pseudonym_key_version: DEFAULT_KEY_VERSION.to_owned(),
@@ -2211,6 +2216,17 @@ produce: use `EdDSA` or `ES256`"
     /// Both mistakes here are silent for weeks and then break everything at once, which is why they
     /// are checked at startup rather than discovered at the first rotation.
     fn validate_key_lifecycle(&self) -> Result<()> {
+        // Retention deletes whole sealed days: a bound under one day would delete every sealed
+        // day before today (WP-3.7).
+        if let Some(retention) = self.audit_retention_security
+            && retention < Duration::from_secs(86_400)
+        {
+            bail!(
+                "`audit.retention_security` ({retention:?}) is under one day: retention deletes \
+                 whole sealed days, so it would delete every `security` day before today"
+            );
+        }
+
         if !self.keys_enabled {
             return Ok(());
         }
@@ -3189,9 +3205,14 @@ produce: use `EdDSA` or `ES256`"
         )
     }
 
-    /// Returns how long a day of audit records is kept.
+    /// Returns how long a sealed day of `access` and `operations` audit records is kept.
     pub fn audit_retention(&self) -> Duration {
         self.audit_retention
+    }
+
+    /// Returns how long a sealed day of `security` audit records is kept; `None`, for ever.
+    pub fn audit_retention_security(&self) -> Option<Duration> {
+        self.audit_retention_security
     }
 
     /// Returns the largest NOTP transfer batch, in bytes.
@@ -4094,6 +4115,7 @@ produce: use `EdDSA` or `ES256`"
             SETTING_AUDIT_SINK => Some(self.audit_destination.as_str().to_owned()),
             SETTING_AUDIT_DIRECTORY => Some(self.audit_directory().display().to_string()),
             SETTING_AUDIT_RETENTION => d(self.audit_retention),
+            SETTING_AUDIT_RETENTION_SECURITY => self.audit_retention_security.and_then(d),
             SETTING_AUDIT_REFUSALS => b(self.audit_refusals),
             SETTING_NOTP_MAX_BATCH_BYTES => n(self.notp_max_batch_bytes),
             SETTING_NOTP_MAX_BATCH_OBJECTS => n(self.notp_max_batch_objects),
@@ -5202,6 +5224,13 @@ produce: use `EdDSA` or `ES256`"
                 .with_context(|| format!("reading {SETTING_AUDIT_RETENTION}"))?;
         }
 
+        if let Some(value) = settings.get(SETTING_AUDIT_RETENTION_SECURITY) {
+            self.audit_retention_security = Some(
+                parse_duration(value)
+                    .with_context(|| format!("reading {SETTING_AUDIT_RETENTION_SECURITY}"))?,
+            );
+        }
+
         if let Some(value) = settings.get(SETTING_CONTROL_KEYS_ENABLED) {
             self.control_keys_enabled = Some(
                 parse_bool(value)
@@ -5605,6 +5634,7 @@ const CORE_SETTINGS: &[&str] = &[
     SETTING_AUDIT_PSEUDONYM_KEY_VERSION,
     SETTING_AUDIT_REFUSALS,
     SETTING_AUDIT_RETENTION,
+    SETTING_AUDIT_RETENTION_SECURITY,
     SETTING_AUDIT_SINK,
     SETTING_AUTHZ_CACHE_BYTES,
     SETTING_AUTHZ_CACHE_PARTITIONS,

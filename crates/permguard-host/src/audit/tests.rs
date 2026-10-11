@@ -567,44 +567,6 @@ fn a_trail_reopened_after_an_empty_last_day_continues_from_the_day_before() {
 }
 
 #[test]
-fn retention_drops_old_days_of_operations_and_access_trails_and_never_of_security_ones() {
-    let root = scratch("retention");
-    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
-    let (wall, time) = guard();
-    let engine = open_engine(&volume, time);
-    engine.retain_for(Duration::from_secs(2 * 86_400));
-    let both = |engine: &Engine| {
-        engine
-            .append(
-                &AuditEvent::new("zone.created", Subject::System("catalog")),
-                None,
-            )
-            .expect("security");
-        engine
-            .append(
-                &AuditEvent::new("server.start", Subject::System("host")),
-                None,
-            )
-            .expect("operations");
-    };
-    both(&engine);
-    wall.jump(86_400);
-    both(&engine);
-    wall.jump(4 * 86_400);
-    both(&engine);
-    let operations = engine.trail_dir(Class::Operations, HOST).expect("trail");
-    let security = engine.trail_dir(Class::Security, CONTROL).expect("trail");
-    assert_eq!(trail::days(&operations).expect("listed").len(), 1);
-    assert_eq!(trail::days(&security).expect("listed").len(), 3);
-    assert_eq!(
-        trail::verify(&operations).expect("verifies from the first day kept"),
-        1
-    );
-    assert_eq!(trail::verify(&security).expect("verifies"), 3);
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn without_a_pseudonym_root_a_principal_is_masked_in_the_trail() {
     let root = scratch("masked");
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
@@ -789,5 +751,931 @@ fn a_principal_is_pseudonymised_per_resource() {
         .remove(0);
     assert_eq!(record.principal, control);
     assert!(!format!("{record:?}").contains("alice"));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+// Checkpoints, anchors, reads and verification (WP-3.7).
+
+const DAY: i64 = 86_400;
+
+/// The volume's `host.operations` ring on `time`, with its first key.
+fn operations_ring(volume: &Volume, time: Arc<TimeGuard>) -> Arc<crate::keys::ring::Ring> {
+    use crate::keys::ring::{HOST_OPERATIONS, Policy, Ring};
+    use permguard_core::KeyManager as _;
+    let ring = Arc::new(
+        Ring::open(
+            volume,
+            HOST_OPERATIONS,
+            permguard_objects::crypto::suite::Suite::Ed25519Sha256V1,
+            Policy {
+                publish_ahead: Duration::from_secs(600),
+                rotate_every: Duration::from_secs(3650 * 86_400),
+                retain: Duration::from_secs(3650 * 86_400),
+            },
+            time,
+        )
+        .expect("the ring opens"),
+    );
+    ring.maintain().expect("the first key");
+    ring
+}
+
+/// The keys `keys export` prints for the volume's `host.operations` ring.
+fn keys_of(volume: &Volume) -> checkpoint::Keys {
+    let dir = crate::keys::ring::directory(volume, crate::keys::ring::HOST_OPERATIONS)
+        .expect("the ring directory");
+    let document = crate::keys::ring::export(dir.path()).expect("exported");
+    checkpoint::Keys::from_document(&document).expect("the keys read")
+}
+
+/// An engine sealing under the volume's `host.operations` ring.
+fn sealing(volume: &Volume, time: Arc<TimeGuard>) -> (Engine, Arc<crate::keys::ring::Ring>) {
+    let engine = open_engine(volume, Arc::clone(&time));
+    let ring = operations_ring(volume, time);
+    engine.seal_with(ring.clone());
+    (engine, ring)
+}
+
+fn zone(engine: &Engine, target: &str) {
+    engine
+        .append(
+            &AuditEvent::new("zone.created", Subject::System("catalog")).on(target),
+            None,
+        )
+        .expect("a security record");
+}
+
+fn start(engine: &Engine) {
+    engine
+        .append(
+            &AuditEvent::new("server.start", Subject::System("host")),
+            None,
+        )
+        .expect("an operations record");
+}
+
+fn period(offset: i64) -> String {
+    trail::period_of(&trail::day_name((START + offset) as u64))
+}
+
+fn checkpoint_names(dir: &Dir) -> Vec<String> {
+    checkpoint::ordered(
+        dir.subdir(trail::CHECKPOINTS, false)
+            .expect("checkpoints")
+            .names()
+            .expect("listed"),
+    )
+}
+
+fn envelope(dir: &Dir, name: &str) -> Vec<u8> {
+    dir.subdir(trail::CHECKPOINTS, false)
+        .expect("checkpoints")
+        .read(name)
+        .expect("read")
+        .expect("present")
+}
+
+fn report(dir: &Dir, class: Class, resource: &str, keys: &checkpoint::Keys) -> verify::TrailReport {
+    verify::verify_trail(dir, class, &trail::resource_digest(resource), keys)
+}
+
+#[test]
+fn a_new_day_seals_the_previous_one() {
+    let root = scratch("seal-day");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, ring) = sealing(&volume, time);
+    zone(&engine, "a");
+    zone(&engine, "b");
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    assert!(checkpoint_names(&dir).is_empty(), "the day has not ended");
+    wall.jump(DAY);
+    zone(&engine, "c");
+    let names = checkpoint_names(&dir);
+    assert_eq!(names, vec![format!("{}.cose", period(0))]);
+    let keys = keys_of(&volume);
+    let sealed = keys
+        .verify(&envelope(&dir, &names[0]))
+        .expect("verifies")
+        .checkpoint;
+    let first_day = trail::read_day(&dir, &trail::day_name(START as u64)).expect("read");
+    assert_eq!(sealed.trail, "security:plane/control");
+    assert_eq!(sealed.period, period(0));
+    assert_eq!((sealed.first_seq, sealed.last_seq), (0, 1));
+    assert_eq!(sealed.head_digest, first_day[1].digest().expect("digest"));
+    assert_eq!(sealed.previous_checkpoint, checkpoint::no_checkpoint());
+    assert_eq!(sealed.host_id, stamp().host_id);
+    assert_eq!(sealed.key_set_epoch, ring.epoch());
+    assert_eq!(sealed.created_at, (START + DAY) as u64);
+    let found = report(&dir, Class::Security, CONTROL, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!(found.sealed_through, Some(period(0)));
+    assert_eq!(found.unsealed, vec![period(DAY)]);
+    assert_eq!((found.records, found.checkpoints), (3, 1));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn the_sweep_seals_a_day_that_ended_without_records() {
+    let root = scratch("sweep");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let first = open_engine(&volume, Arc::clone(&time));
+    zone(&first, "a");
+    start(&first);
+    drop(first);
+    // The day ends with the process stopped; the next one sweeps at its start.
+    wall.jump(DAY);
+    let (engine, _ring) = sealing(&volume, time);
+    let mut written = engine.sweep().expect("swept");
+    written.sort();
+    assert_eq!(written, vec![format!("{}.cose", period(0)); 2]);
+    assert!(
+        engine.sweep().expect("swept again").is_empty(),
+        "sealed once"
+    );
+    let keys = keys_of(&volume);
+    for (class, resource) in [(Class::Security, CONTROL), (Class::Operations, HOST)] {
+        let dir = engine.trail_dir(class, resource).expect("trail");
+        assert_eq!(checkpoint_names(&dir), vec![format!("{}.cose", period(0))]);
+        let found = report(&dir, class, resource, &keys);
+        assert!(found.problems.is_empty(), "{:?}", found.problems);
+        assert!(found.unsealed.is_empty());
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_on_demand_checkpoint_is_extended_by_the_days_seal() {
+    let root = scratch("on-demand");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    zone(&engine, "a");
+    zone(&engine, "b");
+    let on_demand = engine
+        .checkpoint(Class::Security, CONTROL)
+        .expect("checkpointed")
+        .expect("a checkpoint");
+    assert_eq!(on_demand, format!("{}.1.cose", period(0)));
+    assert_eq!(
+        engine
+            .checkpoint(Class::Security, CONTROL)
+            .expect("checkpointed")
+            .as_deref(),
+        Some(on_demand.as_str()),
+        "nothing new: the same checkpoint"
+    );
+    zone(&engine, "c");
+    wall.jump(DAY);
+    zone(&engine, "d");
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    let names = checkpoint_names(&dir);
+    assert_eq!(
+        names,
+        vec![on_demand.clone(), format!("{}.cose", period(0))]
+    );
+    let keys = keys_of(&volume);
+    let held = envelope(&dir, &on_demand);
+    let seal = keys
+        .verify(&envelope(&dir, &names[1]))
+        .expect("verifies")
+        .checkpoint;
+    assert_eq!((seal.first_seq, seal.last_seq), (0, 2));
+    assert_eq!(seal.previous_checkpoint, checkpoint::envelope_digest(&held));
+    let found = report(&dir, Class::Security, CONTROL, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!(verify::verify_from(&dir, &held), Ok(3));
+    assert!(
+        engine.checkpoint(Class::Access, DATA).is_err(),
+        "a trail that does not exist"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_rewritten_prefix_is_detected_from_an_older_checkpoint_alone() {
+    let root = scratch("rewritten");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let ring = operations_ring(&volume, Arc::clone(&time));
+    let history = |wall: &crate::time::ManualClock, time: Arc<TimeGuard>, targets: [&str; 3]| {
+        let engine = open_engine(&volume, time);
+        engine.seal_with(ring.clone());
+        zone(&engine, targets[0]);
+        zone(&engine, targets[1]);
+        wall.jump(DAY);
+        zone(&engine, targets[2]);
+        wall.jump(DAY);
+        zone(&engine, "d");
+        engine
+    };
+    let engine = history(&wall, time, ["a", "b", "c"]);
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    // A verifier keeps the first day's seal outside the volume.
+    let held = envelope(&dir, &format!("{}.cose", period(0)));
+    assert_eq!(verify::verify_from(&dir, &held), Ok(3));
+    drop(engine);
+
+    // Someone holding the volume and its key rewrites the first day and everything after it:
+    // a consistent chain, sealed again under the same key.
+    std::fs::remove_dir_all(dir.path()).expect("the trail removed");
+    let (rewall, retime) = guard();
+    let rewritten = history(&rewall, retime, ["a", "x", "c"]);
+    let dir = rewritten
+        .trail_dir(Class::Security, CONTROL)
+        .expect("trail");
+    let keys = keys_of(&volume);
+    let found = report(&dir, Class::Security, CONTROL, &keys);
+    assert!(
+        found.problems.is_empty(),
+        "the volume alone cannot tell: {:?}",
+        found.problems
+    );
+    let refused = verify::verify_from(&dir, &held).expect_err("the older checkpoint tells");
+    assert!(refused.contains("rewritten"), "{refused}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A witness that co-signs while it answers.
+struct Witness {
+    answering: std::sync::atomic::AtomicBool,
+    asked: std::sync::atomic::AtomicUsize,
+}
+
+impl Witness {
+    fn new(answering: bool) -> Arc<Self> {
+        Arc::new(Self {
+            answering: std::sync::atomic::AtomicBool::new(answering),
+            asked: std::sync::atomic::AtomicUsize::new(0),
+        })
+    }
+}
+
+impl checkpoint::CheckpointWitness for Witness {
+    fn cosign(&self, envelope: &[u8]) -> Result<Vec<u8>, String> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        if self.answering.load(Ordering::SeqCst) {
+            Ok(format!("witnessed {}", checkpoint::envelope_digest(envelope)).into_bytes())
+        } else {
+            Err("the witness did not answer in time".to_owned())
+        }
+    }
+}
+
+#[test]
+fn a_witness_cosigns_each_checkpoint() {
+    let root = scratch("witness");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    let witness = Witness::new(true);
+    engine.witness_with(witness.clone());
+    zone(&engine, "a");
+    wall.jump(DAY);
+    zone(&engine, "b");
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    let seal = format!("{}.cose", period(0));
+    assert_eq!(
+        witness.asked.load(Ordering::SeqCst),
+        0,
+        "never asked under the trail's lock"
+    );
+    engine.sweep().expect("swept");
+    let held = dir.subdir(trail::CHECKPOINTS, false).expect("checkpoints");
+    assert_eq!(
+        held.read(&checkpoint::witness_name(&seal)).expect("read"),
+        Some(
+            format!(
+                "witnessed {}",
+                checkpoint::envelope_digest(&envelope(&dir, &seal))
+            )
+            .into_bytes()
+        )
+    );
+    let on_demand = engine
+        .checkpoint(Class::Security, CONTROL)
+        .expect("checkpointed")
+        .expect("a checkpoint");
+    assert!(
+        held.exists(&checkpoint::witness_name(&on_demand))
+            .expect("looked"),
+        "asked on demand at once"
+    );
+    let found = report(&dir, Class::Security, CONTROL, &keys_of(&volume));
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!((found.checkpoints, found.witnessed), (2, 2));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_unanswered_witness_degrades_and_never_skips_the_checkpoint() {
+    let root = scratch("witness-silent");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    let health = Health::new();
+    engine.observe(health.clone());
+    let witness = Witness::new(false);
+    engine.witness_with(witness.clone());
+    zone(&engine, "a");
+    wall.jump(DAY);
+    zone(&engine, "b");
+    engine.sweep().expect("swept");
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    let seal = format!("{}.cose", period(0));
+    assert_eq!(checkpoint_names(&dir), vec![seal.clone()], "sealed anyway");
+    let held = dir.subdir(trail::CHECKPOINTS, false).expect("checkpoints");
+    assert!(
+        !held
+            .exists(&checkpoint::witness_name(&seal))
+            .expect("looked")
+    );
+    let degraded = |health: &Health| {
+        health
+            .lifecycle()
+            .report(permguard_core::lifecycle::HOST)
+            .degraded
+            .iter()
+            .any(|d| d.capability == WITNESS_CAPABILITY)
+    };
+    assert!(degraded(&health));
+    witness.answering.store(true, Ordering::SeqCst);
+    engine.sweep().expect("swept");
+    assert!(
+        held.exists(&checkpoint::witness_name(&seal))
+            .expect("looked")
+    );
+    assert!(!degraded(&health), "restored once it answers");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn retention_deletes_only_sealed_days() {
+    // Without a signer nothing is sealed, so nothing is deleted.
+    let root = scratch("retention-unsealed");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let engine = open_engine(&volume, time);
+    engine.retain_for(Duration::from_secs(2 * 86_400));
+    for jump in [0, DAY, 4 * DAY] {
+        wall.jump(jump);
+        start(&engine);
+    }
+    let operations = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    assert_eq!(trail::days(&operations).expect("listed").len(), 3);
+    assert_eq!(trail::anchor(&operations).expect("read"), None);
+    drop(engine);
+    let _ = std::fs::remove_dir_all(root);
+
+    // Sealed, the days past the retention go, a `security` trail keeping every day.
+    let root = scratch("retention-sealed");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    engine.retain_for(Duration::from_secs(2 * 86_400));
+    for jump in [0, DAY, 4 * DAY] {
+        wall.jump(jump);
+        start(&engine);
+        start(&engine);
+        zone(&engine, "z");
+    }
+    let operations = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    let security = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    assert_eq!(
+        trail::days(&operations).expect("listed"),
+        vec![trail::day_name((START + 5 * DAY) as u64)]
+    );
+    assert_eq!(trail::days(&security).expect("listed").len(), 3);
+    assert_eq!(
+        checkpoint_names(&operations).len(),
+        2,
+        "checkpoints are never deleted"
+    );
+    let keys = keys_of(&volume);
+    let found = report(&operations, Class::Operations, HOST, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!(found.first_seq, Some(4));
+    assert_eq!(found.anchor.map(|anchor| anchor.low_watermark), Some(4));
+    let found = report(&security, Class::Security, CONTROL, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_security_trail_is_kept_unless_its_retention_is_set() {
+    let root = scratch("retention-security");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    engine.retain_security_for(Duration::from_secs(2 * 86_400));
+    for jump in [0, DAY, 4 * DAY] {
+        wall.jump(jump);
+        zone(&engine, "z");
+    }
+    let security = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    assert_eq!(trail::days(&security).expect("listed").len(), 1);
+    let anchor = trail::anchor(&security).expect("read").expect("an anchor");
+    assert_eq!((anchor.low_watermark, anchor.through), (2, period(DAY)));
+    let found = report(&security, Class::Security, CONTROL, &keys_of(&volume));
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_anchor_is_written_before_a_prefix_goes_and_verifies() {
+    let root = scratch("anchor");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let ring = operations_ring(&volume, time);
+    let trails = trails_of(&volume);
+    let mut opened = Trail::open(
+        &trails,
+        Class::Operations,
+        HOST,
+        Some(Duration::from_secs(2 * 86_400)),
+    )
+    .expect("opens");
+    for offset in [0, 0, DAY, DAY, 5 * DAY] {
+        opened
+            .append(bare((START + offset) as u64))
+            .expect("appended");
+    }
+    let today = trail::day_name((START + 5 * DAY) as u64);
+    opened
+        .seal_before(&today, ring.as_ref(), [1; 16], (START + 5 * DAY) as u64)
+        .expect("sealed");
+    let dir = trail::directory(&trails, Class::Operations, HOST, false).expect("trail");
+    // The anchor cannot be written: nothing goes.
+    {
+        let _failing =
+            permguard_core::fault::inject(dir.path(), permguard_core::fault::Fault::WriteFails);
+        assert!(opened.prune(&today).is_err());
+    }
+    assert_eq!(trail::days(&dir).expect("listed").len(), 3);
+    assert_eq!(trail::anchor(&dir).expect("read"), None);
+    // The anchor alone cannot be replaced, the day files still could be deleted: nothing goes
+    // before the anchor stands.
+    let blocked = dir.child_path(checkpoint::ANCHOR);
+    std::fs::create_dir(&blocked).expect("a directory where the anchor goes");
+    assert!(opened.prune(&today).is_err());
+    assert_eq!(trail::days(&dir).expect("listed").len(), 3);
+    std::fs::remove_dir(&blocked).expect("removed");
+    let anchor = opened.prune(&today).expect("pruned").expect("an anchor");
+    assert_eq!(trail::anchor(&dir).expect("read"), Some(anchor.clone()));
+    assert_eq!(trail::days(&dir).expect("listed"), vec![today]);
+    let seal = envelope(&dir, &format!("{}.cose", period(DAY)));
+    assert_eq!(anchor.checkpoint, checkpoint::envelope_digest(&seal));
+    assert_eq!((anchor.low_watermark, anchor.through), (4, period(DAY)));
+    let keys = keys_of(&volume);
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    // The seal it names is gone: the anchor no longer verifies.
+    std::fs::remove_file(
+        dir.subdir(trail::CHECKPOINTS, false)
+            .expect("checkpoints")
+            .child_path(&format!("{}.cose", period(DAY))),
+    )
+    .expect("removed");
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(
+        found
+            .problems
+            .iter()
+            .any(|problem| problem.contains("anchor names a checkpoint")),
+        "{:?}",
+        found.problems
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_sealed_day_takes_no_record_when_the_clock_steps_back() {
+    let root = scratch("sealed-closed");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let ring = operations_ring(&volume, time);
+    let trails = trails_of(&volume);
+    let mut opened = Trail::open(&trails, Class::Operations, HOST, None).expect("opens");
+    opened.append(bare(START as u64)).expect("appended");
+    let tomorrow = trail::day_name((START + DAY) as u64);
+    opened
+        .seal_before(&tomorrow, ring.as_ref(), [1; 16], (START + DAY) as u64)
+        .expect("sealed");
+    opened.append(bare(START as u64 + 10)).expect("appended");
+    let dir = trail::directory(&trails, Class::Operations, HOST, false).expect("trail");
+    assert_eq!(
+        trail::days(&dir).expect("listed"),
+        vec![trail::day_name(START as u64), tomorrow],
+        "the record goes to the day after the seal"
+    );
+    // Reopened, the trail still knows the day is closed.
+    drop(opened);
+    let mut reopened = Trail::open(&trails, Class::Operations, HOST, None).expect("opens");
+    reopened.append(bare(START as u64 + 20)).expect("appended");
+    assert_eq!(trail::days(&dir).expect("listed").len(), 2);
+    let found = report(&dir, Class::Operations, HOST, &keys_of(&volume));
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_sealed_day_that_goes_or_a_cut_tail_fails_verification_and_no_sequence_is_reused() {
+    let root = scratch("sealed-gone");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, Arc::clone(&time));
+    zone(&engine, "a");
+    zone(&engine, "b");
+    wall.jump(DAY);
+    zone(&engine, "c");
+    let on_demand = engine
+        .checkpoint(Class::Security, CONTROL)
+        .expect("checkpointed")
+        .expect("a checkpoint");
+    drop(engine);
+    let dir =
+        trail::directory(&trails_of(&volume), Class::Security, CONTROL, false).expect("trail");
+    let keys = keys_of(&volume);
+    // The last day, which an on-demand checkpoint covers, is deleted.
+    std::fs::remove_file(dir.child_path(&trail::day_name((START + DAY) as u64))).expect("removed");
+    let found = report(&dir, Class::Security, CONTROL, &keys);
+    assert!(
+        found
+            .problems
+            .iter()
+            .any(|problem| problem.contains(&on_demand) && problem.contains("gone")),
+        "{:?}",
+        found.problems
+    );
+    // Reopened, the trail continues after what its checkpoints sealed.
+    let reopened = open_engine(&volume, Arc::clone(&time));
+    zone(&reopened, "d");
+    let last = trail::read_day(&dir, &trail::day_name((START + DAY) as u64)).expect("read");
+    assert_eq!(last[0].seq, 3, "sequence 2 was sealed and is never reused");
+    drop(reopened);
+    // The first day, which its seal covers, is deleted.
+    std::fs::remove_file(dir.child_path(&trail::day_name(START as u64))).expect("removed");
+    let found = report(&dir, Class::Security, CONTROL, &keys);
+    assert!(
+        found
+            .problems
+            .iter()
+            .any(|problem| problem.contains("no anchor")),
+        "{:?}",
+        found.problems
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// An `operations` trail on a volume whose first two days retention deleted: records 0 to 3
+/// gone, 4 and 5 kept on the sixth day.
+fn pruned(tag: &str) -> (std::path::PathBuf, Engine, Arc<crate::time::ManualClock>) {
+    let root = scratch(tag);
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let engine = open_engine(&volume, Arc::clone(&time));
+    engine.seal_with(operations_ring(&volume, time));
+    engine.retain_for(Duration::from_secs(2 * 86_400));
+    for jump in [0, DAY, 4 * DAY] {
+        wall.jump(jump);
+        start(&engine);
+        start(&engine);
+    }
+    (root, engine, wall)
+}
+
+#[test]
+fn a_read_states_the_retention_gap() {
+    let (root, engine, _) = pruned("read-gap");
+    let page = engine
+        .read(Class::Operations, HOST, &query::Query::default())
+        .expect("read");
+    assert_eq!(
+        page.records.iter().map(|r| r.seq).collect::<Vec<_>>(),
+        vec![4, 5]
+    );
+    assert_eq!(
+        page.gaps,
+        vec![query::Gap::Retention {
+            below: 4,
+            through: period(DAY)
+        }]
+    );
+    assert_eq!((page.frontier, page.next), (6, None));
+    // A read from the sixth day onwards does not reach the gap.
+    let later = engine
+        .read(
+            Class::Operations,
+            HOST,
+            &query::Query {
+                from: Some((START + 5 * DAY) as u64),
+                ..query::Query::default()
+            },
+        )
+        .expect("read");
+    assert!(later.gaps.is_empty(), "{:?}", later.gaps);
+    assert_eq!(later.records.len(), 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_export_states_the_retention_gap() {
+    let (root, engine, _) = pruned("export-gap");
+    let page = engine
+        .export(Class::Operations, HOST, &query::Query::default())
+        .expect("exported");
+    assert_eq!(page.records.len(), 2);
+    assert!(
+        page.gaps.contains(&query::Gap::Retention {
+            below: 4,
+            through: period(DAY)
+        }),
+        "{:?}",
+        page.gaps
+    );
+    assert_eq!(page.anchor.map(|anchor| anchor.low_watermark), Some(4));
+    let held = engine
+        .checkpoints(Class::Operations, HOST, None)
+        .expect("listed");
+    assert_eq!(
+        held.files
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            format!("{}.cose", period(0)),
+            format!("{}.cose", period(DAY))
+        ]
+    );
+    let one_day = engine
+        .checkpoints(Class::Operations, HOST, Some(&period(DAY)))
+        .expect("listed");
+    assert_eq!((one_day.files.len(), one_day.omitted), (1, 0));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_export_keeps_its_frontier_while_records_arrive() {
+    let root = scratch("frontier");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let engine = open_engine(&volume, time);
+    for _ in 0..3 {
+        start(&engine);
+    }
+    let one = |cursor: Option<String>| query::Query {
+        limit: Some(1),
+        cursor,
+        ..query::Query::default()
+    };
+    let first = engine
+        .export(Class::Operations, HOST, &one(None))
+        .expect("exported");
+    assert_eq!((first.records[0].seq, first.frontier), (0, 3));
+    for _ in 0..2 {
+        start(&engine);
+    }
+    let second = engine
+        .export(Class::Operations, HOST, &one(first.next.clone()))
+        .expect("exported");
+    let third = engine
+        .export(Class::Operations, HOST, &one(second.next.clone()))
+        .expect("exported");
+    assert_eq!(
+        (second.records[0].seq, third.records[0].seq, third.frontier),
+        (1, 2, 3)
+    );
+    assert_eq!(third.next, None, "the frontier holds");
+    // A cursor altered, or issued for another query, is refused.
+    let cursor = first.next.expect("a cursor");
+    let mut altered = cursor.clone().into_bytes();
+    altered[2] ^= 1;
+    let altered = String::from_utf8(altered).expect("text");
+    for refused in [
+        engine.export(Class::Operations, HOST, &one(Some(altered))),
+        engine.read(Class::Operations, HOST, &one(Some(cursor.clone()))),
+        engine.export(Class::Security, HOST, &one(Some(cursor))),
+    ] {
+        assert!(
+            matches!(refused, Err(query::QueryError::Cursor(_))),
+            "{refused:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_read_states_records_missing_from_the_day_files() {
+    let root = scratch("missing");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let engine = open_engine(&volume, time);
+    for jump in [0, DAY, DAY] {
+        wall.jump(jump);
+        start(&engine);
+    }
+    let dir = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    std::fs::remove_file(dir.child_path(&trail::day_name((START + DAY) as u64))).expect("removed");
+    let page = engine
+        .read(Class::Operations, HOST, &query::Query::default())
+        .expect("read");
+    assert_eq!(page.gaps, vec![query::Gap::Missing { from: 1, to: 1 }]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_read_skips_a_record_still_being_appended() {
+    let root = scratch("read-race");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let engine = open_engine(&volume, time);
+    start(&engine);
+    start(&engine);
+    let dir = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    // What a concurrent append has written so far: the first bytes of the next record.
+    let day = trail::day_name(START as u64);
+    let mut bytes = std::fs::read(dir.child_path(&day)).expect("read");
+    bytes.extend_from_slice(&bare(START as u64).encode().expect("encoded")[..10]);
+    std::fs::write(dir.child_path(&day), bytes).expect("written");
+    let page = engine
+        .read(Class::Operations, HOST, &query::Query::default())
+        .expect("a live trail reads");
+    assert_eq!(page.records.len(), 2);
+    assert!(page.gaps.is_empty(), "{:?}", page.gaps);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A signer that refuses the trail `refused` names while `refusing` holds.
+struct Refusing {
+    ring: Arc<crate::keys::ring::Ring>,
+    refused: &'static str,
+    refusing: std::sync::atomic::AtomicBool,
+}
+
+impl checkpoint::CheckpointSigner for Refusing {
+    fn seal(&self, checkpoint: &mut checkpoint::Checkpoint) -> Result<Vec<u8>, String> {
+        if self.refusing.load(Ordering::SeqCst) && checkpoint.trail == self.refused {
+            return Err("the custody did not answer".to_owned());
+        }
+        self.ring.seal(checkpoint)
+    }
+}
+
+#[test]
+fn a_trail_that_seals_does_not_clear_another_ones_failure() {
+    let root = scratch("seal-degraded");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let engine = open_engine(&volume, Arc::clone(&time));
+    let signer = Arc::new(Refusing {
+        ring: operations_ring(&volume, time),
+        refused: "security:plane/control",
+        refusing: std::sync::atomic::AtomicBool::new(true),
+    });
+    engine.seal_with(signer.clone());
+    let health = Health::new();
+    engine.observe(health.clone());
+    let degraded = |health: &Health| {
+        health
+            .lifecycle()
+            .report(permguard_core::lifecycle::HOST)
+            .degraded
+            .iter()
+            .any(|d| d.capability == CHECKPOINT_CAPABILITY)
+    };
+    zone(&engine, "a");
+    start(&engine);
+    wall.jump(DAY);
+    zone(&engine, "b");
+    assert!(degraded(&health), "the security trail did not seal");
+    start(&engine);
+    assert!(
+        degraded(&health),
+        "the operations trail sealed, and the security one still has not"
+    );
+    signer.refusing.store(false, Ordering::SeqCst);
+    engine.sweep().expect("swept");
+    assert!(!degraded(&health), "restored once every trail sealed");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_checkpoint_by_a_revoked_key_stands_only_where_a_later_one_covers_it() {
+    let root = scratch("revoked");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let other_root = scratch("revoked-other");
+    let other = Volume::claim(&other_root, AssuranceProfile::Development).expect("claimed");
+    let (_, time) = guard();
+    let first = operations_ring(&volume, Arc::clone(&time));
+    let second = operations_ring(&other, time);
+    let document = |volume: &Volume| -> serde_json::Value {
+        let dir = crate::keys::ring::directory(volume, crate::keys::ring::HOST_OPERATIONS)
+            .expect("the ring directory");
+        serde_json::from_str(&crate::keys::ring::export(dir.path()).expect("exported"))
+            .expect("json")
+    };
+    let (one, two) = (document(&volume), document(&other));
+    let revoked_kid = one["keys"][0]["kid"].as_str().expect("kid").to_owned();
+    let mut keys: Vec<serde_json::Value> = one["keys"].as_array().expect("keys").clone();
+    keys.extend(two["keys"].as_array().expect("keys").iter().cloned());
+    let keys = checkpoint::Keys::from_document(
+        &serde_json::json!({ "keys": keys, "revoked": [{ "kid": revoked_kid }] }).to_string(),
+    )
+    .expect("the keys read");
+
+    let trails = trails_of(&volume);
+    let mut opened = Trail::open(&trails, Class::Operations, HOST, None).expect("opens");
+    let day = |offset: i64| trail::day_name((START + offset) as u64);
+    opened.append(bare(START as u64)).expect("appended");
+    opened.append(bare((START + DAY) as u64)).expect("appended");
+    opened
+        .seal_before(&day(DAY), first.as_ref(), [1; 16], (START + DAY) as u64)
+        .expect("sealed by the key revoked later");
+    let dir = trail::directory(&trails, Class::Operations, HOST, false).expect("trail");
+    // Nothing by a key that is not revoked covers it yet.
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(
+        found
+            .problems
+            .iter()
+            .any(|problem| problem.contains("revoked since, and no checkpoint")),
+        "{:?}",
+        found.problems
+    );
+    // A later checkpoint by another key chains over it: a warning, no longer a failure.
+    opened
+        .append(bare((START + 2 * DAY) as u64))
+        .expect("appended");
+    opened
+        .seal_before(
+            &day(2 * DAY),
+            second.as_ref(),
+            [1; 16],
+            (START + 2 * DAY) as u64,
+        )
+        .expect("sealed by a key that is not revoked");
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!(found.warnings.len(), 1, "{:?}", found.warnings);
+    let _ = std::fs::remove_dir_all(root);
+    let _ = std::fs::remove_dir_all(other_root);
+}
+
+#[test]
+fn an_ended_day_whose_seal_is_gone_fails_verification() {
+    let root = scratch("seal-gone");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    for jump in [0, DAY, DAY] {
+        wall.jump(jump);
+        start(&engine);
+    }
+    let dir = engine.trail_dir(Class::Operations, HOST).expect("trail");
+    let keys = keys_of(&volume);
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(found.problems.is_empty(), "{:?}", found.problems);
+    assert_eq!(found.unsealed, vec![period(2 * DAY)], "only the last day");
+    // The newest seal goes: the day it sealed has ended and now reads as unsealed.
+    std::fs::remove_file(
+        dir.subdir(trail::CHECKPOINTS, false)
+            .expect("checkpoints")
+            .child_path(&format!("{}.cose", period(DAY))),
+    )
+    .expect("removed");
+    let found = report(&dir, Class::Operations, HOST, &keys);
+    assert!(
+        found
+            .problems
+            .iter()
+            .any(|problem| problem.contains(&period(DAY)) && problem.contains("not sealed")),
+        "{:?}",
+        found.problems
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_prefix_rewritten_below_the_held_head_is_detected() {
+    let root = scratch("prefix-below");
+    let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
+    let (wall, time) = guard();
+    let (engine, _ring) = sealing(&volume, time);
+    zone(&engine, "a");
+    zone(&engine, "b");
+    wall.jump(DAY);
+    zone(&engine, "c");
+    let dir = engine.trail_dir(Class::Security, CONTROL).expect("trail");
+    let held = envelope(&dir, &format!("{}.cose", period(0)));
+    assert_eq!(verify::verify_from(&dir, &held), Ok(2));
+    // Record 0 changes and record 1, the head the held checkpoint sealed, stays as it was.
+    let path = dir.child_path(&trail::day_name(START as u64));
+    let mut bytes = std::fs::read(&path).expect("read");
+    let at = bytes.iter().position(|b| *b == b'a').expect("a letter a");
+    bytes[at] = b'x';
+    std::fs::write(&path, bytes).expect("altered");
+    let refused = verify::verify_from(&dir, &held).expect_err("the chain into the head breaks");
+    assert!(refused.contains("rewritten"), "{refused}");
     let _ = std::fs::remove_dir_all(root);
 }

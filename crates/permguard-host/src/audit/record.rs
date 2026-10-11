@@ -86,7 +86,7 @@ impl std::error::Error for RecordError {}
 
 type Result<T> = std::result::Result<T, RecordError>;
 
-fn uint(value: u64) -> Result<Value> {
+pub(crate) fn uint(value: u64) -> Result<Value> {
     i64::try_from(value)
         .map(Value::Int)
         .map_err(|_| RecordError::Malformed("an integer beyond the signed 64-bit range".to_owned()))
@@ -240,19 +240,19 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn id16(bytes: Vec<u8>) -> Result<[u8; 16]> {
+pub(crate) fn id16(bytes: Vec<u8>) -> Result<[u8; 16]> {
     bytes
         .as_slice()
         .try_into()
         .map_err(|_| RecordError::Malformed("an identifier is 16 bytes".to_owned()))
 }
 
-struct Labelled {
+pub(crate) struct Labelled {
     pairs: BTreeMap<i64, Value>,
 }
 
 impl Labelled {
-    fn new(value: Value, highest: i64) -> Result<Self> {
+    pub(crate) fn new(value: Value, highest: i64) -> Result<Self> {
         let Value::Map(pairs) = value else {
             return Err(RecordError::Malformed("the root is a map".to_owned()));
         };
@@ -269,20 +269,20 @@ impl Labelled {
         Ok(Self { pairs: labelled })
     }
 
-    fn take(&mut self, label: i64) -> Result<Value> {
+    pub(crate) fn take(&mut self, label: i64) -> Result<Value> {
         self.pairs
             .remove(&label)
             .ok_or_else(|| RecordError::Malformed(format!("label {label} is required")))
     }
 
-    fn text(&mut self, label: i64) -> Result<String> {
+    pub(crate) fn text(&mut self, label: i64) -> Result<String> {
         match self.take(label)? {
             Value::Text(text) => Ok(text),
             _ => Err(RecordError::Malformed(format!("label {label} is text"))),
         }
     }
 
-    fn optional_text(&mut self, label: i64) -> Result<Option<String>> {
+    pub(crate) fn optional_text(&mut self, label: i64) -> Result<Option<String>> {
         match self.pairs.remove(&label) {
             None => Ok(None),
             Some(Value::Text(text)) => Ok(Some(text)),
@@ -290,14 +290,14 @@ impl Labelled {
         }
     }
 
-    fn bytes(&mut self, label: i64) -> Result<Vec<u8>> {
+    pub(crate) fn bytes(&mut self, label: i64) -> Result<Vec<u8>> {
         match self.take(label)? {
             Value::Bytes(bytes) => Ok(bytes),
             _ => Err(RecordError::Malformed(format!("label {label} is bytes"))),
         }
     }
 
-    fn optional_bytes(&mut self, label: i64) -> Result<Option<Vec<u8>>> {
+    pub(crate) fn optional_bytes(&mut self, label: i64) -> Result<Option<Vec<u8>>> {
         match self.pairs.remove(&label) {
             None => Ok(None),
             Some(Value::Bytes(bytes)) => Ok(Some(bytes)),
@@ -305,7 +305,7 @@ impl Labelled {
         }
     }
 
-    fn uint(&mut self, label: i64) -> Result<u64> {
+    pub(crate) fn uint(&mut self, label: i64) -> Result<u64> {
         match self.take(label)? {
             Value::Int(value) if value >= 0 => Ok(value as u64),
             _ => Err(RecordError::Malformed(format!(
@@ -314,12 +314,12 @@ impl Labelled {
         }
     }
 
-    fn digest(&mut self, label: i64) -> Result<Digest> {
+    pub(crate) fn digest(&mut self, label: i64) -> Result<Digest> {
         Digest::parse(&self.text(label)?)
             .map_err(|e| RecordError::Malformed(format!("label {label}: {e}")))
     }
 
-    fn facts(&mut self, label: i64) -> Result<BTreeMap<String, FactValue>> {
+    pub(crate) fn facts(&mut self, label: i64) -> Result<BTreeMap<String, FactValue>> {
         match self.take(label)? {
             Value::Map(pairs) => pairs
                 .into_iter()
@@ -346,7 +346,7 @@ impl Labelled {
         }
     }
 
-    fn finish(self) -> Result<()> {
+    pub(crate) fn finish(self) -> Result<()> {
         match self.pairs.keys().next() {
             None => Ok(()),
             Some(label) => Err(RecordError::Malformed(format!("unexpected label {label}"))),

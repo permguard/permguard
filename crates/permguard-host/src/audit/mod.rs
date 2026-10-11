@@ -23,10 +23,22 @@
 //! The engine sits behind the core [`AuditSink`], so every recorder and handle of the process
 //! writes through it; it forwards each record to the sink `audit.destination` chose as well, the
 //! log stream by default (owner decision of 2026-10-07).
+//!
+//! With a [`CheckpointSigner`] registered, every ended day of every trail is sealed by a signed
+//! checkpoint (WP-3.7, owner decisions of 2026-10-11): when a record starts a new day, at each
+//! [`Engine::sweep`] (at start and every hour) and on demand ([`Engine::checkpoint`]). A
+//! checkpoint that cannot be signed leaves the record standing, is logged, degrades
+//! `audit_checkpoint`, and is sealed at the next sweep. A registered [`CheckpointWitness`] is
+//! asked to co-sign each checkpoint at the sweep and on demand, outside every trail's lock; an
+//! unanswered witness degrades `audit_witness` and never holds a checkpoint back. Retention
+//! deletes sealed days only, so without a signer nothing is deleted.
 
+pub mod checkpoint;
 pub mod pseudonym;
+pub mod query;
 pub mod record;
 pub mod trail;
+pub mod verify;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -42,7 +54,9 @@ use crate::storage::Dir;
 use crate::storage::volume::Volume;
 use crate::time::TimeGuard;
 
+use checkpoint::{CheckpointSigner, CheckpointWitness};
 use pseudonym::ResourcePseudonyms;
+use query::{CheckpointList, CursorKey, Page, Query, QueryError};
 use record::{AuditRecord, FactValue};
 use trail::Trail;
 
@@ -52,6 +66,10 @@ pub const DIRECTORY: &str = "audit";
 pub const TRAILS: &str = "trails";
 /// The capability the Host reports degraded when an `operations` record was lost.
 pub const CAPABILITY: &str = "audit";
+/// The capability the Host reports degraded while a checkpoint could not be sealed.
+pub const CHECKPOINT_CAPABILITY: &str = "audit_checkpoint";
+/// The capability the Host reports degraded while the registered witness does not answer.
+pub const WITNESS_CAPABILITY: &str = "audit_witness";
 /// How many `access` records may wait for the writer before new ones are dropped.
 pub const ACCESS_QUEUE: usize = 4096;
 
@@ -490,8 +508,17 @@ struct Inner {
     dropped: AtomicU64,
     /// Drops not yet marked, by the resource of the access trail that has the gap.
     pending_drops: Mutex<BTreeMap<String, u64>>,
-    /// How long `access` and `operations` day files are kept; `security` ones always are.
+    /// How long `access` and `operations` day files are kept.
     retention: OnceLock<std::time::Duration>,
+    /// How long `security` day files are kept; for ever unless set.
+    retention_security: OnceLock<std::time::Duration>,
+    signer: OnceLock<Arc<dyn CheckpointSigner>>,
+    witness: OnceLock<Arc<dyn CheckpointWitness>>,
+    cursors: CursorKey,
+    /// The trails whose last seal failed: `audit_checkpoint` is restored once none is left.
+    unsealed: Mutex<std::collections::BTreeSet<(Class, String)>>,
+    /// The trails the witness left a checkpoint of unanswered: `audit_witness` likewise.
+    unwitnessed: Mutex<std::collections::BTreeSet<(Class, String)>>,
 }
 
 /// The audit engine of one process.
@@ -520,10 +547,26 @@ impl Engine {
         Self::with_registry(volume, REGISTRY, stamp, time, pseudonyms)
     }
 
-    /// Removes `access` and `operations` day files older than `retention` from now on; a
-    /// `security` trail keeps every day until WP-3.7's checkpoints (owner decision of 2026-10-07).
+    /// Removes the sealed `access` and `operations` day files older than `retention`, from the
+    /// trails opened from now on.
     pub fn retain_for(&self, retention: std::time::Duration) {
         let _ = self.inner.retention.set(retention);
+    }
+
+    /// Removes the sealed `security` day files older than `retention`, from the trails opened
+    /// from now on; without it a `security` trail keeps every day (owner decision of 2026-10-11).
+    pub fn retain_security_for(&self, retention: std::time::Duration) {
+        let _ = self.inner.retention_security.set(retention);
+    }
+
+    /// Seals every ended day of every trail with `signer` from now on.
+    pub fn seal_with(&self, signer: Arc<dyn CheckpointSigner>) {
+        let _ = self.inner.signer.set(signer);
+    }
+
+    /// Asks `witness` to co-sign every checkpoint from now on.
+    pub fn witness_with(&self, witness: Arc<dyn CheckpointWitness>) {
+        let _ = self.inner.witness.set(witness);
     }
 
     /// The engine over `registry`, for a test that registers its own actions.
@@ -563,6 +606,14 @@ impl Engine {
             dropped: AtomicU64::new(0),
             pending_drops: Mutex::new(BTreeMap::new()),
             retention: OnceLock::new(),
+            retention_security: OnceLock::new(),
+            signer: OnceLock::new(),
+            witness: OnceLock::new(),
+            cursors: CursorKey::draw().ok_or_else(|| {
+                Refused::Storage("the system has no source of randomness".to_owned())
+            })?,
+            unsealed: Mutex::new(std::collections::BTreeSet::new()),
+            unwitnessed: Mutex::new(std::collections::BTreeSet::new()),
         });
         let (sender, receiver) = std::sync::mpsc::sync_channel::<Box<AuditRecord>>(queue);
         let writer = {
@@ -603,6 +654,191 @@ impl Engine {
     pub fn trail_dir(&self, class: Class, resource: &str) -> Result<Dir, Refused> {
         trail::directory(&self.inner.trails, class, resource, false)
             .map_err(|error| Refused::Storage(error.to_string()))
+    }
+
+    /// Seals every ended day of every trail on the volume that no seal closed yet, deletes what
+    /// retention allows, and asks the witness for the co-signatures still missing; answers the
+    /// checkpoints written. A trail that fails is logged and the others go on.
+    pub fn sweep(&self) -> Result<Vec<String>, Refused> {
+        let storage = |error: crate::storage::StorageError| Refused::Storage(error.to_string());
+        let today = trail::day_name(self.inner.time.now_secs());
+        let mut written = Vec::new();
+        let mut visited = Vec::new();
+        for class_name in self.inner.trails.subdirs().map_err(storage)? {
+            let Some(class) = Class::parse(&class_name) else {
+                continue;
+            };
+            let class_dir = self
+                .inner
+                .trails
+                .subdir(&class_name, false)
+                .map_err(storage)?;
+            for digest in class_dir.subdirs().map_err(storage)? {
+                let resource = class_dir
+                    .subdir(&digest, false)
+                    .and_then(|dir| dir.read(trail::META))
+                    .map_err(|error| error.to_string())
+                    .and_then(|meta| {
+                        record::TrailMeta::decode(&meta.unwrap_or_default())
+                            .map_err(|error| error.to_string())
+                    })
+                    .and_then(|meta| {
+                        // A `META.cbor` naming a resource kept elsewhere would open another trail.
+                        if trail::resource_digest(&meta.resource) == digest {
+                            Ok(meta.resource)
+                        } else {
+                            Err("its META.cbor names a resource kept under another digest"
+                                .to_owned())
+                        }
+                    });
+                let resource = match resource {
+                    Ok(resource) => resource,
+                    Err(error) => {
+                        tracing::error!(
+                            event.name = "audit.sweep_failed",
+                            component = "host",
+                            class = class.as_str(),
+                            trail = %digest,
+                            error = %error,
+                            "an audit trail could not be swept"
+                        );
+                        continue;
+                    }
+                };
+                let mut open = self
+                    .inner
+                    .open
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                match self.inner.trail(&mut open, class, &resource) {
+                    Ok(trail) => {
+                        written.extend(self.inner.maintain(trail, class, &resource, &today));
+                    }
+                    Err(error) => tracing::error!(
+                        event.name = "audit.sweep_failed",
+                        component = "host",
+                        class = class.as_str(),
+                        error = %error,
+                        "an audit trail could not be swept"
+                    ),
+                }
+                drop(open);
+                visited.push((class, resource));
+            }
+        }
+        self.inner.ask_witness(&visited);
+        Ok(written)
+    }
+
+    /// Checkpoints the trail of `(class, resource)` now: its ended days sealed, its last day up to
+    /// its last record; answers the newest checkpoint's file name, `None` when the trail holds
+    /// no record. Refused when no signer is registered or the trail does not exist.
+    pub fn checkpoint(&self, class: Class, resource: &str) -> Result<Option<String>, Refused> {
+        let signer = self.inner.signer.get().ok_or_else(|| {
+            Refused::Storage("no checkpoint signer is registered in this process".to_owned())
+        })?;
+        self.trail_dir(class, resource)?;
+        let today = trail::day_name(self.inner.time.now_secs());
+        let newest = {
+            let mut open = self
+                .inner
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let trail = self
+                .inner
+                .trail(&mut open, class, resource)
+                .map_err(Refused::Storage)?;
+            let sealed = trail.checkpoint_now(
+                &today,
+                signer.as_ref(),
+                self.inner.stamp.host_id,
+                self.inner.time.now_secs(),
+            );
+            match sealed {
+                Ok(_) => self.inner.sealed(class, resource),
+                Err(error) => {
+                    self.inner.seal_failed(class, resource, &error);
+                    return Err(Refused::Storage(error));
+                }
+            }
+            trail.newest_checkpoint().map(ToOwned::to_owned)
+        };
+        self.inner.ask_witness(&[(class, resource.to_owned())]);
+        Ok(newest)
+    }
+
+    /// One page of the records of `(class, resource)`, with the gaps it cannot show.
+    pub fn read(&self, class: Class, resource: &str, query: &Query) -> Result<Page, QueryError> {
+        self.page(class, resource, query, false)
+    }
+
+    /// One page of the export of `(class, resource)` up to the frontier its first page fixed:
+    /// every record, from the first kept, whatever its time.
+    pub fn export(&self, class: Class, resource: &str, query: &Query) -> Result<Page, QueryError> {
+        self.page(class, resource, query, true)
+    }
+
+    /// The checkpoints of `(class, resource)`, of the day `period` alone when it names one.
+    pub fn checkpoints(
+        &self,
+        class: Class,
+        resource: &str,
+        period: Option<&str>,
+    ) -> Result<CheckpointList, QueryError> {
+        match trail::directory(&self.inner.trails, class, resource, false) {
+            Ok(dir) => query::checkpoints(&dir, period),
+            Err(error) if not_found(&error) => Ok(CheckpointList::default()),
+            Err(error) => Err(QueryError::Storage(error.to_string())),
+        }
+    }
+
+    fn page(
+        &self,
+        class: Class,
+        resource: &str,
+        query: &Query,
+        export: bool,
+    ) -> Result<Page, QueryError> {
+        let dir = match trail::directory(&self.inner.trails, class, resource, false) {
+            Ok(dir) => dir,
+            Err(error) if not_found(&error) => {
+                if query.cursor.is_some() {
+                    // No cursor was issued for a trail that does not exist.
+                    return Err(QueryError::Cursor(
+                        "the cursor was issued for another query".to_owned(),
+                    ));
+                }
+                return Ok(Page {
+                    records: Vec::new(),
+                    gaps: Vec::new(),
+                    frontier: 0,
+                    next: None,
+                    anchor: None,
+                });
+            }
+            Err(error) => return Err(QueryError::Storage(error.to_string())),
+        };
+        let next_seq = {
+            let mut open = self
+                .inner
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            self.inner
+                .trail(&mut open, class, resource)
+                .map_err(QueryError::Storage)?
+                .next_seq()
+        };
+        query::page(
+            &self.inner.cursors,
+            &dir,
+            class,
+            resource,
+            next_seq,
+            query,
+            export,
+        )
     }
 
     /// Appends `event`, recorded under `policy` when the engine keeps no pseudonym root of its
@@ -813,31 +1049,209 @@ impl Inner {
         }
     }
 
-    /// Appends `record` to its trail, opening the trail on first use.
+    /// The open trail of `(class, resource)`, opened on first use.
+    fn trail<'a>(
+        &self,
+        open: &'a mut BTreeMap<(Class, String), Trail>,
+        class: Class,
+        resource: &str,
+    ) -> Result<&'a mut Trail, String> {
+        let key = (class, resource.to_owned());
+        if !open.contains_key(&key) {
+            let retention = match class {
+                Class::Security => self.retention_security.get().copied(),
+                Class::Operations | Class::Access => self.retention.get().copied(),
+            };
+            let trail = Trail::open(&self.trails, class, resource, retention)
+                .map_err(|error| error.to_string())?;
+            open.insert(key.clone(), trail);
+        }
+        open.get_mut(&key)
+            .ok_or_else(|| "the trail vanished".to_owned())
+    }
+
+    /// Appends `record` to its trail, opening the trail on first use; a record that starts a new
+    /// day seals the days before it and deletes what retention allows.
     fn write(&self, record: AuditRecord) -> Result<(), String> {
         let class = Class::parse(record.trail.split(':').next().unwrap_or_default())
             .ok_or_else(|| format!("`{}` names no class", record.trail))?;
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (class, record.resource.clone());
-        let retention = match class {
-            Class::Security => None,
-            Class::Operations | Class::Access => self.retention.get().copied(),
+        let trail = self.trail(&mut open, class, &record.resource)?;
+        match trail.append(record) {
+            Ok(new_day) => {
+                if new_day && let Some(today) = trail.last_day().map(ToOwned::to_owned) {
+                    self.maintain(trail, class, &key.1, &today);
+                }
+                Ok(())
+            }
+            Err(error) => {
+                // Reopened at the next record: what a failed append left at the end of the day
+                // file is a torn item there, which opening cuts, and the sequence continues from
+                // disk.
+                open.remove(&key);
+                Err(error.to_string())
+            }
+        }
+    }
+
+    /// Seals the days of `trail` before the day file `today` and deletes what its retention
+    /// allows; a failure is logged and degrades a capability, and the record that led here
+    /// stands. Answers the checkpoints written.
+    fn maintain(
+        &self,
+        trail: &mut Trail,
+        class: Class,
+        resource: &str,
+        today: &str,
+    ) -> Vec<String> {
+        let mut written = Vec::new();
+        if let Some(signer) = self.signer.get() {
+            match trail.seal_before(
+                today,
+                signer.as_ref(),
+                self.stamp.host_id,
+                self.time.now_secs(),
+            ) {
+                Ok(names) => {
+                    written = names;
+                    self.sealed(class, resource);
+                }
+                Err(error) => self.seal_failed(class, resource, &error),
+            }
+        }
+        if let Err(error) = trail.prune(today) {
+            tracing::error!(
+                event.name = "audit.retention_failed",
+                component = "host",
+                error = %error,
+                "sealed audit days past their retention could not be deleted; the next sweep retries"
+            );
+        }
+        written
+    }
+
+    /// The trail of `(class, resource)` sealed: `audit_checkpoint` is restored once no trail's
+    /// seal is failing.
+    fn sealed(&self, class: Class, resource: &str) {
+        let mut unsealed = self.unsealed.lock().unwrap_or_else(PoisonError::into_inner);
+        unsealed.remove(&(class, resource.to_owned()));
+        if unsealed.is_empty()
+            && let Some(health) = self.health.get()
+        {
+            health
+                .lifecycle()
+                .restore(permguard_core::lifecycle::HOST, CHECKPOINT_CAPABILITY);
+        }
+    }
+
+    fn seal_failed(&self, class: Class, resource: &str, error: &str) {
+        self.unsealed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert((class, resource.to_owned()));
+        tracing::error!(
+            event.name = "audit.checkpoint_unsealed",
+            component = "host",
+            error = %error,
+            "an audit checkpoint could not be sealed; the next sweep retries"
+        );
+        if let Some(health) = self.health.get() {
+            health.lifecycle().degrade(
+                permguard_core::lifecycle::HOST,
+                CHECKPOINT_CAPABILITY,
+                format!("an audit checkpoint could not be sealed: {error}"),
+            );
+        }
+    }
+
+    /// Asks the registered witness to co-sign every checkpoint of `trails` that has no
+    /// co-signature yet, outside every trail's lock; the first one unanswered stops the round and
+    /// leaves the rest to the next sweep. `audit_witness` is degraded while any trail has a
+    /// checkpoint the witness left unanswered, and restored once none has.
+    fn ask_witness(&self, trails: &[(Class, String)]) {
+        let Some(witness) = self.witness.get() else {
+            return;
         };
-        if !open.contains_key(&key) {
-            let trail = Trail::open(&self.trails, class, &record.resource, retention)
-                .map_err(|error| error.to_string())?;
-            open.insert(key.clone(), trail);
+        let mut unanswered = None;
+        let mut answered = Vec::new();
+        'trails: for (class, resource) in trails {
+            let Ok(held) = trail::directory(&self.trails, *class, resource, false)
+                .and_then(|dir| dir.subdir(trail::CHECKPOINTS, false))
+            else {
+                continue;
+            };
+            let Ok(names) = held.names() else {
+                continue;
+            };
+            for name in checkpoint::ordered(names.iter().cloned()) {
+                let cosigned = checkpoint::witness_name(&name);
+                if names.contains(&cosigned) {
+                    continue;
+                }
+                let answer = held
+                    .read(&name)
+                    .map_err(|error| error.to_string())
+                    .and_then(|envelope| witness.cosign(&envelope.unwrap_or_default()))
+                    .and_then(|signature| {
+                        let same = |kept: &[u8]| kept == signature.as_slice();
+                        crate::storage::write::publish_immutable(
+                            &held, &cosigned, &signature, &same, &same,
+                        )
+                        .map(|_| ())
+                        .map_err(|error| error.to_string())
+                    });
+                if let Err(error) = answer {
+                    unanswered = Some(((*class, resource.clone()), error));
+                    break 'trails;
+                }
+            }
+            answered.push((*class, resource.clone()));
         }
-        let trail = open
-            .get_mut(&key)
-            .ok_or_else(|| "the trail vanished".to_owned())?;
-        let appended = trail.append(record).map_err(|error| error.to_string());
-        if appended.is_err() {
-            // Reopened at the next record: what a failed append left at the end of the day file
-            // is a torn item there, which opening cuts, and the sequence continues from disk.
-            open.remove(&key);
+        let pending = {
+            let mut pending = self
+                .unwitnessed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            for key in &answered {
+                pending.remove(key);
+            }
+            if let Some((key, _)) = &unanswered {
+                pending.insert(key.clone());
+            }
+            !pending.is_empty()
+        };
+        let unanswered = unanswered.map(|(_, error)| error);
+        let Some(health) = self.health.get() else {
+            if let Some(error) = &unanswered {
+                tracing::warn!(
+                    event.name = "audit.witness_unanswered",
+                    component = "host",
+                    error = %error,
+                    "the audit witness did not co-sign a checkpoint; the next sweep asks again"
+                );
+            }
+            return;
+        };
+        match unanswered {
+            None if pending => {}
+            Some(error) => {
+                tracing::warn!(
+                    event.name = "audit.witness_unanswered",
+                    component = "host",
+                    error = %error,
+                    "the audit witness did not co-sign a checkpoint; the next sweep asks again"
+                );
+                health.lifecycle().degrade(
+                    permguard_core::lifecycle::HOST,
+                    WITNESS_CAPABILITY,
+                    format!("the audit witness did not co-sign a checkpoint: {error}"),
+                );
+            }
+            None => health
+                .lifecycle()
+                .restore(permguard_core::lifecycle::HOST, WITNESS_CAPABILITY),
         }
-        appended
     }
 
     /// Writes a record whose loss the caller is not answered: counted, logged, and the Host's
@@ -898,6 +1312,11 @@ impl Inner {
             }
         }
     }
+}
+
+fn not_found(error: &crate::storage::StorageError) -> bool {
+    matches!(error, crate::storage::StorageError::Io { source, .. }
+        if source.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn facts_of(

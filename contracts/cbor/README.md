@@ -79,7 +79,7 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `kdf.json`            | HKDF `info` tuples                                 | `host_local_info`, `zone_root_info`, `zone_use_info`                                               |
 | `grant.json`          | Host API grant record and its transitions          | `grant_record`, `transition`                                                                       |
 | `layout.json`         | layout manifest, migration intent and commit       | `layout_manifest`, `migration_intent`, `migration_commit`                                          |
-| `audit.json`          | audit record and trail metadata                    | `audit_record`, `trail_meta`                                                                       |
+| `audit.json`          | audit record, trail metadata, checkpoint, anchor   | `audit_record`, `trail_meta`, `checkpoint`, `anchor`                                               |
 | `mutation.json`       | security mutation journal entries and snapshot     | `mutation_intent`, `mutation_commit`, `mutation_failed`, `mutation_projected`, `mutation_snapshot` |
 | `identity.json`       | Host identity document, succession, `INIT`, `BOOT` | `identity_document`, `succession_record`, `init`, `boot`                                           |
 | `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |

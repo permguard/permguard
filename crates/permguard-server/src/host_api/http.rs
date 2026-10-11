@@ -14,6 +14,7 @@ use axum::{Json, Router};
 use serde::de::DeserializeOwned;
 
 use permguard_core::{ApiError, Disclosure, ErrorClass, codes};
+use permguard_host::api::audit::{AuditCheckpointQuery, AuditExportQuery, AuditQuery};
 use permguard_host::api::members::{
     AppraiseMember, ApproveMember, ChangeMember, CreateInvite, JoinMembership, PlanMemberRevoke,
     RunMemberRevoke, SyncMembership,
@@ -85,6 +86,9 @@ pub fn routes(api: Arc<HostApi>, disclosure: Disclosure) -> Router {
         .route("/host/v1/members/{id}/revoke/run", post(run_member_revoke))
         .route("/host/v1/memberships/join", post(join_membership))
         .route("/host/v1/memberships/{id}/sync", post(sync_membership))
+        .route("/host/v1/audit/{class}/records", get(audit_records))
+        .route("/host/v1/audit/{class}/checkpoints", get(audit_checkpoints))
+        .route("/host/v1/audit/{class}/export", get(audit_export))
         .route("/host/v1/status", get(status))
         .route("/host/v1/config/effective", get(effective_config))
         .route("/host/v1/config/revisions", get(config_revisions))
@@ -270,6 +274,105 @@ async fn key_bundle(
         &served,
         StatusCode::OK,
         served.api.key_bundle(&actor, &query),
+    )
+}
+
+/// The numbers of a query, by name; one that does not read leaves a message the facade refuses
+/// once the resource is admitted.
+fn numbers<const N: usize>(
+    names: [&str; N],
+    values: [Option<String>; N],
+    malformed: &mut Option<String>,
+) -> [Option<u64>; N] {
+    let mut read = [None; N];
+    for (index, value) in values.into_iter().enumerate() {
+        if let Some(text) = value {
+            match text.parse::<u64>() {
+                Ok(number) => read[index] = Some(number),
+                Err(_) => {
+                    malformed.get_or_insert_with(|| {
+                        format!("`{}` is an unsigned integer", names[index])
+                    });
+                }
+            }
+        }
+    }
+    read
+}
+
+async fn audit_records(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(class): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let [resource, from, to, cursor, limit] = <[Option<String>; 5]>::try_from(query_members(
+        query.as_deref(),
+        &["resource", "from", "to", "cursor", "limit"],
+    ))
+    .unwrap_or_default();
+    let mut malformed = None;
+    let [from, to, limit] = numbers(["from", "to", "limit"], [from, to, limit], &mut malformed);
+    let query = AuditQuery {
+        resource: resource.unwrap_or_default(),
+        from,
+        to,
+        cursor,
+        // A limit beyond 32 bits is out of range, and refused as one.
+        limit: limit.map(|limit| u32::try_from(limit).unwrap_or(0)),
+        malformed,
+    };
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.audit_records(&actor, &class, &query),
+    )
+}
+
+async fn audit_checkpoints(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(class): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let [resource, period] =
+        <[Option<String>; 2]>::try_from(query_members(query.as_deref(), &["resource", "period"]))
+            .unwrap_or_default();
+    let query = AuditCheckpointQuery {
+        resource: resource.unwrap_or_default(),
+        period,
+    };
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.audit_checkpoints(&actor, &class, &query),
+    )
+}
+
+async fn audit_export(
+    State(served): State<Served>,
+    ActorOf(actor): ActorOf,
+    Path(class): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let [resource, frontier, cursor, limit] = <[Option<String>; 4]>::try_from(query_members(
+        query.as_deref(),
+        &["resource", "frontier", "cursor", "limit"],
+    ))
+    .unwrap_or_default();
+    let mut malformed = None;
+    let [frontier, limit] = numbers(["frontier", "limit"], [frontier, limit], &mut malformed);
+    let query = AuditExportQuery {
+        resource: resource.unwrap_or_default(),
+        frontier,
+        cursor,
+        limit: limit.map(|limit| u32::try_from(limit).unwrap_or(0)),
+        malformed,
+    };
+    answer(
+        &served,
+        StatusCode::OK,
+        served.api.audit_export(&actor, &class, &query),
     )
 }
 

@@ -72,6 +72,9 @@ pub mod operations {
     /// Invite, approve, reject, suspend, resume, fence and revoke memberships, and join a
     /// coordinator: the "membership grant" of the blueprint, granted only explicitly (WP-4.1).
     pub const MEMBERSHIP_ADMIN: &str = "membership.admin";
+    /// Read the audit trails of a resource: their records, checkpoints and exports (WP-3.7,
+    /// owner decision of 2026-10-11).
+    pub const AUDIT_READ: &str = "audit.read";
 
     /// Every registered operation.
     pub const ALL: &[&str] = &[
@@ -89,6 +92,7 @@ pub mod operations {
         KEYS_ADMIN,
         MEMBERSHIP_READ,
         MEMBERSHIP_ADMIN,
+        AUDIT_READ,
     ];
 
     /// Whether `operation` is registered.

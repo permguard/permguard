@@ -1,6 +1,6 @@
 {
-  "artifact": "Audit record and a trail's META.cbor",
-  "authority": "1-architecture/5-architecture-server-host-audit.md#record (the fields), owner decisions of 2026-10-07 (labels, types, cardinalities); crates/permguard-host/src/audit/record.rs (AuditRecord, TrailMeta)",
+  "artifact": "Audit record, a trail's META.cbor, the payload of an audit checkpoint (a COSE_Sign1 of the profile in crates/permguard-objects/src/cose.rs, content type permguard.audit.checkpoint.v1, signed by the Host's host.operations key under its <ring>:<thumbprint> kid) and a trail's ANCHOR.cbor",
+  "authority": "1-architecture/5-architecture-server-host-audit.md#record (the fields), owner decisions of 2026-10-07 (labels, types, cardinalities); 1-architecture/5-architecture-server-host-audit.md (trails and checkpoints, retention), owner decisions of 2026-10-11 (checkpoint and anchor labels); crates/permguard-host/src/audit/record.rs (AuditRecord, TrailMeta), crates/permguard-host/src/audit/checkpoint.rs (Checkpoint, Anchor)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "audit_record": {
@@ -151,11 +151,114 @@
           "note": "the resource whose SHA-256 names the trail's directory"
         }
       ]
+    },
+    "checkpoint": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "trail",
+          "type": "text",
+          "occurs": "required",
+          "note": "`<class>:<resource>`"
+        },
+        {
+          "label": 2,
+          "name": "period",
+          "type": "text",
+          "occurs": "required",
+          "note": "the UTC day, `YYYY-MM-DD`"
+        },
+        {
+          "label": 3,
+          "name": "first_seq",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the day's first record"
+        },
+        {
+          "label": 4,
+          "name": "last_seq",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the last record covered, at least first_seq"
+        },
+        {
+          "label": 5,
+          "name": "head_digest",
+          "type": "text",
+          "occurs": "required",
+          "note": "the digest of the record last_seq, `sha256:<hex>`"
+        },
+        {
+          "label": 6,
+          "name": "previous_checkpoint",
+          "type": "text",
+          "occurs": "required",
+          "note": "SHA-256 over `permguard.audit.checkpoint.v1\\n` and the trail's previous checkpoint envelope, `sha256:<hex>`; `sha256:` and 64 zeros for the first"
+        },
+        {
+          "label": 7,
+          "name": "host_id",
+          "type": "bytes",
+          "occurs": "required",
+          "note": "16 bytes, the volume's identity"
+        },
+        {
+          "label": 8,
+          "name": "key_set_epoch",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the epoch of the host.operations ring whose key signs"
+        },
+        {
+          "label": 9,
+          "name": "created_at",
+          "type": "uint",
+          "occurs": "required",
+          "note": "seconds since the epoch"
+        }
+      ]
+    },
+    "anchor": {
+      "keys": "int",
+      "fields": [
+        {
+          "label": 1,
+          "name": "trail",
+          "type": "text",
+          "occurs": "required",
+          "note": "`<class>:<resource>`"
+        },
+        {
+          "label": 2,
+          "name": "low_watermark",
+          "type": "uint",
+          "occurs": "required",
+          "note": "the first sequence kept"
+        },
+        {
+          "label": 3,
+          "name": "through",
+          "type": "text",
+          "occurs": "required",
+          "note": "the last day deleted, `YYYY-MM-DD`"
+        },
+        {
+          "label": 4,
+          "name": "checkpoint",
+          "type": "text",
+          "occurs": "required",
+          "note": "the digest of the seal of `through`, whose last_seq is low_watermark - 1"
+        }
+      ]
     }
   },
   "arrays": {},
   "root": [
     "audit_record",
-    "trail_meta"
+    "trail_meta",
+    "checkpoint",
+    "anchor"
   ]
 }

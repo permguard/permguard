@@ -72,6 +72,17 @@ const SHAPED: &[&str] = &[
     // The verification bundle (WP-3.4).
     "GetKeyBundleRequest",
     "GetKeyBundleResponse",
+    // The audit routes (WP-3.7).
+    "ListAuditRecordsRequest",
+    "ListAuditRecordsResponse",
+    "AuditRecord",
+    "AuditGap",
+    "AuditAnchor",
+    "AuditCheckpoint",
+    "ListAuditCheckpointsRequest",
+    "ListAuditCheckpointsResponse",
+    "ExportAuditRequest",
+    "ExportAuditResponse",
     // The memberships (WP-4.1).
     "CreateInviteRequest",
     "CreateInviteResponse",

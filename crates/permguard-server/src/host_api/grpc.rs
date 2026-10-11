@@ -19,6 +19,7 @@ use super::v1::key_service_server::KeyService;
 use super::v1::operations_service_server::OperationsService;
 use super::wire;
 
+mod evidence;
 mod members;
 
 type Answer<T> = Result<Response<T>, Status>;
@@ -67,6 +68,30 @@ fn raw(text: &str) -> Result<Vec<u8>, Status> {
     base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(text)
         .map_err(|error| Status::internal(format!("a member did not decode: {error}")))
+}
+
+/// A ring's public set as gRPC carries it.
+fn ring_out(view: api::RingView) -> Result<v1::GetKeyRingResponse, Status> {
+    Ok(v1::GetKeyRingResponse {
+        ring: view.ring,
+        epoch: view.epoch,
+        digest: view.digest,
+        binding: view.binding.as_deref().map(raw).transpose()?,
+        cache_max_age: view.cache_max_age,
+        keys: view
+            .keys
+            .into_iter()
+            .map(|key| v1::Jwk {
+                kid: key.kid,
+                kty: key.kty,
+                crv: key.crv,
+                x: key.x,
+                y: key.y,
+                alg: key.alg,
+                r#use: key.usage,
+            })
+            .collect(),
+    })
 }
 
 fn receipt(receipt: api::Receipt) -> v1::Receipt {
@@ -407,26 +432,7 @@ impl KeyService for Served {
             .api
             .ring(&request.into_inner().ring)
             .map_err(|refusal| self.refuse(refusal))?;
-        Ok(Response::new(v1::GetKeyRingResponse {
-            ring: view.ring,
-            epoch: view.epoch,
-            digest: view.digest,
-            binding: view.binding.as_deref().map(raw).transpose()?,
-            cache_max_age: view.cache_max_age,
-            keys: view
-                .keys
-                .into_iter()
-                .map(|key| v1::Jwk {
-                    kid: key.kid,
-                    kty: key.kty,
-                    crv: key.crv,
-                    x: key.x,
-                    y: key.y,
-                    alg: key.alg,
-                    r#use: key.usage,
-                })
-                .collect(),
-        }))
+        Ok(Response::new(ring_out(view)?))
     }
 
     async fn rotate_key_ring(

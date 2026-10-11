@@ -21,6 +21,7 @@
 //! shape is refused as such on REST, as a message that does not decode is on gRPC — and nothing
 //! of the state.
 
+pub mod audit;
 pub mod bounds;
 pub mod config;
 pub mod grants;
@@ -222,6 +223,8 @@ pub struct Composition {
     pub listeners: Vec<permguard_core::ListenerReport>,
     /// The memberships (WP-4.1); without them the membership routes are `unavailable`.
     pub memberships: Option<Arc<members::MembershipService>>,
+    /// The audit engine (WP-3.7); without it the audit routes are `audit_unavailable`.
+    pub audit: Option<Arc<crate::audit::Engine>>,
 }
 
 /// The Host API facade: one instance per process, shared by both transports.
@@ -241,6 +244,7 @@ pub struct HostApi {
     peer_sessions: sessions::PeerSessions,
     listeners: Vec<permguard_core::ListenerReport>,
     memberships: Option<Arc<members::MembershipService>>,
+    audit: Option<Arc<crate::audit::Engine>>,
 }
 
 impl std::fmt::Debug for HostApi {
@@ -271,6 +275,7 @@ impl HostApi {
             peer_sessions: composition.peer_sessions,
             listeners: composition.listeners,
             memberships: composition.memberships,
+            audit: composition.audit,
         }
     }
 
@@ -771,6 +776,7 @@ pub(crate) mod testing {
                 false,
                 true,
             )],
+            audit: None,
             memberships: Some(Arc::new(members::MembershipService {
                 store: memberships,
                 // The coordinator's Planes consume shipped decisions (WP-4.4 registers them).

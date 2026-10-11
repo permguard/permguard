@@ -624,6 +624,9 @@ impl PlaneServer {
         .with_keys_exporter(|directory| {
             permguard_host::keys::ring::export(directory).map_err(anyhow::Error::from)
         })
+        // `audit verify --directory` checks the Host's trails, their checkpoints and anchors on a
+        // stopped volume (WP-3.7).
+        .with_audit_verifier(crate::checkpoints::verify)
         .with_audit_factory(move |config| audit_sink_for(binary_name, config))
         .with_keys_factory(key_manager_for)
         .with_catalog_factory(catalog_for)

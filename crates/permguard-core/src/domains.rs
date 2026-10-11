@@ -39,6 +39,10 @@ pub mod digest {
     pub const AUDIT_RECORD: &str = "permguard.audit.record.v1\n";
     /// An audit pseudonym.
     pub const AUDIT_PSEUDONYM: &str = "permguard.audit.pseudonym.v1\n";
+    /// An audit checkpoint envelope, as the next checkpoint and an anchor cite it (WP-3.7).
+    pub const AUDIT_CHECKPOINT: &str = "permguard.audit.checkpoint.v1\n";
+    /// The MAC of an audit read's cursor, under a key of the process (WP-3.7).
+    pub const AUDIT_CURSOR: &str = "permguard.audit.cursor.v1\n";
     /// The external witness of a Host identity: over `INIT`, `VOLUME_ID` and the first identity
     /// fingerprint (WP-2.2).
     pub const HOST_IDENTITY_WITNESS: &str = "permguard.host.identity.witness.v1\n";
@@ -336,6 +340,8 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.KEY_SET", digest::KEY_SET),
         ("digest.AUDIT_RECORD", digest::AUDIT_RECORD),
         ("digest.AUDIT_PSEUDONYM", digest::AUDIT_PSEUDONYM),
+        ("digest.AUDIT_CHECKPOINT", digest::AUDIT_CHECKPOINT),
+        ("digest.AUDIT_CURSOR", digest::AUDIT_CURSOR),
         (
             "digest.HOST_IDENTITY_WITNESS",
             digest::HOST_IDENTITY_WITNESS,

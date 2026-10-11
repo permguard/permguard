@@ -3410,6 +3410,360 @@
         },
         "x-grpc-rpc": "permguard.host.v1.OperationsService/ListConfigRevisions"
       }
+    },
+    "/host/v1/audit/{class}/records": {
+      "get": {
+        "operationId": "listAuditRecords",
+        "summary": "One page of an audit trail's records",
+        "description": "Under `audit.read` on `resource` (WP-3.7). The records of the trail `(class, resource)` from the cursor on, at most up to the frontier the first page fixed, each as its canonical CBOR beside its digest. Every page states what it cannot show (`gaps`): the prefix retention deleted below the anchor's low watermark, the records an `access` queue dropped and any sequence missing from the day files; absence is never answered as completeness.",
+        "parameters": [
+          {
+            "name": "class",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's class: `security`, `operations` or `access`; another is `invalid_argument`, answered only once `resource` is admitted.",
+            "x-grpc-field": "class"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's resource, in the Host API's grammar: `host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`. Authorized under `audit.read` before the class or any filter is read.",
+            "x-grpc-field": "resource"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The earliest record time, seconds since the epoch, inclusive.",
+            "x-grpc-field": "from"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The latest record time, seconds since the epoch, inclusive.",
+            "x-grpc-field": "to"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Where the page starts, as the page before answered it: authenticated by this process, refused when altered, issued for another query or by an earlier process.",
+            "x-grpc-field": "cursor"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "description": "How many records the page carries: 1 to 1000, 100 when absent. A page also stops at 1 MiB of records or two seconds of reading.",
+            "x-grpc-field": "limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page, with its gaps, the frontier and the anchor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRecordPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, an unknown class, `from` after `to`, a cursor this process did not issue for this query, or a limit out of range (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No audit trail is open on this process, or the trail could not be read (`audit_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditRecords"
+      }
+    },
+    "/host/v1/audit/{class}/checkpoints": {
+      "get": {
+        "operationId": "listAuditCheckpoints",
+        "summary": "An audit trail's signed checkpoints",
+        "description": "Under `audit.read` on `resource` (WP-3.7). Every checkpoint of the trail in the order it was sealed, the newest 1000 (the older ones counted), of one day when `period` names it: COSE_Sign1 `permguard.audit.checkpoint.v1` under the Host's `host.operations` key, with the registered witness's co-signature when one was kept, and the `host.operations` set and its identity-signed binding (`GET /host/v1/keys/host.operations`) they verify against, and its `keys export` document with the retained keys and the revocations.",
+        "parameters": [
+          {
+            "name": "class",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's class: `security`, `operations` or `access`; another is `invalid_argument`, answered only once `resource` is admitted.",
+            "x-grpc-field": "class"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's resource, in the Host API's grammar: `host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`. Authorized under `audit.read` before the class or any filter is read.",
+            "x-grpc-field": "resource"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "One UTC day, `YYYY-MM-DD`; every day when absent.",
+            "x-grpc-field": "period"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The checkpoints and the key set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditCheckpoints"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, an unknown class or a period that is not a day (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No audit trail is open on this process, or the trail could not be read (`audit_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ListAuditCheckpoints"
+      }
+    },
+    "/host/v1/audit/{class}/export": {
+      "get": {
+        "operationId": "exportAudit",
+        "summary": "One page of an audit trail's fixed-frontier export",
+        "description": "Under `audit.read` on `resource` (WP-3.7). Every record of the trail from the first kept up to a frontier the first page fixes, whatever records arrive meanwhile, with the same gaps a read states. The first page carries the checkpoints below the frontier (the newest 1000, the older ones counted), the `host.operations` set and its `keys export` document, so the export verifies offline across key rotations.",
+        "parameters": [
+          {
+            "name": "class",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's class: `security`, `operations` or `access`; another is `invalid_argument`, answered only once `resource` is admitted.",
+            "x-grpc-field": "class"
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The trail's resource, in the Host API's grammar: `host`, `plane/<p>`, `plane/<p>/zone/<z>`, `plane/<p>/zone/<z>/ledger/<l>`. Authorized under `audit.read` before the class or any filter is read.",
+            "x-grpc-field": "resource"
+          },
+          {
+            "name": "frontier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The sequence the export stops before; the trail's next one when absent. A later page repeats the first page's or names none.",
+            "x-grpc-field": "frontier"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Where the page starts, as the page before answered it: authenticated by this process, refused when altered, issued for another query or by an earlier process.",
+            "x-grpc-field": "cursor"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "description": "How many records the page carries: 1 to 1000, 100 when absent. A page also stops at 1 MiB of records or two seconds of reading.",
+            "x-grpc-field": "limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the export.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A resource that is not one of the grammar's, an unknown class, a cursor this process did not issue for this query or a frontier other than its own, or a limit out of range (`invalid_argument`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No usable credential: nobody, or a credential no rule maps. Carries `WWW-Authenticate: Mutual-TLS realm=\"permguard\"`.",
+            "headers": {
+              "WWW-Authenticate": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A principal without the grant the route requires.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "common.json#/components/schemas/WireDenial"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No audit trail is open on this process, or the trail could not be read (`audit_unavailable`), or the principal is over its bound (`principal_bound_exceeded`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostWireError"
+                }
+              }
+            }
+          }
+        },
+        "x-grpc-rpc": "permguard.host.v1.EvidenceService/ExportAudit"
+      }
     }
   },
   "components": {
@@ -6958,6 +7312,410 @@
         "additionalProperties": false,
         "description": "What `GET /host/v1/members/{id}/sessions` answers.",
         "x-grpc-message": "permguard.host.v1.ListMemberSessionsResponse"
+      },
+      "AuditRecordView": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The record's sequence in its trail.",
+            "x-grpc-field": "seq"
+          },
+          "at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "When it was recorded, seconds since the epoch.",
+            "x-grpc-field": "at"
+          },
+          "action": {
+            "type": "string",
+            "description": "The registered `<domain>.<verb>`.",
+            "x-grpc-field": "action"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "`ok`, `refused` or `failed`.",
+            "x-grpc-field": "outcome"
+          },
+          "digest": {
+            "type": "string",
+            "description": "`sha256:<hex>` over `permguard.audit.record.v1\\n` and the record's bytes: what the next record names as `previous` and a checkpoint as `head_digest`.",
+            "x-grpc-field": "digest"
+          },
+          "record": {
+            "type": "string",
+            "description": "The canonical CBOR (`contracts/cbor/audit.json`), base64url without padding.",
+            "x-grpc-field": "record"
+          }
+        },
+        "required": [
+          "seq",
+          "at",
+          "action",
+          "outcome",
+          "digest",
+          "record"
+        ],
+        "additionalProperties": false,
+        "description": "One audit record (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.AuditRecord"
+      },
+      "AuditGap": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "retention",
+              "dropped",
+              "missing"
+            ],
+            "description": "What is absent: the prefix retention deleted, records an `access` queue dropped, or records missing from the day files.",
+            "x-grpc-field": "kind"
+          },
+          "from_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The first sequence absent: `0` for retention; `null` for `dropped`.",
+            "x-grpc-field": "from_seq"
+          },
+          "to_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The last sequence absent; for `dropped`, the record that marks the drop.",
+            "x-grpc-field": "to_seq"
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many records the queue dropped; `null` otherwise.",
+            "x-grpc-field": "count"
+          },
+          "through": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The last day retention deleted, `YYYY-MM-DD`; `null` otherwise.",
+            "x-grpc-field": "through"
+          }
+        },
+        "required": [
+          "kind",
+          "from_seq",
+          "to_seq",
+          "count",
+          "through"
+        ],
+        "additionalProperties": false,
+        "description": "Something a page cannot show, stated rather than left out (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.AuditGap"
+      },
+      "AuditAnchor": {
+        "type": "object",
+        "properties": {
+          "low_watermark": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The first sequence kept.",
+            "x-grpc-field": "low_watermark"
+          },
+          "through": {
+            "type": "string",
+            "description": "The last day retention deleted, `YYYY-MM-DD`.",
+            "x-grpc-field": "through"
+          },
+          "checkpoint": {
+            "type": "string",
+            "description": "The digest of the seal of `through`, `sha256:<hex>` over `permguard.audit.checkpoint.v1\\n` and its envelope; its `last_seq` is `low_watermark - 1`.",
+            "x-grpc-field": "checkpoint"
+          }
+        },
+        "required": [
+          "low_watermark",
+          "through",
+          "checkpoint"
+        ],
+        "additionalProperties": false,
+        "description": "What retention deleted (`ANCHOR.cbor`, WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.AuditAnchor"
+      },
+      "AuditCheckpoint": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its file name: `YYYY-MM-DD.cose` for the day's seal, `YYYY-MM-DD.<seq>.cose` on demand.",
+            "x-grpc-field": "name"
+          },
+          "envelope": {
+            "type": "string",
+            "description": "COSE_Sign1 `permguard.audit.checkpoint.v1` under `host.operations`, base64url without padding; its payload is `contracts/cbor/audit.json`'s `checkpoint`.",
+            "x-grpc-field": "envelope"
+          },
+          "witness": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The registered witness's co-signature, base64url without padding; `null` until it answered.",
+            "x-grpc-field": "witness"
+          }
+        },
+        "required": [
+          "name",
+          "envelope",
+          "witness"
+        ],
+        "additionalProperties": false,
+        "description": "One audit checkpoint (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.AuditCheckpoint"
+      },
+      "AuditRecordPage": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "The trail's class.",
+            "x-grpc-field": "class"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The trail's resource, as the Host normalised it.",
+            "x-grpc-field": "resource"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditRecordView"
+            },
+            "description": "This page's records, in sequence order.",
+            "x-grpc-field": "records"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditGap"
+            },
+            "description": "What this page cannot show.",
+            "x-grpc-field": "gaps"
+          },
+          "frontier": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The trail's next sequence when the first page was read, or the export's own: no page passes it.",
+            "x-grpc-field": "frontier"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page; `null` on the last one.",
+            "x-grpc-field": "next_cursor"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What retention deleted; `null` when it deleted nothing.",
+            "x-grpc-field": "anchor"
+          }
+        },
+        "required": [
+          "class",
+          "resource",
+          "records",
+          "gaps",
+          "frontier",
+          "next_cursor",
+          "anchor"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/audit/{class}/records` answers (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.ListAuditRecordsResponse"
+      },
+      "AuditCheckpoints": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "The trail's class.",
+            "x-grpc-field": "class"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The trail's resource, as the Host normalised it.",
+            "x-grpc-field": "resource"
+          },
+          "checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditCheckpoint"
+            },
+            "description": "The checkpoints in the order they were sealed.",
+            "x-grpc-field": "checkpoints"
+          },
+          "keys": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyRing"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The `host.operations` set and its identity-signed binding the checkpoints verify against; `null` when the Host runs without `operations.keys`.",
+            "x-grpc-field": "keys"
+          },
+          "omitted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many older checkpoints the answer leaves out, beyond the newest 1000.",
+            "x-grpc-field": "omitted"
+          },
+          "verification_keys": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What `keys export` prints for `host.operations`: the published and retained keys and the revocations, the document `audit verify --keys` reads, so a checkpoint signed by a key since retired verifies too; `null` when the Host runs without `operations.keys`.",
+            "x-grpc-field": "verification_keys"
+          }
+        },
+        "required": [
+          "class",
+          "resource",
+          "checkpoints",
+          "keys",
+          "omitted",
+          "verification_keys"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/audit/{class}/checkpoints` answers (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.ListAuditCheckpointsResponse"
+      },
+      "AuditExportPage": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "The trail's class.",
+            "x-grpc-field": "class"
+          },
+          "resource": {
+            "type": "string",
+            "description": "The trail's resource, as the Host normalised it.",
+            "x-grpc-field": "resource"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditRecordView"
+            },
+            "description": "This page's records, in sequence order.",
+            "x-grpc-field": "records"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditGap"
+            },
+            "description": "What this page cannot show.",
+            "x-grpc-field": "gaps"
+          },
+          "frontier": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The trail's next sequence when the first page was read, or the export's own: no page passes it.",
+            "x-grpc-field": "frontier"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The cursor of the next page; `null` on the last one.",
+            "x-grpc-field": "next_cursor"
+          },
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditAnchor"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What retention deleted; `null` when it deleted nothing.",
+            "x-grpc-field": "anchor"
+          },
+          "checkpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditCheckpoint"
+            },
+            "description": "On the first page, the checkpoints below the frontier, the newest 1000, in the order they were sealed; empty after it.",
+            "x-grpc-field": "checkpoints"
+          },
+          "keys": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyRing"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On the first page, the `host.operations` set and its identity-signed binding; `null` after it, or when the Host runs without `operations.keys`.",
+            "x-grpc-field": "keys"
+          },
+          "omitted": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "On the first page, how many older checkpoints below the frontier it leaves out, beyond the newest 1000; `0` after it.",
+            "x-grpc-field": "omitted"
+          },
+          "verification_keys": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "On the first page, the `keys export` document of `host.operations` (published and retained keys, revocations), which `audit verify --keys` reads; `null` after it, or when the Host runs without `operations.keys`.",
+            "x-grpc-field": "verification_keys"
+          }
+        },
+        "required": [
+          "class",
+          "resource",
+          "records",
+          "gaps",
+          "frontier",
+          "next_cursor",
+          "anchor",
+          "checkpoints",
+          "keys",
+          "omitted",
+          "verification_keys"
+        ],
+        "additionalProperties": false,
+        "description": "What `GET /host/v1/audit/{class}/export` answers (WP-3.7).",
+        "x-grpc-message": "permguard.host.v1.ExportAuditResponse"
       }
     }
   },

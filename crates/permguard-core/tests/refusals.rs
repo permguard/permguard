@@ -417,6 +417,20 @@ fn test_a_key_retention_shorter_than_the_audit_retention_is_refused() {
 }
 
 #[test]
+fn test_a_security_audit_retention_under_one_day_is_refused() {
+    // WP-3.7: retention deletes whole sealed days.
+    let short = serving(&[(SETTING_AUDIT_RETENTION_SECURITY, "12h")]);
+    assert!(
+        refusal(&short).contains("under one day"),
+        "{}",
+        refusal(&short)
+    );
+    serving(&[(SETTING_AUDIT_RETENTION_SECURITY, "1d")])
+        .validate()
+        .expect("a day is accepted");
+}
+
+#[test]
 fn test_a_sound_key_lifecycle_is_accepted() {
     serving(&[
         (SETTING_KEYS_ENABLED, "true"),

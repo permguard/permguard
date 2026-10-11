@@ -1971,3 +1971,18 @@ fn test_key_versions_the_coordinator_root_and_the_retired_commitment_key() {
         Some("coordinator-root")
     );
 }
+
+/// A sealed `security` audit day is kept for ever unless the deployment sets its own retention,
+/// apart from the `access` and `operations` one (WP-3.7, owner decision of 2026-10-11).
+#[test]
+fn test_security_audit_days_are_kept_for_ever_unless_their_retention_is_set() {
+    let default = config(&[], &[], &[]);
+    assert_eq!(default.audit_retention_security(), None);
+    assert_eq!(default.audit_retention(), Duration::from_secs(90 * 86_400));
+    let set = config(&[(SETTING_AUDIT_RETENTION_SECURITY, "365d")], &[], &[]);
+    assert_eq!(
+        set.audit_retention_security(),
+        Some(Duration::from_secs(365 * 86_400))
+    );
+    assert_eq!(set.audit_retention(), Duration::from_secs(90 * 86_400));
+}

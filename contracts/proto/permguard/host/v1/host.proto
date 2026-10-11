@@ -835,12 +835,116 @@ message ListSecretsRequest {}
 message ListSecretsResponse {}
 message RotateSecretRequest {}
 message RotateSecretResponse {}
-message ListAuditRecordsRequest {}
-message ListAuditRecordsResponse {}
-message ListAuditCheckpointsRequest {}
-message ListAuditCheckpointsResponse {}
-message ExportAuditRequest {}
-message ExportAuditResponse {}
+// `GET /host/v1/audit/{class}/records` (WP-3.7), under `audit.read` on `resource`, which is
+// authorized before the class or any filter is read.
+message ListAuditRecordsRequest {
+  // `security`, `operations` or `access`.
+  string class = 1;
+  // The trail's resource, in the Host API's grammar.
+  string resource = 2;
+  // The earliest record time, seconds since the epoch, inclusive.
+  optional uint64 from = 3;
+  // The latest record time, seconds since the epoch, inclusive.
+  optional uint64 to = 4;
+  // Where the page starts, as the page before answered it; empty on the first page.
+  string cursor = 5;
+  // How many records the page carries: 1 to 1000, 100 when absent.
+  optional uint32 limit = 6;
+}
+message ListAuditRecordsResponse {
+  string class = 1;
+  string resource = 2;
+  repeated AuditRecord records = 3;
+  // What the page cannot show: retention, an access queue's drops, records missing.
+  repeated AuditGap gaps = 4;
+  // The trail's next sequence when the first page was read: no page passes it.
+  uint64 frontier = 5;
+  // The cursor of the next page; absent on the last one.
+  optional string next_cursor = 6;
+  // What retention deleted, when it deleted anything.
+  optional AuditAnchor anchor = 7;
+}
+// One audit record: its canonical bytes beside its digest, and what a reader looks for first.
+message AuditRecord {
+  uint64 seq = 1;
+  // Seconds since the epoch.
+  uint64 at = 2;
+  string action = 3;
+  string outcome = 4;
+  // `sha256:<hex>` over `permguard.audit.record.v1\n` and the bytes.
+  string digest = 5;
+  // The canonical CBOR (`contracts/cbor/audit.json`).
+  bytes record = 6;
+}
+// Something a page cannot show, stated rather than left out.
+message AuditGap {
+  // `retention`, `dropped` or `missing`.
+  string kind = 1;
+  optional uint64 from_seq = 2;
+  optional uint64 to_seq = 3;
+  // How many records an `access` queue dropped.
+  optional uint64 count = 4;
+  // The last day retention deleted.
+  optional string through = 5;
+}
+// What retention deleted: the first sequence kept and the seal of the last day deleted.
+message AuditAnchor {
+  uint64 low_watermark = 1;
+  string through = 2;
+  string checkpoint = 3;
+}
+// One checkpoint, COSE_Sign1 `permguard.audit.checkpoint.v1`, with the witness's co-signature.
+message AuditCheckpoint {
+  // `YYYY-MM-DD.cose`, or `YYYY-MM-DD.<seq>.cose` on demand.
+  string name = 1;
+  bytes envelope = 2;
+  optional bytes witness = 3;
+}
+// `GET /host/v1/audit/{class}/checkpoints` (WP-3.7), under `audit.read` on `resource`.
+message ListAuditCheckpointsRequest {
+  string class = 1;
+  string resource = 2;
+  // One UTC day, `YYYY-MM-DD`; empty is every day.
+  string period = 3;
+}
+message ListAuditCheckpointsResponse {
+  string class = 1;
+  string resource = 2;
+  repeated AuditCheckpoint checkpoints = 3;
+  // The `host.operations` set and its binding, when the Host composes it.
+  optional GetKeyRingResponse keys = 4;
+  // How many older checkpoints the answer leaves out, beyond the newest 1000.
+  uint64 omitted = 5;
+  // What `keys export` prints for `host.operations`, retained keys and revocations included.
+  optional string verification_keys = 6;
+}
+// `GET /host/v1/audit/{class}/export` (WP-3.7), under `audit.read` on `resource`.
+message ExportAuditRequest {
+  string class = 1;
+  string resource = 2;
+  // The sequence the export stops before; the trail's next one when absent.
+  optional uint64 frontier = 3;
+  // Where the page starts; empty on the first page.
+  string cursor = 4;
+  optional uint32 limit = 5;
+}
+message ExportAuditResponse {
+  string class = 1;
+  string resource = 2;
+  repeated AuditRecord records = 3;
+  repeated AuditGap gaps = 4;
+  uint64 frontier = 5;
+  optional string next_cursor = 6;
+  optional AuditAnchor anchor = 7;
+  // On the first page, the checkpoints below the frontier, the newest 1000; empty after it.
+  repeated AuditCheckpoint checkpoints = 8;
+  // On the first page, the `host.operations` set; absent after it.
+  optional GetKeyRingResponse keys = 9;
+  // On the first page, how many older checkpoints below the frontier it leaves out.
+  uint64 omitted = 10;
+  // On the first page, the `keys export` document of `host.operations`; absent after it.
+  optional string verification_keys = 11;
+}
 message ListStreamsRequest {}
 message ListStreamsResponse {}
 message ShipStreamBatchRequest {}

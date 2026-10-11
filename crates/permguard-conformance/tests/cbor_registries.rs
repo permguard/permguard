@@ -2097,6 +2097,7 @@ fn samples(file: &str) -> Vec<Sample> {
 }
 
 fn audit_samples() -> Vec<Sample> {
+    use permguard_host::audit::checkpoint::{Anchor, Checkpoint};
     use permguard_host::audit::record::{AuditRecord, FactValue, TrailMeta, genesis};
     use permguard_objects::digest::Digest;
 
@@ -2161,6 +2162,37 @@ fn audit_samples() -> Vec<Sample> {
             .expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(TrailMeta::decode(bytes)))),
+        ),
+        sample(
+            "checkpoint",
+            Checkpoint {
+                trail: "security:host".to_owned(),
+                period: "2027-01-15".to_owned(),
+                first_seq: 0,
+                last_seq: 4,
+                head_digest: Digest::compute(b"head"),
+                previous_checkpoint: genesis(),
+                host_id: HOST_ID,
+                key_set_epoch: 1,
+                created_at: 1_800_086_400,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Checkpoint::decode(bytes)))),
+        ),
+        sample(
+            "anchor",
+            Anchor {
+                trail: "access:plane/data".to_owned(),
+                low_watermark: 5,
+                through: "2027-01-15".to_owned(),
+                checkpoint: Digest::compute(b"seal"),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Anchor::decode(bytes)))),
         ),
     ]
 }
