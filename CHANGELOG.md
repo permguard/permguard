@@ -207,6 +207,21 @@ is cut.
 
 ### Changed
 
+- **The daily JSON-lines audit sink is gone; its chains move into the volume and stay verifiable.**
+  The file sink that wrote `audit-YYYY-MM-DD.jsonl` and its `.seal` files is deleted.
+  Since the Host trails it wrote nothing in a server, and now no code writes those files.
+  A chain left in `audit.directory` (`operations/audit` by default) is carried byte for byte into `host/audit/legacy/` through the layout migration framework, as the subsystem `audit-legacy`.
+  Below the `production` profile the server carries it at start.
+  From `production` upward the server refuses to start until `permguard migrate audit --volume <dir> --backup <reference> [--legacy <dir>]` has carried it.
+  A file of that directory that is not a day or a seal stops the migration, since `migrate finalize --subsystem audit-legacy` removes the old directory.
+  A chain that shows up in `audit.directory` once the volume is laid out is refused rather than left unread.
+  A volume this release laid out is no longer served by an earlier release, which does not know the `audit-legacy` layout.
+  `audit verify` verifies a migrated chain beside the Host trails, and a legacy directory named directly.
+  It checks the digests, the chain, the sequence, each seal's head and count, and each seal's signature against the `host.operations` key its bare thumbprint names, from `--keys` or the volume.
+  A chain whose oldest days the old sink removed for retention verifies from its first record kept, the absent prefix stated; an unsigned seal is a warning.
+  `audit.destination: file` is still accepted, writes nothing besides the Host trails and is reported deprecated at start.
+  Every release of this iteration reads the legacy chains.
+
 - **The CLI refuses a flag that names another target than the command's.**
   A command reaches exactly one target class, the workspace, the control plane, the data plane, the Host listener or a volume; `--control-endpoint`, `--data-endpoint`, `--host-endpoint` or `--volume` beside a command that does not reach it is a usage error (64), never a silent fallback (`inspect` takes both plane endpoints).
   The offline `host identity` and `host grants` commands read the now global `--volume`, written anywhere on the line as before.

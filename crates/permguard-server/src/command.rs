@@ -199,6 +199,23 @@ pub enum MigrateCommand {
         #[arg(long = "legacy", value_name = "RING=DIRECTORY")]
         legacy: Vec<String>,
     },
+    /// Carry the legacy JSON-lines audit chain into `host/audit/legacy`, byte for byte, with an
+    /// external backup declared (WP-3.8): what a server under the production profile asks for
+    /// before it starts.
+    Audit {
+        /// The volume's root, the server's working directory.
+        #[arg(long, value_name = "DIRECTORY")]
+        volume: PathBuf,
+
+        /// The external backup taken before the migration, as the operator names it.
+        #[arg(long, value_name = "REFERENCE")]
+        backup: String,
+
+        /// The directory the chain is in, when `audit.directory` moved it; `operations/audit`
+        /// below the volume otherwise.
+        #[arg(long, value_name = "DIRECTORY")]
+        legacy: Option<PathBuf>,
+    },
 }
 
 /// What can be asked of a volume's ownership from the command line.

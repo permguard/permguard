@@ -94,12 +94,62 @@ pub struct Report {
     /// Whether the keys came from outside the volume.
     pub independent: bool,
     pub trails: Vec<TrailReport>,
+    /// The legacy JSON-lines chain, when the directory or the volume holds one (WP-3.8).
+    pub legacy: Option<LegacyReport>,
+}
+
+/// What verifying the legacy JSON-lines chain found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyReport {
+    pub directory: String,
+    /// Its verification, or the problem that stopped it.
+    pub outcome: Result<super::jsonl::Verification, String>,
+}
+
+impl LegacyReport {
+    fn render(&self, out: &mut String) {
+        match &self.outcome {
+            Ok(verified) => {
+                let signed = verified
+                    .seals
+                    .iter()
+                    .filter(|seal| {
+                        matches!(seal.signature, super::jsonl::SealSignature::Verified { .. })
+                    })
+                    .count();
+                let _ = writeln!(
+                    out,
+                    "legacy chain {} ok: {} records over {} days{}, {} seals, {signed} with a \
+                     verified signature",
+                    self.directory,
+                    verified.records,
+                    verified.days,
+                    verified
+                        .first_seq
+                        .map(|first| format!(" from record {first}"))
+                        .unwrap_or_default(),
+                    verified.seals.len()
+                );
+                for warning in &verified.warnings {
+                    let _ = writeln!(out, "  ! {warning}");
+                }
+            }
+            Err(problem) => {
+                let _ = writeln!(out, "legacy chain {} FAILED", self.directory);
+                let _ = writeln!(out, "  - {problem}");
+            }
+        }
+    }
 }
 
 impl Report {
     /// Whether every trail verified.
     pub fn sound(&self) -> bool {
         self.trails.iter().all(|trail| trail.problems.is_empty())
+            && self
+                .legacy
+                .as_ref()
+                .is_none_or(|legacy| legacy.outcome.is_ok())
     }
 
     /// The report as `audit verify` prints it.
@@ -175,6 +225,9 @@ impl Report {
                 let _ = writeln!(out, "  - and {} more", trail.more_problems);
             }
         }
+        if let Some(legacy) = &self.legacy {
+            legacy.render(&mut out);
+        }
         let failed = self
             .trails
             .iter()
@@ -182,8 +235,15 @@ impl Report {
             .count();
         let _ = write!(
             out,
-            "{} trails verified, {failed} failed",
-            self.trails.len()
+            "{} trails verified, {failed} failed{}",
+            self.trails.len(),
+            match &self.legacy {
+                None => "",
+                Some(LegacyReport { outcome: Ok(_), .. }) => "; legacy chain verified",
+                Some(LegacyReport {
+                    outcome: Err(_), ..
+                }) => "; legacy chain FAILED",
+            }
         );
         out
     }
@@ -198,6 +258,37 @@ pub fn verify_directory(
     keys: Option<&Path>,
     held: Option<&Path>,
 ) -> Result<Report, String> {
+    // A legacy JSON-lines directory named directly is verified alone, with the keys of the
+    // volume it lies in when `--keys` names none.
+    if super::jsonl::holds_chain(directory) {
+        let (keys, independent) = match keys {
+            Some(path) => (keys_from(path)?, true),
+            None => {
+                let host = host_above(directory).ok_or_else(|| {
+                    format!(
+                        "{} lies in no Host volume publishing `host.operations` keys; pass --keys \
+                         with the keys kept apart",
+                        directory.display()
+                    )
+                })?;
+                (volume_keys(&host)?, false)
+            }
+        };
+        if held.is_some() {
+            return Err(
+                "--checkpoint verifies a Host trail; the directory holds the legacy chain"
+                    .to_owned(),
+            );
+        }
+        return Ok(Report {
+            independent,
+            trails: Vec::new(),
+            legacy: Some(LegacyReport {
+                directory: directory.display().to_string(),
+                outcome: super::jsonl::verify(directory, Some(&keys)),
+            }),
+        });
+    }
     let volume_trails = directory.join("host").join(DIRECTORY).join(TRAILS);
     let (trails, host) = if volume_trails.is_dir() {
         (volume_trails, directory.join("host"))
@@ -210,27 +301,18 @@ pub fn verify_directory(
         (directory.to_path_buf(), host)
     };
     let (keys, independent) = match keys {
-        Some(path) => {
-            let text = std::fs::read_to_string(path)
-                .map_err(|error| format!("reading {}: {error}", path.display()))?;
-            (Keys::from_document(&text)?, true)
-        }
-        None => {
-            let ring = host
-                .join(crate::keys::ring::DIRECTORY)
-                .join(crate::keys::ring::HOST_OPERATIONS);
-            let text = crate::keys::ring::export(&ring).map_err(|error| {
-                format!(
-                    "the volume publishes no `host.operations` keys ({error}); pass --keys with \
-                     the keys kept apart"
-                )
-            })?;
-            (Keys::from_document(&text)?, false)
-        }
+        Some(path) => (keys_from(path)?, true),
+        None => (volume_keys(&host)?, false),
     };
     let dir = Dir::open(&trails).map_err(|error| error.to_string())?;
     let mut reports = verify_trails(&dir, &keys).map_err(|error| error.to_string())?;
-    if reports.is_empty() {
+    // The legacy chain the volume migrated, beside its trails.
+    let migrated = host.join(DIRECTORY).join(super::jsonl::DIRECTORY);
+    let legacy = super::jsonl::holds_chain(&migrated).then(|| LegacyReport {
+        directory: migrated.display().to_string(),
+        outcome: super::jsonl::verify(&migrated, Some(&keys)),
+    });
+    if reports.is_empty() && legacy.is_none() {
         return Err(format!(
             "{} holds no audit trail: name a Host volume or its `host/audit/trails`",
             directory.display()
@@ -272,6 +354,52 @@ pub fn verify_directory(
     Ok(Report {
         independent,
         trails: reports,
+        legacy,
+    })
+}
+
+/// The key document at `path`.
+fn keys_from(path: &Path) -> Result<Keys, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("reading {}: {error}", path.display()))?;
+    Keys::from_document(&text)
+}
+
+/// The `host.operations` keys the volume whose `host/` directory is `host` publishes.
+fn volume_keys(host: &Path) -> Result<Keys, String> {
+    let ring = host
+        .join(crate::keys::ring::DIRECTORY)
+        .join(crate::keys::ring::HOST_OPERATIONS);
+    let text = crate::keys::ring::export(&ring).map_err(|error| {
+        format!(
+            "the volume publishes no `host.operations` keys ({error}); pass --keys with the keys \
+             kept apart"
+        )
+    })?;
+    Keys::from_document(&text)
+}
+
+/// The `host/` directory of the volume `directory` lies in, when it publishes `host.operations`
+/// keys.
+fn host_above(directory: &Path) -> Option<PathBuf> {
+    let ring = |host: &Path| {
+        host.join(crate::keys::ring::DIRECTORY)
+            .join(crate::keys::ring::HOST_OPERATIONS)
+            .is_dir()
+    };
+    directory.ancestors().find_map(|ancestor| {
+        let host = ancestor.join(crate::storage::volume::HOST);
+        if ring(&host) {
+            Some(host)
+        } else if ancestor
+            .file_name()
+            .is_some_and(|name| name == crate::storage::volume::HOST)
+            && ring(ancestor)
+        {
+            Some(ancestor.to_path_buf())
+        } else {
+            None
+        }
     })
 }
 

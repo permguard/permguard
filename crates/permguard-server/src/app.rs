@@ -1492,6 +1492,7 @@ impl App {
         // The rings' own layouts are always read here: this build lays them out (WP-3.1).
         let mut layouts = self.layouts.clone();
         layouts.extend(permguard_host::keys::migration::layouts());
+        layouts.extend(permguard_host::audit::jsonl::layouts());
         permguard_host::storage::migrate::check_servable(&volume, &layouts).with_context(|| {
             format!("checking the layouts on {}", config.working_dir().display())
         })?;
@@ -1583,6 +1584,14 @@ impl App {
         // resource) under `host/audit/trails`, whatever `audit.destination` says; the sink the
         // destination chose sees every record too, the log stream by default, nothing under
         // `file` (owner decisions of 2026-10-07).
+        // The legacy JSON-lines audit chain in `audit.directory` (WP-3.8).
+        crate::checkpoints::lay_out_legacy(
+            &volume,
+            &config.audit_directory(),
+            config.assurance().profile(),
+            config.working_dir(),
+            time.now_secs(),
+        )?;
         let audit_engine = {
             use permguard_host::audit::{Engine, Stamp, config_revision};
 
@@ -1761,6 +1770,13 @@ impl App {
         }
 
         logging::record_build(&self.identity, config, self.server.name());
+        if let Some(deprecated) = crate::checkpoints::destination_deprecation(config) {
+            tracing::warn!(
+                event.name = "audit.destination_deprecated",
+                component = "host",
+                "{deprecated}"
+            );
+        }
 
         // Registered for exactly as long as the server runs. An app may serve more than once in a
         // process — a test certainly does — and a handler left behind by the previous run would be
@@ -2275,6 +2291,64 @@ fn migrate_keys(
 }
 
 /// Runs one `migrate` command offline, holding the volume (WP-1.9).
+/// `migrate audit`: carries the legacy JSON-lines audit chain into `host/audit/legacy` byte for
+/// byte, with an external backup declared (WP-3.8). A volume without one is declared at once.
+fn migrate_audit(
+    volume_root: &std::path::Path,
+    backup: &str,
+    legacy: Option<&std::path::Path>,
+    out: &mut dyn Write,
+) -> Result<()> {
+    use permguard_host::audit::jsonl::{Laid, lay_out, needs_migration};
+    use permguard_host::storage::volume::hold;
+
+    if backup.trim().is_empty() {
+        anyhow::bail!("`--backup` names the external backup taken before the migration");
+    }
+    // A relative `--legacy` names a directory of the volume, as `audit.directory` does.
+    let directory = match legacy {
+        Some(given) if given.is_relative() => volume_root.join(given),
+        Some(given) => given.to_path_buf(),
+        None => volume_root.join("operations/audit"),
+    };
+    let volume = hold(volume_root)
+        .with_context(|| format!("holding the volume at {}", volume_root.display()))?;
+    if !needs_migration(&volume, Some(&directory))
+        .with_context(|| format!("reading the legacy audit chain in {}", directory.display()))?
+    {
+        writeln!(
+            out,
+            "audit-legacy: nothing to migrate at {}",
+            directory.display()
+        )
+        .context("writing the result")?;
+        return Ok(());
+    }
+    let laid = lay_out(
+        &volume,
+        Some(&directory),
+        permguard_core::assurance::AssuranceProfile::Production,
+        Some(backup.to_owned()),
+        permguard_host::authz::store::now(),
+    )
+    .with_context(|| {
+        format!(
+            "migrating the legacy audit chain in {}",
+            directory.display()
+        )
+    })?;
+    let said = match laid {
+        Laid::Migrated => format!(
+            "audit-legacy: carried from {} into host/audit/legacy; the old directory stays until \
+             `migrate finalize --subsystem audit-legacy` removes it",
+            directory.display()
+        ),
+        Laid::Fresh | Laid::Current => "audit-legacy: laid out already".to_owned(),
+    };
+    writeln!(out, "{said}").context("writing the result")?;
+    Ok(())
+}
+
 fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
     use permguard_host::storage::migrate::{self, Layout};
     use permguard_host::storage::volume::hold;
@@ -2290,6 +2364,11 @@ fn migrate(what: &MigrateCommand, out: &mut dyn Write) -> Result<()> {
             backup,
             legacy,
         } => return migrate_keys(volume, backup, legacy, out),
+        MigrateCommand::Audit {
+            volume,
+            backup,
+            legacy,
+        } => return migrate_audit(volume, backup, legacy.as_deref(), out),
     };
     let volume = hold(volume_root)
         .with_context(|| format!("holding the volume at {}", volume_root.display()))?;

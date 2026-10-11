@@ -6,9 +6,10 @@
 //!
 //! Each fixture under `tests/fixtures/legacy/v1/` is a volume fragment written by the current code.
 //! In CI a fixture is copied aside and opened by the current store, which must find the same
-//! zones, keys and records. Setting `PERMGUARD_CAPTURE_LEGACY_FIXTURES=1` rewrites the fixtures
-//! from the current code instead; that is done once per layout version and reviewed, never to
-//! make a failing test pass.
+//! zones, keys and records. Setting `PERMGUARD_CAPTURE_LEGACY_FIXTURES=1` rewrites the catalog and
+//! key ring fixtures from the current code instead; that is done once per layout version and
+//! reviewed, never to make a failing test pass. The audit trail fixture is frozen: the JSON-lines
+//! sink that wrote it is gone (WP-3.8), and the Host's legacy reader verifies it.
 //!
 //! These fixtures are the v1 compatibility baseline: every later migration of the catalog, the key
 //! ring or the audit trail must read them.
@@ -22,8 +23,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use permguard_core::keys::{PublicSet as _, Sign as _};
-use permguard_core::{AuditEvent, AuditSink, Catalog, KeyManager, Maintenance, Selector};
-use permguard_std::audit::{FileAuditSink, verify};
+use permguard_core::{Catalog, KeyManager, Maintenance, Selector};
 use permguard_std::catalog::FileCatalog;
 use permguard_std::keys::{Clock, DirectoryKeyManager, KeyPolicy, verify_signature};
 
@@ -173,73 +173,55 @@ fn test_the_v1_key_ring_fixture_is_read_and_signs_with_the_current_code() {
     assert!(work.join("ring.json").exists());
 }
 
-#[tokio::test]
-async fn test_the_v1_audit_trail_fixture_is_verified_by_the_current_code() {
+/// The JSON-lines sink that wrote this fixture is gone (WP-3.8); the Host's legacy reader verifies
+/// it, the seal's signature against the sealing key captured beside it, as `keys export` names that
+/// key once WP-3.1 migrated it. The fixture is frozen: no writer is left to capture it again.
+#[test]
+fn test_the_v1_audit_trail_fixture_is_verified_by_the_host_reader() {
+    use permguard_host::audit::checkpoint::Keys;
+    use permguard_host::audit::jsonl::{SealSignature, verify as verify_legacy};
+
     let work = scratch("audit");
-    let fixture = Path::new(FIXTURES).join("audit");
-    if capturing() {
-        let keys = Arc::new(DirectoryKeyManager::with_clock(
-            work.join("keys"),
-            policy(),
-            Box::new(FixedClock),
-        ));
-        keys.maintain().expect("the sealing key is minted");
-        let sink = FileAuditSink::new(
-            work.join("trail"),
-            "permguard-fixture",
-            "0.1.0",
-            Duration::from_secs(30 * 86_400),
-        )
-        .sealed_by(keys);
-        sink.prepare().expect("the trail directory is prepared");
-        for action in [
-            "fixture.created",
-            "fixture.zone.created",
-            "fixture.key.minted",
-        ] {
-            sink.record(&AuditEvent::system(action, "legacy-fixture"), None)
-                .await
-                .expect("the record is written");
-        }
-        sink.shutdown().await.expect("the day is sealed");
-        let _ = fs::remove_dir_all(&fixture);
-        copy_dir(&work, &fixture);
-        prune_empty(&fixture);
-    } else {
-        copy_dir(&fixture, &work);
-    }
-
-    let verification = verify(&work.join("trail")).expect("the trail verifies");
-    assert_eq!(verification.records, 3);
-    assert_eq!(verification.days, 1);
-    assert_ne!(verification.head, "0".repeat(64));
-
-    // `verify` checks the chain under each seal but leaves the signature to a caller holding a key
-    // it trusts: here, the sealing key captured beside the trail.
-    assert_eq!(verification.seals.len(), 1, "one day, one seal");
-    let seal = &verification.seals[0];
-    assert_eq!(seal.body.head, verification.head);
+    copy_dir(&Path::new(FIXTURES).join("audit"), &work);
     let sealer = captured_kid(&work.join("keys").join("ring.json"));
-    assert_eq!(seal.kid.as_deref(), Some(sealer.as_str()));
-    let keys = DirectoryKeyManager::with_clock(work.join("keys"), policy(), Box::new(FixedClock))
-        .public_keys()
-        .expect("the sealing key set reads");
-    let jwk = keys
+    let published =
+        DirectoryKeyManager::with_clock(work.join("keys"), policy(), Box::new(FixedClock))
+            .public_keys()
+            .expect("the sealing key set reads");
+    let jwk = published
         .iter()
         .find(|key| key.kid == sealer)
         .expect("the sealing key is published");
-    let signature = from_hex(seal.signature.as_deref().expect("the seal is signed"));
+    let document = serde_json::json!({ "keys": [{
+        "kid": format!("host.operations:{sealer}"),
+        "kty": jwk.kty,
+        "crv": jwk.crv,
+        "x": jwk.x,
+        "alg": jwk.alg,
+        "use": "sig",
+    }]});
+    let keys = Keys::from_document(&document.to_string()).expect("the keys read");
+
+    let verification = verify_legacy(&work.join("trail"), Some(&keys)).expect("the trail verifies");
+    assert_eq!(verification.records, 3);
+    assert_eq!(verification.days, 1);
+    assert_ne!(verification.head, "0".repeat(64));
     assert!(
-        verify_signature(
-            jwk,
-            &seal.signed_bytes().expect("the seal body encodes"),
-            &signature
-        ),
+        verification.warnings.is_empty(),
+        "{:?}",
+        verification.warnings
+    );
+    assert_eq!(verification.seals.len(), 1, "one day, one seal");
+    assert_eq!(
+        verification.seals[0].signature,
+        SealSignature::Verified {
+            kid: format!("host.operations:{sealer}"),
+            revoked: false
+        },
         "the seal signature verifies under the captured sealing key"
     );
 }
 
-/// The `kid` of the only key in a captured `ring.json`, read as plain JSON.
 fn captured_kid(ring: &Path) -> String {
     let ring: serde_json::Value =
         serde_json::from_slice(&fs::read(ring).expect("ring.json is present")).expect("JSON");
@@ -249,14 +231,6 @@ fn captured_kid(ring: &Path) -> String {
         .as_str()
         .expect("the key has a kid")
         .to_owned()
-}
-
-fn from_hex(text: &str) -> Vec<u8> {
-    assert_eq!(text.len() % 2, 0, "hex has an even length");
-    (0..text.len())
-        .step_by(2)
-        .map(|at| u8::from_str_radix(&text[at..at + 2], 16).expect("hex"))
-        .collect()
 }
 
 /// WP-3.1: the v1 key ring fixture and the audit fixture's sealing ring migrate once through the
@@ -327,15 +301,13 @@ fn test_the_v1_key_rings_migrate_to_the_host_ring_and_old_seals_keep_verifying()
     }
     let _ = fs::remove_dir_all(&root);
 
-    // The audit fixture: its seal names the bare thumbprint and verifies after the migration.
+    // The audit fixture: its seal names the bare thumbprint, and the Host's legacy reader verifies
+    // it with what `keys export` prints for the migrated ring (WP-3.8).
     let root = scratch("seal-migrated");
     let fixture = Path::new(FIXTURES).join("audit");
     copy_dir(&fixture, &root.join("trail-fixture"));
     let legacy = root.join("operations/keys/operations");
     copy_dir(&fixture.join("keys"), &legacy);
-    let verification = verify(&root.join("trail-fixture").join("trail")).expect("verifies");
-    let seal = &verification.seals[0];
-    let sealer = seal.kid.clone().expect("the seal names its key");
     let volume = Volume::claim(&root, AssuranceProfile::Development).expect("claimed");
     lay_out(
         &volume,
@@ -346,25 +318,23 @@ fn test_the_v1_key_rings_migrate_to_the_host_ring_and_old_seals_keep_verifying()
         1_759_276_900,
     )
     .expect("migrated");
-    let keys = Ring::open(
-        &volume,
-        HOST_OPERATIONS,
-        permguard_host::identity::Suite::Ed25519Sha256V1,
-        ring_policy,
-        time(),
+    let exported = permguard_host::keys::ring::export(
+        permguard_host::keys::ring::directory(&volume, HOST_OPERATIONS)
+            .expect("the ring directory")
+            .path(),
     )
-    .expect("opens")
-    .public_keys()
-    .expect("published");
-    let jwk = keys
-        .iter()
-        .find(|key| selects(key, &sealer))
-        .expect("the sealing key is selected by its bare thumbprint");
-    assert_ne!(jwk.kid, sealer, "published under its ring-prefixed kid");
-    assert!(verify_signature(
-        jwk,
-        &seal.signed_bytes().expect("the seal body encodes"),
-        &from_hex(seal.signature.as_deref().expect("the seal is signed"))
+    .expect("exported");
+    let keys =
+        permguard_host::audit::checkpoint::Keys::from_document(&exported).expect("the keys read");
+    let verification = permguard_host::audit::jsonl::verify(
+        &root.join("trail-fixture").join("trail"),
+        Some(&keys),
+    )
+    .expect("verifies with the migrated ring's keys");
+    assert!(matches!(
+        &verification.seals[0].signature,
+        permguard_host::audit::jsonl::SealSignature::Verified { kid, revoked: false }
+            if kid.starts_with("host.operations:")
     ));
     drop(volume);
     let _ = fs::remove_dir_all(&root);

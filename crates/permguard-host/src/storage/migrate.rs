@@ -892,10 +892,15 @@ fn root_has(root: &Dir, path: &str) -> Result<bool> {
     Ok(parent.subdirs()?.iter().any(|held| held == name) || parent.exists(name)?)
 }
 
-/// The one generation a migration may build under `host/`: a key ring's directory,
+/// The generations a migration may build under `host/`: a key ring's directory,
 /// `host/keys/<ring>`, for its own subsystem `keys-<ring>` with the ring's dots as hyphens (WP-3.1,
-/// owner decision of 2026-10-08). The target must still be free, as every target must.
+/// owner decision of 2026-10-08), and the legacy audit chain's, `host/audit/legacy`, for
+/// `audit-legacy` (WP-3.8, owner decision of 2026-10-11). The target must still be free, as every
+/// target must.
 pub fn host_target_admitted(subsystem: &str, to: &str) -> bool {
+    if to == "host/audit/legacy" {
+        return subsystem == "audit-legacy";
+    }
     to.strip_prefix("host/keys/").is_some_and(|ring| {
         !ring.is_empty()
             && !ring.contains('/')

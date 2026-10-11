@@ -145,6 +145,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "audit_legacy"
+path = "fuzz_targets/audit_legacy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "key_bundle"
 path = "fuzz_targets/key_bundle.rs"
 test = false

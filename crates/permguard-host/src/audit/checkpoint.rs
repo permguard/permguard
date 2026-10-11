@@ -416,6 +416,40 @@ impl Keys {
     }
 }
 
+impl Keys {
+    /// Verifies `signature` over `message` by the `host.operations` key whose thumbprint is
+    /// `thumbprint` and whose algorithm is `algorithm` (`EdDSA` or `ES256`): how a seal of the
+    /// legacy JSON-lines trail names its key, a bare thumbprint (WP-3.8). Answers the key's kid and
+    /// whether it was revoked since.
+    pub fn verify_by_thumbprint(
+        &self,
+        thumbprint: &str,
+        algorithm: &str,
+        message: &[u8],
+        signature: &[u8],
+    ) -> std::result::Result<(String, bool), String> {
+        let kid = format!("{HOST_OPERATIONS}:{thumbprint}");
+        let (suite, public_key) = self
+            .keys
+            .get(&kid)
+            .ok_or_else(|| format!("signed by `{thumbprint}`, a key the set lacks"))?;
+        let expected = match suite {
+            Suite::Ed25519Sha256V1 => "EdDSA",
+            Suite::P256Sha256V1 => "ES256",
+        };
+        if algorithm != expected {
+            return Err(format!(
+                "signed with `{algorithm}`, and the key `{kid}` is an `{expected}` key"
+            ));
+        }
+        suite
+            .verify(public_key, message, signature)
+            .map_err(|error| format!("the signature does not verify: {error:?}"))?;
+        let revoked = self.revoked.contains(&kid);
+        Ok((kid, revoked))
+    }
+}
+
 /// The payload of a checkpoint envelope, **without verifying** its signature: what the engine
 /// reads back of its own checkpoints to continue the chain.
 pub fn read_unverified(envelope: &[u8]) -> Result<Checkpoint> {

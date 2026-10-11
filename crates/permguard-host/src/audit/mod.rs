@@ -34,6 +34,7 @@
 //! deletes sealed days only, so without a signer nothing is deleted.
 
 pub mod checkpoint;
+pub mod jsonl;
 pub mod pseudonym;
 pub mod query;
 pub mod record;

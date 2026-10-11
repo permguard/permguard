@@ -3,24 +3,22 @@
 
 //! Implementations of [`permguard_core::AuditSink`].
 //!
-//! Three of them, for three different answers to "where does this deployment keep its audit trail".
+//! Two of them, beside the Host's own trails on the volume, which keep every record a server writes
+//! (WP-3.5).
 //!
 //! * [`TracingAuditSink`] puts records into the process's log stream, which is right when something
 //!   else — a collector, a SIEM — is already responsible for keeping them.
-//! * [`FileAuditSink`] keeps them itself, on the local filesystem, chained so that a later edit is
-//!   detectable and expired on a retention the deployment sets.
 //! * [`RecordingAuditSink`] keeps them in memory, so a build can test what it records.
+//!
+//! The daily JSON-lines file sink is gone (WP-3.8): the chains it wrote are read, and migrated, by
+//! `permguard_host::audit::jsonl`.
 //!
 //! A build that has to ship records to a SIEM or a customer's own collector implements the contract
 //! and never touches any of these.
 
-mod file;
-
 use std::sync::Mutex;
 
 use permguard_core::AuditError;
-
-pub use file::{Body, FileAuditSink, Record, Verification, verify};
 
 /// What these sinks answer with.
 type Result<T> = std::result::Result<T, AuditError>;

@@ -242,3 +242,113 @@ async fn a_directory_holding_no_trail_is_refused() {
     }
     let _ = std::fs::remove_file(&keys);
 }
+
+/// The WP-0.5 fixture of the legacy JSON-lines chain, sealed by the directory key manager.
+const LEGACY_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../permguard-std/tests/fixtures/legacy/v1/audit"
+);
+
+/// The fixture's sealing key as `keys export` names it once WP-3.1 migrated it.
+fn legacy_key() -> serde_json::Value {
+    let ring: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(Path::new(LEGACY_FIXTURE).join("keys/ring.json")).expect("the ring"),
+    )
+    .expect("json");
+    let key = &ring["keys"][0];
+    serde_json::json!({
+        "kid": format!("host.operations:{}", key["kid"].as_str().expect("kid")),
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": key["public_key"],
+        "alg": "EdDSA",
+        "use": "sig",
+    })
+}
+
+fn copy_legacy_trail(into: &Path) {
+    std::fs::create_dir_all(into).expect("created");
+    for entry in std::fs::read_dir(Path::new(LEGACY_FIXTURE).join("trail")).expect("the fixture") {
+        let entry = entry.expect("an entry");
+        std::fs::copy(entry.path(), into.join(entry.file_name())).expect("copied");
+    }
+}
+
+#[tokio::test]
+async fn the_legacy_fixture_verifies_with_its_keys() {
+    let trail = scratch("legacy-fixture");
+    copy_legacy_trail(&trail);
+    let keys = trail.with_extension("keys.json");
+    std::fs::write(
+        &keys,
+        serde_json::json!({ "keys": [legacy_key()] }).to_string(),
+    )
+    .expect("written");
+    let report = verify(&trail, Some(&keys))
+        .await
+        .expect("the legacy chain verifies");
+    assert!(report.contains("legacy chain"), "{report}");
+    assert!(report.contains("3 records over 1 days"), "{report}");
+    assert!(report.contains("1 with a verified signature"), "{report}");
+    // A checkpoint held names a Host trail, which a legacy directory is not.
+    let refused = verify_from(&trail, Some(&keys), Some(&keys))
+        .await
+        .expect_err("--checkpoint with the legacy chain");
+    assert!(
+        format!("{refused:#}").contains("--checkpoint"),
+        "{refused:#}"
+    );
+    // Without `--keys` and outside any volume there is nothing to check its seal against.
+    let refused = verify(&trail, None).await.expect_err("no keys");
+    assert!(
+        format!("{refused:#}").contains("pass --keys"),
+        "{refused:#}"
+    );
+    let _ = std::fs::remove_dir_all(&trail);
+    let _ = std::fs::remove_file(&keys);
+}
+
+#[tokio::test]
+async fn a_migrated_legacy_trail_and_the_host_trails_verify_together() {
+    let (root, volume_keys) = sealed_volume("legacy-and-host");
+    let legacy = root.join("operations/audit");
+    copy_legacy_trail(&legacy);
+    {
+        let volume = permguard_host::storage::volume::hold(&root).expect("held");
+        permguard_host::audit::jsonl::lay_out(
+            &volume,
+            Some(&legacy),
+            AssuranceProfile::Development,
+            None,
+            1_800_000_000,
+        )
+        .expect("carried");
+    }
+    // The volume's operations keys sign its checkpoints; the legacy seal's key is the old ring's.
+    let mut document: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&volume_keys).expect("read")).expect("json");
+    document["keys"]
+        .as_array_mut()
+        .expect("keys")
+        .push(legacy_key());
+    let keys = root.with_extension("all-keys.json");
+    std::fs::write(&keys, document.to_string()).expect("written");
+    let report = verify(&root, Some(&keys)).await.expect("both verify");
+    assert!(report.contains("2 trails verified, 0 failed"), "{report}");
+    assert!(report.contains("host/audit/legacy ok"), "{report}");
+    // A day of the migrated chain edited: the whole verification fails.
+    let day = root.join("host/audit/legacy/audit-2026-10-02.jsonl");
+    let text = std::fs::read_to_string(&day).expect("read");
+    std::fs::write(&day, text.replacen("fixture.created", "fixture.deleted", 1)).expect("edited");
+    let refused = verify(&root, Some(&keys))
+        .await
+        .expect_err("the legacy chain is altered");
+    assert!(
+        format!("{refused:#}").contains("legacy chain"),
+        "{refused:#}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    for path in [&volume_keys, &keys] {
+        let _ = std::fs::remove_file(path);
+    }
+}

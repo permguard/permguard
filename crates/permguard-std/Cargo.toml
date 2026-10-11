@@ -21,7 +21,7 @@ publish = false
 # certificate authority, and a build should have to write it down rather than inherit it.
 [features]
 default = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage"]
-audit = ["dep:serde", "dep:serde_json", "dep:sha2", "dep:permguard-host"]
+audit = []
 catalog = ["dep:ring", "dep:serde", "dep:serde_json", "dep:permguard-host"]
 keys = ["dep:ring", "dep:serde", "dep:serde_json", "dep:tokio", "dep:zeroize", "dep:permguard-host"]
 metrics = []
