@@ -19,6 +19,13 @@ is cut.
 
 ### Added
 
+- **Task type contracts, and zone keys delivered between Hosts.**
+  Each of the six task types has one version 1 contract naming its provider and consumer roles and the Plane or Host serving each side; a Plane claiming a side of `audit.checkpoints` or `zone.secrets`, which the Host serves, is refused at startup.
+  A coordinator holding its root (`operations.secrets.coordinator_root_ref`) now serves `zone.secrets`: over a zone resource it delivers the zone's shared pseudonym key, over a ledger that ledger's input-tag key, each only when the task's `resource_types` name its purpose.
+  The keys travel on the task session alone and are written nowhere at the coordinator; the member stores them witnessed, then confirms each with a MAC bound to the session's channel binding, so a confirmation answers one connection.
+  The coordinator keeps only the receipt, the versions confirmed and the transcript digest, which `GET /host/v1/members/{id}` and its gRPC twin show per task as `zone_receipt`; a member Host asks every minute for the keys whose receipt is not of its manifest's epoch.
+  The bodies of the other five contracts still answer `not_served_yet`, and every required member's receipt does not yet gate a new zone key version.
+
 - **Dormant members are suspended, then revoked, by their coordinator.**
   A membership whose coordinator issued it no lease for longer than the `dormant_after_seconds` its manifest signs is suspended, audited `host.membership.dormant`.
   Past `revoke_after_seconds` it is revoked, audited `host.membership.revoked`; both are initiated by the system's `dormancy`.

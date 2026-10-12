@@ -393,6 +393,58 @@
         { "label": 4, "name": "answer", "type": "bytes", "occurs": "required", "note": "the encoded task_answer" },
         { "label": 5, "name": "seq", "type": "uint", "occurs": "required", "note": "the slot is seq modulo 1024" }
       ]
+    },
+    "zone_request": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "action", "type": "text", "occurs": "required", "note": "`deliver` or `confirm` (WP-4.7)" },
+        { "label": 2, "name": "confirmations", "type": "array<map:zone_confirmation>", "occurs": "optional", "note": "with `confirm` only: exactly the tuples the task grants, at most 64, in order" }
+      ]
+    },
+    "zone_delivery": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "keys", "type": "array<map:zone_key>", "occurs": "required", "note": "the tuples the task grants for the session's resource, at most 64, in order; answered on the session only, kept nowhere at the coordinator" }
+      ]
+    },
+    "zone_key": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "purpose", "type": "text", "occurs": "required", "note": "`audit.pseudonym` or `decision.commitment`" },
+        { "label": 2, "name": "zone", "type": "bytes", "occurs": "required", "note": "the zone's 16 UUID bytes" },
+        { "label": 3, "name": "scope", "type": "bytes", "occurs": "required", "note": "16 UUID bytes: the zone for pseudonyms, the ledger for input tags" },
+        { "label": 4, "name": "version", "type": "uint", "occurs": "required", "note": "the coordinator root's version, at least 1" },
+        { "label": 5, "name": "key", "type": "bytes", "occurs": "required", "note": "the 32-byte distributed key" }
+      ]
+    },
+    "zone_confirmation": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "purpose", "type": "text", "occurs": "required", "note": "`audit.pseudonym` or `decision.commitment`" },
+        { "label": 2, "name": "zone", "type": "bytes", "occurs": "required", "note": "the zone's 16 UUID bytes" },
+        { "label": 3, "name": "scope", "type": "bytes", "occurs": "required", "note": "16 UUID bytes: the zone for pseudonyms, the ledger for input tags" },
+        { "label": 4, "name": "version", "type": "uint", "occurs": "required", "note": "the coordinator root's version, at least 1" },
+        { "label": 5, "name": "mac", "type": "bytes", "occurs": "required", "note": "32 bytes: HMAC-SHA256 under the key `zone-confirm` derives from the delivered key, over the session's tuple and nonce" }
+      ]
+    },
+    "zone_tuple": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "purpose", "type": "text", "occurs": "required", "note": "`audit.pseudonym` or `decision.commitment`" },
+        { "label": 2, "name": "zone", "type": "bytes", "occurs": "required", "note": "the zone's 16 UUID bytes" },
+        { "label": 3, "name": "scope", "type": "bytes", "occurs": "required", "note": "16 UUID bytes: the zone for pseudonyms, the ledger for input tags" },
+        { "label": 4, "name": "version", "type": "uint", "occurs": "required", "note": "the coordinator root's version, at least 1" }
+      ]
+    },
+    "zone_receipt": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "epoch", "type": "uint", "occurs": "required", "note": "the manifest epoch the keys were confirmed at" },
+        { "label": 2, "name": "confirmed_at", "type": "uint", "occurs": "required", "note": "the coordinator's clock" },
+        { "label": 3, "name": "transcript_digest", "type": "bytes", "occurs": "required", "note": "32 bytes: SHA-256 under `permguard.membership.zone-transcript.v1\\n` of the tuples, the nonce and the MACs, never a key" },
+        { "label": 4, "name": "tuples", "type": "array<map:zone_tuple>", "occurs": "required", "note": "at most 64, in order" },
+        { "label": 5, "name": "resource", "type": "text", "occurs": "required", "note": "the session's resource, canonical, at most 512 bytes; kept per resource as `progress/<membership_id>/<task_id>.<sha256(resource)>.zone` on both sides" }
+      ]
     }
   },
   "arrays": {
@@ -405,5 +457,5 @@
       { "position": 1, "name": "evidence", "type": "bytes", "note": "digested under `permguard.membership.assurance-evidence.v1\\n`, never kept" }
     ]
   },
-  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered"]
+  "root": ["manifest", "invitation", "enroll_request", "pending", "enroll_answer", "membership_request", "membership_answer", "journal_entry", "operator_approval", "appraisal_policy", "assurance_result", "assurance_evidence", "lease_request", "lease", "lease_answer", "task_message", "task_answer", "task_progress", "progress_answer", "kept_progress", "last_session", "watch_request", "watch_event", "replay_entry", "ring_statement", "cutover", "acknowledgement", "delivered", "zone_request", "zone_delivery", "zone_receipt"]
 }

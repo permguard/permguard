@@ -140,3 +140,66 @@ fn the_zone_root_the_distributed_keys_and_what_they_compute_are_the_generators()
         hex(&v["input_tag"]["tag"])
     );
 }
+
+/// WP-4.7: the key confirming a delivered zone key, the MAC over the session's tuple and nonce,
+/// and the transcript digest are the bytes the independent generator computed.
+#[test]
+fn the_zone_confirmation_and_its_transcript_are_the_generators() {
+    use permguard_host::membership::zone::{
+        Confirmation, Session, Tuple, confirmation, confirms, transcript_digest,
+    };
+
+    let v = vectors();
+    let c = &v["zone_confirmation"];
+    let (authority, zone) = (id(&v["host"]), id(&v["zone"]));
+    let session = Session {
+        authority,
+        membership_id: id(&c["membership_id"]),
+        task_id: text(&c["task_id"]),
+        epoch: c["epoch"].as_u64().expect("an epoch"),
+        nonce: hex(&c["nonce"]).try_into().expect("32 bytes"),
+    };
+    let mut confirmed = Vec::new();
+    for (name, purpose, delivered) in [
+        (
+            "pseudonym",
+            ZonePurpose::AuditPseudonym,
+            &v["zone_pseudonym"]["key"],
+        ),
+        (
+            "tag",
+            ZonePurpose::DecisionCommitment,
+            &v["input_tag"]["key"],
+        ),
+    ] {
+        let vector = &c[name];
+        let scope = id(&vector["scope"]);
+        let key: [u8; 32] = hex(delivered).try_into().expect("32 bytes");
+        assert_eq!(
+            kdf::zone_confirm_info(purpose.as_str(), &zone, &scope, 1).expect("encodes"),
+            hex(&vector["info"])
+        );
+        assert_eq!(
+            kdf::derive_zone_confirm(&key, &authority, purpose.as_str(), &zone, &scope, 1)
+                .expect("derived")
+                .to_vec(),
+            hex(&vector["key"])
+        );
+        let tuple = Tuple {
+            purpose,
+            zone,
+            scope,
+            version: 1,
+        };
+        let mac = confirmation(&key, &session, &tuple).expect("a MAC");
+        assert_eq!(mac.to_vec(), hex(&vector["mac"]), "{name}");
+        assert!(confirms(&key, &session, &tuple, &mac).expect("verified"));
+        confirmed.push(Confirmation { tuple, mac });
+    }
+    assert_eq!(
+        transcript_digest(&session, &confirmed)
+            .expect("a digest")
+            .to_vec(),
+        hex(&c["transcript_digest"])
+    );
+}

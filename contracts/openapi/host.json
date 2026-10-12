@@ -6242,6 +6242,14 @@
             "type": "boolean",
             "description": "Whether the report is older than the lease policy's `max_session_seconds`, or of another epoch.",
             "x-grpc-field": "stale"
+          },
+          "zone_receipts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneReceipt"
+            },
+            "description": "The `zone.secrets` receipts, one per resource: the versions received and confirmed, never a key, witness or confirmation value (WP-4.7); empty before the first and for any other task.",
+            "x-grpc-field": "zone_receipts"
           }
         },
         "required": [
@@ -8308,6 +8316,86 @@
         "additionalProperties": false,
         "description": "What an approval answers (WP-3.9).",
         "x-grpc-message": "permguard.host.v1.ApprovePlanResponse"
+      },
+      "ZoneReceipt": {
+        "type": "object",
+        "properties": {
+          "resource": {
+            "type": "string",
+            "description": "The resource the keys were delivered over.",
+            "x-grpc-field": "resource"
+          },
+          "manifest_epoch": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The manifest epoch the keys were confirmed at.",
+            "x-grpc-field": "manifest_epoch"
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the coordinator verified the confirmation, RFC 3339.",
+            "x-grpc-field": "confirmed_at"
+          },
+          "transcript_digest": {
+            "type": "string",
+            "description": "`sha256:` hex of the delivery's transcript: the tuples, the session nonce and the MACs, never a key.",
+            "x-grpc-field": "transcript_digest"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneKeyTuple"
+            },
+            "description": "The keys confirmed, by their coordinates.",
+            "x-grpc-field": "keys"
+          }
+        },
+        "required": [
+          "resource",
+          "manifest_epoch",
+          "confirmed_at",
+          "transcript_digest",
+          "keys"
+        ],
+        "additionalProperties": false,
+        "description": "What a member confirmed it received of one `zone.secrets` task (WP-4.7).",
+        "x-grpc-message": "permguard.host.v1.ZoneReceipt"
+      },
+      "ZoneKeyTuple": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "description": "`audit.pseudonym` or `decision.commitment`.",
+            "x-grpc-field": "purpose"
+          },
+          "zone_id": {
+            "type": "string",
+            "description": "The zone.",
+            "x-grpc-field": "zone_id"
+          },
+          "scope": {
+            "type": "string",
+            "description": "The zone for pseudonyms, the ledger for input tags.",
+            "x-grpc-field": "scope"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The coordinator root's version.",
+            "x-grpc-field": "version"
+          }
+        },
+        "required": [
+          "purpose",
+          "zone_id",
+          "scope",
+          "version"
+        ],
+        "additionalProperties": false,
+        "description": "One key a member received: its coordinates, never its bytes (WP-4.7).",
+        "x-grpc-message": "permguard.host.v1.ZoneKeyTuple"
       }
     }
   },

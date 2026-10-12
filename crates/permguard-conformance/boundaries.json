@@ -842,6 +842,36 @@
     },
     {
       "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/zone.rs",
+      "item": "Request::decode",
+      "entry": "permguard_host::membership::zone::Request::decode",
+      "max_input_bytes": 16384,
+      "limit": "`membership::zone::MAX_ZONE_BYTES` (16 KiB), checked by the decoder before it parses, and at most `MAX_TUPLES` confirmations: the body of a member's `zone.secrets` task message (WP-4.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/zone.rs",
+      "item": "Delivery::decode",
+      "entry": "permguard_host::membership::zone::Delivery::decode",
+      "max_input_bytes": 16384,
+      "limit": "`membership::zone::MAX_ZONE_BYTES` (16 KiB), checked by the decoder before it parses, and at most `MAX_TUPLES` keys: the coordinator's answer to a `deliver` request (WP-4.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
+      "source": "crates/permguard-host/src/membership/zone.rs",
+      "item": "Receipt::decode",
+      "entry": "permguard_host::membership::zone::Receipt::decode",
+      "max_input_bytes": 16384,
+      "limit": "`membership::zone::MAX_ZONE_BYTES` (16 KiB), checked by the decoder before it parses, and at most `MAX_TUPLES` tuples: the coordinator's answer to a `confirm` request, and the receipt both sides keep (WP-4.7)",
+      "enforced_at_decoder": true,
+      "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-host",
       "source": "crates/permguard-host/src/membership/record.rs",
       "item": "Acknowledgement::decode",
       "entry": "permguard_host::membership::record::Acknowledgement::decode",

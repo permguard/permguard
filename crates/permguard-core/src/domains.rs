@@ -65,6 +65,9 @@ pub mod digest {
     pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1\n";
     /// The hash chain of the membership journal (WP-4.1).
     pub const MEMBERSHIP_JOURNAL: &str = "permguard.membership.journal.v1\n";
+    /// The transcript of a `zone.secrets` delivery: the tuples, the session nonce and the
+    /// confirmation MACs, never a key (WP-4.7).
+    pub const MEMBERSHIP_ZONE_TRANSCRIPT: &str = "permguard.membership.zone-transcript.v1\n";
     /// A coordinator's appraisal policy, as an assurance binding names its revision (WP-4.2).
     pub const MEMBERSHIP_APPRAISAL_POLICY: &str = "permguard.membership.appraisal-policy.v1\n";
     /// The nonce attestation evidence is bound to: one coordinator, membership and state (WP-4.2).
@@ -329,6 +332,8 @@ pub mod kdf {
     pub const HOST_LOCAL: &str = "host-local";
     pub const ZONE_ROOT: &str = "zone-root";
     pub const ZONE_USE: &str = "zone-use";
+    /// The key a member confirms a delivered zone key with, derived from that key (WP-4.7).
+    pub const ZONE_CONFIRM: &str = "zone-confirm";
     /// The purpose of audit pseudonyms: Host-local, or a zone's shared user pseudonyms (WP-3.3).
     pub const AUDIT_PSEUDONYM: &str = "audit.pseudonym";
     /// The purpose of decision input tags, distributed per ledger (WP-3.3).
@@ -363,6 +368,10 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.MEMBERSHIP_TOKEN_KEY", digest::MEMBERSHIP_TOKEN_KEY),
         ("digest.MEMBERSHIP_MANIFEST", digest::MEMBERSHIP_MANIFEST),
         ("digest.MEMBERSHIP_JOURNAL", digest::MEMBERSHIP_JOURNAL),
+        (
+            "digest.MEMBERSHIP_ZONE_TRANSCRIPT",
+            digest::MEMBERSHIP_ZONE_TRANSCRIPT,
+        ),
         (
             "digest.MEMBERSHIP_APPRAISAL_POLICY",
             digest::MEMBERSHIP_APPRAISAL_POLICY,
@@ -625,6 +634,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("kdf.HOST_LOCAL", kdf::HOST_LOCAL),
         ("kdf.ZONE_ROOT", kdf::ZONE_ROOT),
         ("kdf.ZONE_USE", kdf::ZONE_USE),
+        ("kdf.ZONE_CONFIRM", kdf::ZONE_CONFIRM),
         ("kdf.AUDIT_PSEUDONYM", kdf::AUDIT_PSEUDONYM),
         ("kdf.DECISION_COMMITMENT", kdf::DECISION_COMMITMENT),
         ("kdf.STREAM_CURSOR", kdf::STREAM_CURSOR),

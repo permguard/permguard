@@ -88,5 +88,36 @@ value = b'"HR"'
 out["input_tag"] = {"info": info.hex(), "key": tags.hex(), "value": value.decode(),
                     "tag": mac(tags, INPUT, value).hex()}
 
+# The confirmation of a `zone.secrets` delivery (WP-4.7, owner decisions of 2026-10-12): a key
+# derived from each delivered key, a MAC under it over the session's tuple with the lease's
+# channel binding as the nonce, and the transcript digest over the tuples, the nonce and the MACs.
+TRANSCRIPT = b"permguard.membership.zone-transcript.v1\n"
+MEMBERSHIP = bytes.fromhex("01a3185c50007555d555555555555555")
+TASK = "zone-keys"
+EPOCH = 3
+NONCE = bytes(range(64, 96))
+
+def confirmation(purpose, scope, key):
+    info = cbor([LABEL, "zone-confirm", purpose, ZONE, scope, 1])
+    confirm = hkdf(HOST, key, info)
+    message = cbor([MEMBERSHIP, TASK, EPOCH, purpose, scope, 1, NONCE])
+    return info, confirm, message, mac(confirm, message)
+
+confirmed = []
+for name, purpose, scope, key in [("pseudonym", "audit.pseudonym", ZONE, users),
+                                  ("tag", "decision.commitment", LEDGER, tags)]:
+    info, confirm, message, value = confirmation(purpose, scope, key)
+    out.setdefault("zone_confirmation", {})[name] = {
+        "purpose": purpose, "scope": scope.hex(), "info": info.hex(), "key": confirm.hex(),
+        "message": message.hex(), "mac": value.hex()}
+    confirmed.append([purpose, ZONE, scope, 1, value])
+# Sorted by purpose, zone, scope and version, as the coordinator keeps them.
+confirmed.sort(key=lambda row: (row[0], row[1], row[2], row[3]))
+transcript = cbor([MEMBERSHIP, TASK, EPOCH, NONCE, confirmed])
+out["zone_confirmation"].update({
+    "membership_id": MEMBERSHIP.hex(), "task_id": TASK, "epoch": EPOCH, "nonce": NONCE.hex(),
+    "transcript": transcript.hex(),
+    "transcript_digest": hashlib.sha256(TRANSCRIPT + transcript).hexdigest()})
+
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

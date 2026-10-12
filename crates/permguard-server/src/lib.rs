@@ -27,6 +27,7 @@ pub mod repin;
 pub mod signal;
 pub mod time;
 pub mod witness;
+pub mod zone;
 
 pub use app::{App, VerifiedTree};
 pub use banner::Banner;

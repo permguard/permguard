@@ -34,6 +34,9 @@ pub struct Observed {
     pub progress: Option<(TaskProgress, u64)>,
     /// Whether that report is stale: past its session bound, or of another epoch.
     pub stale: bool,
+    /// The `zone.secrets` receipts of the task, one per resource: the tuples confirmed and the
+    /// transcript digest, never a key (WP-4.7).
+    pub zone_receipts: Vec<super::zone::Receipt>,
 }
 
 /// Whether a report of `epoch` received at `received_at` is stale at `now`, for a membership at
@@ -50,7 +53,7 @@ pub fn stale(
 
 impl Store {
     /// The directory of `id`'s progress; `None` when nothing was ever kept, created when `create`.
-    fn progress_dir(
+    pub(super) fn progress_dir(
         &self,
         id: &[u8; 16],
         create: bool,
@@ -183,6 +186,7 @@ impl Store {
                         .map(|last| last.at),
                     progress,
                     stale,
+                    zone_receipts: self.zone_receipts(&manifest.membership_id, &task.task_id)?,
                 })
             })
             .collect()

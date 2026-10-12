@@ -32,6 +32,7 @@
 //! another digest is equivocation.
 
 pub mod appraisal;
+pub mod contracts;
 pub mod dormancy;
 pub mod member;
 pub mod progress;
@@ -42,6 +43,7 @@ pub mod reset;
 pub mod service;
 pub mod task;
 pub mod watch;
+pub mod zone;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -294,8 +296,10 @@ impl Capabilities {
     /// The contracts the Host itself serves, both sides at version 1 (WP-4.4, owner decision):
     /// `audit.checkpoints` and `zone.secrets`, whose provider is no Plane.
     pub fn host() -> Self {
-        [TaskType::AuditCheckpoints, TaskType::ZoneSecrets]
-            .into_iter()
+        contracts::CONTRACTS
+            .iter()
+            .filter(|contract| contracts::host_served(contract.task_type))
+            .map(|contract| contract.task_type)
             .fold(Self::default(), |capabilities, task| {
                 capabilities
                     .declare(task, Role::Coordinator)

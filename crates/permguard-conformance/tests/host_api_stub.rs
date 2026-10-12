@@ -136,6 +136,9 @@ const SHAPED: &[&str] = &[
     "TaskObserved",
     "MemberReported",
     "ProgressResource",
+    // The `zone.secrets` receipts in the member view (WP-4.7).
+    "ZoneReceipt",
+    "ZoneKeyTuple",
     "PlanMemberRevokeRequest",
     "PlanMemberRevokeResponse",
     "RunMemberRevokeRequest",

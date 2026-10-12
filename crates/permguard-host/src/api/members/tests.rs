@@ -1715,4 +1715,55 @@ async fn the_member_view_shows_member_reported_progress_apart_from_receipt() {
     let elsewhere =
         permguard_core::authz::Resource::parse("plane/control/zone/z1").expect("a resource");
     assert!(api.serving_members(&elsewhere).is_empty());
+
+    // A `zone.secrets` receipt shows its coordinates, the epoch and the transcript digest: the
+    // member view's projection of what the store keeps, never a key (WP-4.7).
+    let zone = [7; 16];
+    memberships
+        .store
+        .keep_zone_receipt(
+            &pending.membership_id,
+            "mirror",
+            &crate::membership::zone::Receipt {
+                epoch: 1,
+                confirmed_at: at,
+                transcript_digest: [0xAB; 32],
+                tuples: vec![crate::membership::zone::Tuple {
+                    purpose: crate::secrets::ZonePurpose::AuditPseudonym,
+                    zone,
+                    scope: zone,
+                    version: 2,
+                }],
+                resource: format!("plane/data/zone/{}", uuid_text(&zone)),
+            },
+        )
+        .expect("kept");
+    let view = api.member(&admin(), &id).expect("read");
+    let receipts = &view.task_progress[0].zone_receipts;
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(
+        receipts[0].resource,
+        format!("plane/data/zone/{}", uuid_text(&zone))
+    );
+    assert_eq!(receipts[0].manifest_epoch, 1);
+    assert_eq!(receipts[0].confirmed_at, rfc3339(at));
+    assert_eq!(
+        receipts[0].transcript_digest,
+        format!("sha256:{}", "ab".repeat(32))
+    );
+    assert_eq!(
+        receipts[0].keys,
+        vec![crate::api::members::ZoneTupleView {
+            purpose: permguard_core::domains::kdf::AUDIT_PSEUDONYM.to_owned(),
+            zone_id: uuid_text(&zone),
+            scope: uuid_text(&zone),
+            version: 2,
+        }]
+    );
+    let json = serde_json::to_value(&view).expect("serializes");
+    assert!(
+        json["task_progress"][0]["zone_receipts"][0]
+            .get("key")
+            .is_none()
+    );
 }

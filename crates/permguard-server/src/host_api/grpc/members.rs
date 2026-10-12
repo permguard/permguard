@@ -164,6 +164,26 @@ fn member_out(view: MemberView) -> Result<v1::Member, Status> {
             .task_progress
             .into_iter()
             .map(|task| v1::TaskObserved {
+                zone_receipts: task
+                    .zone_receipts
+                    .into_iter()
+                    .map(|receipt| v1::ZoneReceipt {
+                        resource: receipt.resource,
+                        manifest_epoch: receipt.manifest_epoch,
+                        confirmed_at: receipt.confirmed_at,
+                        transcript_digest: receipt.transcript_digest,
+                        keys: receipt
+                            .keys
+                            .into_iter()
+                            .map(|key| v1::ZoneKeyTuple {
+                                purpose: key.purpose,
+                                zone_id: key.zone_id,
+                                scope: key.scope,
+                                version: key.version,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
                 task_id: task.task_id,
                 last_session_at: task.last_session_at,
                 member_reported: task.member_reported.map(|report| v1::MemberReported {

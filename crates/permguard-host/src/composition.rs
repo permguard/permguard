@@ -387,6 +387,19 @@ impl Host {
             if claims.planes.contains(&plane) {
                 return Err(CompositionError::AlreadyRegistered(plane));
             }
+            // The Host serves both sides of its own contracts: no Plane claims either (WP-4.7).
+            if let Some(contract) = declaration
+                .tasks
+                .iter()
+                .find(|_| false)
+            {
+                return Err(CompositionError::Collision {
+                    what: "task contract",
+                    name: format!("{} {}", contract.task_type.as_str(), contract.role.as_str()),
+                    first: "host".to_owned(),
+                    second: plane,
+                });
+            }
             let mut claimed: Vec<(&'static str, String)> = Vec::new();
             for (artifact, ring) in &declaration.signers {
                 claimed.push(("artifact type", (*artifact).to_owned()));
@@ -1481,5 +1494,31 @@ mod tests {
             matches!(&refused, CompositionError::Collision { what: "task contract", name, .. } if name == "policy.mirror provider"),
             "{refused}"
         );
+    }
+
+    /// WP-4.7: the Host serves both sides of `audit.checkpoints` and `zone.secrets`; a Plane
+    /// claiming either side is refused, and registers nothing.
+    #[test]
+    fn no_plane_claims_a_contract_the_host_serves() {
+        use crate::membership::record::TaskType;
+
+        let host = self::host();
+        for declaration in [
+            Declaration::new("data").uses_task(TaskType::ZoneSecrets, 1),
+            Declaration::new("data").handles_task(TaskType::ZoneSecrets, 1),
+            Declaration::new("data").handles_task(TaskType::AuditCheckpoints, 1),
+            Declaration::new("data")
+                .handles_task(TaskType::DecisionsShip, 1)
+                .uses_task(TaskType::AuditCheckpoints, 1),
+        ] {
+            let refused = host.register(declaration).expect_err("the Host serves it");
+            assert!(
+                matches!(&refused, CompositionError::Collision { what: "task contract", first, .. } if first == "host"),
+                "{refused}"
+            );
+        }
+        // Nothing was claimed: the Plane registers its own sides afterwards.
+        host.register(Declaration::new("data").handles_task(TaskType::DecisionsShip, 1))
+            .expect("the Plane's own side");
     }
 }

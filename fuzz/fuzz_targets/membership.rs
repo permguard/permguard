@@ -14,6 +14,7 @@ use permguard_host::membership::record::{
     Pending, ProgressAnswer, ReplayEntry, RingStatement, Role, Status, TaskAnswer, TaskMessage, TaskProgress,
     TaskType, Verdict, WatchEvent, WatchRequest,
 };
+use permguard_host::membership::zone;
 
 fuzz_target!(|data: &[u8]| {
     // Whatever decodes re-encodes to the same bytes: each record has one encoding.
@@ -90,6 +91,16 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     if let Ok(record) = Delivered::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    // The `zone.secrets` contract's records (WP-4.7).
+    if let Ok(record) = zone::Request::decode(data) {
+        assert_eq!(record.encode().ok().as_deref(), Some(data));
+    }
+    if let Ok(record) = zone::Delivery::decode(data) {
+        assert_eq!(record.encode().ok().as_deref().map(|bytes| bytes.as_slice()), Some(data));
+    }
+    if let Ok(record) = zone::Receipt::decode(data) {
         assert_eq!(record.encode().ok().as_deref(), Some(data));
     }
     // The tokens a record or a Host API request names: whatever reads back spells itself.

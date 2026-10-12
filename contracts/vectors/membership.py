@@ -319,5 +319,34 @@ out = {"comment": "Membership records (WP-4.1), assurance appraisal (WP-4.2), ta
                  "cutover": cutover.hex(), "cutover_message": cutover_message.hex(),
                  "acknowledgement": acknowledgement.hex(), "delivered": delivered.hex()}}
 
+# The `zone.secrets` contract, version 1 (WP-4.7, owner decisions of 2026-10-12): the member's
+# request, the coordinator's delivery of the tuples its task grants for the session's resource,
+# the member's confirmation with one MAC per tuple, and the receipt the coordinator answers and
+# keeps; the delivery request travels as a task message with no kind.
+ZONE = bytes.fromhex("01a3185c50007333b333333333333333")
+LEDGER = bytes.fromhex("01a3185c50007444c444444444444444")
+
+def zone_tuple(purpose, scope, extra=None):
+    fields = {1: purpose, 2: ZONE, 3: scope, 4: 1}
+    if extra is not None:
+        fields[5] = extra
+    return fields
+
+zone_request = cbor({1: "deliver"})
+zone_message = cbor({1: MEMBERSHIP_ID, 2: "zone-keys", 3: 3, 4: "zone-deliver-3", 5: zone_request})
+zone_delivery = cbor({1: [zone_tuple("audit.pseudonym", ZONE, bytes([0x11] * 32)),
+                          zone_tuple("decision.commitment", LEDGER, bytes([0x22] * 32))]})
+zone_confirm = cbor({1: "confirm", 2: [zone_tuple("audit.pseudonym", ZONE, bytes([0x33] * 32)),
+                                       zone_tuple("decision.commitment", LEDGER, bytes([0x44] * 32))]})
+ZONE_RESOURCE = "plane/data/zone/01a3185c-5000-7333-b333-333333333333"
+zone_receipt = cbor({1: 3, 2: 1_800_000_100, 3: bytes([0x55] * 32),
+                     4: [zone_tuple("audit.pseudonym", ZONE),
+                         zone_tuple("decision.commitment", LEDGER)],
+                     5: ZONE_RESOURCE})
+out["zone"] = {"zone": ZONE.hex(), "ledger": LEDGER.hex(), "request": zone_request.hex(),
+               "message": zone_message.hex(), "delivery": zone_delivery.hex(),
+               "confirm": zone_confirm.hex(), "receipt": zone_receipt.hex(),
+               "resource": ZONE_RESOURCE}
+
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

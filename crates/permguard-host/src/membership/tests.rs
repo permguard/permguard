@@ -204,6 +204,13 @@ impl Drop for Host {
 
 pub(crate) const EXPORTER: [u8; 32] = [0xE1; 32];
 
+thread_local! {
+    /// The exporter the loopback's next task connections report instead of [`EXPORTER`]: a test
+    /// that needs two connections to differ sets it (WP-4.7).
+    pub(crate) static TASK_EXPORTER: std::cell::Cell<Option<[u8; 32]>> =
+        const { std::cell::Cell::new(None) };
+}
+
 pub(crate) fn decisions(selector: &str) -> Task {
     Task {
         version: 1,
@@ -953,6 +960,19 @@ pub(crate) mod protocol {
 
         /// The side of `host` on `time`.
         pub(crate) fn timed(host: Host, service: bool, time: Arc<TimeGuard>) -> Self {
+            Self::handling(host, service, time, |_, _| {
+                crate::membership::task::TaskHandlers::default()
+            })
+        }
+
+        /// [`Side::timed`], its coordinator serving the handlers `handlers` builds besides the
+        /// harness's echo (WP-4.7).
+        pub(crate) fn handling(
+            host: Host,
+            service: bool,
+            time: Arc<TimeGuard>,
+            handlers: impl FnOnce(&Host, &Arc<TimeGuard>) -> crate::membership::task::TaskHandlers,
+        ) -> Self {
             let trail = Arc::new(Recording::default());
             let mutations = Arc::new(
                 Mutations::open(
@@ -970,11 +990,9 @@ pub(crate) mod protocol {
             ));
             let tasks = Arc::new(crate::membership::task::Tasks {
                 appraisal: Arc::new(appraisal::tests::appraisal()),
-                handlers: crate::membership::task::TaskHandlers::default().register(
-                    TaskType::DecisionsShip,
-                    1,
-                    Arc::new(Echo),
-                ),
+                handlers: handlers(&host, &time)
+                    .register(TaskType::DecisionsShip, 1, Arc::new(Echo))
+                    .expect("one handler"),
                 ..crate::membership::task::Tasks::default()
             });
             let service = service.then(|| {
@@ -1129,7 +1147,9 @@ pub(crate) mod protocol {
             Result<crate::membership::member::TaskOpened, crate::session::Refusal>,
         > {
             let result = (|| {
-                let exporter = EXPORTER;
+                let exporter = super::TASK_EXPORTER
+                    .with(std::cell::Cell::get)
+                    .unwrap_or(EXPORTER);
                 let mut initiator = Initiator::new(
                     self.member.context.clone(),
                     exporter,

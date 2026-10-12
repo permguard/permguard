@@ -13,6 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use permguard_host::membership::zone;
 use permguard_notp::{
     CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
     NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
@@ -1207,6 +1208,46 @@ fn membership_samples() -> Vec<Sample> {
             decoder(|bytes| verdict(permguard_host::membership::record::Delivered::decode(bytes))),
         ),
         sample(
+            "zone_request",
+            zone::Request::Deliver.encode().expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(zone::Request::decode(bytes))),
+        ),
+        sample(
+            "zone_request",
+            zone::Request::Confirm(vec![zone::Confirmation {
+                tuple: zone_tuple(),
+                mac: [7; 32],
+            }])
+            .encode()
+            .expect("encodes"),
+            &["zone_request.confirmations"],
+            decoder(|bytes| verdict(zone::Request::decode(bytes))),
+        ),
+        sample(
+            "zone_delivery",
+            zone::Delivery::of([(zone_tuple(), [9; 32])])
+                .encode()
+                .expect("encodes")
+                .to_vec(),
+            &[],
+            decoder(|bytes| verdict(zone::Delivery::decode(bytes))),
+        ),
+        sample(
+            "zone_receipt",
+            zone::Receipt {
+                epoch: 3,
+                confirmed_at: 1_800_000_100,
+                transcript_digest: [5; 32],
+                tuples: vec![zone_tuple()],
+                resource: "plane/data/zone/01a3185c-5000-7333-b333-333333333333".to_owned(),
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            decoder(|bytes| verdict(zone::Receipt::decode(bytes))),
+        ),
+        sample(
             "operator_approval",
             OperatorApproval {
                 membership_id: SCOPE_ID,
@@ -2032,6 +2073,13 @@ fn kdf_samples() -> Vec<Sample> {
         sample(
             "zone_use_info",
             kdf::zone_use_info("decisions.mac", &ZONE_ID, &SCOPE_ID, 1).expect("the tuple encodes"),
+            &[],
+            decoder(),
+        ),
+        sample(
+            "zone_confirm_info",
+            kdf::zone_confirm_info("audit.pseudonym", &ZONE_ID, &SCOPE_ID, 1)
+                .expect("the tuple encodes"),
             &[],
             decoder(),
         ),
@@ -3093,4 +3141,14 @@ fn test_sealed_key_matches_its_registry() {
 #[test]
 fn test_sealed_key_refuses_unknown_labels() {
     assert_unknown_labels_refused("sealed-key.json");
+}
+
+/// A `zone.secrets` tuple: the zone's shared pseudonym key (WP-4.7).
+fn zone_tuple() -> zone::Tuple {
+    zone::Tuple {
+        purpose: permguard_host::secrets::ZonePurpose::AuditPseudonym,
+        zone: ZONE_ID,
+        scope: ZONE_ID,
+        version: 1,
+    }
 }

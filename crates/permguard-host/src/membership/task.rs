@@ -208,6 +208,9 @@ pub struct TaskContext {
     /// The task's signed limits: `max_batch_records` and `retention_seconds` are the handler's
     /// to apply (WP-4.4, owner decision).
     pub limits: Limits,
+    /// The channel binding of the session's lease: exporter-bound, one per connection, what a
+    /// handler binds an answer to this session with (WP-4.7).
+    pub channel_binding: [u8; 32],
 }
 
 /// The handler a Plane registers for a task type and version (WP-4.4; none ships before
@@ -215,6 +218,12 @@ pub struct TaskContext {
 pub trait TaskHandler: Send + Sync {
     /// Answers one message's body, or refuses it with a stable code; the session stays open.
     fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal>;
+
+    /// Whether the replay window may keep its answers on disk. A handler whose answers carry what
+    /// may be kept nowhere, the keys `zone.secrets` delivers, answers a repeat itself (WP-4.7).
+    fn keeps_answers(&self) -> bool {
+        true
+    }
 }
 
 /// The task handlers by task type and contract version (WP-4.4). A contract a Plane declared
@@ -229,9 +238,27 @@ impl std::fmt::Debug for TaskHandlers {
 }
 
 impl TaskHandlers {
-    pub fn register(mut self, task: TaskType, version: u64, handler: Arc<dyn TaskHandler>) -> Self {
+    /// These and `handler` for `task` at `version`; a second handler of the same contract is
+    /// refused, so each resolves to exactly one (WP-4.7).
+    pub fn register(
+        mut self,
+        task: TaskType,
+        version: u64,
+        handler: Arc<dyn TaskHandler>,
+    ) -> Result<Self, MembershipError> {
+        if self.0.contains_key(&(task, version)) {
+            return Err(MembershipError::Invalid(format!(
+                "a second handler of `{}` version {version}",
+                task.as_str()
+            )));
+        }
         self.0.insert((task, version), handler);
-        self
+        Ok(self)
+    }
+
+    /// Whether a handler serves `task` at `version`.
+    pub fn serves(&self, task: TaskType, version: u64) -> bool {
+        self.0.contains_key(&(task, version))
     }
 }
 
@@ -1066,6 +1093,17 @@ impl CoordinatorTask {
     fn handled(&self, message: &TaskMessage, bytes: &[u8]) -> Result<Vec<u8>, TaskRefusal> {
         let parts = &self.coordinating;
         let id = &self.lease.membership_id;
+        let handler = parts
+            .tasks
+            .handlers
+            .0
+            .get(&(self.task_type, self.version))
+            .cloned();
+        // An answer the window may not keep, the keys `zone.secrets` delivers, bypasses it: its
+        // handler answers a repeat itself (WP-4.7, owner decision).
+        if let Some(handler) = handler.as_ref().filter(|handler| !handler.keeps_answers()) {
+            return self.answered(handler.as_ref(), message);
+        }
         let digest = message_digest(bytes, &self.lease.resource);
         let reservation = match parts
             .store
@@ -1081,12 +1119,28 @@ impl CoordinatorTask {
             }
             Gate::New(reservation) => reservation,
         };
-        let Some(handler) = parts.tasks.handlers.0.get(&(self.task_type, self.version)) else {
+        let Some(handler) = handler else {
             return Err(kept(
                 codes::host::NOT_SERVED_YET,
                 "no handler serves this task's version yet",
             ));
         };
+        let answer = self.answered(handler.as_ref(), message)?;
+        // Kept before it is answered: a repeat after a crash before this reaches the handler
+        // again, which a handler's own idempotency answers.
+        parts
+            .store
+            .remember(reservation, &answer)
+            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?;
+        Ok(answer)
+    }
+
+    /// The handler's answer to `message`, bounded and encoded.
+    fn answered(
+        &self,
+        handler: &dyn TaskHandler,
+        message: &TaskMessage,
+    ) -> Result<Vec<u8>, TaskRefusal> {
         let context = TaskContext {
             membership_id: self.lease.membership_id,
             task_id: self.lease.task_id.clone(),
@@ -1097,6 +1151,7 @@ impl CoordinatorTask {
             member: self.peer.host_id,
             request_id: message.request_id.clone(),
             limits: self.lease.limits,
+            channel_binding: self.lease.channel_binding,
         };
         let body = handler
             .handle(&context, &message.body)
@@ -1118,19 +1173,12 @@ impl CoordinatorTask {
                 "the handler's answer is over the task message bound",
             ));
         }
-        let answer = TaskAnswer {
+        TaskAnswer {
             request_id: message.request_id.clone(),
             body,
         }
         .encode()
-        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))?;
-        // Kept before it is answered: a repeat after a crash before this reaches the handler
-        // again, which a handler's own idempotency answers.
-        parts
-            .store
-            .remember(reservation, &answer)
-            .map_err(|error| ended(codes::common::UNAVAILABLE, error.to_string()))?;
-        Ok(answer)
+        .map_err(|error| ended(codes::common::UNAVAILABLE, error.0))
     }
 }
 

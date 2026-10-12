@@ -422,6 +422,27 @@ message TaskObserved {
   MemberReported member_reported = 3;
   // Past its session bound, or of another epoch.
   bool stale = 4;
+  // The `zone.secrets` receipts, one per resource: versions received and confirmed, never a key
+  // (WP-4.7); empty before the first and for any other task.
+  repeated ZoneReceipt zone_receipts = 5;
+}
+// What a member confirmed it received of one `zone.secrets` task (WP-4.7).
+message ZoneReceipt {
+  uint64 manifest_epoch = 1;
+  // When the coordinator verified the confirmation, RFC 3339.
+  string confirmed_at = 2;
+  // `sha256:` hex of the transcript.
+  string transcript_digest = 3;
+  repeated ZoneKeyTuple keys = 4;
+  // The resource the keys were delivered over.
+  string resource = 5;
+}
+// One key a member received: its coordinates, never its bytes (WP-4.7).
+message ZoneKeyTuple {
+  string purpose = 1;
+  string zone_id = 2;
+  string scope = 3;
+  uint64 version = 4;
 }
 // A member's last report of one task: what it says, not proof that it is reachable (WP-4.4).
 message MemberReported {

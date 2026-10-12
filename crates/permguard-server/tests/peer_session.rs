@@ -658,11 +658,13 @@ async fn side_with(
     ));
     let members = permguard_host::membership::Store::open(&host.volume).expect("the memberships");
     let tasks = Arc::new(permguard_host::membership::task::Tasks {
-        handlers: permguard_host::membership::task::TaskHandlers::default().register(
-            permguard_host::membership::record::TaskType::DecisionsShip,
-            1,
-            Arc::new(Echo),
-        ),
+        handlers: permguard_host::membership::task::TaskHandlers::default()
+            .register(
+                permguard_host::membership::record::TaskType::DecisionsShip,
+                1,
+                Arc::new(Echo),
+            )
+            .expect("one handler"),
         // A quiet watch heartbeats soon, so a test sees one.
         watch_heartbeat: Duration::from_millis(300),
         ..permguard_host::membership::task::Tasks::default()

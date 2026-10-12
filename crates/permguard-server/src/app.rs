@@ -1884,8 +1884,24 @@ impl App {
             // The open task sessions, shared by the PeerChannel and the sessions route. A contract
             // the Planes declared answers `not_served_yet` until its package registers the handler
             // (WP-4.4, owner decision).
+            // The Host serves `zone.secrets` itself once it holds a coordinator root (WP-4.7).
+            let handlers = match coordinator.clone() {
+                Some(coordinator) => permguard_host::membership::task::TaskHandlers::default()
+                    .register(
+                        permguard_host::membership::record::TaskType::ZoneSecrets,
+                        permguard_host::membership::zone::VERSION,
+                        Arc::new(permguard_host::membership::zone::ZoneSecrets {
+                            coordinator,
+                            store: Arc::clone(&members),
+                            time: Arc::clone(&time),
+                        }),
+                    )
+                    .map_err(|error| anyhow::anyhow!("{error}"))?,
+                None => permguard_host::membership::task::TaskHandlers::default(),
+            };
             let tasks = Arc::new(permguard_host::membership::task::Tasks {
                 appraisal: Arc::new(appraisal.clone()),
+                handlers,
                 ..permguard_host::membership::task::Tasks::default()
             });
             // What a coordinator serves on a proven session: an enrollment, a manifest fetch, a
@@ -1981,6 +1997,14 @@ impl App {
         let _dormancy = repinning_coordinator
             .as_ref()
             .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
+        // The zone keys this Host's memberships as a member grant, received and confirmed (WP-4.7).
+        let zone_keys = Arc::new(
+            permguard_host::secrets::ZoneKeys::open(&volume)
+                .context("opening the delivered zone keys")?,
+        );
+        let _receiving = serving
+            .as_ref()
+            .map(|api| crate::zone::drive(Arc::clone(api), Arc::clone(&zone_keys)));
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
             (Some(coordinating), Some(api)) => {
                 Some(crate::repin::drive(coordinating, Arc::clone(api)))
@@ -1992,7 +2016,16 @@ impl App {
             .authorization(authorization)
             .time(Arc::clone(&time))
             .host_id(host_identity.host_id());
-        // The zone keys this Host holds as coordinator; delivered keys arrive with WP-11.
+        // The zone keys this Host holds as coordinator, or else those it received as a member, as
+        // they stood at start (WP-4.7, owner decision): a key received later serves from the next.
+        if coordinator.is_none() {
+            for handle in members
+                .delivered_handles(&zone_keys)
+                .context("reading the delivered zone keys")?
+            {
+                host = host.zone_key(handle);
+            }
+        }
         if let Some(coordinator) = coordinator {
             use permguard_host::secrets::{ZoneHandle, ZonePurpose};
             host = host

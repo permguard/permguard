@@ -150,6 +150,14 @@ pub enum Info {
         scope: Id,
         version: u64,
     },
+    /// `["permguard.kdf.v1", "zone-confirm", purpose, zone_id, scope, version]`: the key a member
+    /// confirms a delivered zone key with, derived from that key (WP-4.7).
+    ZoneConfirm {
+        purpose: String,
+        zone_id: Id,
+        scope: Id,
+        version: u64,
+    },
 }
 
 impl Info {
@@ -186,6 +194,19 @@ impl Info {
             } => vec![
                 Value::Text(labels::LABEL.to_owned()),
                 Value::Text(labels::ZONE_USE.to_owned()),
+                Value::Text(purpose.clone()),
+                Value::Bytes(zone_id.to_vec()),
+                Value::Bytes(scope.to_vec()),
+                version(*v)?,
+            ],
+            Self::ZoneConfirm {
+                purpose,
+                zone_id,
+                scope,
+                version: v,
+            } => vec![
+                Value::Text(labels::LABEL.to_owned()),
+                Value::Text(labels::ZONE_CONFIRM.to_owned()),
                 Value::Text(purpose.clone()),
                 Value::Bytes(zone_id.to_vec()),
                 Value::Bytes(scope.to_vec()),
@@ -247,9 +268,26 @@ impl Info {
                 scope: uuid(scope)?,
                 version: unsigned(*v)?,
             }),
-            (labels::HOST_LOCAL | labels::ZONE_ROOT | labels::ZONE_USE, _) => Err(
-                KdfError::Encoding("the tuple has another length or member type than its kind"),
-            ),
+            (
+                labels::ZONE_CONFIRM,
+                [
+                    Value::Text(purpose),
+                    Value::Bytes(zone),
+                    Value::Bytes(scope),
+                    Value::Int(v),
+                ],
+            ) => Ok(Self::ZoneConfirm {
+                purpose: purpose.clone(),
+                zone_id: uuid(zone)?,
+                scope: uuid(scope)?,
+                version: unsigned(*v)?,
+            }),
+            (
+                labels::HOST_LOCAL | labels::ZONE_ROOT | labels::ZONE_USE | labels::ZONE_CONFIRM,
+                _,
+            ) => Err(KdfError::Encoding(
+                "the tuple has another length or member type than its kind",
+            )),
             _ => Err(KdfError::Encoding(
                 "the second member is not a derivation kind",
             )),
@@ -314,6 +352,22 @@ fn version(value: u64) -> Result<Value, KdfError> {
         .map_err(|_| KdfError::VersionRange(value))
 }
 
+/// The `info` of the key confirming a delivered zone key (WP-4.7).
+pub fn zone_confirm_info(
+    purpose: &str,
+    zone_id: &Id,
+    scope: &Id,
+    zone_version: u64,
+) -> Result<Vec<u8>, KdfError> {
+    Info::ZoneConfirm {
+        purpose: purpose.to_owned(),
+        zone_id: *zone_id,
+        scope: *scope,
+        version: zone_version,
+    }
+    .encode()
+}
+
 /// A key derived from a Host-local root, bound to a purpose, an authority, a resource and a version.
 pub fn derive_host_local(
     host_root: &[u8],
@@ -349,6 +403,20 @@ pub fn derive_distributed_key(
 ) -> Result<Zeroizing<[u8; KEY_LEN]>, KdfError> {
     let info = zone_use_info(purpose, zone_id, scope, zone_version)?;
     derive(zone_root, authority_host_id, &info)
+}
+
+/// The key a member confirms the delivered key of `(purpose, zone, scope, version)` with: derived
+/// from that key, so only a holder of it computes the confirmation (WP-4.7).
+pub fn derive_zone_confirm(
+    delivered_key: &[u8],
+    authority_host_id: &Id,
+    purpose: &str,
+    zone_id: &Id,
+    scope: &Id,
+    zone_version: u64,
+) -> Result<Zeroizing<[u8; KEY_LEN]>, KdfError> {
+    let info = zone_confirm_info(purpose, zone_id, scope, zone_version)?;
+    derive(delivered_key, authority_host_id, &info)
 }
 
 fn derive(root: &[u8], salt: &Id, info: &[u8]) -> Result<Zeroizing<[u8; KEY_LEN]>, KdfError> {
@@ -433,6 +501,12 @@ mod tests {
                 zone_id: ZONE,
                 scope: LEDGER,
                 version: 2,
+            },
+            Info::ZoneConfirm {
+                purpose: "audit.pseudonym".into(),
+                zone_id: ZONE,
+                scope: ZONE,
+                version: 3,
             },
         ] {
             assert_eq!(Info::decode(&info.encode().unwrap()).unwrap(), info);

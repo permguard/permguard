@@ -195,7 +195,7 @@ impl ZonePurpose {
         }
     }
 
-    fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         [Self::AuditPseudonym, Self::DecisionCommitment]
             .into_iter()
             .find(|purpose| purpose.as_str() == text)

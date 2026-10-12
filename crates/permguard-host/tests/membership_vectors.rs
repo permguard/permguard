@@ -814,3 +814,68 @@ fn the_ring_repin_records_are_the_bytes_the_independent_generator_computed() {
         hex(&r["delivered"])
     );
 }
+
+/// WP-4.7: the `zone.secrets` records, a request, its task message, a delivery, a confirmation
+/// and a receipt, are the bytes the independent generator computed.
+#[test]
+fn the_zone_secrets_records_are_the_bytes_the_independent_generator_computed() {
+    use permguard_host::membership::record::TaskMessage;
+    use permguard_host::membership::zone::{Confirmation, Delivery, Receipt, Request, Tuple};
+    use permguard_host::secrets::ZonePurpose;
+
+    let v = vectors();
+    let z = &v["zone"];
+    let (zone, ledger) = (id(&z["zone"]), id(&z["ledger"]));
+    let pseudonym = Tuple {
+        purpose: ZonePurpose::AuditPseudonym,
+        zone,
+        scope: zone,
+        version: 1,
+    };
+    let tag = Tuple {
+        purpose: ZonePurpose::DecisionCommitment,
+        zone,
+        scope: ledger,
+        version: 1,
+    };
+    let request = Request::Deliver.encode().expect("encodes");
+    assert_eq!(request, hex(&z["request"]));
+    let message = TaskMessage {
+        membership_id: id(&v["membership_id"]),
+        task_id: "zone-keys".to_owned(),
+        epoch: 3,
+        request_id: "zone-deliver-3".to_owned(),
+        body: request,
+        kind: MessageKind::Handler,
+    };
+    assert_eq!(message.encode().expect("encodes"), hex(&z["message"]));
+    let delivery = Delivery::of([(tag, [0x22; 32]), (pseudonym, [0x11; 32])]);
+    let bytes = delivery.encode().expect("encodes");
+    assert_eq!(
+        bytes.to_vec(),
+        hex(&z["delivery"]),
+        "in order, whatever the input"
+    );
+    assert_eq!(Delivery::decode(&bytes).expect("decodes").keys.len(), 2);
+    let confirm = Request::Confirm(vec![
+        Confirmation {
+            tuple: pseudonym,
+            mac: [0x33; 32],
+        },
+        Confirmation {
+            tuple: tag,
+            mac: [0x44; 32],
+        },
+    ]);
+    assert_eq!(confirm.encode().expect("encodes"), hex(&z["confirm"]));
+    let receipt = Receipt {
+        epoch: 3,
+        confirmed_at: 1_800_000_100,
+        transcript_digest: [0x55; 32],
+        tuples: vec![pseudonym, tag],
+        resource: text(&z["resource"]),
+    };
+    let bytes = receipt.encode().expect("encodes");
+    assert_eq!(bytes, hex(&z["receipt"]));
+    assert_eq!(Receipt::decode(&bytes).expect("decodes"), receipt);
+}

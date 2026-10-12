@@ -456,6 +456,61 @@ pub struct TaskObservedView {
     pub member_reported: Option<MemberReportedView>,
     /// Whether that report is past its session bound or of another epoch.
     pub stale: bool,
+    /// The `zone.secrets` receipts, one per resource: the versions received and confirmed, never
+    /// a key, witness or confirmation value (WP-4.7); empty before the first and for any other
+    /// task.
+    #[serde(default)]
+    pub zone_receipts: Vec<ZoneReceiptView>,
+}
+
+/// What a member confirmed it received of one `zone.secrets` task (WP-4.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZoneReceiptView {
+    /// The resource the keys were delivered over.
+    pub resource: String,
+    pub manifest_epoch: u64,
+    /// When the coordinator verified the confirmation, RFC 3339.
+    pub confirmed_at: String,
+    /// `sha256:` hex of the transcript.
+    pub transcript_digest: String,
+    pub keys: Vec<ZoneTupleView>,
+}
+
+/// One key a member received: its coordinates, never its bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ZoneTupleView {
+    pub purpose: String,
+    pub zone_id: String,
+    pub scope: String,
+    pub version: u64,
+}
+
+impl ZoneReceiptView {
+    fn of(receipt: &crate::membership::zone::Receipt) -> Self {
+        Self {
+            resource: receipt.resource.clone(),
+            manifest_epoch: receipt.epoch,
+            confirmed_at: rfc3339(receipt.confirmed_at),
+            transcript_digest: format!(
+                "sha256:{}",
+                receipt
+                    .transcript_digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            ),
+            keys: receipt
+                .tuples
+                .iter()
+                .map(|tuple| ZoneTupleView {
+                    purpose: tuple.purpose.as_str().to_owned(),
+                    zone_id: uuid_text(&tuple.zone),
+                    scope: uuid_text(&tuple.scope),
+                    version: tuple.version,
+                })
+                .collect(),
+        }
+    }
 }
 
 impl MemberReportedView {
@@ -496,6 +551,11 @@ impl TaskObservedView {
                 .as_ref()
                 .map(|(report, received_at)| MemberReportedView::of(report, *received_at)),
             stale: observed.stale,
+            zone_receipts: observed
+                .zone_receipts
+                .iter()
+                .map(ZoneReceiptView::of)
+                .collect(),
         }
     }
 }
@@ -1952,6 +2012,23 @@ impl HostApi {
             .repin_due(crate::operations::journal::Initiator::System(
                 "host".to_owned(),
             ))
+            .await
+    }
+
+    /// Receives the zone keys every `zone.secrets` task of this Host's memberships as a member
+    /// grants, into `keys` (WP-4.7): the server's periodic pass. Nothing without a peer client.
+    pub async fn zone_due(&self, keys: &crate::secrets::ZoneKeys) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .zone_due(
+                crate::operations::journal::Initiator::System("host".to_owned()),
+                keys,
+            )
             .await
     }
 
