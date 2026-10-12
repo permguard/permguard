@@ -32,6 +32,7 @@
 //! another digest is equivocation.
 
 pub mod appraisal;
+pub mod dormancy;
 pub mod member;
 pub mod progress;
 pub mod record;
@@ -113,6 +114,10 @@ pub const ORPHAN: &str = "members.orphan";
 pub const END_ON_RESET: &str = "members.reset";
 /// The appraisal of an active membership's assurance binding: renewed or revoked (WP-4.2).
 pub const APPRAISE: &str = "members.appraise";
+/// A membership silent past its `dormant_after`, suspended by the coordinator (WP-4.6).
+pub const DORMANT: &str = "members.dormant";
+/// A membership silent past its `revoke_after`, revoked by the coordinator (WP-4.6).
+pub const REVOKE_DORMANT: &str = "members.revoke.dormant";
 
 /// The audit actions.
 pub const AUDIT_INVITED: &str = "host.membership.invited";
@@ -121,6 +126,8 @@ pub const AUDIT_ENROLLED: &str = "host.membership.enrolled";
 pub const AUDIT_APPROVED: &str = "host.membership.approved";
 pub const AUDIT_REJECTED: &str = "host.membership.rejected";
 pub const AUDIT_SUSPENDED: &str = "host.membership.suspended";
+/// A suspension for dormancy (WP-4.6, owner decision): the blueprint's `membership.dormant`.
+pub const AUDIT_DORMANT: &str = "host.membership.dormant";
 pub const AUDIT_RESUMED: &str = "host.membership.resumed";
 pub const AUDIT_FENCED: &str = "host.membership.fenced";
 pub const AUDIT_REVOKE_PLANNED: &str = "host.membership.revoke_planned";
@@ -370,6 +377,9 @@ struct State {
     operations: BTreeMap<[u8; 16], (u64, String)>,
     /// The cutovers to re-pinned sets, by membership and ring (WP-4.5).
     cutovers: BTreeMap<([u8; 16], String), repin::CutoverState>,
+    /// When each membership last entered `active`, its approval or a resume: where its dormancy
+    /// clock starts when no lease came since (WP-4.6).
+    active_since: BTreeMap<[u8; 16], u64>,
 }
 
 /// The membership store of one Host.
@@ -1236,6 +1246,11 @@ impl Store {
 
     pub fn membership(&self, id: &[u8; 16]) -> Option<Held> {
         self.read().memberships.get(id).cloned()
+    }
+
+    /// When `id` last entered `active`, from the journal's clock (WP-4.6).
+    pub fn active_since(&self, id: &[u8; 16]) -> Option<u64> {
+        self.read().active_since.get(id).copied()
     }
 
     /// The manifests of `id`, oldest first.
@@ -2398,6 +2413,9 @@ fn apply(state: &mut State, entry: &Entry, bytes: &[u8]) -> Result<(), Membershi
                 .memberships
                 .get_mut(&entry.subject)
                 .ok_or_else(|| corrupt("a manifest of no membership".to_owned()))?;
+            if manifest.status == Status::Active && held.status != Status::Active {
+                state.active_since.insert(entry.subject, entry.at);
+            }
             held.status = manifest.status;
             held.manifest = Some((manifest, envelope.to_vec(), digest));
             held.revision += 1;

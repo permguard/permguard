@@ -17,6 +17,7 @@ pub mod banner;
 pub mod checkpoints;
 pub mod command;
 pub mod custody;
+pub mod dormancy;
 pub mod host;
 pub mod host_api;
 pub mod logging;

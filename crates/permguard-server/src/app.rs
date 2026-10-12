@@ -1977,6 +1977,10 @@ impl App {
         let _ticking = crate::time::tick(Arc::clone(&time));
         // The ended days a stopped process left unsealed, sealed now and every hour after.
         let _sweeping = crate::checkpoints::sweep(Arc::clone(&audit_engine));
+        // Members silent past their thresholds suspended, then revoked (WP-4.6).
+        let _dormancy = repinning_coordinator
+            .as_ref()
+            .map(|coordinating| crate::dormancy::drive(Arc::clone(coordinating)));
         let _repinning = match (repinning_coordinator, serving.as_ref()) {
             (Some(coordinating), Some(api)) => {
                 Some(crate::repin::drive(coordinating, Arc::clone(api)))

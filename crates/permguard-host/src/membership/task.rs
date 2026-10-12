@@ -588,6 +588,20 @@ impl super::service::Coordinating {
                 format!("the membership is {}: no task is leased", current.status),
             ));
         }
+        // Silent past its `dormant_after`: no lease, before the dormancy pass suspends it (WP-4.6).
+        // A lease is no mutation: one read a second short of the threshold may be signed as the
+        // pass suspends; it names the superseded epoch, so its first message ends it.
+        if self
+            .store
+            .dormancy(&id, now)
+            .map_err(|error| refusal(codes::common::UNAVAILABLE, error.to_string()))?
+            .is_some()
+        {
+            return Err(refusal(
+                codes::host::MEMBERSHIP_TRANSITION_REFUSED,
+                "the membership is dormant: no task is leased",
+            ));
+        }
         // The task and the resource, and no other incarnation open, before anything is written.
         let resource = Resource::parse(&request.resource)
             .map_err(|error| refusal(codes::common::INVALID_ARGUMENT, error.to_string()))?;

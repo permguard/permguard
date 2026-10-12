@@ -203,6 +203,8 @@ pub const REGISTRY: &[ActionSchema] = &[
     mutation("host.membership.approved", HOST),
     mutation("host.membership.rejected", HOST),
     mutation("host.membership.suspended", HOST),
+    // Dormancy (WP-4.6): a membership silent past its `dormant_after`, suspended by the system.
+    mutation("host.membership.dormant", HOST),
     mutation("host.membership.resumed", HOST),
     mutation("host.membership.fenced", HOST),
     mutation("host.membership.revoke_planned", HOST),

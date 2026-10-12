@@ -509,7 +509,7 @@ fn domain(error: crate::operations::mutation::MutationError<MembershipError>) ->
 
 impl super::service::Coordinating {
     /// Runs one store change of `id` as an operation of the membership domain.
-    fn change(
+    pub(super) fn change(
         &self,
         operation: &'static str,
         action: &'static str,

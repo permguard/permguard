@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **Dormant members are suspended, then revoked, by their coordinator.**
+  A membership whose coordinator issued it no lease for longer than the `dormant_after_seconds` its manifest signs is suspended, audited `host.membership.dormant`.
+  Past `revoke_after_seconds` it is revoked, audited `host.membership.revoked`; both are initiated by the system's `dormancy`.
+  A pass every minute applies them, and a lease asked once the threshold passed is refused before the pass runs.
+  The clock is the coordinator's own: it starts at the later of the last lease and the membership's approval or last resume.
+  A member's report or a sync never moves it, a resume restarts it, and a wall clock set back never shortens it.
+  Revocation covers a membership suspended by an operator or a clone alarm, or held for review, too; a revoked member takes part again only through a new invitation and approval.
+
 - **Ring re-pin across memberships, both directions, without a restart.**
   A member whose ring moved sends its new ring statement on a task session (`kind: repin`); the coordinator verifies the binding under the member's pinned identity and its continuity, issues the manifest at the next epoch with the new pin and the replaced one kept `retiring`, and answers a new lease on the same connection, so the session goes on.
   The exact current set is an idempotent retry; a lower epoch (`manifest_not_successor`) or another set at the pinned epoch (`manifest_equivocation`) is refused and recorded, and a further move waits for the first grace to end.
