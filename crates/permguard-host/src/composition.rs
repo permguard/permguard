@@ -391,7 +391,7 @@ impl Host {
             if let Some(contract) = declaration
                 .tasks
                 .iter()
-                .find(|_| false)
+                .find(|contract| crate::membership::contracts::host_served(contract.task_type))
             {
                 return Err(CompositionError::Collision {
                     what: "task contract",
