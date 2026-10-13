@@ -628,7 +628,8 @@ impl Materialized {
     }
 }
 
-pub(crate) fn suite_of(jwk: &Jwk) -> Option<Suite> {
+/// The suite a published key names by its type, curve and algorithm.
+pub fn suite_of(jwk: &Jwk) -> Option<Suite> {
     match (jwk.kty.as_str(), jwk.crv.as_deref(), jwk.alg.as_str()) {
         ("OKP", Some("Ed25519"), "EdDSA") => Some(Suite::Ed25519Sha256V1),
         ("EC", Some("P-256"), "ES256") => Some(Suite::P256Sha256V1),

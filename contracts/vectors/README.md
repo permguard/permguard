@@ -56,3 +56,8 @@ A vector changes only with a protocol version: a codec that stops reproducing on
 Running `generate.py`, `identity.py`, `session.py` and `secrets.py` again must print `evidence.json`, `identity.json`, `session.json` and `secrets.json` unchanged, and neither file is ever edited to make a test pass: `task check:vectors` (or `make check-vectors`) compares each with its generator.
 The generator needs Python 3 and the `cryptography` package (`pip install cryptography`; the vectors were computed with version 50).
 Target formats are not here: each is frozen by the package that designs it, as `status.md` lists under "Deferred format freezes".
+
+`stream.json` freezes the Host stream engine's records (WP-5.1).
+They are a genesis run statement carrying a fence and a successor after a fork naming its predecessor and the approved plan, both COSE_Sign1 `permguard.stream.run.v1` under a `host.operations` key.
+Beside them: the genesis statement's digest, a run end, a group of records with the last record's digest, and two STATEs.
+`stream.py` computes them under the owner decisions of 2026-10-13, the operations key the RFC 8032 section 7.1 test 2 key; `crates/permguard-stream/tests/stream_vectors.rs` reproduces them and verifies both envelopes.

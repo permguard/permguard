@@ -16,6 +16,10 @@ publish = false
 permguard-core.workspace = true
 # The storage library: every temporary, rename, flush and torn-tail cut goes through it (WP-1.11).
 permguard-host.workspace = true
+# CBOR, COSE and digests of the engine's run statements, frames and STATE (WP-5.1).
+permguard-objects.workspace = true
+# The random source of run ids, as the Host's identity and volume use it.
+ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 base64.workspace = true

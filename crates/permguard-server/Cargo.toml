@@ -28,6 +28,10 @@ permguard-host.workspace = true
 # The stream foundation: the composition registers every stream its planes declare,
 # so a directory collision is a startup refusal rather than a runtime surprise.
 permguard-stream.workspace = true
+# The decision log's and the event journal's descriptors and codecs, registered on the Host's
+# stream engine (WP-5.1).
+permguard-decisions.workspace = true
+permguard-events.workspace = true
 permguard-std = { workspace = true, features = ["audit", "catalog", "keys", "metrics", "pseudonym", "secrets", "storage", "provision"] }
 permguard-telemetry.workspace = true
 permguard-transport.workspace = true

@@ -17,7 +17,8 @@
 //! | [`PublicKeys`]     | read a declared ring's public set               | signing                                  |
 //! | [`AuditHandle<T>`] | record the actions schema `T` declares          | another action, the sink, the trail      |
 //! | `ZoneHandle`       | a MAC under the zone key of a declared purpose  | any key's bytes, another purpose's keys  |
-//! | [`StreamProducer`], [`TaskClient`], [`Authorization`] | declared now; built by their packages | — |
+//! | [`StreamProducer`] | append to a declared stream through the Host's engine (WP-5.1) | another stream, the engine, its files |
+//! | [`TaskClient`], [`Authorization`] | declared now; built by their packages | — |
 //!
 //! Least privilege is a property of the types: no handle has an accessor that returns the key
 //! manager, a key's bytes or a Host-private path, so a Plane holding one cannot widen it. A
@@ -25,9 +26,10 @@
 //! signing, recording or reading what it did not declare by mistake — the confused-deputy risk the
 //! security architecture names.
 //!
-//! `StreamProducer`, `TaskClient` and `Authorization` are declared today, and their collisions are
-//! refused at startup, but no Plane can build one yet: the stream engine (WP-5.1), task routing
-//! (WP-4.x) and the authorization model (WP-2.4) build them when they land.
+//! `TaskClient` and `Authorization` are declared today, and their collisions are refused at
+//! startup, but no Plane can build one yet: task routing (WP-4.x) and the authorization model
+//! (WP-2.4) build them when they land. `StreamProducer` is built by the Host's stream engine
+//! (WP-5.1), handed in by the server as a [`StreamEngine`].
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -40,6 +42,7 @@ use permguard_core::server::AuditRecorder;
 use permguard_core::{AuditError, AuditEvent, Subject};
 
 use crate::time::TimeGuard;
+use permguard_core::authz::Resource;
 
 /// A key ring the Host holds, by its registered name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -262,6 +265,7 @@ impl std::error::Error for CompositionError {}
 /// The Host: every generic capability, implemented once.
 pub struct Host {
     memberships: Option<Arc<dyn ServingMembers>>,
+    streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
@@ -281,6 +285,7 @@ struct Claims {
 #[derive(Default)]
 pub struct HostBuilder {
     memberships: Option<Arc<dyn ServingMembers>>,
+    streams: Option<Arc<dyn StreamEngine>>,
     rings: BTreeMap<RingId, Arc<dyn KeyManager>>,
     recorder: Option<AuditRecorder>,
     authorization: Option<Arc<Authorization>>,
@@ -330,6 +335,13 @@ impl HostBuilder {
         self
     }
 
+    /// The Host's stream engine (WP-5.1): a Plane reaches the producer of each stream it
+    /// declared through it.
+    pub fn streams(mut self, streams: Arc<dyn StreamEngine>) -> Self {
+        self.streams = Some(streams);
+        self
+    }
+
     /// Who serves a resource under this Host's memberships (WP-4.4): handed to the Plane that
     /// provides `policy.mirror`.
     pub fn memberships(mut self, memberships: Arc<dyn ServingMembers>) -> Self {
@@ -340,6 +352,7 @@ impl HostBuilder {
     pub fn build(self) -> Host {
         Host {
             memberships: self.memberships,
+            streams: self.streams,
             rings: self.rings,
             recorder: self.recorder,
             authorization: self.authorization,
@@ -463,6 +476,23 @@ impl Host {
             claims.planes.push(plane.clone());
         }
 
+        let owned = |stream: &&String| {
+            stream
+                .split_once('/')
+                .is_some_and(|(owner, _)| owner == plane)
+        };
+        let producers = declaration
+            .streams
+            .iter()
+            // A Plane reaches the producers of its own streams only, `<plane>/<type>`.
+            .filter(owned)
+            .filter_map(|stream| {
+                self.streams
+                    .as_ref()
+                    .and_then(|engine| engine.producer(stream))
+                    .map(|producer| (stream.clone(), producer))
+            })
+            .collect();
         Ok(Registration {
             plane,
             signers: declaration
@@ -497,6 +527,8 @@ impl Host {
                 })
                 .collect(),
             declared_zone_keys: declaration.zone_keys.clone(),
+            producers,
+            declared_streams: declaration.streams.clone(),
             host_id: self.host_id,
             authorization: self
                 .authorization
@@ -527,6 +559,8 @@ pub struct Registration {
     recorder: Option<AuditRecorder>,
     zone_keys: BTreeMap<crate::secrets::ZonePurpose, Arc<crate::secrets::ZoneHandle>>,
     declared_zone_keys: Vec<crate::secrets::ZonePurpose>,
+    producers: BTreeMap<String, Arc<dyn StreamAppender>>,
+    declared_streams: Vec<String>,
     host_id: Option<[u8; 16]>,
     authorization: Arc<Authorization>,
     time: Arc<TimeGuard>,
@@ -574,6 +608,24 @@ impl Registration {
             keys: Arc::clone(keys),
             time: Arc::clone(&self.time),
             artifact: PhantomData,
+        }))
+    }
+
+    /// The producer of `stream`, which the Plane declared (WP-5.1): `None` when no stream engine
+    /// is composed in this deployment, or it has no producer of that stream.
+    pub fn stream_producer(
+        &self,
+        stream: &str,
+    ) -> Result<Option<StreamProducer>, CompositionError> {
+        if !self
+            .declared_streams
+            .iter()
+            .any(|declared| declared == stream)
+        {
+            return Err(self.undeclared(format!("the producer of stream `{stream}`")));
+        }
+        Ok(self.producers.get(stream).map(|appender| StreamProducer {
+            appender: Arc::clone(appender),
         }))
     }
 
@@ -1029,10 +1081,43 @@ impl<T: AuditSchema> AuditHandle<T> {
     }
 }
 
-/// Appends to a stream the Plane declared: built by the stream engine (WP-5.1).
-#[derive(Debug)]
+/// What appending a record answers: the run and the sequence it took (WP-5.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamReceipt {
+    pub run_id: [u8; 16],
+    pub seq: u64,
+}
+
+/// One stream's producer as the Host's engine serves it: a record's bytes, checked by the codec
+/// the stream registered, appended durably (WP-5.1).
+pub trait StreamAppender: Send + Sync {
+    fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String>;
+}
+
+/// The Host's stream engine as composition reaches it (WP-5.1, interpretation): the engine lives
+/// in `permguard-stream`, which depends on this crate, so the server hands it in through this.
+pub trait StreamEngine: Send + Sync {
+    /// The producer of `stream`, as the Plane declared it.
+    fn producer(&self, stream: &str) -> Option<Arc<dyn StreamAppender>>;
+}
+
+/// Appends to a stream the Plane declared, through the Host's engine (WP-5.1).
+#[derive(Clone)]
 pub struct StreamProducer {
-    _unbuildable: PhantomData<()>,
+    appender: Arc<dyn StreamAppender>,
+}
+
+impl std::fmt::Debug for StreamProducer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamProducer").finish_non_exhaustive()
+    }
+}
+
+impl StreamProducer {
+    /// Appends `record` to the stream of `resource`; answers once it is durable.
+    pub fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String> {
+        self.appender.append(resource, record)
+    }
 }
 
 /// Calls a task on a peer Host the Plane declared: built by task routing (WP-4.x).
@@ -1493,6 +1578,68 @@ mod tests {
         assert!(
             matches!(&refused, CompositionError::Collision { what: "task contract", name, .. } if name == "policy.mirror provider"),
             "{refused}"
+        );
+    }
+
+    /// WP-5.1: a Plane reaches, through the Host's engine, the producer of a stream it declared,
+    /// and of no other; without an engine composed it gets none.
+    #[test]
+    fn a_plane_receives_the_producer_of_a_stream_it_declared() {
+        struct Engine;
+        struct Appender;
+        impl StreamAppender for Appender {
+            fn append(&self, _: &Resource, record: &[u8]) -> Result<StreamReceipt, String> {
+                Ok(StreamReceipt {
+                    run_id: [1; 16],
+                    seq: record.len() as u64,
+                })
+            }
+        }
+        impl StreamEngine for Engine {
+            fn producer(&self, stream: &str) -> Option<Arc<dyn StreamAppender>> {
+                (stream == "data/decisions").then(|| Arc::new(Appender) as Arc<dyn StreamAppender>)
+            }
+        }
+        let host = Host::builder().streams(Arc::new(Engine)).build();
+        let registration = host
+            .register(Declaration::new("data").produces_stream("data/decisions"))
+            .expect("registered");
+        let producer = registration
+            .stream_producer("data/decisions")
+            .expect("declared")
+            .expect("served by the engine");
+        assert_eq!(
+            producer
+                .append(&Resource::plane("data"), b"abc")
+                .expect("appended"),
+            StreamReceipt {
+                run_id: [1; 16],
+                seq: 3
+            }
+        );
+        assert!(matches!(
+            registration.stream_producer("data/events"),
+            Err(CompositionError::Undeclared { .. })
+        ));
+        // Another Plane naming the Data Plane's stream reaches nothing.
+        let other = Host::builder()
+            .streams(Arc::new(Engine))
+            .build()
+            .register(Declaration::new("control").produces_stream("data/decisions"))
+            .expect("registered");
+        assert!(
+            other
+                .stream_producer("data/decisions")
+                .expect("declared")
+                .is_none()
+        );
+        let bare = self::host()
+            .register(Declaration::new("data").produces_stream("data/decisions"))
+            .expect("registered");
+        assert!(
+            bare.stream_producer("data/decisions")
+                .expect("declared")
+                .is_none()
         );
     }
 

@@ -32,6 +32,7 @@ pub mod envelope;
 pub mod instance;
 pub mod record;
 pub mod spool;
+pub mod stream;
 
 pub use permguard_stream::jcs;
 pub use permguard_stream::merkle;

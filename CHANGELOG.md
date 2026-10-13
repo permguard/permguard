@@ -19,6 +19,17 @@ is cut.
 
 ### Added
 
+- **The Host's stream engine.**
+  `permguard-stream` gains the engine every Plane is to register its streams with instead of keeping a journal of its own.
+  A versioned descriptor names the stream, its batch `typ`, record domain, codec, event types, resource shape, limits, retention, signing ring and membership task, and a change of a protected field is refused unless the version moves.
+  Each `(plane, type, resource, producer Host)` is one physical stream under `host/streams/<plane>/<type>/<version>/producer/`, its resource present only as a digest.
+  Its runs live in one framed journal of the storage library: a RUN-OPEN frame carries the run statement, a COSE_Sign1 `permguard.stream.run.v1` under the Host's `host.operations` key, and a TERMINAL frame ends it.
+  Sequences restart at 1 in every run, and concurrent appends share one frame and one flush, no caller answered before the flush covering its record.
+  A rollover names the run it ends; after a reported fork, appends and plain rollovers are refused until a successor names an operator-approved plan.
+  STATE keeps the run and its watermarks, a rollover a crash interrupted completes on reopening with the same signed successor, and a STATE naming another stream is refused.
+  `RESERVE` holds filesystem-allocated blocks, released just before terminal and rollover metadata are written; where blocks cannot be allocated, it stays empty.
+  The decision log and the event journal are registered on the engine, and a Plane reaches a declared stream's producer through the composition; the existing spool, journals and stores keep writing until WP-6.1 and WP-6.2 adopt the engine, and a structural check refuses any new Plane-side engine.
+
 - **Task type contracts, and zone keys delivered between Hosts.**
   Each of the six task types has one version 1 contract naming its provider and consumer roles and the Plane or Host serving each side; a Plane claiming a side of `audit.checkpoints` or `zone.secrets`, which the Host serves, is refused at startup.
   A coordinator holding its root (`operations.secrets.coordinator_root_ref`) now serves `zone.secrets`: over a zone resource it delivers the zone's shared pseudonym key, over a ledger that ledger's input-tag key, each only when the task's `resource_types` name its purpose.

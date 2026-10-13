@@ -370,6 +370,8 @@ dependencies = [
  "hmac",
  "permguard-core",
  "permguard-host",
+ "permguard-objects",
+ "ring",
  "serde",
  "serde_json",
  "sha2",

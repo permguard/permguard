@@ -959,6 +959,46 @@
       "limit": "a token inside a record or a request already bounded: a membership record (`MAX_RECORD_BYTES`), a Host API body or query",
       "enforced_at_decoder": false,
       "fuzz": "membership"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/run.rs",
+      "item": "RunStatement::decode",
+      "entry": "permguard_stream::engine::RunStatement::decode",
+      "max_input_bytes": 4096,
+      "limit": "`engine::run::MAX_STATEMENT_BYTES`, checked by the decoder before it parses: a run statement's payload, read from a RUN_OPEN frame or a STATE's pending successor (WP-5.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/run.rs",
+      "item": "RunEnd::decode",
+      "entry": "permguard_stream::engine::RunEnd::decode",
+      "max_input_bytes": 128,
+      "limit": "`engine::run::MAX_RUN_END_BYTES`, checked by the decoder before it parses: a TERMINAL frame (WP-5.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/state.rs",
+      "item": "State::decode",
+      "entry": "permguard_stream::engine::State::decode",
+      "max_input_bytes": 8192,
+      "limit": "`engine::state::MAX_STATE_BYTES`, checked by the decoder before it parses: a producer stream's STATE (WP-5.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/producer.rs",
+      "item": "decode_group",
+      "entry": "permguard_stream::engine::decode_group",
+      "max_input_bytes": 8388608,
+      "limit": "`MAX_GROUP_FRAME_BYTES`, checked by the decoder before it parses, and at most `MAX_GROUP_RECORDS` records: a RECORDS frame (WP-5.1)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
     }
   ],
   "trusted": [
@@ -1266,6 +1306,16 @@
       "source": "crates/permguard-host/src/membership/mod.rs",
       "item": "Store::open",
       "reason": "the store's own directory on the Host's volume, written by this process; every entry is decoded by `Entry::decode` and the records it carries by their registered decoders, the journal's hash chain checked as it is replayed"
+    },
+    {
+      "source": "crates/permguard-stream/src/engine/mod.rs",
+      "item": "Streams::open",
+      "reason": "the Host's own volume, identity and operations ring at startup"
+    },
+    {
+      "source": "crates/permguard-stream/src/engine/run.rs",
+      "item": "RunStatement::verify",
+      "reason": "parses only through `Sign1::decode` and `RunStatement::decode`, both registered and fuzzed; it reads the RUN_OPEN frames of the Host's own volume"
     }
   ]
 }

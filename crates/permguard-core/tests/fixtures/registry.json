@@ -64,6 +64,7 @@
     "digest.MEMBERSHIP_TOKEN_KEY": "permguard.membership.token-key.v1\n",
     "digest.MEMBERSHIP_MANIFEST": "permguard.membership.manifest.v1\n",
     "digest.MEMBERSHIP_JOURNAL": "permguard.membership.journal.v1\n",
+    "digest.STREAM_RUN": "permguard.stream.run.v1\n",
     "digest.MEMBERSHIP_ZONE_TRANSCRIPT": "permguard.membership.zone-transcript.v1\n",
     "digest.MEMBERSHIP_APPRAISAL_POLICY": "permguard.membership.appraisal-policy.v1\n",
     "digest.MEMBERSHIP_ASSURANCE_NONCE": "permguard.membership.assurance-nonce.v1\n",

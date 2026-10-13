@@ -1203,6 +1203,34 @@ impl App {
         )))
     }
 
+    /// The stream engine of this Host on `volume`, the decision log and the event journal
+    /// registered on it as producers (WP-5.1, owner decision).
+    fn stream_engine(
+        &self,
+        volume: &permguard_host::storage::volume::Volume,
+        identity: &permguard_host::identity::Identity,
+        operations: &Arc<permguard_host::keys::ring::Ring>,
+        time: &Arc<permguard_host::time::TimeGuard>,
+    ) -> Result<permguard_stream::engine::Served, permguard_stream::engine::StreamError> {
+        let engine = permguard_stream::engine::Streams::open(
+            volume,
+            identity,
+            Arc::clone(operations),
+            Arc::clone(time),
+        )?;
+        let decisions = engine.register_producer(
+            permguard_decisions::stream::descriptor(),
+            permguard_decisions::stream::Codec,
+        )?;
+        let events = engine.register_producer(
+            permguard_events::stream::descriptor(),
+            permguard_events::stream::Codec,
+        )?;
+        Ok(permguard_stream::engine::Served::default()
+            .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
+            .with(permguard_events::stream::STREAM, Arc::new(events)))
+    }
+
     /// The coordinator root (WP-3.3), when `operations.secrets.coordinator_root_ref` names one:
     /// resolved, at least 256 bits, witnessed, at `operations.secrets.zone_key_version`, with this
     /// Host as the authority of the zones it coordinates.
@@ -1746,6 +1774,16 @@ impl App {
         mutations
             .recover(key_registry.as_ref())
             .context("recovering the key ring mutations a crash left open")?;
+        // The Host's stream engine (WP-5.1), its runs signed under `host.operations`: the decision
+        // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
+        let streams = match keys.as_ref() {
+            Some(operations) => Some(Arc::new(
+                self.stream_engine(&volume, &host_identity, operations, &time)
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+                    .context("opening the stream engine")?,
+            )),
+            None => None,
+        };
         // The memberships (WP-4.1): the store on the volume, whatever surface serves it, so a
         // membership mutation a crash left open is resolved before anything reads it.
         let members = permguard_host::membership::Store::open(&volume).with_context(|| {
@@ -2016,6 +2054,9 @@ impl App {
             .authorization(authorization)
             .time(Arc::clone(&time))
             .host_id(host_identity.host_id());
+        if let Some(streams) = streams {
+            host = host.streams(streams);
+        }
         // The zone keys this Host holds as coordinator, or else those it received as a member, as
         // they stood at start (WP-4.7, owner decision): a key received later serves from the next.
         if coordinator.is_none() {

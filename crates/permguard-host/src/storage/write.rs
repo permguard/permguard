@@ -257,6 +257,61 @@ pub fn read_view(dir: &Dir, name: &str, format: Format) -> Result<Option<Vec<u8>
     Ok(Some(body.to_vec()))
 }
 
+/// Allocates `bytes` of filesystem blocks to the file `name` below `dir`, created when absent,
+/// and flushes the file and the directory: the space a stream's terminal and rollover metadata
+/// take when nothing else is left (WP-5.1). Never a sparse file: answers `false`, leaving the
+/// file empty, where the filesystem cannot allocate blocks, so the caller uses closed pressure.
+pub fn allocate(dir: &Dir, name: &str, bytes: u64) -> Result<bool> {
+    let file = match dir.open_write(name) {
+        Ok(file) => file,
+        Err(_) => dir.create_exclusive(name)?,
+    };
+    let path = dir.child_path(name);
+    if let Err(error) = allocate_blocks(&file, bytes) {
+        if error.kind() == std::io::ErrorKind::Unsupported
+            || error.raw_os_error() == Some(rustix::io::Errno::OPNOTSUPP.raw_os_error())
+            || error.raw_os_error() == Some(rustix::io::Errno::NOSYS.raw_os_error())
+        {
+            dir.sync()?;
+            return Ok(false);
+        }
+        return Err(io(format!(
+            "allocating {bytes} bytes to {}",
+            path.display()
+        ))(error));
+    }
+    if let Err(error) = permguard_core::fault::sync(&path, || file.sync_all()) {
+        return Err(durability(format!("flushing {}", path.display()))(error));
+    }
+    dir.sync()?;
+    Ok(true)
+}
+
+/// Releases the blocks of the file `name` below `dir` back to the filesystem, keeping the file:
+/// what a stream frees just before it writes its terminal or rollover metadata (WP-5.1).
+pub fn release(dir: &Dir, name: &str) -> Result<()> {
+    let Ok(file) = dir.open_write(name) else {
+        return Ok(());
+    };
+    let path = dir.child_path(name);
+    file.set_len(0)
+        .map_err(|error| io(format!("releasing {}", path.display()))(error))?;
+    if let Err(error) = permguard_core::fault::sync(&path, || file.sync_all()) {
+        return Err(durability(format!("flushing {}", path.display()))(error));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn allocate_blocks(file: &std::fs::File, bytes: u64) -> std::io::Result<()> {
+    rustix::fs::fallocate(file, rustix::fs::FallocateFlags::empty(), 0, bytes).map_err(Into::into)
+}
+
+#[cfg(not(unix))]
+fn allocate_blocks(_file: &std::fs::File, _bytes: u64) -> std::io::Result<()> {
+    Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]

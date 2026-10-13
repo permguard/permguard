@@ -44,6 +44,7 @@ pub mod envelope;
 pub mod index;
 pub mod journal;
 pub mod record;
+pub mod stream;
 
 pub use chain::{ChainError, Verified};
 

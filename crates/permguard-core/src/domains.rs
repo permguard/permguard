@@ -65,6 +65,8 @@ pub mod digest {
     pub const MEMBERSHIP_MANIFEST: &str = "permguard.membership.manifest.v1\n";
     /// The hash chain of the membership journal (WP-4.1).
     pub const MEMBERSHIP_JOURNAL: &str = "permguard.membership.journal.v1\n";
+    /// A signed stream run statement, as STATE and its successor's predecessor cite it (WP-5.1).
+    pub const STREAM_RUN: &str = "permguard.stream.run.v1\n";
     /// The transcript of a `zone.secrets` delivery: the tuples, the session nonce and the
     /// confirmation MACs, never a key (WP-4.7).
     pub const MEMBERSHIP_ZONE_TRANSCRIPT: &str = "permguard.membership.zone-transcript.v1\n";
@@ -368,6 +370,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("digest.MEMBERSHIP_TOKEN_KEY", digest::MEMBERSHIP_TOKEN_KEY),
         ("digest.MEMBERSHIP_MANIFEST", digest::MEMBERSHIP_MANIFEST),
         ("digest.MEMBERSHIP_JOURNAL", digest::MEMBERSHIP_JOURNAL),
+        ("digest.STREAM_RUN", digest::STREAM_RUN),
         (
             "digest.MEMBERSHIP_ZONE_TRANSCRIPT",
             digest::MEMBERSHIP_ZONE_TRANSCRIPT,

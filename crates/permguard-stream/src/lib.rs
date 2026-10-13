@@ -54,6 +54,7 @@
 
 pub mod cursor;
 pub mod descriptor;
+pub mod engine;
 pub mod frontier;
 pub mod jcs;
 pub mod layout;

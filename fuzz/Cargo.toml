@@ -192,3 +192,10 @@ path = "fuzz_targets/peer_session.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "stream_engine"
+path = "fuzz_targets/stream_engine.rs"
+test = false
+doc = false
+bench = false

@@ -36,7 +36,7 @@ use serde_json::Value as Json;
 
 /// Every registry file. A new file under `contracts/cbor/` is listed here and given samples below,
 /// or the wiring test fails: a registry nothing checks is a registry that drifts.
-const REGISTRIES: [&str; 17] = [
+const REGISTRIES: [&str; 18] = [
     "audit.json",
     "grant.json",
     "head-statement.json",
@@ -54,6 +54,7 @@ const REGISTRIES: [&str; 17] = [
     "operation-plan.json",
     "sealed-key.json",
     "session.json",
+    "stream.json",
 ];
 
 /// The one encoding every registry states.
@@ -1757,6 +1758,118 @@ fn keys_samples() -> Vec<Sample> {
     ]
 }
 
+/// The stream engine's records (WP-5.1): a genesis run and a successor naming every optional
+/// label, a run end, a group of records, a STATE without and with its optional labels.
+fn stream_samples() -> Vec<Sample> {
+    use permguard_stream::engine::{Fence, RunEnd, RunStatement, State, StreamKey};
+
+    let key = StreamKey::new(
+        "data",
+        "decisions",
+        1,
+        "plane/data/zone/z/ledger/l",
+        HOST_ID,
+    )
+    .expect("a key");
+    let end = RunEnd {
+        run_id: [3; 16],
+        last_seq: 2,
+        last_record_digest: [4; 32],
+    };
+    let genesis = RunStatement {
+        key: key.clone(),
+        run_id: [3; 16],
+        producer_boot_id: [5; 16],
+        opened_at: 1_800_000_000,
+        predecessor: None,
+        fence: None,
+        approval: None,
+    };
+    let successor = RunStatement {
+        run_id: [6; 16],
+        predecessor: Some(end),
+        fence: Some(Fence {
+            membership_id: SCOPE_ID,
+            task_id: "decisions".to_owned(),
+            epoch: 4,
+        }),
+        approval: Some([7; 32]),
+        ..genesis.clone()
+    };
+    let state = State {
+        run_id: [3; 16],
+        run_statement_digest: [8; 32],
+        next_seq: 3,
+        durable_seq: 2,
+        signed_seq: 1,
+        acknowledged_seq: 1,
+        oldest_retained_seq: 1,
+        pending_successor: None,
+        forked_at_seq: None,
+    };
+    let statement_decoder = || -> Option<Decoder> {
+        Some(Box::new(|bytes: &[u8]| {
+            verdict(RunStatement::decode(bytes))
+        }))
+    };
+    let state_decoder =
+        || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(State::decode(bytes)))) };
+    vec![
+        sample(
+            "run_statement",
+            genesis.encode().expect("encodes"),
+            &[],
+            statement_decoder(),
+        ),
+        sample(
+            "run_statement",
+            successor.encode().expect("encodes"),
+            &[
+                "run_statement.predecessor",
+                "run_statement.fence",
+                "run_statement.approval",
+            ],
+            statement_decoder(),
+        ),
+        sample(
+            "run_end",
+            end.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(RunEnd::decode(bytes)))),
+        ),
+        sample(
+            "records_group",
+            permguard_stream::engine::encode_group(1, [b"a".as_slice(), b"b".as_slice()])
+                .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(permguard_stream::engine::decode_group(bytes))
+            })),
+        ),
+        sample(
+            "stream_state",
+            state.encode().expect("encodes"),
+            &[],
+            state_decoder(),
+        ),
+        sample(
+            "stream_state",
+            State {
+                pending_successor: Some(vec![9; 40]),
+                forked_at_seq: Some(2),
+                ..state
+            }
+            .encode()
+            .expect("encodes"),
+            &[
+                "stream_state.pending_successor",
+                "stream_state.forked_at_seq",
+            ],
+            state_decoder(),
+        ),
+    ]
+}
+
 fn session_samples() -> Vec<Sample> {
     use permguard_core::assurance::AssuranceProfile;
     use permguard_host::session::peers::Seen;
@@ -2387,6 +2500,7 @@ fn samples(file: &str) -> Vec<Sample> {
         "mutation.json" => mutation_samples(),
         "identity.json" => identity_samples(),
         "session.json" => session_samples(),
+        "stream.json" => stream_samples(),
         "keys.json" => keys_samples(),
         "keys-bundle.json" => keys_bundle_samples(),
         "membership.json" => membership_samples(),

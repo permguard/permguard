@@ -42,3 +42,5 @@ permguard-events.workspace = true
 permguard-host.workspace = true
 permguard-notp.workspace = true
 permguard-objects.workspace = true
+# The legacy stream engines the structural check allows (WP-5.1).
+permguard-stream.workspace = true
