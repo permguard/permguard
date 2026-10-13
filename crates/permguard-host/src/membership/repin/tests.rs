@@ -607,6 +607,125 @@ async fn a_streamless_cutover_retires_the_replaced_pin_once_the_key_activated() 
     assert_eq!(acting.cutover_due(who()).await, 0, "nothing retires twice");
 }
 
+/// `(ring, kid, streams)` an engine was told the coordinator journaled.
+type Journaled = (String, String, Vec<(String, u64)>);
+
+/// The stream engine a member's cutover asks: what it answers, and what it was told.
+#[derive(Default)]
+struct Engine {
+    due: std::sync::Mutex<Option<Vec<(String, u64)>>>,
+    asked: std::sync::Mutex<Vec<([u8; 16], String, String)>>,
+    journaled: std::sync::Mutex<Vec<Journaled>>,
+}
+
+impl crate::composition::StreamCutovers for Engine {
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String> {
+        self.asked
+            .lock()
+            .expect("lock")
+            .push((*membership_id, ring.to_owned(), kid.to_owned()));
+        self.due
+            .lock()
+            .expect("lock")
+            .clone()
+            .ok_or_else(|| "the streams cannot be read".to_owned())
+    }
+
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
+        self.journaled.lock().expect("lock").push((
+            ring.to_owned(),
+            kid.to_owned(),
+            streams.to_vec(),
+        ));
+        Ok(())
+    }
+}
+
+/// WP-5.2: a member signing streams under the ring names each of them in its cutover, from the
+/// first sequence the engine says the new key seals, and tells the engine once the coordinator
+/// journaled it; the replaced pin stays until they are acknowledged. An engine that cannot tell
+/// its streams gets no cutover sent, never a stream-less one.
+#[tokio::test]
+async fn a_member_sends_its_streams_cutover_from_the_engine() {
+    let c = Side::new("streams-c", true);
+    let wall = Arc::new(crate::time::ManualClock::at(
+        i64::try_from(crate::authz::store::now()).expect("in range"),
+    ));
+    let mono = Arc::new(crate::time::ManualMonotonic::default());
+    let time = Arc::new(crate::time::TimeGuard::new(
+        wall.clone(),
+        mono.clone(),
+        Duration::from_secs(30),
+    ));
+    let m = Side::timed(Host::timed("streams-m", Arc::clone(&time)), false, time);
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Engine::default();
+    let acting = crate::membership::member::Member {
+        streams: Some(&engine),
+        ..member(&m, &connector)
+    };
+    let replaced = member_pins(&manifest_of(&c, &id))[0].0;
+    let epoch = rotate(&m.host, DATA_ATTEST, 102);
+    assert_eq!(acting.repin_due(who()).await, 1);
+    wall.jump(601);
+    mono.advance(Duration::from_secs(601));
+    let ring = m
+        .host
+        .rings
+        .iter()
+        .find(|ring| ring.id() == DATA_ATTEST)
+        .expect("the ring");
+    ring.maintain_now().expect("activated");
+    let kid = ring.active_key_id().expect("a key").as_str().to_owned();
+    // The engine cannot tell its streams: nothing is sent.
+    assert_eq!(acting.cutover_due(who()).await, 0);
+    assert!(c.host.store.cutover(&id, DATA_ATTEST).is_none());
+    assert_eq!(
+        engine.asked.lock().expect("lock").clone(),
+        vec![(id, DATA_ATTEST.to_owned(), kid.clone())]
+    );
+    engine.asked.lock().expect("lock").clear();
+    // A stream named from two sequences: nothing is sent.
+    *engine.due.lock().expect("lock") = Some(vec![
+        ("data/events/cc/dd".to_owned(), 1),
+        ("data/events/cc/dd".to_owned(), 2),
+    ]);
+    assert_eq!(acting.cutover_due(who()).await, 0);
+    assert!(c.host.store.cutover(&id, DATA_ATTEST).is_none());
+    let streams = vec![
+        ("data/events/cc/dd".to_owned(), 1),
+        ("data/decisions/aa/bb".to_owned(), 3),
+    ];
+    *engine.due.lock().expect("lock") = Some(streams.clone());
+    assert_eq!(acting.cutover_due(who()).await, 1);
+    let journaled = c.host.store.cutover(&id, DATA_ATTEST).expect("journaled");
+    assert_eq!(journaled.epoch, epoch);
+    assert_eq!(
+        journaled.streams,
+        streams
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeMap<_, _>>()
+    );
+    let mut sorted = streams;
+    sorted.sort();
+    assert_eq!(
+        engine.journaled.lock().expect("lock").clone(),
+        vec![(DATA_ATTEST.to_owned(), kid, sorted)]
+    );
+    assert_eq!(
+        member_pins(&manifest_of(&c, &id)),
+        vec![(epoch, false), (replaced, true)],
+        "the replaced set verifies below each stream's cutover until acknowledged"
+    );
+}
+
 /// WP-4.5 (after the review): a complete cutover whose retirement did not run, a crash between
 /// the acknowledgement and the revision, is retired by the pass.
 #[tokio::test]

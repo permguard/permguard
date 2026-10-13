@@ -846,6 +846,7 @@ pub(crate) mod testing {
                 // these controls are untouched (WP-4.2).
                 appraisal: crate::membership::appraisal::tests::appraisal(),
                 live: Arc::default(),
+                streams: None,
             })),
         });
         (api, store, volume)

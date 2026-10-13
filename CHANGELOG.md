@@ -19,6 +19,16 @@ is cut.
 
 ### Added
 
+- **Sealed stream batches, and stream cutovers on a re-pin.**
+  A producer handed its descriptor's ring now seals its durable records into batches under `batches/<run>/<first>-<last>.jws` beside the stream.
+  A batch is canonical JSON: a flattened JWS whose protected header names the descriptor's batch `typ`, the algorithm of the signing key and its `kid`, and the record bytes.
+  The signed envelope names the stream key, the run, its membership and epoch when fenced, the range, the count, the head, the head before it (zeros at a run's first batch), the Merkle root over the record digests, the batch id, the time and the ring epoch.
+  A batch is durable before the seal answers it, never signed again, and a crash between it and its bookkeeping leaves it sealed; the oldest run with unsealed records is sealed first.
+  `signers.cbor` keeps, per run, the spans of the keys that signed it with each key's JWK, so a batch verifies after its key left the ring; a span is only ever appended.
+  Under a membership's fence, a rotated key seals nothing until the coordinator journaled the stream's cutover at its next sequence.
+  A member's cutover now names those streams, and is stream-less only when the Host signs none; a stream engine that cannot list its streams gets no cutover sent.
+  The server seals the decision log's and the event journal's batches under `data.attest`.
+
 - **The Host's stream engine.**
   `permguard-stream` gains the engine every Plane is to register its streams with instead of keeping a journal of its own.
   A versioned descriptor names the stream, its batch `typ`, record domain, codec, event types, resource shape, limits, retention, signing ring and membership task, and a change of a protected field is refused unless the version moves.

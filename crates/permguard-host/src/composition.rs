@@ -1094,6 +1094,24 @@ pub trait StreamAppender: Send + Sync {
     fn append(&self, resource: &Resource, record: &[u8]) -> Result<StreamReceipt, String>;
 }
 
+/// The streams this Host signs under a member ring, as a re-pin cuts them over to the ring's new
+/// key (WP-4.5, WP-5.2): the engine lives in `permguard-stream`, the membership side here.
+pub trait StreamCutovers: Send + Sync {
+    /// `(stream, from_seq)` of every stream fenced by `membership_id` whose batches `ring`
+    /// signs, from the first sequence its key `kid` seals: each recorded pending until journaled.
+    /// An error means the streams are unknown, never that there are none.
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String>;
+
+    /// The coordinator journaled the cutover of `streams` to `ring`'s key `kid`: each seals under
+    /// it from its `from_seq`.
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String>;
+}
+
 /// The Host's stream engine as composition reaches it (WP-5.1, interpretation): the engine lives
 /// in `permguard-stream`, which depends on this crate, so the server hands it in through this.
 pub trait StreamEngine: Send + Sync {

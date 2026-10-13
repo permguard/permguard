@@ -999,6 +999,36 @@
       "limit": "`MAX_GROUP_FRAME_BYTES`, checked by the decoder before it parses, and at most `MAX_GROUP_RECORDS` records: a RECORDS frame (WP-5.1)",
       "enforced_at_decoder": true,
       "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/producer/seal.rs",
+      "item": "Spans::decode",
+      "entry": "permguard_stream::engine::Spans::decode",
+      "max_input_bytes": 1048576,
+      "limit": "`MAX_SIGNERS_BYTES`, checked by the decoder before it parses: a producer stream's `signers.cbor` (WP-5.2)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/producer/seal.rs",
+      "item": "Cutover::decode",
+      "entry": "permguard_stream::engine::Cutover::decode",
+      "max_input_bytes": 4096,
+      "limit": "`MAX_CUTOVER_BYTES`, checked by the decoder before it parses: a producer stream's CUTOVER (WP-5.2)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/batch.rs",
+      "item": "SealedBatch::decode",
+      "entry": "permguard_stream::engine::batch::SealedBatch::decode",
+      "max_input_bytes": 16777216,
+      "limit": "`engine::batch::MAX_BATCH_FILE_BYTES`, checked by the decoder before it parses: a sealed batch file, canonical JSON (WP-5.2)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
     }
   ],
   "trusted": [
@@ -1316,6 +1346,11 @@
       "source": "crates/permguard-stream/src/engine/run.rs",
       "item": "RunStatement::verify",
       "reason": "parses only through `Sign1::decode` and `RunStatement::decode`, both registered and fuzzed; it reads the RUN_OPEN frames of the Host's own volume"
+    },
+    {
+      "source": "crates/permguard-stream/src/engine/batch.rs",
+      "item": "SealedBatch::verify",
+      "reason": "reads a batch `SealedBatch::decode` already bounded and parsed, registered and fuzzed; its header and envelope parse only through `jcs::decode_canonical`, registered and fuzzed"
     }
   ]
 }

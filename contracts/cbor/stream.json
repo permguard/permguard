@@ -1,6 +1,6 @@
 {
-  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, and a producer stream's STATE",
-  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs and producer.rs",
+  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, and its signer spans and pending cutover (WP-5.2)",
+  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs and producer/seal.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "run_statement": {
@@ -55,8 +55,40 @@
         { "label": 8, "name": "pending_successor", "type": "bytes", "occurs": "optional", "note": "the signed statement of a rollover begun and not yet written" },
         { "label": 9, "name": "forked_at_seq", "type": "uint", "occurs": "optional", "note": "the sequence a consumer reported a fork at" }
       ]
+    },
+    "stream_signers": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "runs", "type": "array<map:run_signers>", "occurs": "required", "note": "each run that sealed a batch, once, in run order; at most 1 MiB in all (`MAX_SIGNERS_BYTES`)" }
+      ]
+    },
+    "run_signers": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "spans", "type": "array<map:signer_span>", "occurs": "required", "note": "at least one, each starting after the one before; only ever appended" }
+      ]
+    },
+    "signer_span": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "from_seq", "type": "uint", "occurs": "required", "note": "at least 1: the first sequence of the run the key signs" },
+        { "label": 2, "name": "kid", "type": "text", "occurs": "required", "note": "the key's id in the descriptor's ring" },
+        { "label": 3, "name": "jwk", "type": "text", "occurs": "required", "note": "the public key's JWK as RFC 8785 canonical JSON naming `kid`: a batch verifies after its key left the ring" }
+      ]
+    },
+    "stream_cutover": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "stream", "type": "text", "occurs": "required", "note": "`<plane>/<type>/<sha256(resource) hex>/<run hex>`" },
+        { "label": 2, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the membership fencing the run" },
+        { "label": 3, "name": "ring", "type": "text", "occurs": "required", "note": "the descriptor's ring" },
+        { "label": 4, "name": "kid", "type": "text", "occurs": "required", "note": "the new key, which seals nothing before the cutover is journaled" },
+        { "label": 5, "name": "from_seq", "type": "uint", "occurs": "required", "note": "the first sequence the new key seals" },
+        { "label": 6, "name": "confirmed", "type": "bool", "occurs": "required", "note": "whether the coordinator journaled it (WP-4.5); at most 4096 bytes in all (`MAX_CUTOVER_BYTES`)" }
+      ]
     }
   },
   "arrays": {},
-  "root": ["run_statement", "run_end", "records_group", "stream_state"]
+  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover"]
 }

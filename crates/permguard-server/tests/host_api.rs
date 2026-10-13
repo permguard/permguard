@@ -302,6 +302,7 @@ fn facade(tag: &str) -> Arc<HostApi> {
             connector: None,
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
             live: Arc::default(),
+            streams: None,
         })),
     }))
 }

@@ -664,14 +664,28 @@ impl Journal {
     /// Every frame, oldest first. A handle given up answers nothing: what it would read is the
     /// page cache, which may hold a frame that was never acknowledged.
     pub fn frames(&self) -> Result<Vec<Frame>> {
+        self.frames_from(0)
+    }
+
+    /// The frames from `index` on, oldest first: a segment wholly before it is not read (WP-5.2).
+    pub fn frames_from(&self, index: u64) -> Result<Vec<Frame>> {
         if self.poisoned {
             return Err(StorageError::Poisoned);
         }
         let mut all = Vec::new();
-        for (first, name) in &self.segments {
+        for (at, (first, name)) in self.segments.iter().enumerate() {
+            if self
+                .segments
+                .get(at + 1)
+                .is_some_and(|(next, _)| *next <= index)
+            {
+                continue;
+            }
             let bytes = self.dir.read(name)?.unwrap_or_default();
             match scan(&bytes, *first, name)? {
-                Scan::Whole { frames, .. } => all.extend(frames),
+                Scan::Whole { frames, .. } => {
+                    all.extend(frames.into_iter().filter(|frame| frame.index >= index));
+                }
                 Scan::Torn { .. } => {
                     return Err(StorageError::Corruption(format!(
                         "segment `{name}` changed under an open journal"
@@ -1267,6 +1281,49 @@ mod tests {
         );
         assert_eq!(&bytes[52..54], &7u16.to_be_bytes(), "its type");
         assert_eq!(&bytes[54..62], &0u64.to_be_bytes(), "its claim generation");
+    }
+
+    /// WP-5.2: the frames from an index are those `frames` answers from it, across segments, and a
+    /// segment wholly before it is not read.
+    #[test]
+    fn frames_from_an_index_skip_the_segments_before_it() {
+        let path = scratch("from");
+        let options = Options {
+            segment_bytes: 100,
+            ..Options::default()
+        };
+        let (mut journal, _) = open(&path, options);
+        for n in 0..12u8 {
+            journal.append(1, &[n; 40]).expect("appended");
+        }
+        assert!(journal.segments().len() > 3, "the segments rolled");
+        let all = journal.frames().expect("read");
+        for from in [0, 1, 5, 11, 12, 40] {
+            assert_eq!(
+                journal.frames_from(from).expect("read"),
+                all.iter()
+                    .filter(|frame| frame.index >= from)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                "from {from}"
+            );
+        }
+        // A segment wholly before the index is not read: removing it changes nothing from there.
+        std::fs::remove_file(path.join(segment_name(0))).expect("removed");
+        let later = journal.segments()[2].clone();
+        let first_later = all
+            .iter()
+            .map(|frame| frame.index)
+            .find(|index| segment_name(*index) == later)
+            .expect("the third segment's first frame");
+        assert_eq!(
+            journal.frames_from(first_later).expect("read").len() as u64,
+            12 - first_later
+        );
+        assert!(
+            journal.frames().expect("read").len() < all.len(),
+            "the whole journal reads the removed one"
+        );
     }
 
     #[test]

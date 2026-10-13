@@ -1202,6 +1202,7 @@ pub(crate) mod protocol {
             connector,
             declared_assurance: AssuranceProfile::Production,
             time: &side.context.time,
+            streams: None,
         }
     }
 

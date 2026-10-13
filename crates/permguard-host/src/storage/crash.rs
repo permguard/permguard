@@ -18,6 +18,14 @@
 /// The environment variable a crash-point test sets in the child it will kill.
 pub const CRASH_AT: &str = "PERMGUARD_CRASH_AT";
 
+/// Which pass through the point aborts, from 1; the first when absent (WP-5.2): a protocol a
+/// process runs many times is crashed at its n-th run, not only its first.
+pub const CRASH_HIT: &str = "PERMGUARD_CRASH_HIT";
+
+/// The passes through the named point so far.
+#[cfg(feature = "crash-points")]
+static HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Every crash point, in the order each protocol reaches them.
 pub const POINTS: &[&str] = &[
     "immutable.temp_created",
@@ -68,12 +76,19 @@ pub const POINTS: &[&str] = &[
     "mutation.snapshot_written",
 ];
 
-/// The crash point `name`: aborts here when this process was told to.
+/// The crash point `name`: aborts here when this process was told to, at the pass it was told.
 #[inline]
 pub fn point(name: &'static str) {
     #[cfg(feature = "crash-points")]
     if std::env::var(CRASH_AT).as_deref() == Ok(name) {
-        std::process::abort();
+        let hit = HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let at = std::env::var(CRASH_HIT)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(1);
+        if hit >= at {
+            std::process::abort();
+        }
     }
     #[cfg(not(feature = "crash-points"))]
     let _ = name;

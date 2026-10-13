@@ -1759,9 +1759,12 @@ fn keys_samples() -> Vec<Sample> {
 }
 
 /// The stream engine's records (WP-5.1): a genesis run and a successor naming every optional
-/// label, a run end, a group of records, a STATE without and with its optional labels.
+/// label, a run end, a group of records, a STATE without and with its optional labels; a
+/// stream's signer spans and its cutover (WP-5.2).
 fn stream_samples() -> Vec<Sample> {
-    use permguard_stream::engine::{Fence, RunEnd, RunStatement, State, StreamKey};
+    use permguard_stream::engine::{
+        Cutover, Fence, RunEnd, RunStatement, Span, Spans, State, StreamKey,
+    };
 
     let key = StreamKey::new(
         "data",
@@ -1806,6 +1809,39 @@ fn stream_samples() -> Vec<Sample> {
         oldest_retained_seq: 1,
         pending_successor: None,
         forked_at_seq: None,
+    };
+    // WP-5.2: a stream's signer spans, two runs, the second with two keys, and its cutover.
+    let span = |from_seq: u64, kid: &str| Span {
+        from_seq,
+        kid: kid.to_owned(),
+        jwk: permguard_stream::engine::canonical_jwk(&permguard_core::keys::Jwk::okp(
+            kid,
+            "Ed25519",
+            "EdDSA",
+            "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        ))
+        .expect("canonical"),
+    };
+    let signers = Spans {
+        runs: vec![
+            ([3; 16], vec![span(1, "data.attest:a")]),
+            (
+                [6; 16],
+                vec![span(1, "data.attest:a"), span(9, "data.attest:b")],
+            ),
+        ],
+    };
+    let cutover = Cutover {
+        stream: format!(
+            "data/decisions/{}/{}",
+            key.resource_component(),
+            "06".repeat(16)
+        ),
+        membership_id: SCOPE_ID,
+        ring: "data.attest".to_owned(),
+        kid: "data.attest:b".to_owned(),
+        from_seq: 9,
+        confirmed: true,
     };
     let statement_decoder = || -> Option<Decoder> {
         Some(Box::new(|bytes: &[u8]| {
@@ -1866,6 +1902,18 @@ fn stream_samples() -> Vec<Sample> {
                 "stream_state.forked_at_seq",
             ],
             state_decoder(),
+        ),
+        sample(
+            "stream_signers",
+            signers.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Spans::decode(bytes)))),
+        ),
+        sample(
+            "stream_cutover",
+            cutover.encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Cutover::decode(bytes)))),
         ),
     ]
 }

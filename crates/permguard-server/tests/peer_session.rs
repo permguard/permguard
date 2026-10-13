@@ -736,6 +736,7 @@ async fn side_with(
             connector: connector.clone(),
             appraisal: permguard_host::membership::appraisal::Appraisal::default(),
             live: Arc::clone(&tasks.live),
+            streams: None,
         })),
     }));
     let listener = Surface::listener(
@@ -1209,6 +1210,7 @@ async fn a_member_opens_a_task_session_over_mutual_tls_and_the_coordinator_lists
         connector: member.connector.as_deref().expect("a peer client"),
         declared_assurance: AssuranceProfile::Production,
         time: &member.host.time,
+        streams: None,
     };
     let membership_id = coordinator
         .members
@@ -1466,6 +1468,7 @@ async fn an_expired_or_revoked_member_cannot_open_a_task_session() {
         connector: member.connector.as_deref().expect("a peer client"),
         declared_assurance: AssuranceProfile::Production,
         time: &member.host.time,
+        streams: None,
     };
     let membership_id = coordinator
         .members

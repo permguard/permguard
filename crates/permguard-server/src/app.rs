@@ -1204,12 +1204,14 @@ impl App {
     }
 
     /// The stream engine of this Host on `volume`, the decision log and the event journal
-    /// registered on it as producers (WP-5.1, owner decision).
+    /// registered on it as producers (WP-5.1, owner decision), sealing their batches under
+    /// `data_attest` when the Host holds it (WP-5.2).
     fn stream_engine(
         &self,
         volume: &permguard_host::storage::volume::Volume,
         identity: &permguard_host::identity::Identity,
         operations: &Arc<permguard_host::keys::ring::Ring>,
+        data_attest: Option<&Arc<permguard_host::keys::ring::Ring>>,
         time: &Arc<permguard_host::time::TimeGuard>,
     ) -> Result<permguard_stream::engine::Served, permguard_stream::engine::StreamError> {
         let engine = permguard_stream::engine::Streams::open(
@@ -1218,14 +1220,18 @@ impl App {
             Arc::clone(operations),
             Arc::clone(time),
         )?;
-        let decisions = engine.register_producer(
+        let mut decisions = engine.register_producer(
             permguard_decisions::stream::descriptor(),
             permguard_decisions::stream::Codec,
         )?;
-        let events = engine.register_producer(
+        let mut events = engine.register_producer(
             permguard_events::stream::descriptor(),
             permguard_events::stream::Codec,
         )?;
+        if let Some(ring) = data_attest {
+            decisions = decisions.with_signer(Arc::clone(ring))?;
+            events = events.with_signer(Arc::clone(ring))?;
+        }
         Ok(permguard_stream::engine::Served::default()
             .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
             .with(permguard_events::stream::STREAM, Arc::new(events)))
@@ -1778,9 +1784,15 @@ impl App {
         // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
         let streams = match keys.as_ref() {
             Some(operations) => Some(Arc::new(
-                self.stream_engine(&volume, &host_identity, operations, &time)
-                    .map_err(|error| anyhow::anyhow!("{error}"))
-                    .context("opening the stream engine")?,
+                self.stream_engine(
+                    &volume,
+                    &host_identity,
+                    operations,
+                    data_signing_keys.as_ref(),
+                    &time,
+                )
+                .map_err(|error| anyhow::anyhow!("{error}"))
+                .context("opening the stream engine")?,
             )),
             None => None,
         };
@@ -2012,6 +2024,10 @@ impl App {
                     connector,
                     appraisal,
                     live: Arc::clone(&tasks.live),
+                    // The streams a re-pin cuts over (WP-5.2).
+                    streams: streams.clone().map(|engine| {
+                        engine as Arc<dyn permguard_host::composition::StreamCutovers>
+                    }),
                 })),
             });
             let api = Arc::new(api);

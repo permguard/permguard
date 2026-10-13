@@ -31,6 +31,12 @@ use super::run::{Fence, RunEnd, RunStatement, statement_digest};
 use super::state::State;
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
 
+mod seal;
+
+pub use seal::{
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Sealing, Span, Spans, canonical_jwk,
+};
+
 /// The frame kinds of a producer's journal.
 pub(crate) const RUN_OPEN: u16 = 1;
 pub(crate) const RECORDS: u16 = 2;
@@ -72,6 +78,8 @@ pub struct Producer<C> {
     descriptor: Descriptor,
     codec: C,
     streams: Mutex<BTreeMap<String, Arc<Physical>>>,
+    /// The descriptor's ring, once the Host handed it: what batches are sealed under.
+    signer: Option<Arc<Ring>>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -91,7 +99,127 @@ impl<C: RecordCodec> Producer<C> {
             descriptor,
             codec,
             streams: Mutex::new(BTreeMap::new()),
+            signer: None,
         }
+    }
+
+    /// This producer sealing its batches under `signer`, the ring its descriptor names.
+    pub fn with_signer(mut self, signer: Arc<Ring>) -> Result<Self, StreamError> {
+        if signer.id() != self.descriptor.ring {
+            return Err(StreamError::Sign(format!(
+                "`{}/{}` seals under `{}`, not `{}`",
+                self.descriptor.plane,
+                self.descriptor.stream_type,
+                self.descriptor.ring,
+                signer.id()
+            )));
+        }
+        self.signer = Some(signer);
+        Ok(self)
+    }
+
+    /// Seals the next batch of the stream of `resource`, at most `max_records` and never more
+    /// than the descriptor's batch bound: answers it once its file is durable.
+    pub fn seal(&self, resource: &Resource, max_records: u64) -> Result<Sealing, StreamError> {
+        let Some(signer) = &self.signer else {
+            return Err(StreamError::Sign(
+                "the producer was handed no ring to seal under".to_owned(),
+            ));
+        };
+        let bound = max_records.min(u64::from(self.descriptor.max_batch_records));
+        self.physical(resource)?
+            .seal(&self.context, &self.descriptor, signer, bound)
+    }
+
+    /// The signer spans of the stream of `resource`.
+    pub fn spans(&self, resource: &Resource) -> Result<Spans, StreamError> {
+        let physical = self.physical(resource)?;
+        let writer = physical.writer();
+        seal::spans_of(&writer.dir)
+    }
+
+    /// The cutovers this producer's streams wait for, as their CUTOVER views hold them.
+    pub fn pending_cutovers(&self) -> Result<Vec<Cutover>, StreamError> {
+        let mut found = Vec::new();
+        for physical in self.every()? {
+            if let Some(cutover) = seal::cutover_of(&physical.writer().dir)?
+                && !cutover.confirmed
+            {
+                found.push(cutover);
+            }
+        }
+        Ok(found)
+    }
+
+    /// `(stream, from_seq)` of every stream fenced by `membership_id` that needs a cutover before
+    /// the descriptor ring's key `kid` seals it, each recorded pending (WP-4.5, WP-5.2).
+    pub fn due_cutovers(
+        &self,
+        membership_id: &[u8; 16],
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, StreamError> {
+        let Some(signer) = &self.signer else {
+            return Err(StreamError::Sign(
+                "the producer was handed no ring to seal under".to_owned(),
+            ));
+        };
+        let mut due = Vec::new();
+        for physical in self.every()? {
+            if let Some(stream) = physical.due(&self.descriptor, signer, membership_id, kid)? {
+                due.push(stream);
+            }
+        }
+        Ok(due)
+    }
+
+    /// Records that the coordinator journaled the cutover of `stream` to `kid`: the key seals
+    /// from the sequence the cutover names. Refuses a cutover the stream does not wait for.
+    pub fn confirm_cutover(&self, stream: &str, kid: &str) -> Result<(), StreamError> {
+        confirm(&self.every()?, stream, kid)
+    }
+
+    /// Every stream of this producer on disk, opened: the key of one not open yet read from the
+    /// run its journal starts with, and refused unless it is this producer's at that place. A
+    /// stream is opened under the map's lock, as `physical` opens one, so no journal is ever held
+    /// twice; once open it stays in the map, and a later call only lists the directory.
+    fn every(&self) -> Result<Vec<Arc<Physical>>, StreamError> {
+        let mut streams = self.streams.lock().unwrap_or_else(PoisonError::into_inner);
+        let host = hex(&self.context.host_id);
+        let mut found = Vec::new();
+        for component in self.context.dir.subdirs()? {
+            if let Some(open) = streams
+                .values()
+                .find(|physical| physical.key.resource_component() == component)
+            {
+                found.push(Arc::clone(open));
+                continue;
+            }
+            let dir = self.context.dir.subdir(&component, false)?;
+            if !dir.subdirs()?.contains(&host) {
+                continue;
+            }
+            let Some(key) = Physical::key_of(&self.context, &dir.subdir(&host, false)?)? else {
+                continue;
+            };
+            let ours = key.plane == self.descriptor.plane
+                && key.stream_type == self.descriptor.stream_type
+                && key.version == self.descriptor.version
+                && key.producer_host_id == self.context.host_id
+                && key.resource_component() == component;
+            if !ours {
+                return Err(StreamError::Corruption(format!(
+                    "the stream at `{component}` opens a run of another stream"
+                )));
+            }
+            let physical = Arc::new(Physical::open(
+                &self.context,
+                &self.descriptor,
+                key.clone(),
+            )?);
+            streams.insert(key.resource, Arc::clone(&physical));
+            found.push(physical);
+        }
+        Ok(found)
     }
 
     /// The physical stream of `resource`, opened and recovered on first use.
@@ -254,6 +382,8 @@ struct Writer {
     /// Whether RESERVE holds allocated blocks; `false` where the filesystem cannot, which leaves
     /// the stream to closed pressure.
     reserved: bool,
+    /// Where the next seal starts, while its run is current (WP-5.2).
+    next: Option<seal::Next>,
 }
 
 /// The sequences given and made durable, behind their own lock.
@@ -328,6 +458,32 @@ pub fn decode_group(bytes: &[u8]) -> Result<(u64, Vec<Vec<u8>>), StreamError> {
     Ok((first, records))
 }
 
+/// Confirms the cutover of `stream` to `kid` among `streams`: refused unless it is the cutover
+/// that stream waits for.
+fn confirm(streams: &[Arc<Physical>], stream: &str, kid: &str) -> Result<(), StreamError> {
+    let component = stream
+        .split('/')
+        .nth(2)
+        .ok_or_else(|| StreamError::Invalid(format!("`{stream}` names no stream")))?;
+    let physical = streams
+        .iter()
+        .find(|physical| physical.key.resource_component() == component)
+        .ok_or_else(|| StreamError::Invalid(format!("`{stream}` is no stream of this Host")))?;
+    let writer = physical.writer();
+    match seal::cutover_of(&writer.dir)? {
+        Some(mut cutover) if cutover.stream == stream && cutover.kid == kid => {
+            if !cutover.confirmed {
+                cutover.confirmed = true;
+                seal::keep_cutover(&writer.dir, &cutover)?;
+            }
+            Ok(())
+        }
+        _ => Err(StreamError::Invalid(format!(
+            "`{stream}` waits for no cutover to `{kid}`"
+        ))),
+    }
+}
+
 fn random_id() -> Result<[u8; 16], StreamError> {
     use ring::rand::SecureRandom as _;
     let mut bytes = [0u8; 16];
@@ -363,10 +519,16 @@ impl Physical {
             },
         )?;
         let mut runs: Vec<Run> = Vec::new();
+        let mut keys: Option<Vec<permguard_core::keys::Jwk>> = None;
         for frame in journal.frames()? {
             match frame.kind {
                 RUN_OPEN => {
-                    let statement = RunStatement::verify_own(&frame.payload, &context.operations)?;
+                    // The ring's keys read once for every run the segments open (WP-5.2).
+                    if keys.is_none() {
+                        keys = Some(super::run::own_keys(&context.operations)?);
+                    }
+                    let statement =
+                        RunStatement::verify_among(&frame.payload, keys.as_deref().unwrap_or(&[]))?;
                     if statement.key != key {
                         return Err(StreamError::Corruption(format!(
                             "frame {} opens a run of another stream",
@@ -438,6 +600,7 @@ impl Physical {
             state,
             dir,
             reserved,
+            next: None,
         };
         writer.reconcile(context, &runs)?;
         let mut queue = Queue::default();
@@ -453,6 +616,29 @@ impl Physical {
             queue: Mutex::new(queue),
             moved: Condvar::new(),
         })
+    }
+
+    /// The key of the stream whose directory is `dir`, from the run its journal starts with,
+    /// verified; `None` when it holds no run.
+    fn key_of(context: &Context, dir: &Dir) -> Result<Option<StreamKey>, StreamError> {
+        if !dir.subdirs()?.iter().any(|name| name == RECORDS_DIR) {
+            return Ok(None);
+        }
+        let (journal, _) = Journal::open(
+            dir.subdir(RECORDS_DIR, false)?,
+            Options {
+                claim: context.claim,
+                ..Options::default()
+            },
+        )?;
+        for frame in journal.frames()? {
+            if frame.kind == RUN_OPEN {
+                return Ok(Some(
+                    RunStatement::verify_own(&frame.payload, &context.operations)?.key,
+                ));
+            }
+        }
+        Ok(None)
     }
 
     fn writer(&self) -> MutexGuard<'_, Writer> {
@@ -699,6 +885,29 @@ impl Physical {
 }
 
 impl Writer {
+    /// Moves STATE's `signed_seq` to `signed`, the watermark the batch files of `run` cover.
+    fn keep_signed(&mut self, run: &Run, signed: u64) -> Result<(), StreamError> {
+        let Some(mut state) = self
+            .state
+            .clone()
+            .filter(|state| state.run_id == run.statement.run_id)
+        else {
+            return Err(StreamError::Corruption(
+                "STATE names another run than the stream writes".to_owned(),
+            ));
+        };
+        if state.signed_seq == signed {
+            return Ok(());
+        }
+        // The head moves with it: a watermark never passes the durable one STATE names.
+        state.next_seq = run.last_seq + 1;
+        state.durable_seq = run.last_seq;
+        state.signed_seq = signed;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
     /// Writes STATE for `run`: its watermarks at the head, with `pending` and `forked`.
     fn keep_state(
         &mut self,
@@ -837,5 +1046,40 @@ impl<C: RecordCodec> permguard_host::composition::StreamAppender for Producer<C>
                 seq: receipt.seq,
             })
             .map_err(|error| error.to_string())
+    }
+}
+
+impl<C: RecordCodec> permguard_host::composition::StreamCutovers for Producer<C> {
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String> {
+        if ring != self.descriptor.ring {
+            return Ok(Vec::new());
+        }
+        self.due_cutovers(membership_id, kid)
+            .map_err(|error| error.to_string())
+    }
+
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
+        if ring != self.descriptor.ring {
+            return Ok(());
+        }
+        let ours = format!("{}/{}/", self.descriptor.plane, self.descriptor.stream_type);
+        let mine: Vec<&(String, u64)> = streams
+            .iter()
+            .filter(|(stream, _)| stream.starts_with(&ours))
+            .collect();
+        if mine.is_empty() {
+            return Ok(());
+        }
+        // The streams on disk, listed once for them all (after the review).
+        let every = self.every().map_err(|error| error.to_string())?;
+        for (stream, _) in mine {
+            confirm(&every, stream, kid).map_err(|error| error.to_string())?;
+        }
+        Ok(())
     }
 }

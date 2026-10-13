@@ -82,6 +82,7 @@ fn hosting<'a>(side: &'a Side, connector: &'a dyn Connector) -> Member<'a> {
         connector,
         declared_assurance: permguard_core::assurance::AssuranceProfile::Production,
         time: &side.context.time,
+        streams: None,
     }
 }
 

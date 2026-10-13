@@ -36,6 +36,7 @@
 //! consumer stores and indexes the structural check found beside them. No other Plane code keeps
 //! a journal (`permguard-conformance` `stream_engines`).
 
+pub mod batch;
 pub(crate) mod codec;
 mod consumer;
 mod producer;
@@ -59,7 +60,10 @@ use permguard_objects::cbor::Value;
 use sha2::{Digest as _, Sha256};
 
 pub use consumer::Consumer;
-pub use producer::{Producer, Receipt, decode_group, encode_group};
+pub use producer::{
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Producer, Receipt, Sealing, Span, Spans,
+    canonical_jwk, decode_group, encode_group,
+};
 pub use run::{Fence, RunEnd, RunStatement};
 pub use state::State;
 
@@ -519,11 +523,13 @@ impl Streams {
 }
 
 /// The producers the engine serves, by the name a Plane declares its stream under: what the
-/// server hands the composition as its [`permguard_host::composition::StreamEngine`].
+/// server hands the composition as its [`permguard_host::composition::StreamEngine`], and the
+/// membership side as its [`permguard_host::composition::StreamCutovers`] (WP-5.2).
 #[derive(Default)]
 pub struct Served {
     producers:
         std::collections::BTreeMap<String, Arc<dyn permguard_host::composition::StreamAppender>>,
+    cutovers: Vec<Arc<dyn permguard_host::composition::StreamCutovers>>,
 }
 
 impl fmt::Debug for Served {
@@ -534,12 +540,17 @@ impl fmt::Debug for Served {
 
 impl Served {
     /// These and `producer`, served as `name` (`<plane>/<type>`).
-    pub fn with(
-        mut self,
-        name: &str,
-        producer: Arc<dyn permguard_host::composition::StreamAppender>,
-    ) -> Self {
-        self.producers.insert(name.to_owned(), producer);
+    pub fn with<P>(mut self, name: &str, producer: Arc<P>) -> Self
+    where
+        P: permguard_host::composition::StreamAppender
+            + permguard_host::composition::StreamCutovers
+            + 'static,
+    {
+        self.producers.insert(
+            name.to_owned(),
+            Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamAppender>,
+        );
+        self.cutovers.push(producer);
         self
     }
 
@@ -555,6 +566,28 @@ impl permguard_host::composition::StreamEngine for Served {
         stream: &str,
     ) -> Option<Arc<dyn permguard_host::composition::StreamAppender>> {
         self.producers.get(stream).map(Arc::clone)
+    }
+}
+
+impl permguard_host::composition::StreamCutovers for Served {
+    fn due(
+        &self,
+        membership_id: &[u8; 16],
+        ring: &str,
+        kid: &str,
+    ) -> Result<Vec<(String, u64)>, String> {
+        let mut due = Vec::new();
+        for producer in &self.cutovers {
+            due.extend(producer.due(membership_id, ring, kid)?);
+        }
+        Ok(due)
+    }
+
+    fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
+        for producer in &self.cutovers {
+            producer.journaled(ring, kid, streams)?;
+        }
+        Ok(())
     }
 }
 

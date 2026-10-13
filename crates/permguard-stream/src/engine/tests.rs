@@ -53,6 +53,8 @@ struct Host {
     volume: Volume,
     identity: Arc<Identity>,
     operations: Arc<Ring>,
+    /// The `data.attest` ring the tests' batches are sealed under.
+    attest: Arc<Ring>,
     time: Arc<TimeGuard>,
 }
 
@@ -97,11 +99,24 @@ impl Host {
             .with_binder(identity.clone()),
         );
         permguard_core::KeyManager::maintain(operations.as_ref()).expect("maintained");
+        let attest = Arc::new(
+            Ring::open(
+                &volume,
+                DATA_ATTEST,
+                Suite::Ed25519Sha256V1,
+                policy,
+                Arc::clone(&time),
+            )
+            .expect("the ring opens")
+            .with_binder(identity.clone()),
+        );
+        permguard_core::KeyManager::maintain(attest.as_ref()).expect("maintained");
         Self {
             root,
             volume,
             identity,
             operations,
+            attest,
             time,
         }
     }
@@ -120,6 +135,18 @@ impl Host {
         self.streams()
             .register_producer(descriptor(), Text)
             .expect("registered")
+    }
+
+    /// A producer sealing under the `data.attest` ring.
+    fn sealer(&self) -> Producer<Text> {
+        self.producer()
+            .with_signer(Arc::clone(&self.attest))
+            .expect("the descriptor's ring")
+    }
+
+    /// The `data.attest` keys published now.
+    fn attest_keys(&self) -> Vec<permguard_core::keys::Jwk> {
+        self.attest.statement().expect("a statement").keys
     }
 
     /// The producer directory of `resource`.
@@ -1048,4 +1075,980 @@ fn payload_of(envelope: &[u8]) -> Vec<u8> {
         .expect("a COSE_Sign1")
         .payload_unverified()
         .to_vec()
+}
+
+/// A Host on a manual clock whose rings rotate every 20 seconds, and the hands of that clock.
+fn manual_host(
+    tag: &str,
+) -> (
+    Host,
+    Arc<permguard_host::time::ManualClock>,
+    Arc<permguard_host::time::ManualMonotonic>,
+) {
+    let wall = Arc::new(permguard_host::time::ManualClock::at(
+        i64::try_from(permguard_host::authz::store::now()).expect("in range"),
+    ));
+    let mono = Arc::new(permguard_host::time::ManualMonotonic::default());
+    let time = Arc::new(TimeGuard::new(
+        wall.clone(),
+        mono.clone(),
+        Duration::from_secs(30),
+    ));
+    let host = Host::on(
+        tag,
+        time,
+        Policy {
+            publish_ahead: Duration::from_secs(10),
+            rotate_every: Duration::from_secs(20),
+            retain: Duration::from_secs(600),
+        },
+    );
+    (host, wall, mono)
+}
+
+/// Moves the clock until `data.attest` activates another key: answers it.
+fn rotate_attest(
+    host: &Host,
+    wall: &permguard_host::time::ManualClock,
+    mono: &permguard_host::time::ManualMonotonic,
+) -> String {
+    use permguard_core::keys::Sign as _;
+    let before = host.attest.active_key_id().expect("a key");
+    for _ in 0..20 {
+        wall.jump(5);
+        mono.advance(Duration::from_secs(5));
+        permguard_core::KeyManager::maintain(host.attest.as_ref()).expect("maintained");
+        permguard_core::KeyManager::maintain(host.operations.as_ref()).expect("maintained");
+        let now = host.attest.active_key_id().expect("a key");
+        if now != before {
+            return now.as_str().to_owned();
+        }
+    }
+    panic!("the ring did not rotate");
+}
+
+fn sealed(sealing: Sealing) -> ([u8; 16], u64, u64, Vec<u8>) {
+    match sealing {
+        Sealing::Sealed {
+            run,
+            first,
+            last,
+            bytes,
+        } => (run, first, last, bytes),
+        other => panic!("not sealed: {other:?}"),
+    }
+}
+
+/// Verifies `bytes` as a batch of the tests' descriptor under `keys`.
+fn open_batch(bytes: &[u8], keys: &[permguard_core::keys::Jwk]) -> (batch::Envelope, Vec<Vec<u8>>) {
+    batch::SealedBatch::decode(bytes)
+        .expect("a canonical batch")
+        .verify(keys, protected::DECISION_BATCH, digest::DECISION_RECORD)
+        .expect("the batch verifies")
+}
+
+/// WP-5.2, F-01: a run's first batch chains to the genesis head, every later batch to the head
+/// of the batch before it; a successor run starts again from genesis; a stream with nothing
+/// unsealed seals nothing.
+#[test]
+fn a_batch_chains_to_the_one_before_and_a_run_starts_from_genesis() {
+    let host = Host::new("chain");
+    let producer = host.sealer();
+    assert_eq!(
+        producer.seal(&ledger(1), 10).expect("sealed"),
+        Sealing::Nothing
+    );
+    for n in 0..5 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let keys = host.attest_keys();
+    let mut previous = batch::GENESIS_HEAD.to_owned();
+    let mut ranges = Vec::new();
+    while let Sealing::Sealed {
+        first, last, bytes, ..
+    } = producer.seal(&ledger(1), 2).expect("sealed")
+    {
+        let (envelope, _) = open_batch(&bytes, &keys);
+        assert_eq!(envelope.previous_head, previous);
+        previous = envelope.head.clone();
+        ranges.push((first, last));
+    }
+    assert_eq!(ranges, vec![(1, 2), (3, 4), (5, 5)]);
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .signed_seq,
+        5
+    );
+    producer.rollover(&ledger(1), None).expect("rolled over");
+    producer
+        .append(&ledger(1), &"s".to_owned())
+        .expect("appended");
+    let (run, first, last, bytes) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let (envelope, _) = open_batch(&bytes, &keys);
+    assert_eq!((first, last), (1, 1));
+    assert_eq!(envelope.previous_head, batch::GENESIS_HEAD);
+    assert_eq!(envelope.run, hex(&run));
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .run_id,
+        run
+    );
+}
+
+/// WP-5.2, F-01: the oldest run is sealed first: records a rollover left unsealed are sealed in
+/// their own run before the successor's.
+#[test]
+fn an_ended_runs_unsealed_records_are_sealed_before_its_successors() {
+    let host = Host::new("ended");
+    let producer = host.sealer();
+    let first_run = producer
+        .append(&ledger(1), &"a".to_owned())
+        .expect("a")
+        .run_id;
+    producer.rollover(&ledger(1), None).expect("rolled over");
+    let second_run = producer
+        .append(&ledger(1), &"b".to_owned())
+        .expect("b")
+        .run_id;
+    let (run, ..) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(run, first_run);
+    let (run, ..) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(run, second_run);
+    assert_eq!(
+        producer.seal(&ledger(1), 10).expect("sealed"),
+        Sealing::Nothing
+    );
+}
+
+/// WP-5.2: the envelope names the stream key, the run, its fence, the range, the count, the
+/// commitments, the batch id, the time and the epoch of the ring that signed it; the batch is
+/// bounded by the descriptor's `max_batch_records`.
+#[test]
+fn a_sealed_batch_names_its_stream_run_range_and_commitments() {
+    let host = Host::new("envelope");
+    let producer = host.sealer();
+    let fence = Fence {
+        membership_id: [7; 16],
+        task_id: "decisions".to_owned(),
+        epoch: 3,
+    };
+    producer.open_run(&ledger(2), Some(fence)).expect("opened");
+    for n in 0..150 {
+        producer
+            .append(&ledger(2), &format!("r{n}"))
+            .expect("appended");
+    }
+    let (run, first, last, bytes) = sealed(producer.seal(&ledger(2), 1000).expect("sealed"));
+    assert_eq!((first, last), (1, 100), "bounded by max_batch_records");
+    let (envelope, records) = open_batch(&bytes, &host.attest_keys());
+    let key = descriptor()
+        .key(&ledger(2), host.identity.host_id())
+        .expect("a key");
+    assert_eq!(envelope.stream_key, batch::KeyView::of(&key));
+    assert_eq!(
+        envelope.stream_key.producer_host_id,
+        permguard_host::identity::record::uuid_text(&host.identity.host_id())
+    );
+    assert_eq!(envelope.descriptor_version, 1);
+    assert_eq!(envelope.run, hex(&run));
+    assert_eq!(
+        envelope.membership_id.as_deref(),
+        Some(permguard_host::identity::record::uuid_text(&[7; 16]).as_str())
+    );
+    assert_eq!(envelope.epoch, Some(3));
+    assert_eq!(
+        (envelope.first_seq, envelope.last_seq, envelope.count),
+        (1, 100, 100)
+    );
+    assert_eq!(envelope.batch_id, format!("{}-1", hex(&run)));
+    assert_eq!(envelope.key_set_epoch, host.attest.epoch());
+    assert_eq!(
+        envelope.head,
+        batch::digest_string(digest::DECISION_RECORD, b"r99")
+    );
+    let digests: Vec<String> = records
+        .iter()
+        .map(|record| batch::digest_string(digest::DECISION_RECORD, record))
+        .collect();
+    assert_eq!(
+        Some(envelope.merkle_root.clone()),
+        crate::merkle::root(&digests)
+    );
+    assert!(
+        permguard_core::time::from_rfc3339(&envelope.created_at).is_some(),
+        "created_at is RFC 3339: {}",
+        envelope.created_at
+    );
+    // Unfenced, the envelope names no membership.
+    producer.append(&ledger(3), &"x".to_owned()).expect("x");
+    let (.., bytes) = sealed(producer.seal(&ledger(3), 10).expect("sealed"));
+    let (envelope, _) = open_batch(&bytes, &host.attest_keys());
+    assert_eq!((envelope.membership_id, envelope.epoch), (None, None));
+    assert!(
+        !String::from_utf8(bytes)
+            .expect("JSON")
+            .contains("membership_id")
+    );
+}
+
+/// WP-5.2: a batch verifies under the ring's published keys and carries every record's exact
+/// bytes; another `typ` or record domain does not verify; a producer handed another ring than
+/// its descriptor's, or none, seals nothing.
+#[test]
+fn a_sealed_batch_verifies_and_carries_the_exact_record_bytes() {
+    let host = Host::new("exact");
+    let producer = host.sealer();
+    let texts = ["alpha", "", "gamma \u{1F600}"];
+    for text in texts {
+        producer
+            .append(&ledger(1), &text.to_owned())
+            .expect("appended");
+    }
+    let (.., bytes) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let (_, records) = open_batch(&bytes, &host.attest_keys());
+    assert_eq!(
+        records,
+        texts
+            .iter()
+            .map(|text| text.as_bytes().to_vec())
+            .collect::<Vec<_>>()
+    );
+    let batch = batch::SealedBatch::decode(&bytes).expect("decodes");
+    assert_eq!(batch.encode().expect("encodes"), bytes, "canonical");
+    assert!(
+        batch
+            .verify(
+                &host.attest_keys(),
+                protected::EVENT_BATCH,
+                digest::DECISION_RECORD
+            )
+            .is_err()
+    );
+    assert!(
+        batch
+            .verify(
+                &host.attest_keys(),
+                protected::DECISION_BATCH,
+                digest::EVENT_RECORD
+            )
+            .is_err()
+    );
+    let operations = host.operations.statement().expect("a statement").keys;
+    assert!(
+        batch
+            .verify(
+                &operations,
+                protected::DECISION_BATCH,
+                digest::DECISION_RECORD
+            )
+            .is_err(),
+        "another ring's keys"
+    );
+    assert!(matches!(
+        host.producer().with_signer(Arc::clone(&host.operations)),
+        Err(StreamError::Sign(_))
+    ));
+    assert!(matches!(
+        host.producer().seal(&ledger(1), 10),
+        Err(StreamError::Sign(_))
+    ));
+}
+
+/// WP-5.2: a batch whose records, envelope, header or signature were changed, or whose file is
+/// not canonical, is refused.
+#[test]
+fn a_batch_whose_records_do_not_match_its_commitments_is_refused() {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+    let host = Host::new("tampered");
+    let producer = host.sealer();
+    for n in 0..3 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let (.., bytes) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let keys = host.attest_keys();
+    let good = batch::SealedBatch::decode(&bytes).expect("decodes");
+    let refused = |batch: &batch::SealedBatch| {
+        batch
+            .verify(&keys, protected::DECISION_BATCH, digest::DECISION_RECORD)
+            .is_err()
+    };
+    let mut changed = good.clone();
+    changed.records[1] = B64.encode(b"forged");
+    assert!(refused(&changed), "a changed record");
+    let mut changed = good.clone();
+    changed.records.swap(0, 1);
+    assert!(refused(&changed), "reordered records");
+    let mut changed = good.clone();
+    changed.records.pop();
+    assert!(refused(&changed), "a dropped record");
+    let mut changed = good.clone();
+    changed.records.push(B64.encode(b"r3"));
+    assert!(refused(&changed), "an added record");
+    let mut changed = good.clone();
+    let mut payload = B64.decode(&changed.signature.payload).expect("b64");
+    let at = payload.len() - 3;
+    payload[at] ^= 1;
+    changed.signature.payload = B64.encode(payload);
+    assert!(refused(&changed), "a changed envelope");
+    let mut changed = good.clone();
+    changed.signature.protected = B64.encode(br#"{"alg":"EdDSA","kid":"someone-else","typ":"x"}"#);
+    assert!(refused(&changed), "a changed header");
+    let mut changed = good.clone();
+    let mut signature = B64.decode(&changed.signature.signature).expect("b64");
+    signature[0] ^= 1;
+    changed.signature.signature = B64.encode(signature);
+    assert!(refused(&changed), "a changed signature");
+    // A file that is not canonical JSON, or carries an unknown member, does not decode.
+    let text = String::from_utf8(bytes.clone()).expect("JSON");
+    assert!(batch::SealedBatch::decode(format!(" {text}").as_bytes()).is_err());
+    let extra = text.replacen('{', r#"{"extra":1,"#, 1);
+    assert!(batch::SealedBatch::decode(extra.as_bytes()).is_err());
+    assert!(!refused(&good));
+}
+
+/// WP-5.2, F-10: a batch is durable before the seal answers it; a crash after its file and before
+/// its span or STATE leaves it sealed, its span appended on the next seal, and it is never signed
+/// again.
+#[test]
+fn a_sealed_batch_is_kept_before_it_is_answered_and_never_signed_again() {
+    let host = Host::new("kept");
+    let producer = host.sealer();
+    for n in 0..4 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let (run, first, last, bytes) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    let dir = host.producer_dir(&ledger(1));
+    let file = dir
+        .join("batches")
+        .join(hex(&run))
+        .join(format!("{first}-{last}.jws"));
+    assert_eq!(std::fs::read(&file).expect("the batch is on disk"), bytes);
+    let spans = producer.spans(&ledger(1)).expect("spans");
+    drop(producer);
+    // The crash: the span and STATE's watermark never written.
+    std::fs::remove_file(dir.join("signers.cbor")).expect("removed");
+    let reopened = host.sealer();
+    let (_, next_first, next_last, _) = sealed(reopened.seal(&ledger(1), 2).expect("sealed"));
+    assert_eq!((next_first, next_last), (3, 4), "1-2 is not signed again");
+    assert_eq!(std::fs::read(&file).expect("kept"), bytes);
+    assert_eq!(reopened.spans(&ledger(1)).expect("spans"), spans);
+    assert_eq!(
+        reopened
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .signed_seq,
+        4
+    );
+    // A batch file that is not its run's next range is corruption, never overwritten.
+    std::fs::write(dir.join("batches").join(hex(&run)).join("9-9.jws"), b"{}").expect("written");
+    reopened
+        .append(&ledger(1), &"r4".to_owned())
+        .expect("appended");
+    assert!(matches!(
+        host.sealer().seal(&ledger(1), 2),
+        Err(StreamError::Corruption(_))
+    ));
+}
+
+/// WP-5.2: a span is appended when another key seals, from the batch it first signs, and the spans
+/// before it are kept as they were; every batch verifies under the key its span names, also after
+/// that key left the ring.
+#[test]
+fn a_signer_span_is_appended_with_its_batch_and_never_amended() {
+    let (host, wall, mono) = manual_host("spans");
+    let producer = host.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    let (run, _, _, first_batch) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let before = producer.spans(&ledger(1)).expect("spans");
+    assert_eq!(before.runs.len(), 1);
+    assert_eq!(before.runs[0].1.len(), 1);
+    assert_eq!(before.runs[0].1[0].from_seq, 1);
+    let rotated = rotate_attest(&host, &wall, &mono);
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let (.., second_batch) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let after = producer.spans(&ledger(1)).expect("spans");
+    let spans = &after.runs[0].1;
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0], before.runs[0].1[0], "the first span is kept");
+    assert_eq!(
+        (spans[1].from_seq, spans[1].kid.as_str()),
+        (2, rotated.as_str())
+    );
+    assert_eq!(after.signing(&run, 1), Some(&spans[0]));
+    assert_eq!(after.signing(&run, 2), Some(&spans[1]));
+    // Each batch verifies under its span's key alone.
+    for (batch, span) in [(&first_batch, &spans[0]), (&second_batch, &spans[1])] {
+        let jwk: permguard_core::keys::Jwk = serde_json::from_str(&span.jwk).expect("a JWK");
+        open_batch(batch, &[jwk]);
+    }
+    assert_eq!(
+        Spans::decode(&after.encode().expect("encodes")).expect("decodes"),
+        after
+    );
+    let mut unordered = after.clone();
+    unordered.runs[0].1.swap(0, 1);
+    assert!(Spans::decode(&unordered.encode().expect("encodes")).is_err());
+}
+
+/// WP-5.2, WP-4.5: under a fence, a new key seals nothing until the coordinator journaled the
+/// cutover naming the stream's next sequence; the cutover is listed until confirmed, and only
+/// the cutover the stream waits for is confirmed.
+#[test]
+fn a_new_key_seals_only_after_its_cutover_is_journaled() {
+    let (host, wall, mono) = manual_host("cutover");
+    let producer = host.sealer();
+    let fence = Fence {
+        membership_id: [5; 16],
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+    };
+    let run = producer
+        .open_run(&ledger(1), Some(fence))
+        .expect("opened")
+        .run_id;
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert!(producer.pending_cutovers().expect("listed").is_empty());
+    let rotated = rotate_attest(&host, &wall, &mono);
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    let stream = format!("data/decisions/{}/{}", key.resource_component(), hex(&run));
+    let waiting = Sealing::AwaitingCutover {
+        stream: stream.clone(),
+        from_seq: 2,
+    };
+    assert_eq!(producer.seal(&ledger(1), 10).expect("waits"), waiting);
+    assert_eq!(producer.seal(&ledger(1), 10).expect("waits"), waiting);
+    let pending = producer.pending_cutovers().expect("listed");
+    assert_eq!(
+        pending,
+        vec![Cutover {
+            stream: stream.clone(),
+            membership_id: [5; 16],
+            ring: DATA_ATTEST.to_owned(),
+            kid: rotated.clone(),
+            from_seq: 2,
+            confirmed: false,
+        }]
+    );
+    assert!(producer.confirm_cutover(&stream, "another-key").is_err());
+    assert!(
+        producer
+            .confirm_cutover("data/decisions/x/y", &rotated)
+            .is_err()
+    );
+    assert_eq!(producer.seal(&ledger(1), 10).expect("waits"), waiting);
+    // A fresh handle sees the persisted cutover too.
+    assert_eq!(host.sealer().pending_cutovers().expect("listed"), pending);
+    producer
+        .confirm_cutover(&stream, &rotated)
+        .expect("confirmed");
+    assert!(producer.pending_cutovers().expect("listed").is_empty());
+    let (_, first, _, bytes) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(first, 2);
+    assert_eq!(
+        batch::SealedBatch::decode(&bytes)
+            .expect("decodes")
+            .kid()
+            .expect("a kid"),
+        rotated
+    );
+    let spans = producer.spans(&ledger(1)).expect("spans");
+    assert_eq!(
+        spans.signing(&run, 2).map(|span| span.kid.as_str()),
+        Some(rotated.as_str())
+    );
+    assert_eq!(
+        Cutover::decode(&pending[0].encode().expect("encodes")).expect("decodes"),
+        pending[0]
+    );
+}
+
+/// WP-5.2, WP-4.5: the engine names, for a membership and its ring's new key, each stream that
+/// membership fences and that sealed under another key, from its next sequence; a stream of
+/// another membership, unfenced, or sealing nothing yet is not named; a stream on disk is found
+/// by a handle that never opened it; the cutover journaled, the stream seals under the new key.
+#[test]
+fn a_member_sends_its_streams_cutover_from_the_engine() {
+    use permguard_host::composition::StreamCutovers as _;
+    let (host, wall, mono) = manual_host("due");
+    let producer = host.sealer();
+    let fence = |membership: u8| Fence {
+        membership_id: [membership; 16],
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+    };
+    let run = producer
+        .open_run(&ledger(1), Some(fence(5)))
+        .expect("opened")
+        .run_id;
+    producer
+        .open_run(&ledger(2), Some(fence(6)))
+        .expect("opened");
+    producer
+        .open_run(&ledger(4), Some(fence(5)))
+        .expect("opened");
+    for resource in [ledger(1), ledger(2), ledger(3)] {
+        producer.append(&resource, &"a".to_owned()).expect("a");
+        sealed(producer.seal(&resource, 10).expect("sealed"));
+    }
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    producer.append(&ledger(4), &"a".to_owned()).expect("a");
+    let rotated = rotate_attest(&host, &wall, &mono);
+    drop(producer);
+    let fresh = host.sealer();
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    let stream = format!("data/decisions/{}/{}", key.resource_component(), hex(&run));
+    assert_eq!(
+        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        vec![(stream.clone(), 2)]
+    );
+    assert_eq!(
+        fresh.due(&[5; 16], HOST_OPERATIONS, &rotated).expect("due"),
+        Vec::new(),
+        "another ring"
+    );
+    // Asked again, the same cutover.
+    assert_eq!(
+        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        vec![(stream.clone(), 2)]
+    );
+    assert_eq!(
+        fresh.seal(&ledger(1), 10).expect("waits"),
+        Sealing::AwaitingCutover {
+            stream: stream.clone(),
+            from_seq: 2
+        }
+    );
+    // Another plane's streams are not this producer's to confirm.
+    fresh
+        .journaled(
+            DATA_ATTEST,
+            &rotated,
+            &[("control/decisions/x/y".to_owned(), 1)],
+        )
+        .expect("ignored");
+    fresh
+        .journaled(DATA_ATTEST, &rotated, &[(stream.clone(), 2)])
+        .expect("confirmed");
+    let (_, first, ..) = sealed(fresh.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(first, 2);
+    // Confirmed and sealed under the new key: named again only as journaled.
+    assert_eq!(
+        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        vec![(stream, 2)]
+    );
+    assert!(
+        fresh
+            .journaled(
+                DATA_ATTEST,
+                &rotated,
+                &[("data/decisions/x/y".to_owned(), 1)]
+            )
+            .is_err(),
+        "a stream this Host does not hold"
+    );
+}
+
+/// WP-5.2, after the review: a crash between a batch signed by a new key and its span leaves the
+/// run's spans naming the old key; the next seal appends the span of the key that signed it, from
+/// that batch, so every batch verifies under its span.
+#[test]
+fn a_span_a_crash_lost_is_appended_for_the_key_that_signed_its_batch() {
+    let (host, wall, mono) = manual_host("lost-span");
+    let producer = host.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    let (run, ..) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let dir = host.producer_dir(&ledger(1));
+    let before = std::fs::read(dir.join("signers.cbor")).expect("the spans");
+    let rotated = rotate_attest(&host, &wall, &mono);
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let (.., second) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    drop(producer);
+    // The crash: the new key's span never written.
+    std::fs::write(dir.join("signers.cbor"), &before).expect("restored");
+    let reopened = host.sealer();
+    reopened.append(&ledger(1), &"c".to_owned()).expect("c");
+    sealed(reopened.seal(&ledger(1), 10).expect("sealed"));
+    let spans = reopened.spans(&ledger(1)).expect("spans");
+    let span = spans.signing(&run, 2).expect("a span");
+    assert_eq!((span.from_seq, span.kid.as_str()), (2, rotated.as_str()));
+    let jwk: permguard_core::keys::Jwk = serde_json::from_str(&span.jwk).expect("a JWK");
+    open_batch(&second, &[jwk]);
+}
+
+/// WP-5.2, after the review: a batch stops before its records would pass the file's bound, one
+/// record at least, and the next batch goes on from there.
+#[test]
+fn a_batch_stops_before_its_file_would_pass_its_bound() {
+    let host = Host::new("bounded");
+    let producer = host.sealer();
+    for n in 0..5 {
+        producer
+            .append(&ledger(1), &format!("{n}").repeat(3000))
+            .expect("appended");
+    }
+    let mut ranges = Vec::new();
+    while let Sealing::Sealed { first, last, .. } = producer.seal(&ledger(1), 100).expect("sealed")
+    {
+        ranges.push((first, last));
+    }
+    assert_eq!(ranges, vec![(1, 2), (3, 4), (5, 5)]);
+}
+
+/// WP-5.2, found by the rotating crash test: a run signed by a `host.operations` key the ring
+/// activated after many rotations verifies on reopening: the history runs to the ring's last
+/// journal entry, not to the entry its epoch numbers.
+#[test]
+fn a_run_signed_after_many_rotations_verifies_on_reopening() {
+    let (host, wall, mono) = manual_host("operations-rotated");
+    let producer = host.producer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    for _ in 0..6 {
+        use permguard_core::keys::Sign as _;
+        let before = host.operations.active_key_id().expect("a key");
+        while host.operations.active_key_id().expect("a key") == before {
+            wall.jump(5);
+            mono.advance(Duration::from_secs(5));
+            permguard_core::KeyManager::maintain(host.operations.as_ref()).expect("maintained");
+        }
+        producer.rollover(&ledger(1), None).expect("rolled over");
+        producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    }
+    drop(producer);
+    assert_eq!(
+        host.producer()
+            .append(&ledger(1), &"c".to_owned())
+            .expect("the stream reopens")
+            .seq,
+        2
+    );
+}
+
+/// `batch` with its envelope changed by `change` and its header by `header`, signed again under
+/// the test's `data.attest` ring: a forger holding the key, so only the commitments catch it.
+fn resign(
+    host: &Host,
+    batch: &batch::SealedBatch,
+    header: impl FnOnce(&mut batch::Protected),
+    change: impl FnOnce(&mut batch::Envelope),
+) -> batch::SealedBatch {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+    let mut protected: batch::Protected =
+        serde_json::from_slice(&B64.decode(&batch.signature.protected).expect("b64"))
+            .expect("JSON");
+    header(&mut protected);
+    let mut envelope: batch::Envelope =
+        serde_json::from_slice(&B64.decode(&batch.signature.payload).expect("b64")).expect("JSON");
+    change(&mut envelope);
+    let protected = B64.encode(
+        crate::jcs::canonicalize(&serde_json::to_value(&protected).expect("JSON")).expect("JCS"),
+    );
+    let payload = B64.encode(envelope.signed_bytes().expect("bytes"));
+    let signature = permguard_core::keys::Sign::sign(
+        host.attest.as_ref(),
+        format!("{protected}.{payload}").as_bytes(),
+    )
+    .expect("signed");
+    batch::SealedBatch {
+        signature: batch::Jws {
+            protected,
+            payload,
+            signature: B64.encode(signature.bytes()),
+        },
+        records: batch.records.clone(),
+    }
+}
+
+/// WP-5.2, after the mutants: a batch signed by the key itself is still refused when its header
+/// names another algorithm, or its envelope another count, head or batch id than its records.
+#[test]
+fn a_batch_signed_again_over_wrong_commitments_is_refused() {
+    let host = Host::new("resigned");
+    let producer = host.sealer();
+    for n in 0..3 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let (.., bytes) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let good = batch::SealedBatch::decode(&bytes).expect("decodes");
+    let keys = host.attest_keys();
+    let verdict = |batch: &batch::SealedBatch| {
+        batch
+            .verify(&keys, protected::DECISION_BATCH, digest::DECISION_RECORD)
+            .is_ok()
+    };
+    assert!(
+        verdict(&resign(&host, &good, |_| {}, |_| {})),
+        "the same, signed again"
+    );
+    assert!(!verdict(&resign(
+        &host,
+        &good,
+        |header| header.alg = "ES256".to_owned(),
+        |_| {}
+    )));
+    assert!(!verdict(&resign(
+        &host,
+        &good,
+        |_| {},
+        |envelope| {
+            envelope.count = 2;
+            envelope.last_seq = 2;
+        }
+    )));
+    assert!(!verdict(&resign(
+        &host,
+        &good,
+        |_| {},
+        |envelope| {
+            envelope.head = batch::digest_string(digest::DECISION_RECORD, b"r1");
+        }
+    )));
+    assert!(!verdict(&resign(
+        &host,
+        &good,
+        |_| {},
+        |envelope| {
+            envelope.batch_id = format!("{}-2", envelope.run);
+        }
+    )));
+}
+
+/// WP-5.2, after the mutants: a batch file past its bound is refused before it is parsed, even
+/// canonical; a signer that rotated between the key it named and the signature is refused.
+#[test]
+fn a_batch_past_its_bound_or_signed_by_another_key_is_refused() {
+    let big = batch::SealedBatch {
+        signature: batch::Jws {
+            protected: "a".to_owned(),
+            payload: "b".to_owned(),
+            signature: "c".to_owned(),
+        },
+        records: vec!["A".repeat(batch::MAX_BATCH_FILE_BYTES)],
+    };
+    let bytes = big.encode().expect("encodes");
+    assert!(bytes.len() > batch::MAX_BATCH_FILE_BYTES);
+    assert!(batch::SealedBatch::decode(&bytes).is_err());
+    let small = batch::SealedBatch {
+        records: vec!["A".to_owned()],
+        ..big
+    };
+    assert_eq!(
+        batch::SealedBatch::decode(&small.encode().expect("encodes")).expect("decodes"),
+        small
+    );
+
+    /// Signs under a key other than the one it was asked about.
+    struct Rotated;
+    impl permguard_core::keys::Sign for Rotated {
+        fn active_key_id(&self) -> permguard_core::keys::Result<permguard_core::keys::KeyId> {
+            Ok(permguard_core::keys::KeyId::new(
+                "data.attest:next".to_owned(),
+            ))
+        }
+        fn sign(&self, _: &[u8]) -> permguard_core::keys::Result<permguard_core::keys::Signature> {
+            Ok(permguard_core::keys::Signature::new(
+                permguard_core::keys::KeyId::new("data.attest:next".to_owned()),
+                "EdDSA",
+                vec![0; 64],
+            ))
+        }
+    }
+    let host = Host::new("rotated-signer");
+    let jwk = host.attest_keys().remove(0);
+    let envelope = batch::Envelope {
+        descriptor_version: 1,
+        stream_key: batch::KeyView::of(
+            &descriptor()
+                .key(&ledger(1), host.identity.host_id())
+                .expect("a key"),
+        ),
+        run: "00".repeat(16),
+        membership_id: None,
+        epoch: None,
+        first_seq: 1,
+        last_seq: 1,
+        count: 1,
+        previous_head: batch::GENESIS_HEAD.to_owned(),
+        head: batch::digest_string(digest::DECISION_RECORD, b"a"),
+        merkle_root: crate::merkle::root(&[batch::digest_string(digest::DECISION_RECORD, b"a")])
+            .expect("a root"),
+        batch_id: format!("{}-1", "00".repeat(16)),
+        created_at: "2027-01-01T00:00:00Z".to_owned(),
+        key_set_epoch: 1,
+    };
+    assert!(matches!(
+        batch::SealedBatch::seal(
+            &Rotated,
+            &jwk,
+            protected::DECISION_BATCH,
+            &envelope,
+            &[b"a".to_vec()]
+        ),
+        Err(StreamError::Sign(_))
+    ));
+}
+
+/// WP-5.2, after the mutants: a cutover journaled for one run does not let the new key seal the
+/// next run, which waits for its own; a batch file sealing past the run's records is corruption;
+/// a forked stream seals nothing.
+#[test]
+fn a_cutover_names_its_run_and_a_batch_its_records() {
+    let (host, wall, mono) = manual_host("cutover-run");
+    let producer = host.sealer();
+    let fence = Fence {
+        membership_id: [5; 16],
+        task_id: "decisions".to_owned(),
+        epoch: 1,
+    };
+    let run = producer
+        .open_run(&ledger(1), Some(fence.clone()))
+        .expect("opened")
+        .run_id;
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let rotated = rotate_attest(&host, &wall, &mono);
+    let first = producer.due_cutovers(&[5; 16], &rotated).expect("due");
+    assert_eq!(first.len(), 1);
+    producer
+        .confirm_cutover(&first[0].0, &rotated)
+        .expect("confirmed");
+    let next = producer
+        .rollover(&ledger(1), Some(fence))
+        .expect("rolled over")
+        .run_id;
+    assert_ne!(next, run);
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    assert_eq!(
+        producer.seal(&ledger(1), 10).expect("waits"),
+        Sealing::AwaitingCutover {
+            stream: format!("data/decisions/{}/{}", key.resource_component(), hex(&next)),
+            from_seq: 1
+        }
+    );
+    // A batch file sealing past the run's records.
+    drop(producer);
+    let other = Host::new("past-records");
+    let producer = other.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    let (run, ..) = sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    drop(producer);
+    let batches = other
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    std::fs::rename(batches.join("1-1.jws"), batches.join("1-5.jws")).expect("renamed");
+    let producer = other.sealer();
+    producer.append(&ledger(1), &"b".to_owned()).expect("b");
+    assert!(matches!(
+        producer.seal(&ledger(1), 10),
+        Err(StreamError::Corruption(_))
+    ));
+    // A forked stream seals nothing.
+    let forked = Host::new("forked-seal");
+    let producer = forked.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    producer.report_fork(&ledger(1), 1).expect("reported");
+    assert!(matches!(
+        producer.seal(&ledger(1), 10),
+        Err(StreamError::Forked { at_seq: 1 })
+    ));
+}
+
+/// WP-5.2, after the mutants: a span whose JWK names another key does not decode; a span that
+/// would pass the file's bound is refused and the spans stay as they were; a stream directory
+/// holding another stream's journal is refused.
+#[test]
+fn spans_and_stream_directories_are_checked() {
+    let host = Host::new("spans-checked");
+    let jwk = host.attest_keys().remove(0);
+    let span = |from_seq: u64, kid: &str| Span {
+        from_seq,
+        kid: kid.to_owned(),
+        jwk: canonical_jwk(&permguard_core::keys::Jwk {
+            kid: kid.to_owned(),
+            ..jwk.clone()
+        })
+        .expect("canonical"),
+    };
+    let wrong = Spans {
+        runs: vec![(
+            [1; 16],
+            vec![Span {
+                jwk: span(1, "data.attest:b").jwk,
+                ..span(1, "data.attest:a")
+            }],
+        )],
+    };
+    assert!(Spans::decode(&wrong.encode().expect("encodes")).is_err());
+    // Spans close to their bound, then a seal whose run needs one more.
+    let mut full = Spans {
+        runs: vec![([1; 16], Vec::new())],
+    };
+    let mut n = 1;
+    while full.encode().expect("encodes").len() < MAX_SIGNERS_BYTES - 300 {
+        full.runs[0].1.push(span(n, &format!("data.attest:k{n}")));
+        n += 1;
+    }
+    let producer = host.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    let dir = host.producer_dir(&ledger(1));
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&dir).expect("the directory"),
+        "signers.cbor",
+        format::VIEW,
+        &full.encode().expect("encodes"),
+    )
+    .expect("written");
+    drop(producer);
+    let producer = host.sealer();
+    assert!(matches!(
+        producer.seal(&ledger(1), 10),
+        Err(StreamError::Invalid(_))
+    ));
+    assert_eq!(producer.spans(&ledger(1)).expect("spans"), full);
+    // A stream directory moved under another resource's digest.
+    let moved = Host::new("moved-stream");
+    let producer = moved.sealer();
+    producer.append(&ledger(1), &"a".to_owned()).expect("a");
+    drop(producer);
+    let from = moved.producer_dir(&ledger(1));
+    let parent = from
+        .parent()
+        .expect("a host directory")
+        .parent()
+        .expect("a resource directory");
+    std::fs::rename(
+        from.parent().expect("a host directory"),
+        parent.join("ab".repeat(32)),
+    )
+    .expect("moved");
+    assert!(matches!(
+        moved.sealer().pending_cutovers(),
+        Err(StreamError::Corruption(_))
+    ));
 }

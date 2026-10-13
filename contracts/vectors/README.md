@@ -61,3 +61,5 @@ Target formats are not here: each is frozen by the package that designs it, as `
 They are a genesis run statement carrying a fence and a successor after a fork naming its predecessor and the approved plan, both COSE_Sign1 `permguard.stream.run.v1` under a `host.operations` key.
 Beside them: the genesis statement's digest, a run end, a group of records with the last record's digest, and two STATEs.
 `stream.py` computes them under the owner decisions of 2026-10-13, the operations key the RFC 8032 section 7.1 test 2 key; `crates/permguard-stream/tests/stream_vectors.rs` reproduces them and verifies both envelopes.
+Under `batches` it also freezes two chained sealed batches of the genesis run (WP-5.2), signed under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
+Beside them: their envelopes, the signer spans naming that key, and a pending cutover; the Rust test builds both batches from the stream key, the fence and the records and requires the generator's bytes.

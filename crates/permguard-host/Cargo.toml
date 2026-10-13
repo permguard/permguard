@@ -14,7 +14,8 @@ publish = false
 
 [features]
 # Named crash points in every storage protocol: a process started with `PERMGUARD_CRASH_AT=<point>`
-# aborts there. Tests only; a release build never carries the check.
+# aborts there, at the pass `PERMGUARD_CRASH_HIT` names. Tests only; a release build never carries
+# the check.
 crash-points = []
 
 [dependencies]

@@ -275,6 +275,9 @@ pub struct Member<'a> {
     pub connector: &'a dyn Connector,
     pub declared_assurance: AssuranceProfile,
     pub time: &'a TimeGuard,
+    /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
+    /// signs none.
+    pub streams: Option<&'a dyn crate::composition::StreamCutovers>,
 }
 
 fn remote(refusal: Refusal) -> MembershipError {
@@ -732,8 +735,10 @@ impl Member<'_> {
     }
 
     /// Ends the grace of every ring of this Host that an active membership it is a member of keeps
-    /// retiring, once the ring activated its new key: a stream-less cutover, this Host signing no
-    /// stream before WP-5.x (owner decision, after the review). Answers how many were sent.
+    /// retiring, once the ring activated its new key: the cutover names each stream the
+    /// membership fences under the ring from the first sequence the new key seals, and is
+    /// stream-less only when this Host signs none (WP-5.2, owner decision). A stream engine that
+    /// cannot say which streams it signs sends nothing. Answers how many rings were cut over.
     pub async fn cutover_due(&self, initiator: Initiator) -> usize {
         let mut done = 0;
         for (id, held) in self.store.memberships() {
@@ -751,33 +756,67 @@ impl Member<'_> {
                 let retiring = manifest.ring_pins.iter().any(|other| {
                     other.owner == Role::Member && other.ring == pin.ring && other.retiring
                 });
+                let Some(ring) = self.rings.iter().find(|ring| ring.id() == pin.ring) else {
+                    continue;
+                };
                 // Activated: the ring holds no key waiting to take over.
-                let activated = self
-                    .rings
-                    .iter()
-                    .find(|ring| ring.id() == pin.ring)
-                    .and_then(|ring| ring.view().ok())
-                    .is_some_and(|view| {
-                        view.keys
-                            .iter()
-                            .all(|key| key.state != crate::keys::record::State::Prepublished)
-                    });
+                let activated = ring.view().ok().is_some_and(|view| {
+                    view.keys
+                        .iter()
+                        .all(|key| key.state != crate::keys::record::State::Prepublished)
+                });
                 if !retiring || !activated {
                     continue;
                 }
+                let streams = match self.due_streams(&id, ring) {
+                    Ok(streams) => streams,
+                    Err(error) => {
+                        tracing::warn!(
+                            event.name = "host.membership.cutover_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            ring = %pin.ring,
+                            error = %error,
+                            "a ring's streams are unknown: no cutover is sent, the next pass tries again"
+                        );
+                        continue;
+                    }
+                };
                 let sent = async {
                     let mut session = self.any_session(&initiator, &id, &manifest.tasks).await?;
-                    session
-                        .cutover(&Cutover {
-                            ring: pin.ring.clone(),
-                            epoch: pin.epoch,
-                            streams: Vec::new(),
-                        })
-                        .await
+                    let mut chunks: Vec<&[(String, u64)]> =
+                        streams.1.chunks(super::record::MAX_STREAMS).collect();
+                    if chunks.is_empty() {
+                        chunks.push(&[]);
+                    }
+                    for chunk in chunks {
+                        session
+                            .cutover(&Cutover {
+                                ring: pin.ring.clone(),
+                                epoch: pin.epoch,
+                                streams: chunk.to_vec(),
+                            })
+                            .await?;
+                    }
+                    Ok::<_, MembershipError>(())
                 }
                 .await;
                 match sent {
-                    Ok(()) => done += 1,
+                    Ok(()) => {
+                        done += 1;
+                        if let (Some(engine), false) = (self.streams, streams.1.is_empty())
+                            && let Err(error) = engine.journaled(&pin.ring, &streams.0, &streams.1)
+                        {
+                            tracing::warn!(
+                                event.name = "host.membership.cutover_failed",
+                                component = "host",
+                                membership_id = %uuid_text(&id),
+                                ring = %pin.ring,
+                                error = %error,
+                                "a journaled cutover could not be recorded: the next pass sends it again"
+                            );
+                        }
+                    }
                     Err(error) => tracing::warn!(
                         event.name = "host.membership.cutover_failed",
                         component = "host",
@@ -790,6 +829,30 @@ impl Member<'_> {
             }
         }
         done
+    }
+
+    /// The active key of `ring` and the streams of membership `id` it cuts over, in order.
+    fn due_streams(
+        &self,
+        id: &[u8; 16],
+        ring: &Ring,
+    ) -> Result<(String, Vec<(String, u64)>), String> {
+        use permguard_core::keys::Sign as _;
+        let kid = ring
+            .active_key_id()
+            .map_err(|error| error.to_string())?
+            .as_str()
+            .to_owned();
+        let mut streams = match self.streams {
+            Some(engine) => engine.due(id, ring.id(), &kid)?,
+            None => Vec::new(),
+        };
+        streams.sort();
+        streams.dedup();
+        if streams.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            return Err("a stream is due from two sequences".to_owned());
+        }
+        Ok((kid, streams))
     }
 
     /// Re-pins every ring of this Host that an active membership it is a member of pins at an

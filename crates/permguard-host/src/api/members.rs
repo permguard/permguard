@@ -72,6 +72,9 @@ pub struct MembershipService {
     pub appraisal: Appraisal,
     /// The open task sessions this Host coordinates (WP-4.3).
     pub live: Arc<crate::membership::task::LiveSessions>,
+    /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
+    /// signs none.
+    pub streams: Option<Arc<dyn crate::composition::StreamCutovers>>,
 }
 
 /// One open task session of a membership, as an operator reads it (WP-4.3).
@@ -2062,6 +2065,7 @@ impl HostApi {
             connector,
             declared_assurance: self.declared_assurance()?,
             time: &self.time,
+            streams: memberships.streams.as_deref(),
         })
     }
 
