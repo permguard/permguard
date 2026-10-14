@@ -1213,7 +1213,7 @@ impl App {
         operations: &Arc<permguard_host::keys::ring::Ring>,
         data_attest: Option<&Arc<permguard_host::keys::ring::Ring>>,
         time: &Arc<permguard_host::time::TimeGuard>,
-    ) -> Result<permguard_stream::engine::Served, permguard_stream::engine::StreamError> {
+    ) -> Result<StreamParts, permguard_stream::engine::StreamError> {
         let engine = permguard_stream::engine::Streams::open(
             volume,
             identity,
@@ -1232,9 +1232,23 @@ impl App {
             decisions = decisions.with_signer(Arc::clone(ring))?;
             events = events.with_signer(Arc::clone(ring))?;
         }
-        Ok(permguard_stream::engine::Served::default()
-            .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
-            .with(permguard_events::stream::STREAM, Arc::new(events)))
+        // Their consumers, what this Host ingests as a coordinator over `decisions.ship` and
+        // `events.ship` (WP-5.3).
+        let decision_consumer = engine.register_consumer(
+            permguard_decisions::stream::descriptor(),
+            permguard_decisions::stream::Codec,
+        )?;
+        let event_consumer = engine.register_consumer(
+            permguard_events::stream::descriptor(),
+            permguard_events::stream::Codec,
+        )?;
+        Ok((
+            permguard_stream::engine::Served::default()
+                .with(permguard_decisions::stream::STREAM, Arc::new(decisions))
+                .with(permguard_events::stream::STREAM, Arc::new(events)),
+            Arc::new(decision_consumer),
+            Arc::new(event_consumer),
+        ))
     }
 
     /// The coordinator root (WP-3.3), when `operations.secrets.coordinator_root_ref` names one:
@@ -1782,19 +1796,21 @@ impl App {
             .context("recovering the key ring mutations a crash left open")?;
         // The Host's stream engine (WP-5.1), its runs signed under `host.operations`: the decision
         // log and the event journal registered on it, their Planes' adoption WP-6.1 and WP-6.2's.
-        let streams = match keys.as_ref() {
-            Some(operations) => Some(Arc::new(
-                self.stream_engine(
-                    &volume,
-                    &host_identity,
-                    operations,
-                    data_signing_keys.as_ref(),
-                    &time,
-                )
-                .map_err(|error| anyhow::anyhow!("{error}"))
-                .context("opening the stream engine")?,
-            )),
-            None => None,
+        let (streams, ingests) = match keys.as_ref() {
+            Some(operations) => {
+                let (served, decisions, events) = self
+                    .stream_engine(
+                        &volume,
+                        &host_identity,
+                        operations,
+                        data_signing_keys.as_ref(),
+                        &time,
+                    )
+                    .map_err(|error| anyhow::anyhow!("{error}"))
+                    .context("opening the stream engine")?;
+                (Some(Arc::new(served)), Some((decisions, events)))
+            }
+            None => (None, None),
         };
         // The memberships (WP-4.1): the store on the volume, whatever surface serves it, so a
         // membership mutation a crash left open is resolved before anything reads it.
@@ -1948,6 +1964,32 @@ impl App {
                     )
                     .map_err(|error| anyhow::anyhow!("{error}"))?,
                 None => permguard_host::membership::task::TaskHandlers::default(),
+            };
+            // The ship tasks' ingest, on the stream engine's consumers (WP-5.3).
+            let handlers = match ingests.clone() {
+                Some((decisions, events)) => handlers
+                    .register(
+                        permguard_host::membership::record::TaskType::DecisionsShip,
+                        permguard_stream::engine::ingest::VERSION,
+                        Arc::new(permguard_stream::engine::ingest::Ingest {
+                            consumer: decisions,
+                            pins: Arc::clone(&members)
+                                as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+                        }),
+                    )
+                    .and_then(|handlers| {
+                        handlers.register(
+                            permguard_host::membership::record::TaskType::EventsShip,
+                            permguard_stream::engine::ingest::VERSION,
+                            Arc::new(permguard_stream::engine::ingest::Ingest {
+                                consumer: events,
+                                pins: Arc::clone(&members)
+                                    as Arc<dyn permguard_stream::engine::ingest::StreamPins>,
+                            }),
+                        )
+                    })
+                    .map_err(|error| anyhow::anyhow!("{error}"))?,
+                None => handlers,
             };
             let tasks = Arc::new(permguard_host::membership::task::Tasks {
                 appraisal: Arc::new(appraisal.clone()),
@@ -2654,3 +2696,11 @@ fn verify_volume(
 
     Ok(())
 }
+
+/// The stream engine as the server composes it: the producers it serves, and the decision and
+/// event consumers the ship tasks' ingest keeps (WP-5.3).
+type StreamParts = (
+    permguard_stream::engine::Served,
+    Arc<permguard_stream::engine::Consumer<permguard_decisions::stream::Codec>>,
+    Arc<permguard_stream::engine::Consumer<permguard_events::stream::Codec>>,
+);

@@ -55,6 +55,9 @@ pub const AUDIT_EPOCH_STALE: &str = "host.membership.epoch_stale";
 pub const AUDIT_EPOCH_UNKNOWN: &str = "host.membership.epoch_unknown";
 /// Two incarnations of one member, two boot ids, at once (`security`).
 pub const AUDIT_CLONE_ALARM: &str = "host.membership.clone_alarm";
+/// A stream the coordinator ingests found forked: the incident, the membership suspended
+/// (WP-5.3, owner decision).
+pub const AUDIT_STREAM_FORKED: &str = "host.stream.forked";
 /// A membership held for review, a mutation of the store.
 pub const AUDIT_HELD: &str = "host.membership.held";
 /// A re-pin presenting a set below the pin (`security`, WP-4.5).
@@ -219,10 +222,68 @@ pub trait TaskHandler: Send + Sync {
     /// Answers one message's body, or refuses it with a stable code; the session stays open.
     fn handle(&self, context: &TaskContext, body: &[u8]) -> Result<Vec<u8>, Refusal>;
 
+    /// [`TaskHandler::handle`] for a handler that may report an incident on the membership it
+    /// answers for (WP-5.3); what the session calls.
+    fn handle_with(
+        &self,
+        context: &TaskContext,
+        body: &[u8],
+        incidents: &dyn Incidents,
+    ) -> Result<Vec<u8>, Refusal> {
+        let _ = incidents;
+        self.handle(context, body)
+    }
+
     /// Whether the replay window may keep its answers on disk. A handler whose answers carry what
     /// may be kept nowhere, the keys `zone.secrets` delivers, answers a repeat itself (WP-4.7).
     fn keeps_answers(&self) -> bool {
         true
+    }
+}
+
+/// What a task handler reports beyond its answer: an incident that suspends the membership it
+/// answers for (WP-5.3, owner decision).
+pub trait Incidents {
+    /// Records the stream at `stream` found forked at `at_seq` in the `security` trail, then
+    /// suspends the membership: a `suspended` manifest, a new epoch.
+    fn stream_forked(&self, stream: &str, at_seq: u64) -> Result<(), String>;
+}
+
+/// The incidents of one task session, against its membership.
+struct SessionIncidents<'a> {
+    coordinating: &'a super::service::Coordinating,
+    peer: &'a Verified,
+    membership_id: [u8; 16],
+    task_id: &'a str,
+    now: u64,
+}
+
+impl Incidents for SessionIncidents<'_> {
+    fn stream_forked(&self, stream: &str, at_seq: u64) -> Result<(), String> {
+        // Reported again on every delivery until the membership is suspended, once: a
+        // suspension that failed is retried, a done one neither recorded nor tried twice (after
+        // the review).
+        if self
+            .coordinating
+            .store
+            .membership(&self.membership_id)
+            .is_some_and(|held| held.status != Status::Active)
+        {
+            return Ok(());
+        }
+        self.coordinating.observe(
+            AUDIT_STREAM_FORKED,
+            self.peer,
+            &uuid_text(&self.membership_id),
+            &[
+                ("task", Fact::Text(self.task_id)),
+                ("stream", Fact::Text(stream)),
+                ("at_seq", Fact::Uint(at_seq)),
+            ],
+        );
+        self.coordinating
+            .suspend_member(self.peer, &self.membership_id, self.now)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -453,8 +514,9 @@ impl super::service::Coordinating {
             .map_err(|error| MembershipError::Storage(error.to_string()))
     }
 
-    /// Suspends a membership on a clone alarm: a `suspended` manifest, a new epoch.
-    fn suspend_clone(
+    /// Suspends a membership on a clone alarm or a stream's fork: a `suspended` manifest, a new
+    /// epoch.
+    fn suspend_member(
         &self,
         peer: &Verified,
         id: &[u8; 16],
@@ -848,7 +910,7 @@ impl super::service::Coordinating {
                 ("new_boot_id", Fact::Text(&new)),
             ],
         );
-        if let Err(error) = self.suspend_clone(peer, id, now) {
+        if let Err(error) = self.suspend_member(peer, id, now) {
             tracing::error!(
                 event.name = "host.membership.clone_unsuspended",
                 component = "host",
@@ -1153,8 +1215,15 @@ impl CoordinatorTask {
             limits: self.lease.limits,
             channel_binding: self.lease.channel_binding,
         };
+        let incidents = SessionIncidents {
+            coordinating: &self.coordinating,
+            peer: &self.peer,
+            membership_id: self.lease.membership_id,
+            task_id: &self.lease.task_id,
+            now: self.coordinating.time.now_secs(),
+        };
         let body = handler
-            .handle(&context, &message.body)
+            .handle_with(&context, &message.body, &incidents)
             .map_err(|refusal| TaskRefusal {
                 refusal,
                 end: false,

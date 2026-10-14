@@ -266,3 +266,52 @@ fn the_sealed_batch_is_the_bytes_the_independent_generator_computed() {
     assert_eq!(decoded.stream, b["stream"].as_str().expect("a stream"));
     assert_eq!(decoded.encode().expect("encodes"), cutover);
 }
+
+/// WP-5.3: the ship message, the answers, a consumer's STATE and a fork mark are the bytes the
+/// independent generator computed.
+#[test]
+fn the_ingest_records_are_the_bytes_the_independent_generator_computed() {
+    use permguard_stream::engine::ingest::{Answer, Outcome, Ship};
+    use permguard_stream::engine::{ConsumerState, ForkMark};
+    let v = vectors();
+    let i = &v["ingest"];
+    let ship = Ship {
+        batch: v["batches"]["first"]["file"]
+            .as_str()
+            .expect("a file")
+            .as_bytes()
+            .to_vec(),
+        statement: hex(&i["statement"]),
+    };
+    assert_eq!(ship.encode().expect("encodes"), hex(&i["ship"]));
+    assert_eq!(Ship::decode(&hex(&i["ship"])).expect("decodes"), ship);
+    let ok = Answer::of(Outcome::Ok, 2);
+    assert_eq!(ok.encode().expect("encodes"), hex(&i["answer_ok"]));
+    let ahead = Answer {
+        outcome: Outcome::OutOfOrder,
+        acked: 2,
+        expected_seq: Some(3),
+    };
+    assert_eq!(
+        ahead.encode().expect("encodes"),
+        hex(&i["answer_out_of_order"])
+    );
+    assert_eq!(
+        Answer::decode(&hex(&i["answer_out_of_order"])).expect("decodes"),
+        ahead
+    );
+    let state = ConsumerState {
+        acked: 2,
+        oldest_retained: 1,
+    };
+    assert_eq!(state.encode().expect("encodes"), hex(&i["consumer_state"]));
+    let mark = ForkMark {
+        run: id(&v["genesis"]["run_id"]),
+        at_seq: 3,
+    };
+    assert_eq!(mark.encode().expect("encodes"), hex(&i["fork_mark"]));
+    assert_eq!(
+        ForkMark::decode(&hex(&i["fork_mark"])).expect("decodes"),
+        mark
+    );
+}

@@ -63,3 +63,4 @@ Beside them: the genesis statement's digest, a run end, a group of records with 
 `stream.py` computes them under the owner decisions of 2026-10-13, the operations key the RFC 8032 section 7.1 test 2 key; `crates/permguard-stream/tests/stream_vectors.rs` reproduces them and verifies both envelopes.
 Under `batches` it also freezes two chained sealed batches of the genesis run (WP-5.2), signed under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
 Beside them: their envelopes, the signer spans naming that key, and a pending cutover; the Rust test builds both batches from the stream key, the fence and the records and requires the generator's bytes.
+Under `ingest` it freezes the ingest's records (WP-5.3): the ship message carrying the first batch, the answers `ok` and `out_of_order`, a consumer's STATE and a fork mark.

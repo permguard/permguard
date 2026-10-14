@@ -157,7 +157,7 @@ impl Spans {
     }
 
     /// Appends `span` to `run`; refuses one that does not start after the run's last span.
-    fn append(&mut self, run: [u8; 16], span: Span) -> Result<(), StreamError> {
+    pub(crate) fn append(&mut self, run: [u8; 16], span: Span) -> Result<(), StreamError> {
         let at = match self.runs.iter().position(|(held, _)| *held == run) {
             Some(at) => at,
             None => {

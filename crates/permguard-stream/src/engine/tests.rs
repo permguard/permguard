@@ -2052,3 +2052,1157 @@ fn spans_and_stream_directories_are_checked() {
         Err(StreamError::Corruption(_))
     ));
 }
+
+// ---- WP-5.3: the ingest ----
+
+use super::ingest::{Answer, Forked, Outcome, Ship, Shipping};
+
+/// The membership the tests' streams are fenced by.
+const MEMBERSHIP: [u8; 16] = [5; 16];
+
+fn fence(epoch: u64) -> Fence {
+    Fence {
+        membership_id: MEMBERSHIP,
+        task_id: "decisions".to_owned(),
+        epoch,
+    }
+}
+
+/// The member's `data.attest` pin, as the coordinator's manifest holds it.
+fn pin_of(host: &Host) -> permguard_host::membership::record::RingPin {
+    let statement = host.attest.statement().expect("a statement");
+    permguard_host::membership::record::RingPin {
+        owner: permguard_host::membership::record::Role::Member,
+        ring: DATA_ATTEST.to_owned(),
+        epoch: statement.epoch,
+        key_set_digest: statement.key_set_digest,
+        binding: statement.binding.expect("a binding"),
+        retiring: false,
+    }
+}
+
+/// The ship message of `batch` with the member's statement.
+fn ship_of(host: &Host, batch: &[u8]) -> Vec<u8> {
+    Ship {
+        batch: batch.to_vec(),
+        statement: permguard_host::membership::statement_of(&host.attest)
+            .expect("a statement")
+            .encode()
+            .expect("encodes"),
+    }
+    .encode()
+    .expect("encodes")
+}
+
+/// The coordinator's consumer of the tests' descriptor, on `host`.
+fn consumer_on(host: &Host) -> Consumer<Text> {
+    host.streams()
+        .register_consumer(descriptor(), Text)
+        .expect("registered")
+}
+
+/// Ships `body` from `member` at epoch 1 of the test membership, the member's pin current.
+fn ingest(
+    consumer: &Consumer<Text>,
+    member: &Host,
+    body: &[u8],
+) -> Result<(Answer, Option<Forked>), StreamError> {
+    ingest_at(consumer, member, body, 1, vec![pin_of(member)])
+}
+
+fn ingest_at(
+    consumer: &Consumer<Text>,
+    member: &Host,
+    body: &[u8],
+    epoch: u64,
+    pins: Vec<permguard_host::membership::record::RingPin>,
+) -> Result<(Answer, Option<Forked>), StreamError> {
+    let pinned = move |_: &str, _: u64| pins.clone();
+    let resource = ledger(1).to_string();
+    consumer.ingest(
+        &Shipping {
+            membership_id: MEMBERSHIP,
+            epoch,
+            member: member.identity.host_id(),
+            resource: &resource,
+            pins: &pinned,
+        },
+        body,
+    )
+}
+
+/// A member streaming `n` records on `ledger(1)` under the test fence, sealed `per` a batch:
+/// the producer, its run and the batches' bytes.
+fn shipped(host: &Host, n: usize, per: u64) -> (Producer<Text>, [u8; 16], Vec<Vec<u8>>) {
+    let producer = host.sealer();
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    for at in 0..n {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    let mut batches = Vec::new();
+    while let Sealing::Sealed { bytes, .. } = producer.seal(&ledger(1), per).expect("sealed") {
+        batches.push(bytes);
+    }
+    (producer, run, batches)
+}
+
+/// A batch of `records` from `first_seq` of the run `run`, after `previous`, signed by the
+/// member's active key: what a forking member could sign.
+fn forge(
+    host: &Host,
+    run: [u8; 16],
+    first_seq: u64,
+    previous: String,
+    records: &[&str],
+    epoch: u64,
+) -> Vec<u8> {
+    forge_with(
+        host.attest.as_ref(),
+        host,
+        run,
+        first_seq,
+        previous,
+        records
+            .iter()
+            .map(|text| text.as_bytes().to_vec())
+            .collect(),
+        epoch,
+        |_| {},
+    )
+}
+
+/// [`forge`] under `ring`, of any record bytes, the envelope changed by `tweak` before it is
+/// signed.
+#[allow(clippy::too_many_arguments)]
+fn forge_with(
+    ring: &Ring,
+    host: &Host,
+    run: [u8; 16],
+    first_seq: u64,
+    previous: String,
+    records: Vec<Vec<u8>>,
+    epoch: u64,
+    tweak: impl FnOnce(&mut batch::Envelope),
+) -> Vec<u8> {
+    use permguard_core::keys::Sign as _;
+    let digests: Vec<String> = records
+        .iter()
+        .map(|record| batch::digest_string(digest::DECISION_RECORD, record))
+        .collect();
+    let kid = ring.active_key_id().expect("a key");
+    let jwk = ring
+        .statement()
+        .expect("a statement")
+        .keys
+        .into_iter()
+        .find(|jwk| jwk.kid == kid.as_str())
+        .expect("the active key");
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    let mut envelope = batch::Envelope {
+        descriptor_version: 1,
+        stream_key: batch::KeyView::of(&key),
+        run: hex(&run),
+        membership_id: Some(permguard_host::identity::record::uuid_text(&MEMBERSHIP)),
+        epoch: Some(epoch),
+        first_seq,
+        last_seq: first_seq + records.len() as u64 - 1,
+        count: records.len() as u64,
+        previous_head: previous,
+        head: digests.last().cloned().expect("a record"),
+        merkle_root: crate::merkle::root(&digests).expect("a root"),
+        batch_id: format!("{}-{first_seq}", hex(&run)),
+        created_at: "2027-01-01T00:00:00Z".to_owned(),
+        key_set_epoch: ring.epoch(),
+    };
+    tweak(&mut envelope);
+    batch::SealedBatch::seal(ring, &jwk, protected::DECISION_BATCH, &envelope, &records)
+        .expect("sealed")
+        .encode()
+        .expect("encoded")
+}
+
+fn record_digest_of(text: &str) -> String {
+    batch::digest_string(digest::DECISION_RECORD, text.as_bytes())
+}
+
+/// The consumer directory of `member`'s run `run` on `host`.
+fn consumer_run_dir(host: &Host, member: &Host, run: &[u8; 16]) -> PathBuf {
+    let key = descriptor()
+        .key(&ledger(1), member.identity.host_id())
+        .expect("a key");
+    host.root
+        .join("host")
+        .join(STREAMS)
+        .join("data")
+        .join("decisions")
+        .join("1")
+        .join("consumer")
+        .join(key.resource_component())
+        .join(hex(&member.identity.host_id()))
+        .join(hex(run))
+}
+
+/// WP-5.3: a batch continuing what is held is acknowledged through its last sequence, after its
+/// batch file, its span, its records and STATE are on disk.
+#[test]
+fn an_acknowledgement_follows_every_durable_write() {
+    let host = Host::new("ingest-ok");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 5, 3);
+    assert_eq!(batches.len(), 2);
+    let (answer, forked) =
+        ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ingested");
+    assert_eq!((answer, forked), (Answer::of(Outcome::Ok, 3), None));
+    let dir = consumer_run_dir(&host, &host, &run);
+    assert_eq!(
+        std::fs::read(dir.join("batches").join("1-3.jws")).expect("the batch file"),
+        batches[0]
+    );
+    let spans = consumer
+        .spans(&ledger(1), host.identity.host_id(), run)
+        .expect("spans");
+    assert_eq!(spans.signing(&run, 1).map(|span| span.from_seq), Some(1));
+    let state = ConsumerState::decode(
+        &permguard_host::storage::write::read_view(
+            &permguard_host::storage::Dir::open(&dir).expect("the run"),
+            "STATE",
+            format::VIEW,
+        )
+        .expect("read")
+        .expect("a STATE"),
+    )
+    .expect("decodes");
+    assert_eq!(
+        state,
+        ConsumerState {
+            acked: 3,
+            oldest_retained: 1
+        }
+    );
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[1])).expect("ingested");
+    assert_eq!(answer, Answer::of(Outcome::Ok, 5));
+    let records: Vec<String> = consumer
+        .read(&ledger(1), host.identity.host_id(), run, 1, 10)
+        .expect("read")
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect();
+    assert_eq!(records, ["r0", "r1", "r2", "r3", "r4"]);
+    // A reopened consumer holds the same, from its records.
+    drop(consumer);
+    assert_eq!(
+        consumer_on(&host)
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        5
+    );
+}
+
+/// WP-5.3: a batch already held is acknowledged again, the records unchanged; the same range
+/// with another record is a fork, which marks the producer: every later batch is `fork`.
+#[test]
+fn an_exact_replay_is_ok_and_a_differing_one_a_fork() {
+    let host = Host::new("ingest-replay");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 3, 3);
+    let body = ship_of(&host, &batches[0]);
+    assert_eq!(
+        ingest(&consumer, &host, &body).expect("ok").0,
+        Answer::of(Outcome::Ok, 3)
+    );
+    assert_eq!(
+        ingest(&consumer, &host, &body).expect("ok").0,
+        Answer::of(Outcome::Ok, 3)
+    );
+    // Another batching of the records held: the same records, an exact replay.
+    let rebatched = forge(&host, run, 2, record_digest_of("r0"), &["r1", "r2"], 1);
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &rebatched))
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 3)
+    );
+    let differing = forge(&host, run, 2, record_digest_of("r0"), &["r1", "x2"], 1);
+    let (answer, forked) = ingest(&consumer, &host, &ship_of(&host, &differing)).expect("fork");
+    assert_eq!(answer.outcome, Outcome::Fork);
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    assert_eq!(
+        forked,
+        Some(Forked {
+            stream: format!("data/decisions/{}/{}", key.resource_component(), hex(&run)),
+            at_seq: 3,
+        })
+    );
+    assert_eq!(
+        consumer
+            .forked(&ledger(1), host.identity.host_id())
+            .expect("read"),
+        Some(ForkMark { run, at_seq: 3 })
+    );
+    // Marked: even the exact replay is `fork` now, the incident reported again until the
+    // membership is suspended.
+    assert_eq!(
+        ingest(&consumer, &host, &body).expect("fork"),
+        (
+            Answer::of(Outcome::Fork, 0),
+            Some(Forked {
+                stream: format!("data/decisions/{}/{}", key.resource_component(), hex(&run)),
+                at_seq: 3,
+            })
+        )
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        3,
+        "nothing the fork carried was kept"
+    );
+}
+
+/// WP-5.3: a batch whose previous head is not the record before it is a fork, and a batch file
+/// of a range held with other bytes, signed again, is a fork.
+#[test]
+fn a_batch_that_does_not_chain_or_was_signed_twice_is_a_fork() {
+    let host = Host::new("ingest-chain");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 3, 2);
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ok");
+    let unchained = forge(&host, run, 3, record_digest_of("other"), &["r2"], 1);
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &unchained))
+            .expect("fork")
+            .0
+            .outcome,
+        Outcome::Fork
+    );
+    let other = Host::new("ingest-twice");
+    let consumer = consumer_on(&other);
+    let (_producer, run, batches) = shipped(&other, 2, 2);
+    ingest(&consumer, &other, &ship_of(&other, &batches[0])).expect("ok");
+    let twice = forge(
+        &other,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["r0", "r1"],
+        1,
+    );
+    assert_ne!(twice, batches[0]);
+    assert_eq!(
+        ingest(&consumer, &other, &ship_of(&other, &twice))
+            .expect("fork")
+            .0
+            .outcome,
+        Outcome::Fork
+    );
+}
+
+/// WP-5.3: a batch overlapping what is held keeps only its suffix.
+#[test]
+fn an_overlap_appends_only_its_suffix() {
+    let host = Host::new("ingest-overlap");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 2, 2);
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ok");
+    let overlapping = forge(
+        &host,
+        run,
+        2,
+        record_digest_of("r0"),
+        &["r1", "r2", "r3"],
+        1,
+    );
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &overlapping))
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 4)
+    );
+    let records: Vec<(u64, String)> = consumer
+        .read(&ledger(1), host.identity.host_id(), run, 1, 10)
+        .expect("read");
+    assert_eq!(
+        records,
+        vec![
+            (1, "r0".to_owned()),
+            (2, "r1".to_owned()),
+            (3, "r2".to_owned()),
+            (4, "r3".to_owned())
+        ]
+    );
+}
+
+/// WP-5.3: a batch beyond the next sequence is `out_of_order` with the sequence to resend from,
+/// and nothing of it is kept.
+#[test]
+fn a_batch_ahead_is_out_of_order_and_stores_nothing() {
+    let host = Host::new("ingest-ahead");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 4, 2);
+    let (answer, _) = ingest(&consumer, &host, &ship_of(&host, &batches[1])).expect("answered");
+    assert_eq!(
+        answer,
+        Answer {
+            outcome: Outcome::OutOfOrder,
+            acked: 0,
+            expected_seq: Some(1)
+        }
+    );
+    let dir = consumer_run_dir(&host, &host, &run);
+    assert!(!dir.join("batches").join("3-4.jws").exists());
+    assert!(!dir.join("signers.cbor").exists());
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        0
+    );
+}
+
+/// WP-5.3: a range below the oldest sequence retained is `gone`, never an exact replay.
+#[test]
+fn a_range_below_the_oldest_retained_is_gone() {
+    let host = Host::new("ingest-gone");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 4, 2);
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ok");
+    ingest(&consumer, &host, &ship_of(&host, &batches[1])).expect("ok");
+    drop(consumer);
+    // What retention (WP-5.6) leaves: the bytes from 3 on.
+    let dir = consumer_run_dir(&host, &host, &run);
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&dir).expect("the run"),
+        "STATE",
+        format::VIEW,
+        &ConsumerState {
+            acked: 4,
+            oldest_retained: 3,
+        }
+        .encode()
+        .expect("encodes"),
+    )
+    .expect("written");
+    let consumer = consumer_on(&host);
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &batches[0]))
+            .expect("gone")
+            .0,
+        Answer::of(Outcome::Gone, 4)
+    );
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &batches[1]))
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 4)
+    );
+}
+
+/// WP-5.3: a batch whose statement is not the member's pin, whose key is outside the pinned set,
+/// whose signature, membership, producer or resource is not the task's, or whose epoch is above
+/// the lease's, is `unverifiable`; below it, `closed`; nothing of any is kept.
+#[test]
+fn an_unverifiable_batch_stores_nothing() {
+    let host = Host::new("ingest-unverifiable");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 2, 2);
+    let body = ship_of(&host, &batches[0]);
+    let outcome =
+        |answer: Result<(Answer, Option<Forked>), StreamError>| answer.expect("answered").0.outcome;
+    // No pin, or the pin of another epoch.
+    assert_eq!(
+        outcome(ingest_at(&consumer, &host, &body, 1, Vec::new())),
+        Outcome::Unverifiable
+    );
+    let mut stale = pin_of(&host);
+    stale.epoch += 1;
+    assert_eq!(
+        outcome(ingest_at(&consumer, &host, &body, 1, vec![stale])),
+        Outcome::Unverifiable
+    );
+    let mut digest = pin_of(&host);
+    digest.key_set_digest = [9; 32];
+    assert_eq!(
+        outcome(ingest_at(&consumer, &host, &body, 1, vec![digest])),
+        Outcome::Unverifiable
+    );
+    // Another member's statement, or a member shipping another's batch.
+    let other = Host::new("ingest-other-member");
+    assert_eq!(
+        outcome(ingest_at(&consumer, &other, &body, 1, vec![pin_of(&other)])),
+        Outcome::Unverifiable
+    );
+    let foreign = Ship {
+        batch: batches[0].clone(),
+        statement: permguard_host::membership::statement_of(&other.attest)
+            .expect("a statement")
+            .encode()
+            .expect("encodes"),
+    }
+    .encode()
+    .expect("encodes");
+    assert_eq!(
+        outcome(ingest_at(
+            &consumer,
+            &host,
+            &foreign,
+            1,
+            vec![pin_of(&host)]
+        )),
+        Outcome::Unverifiable
+    );
+    // A changed signature.
+    let mut tampered = batch::SealedBatch::decode(&batches[0]).expect("decodes");
+    tampered.signature.signature = tampered
+        .signature
+        .signature
+        .replacen('A', "B", 1)
+        .replacen('a', "b", 1);
+    let tampered = ship_of(&host, &tampered.encode().expect("encodes"));
+    assert_eq!(
+        outcome(ingest(&consumer, &host, &tampered)),
+        Outcome::Unverifiable
+    );
+    // Not a message, or a message of no batch.
+    assert_eq!(
+        outcome(ingest(&consumer, &host, b"not cbor")),
+        Outcome::Unverifiable
+    );
+    // Another membership's batch.
+    let other_membership = {
+        let producer = host.sealer();
+        producer
+            .open_run(
+                &ledger(2),
+                Some(Fence {
+                    membership_id: [6; 16],
+                    ..fence(1)
+                }),
+            )
+            .expect("opened");
+        producer.append(&ledger(2), &"a".to_owned()).expect("a");
+        match producer.seal(&ledger(2), 10).expect("sealed") {
+            Sealing::Sealed { bytes, .. } => bytes,
+            other => panic!("{other:?}"),
+        }
+    };
+    let resource = ledger(2).to_string();
+    let pins = vec![pin_of(&host)];
+    let pinned = move |_: &str, _: u64| pins.clone();
+    let shipping = Shipping {
+        membership_id: MEMBERSHIP,
+        epoch: 1,
+        member: host.identity.host_id(),
+        resource: &resource,
+        pins: &pinned,
+    };
+    assert_eq!(
+        consumer
+            .ingest(&shipping, &ship_of(&host, &other_membership))
+            .expect("answered")
+            .0
+            .outcome,
+        Outcome::Unverifiable
+    );
+    // Another resource than the task's.
+    let shipping = Shipping {
+        resource: "plane/data/zone/zone-a/ledger/ledger-9",
+        ..shipping
+    };
+    assert_eq!(
+        consumer
+            .ingest(&shipping, &body)
+            .expect("answered")
+            .0
+            .outcome,
+        Outcome::Unverifiable
+    );
+    // A batch's epoch above the lease's is `unverifiable`.
+    let ahead = forge(&host, run, 1, batch::GENESIS_HEAD.to_owned(), &["r0"], 3);
+    assert_eq!(
+        outcome(ingest_at(
+            &consumer,
+            &host,
+            &ship_of(&host, &ahead),
+            2,
+            vec![pin_of(&host)]
+        )),
+        Outcome::Unverifiable
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        0
+    );
+    assert!(
+        !consumer_run_dir(&host, &host, &run)
+            .join("batches")
+            .exists()
+    );
+}
+
+/// WP-5.3: the checks run in the documented order: a forked producer is `fork` before its batch
+/// is read; a batch that does not verify is `unverifiable` before its epoch, range or retention
+/// is judged.
+#[test]
+fn each_check_refuses_in_the_documented_order() {
+    let host = Host::new("ingest-order");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 4, 2);
+    // Ahead and stale, but not verifiable: `unverifiable`, not `out_of_order` nor `closed`.
+    let mut tampered = batch::SealedBatch::decode(&batches[1]).expect("decodes");
+    tampered.records.swap(0, 1);
+    let tampered = ship_of(&host, &tampered.encode().expect("encodes"));
+    assert_eq!(
+        ingest_at(&consumer, &host, &tampered, 2, vec![pin_of(&host)])
+            .expect("answered")
+            .0
+            .outcome,
+        Outcome::Unverifiable
+    );
+    // Ahead and of an epoch no lease issued: `unverifiable` before `out_of_order`.
+    assert_eq!(
+        ingest_at(
+            &consumer,
+            &host,
+            &ship_of(&host, &batches[1]),
+            0,
+            vec![pin_of(&host)]
+        )
+        .expect("answered")
+        .0
+        .outcome,
+        Outcome::Unverifiable
+    );
+    // A forked producer: `fork`, even for a message that does not read.
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ok");
+    let differing = forge(
+        &host,
+        run,
+        1,
+        batch::GENESIS_HEAD.to_owned(),
+        &["x0", "r1"],
+        1,
+    );
+    ingest(&consumer, &host, &ship_of(&host, &differing)).expect("fork");
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, b"garbage"))
+            .expect("answered")
+            .0
+            .outcome,
+        Outcome::Fork
+    );
+}
+
+/// WP-5.3: a store that cannot keep a batch is an error, the handler's `deferred`; the retry,
+/// the store back, is acknowledged.
+#[test]
+fn a_store_failure_is_deferred() {
+    let host = Host::new("ingest-deferred");
+    let consumer = consumer_on(&host);
+    let (_producer, run, batches) = shipped(&host, 4, 2);
+    ingest(&consumer, &host, &ship_of(&host, &batches[0])).expect("ok");
+    let records = records_dir(&consumer_run_dir(&host, &host, &run));
+    {
+        let _failing = fault::inject_exact(segment(&records), Fault::Fsync);
+        assert!(matches!(
+            ingest(&consumer, &host, &ship_of(&host, &batches[1])),
+            Err(StreamError::Storage(_))
+        ));
+    }
+    // The same consumer: the failed run is opened again, its journal recovered.
+    assert_eq!(
+        ingest(&consumer, &host, &ship_of(&host, &batches[1]))
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 4)
+    );
+    // The batch file and span the failed delivery left are the retry's: one span.
+    let spans = consumer
+        .spans(&ledger(1), host.identity.host_id(), run)
+        .expect("spans");
+    assert_eq!(spans.runs.len(), 1);
+    assert_eq!(spans.runs[0].1.len(), 1);
+}
+
+/// WP-5.3: every outcome travels as its stable code; `expected_seq` comes with `out_of_order`
+/// only; the message reads back as it was written.
+#[test]
+fn the_answers_carry_the_stable_codes() {
+    use permguard_core::codes::stream;
+    for (outcome, code) in [
+        (Outcome::Ok, super::ingest::OK),
+        (Outcome::OutOfOrder, stream::OUT_OF_ORDER),
+        (Outcome::Fork, stream::FORK),
+        (Outcome::Unverifiable, stream::UNVERIFIABLE),
+        (Outcome::Gone, stream::GONE),
+        (Outcome::Closed, stream::CLOSED),
+    ] {
+        assert_eq!(outcome.code(), code);
+        let answer = Answer {
+            outcome,
+            acked: 7,
+            expected_seq: (outcome == Outcome::OutOfOrder).then_some(8),
+        };
+        assert_eq!(
+            Answer::decode(&answer.encode().expect("encodes")).expect("decodes"),
+            answer
+        );
+    }
+    let wrong = Answer {
+        outcome: Outcome::Ok,
+        acked: 1,
+        expected_seq: Some(2),
+    };
+    assert!(Answer::decode(&wrong.encode().expect("encodes")).is_err());
+    let ship = Ship {
+        batch: b"batch".to_vec(),
+        statement: b"statement".to_vec(),
+    };
+    assert_eq!(
+        Ship::decode(&ship.encode().expect("encodes")).expect("decodes"),
+        ship
+    );
+    assert!(
+        Ship::decode(&vec![
+            0u8;
+            permguard_host::membership::record::MAX_BODY_BYTES + 1
+        ])
+        .is_err()
+    );
+}
+
+/// WP-5.3: the handler answers through the session's incidents: a fork is reported with its
+/// stream and sequence, and again on the next delivery; a store that cannot keep a batch is the
+/// refusal `store_unavailable`.
+#[test]
+fn the_handler_reports_a_fork_and_defers_a_store_failure() {
+    use permguard_host::membership::task::{Incidents, TaskContext, TaskHandler};
+    struct Reported(Mutex<Vec<(String, u64)>>);
+    impl Incidents for Reported {
+        fn stream_forked(&self, stream: &str, at_seq: u64) -> Result<(), String> {
+            self.0
+                .lock()
+                .expect("lock")
+                .push((stream.to_owned(), at_seq));
+            Ok(())
+        }
+    }
+    struct Pinned(permguard_host::membership::record::RingPin);
+    impl super::ingest::StreamPins for Pinned {
+        fn verifying_pins(
+            &self,
+            membership_id: &[u8; 16],
+            _: &str,
+            _: &str,
+            _: u64,
+        ) -> Vec<permguard_host::membership::record::RingPin> {
+            if *membership_id == MEMBERSHIP {
+                vec![self.0.clone()]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+    let host = Host::new("ingest-handler");
+    let (_producer, run, batches) = shipped(&host, 4, 2);
+    let handler = super::ingest::Ingest {
+        consumer: Arc::new(consumer_on(&host)),
+        pins: Arc::new(Pinned(pin_of(&host))),
+    };
+    let context = TaskContext {
+        membership_id: MEMBERSHIP,
+        task_id: "decisions".to_owned(),
+        task_type: TaskType::DecisionsShip,
+        version: super::ingest::VERSION,
+        epoch: 1,
+        resource: ledger(1).to_string(),
+        member: host.identity.host_id(),
+        request_id: "r".to_owned(),
+        limits: permguard_host::membership::record::Limits {
+            max_body_bytes: 1 << 20,
+            max_concurrency: 1,
+            max_rate_per_minute: 60,
+            max_batch_records: 100,
+            retention_seconds: 3600,
+        },
+        channel_binding: [0; 32],
+    };
+    let reported = Reported(Mutex::new(Vec::new()));
+    let answer = |body: &[u8]| {
+        Answer::decode(
+            &handler
+                .handle_with(&context, body, &reported)
+                .expect("answered"),
+        )
+        .expect("decodes")
+    };
+    assert_eq!(
+        answer(&ship_of(&host, &batches[0])),
+        Answer::of(Outcome::Ok, 2)
+    );
+    // A store that cannot keep the next batch.
+    let records = records_dir(&consumer_run_dir(&host, &host, &run));
+    {
+        let _failing = fault::inject_exact(segment(&records), Fault::Fsync);
+        let refused = handler
+            .handle_with(&context, &ship_of(&host, &batches[1]), &reported)
+            .expect_err("deferred");
+        assert_eq!(
+            refused.code,
+            permguard_core::codes::stream::STORE_UNAVAILABLE
+        );
+    }
+    assert_eq!(
+        answer(&ship_of(&host, &batches[1])),
+        Answer::of(Outcome::Ok, 4)
+    );
+    // A fork: answered, reported; reported again on the next delivery.
+    let differing = forge(&host, run, 3, record_digest_of("r1"), &["r2", "x3"], 1);
+    assert_eq!(answer(&ship_of(&host, &differing)).outcome, Outcome::Fork);
+    assert_eq!(answer(&ship_of(&host, &batches[0])).outcome, Outcome::Fork);
+    let key = descriptor()
+        .key(&ledger(1), host.identity.host_id())
+        .expect("a key");
+    let stream = format!("data/decisions/{}/{}", key.resource_component(), hex(&run));
+    assert_eq!(
+        reported.0.lock().expect("lock").clone(),
+        vec![(stream.clone(), 4), (stream, 4)]
+    );
+    // Without a session's incidents, the fork is still answered.
+    assert_eq!(
+        Answer::decode(
+            &handler
+                .handle(&context, &ship_of(&host, &batches[0]))
+                .expect("answered")
+        )
+        .expect("decodes")
+        .outcome,
+        Outcome::Fork
+    );
+}
+
+/// WP-5.3, after the review: a run opened under an earlier epoch of the membership ships after
+/// a re-pin moved the lease's on: its batches under the replaced key verify against the retiring
+/// pin, those under the new key against the current one, each with its span.
+#[test]
+fn a_run_ships_on_after_a_repin_under_both_pins() {
+    let (host, wall, mono) = manual_host("ingest-repin");
+    let consumer = consumer_on(&host);
+    let producer = host.sealer();
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    for n in 0..4 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let old_pin = pin_of(&host);
+    let old_statement = ship_of(&host, b"");
+    let (.., first) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    let (.., second) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    rotate_attest(&host, &wall, &mono);
+    producer
+        .append(&ledger(1), &"r4".to_owned())
+        .expect("appended");
+    let new_pin = pin_of(&host);
+    assert_ne!(old_pin, new_pin);
+    let retiring = permguard_host::membership::record::RingPin {
+        retiring: true,
+        ..old_pin
+    };
+    let with_old = |batch: &[u8]| {
+        let mut ship = Ship::decode(&old_statement).expect("decodes");
+        ship.batch = batch.to_vec();
+        ship.encode().expect("encodes")
+    };
+    // The lease is at epoch 2 now; the run's fence is epoch 1.
+    let pins = vec![new_pin.clone(), retiring.clone()];
+    assert_eq!(
+        ingest_at(&consumer, &host, &with_old(&first), 2, pins.clone())
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 2)
+    );
+    assert_eq!(
+        ingest_at(&consumer, &host, &with_old(&second), 2, pins.clone())
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 4)
+    );
+    // The new key's batch, after its cutover, under the current pin and statement.
+    let stream = {
+        let key = descriptor()
+            .key(&ledger(1), host.identity.host_id())
+            .expect("a key");
+        format!("data/decisions/{}/{}", key.resource_component(), hex(&run))
+    };
+    let rotated = {
+        use permguard_core::keys::Sign as _;
+        host.attest
+            .active_key_id()
+            .expect("a key")
+            .as_str()
+            .to_owned()
+    };
+    let due = producer.due_cutovers(&MEMBERSHIP, &rotated).expect("due");
+    assert_eq!(due, vec![(stream.clone(), 5)]);
+    producer
+        .confirm_cutover(&stream, &rotated)
+        .expect("confirmed");
+    let (.., third) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    assert_eq!(
+        ingest_at(&consumer, &host, &ship_of(&host, &third), 2, pins.clone())
+            .expect("ok")
+            .0,
+        Answer::of(Outcome::Ok, 5)
+    );
+    let spans = consumer
+        .spans(&ledger(1), host.identity.host_id(), run)
+        .expect("spans");
+    assert_eq!(
+        spans.runs[0]
+            .1
+            .iter()
+            .map(|span| span.from_seq)
+            .collect::<Vec<_>>(),
+        vec![1, 5]
+    );
+    // The new key over a range the replaced one covers: a conflicting transition, a fork,
+    // decided before any file of it is written.
+    let conflicting = forge(&host, run, 3, record_digest_of("r1"), &["r2", "r3"], 1);
+    let (answer, forked) =
+        ingest_at(&consumer, &host, &ship_of(&host, &conflicting), 2, pins).expect("fork");
+    assert_eq!(answer.outcome, Outcome::Fork);
+    assert_eq!(forked.map(|forked| forked.at_seq), Some(3));
+    assert_eq!(
+        std::fs::read(
+            consumer_run_dir(&host, &host, &run)
+                .join("batches")
+                .join("3-4.jws")
+        )
+        .expect("the first delivery's file"),
+        second
+    );
+}
+
+/// WP-5.3: frames written under a later claim of the volume are refused when the consumer opens
+/// the run: a restored volume never answers for records it did not write.
+#[test]
+fn a_consumer_journal_of_a_later_claim_is_refused() {
+    let host = Host::new("ingest-claim");
+    let (_producer, run, batches) = shipped(&host, 2, 2);
+    let at = |claim: u64| {
+        Consumer::new(
+            permguard_host::storage::Dir::open(
+                &host
+                    .root
+                    .join("host")
+                    .join(STREAMS)
+                    .join("data")
+                    .join("decisions")
+                    .join("1")
+                    .join("consumer"),
+            )
+            .expect("the consumer directory"),
+            claim,
+            descriptor(),
+            Text,
+        )
+    };
+    std::fs::create_dir_all(
+        host.root
+            .join("host")
+            .join(STREAMS)
+            .join("data")
+            .join("decisions")
+            .join("1")
+            .join("consumer"),
+    )
+    .expect("the consumer directory");
+    // Written under claim 7.
+    let later = at(7);
+    ingest(&later, &host, &ship_of(&host, &batches[0])).expect("ok");
+    drop(later);
+    // Opened under claim 3: the frames are ahead of the claim, refused.
+    let refused = at(3).acked(&ledger(1), host.identity.host_id(), run);
+    assert!(
+        matches!(
+            refused,
+            Err(StreamError::Storage(
+                permguard_host::storage::StorageError::ClaimBehindData { .. }
+            ))
+        ),
+        "{refused:?}"
+    );
+    assert_eq!(
+        at(7)
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        2
+    );
+}
+
+/// WP-5.3, after the mutants: a batch of another descriptor version, of a record the codec does
+/// not read, signed under another of the member's rings with that ring's statement and pin, or
+/// presented with a statement whose binding is not the pinned one, is `unverifiable`; below the
+/// oldest retained sequence no chain is compared; a span conflict over a range with no batch file
+/// yet is still a fork.
+#[test]
+fn the_ingest_refuses_what_its_task_does_not_pin() {
+    let (host, wall, mono) = manual_host("ingest-mutants");
+    let consumer = consumer_on(&host);
+    let producer = host.sealer();
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    let genesis = batch::GENESIS_HEAD.to_owned();
+    let outcome = |body: &[u8], pins: Vec<permguard_host::membership::record::RingPin>| {
+        ingest_at(&consumer, &host, body, 1, pins)
+            .expect("answered")
+            .0
+            .outcome
+    };
+    let version = forge_with(
+        host.attest.as_ref(),
+        &host,
+        run,
+        1,
+        genesis.clone(),
+        vec![b"r0".to_vec()],
+        1,
+        |envelope| envelope.descriptor_version = 2,
+    );
+    assert_eq!(
+        outcome(&ship_of(&host, &version), vec![pin_of(&host)]),
+        Outcome::Unverifiable
+    );
+    let unreadable = forge_with(
+        host.attest.as_ref(),
+        &host,
+        run,
+        1,
+        genesis.clone(),
+        vec![vec![0xff, 0xfe]],
+        1,
+        |_| {},
+    );
+    assert_eq!(
+        outcome(&ship_of(&host, &unreadable), vec![pin_of(&host)]),
+        Outcome::Unverifiable
+    );
+    // Signed under `host.operations`, with that ring's own statement and pin.
+    let operations = forge_with(
+        host.operations.as_ref(),
+        &host,
+        run,
+        1,
+        genesis.clone(),
+        vec![b"r0".to_vec()],
+        1,
+        |_| {},
+    );
+    let statement = host.operations.statement().expect("a statement");
+    let operations_pin = permguard_host::membership::record::RingPin {
+        owner: permguard_host::membership::record::Role::Member,
+        ring: HOST_OPERATIONS.to_owned(),
+        epoch: statement.epoch,
+        key_set_digest: statement.key_set_digest,
+        binding: statement.binding.expect("a binding"),
+        retiring: false,
+    };
+    let body = Ship {
+        batch: operations,
+        statement: permguard_host::membership::statement_of(&host.operations)
+            .expect("a statement")
+            .encode()
+            .expect("encodes"),
+    }
+    .encode()
+    .expect("encodes");
+    assert_eq!(outcome(&body, vec![operations_pin]), Outcome::Unverifiable);
+    // A statement of the pinned keys under another binding.
+    producer.append(&ledger(1), &"r0".to_owned()).expect("r0");
+    producer.append(&ledger(1), &"r1".to_owned()).expect("r1");
+    let (.., first) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    let mut rebound = permguard_host::membership::statement_of(&host.attest).expect("a statement");
+    rebound.binding.push(0);
+    let body = Ship {
+        batch: first.clone(),
+        statement: rebound.encode().expect("encodes"),
+    }
+    .encode()
+    .expect("encodes");
+    let mut pin = pin_of(&host);
+    pin.binding = rebound.binding.clone();
+    pin.binding.pop();
+    assert_eq!(outcome(&body, vec![pin.clone()]), Outcome::Unverifiable);
+    assert_eq!(outcome(&ship_of(&host, &first), vec![pin]), Outcome::Ok);
+    // A span conflict over a range with no batch file yet: the new key over the old key's.
+    for n in 2..4 {
+        producer
+            .append(&ledger(1), &format!("r{n}"))
+            .expect("appended");
+    }
+    let (.., second) = sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    assert_eq!(
+        outcome(&ship_of(&host, &second), vec![pin_of(&host)]),
+        Outcome::Ok
+    );
+    let old_pin = pin_of(&host);
+    rotate_attest(&host, &wall, &mono);
+    let pins = vec![pin_of(&host), old_pin];
+    // The new key from 5, then over 3 alone, which the old key's span covers.
+    let late = forge(&host, run, 5, record_digest_of("r3"), &["r4"], 1);
+    assert_eq!(outcome(&ship_of(&host, &late), pins.clone()), Outcome::Ok);
+    let conflicting = forge(&host, run, 3, record_digest_of("r1"), &["r2"], 1);
+    assert_eq!(outcome(&ship_of(&host, &conflicting), pins), Outcome::Fork);
+    assert!(
+        !consumer_run_dir(&host, &host, &run)
+            .join("batches")
+            .join("3-3.jws")
+            .exists()
+    );
+    // Below the oldest retained sequence, no chain is compared: a replay there answers `gone`,
+    // one starting at it, whatever head it names, is compared record by record.
+    let fresh = Host::new("ingest-retained");
+    let consumer = consumer_on(&fresh);
+    let (_producer, run, batches) = shipped(&fresh, 4, 2);
+    ingest(&consumer, &fresh, &ship_of(&fresh, &batches[0])).expect("ok");
+    ingest(&consumer, &fresh, &ship_of(&fresh, &batches[1])).expect("ok");
+    drop(consumer);
+    permguard_host::storage::write::replace_view(
+        &permguard_host::storage::Dir::open(&consumer_run_dir(&fresh, &fresh, &run))
+            .expect("the run"),
+        "STATE",
+        format::VIEW,
+        &ConsumerState {
+            acked: 4,
+            oldest_retained: 3,
+        }
+        .encode()
+        .expect("encodes"),
+    )
+    .expect("written");
+    let consumer = consumer_on(&fresh);
+    let unanchored = forge(&fresh, run, 3, record_digest_of("not-r1"), &["r2"], 1);
+    assert_eq!(
+        ingest(&consumer, &fresh, &ship_of(&fresh, &unanchored))
+            .expect("answered")
+            .0,
+        Answer::of(Outcome::Ok, 4)
+    );
+}

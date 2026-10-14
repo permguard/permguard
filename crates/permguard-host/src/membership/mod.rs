@@ -708,6 +708,18 @@ pub fn verify_statement(
             statement.ring
         )));
     }
+    let digest = keys_digest(statement)?;
+    if digest != binding.key_set_digest {
+        return Err(MembershipError::Unverified(format!(
+            "the keys of `{}` do not digest to the set its binding names",
+            statement.ring
+        )));
+    }
+    Ok(binding)
+}
+
+/// The digest of the key set `statement` presents, each key's `kid` its thumbprint in the ring.
+fn keys_digest(statement: &RingStatement) -> Result<[u8; 32], MembershipError> {
     let mut thumbprints = Vec::with_capacity(statement.keys.len());
     for text in &statement.keys {
         let jwk: Jwk = serde_json::from_str(text).map_err(|error| {
@@ -729,16 +741,31 @@ pub fn verify_statement(
         thumbprints.push(thumbprint);
     }
     let refs: Vec<&str> = thumbprints.iter().map(String::as_str).collect();
-    let digest = KeySet::new(&statement.ring, statement.epoch, statement.suite, &refs)
+    KeySet::new(&statement.ring, statement.epoch, statement.suite, &refs)
         .and_then(|set| set.digest())
-        .map_err(|error| MembershipError::Unverified(error.to_string()))?;
-    if digest != binding.key_set_digest {
+        .map_err(|error| MembershipError::Unverified(error.to_string()))
+}
+
+/// Whether `statement` is the set `pin` fixes: the same ring, epoch and binding bytes, its keys
+/// digesting to the pinned set. What a stream consumer checks a batch's keys with (WP-5.3); the
+/// binding was verified when the pin was taken.
+pub fn statement_matches(statement: &RingStatement, pin: &RingPin) -> Result<(), MembershipError> {
+    if statement.ring != pin.ring
+        || statement.epoch != pin.epoch
+        || statement.binding != pin.binding
+    {
         return Err(MembershipError::Unverified(format!(
-            "the keys of `{}` do not digest to the set its binding names",
+            "the statement of `{}` at epoch {} is not the pinned one",
+            statement.ring, statement.epoch
+        )));
+    }
+    if keys_digest(statement)? != pin.key_set_digest {
+        return Err(MembershipError::Unverified(format!(
+            "the keys of `{}` do not digest to the pinned set",
             statement.ring
         )));
     }
-    Ok(binding)
+    Ok(())
 }
 
 /// The public key a JWK of `suite` holds.

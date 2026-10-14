@@ -1,7 +1,7 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Independent generator for contracts/vectors/stream.json (WP-5.1, WP-5.2).
+"""Independent generator for contracts/vectors/stream.json (WP-5.1, WP-5.2, WP-5.3).
 
 Computes the stream engine's records from the owner decisions of 2026-10-13 (the label tables in
 status.md) with Python's standard library and `cryptography`, never by calling the Rust codecs, so
@@ -141,7 +141,16 @@ STREAM = f"data/decisions/{hashlib.sha256(RESOURCE.encode()).hexdigest()}/{RUN_I
 cutover = cbor({1: STREAM, 2: MEMBERSHIP, 3: "data.attest", 4: "data.attest:next", 5: 4,
                 6: False})
 
-out = {"comment": "Stream engine records (WP-5.1, WP-5.2); see README.md and stream.py",
+# WP-5.3: the ingest.
+STATEMENT = bytes.fromhex("a0")
+ingest = {"ship": cbor({1: first_file, 2: STATEMENT}).hex(),
+          "statement": STATEMENT.hex(),
+          "answer_ok": cbor({1: "ok", 2: 2}).hex(),
+          "answer_out_of_order": cbor({1: "out_of_order", 2: 2, 3: 3}).hex(),
+          "consumer_state": cbor({1: 2, 2: 1}).hex(),
+          "fork_mark": cbor({1: RUN_ID, 2: 3}).hex()}
+
+out = {"comment": "Stream engine records (WP-5.1, WP-5.2, WP-5.3); see README.md and stream.py",
        "operations_public": OPERATIONS_PUB.hex(), "kid": KID.decode(),
        "producer_host_id": PRODUCER.hex(), "producer_boot_id": BOOT.hex(), "resource": RESOURCE,
        "membership_id": MEMBERSHIP.hex(),
@@ -158,7 +167,8 @@ out = {"comment": "Stream engine records (WP-5.1, WP-5.2); see README.md and str
        "batches": {"attest_jwk": ATTEST_JWK, "records": [r.decode() for r in batch_records],
                    "first": {"envelope": first_envelope, "file": first_file.decode()},
                    "second": {"envelope": second_envelope, "file": second_file.decode()},
-                   "signers": signers.hex(), "cutover": cutover.hex(), "stream": STREAM}}
+                   "signers": signers.hex(), "cutover": cutover.hex(), "stream": STREAM},
+       "ingest": ingest}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

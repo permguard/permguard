@@ -1029,6 +1029,46 @@
       "limit": "`engine::batch::MAX_BATCH_FILE_BYTES`, checked by the decoder before it parses: a sealed batch file, canonical JSON (WP-5.2)",
       "enforced_at_decoder": true,
       "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/ingest.rs",
+      "item": "Ship::decode",
+      "entry": "permguard_stream::engine::ingest::Ship::decode",
+      "max_input_bytes": 458752,
+      "limit": "`membership::record::MAX_BODY_BYTES`, checked by the decoder before it parses: a shipped batch, the body of a `decisions.ship` or `events.ship` message (WP-5.3)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/ingest.rs",
+      "item": "Answer::decode",
+      "entry": "permguard_stream::engine::ingest::Answer::decode",
+      "max_input_bytes": 64,
+      "limit": "`engine::ingest::MAX_ANSWER_BYTES`, checked by the decoder before it parses: the coordinator's answer to a shipped batch (WP-5.3)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/consumer.rs",
+      "item": "ConsumerState::decode",
+      "entry": "permguard_stream::engine::ConsumerState::decode",
+      "max_input_bytes": 256,
+      "limit": "`engine::MAX_VIEW_BYTES`, checked by the decoder before it parses: a consumer run's STATE (WP-5.3)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/consumer.rs",
+      "item": "ForkMark::decode",
+      "entry": "permguard_stream::engine::ForkMark::decode",
+      "max_input_bytes": 256,
+      "limit": "`engine::MAX_VIEW_BYTES`, checked by the decoder before it parses: a consumer's FORKED mark (WP-5.3)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
     }
   ],
   "trusted": [

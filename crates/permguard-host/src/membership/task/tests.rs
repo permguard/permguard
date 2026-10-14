@@ -407,6 +407,67 @@ async fn a_copied_volume_beside_the_original_suspends_the_membership_with_a_clon
     assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
 }
 
+/// WP-5.3: a handler reporting a stream's fork through the session's incidents records the
+/// incident in the `security` trail and suspends the membership: a new epoch, and the session's
+/// next message is stale.
+#[tokio::test]
+async fn a_handler_incident_suspends_the_membership() {
+    let (c, m) = (
+        Side::new("incident-c", true),
+        Side::new("incident-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    assert_eq!(
+        task.send("r-1", b"fork?".to_vec()).await.expect("answered"),
+        b"forked"
+    );
+    let held = c.host.store.membership(&id).expect("held");
+    assert_eq!(held.status, Status::Suspended);
+    assert_eq!(held.epoch(), 2);
+    let incident = facts(&c, AUDIT_STREAM_FORKED);
+    assert!(incident.contains(&("stream".to_owned(), "data/decisions/forked/run".to_owned())));
+    assert!(incident.contains(&("at_seq".to_owned(), "3".to_owned())));
+    let refused = task.send("r-2", Vec::new()).await.expect_err("fenced");
+    assert_eq!(code_of(&refused), codes::host::EPOCH_STALE);
+}
+
+/// WP-5.3, after the mutants: a fork reported again once the membership is suspended is neither
+/// recorded nor suspended twice.
+#[tokio::test]
+async fn a_second_report_of_a_suspended_membership_does_nothing() {
+    let (c, m) = (
+        Side::new("incident2-c", true),
+        Side::new("incident2-m", false),
+    );
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let mut task = member(&m, &connector)
+        .open_task(who(), &id, "decisions", RESOURCE, Vec::new())
+        .await
+        .expect("leased");
+    assert_eq!(
+        task.send("r-1", b"fork twice?".to_vec())
+            .await
+            .expect("answered"),
+        b"forked"
+    );
+    assert_eq!(c.host.store.membership(&id).expect("held").epoch(), 2);
+    let recorded = c
+        .trail
+        .facts
+        .lock()
+        .expect("lock")
+        .iter()
+        .filter(|(action, _)| action == AUDIT_STREAM_FORKED)
+        .count();
+    assert_eq!(recorded, 1);
+}
+
 #[tokio::test]
 async fn a_restored_member_is_stale_until_it_syncs_and_then_leases_under_its_new_boot_id() {
     let (c, m) = (Side::new("restore-c", true), Side::new("restore-m", false));

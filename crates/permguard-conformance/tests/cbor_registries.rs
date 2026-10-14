@@ -1762,8 +1762,10 @@ fn keys_samples() -> Vec<Sample> {
 /// label, a run end, a group of records, a STATE without and with its optional labels; a
 /// stream's signer spans and its cutover (WP-5.2).
 fn stream_samples() -> Vec<Sample> {
+    use permguard_stream::engine::ingest::{Answer, Outcome, Ship};
     use permguard_stream::engine::{
-        Cutover, Fence, RunEnd, RunStatement, Span, Spans, State, StreamKey,
+        ConsumerState, Cutover, Fence, ForkMark, RunEnd, RunStatement, Span, Spans, State,
+        StreamKey,
     };
 
     let key = StreamKey::new(
@@ -1914,6 +1916,60 @@ fn stream_samples() -> Vec<Sample> {
             cutover.encode().expect("encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(Cutover::decode(bytes)))),
+        ),
+        // WP-5.3: the ingest's message and answers, a consumer's STATE and fork mark.
+        sample(
+            "ship_message",
+            Ship {
+                batch: b"{}".to_vec(),
+                statement: vec![0xa0],
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Ship::decode(bytes)))),
+        ),
+        sample(
+            "ingest_answer",
+            Answer::of(Outcome::Ok, 4).encode().expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(Answer::decode(bytes)))),
+        ),
+        sample(
+            "ingest_answer",
+            Answer {
+                outcome: Outcome::OutOfOrder,
+                acked: 4,
+                expected_seq: Some(5),
+            }
+            .encode()
+            .expect("encodes"),
+            &["ingest_answer.expected_seq"],
+            Some(Box::new(|bytes: &[u8]| verdict(Answer::decode(bytes)))),
+        ),
+        sample(
+            "consumer_state",
+            ConsumerState {
+                acked: 4,
+                oldest_retained: 1,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(ConsumerState::decode(bytes))
+            })),
+        ),
+        sample(
+            "fork_mark",
+            ForkMark {
+                run: [6; 16],
+                at_seq: 3,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(ForkMark::decode(bytes)))),
         ),
     ]
 }

@@ -19,6 +19,14 @@ is cut.
 
 ### Added
 
+- **The coordinator ingests shipped stream batches.**
+  A coordinator now serves `decisions.ship` and `events.ship` version 1: a member ships a sealed batch with its `data.attest` ring statement, and the Host's stream engine keeps it under `consumer/` per producer run.
+  The batch is checked in the documented order: its producer's fork mark, the statement against the member's pin, the key in the pinned set, the signature and commitments, the task the batch names, the records' codec, then its range against what is held.
+  The answer is `ok` with the highest contiguous sequence held, `out_of_order` with the sequence to resend from, `unverifiable`, `gone` below the oldest sequence retained, `closed` for a batch of an earlier membership epoch, or `fork`.
+  A replay of records held is `ok` whatever its batching; a different record, a broken chain or a batch signed twice is a fork, which marks the producer's stream, records `host.stream.forked` in the `security` trail and suspends the membership.
+  A store that cannot keep the batch refuses with `store_unavailable`, so the member retries; nothing is acknowledged before the batch file, its signer span, its records and STATE are durable.
+  One producer's ingest never touches another's records.
+
 - **Sealed stream batches, and stream cutovers on a re-pin.**
   A producer handed its descriptor's ring now seals its durable records into batches under `batches/<run>/<first>-<last>.jws` beside the stream.
   A batch is canonical JSON: a flattened JWS whose protected header names the descriptor's batch `typ`, the algorithm of the signing key and its `kid`, and the record bytes.

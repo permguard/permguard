@@ -1,6 +1,6 @@
 {
-  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, and its signer spans and pending cutover (WP-5.2)",
-  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs and producer/seal.rs",
+  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), and the ingest's message, answer, consumer STATE and fork mark (WP-5.3)",
+  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs, producer/seal.rs, consumer.rs and ingest.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "run_statement": {
@@ -87,8 +87,37 @@
         { "label": 5, "name": "from_seq", "type": "uint", "occurs": "required", "note": "the first sequence the new key seals" },
         { "label": 6, "name": "confirmed", "type": "bool", "occurs": "required", "note": "whether the coordinator journaled it (WP-4.5); at most 4096 bytes in all (`MAX_CUTOVER_BYTES`)" }
       ]
+    },
+    "ship_message": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "batch", "type": "bytes", "occurs": "required", "note": "the sealed batch file, byte for byte" },
+        { "label": 2, "name": "statement", "type": "bytes", "occurs": "required", "note": "the member's ring statement, the membership registry's `ring_statement`; at most 448 KiB in all (`MAX_BODY_BYTES`)" }
+      ]
+    },
+    "ingest_answer": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "outcome", "type": "text", "occurs": "required", "note": "`ok`, `out_of_order`, `fork`, `unverifiable`, `gone` or `closed`" },
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer holds of the batch's run" },
+        { "label": 3, "name": "expected_seq", "type": "uint", "occurs": "optional", "note": "with `out_of_order` only: the sequence to resend from; at most 64 bytes in all" }
+      ]
+    },
+    "consumer_state": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence held; the records are its authority" },
+        { "label": 2, "name": "oldest_retained", "type": "uint", "occurs": "required", "note": "at least 1: below it a range is `gone` (WP-5.6)" }
+      ]
+    },
+    "fork_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: the run the fork was found in" },
+        { "label": 2, "name": "at_seq", "type": "uint", "occurs": "required", "note": "the first sequence that differed" }
+      ]
     }
   },
   "arrays": {},
-  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover"]
+  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover", "ship_message", "ingest_answer", "consumer_state", "fork_mark"]
 }

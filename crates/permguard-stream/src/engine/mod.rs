@@ -39,6 +39,7 @@
 pub mod batch;
 pub(crate) mod codec;
 mod consumer;
+pub mod ingest;
 mod producer;
 pub mod run;
 pub mod state;
@@ -59,7 +60,7 @@ use permguard_host::time::TimeGuard;
 use permguard_objects::cbor::Value;
 use sha2::{Digest as _, Sha256};
 
-pub use consumer::Consumer;
+pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
 pub use producer::{
     Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Producer, Receipt, Sealing, Span, Spans,
     canonical_jwk, decode_group, encode_group,

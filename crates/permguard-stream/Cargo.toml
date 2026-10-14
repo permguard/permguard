@@ -29,6 +29,8 @@ serde_json.workspace = true
 base64.workspace = true
 sha2.workspace = true
 hmac.workspace = true
+# A fork found at ingest that its membership could not be suspended for is logged (WP-5.3).
+tracing.workspace = true
 
 [[test]]
 name = "stream_crash"

@@ -265,6 +265,18 @@ pub const REGISTRY: &[ActionSchema] = &[
         max_bytes: 8 * 1024,
         phases: false,
     },
+    ActionSchema {
+        action: "host.stream.forked",
+        class: Class::Security,
+        root: HOST,
+        facts: &[
+            ("task", FactType::Text(128)),
+            ("stream", FactType::Text(256)),
+            ("at_seq", FactType::Uint),
+        ],
+        max_bytes: 8 * 1024,
+        phases: false,
+    },
     mutation("host.membership.held", HOST),
     // The ring re-pin (WP-4.5): the re-pin, the cutover, an acknowledgement and the retiring
     // pin's drop, each a mutation; a rollback or an equivocation an observation.

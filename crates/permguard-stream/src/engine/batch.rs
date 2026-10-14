@@ -198,6 +198,19 @@ impl SealedBatch {
         Ok(self.protected()?.kid)
     }
 
+    /// The envelope as the payload states it, unverified: which run and range the batch claims,
+    /// for choosing the keys it is verified under.
+    pub fn envelope_unverified(&self) -> Result<Envelope, StreamError> {
+        let invalid = |detail: String| StreamError::Invalid(format!("a batch: {detail}"));
+        let bytes = B64
+            .decode(&self.signature.payload)
+            .map_err(|error| invalid(error.to_string()))?;
+        serde_json::from_value(
+            crate::jcs::decode_canonical(&bytes).map_err(|error| invalid(error.to_string()))?,
+        )
+        .map_err(|error| invalid(error.to_string()))
+    }
+
     fn protected(&self) -> Result<Protected, StreamError> {
         let invalid = |detail: String| StreamError::Invalid(format!("a batch: {detail}"));
         let bytes = B64

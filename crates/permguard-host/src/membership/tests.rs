@@ -916,6 +916,37 @@ pub(crate) mod protocol {
             }
             Ok([b"echo:".as_slice(), body].concat())
         }
+
+        // A fork, reported through the session's incidents (WP-5.3).
+        fn handle_with(
+            &self,
+            context: &crate::membership::task::TaskContext,
+            body: &[u8],
+            incidents: &dyn crate::membership::task::Incidents,
+        ) -> Result<Vec<u8>, crate::session::Refusal> {
+            // Two reports in one message: the second, the membership suspended, does nothing.
+            if body == b"fork twice?" {
+                for _ in 0..2 {
+                    incidents
+                        .stream_forked("data/decisions/forked/run", 3)
+                        .map_err(|reason| crate::session::Refusal {
+                            code: permguard_core::codes::common::UNAVAILABLE,
+                            reason,
+                        })?;
+                }
+                return Ok(b"forked".to_vec());
+            }
+            if body == b"fork?" {
+                incidents
+                    .stream_forked("data/decisions/forked/run", 3)
+                    .map_err(|reason| crate::session::Refusal {
+                        code: permguard_core::codes::common::UNAVAILABLE,
+                        reason,
+                    })?;
+                return Ok(b"forked".to_vec());
+            }
+            self.handle(context, body)
+        }
     }
 
     /// What the protocol harness registers on `role`'s side: `decisions.ship` at versions 1 and
