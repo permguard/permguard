@@ -360,6 +360,7 @@ fn provision(root: &Path, name: &str) -> Manifest {
         &permguard_control_client::checkpoint::Checkpoint {
             head: head.to_string(),
             counter: 1,
+            ref_digest: None,
         },
     )
     .expect("the checkpoint is written");

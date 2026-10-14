@@ -1,12 +1,13 @@
 {
-  "artifact": "Signed head statement (today's form)",
-  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement (the Today column of the head row); crates/permguard-objects/src/statement.rs (KEY_ZONE to KEY_SIGNED_AT, COSE_HEADER_ALG, COSE_HEADER_KID, COSE_ALG_EDDSA)",
+  "artifact": "Signed head statement (the target form, WP-7.1)",
+  "authority": "6-contracts/6-contract-ledger-notp.md#refs-and-head-statement; crates/permguard-objects/src/statement.rs (KEY_ZONE to KEY_KEY_SET, COSE_HEADER_ALG, COSE_HEADER_CONTENT_TYPE, COSE_HEADER_KID, CONTENT_TYPE)",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "protected_header": {
       "keys": "int",
       "fields": [
-        { "label": 1, "name": "alg", "type": "const:-8", "occurs": "required", "note": "COSE EdDSA, pinned" },
+        { "label": 1, "name": "alg", "type": "int", "occurs": "required", "note": "the COSE algorithm of the signing ring's suite: -8 EdDSA, -7 ES256" },
+        { "label": 3, "name": "content_type", "type": "const:\"application/vnd.permguard.head.v1+cbor\"", "occurs": "required" },
         { "label": 4, "name": "kid", "type": "bytes", "occurs": "required", "note": "the UTF-8 bytes of the signing key's id" }
       ]
     },
@@ -22,7 +23,11 @@
         { "label": 3, "name": "ref", "type": "text", "occurs": "required" },
         { "label": 4, "name": "digest", "type": "digest", "occurs": "required", "note": "the head commit" },
         { "label": 5, "name": "counter", "type": "uint", "occurs": "required" },
-        { "label": 6, "name": "signed_at", "type": "int", "occurs": "required", "note": "Unix seconds" }
+        { "label": 6, "name": "signed_at", "type": "int", "occurs": "required", "note": "Unix seconds" },
+        { "label": 7, "name": "authority_host_id", "type": "bytes", "occurs": "required", "note": "16 bytes: the host_id of the Control Plane Host that signs" },
+        { "label": 8, "name": "ref_digest", "type": "digest", "occurs": "required", "note": "the digest of the ref state, notp.json ref_state" },
+        { "label": 9, "name": "ring_epoch", "type": "uint", "occurs": "required", "note": "the signing ring's epoch" },
+        { "label": 10, "name": "key_set_digest", "type": "digest", "occurs": "required", "note": "the digest of the signing ring's key set" }
       ]
     }
   },
@@ -31,7 +36,7 @@
       { "position": 0, "name": "protected", "type": "cbor:map:protected_header" },
       { "position": 1, "name": "unprotected", "type": "map:unprotected_header", "note": "always empty" },
       { "position": 2, "name": "payload", "type": "cbor:map:head_statement", "note": "embedded, never detached" },
-      { "position": 3, "name": "signature", "type": "bytes", "note": "Ed25519 over the RFC 9052 Sig_structure [\"Signature1\", protected, h'', payload]" }
+      { "position": 3, "name": "signature", "type": "bytes", "note": "the suite's signature over the RFC 9052 Sig_structure [\"Signature1\", protected, h'', payload]" }
     ]
   },
   "root": "cose_sign1"

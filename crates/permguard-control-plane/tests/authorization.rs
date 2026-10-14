@@ -140,6 +140,8 @@ fn deployment(tag: &str, public: &[PublicGrant]) -> Deployment {
     let module = permguard_control_plane::module();
     let registration = Host::builder()
         .ring(CONTROL_ATTEST, keys)
+        // Every head statement names its Host (WP-7.1): NOTP is served only with one.
+        .host_id([0x11; 16])
         .authorization(Arc::new(Authorization::new(store, public)))
         .build()
         .register(module.declaration(config))
@@ -335,8 +337,9 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
     let negotiation = permguard_notp::NegotiatePushRequest {
         r#ref: "main".to_owned(),
         new_head: permguard_objects::Digest::compute(b"a commit"),
-        expected_old: None,
+        expected_ref: None,
         closure: Vec::new(),
+        request_id: "push-1".to_owned(),
     }
     .encode()
     .expect("the negotiation encodes");
@@ -443,12 +446,14 @@ async fn f22_billing_reads_billing_and_cannot_read_people_nor_tell_it_from_a_zon
         r#ref: "main".to_owned(),
         at: None,
         have: Vec::new(),
+        checkpoint: None,
     }
     .encode()
     .expect("the pull encodes");
     let fetch = permguard_notp::FetchObjectsRequest {
         digests: Vec::new(),
         accept_compression: None,
+        transfer_id: [0; 16],
     }
     .encode()
     .expect("the fetch encodes");

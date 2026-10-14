@@ -23,9 +23,10 @@ pub mod codec;
 pub mod pull;
 pub mod push;
 
-pub use codec::WireError;
+pub use codec::{ExpectedRef, MAX_REQUEST_ID_BYTES, TransferId, WireError, is_request_id};
 pub use pull::{
-    FetchObjectsRequest, FetchObjectsResponse, NegotiatePullRequest, NegotiatePullResponse,
+    FetchObjectsRequest, FetchObjectsResponse, GetRefResponse, NegotiatePullRequest,
+    NegotiatePullResponse,
 };
 pub use push::{
     CommitPushRequest, CommitPushResponse, NegotiatePushRequest, NegotiatePushResponse,

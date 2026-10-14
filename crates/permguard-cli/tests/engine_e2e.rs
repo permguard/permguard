@@ -60,6 +60,9 @@ impl EngineRemote {
     fn engine(&self) -> Engine<'_> {
         Engine {
             store: &self.store,
+            authority: [0x11; 16],
+            // A test signer binds no ring: the engine names none.
+            ring: (0, permguard_objects::Digest::from_raw([0; 32])),
             identity: self.identity.clone(),
             limits: EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
@@ -111,6 +114,7 @@ impl Remote for EngineRemote {
                 head: state.head.to_string(),
                 counter: state.counter,
                 statement,
+                ref_digest: state.ref_digest().map_err(|e| e.to_string())?.to_string(),
             })),
             Err(EngineError::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.to_string()),

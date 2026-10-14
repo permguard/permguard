@@ -24,6 +24,11 @@ impl Digest {
         }
     }
 
+    /// The digest whose 32 raw bytes are `raw`: a SHA-256 taken elsewhere, under a domain.
+    pub fn from_raw(raw: [u8; 32]) -> Self {
+        Digest { raw }
+    }
+
     /// The 32 raw bytes.
     pub fn raw(&self) -> &[u8; 32] {
         &self.raw

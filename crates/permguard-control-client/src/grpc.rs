@@ -748,6 +748,21 @@ fn parse_digests(list: Vec<String>) -> Result<Vec<Digest>, String> {
     list.iter().map(|text| parse_digest(text)).collect()
 }
 
+/// A ref state the client names, in its proto shape.
+fn expected_ref(expected: &permguard_notp::ExpectedRef) -> proto::ExpectedRef {
+    proto::ExpectedRef {
+        counter: expected.counter,
+        digest: expected.digest.to_string(),
+    }
+}
+
+/// A transfer session id the server issued: exactly 16 bytes.
+fn transfer_id(bytes: &[u8]) -> Result<permguard_notp::TransferId, String> {
+    bytes
+        .try_into()
+        .map_err(|_| "the server issued a transfer id that is not 16 bytes".to_owned())
+}
+
 impl Remote for GrpcRemote {
     fn resolve(&self, zone: &str, ledger: &str) -> Result<(String, String), String> {
         // The zone catalog over the same channel, same runtime.
@@ -805,6 +820,7 @@ impl Remote for GrpcRemote {
                 head: answer.head,
                 counter: answer.counter,
                 statement: answer.statement,
+                ref_digest: parse_digest(&answer.ref_digest)?.to_string(),
             })),
             Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
             Err(status) => Err(refusal(&status)),
@@ -822,11 +838,7 @@ impl Remote for GrpcRemote {
             ledger,
             r#ref: request.r#ref.clone(),
             new_head: request.new_head.to_string(),
-            expected_old: request
-                .expected_old
-                .as_ref()
-                .map(|digest| digest.to_string())
-                .unwrap_or_default(),
+            expected_ref: request.expected_ref.as_ref().map(expected_ref),
             closure: request
                 .closure
                 .iter()
@@ -835,6 +847,7 @@ impl Remote for GrpcRemote {
                     size: claim.size,
                 })
                 .collect(),
+            request_id: request.request_id.clone(),
         };
         let answer = self
             .channel
@@ -846,6 +859,9 @@ impl Remote for GrpcRemote {
             max_batch_bytes: answer.max_batch_bytes,
             max_batch_objects: answer.max_batch_objects,
             compression: (!answer.compression.is_empty()).then_some(answer.compression),
+            transfer_id: transfer_id(&answer.transfer_id)?,
+            reservation: answer.reservation,
+            expiry: answer.expiry,
         })
     }
 
@@ -868,6 +884,7 @@ impl Remote for GrpcRemote {
             ledger,
             objects,
             compression,
+            transfer_id: request.transfer_id.to_vec(),
         };
         let answer = self
             .channel
@@ -875,6 +892,7 @@ impl Remote for GrpcRemote {
             .map_err(|status| refusal(&status))?;
         Ok(UploadObjectsResponse {
             received: parse_digests(answer.received)?,
+            remaining: answer.remaining,
         })
     }
 
@@ -886,11 +904,9 @@ impl Remote for GrpcRemote {
             ledger,
             r#ref: request.r#ref.clone(),
             new_head: request.new_head.to_string(),
-            expected_old: request
-                .expected_old
-                .as_ref()
-                .map(|digest| digest.to_string())
-                .unwrap_or_default(),
+            expected_ref: request.expected_ref.as_ref().map(expected_ref),
+            transfer_id: request.transfer_id.to_vec(),
+            request_id: request.request_id.clone(),
         };
         let answer = self
             .channel
@@ -900,6 +916,7 @@ impl Remote for GrpcRemote {
             head: parse_digest(&answer.head)?,
             counter: answer.counter,
             statement: answer.statement,
+            ref_digest: parse_digest(&answer.ref_digest)?,
         })
     }
 
@@ -923,6 +940,7 @@ impl Remote for GrpcRemote {
                 .iter()
                 .map(|digest| digest.to_string())
                 .collect(),
+            checkpoint: request.checkpoint.as_ref().map(expected_ref),
         };
         let answer = self
             .channel
@@ -937,6 +955,9 @@ impl Remote for GrpcRemote {
             max_batch_bytes: answer.max_batch_bytes,
             max_batch_objects: answer.max_batch_objects,
             compression: (!answer.compression.is_empty()).then_some(answer.compression),
+            transfer_id: transfer_id(&answer.transfer_id)?,
+            ref_digest: parse_digest(&answer.ref_digest)?,
+            expiry: answer.expiry,
         })
     }
 
@@ -952,6 +973,7 @@ impl Remote for GrpcRemote {
                 .map(|digest| digest.to_string())
                 .collect(),
             accept_compression: self.compression.borrow().clone().unwrap_or_default(),
+            transfer_id: request.transfer_id.to_vec(),
         };
         let mut answer = self
             .channel
@@ -974,6 +996,7 @@ impl Remote for GrpcRemote {
         Ok(FetchObjectsResponse {
             objects: answer.objects,
             compression: None,
+            expiry: answer.expiry,
         })
     }
 }

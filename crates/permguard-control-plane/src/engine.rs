@@ -31,6 +31,10 @@ pub use permguard_objects::policy_id::{
 /// The well-known root entry holding the manifest.
 const MANIFEST_ENTRY: &str = "manifest";
 
+/// How long a transfer session stays open, in seconds. Until WP-7.12 makes sessions durable the
+/// expiry is advisory: the server issues it and does not yet enforce it.
+pub const TRANSFER_TTL_SECONDS: u64 = 900;
+
 /// A hard stop on history walks, far above any real ledger: a corrupted
 /// predecessor loop must terminate, not spin.
 const MAX_HISTORY_WALK: usize = 1_000_000;
@@ -171,10 +175,33 @@ pub fn declared_alias(
     registry::declared_alias(media_type, source)
 }
 
+/// The old head of the state a push names, `(counter, ref_digest)`: `None` for a creation. A state
+/// that is not the current one is a conflict, carrying what is current.
+fn expected_head(
+    expected: Option<&ExpectedRef>,
+    current: Option<RefState>,
+) -> Result<Option<Digest>> {
+    match (expected, &current) {
+        (None, None) => Ok(None),
+        (Some(expected), Some(state))
+            if expected.counter == state.counter
+                && expected.digest == crate::store::ref_digest(state)? =>
+        {
+            Ok(Some(state.head.clone()))
+        }
+        _ => Err(EngineError::Conflict { current }),
+    }
+}
+
 /// The NOTP engine over one ledger's store.
 pub struct Engine<'a> {
     pub store: &'a FileObjectStore,
     pub identity: LedgerIdentity,
+    /// The `host_id` of the Control Plane Host whose ring signs this ledger's head statements.
+    pub authority: [u8; 16],
+    /// The signing ring's epoch and key-set digest now: a cached statement bound to another is
+    /// signed again. The signer binds the ring it signs under whatever is named here.
+    pub ring: (u64, Digest),
     pub limits: EngineLimits,
     /// What this deployment has opted into among the provisional contracts.
     ///
@@ -218,6 +245,15 @@ impl Engine<'_> {
                 ),
             });
         }
+        // A push that names a state that is no longer current learns it before it uploads; a
+        // retry of a commit that already landed is not one.
+        let current = self.store.read_ref(&request.r#ref)?;
+        if current
+            .as_ref()
+            .is_none_or(|state| state.head != request.new_head)
+        {
+            expected_head(request.expected_ref.as_ref(), current)?;
+        }
         let declared_bytes: u64 = request.closure.iter().map(|c| c.size).sum();
         if declared_bytes > self.limits.max_push_bytes {
             return Err(EngineError::Unavailable {
@@ -240,6 +276,9 @@ impl Engine<'_> {
             max_batch_bytes: self.limits.max_batch_bytes,
             max_batch_objects: self.limits.max_batch_objects,
             compression: None,
+            transfer_id: self.transfer_id()?,
+            reservation: declared_bytes,
+            expiry: self.expiry(),
         })
     }
 
@@ -273,7 +312,16 @@ impl Engine<'_> {
             }
             received.push(digest);
         }
-        Ok(UploadObjectsResponse { received })
+        // The session's reservation is not durable until WP-7.12: what is left is what the
+        // ledger's quota still allows.
+        let remaining = self
+            .limits
+            .ledger_quota_bytes
+            .saturating_sub(used.saturating_add(batch_bytes));
+        Ok(UploadObjectsResponse {
+            received,
+            remaining,
+        })
     }
 
     // ---- commit ----
@@ -290,30 +338,34 @@ impl Engine<'_> {
 
         // Idempotency first: a retry whose commit already landed is a
         // success and re-runs nothing.
-        if let Some(current) = self.store.read_ref(&request.r#ref)?
+        let current = self.store.read_ref(&request.r#ref)?;
+        if let Some(current) = &current
             && current.head == request.new_head
         {
             // A success is a durable claim: the ref may be one another commit renamed into place
             // and has not flushed yet.
             self.store.make_ref_durable(&request.r#ref)?;
-            return self.answer_with_statement(&request.r#ref, current, signer);
+            return self.answer_with_statement(&request.r#ref, current.clone(), signer);
         }
 
-        let old_reachable = match &request.expected_old {
+        // The compare-and-swap below asks again under the ref lock.
+        let expected_old = expected_head(request.expected_ref.as_ref(), current)?;
+
+        let old_reachable = match &expected_old {
             Some(old) => Some(self.reachable_from(old)?),
             None => None,
         };
 
-        // Branch creation: expected_old absent, but the head already exists
+        // Branch creation: no expected state, but the head already exists
         // and is reachable from an existing ref — nothing new to validate.
-        let is_branch = request.expected_old.is_none()
+        let is_branch = expected_old.is_none()
             && self.store.has_object(&request.new_head)
             && self.reachable_from_any_ref(&request.new_head)?;
 
         if !is_branch {
             let region = self.check_acceptance_invariants(
                 &request.new_head,
-                request.expected_old.as_ref(),
+                expected_old.as_ref(),
                 old_reachable.as_ref(),
             )?;
             // The ref is a durable claim on every object it reaches. Negotiation told this push
@@ -326,7 +378,7 @@ impl Engine<'_> {
 
         let updated = self.store.update_ref(
             &request.r#ref,
-            request.expected_old.as_ref(),
+            request.expected_ref.as_ref(),
             &request.new_head,
         )?;
         let state = match updated {
@@ -382,6 +434,7 @@ impl Engine<'_> {
 
         let statement = self.current_statement(&request.r#ref, &state, signer)?;
         Ok(NegotiatePullResponse {
+            ref_digest: crate::store::ref_digest(&state)?,
             head: state.head,
             counter: state.counter,
             statement,
@@ -389,6 +442,8 @@ impl Engine<'_> {
             max_batch_bytes: self.limits.max_batch_bytes,
             max_batch_objects: self.limits.max_batch_objects,
             compression: None,
+            transfer_id: self.transfer_id()?,
+            expiry: self.expiry(),
         })
     }
 
@@ -413,6 +468,7 @@ impl Engine<'_> {
         Ok(FetchObjectsResponse {
             objects,
             compression: None,
+            expiry: self.expiry(),
         })
     }
 
@@ -1253,10 +1309,50 @@ impl Engine<'_> {
         })
     }
 
+    // ---- transfer sessions ----
+
+    /// A fresh transfer session id: 16 random bytes. Sessions are stateless until WP-7.12, so the
+    /// id is issued and named by every later message, not yet looked up.
+    fn transfer_id(&self) -> Result<TransferId> {
+        use ring::rand::SecureRandom as _;
+        let mut id = [0u8; 16];
+        ring::rand::SystemRandom::new()
+            .fill(&mut id)
+            .map_err(|_| EngineError::Internal {
+                detail: "no randomness for a transfer id".to_string(),
+            })?;
+        Ok(id)
+    }
+
+    /// When a session issued now closes, in unix seconds.
+    fn expiry(&self) -> u64 {
+        u64::try_from(self.clock.now())
+            .unwrap_or(0)
+            .saturating_add(TRANSFER_TTL_SECONDS)
+    }
+
     // ---- statements ----
 
+    /// The statement of a ref's state. The ring's epoch and key set digest are the signer's to
+    /// bind: the engine never holds the ring, and names only what it was told is current.
+    fn statement(&self, name: &str, state: &RefState) -> Result<HeadStatement> {
+        Ok(HeadStatement {
+            zone: self.identity.zone_id.clone(),
+            ledger: self.identity.ledger_id.clone(),
+            r#ref: name.to_string(),
+            digest: state.head.clone(),
+            counter: state.counter,
+            signed_at: self.clock.now(),
+            authority_host_id: self.authority,
+            ref_digest: crate::store::ref_digest(state)?,
+            ring_epoch: self.ring.0,
+            key_set_digest: self.ring.1.clone(),
+        })
+    }
+
     /// The current signed statement for a ref: the cache when it still
-    /// matches `(head, counter)`, a fresh signature otherwise.
+    /// matches `(head, counter, ref_digest)`, the authority and the ring in force, a fresh
+    /// signature otherwise: a rotation re-signs what it serves.
     fn current_statement(
         &self,
         name: &str,
@@ -1265,23 +1361,20 @@ impl Engine<'_> {
     ) -> Result<Vec<u8>> {
         // Served only when it matches the current ref — the cache never
         // becomes a second source of truth.
+        let ref_digest = crate::store::ref_digest(state)?;
         if let Some(cached) = self.store.read_signature(name)?
             && let Ok(envelope) = permguard_objects::statement::SignedHead::decode(&cached)
             && let Ok(statement) = envelope.statement_unverified()
             && statement.digest == state.head
             && statement.counter == state.counter
+            && statement.ref_digest == ref_digest
+            && statement.authority_host_id == self.authority
+            && statement.ring_epoch == self.ring.0
+            && statement.key_set_digest == self.ring.1
         {
             return Ok(cached);
         }
-        let statement = HeadStatement {
-            zone: self.identity.zone_id.clone(),
-            ledger: self.identity.ledger_id.clone(),
-            r#ref: name.to_string(),
-            digest: state.head.clone(),
-            counter: state.counter,
-            signed_at: self.clock.now(),
-        };
-        let envelope = signer(&statement)?;
+        let envelope = signer(&self.statement(name, state)?)?;
         self.store.write_signature(name, &envelope)?;
         Ok(envelope)
     }
@@ -1292,20 +1385,13 @@ impl Engine<'_> {
         state: &RefState,
         signer: HeadSigner<'_>,
     ) -> Result<CommitPushResponse> {
-        let statement = HeadStatement {
-            zone: self.identity.zone_id.clone(),
-            ledger: self.identity.ledger_id.clone(),
-            r#ref: name.to_string(),
-            digest: state.head.clone(),
-            counter: state.counter,
-            signed_at: self.clock.now(),
-        };
-        let envelope = signer(&statement)?;
+        let envelope = signer(&self.statement(name, state)?)?;
         self.store.write_signature(name, &envelope)?;
         Ok(CommitPushResponse {
             head: state.head.clone(),
             counter: state.counter,
             statement: envelope,
+            ref_digest: crate::store::ref_digest(state)?,
         })
     }
 
@@ -1320,6 +1406,7 @@ impl Engine<'_> {
     ) -> Result<CommitPushResponse> {
         let statement = self.current_statement(name, &state, signer)?;
         Ok(CommitPushResponse {
+            ref_digest: crate::store::ref_digest(&state)?,
             head: state.head,
             counter: state.counter,
             statement,

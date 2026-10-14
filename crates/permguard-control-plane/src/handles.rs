@@ -109,9 +109,53 @@ pub(crate) fn head_signer(context: &PlaneContext<'_>) -> Option<Signer<HeadState
 #[cfg(test)]
 type TestRing = Arc<dyn permguard_core::KeyManager>;
 
+/// A test's ring that keeps no epoch, given one: epoch 1, the set digest over its published
+/// keys. A head statement binds a ring's epoch and set (WP-7.1), and a ring that names none
+/// cannot sign one.
+#[cfg(test)]
+struct EpochOne(TestRing);
+
+#[cfg(test)]
+impl permguard_core::keys::Sign for EpochOne {
+    fn active_key_id(&self) -> permguard_core::keys::Result<permguard_core::KeyId> {
+        self.0.active_key_id()
+    }
+    fn sign(&self, payload: &[u8]) -> permguard_core::keys::Result<permguard_core::Signature> {
+        self.0.sign(payload)
+    }
+}
+
+#[cfg(test)]
+impl PublicSet for EpochOne {
+    fn public_keys(&self) -> permguard_core::keys::Result<Vec<permguard_core::Jwk>> {
+        self.0.public_keys()
+    }
+    fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        let keys = self.0.public_keys()?;
+        let published = serde_json::to_vec(&permguard_core::JwkSet::new(keys))
+            .map_err(|error| permguard_core::KeyError::backend(error.to_string()))?;
+        Ok(permguard_core::keys::KeySetView {
+            epoch: 1,
+            digest: *permguard_objects::Digest::compute(&published).raw(),
+            algorithm: "EdDSA",
+        })
+    }
+}
+
+#[cfg(test)]
+impl permguard_core::KeyManager for EpochOne {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+    fn maintain(&self) -> permguard_core::keys::Result<permguard_core::Maintenance> {
+        self.0.maintain()
+    }
+}
+
 /// A head statement signer over `keys`, for a test that holds a ring of its own.
 #[cfg(test)]
 pub(crate) fn head_signer_for_tests(keys: TestRing) -> Signer<HeadStatementV1> {
+    let keys: TestRing = Arc::new(EpochOne(keys));
     permguard_host::composition::Host::builder()
         .ring(permguard_host::composition::CONTROL_ATTEST, keys)
         .build()

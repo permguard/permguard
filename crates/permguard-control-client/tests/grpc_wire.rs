@@ -218,6 +218,7 @@ impl GitLikeStore for FakePlane {
             head: Digest::compute(b"head").to_string(),
             counter: 4,
             statement: b"envelope".to_vec(),
+            ref_digest: Digest::compute(b"ref state").to_string(),
         }))
     }
 
@@ -230,6 +231,9 @@ impl GitLikeStore for FakePlane {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: "deflate".into(),
+            transfer_id: vec![9; 16],
+            reservation: 3,
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -243,6 +247,7 @@ impl GitLikeStore for FakePlane {
         }
         Ok(Response::new(proto::UploadObjectsResponse {
             received: vec![Digest::compute(b"1").to_string()],
+            remaining: 0,
         }))
     }
 
@@ -267,6 +272,9 @@ impl GitLikeStore for FakePlane {
             max_batch_bytes: 8 * 1024 * 1024,
             max_batch_objects: 1000,
             compression: "deflate".into(),
+            transfer_id: vec![9; 16],
+            ref_digest: Digest::compute(b"ref state").to_string(),
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -277,6 +285,7 @@ impl GitLikeStore for FakePlane {
         Ok(Response::new(proto::FetchObjectsResponse {
             objects: vec![compress::deflate(b"object")],
             compression: "deflate".into(),
+            expiry: 1_800_000_000,
         }))
     }
 
@@ -407,6 +416,10 @@ fn an_absent_ref_is_none_and_a_present_one_is_read() {
         .expect("the ref exists");
     assert_eq!(answered.counter, 4);
     assert_eq!(answered.statement, b"envelope");
+    assert_eq!(
+        answered.ref_digest,
+        Digest::compute(b"ref state").to_string()
+    );
 
     assert!(remote.get_ref("feature/none").expect("answers").is_none());
 }
@@ -421,21 +434,25 @@ fn a_push_negotiates_compression_and_the_upload_honours_it() {
         .negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![ObjectClaim {
                 digest: digest.clone(),
                 size: 3,
             }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.missing, vec![digest]);
     assert_eq!(negotiated.compression.as_deref(), Some("deflate"));
+    assert_eq!(negotiated.transfer_id, [9; 16]);
+    assert_eq!(negotiated.reservation, 3);
 
     let payload = b"permit(principal, action, resource); // compressible".repeat(4);
     remote
         .upload(&UploadObjectsRequest {
             objects: vec![payload.clone()],
             compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the upload lands");
 
@@ -460,14 +477,17 @@ fn a_pull_undoes_what_the_plane_compressed() {
             r#ref: "main".into(),
             at: None,
             have: Vec::new(),
+            checkpoint: None,
         })
         .expect("the negotiation answers");
     assert_eq!(negotiated.counter, 1);
+    assert_eq!(negotiated.ref_digest, Digest::compute(b"ref state"));
 
     let fetched = remote
         .fetch(&FetchObjectsRequest {
             digests: vec![Digest::compute(b"object")],
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         })
         .expect("the fetch answers");
     assert_eq!(
@@ -484,7 +504,12 @@ fn a_status_becomes_the_same_refusal_vocabulary_http_produces() {
         .commit_push(&CommitPushRequest {
             r#ref: "main".into(),
             new_head: Digest::compute(b"new"),
-            expected_old: Some(Digest::compute(b"old")),
+            expected_ref: Some(permguard_notp::ExpectedRef {
+                counter: 1,
+                digest: Digest::compute(b"old"),
+            }),
+            transfer_id: [9; 16],
+            request_id: "commit-1".into(),
         })
         .expect_err("the plane aborts the commit");
 
@@ -591,14 +616,16 @@ fn a_push_over_grpcs_carries_the_operators_token() {
         .negotiate_push(&NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![ObjectClaim { digest, size: 3 }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers over TLS");
     remote
         .upload(&UploadObjectsRequest {
             objects: vec![b"abc".to_vec()],
             compression: None,
+            transfer_id: [9; 16],
         })
         .expect("the upload lands");
     let seen = seen.lock().expect("recorded");

@@ -15,9 +15,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use permguard_host::membership::zone;
 use permguard_notp::{
-    CommitPushRequest, CommitPushResponse, FetchObjectsRequest, FetchObjectsResponse,
-    NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest, NegotiatePushResponse,
-    ObjectClaim, UploadObjectsRequest, UploadObjectsResponse,
+    CommitPushRequest, CommitPushResponse, ExpectedRef, FetchObjectsRequest, FetchObjectsResponse,
+    GetRefResponse, NegotiatePullRequest, NegotiatePullResponse, NegotiatePushRequest,
+    NegotiatePushResponse, ObjectClaim, UploadObjectsRequest, UploadObjectsResponse,
 };
 use permguard_objects::Digest;
 use permguard_objects::cbor::{self, Value};
@@ -30,6 +30,7 @@ use permguard_objects::manifest::{
     Partition, Profile, Requirement, Runtime,
 };
 use permguard_objects::object::{self, Blob, Commit, Kind, Tree, TreeEntry};
+use permguard_objects::refstate::RefState;
 use permguard_objects::semver::Constraint;
 use permguard_objects::statement::{HeadStatement, SignedHead, StatementError};
 use serde_json::Value as Json;
@@ -431,15 +432,24 @@ fn head_statement() -> HeadStatement {
         digest: Digest::compute(b"commit"),
         counter: 42,
         signed_at: 1_787_836_802,
+        authority_host_id: [0x01; 16],
+        ref_digest: Digest::compute(b"ref state"),
+        ring_epoch: 3,
+        key_set_digest: Digest::compute(b"key set"),
     }
 }
 
 fn signed_head(key: &SigningKey) -> Vec<u8> {
-    SignedHead::sign_with(&head_statement(), HEAD_KID.as_bytes(), |bytes| {
-        key.sign(bytes)
-            .map(|signature| signature.to_vec())
-            .map_err(|error| StatementError::Signer(error.to_string()))
-    })
+    SignedHead::sign_with(
+        &head_statement(),
+        Suite::Ed25519Sha256V1,
+        HEAD_KID.as_bytes(),
+        |bytes| {
+            key.sign(bytes)
+                .map(|signature| signature.to_vec())
+                .map_err(|error| StatementError::Signer(error.to_string()))
+        },
+    )
     .expect("the statement signs")
     .encode()
     .expect("the envelope encodes")
@@ -555,6 +565,7 @@ fn manifest_samples() -> Vec<Sample> {
     let decoder =
         || -> Option<Decoder> { Some(Box::new(|bytes: &[u8]| verdict(Manifest::decode(bytes)))) };
     let plain = Partition {
+        interfaces: Vec::new(),
         runtime: "cedar".into(),
         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
         schema: true,
@@ -563,6 +574,7 @@ fn manifest_samples() -> Vec<Sample> {
         input: None,
     };
     let typed = Partition {
+        interfaces: vec![PROFILE_PDP_NATIVE_V1.into()],
         runtime: "cedar".into(),
         media_types: vec!["application/vnd.permguard.policy.cedar".into()],
         schema: false,
@@ -594,6 +606,7 @@ fn manifest_samples() -> Vec<Sample> {
                 "partition.input",
                 "partition.artifacts",
                 "partition.history",
+                "partition.interfaces",
             ],
             decoder(),
         ),
@@ -607,7 +620,7 @@ fn head_statement_samples() -> Vec<Sample> {
     let decoder: Decoder = Box::new(move |bytes: &[u8]| {
         let envelope = resign(bytes, &key);
         let signed = SignedHead::decode(&envelope).map_err(|error| format!("{error:?}"))?;
-        verdict(signed.verify(&public))
+        verdict(signed.verify(Suite::Ed25519Sha256V1, &public))
     });
     vec![sample("cose_sign1", envelope, &[], Some(decoder))]
 }
@@ -2359,6 +2372,14 @@ fn notp_samples() -> Vec<Sample> {
     let statement = signed_head(&ed25519());
     let head = Digest::compute(b"head");
     let old = Digest::compute(b"old");
+    let transfer_id = [0x7a; 16];
+    let first = RefState::first(old.clone());
+    let second = first.successor(head.clone()).expect("a successor");
+    let ref_digest = second.ref_digest().expect("a ref digest");
+    let expected = ExpectedRef {
+        counter: 1,
+        digest: first.ref_digest().expect("a ref digest"),
+    };
     let object = Blob {
         media_type: "application/vnd.permguard.policy.cedar".into(),
         data: b"permit(principal, action, resource);".to_vec(),
@@ -2366,24 +2387,40 @@ fn notp_samples() -> Vec<Sample> {
     .encode()
     .expect("the blob encodes");
     let missing = vec![Digest::compute(&object), Digest::compute(b"tree")];
-    let commit_response = CommitPushResponse {
-        head: head.clone(),
-        counter: 2,
-        statement: statement.clone(),
-    }
-    .encode()
-    .expect("it encodes");
     vec![
-        // The `GET ref` answer has no public encoder: the control plane writes it inline with the
-        // labels of the commit answer, so those bytes are its sample. The client reads it with a
-        // private, closed decoder, so no refusal is asserted here.
-        sample("ref_answer", commit_response.clone(), &[], None),
+        sample(
+            "ref_state",
+            second.encode().expect("it encodes"),
+            &["ref_state.previous_ref_digest"],
+            Some(Box::new(|bytes: &[u8]| verdict(RefState::decode(bytes)))),
+        ),
+        sample(
+            "ref_state",
+            first.encode().expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| verdict(RefState::decode(bytes)))),
+        ),
+        sample(
+            "ref_answer",
+            GetRefResponse {
+                head: head.clone(),
+                counter: 2,
+                statement: statement.clone(),
+                ref_digest: ref_digest.clone(),
+            }
+            .encode()
+            .expect("it encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(GetRefResponse::decode(bytes))
+            })),
+        ),
         sample(
             "negotiate_push_request",
             NegotiatePushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: Some(old.clone()),
+                expected_ref: Some(expected.clone()),
                 closure: vec![
                     ObjectClaim {
                         digest: Digest::compute(&object),
@@ -2394,10 +2431,11 @@ fn notp_samples() -> Vec<Sample> {
                         size: 120,
                     },
                 ],
+                request_id: "push-1".into(),
             }
             .encode()
             .expect("it encodes"),
-            &["negotiate_push_request.expected_old"],
+            &["negotiate_push_request.expected_ref"],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(NegotiatePushRequest::decode(bytes))
             })),
@@ -2407,8 +2445,9 @@ fn notp_samples() -> Vec<Sample> {
             NegotiatePushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
                 closure: Vec::new(),
+                request_id: "push-1".into(),
             }
             .encode()
             .expect("it encodes"),
@@ -2424,6 +2463,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: Some("deflate".into()),
+                transfer_id,
+                reservation: 4096,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2439,6 +2481,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: None,
+                transfer_id,
+                reservation: 0,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2452,6 +2497,7 @@ fn notp_samples() -> Vec<Sample> {
             UploadObjectsRequest {
                 objects: vec![object.clone()],
                 compression: Some("deflate".into()),
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2465,6 +2511,7 @@ fn notp_samples() -> Vec<Sample> {
             UploadObjectsRequest {
                 objects: vec![object.clone()],
                 compression: None,
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2477,6 +2524,7 @@ fn notp_samples() -> Vec<Sample> {
             "upload_objects_response",
             UploadObjectsResponse {
                 received: missing.clone(),
+                remaining: 1024,
             }
             .encode()
             .expect("it encodes"),
@@ -2490,11 +2538,13 @@ fn notp_samples() -> Vec<Sample> {
             CommitPushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: Some(old.clone()),
+                expected_ref: Some(expected.clone()),
+                transfer_id,
+                request_id: "commit-1".into(),
             }
             .encode()
             .expect("it encodes"),
-            &["commit_push_request.expected_old"],
+            &["commit_push_request.expected_ref"],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(CommitPushRequest::decode(bytes))
             })),
@@ -2504,7 +2554,9 @@ fn notp_samples() -> Vec<Sample> {
             CommitPushRequest {
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
+                transfer_id,
+                request_id: "commit-1".into(),
             }
             .encode()
             .expect("it encodes"),
@@ -2515,7 +2567,14 @@ fn notp_samples() -> Vec<Sample> {
         ),
         sample(
             "commit_push_response",
-            commit_response,
+            CommitPushResponse {
+                head: head.clone(),
+                counter: 2,
+                statement: statement.clone(),
+                ref_digest: ref_digest.clone(),
+            }
+            .encode()
+            .expect("it encodes"),
             &[],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(CommitPushResponse::decode(bytes))
@@ -2527,10 +2586,14 @@ fn notp_samples() -> Vec<Sample> {
                 r#ref: "main".into(),
                 at: Some(head.clone()),
                 have: vec![old.clone()],
+                checkpoint: Some(expected),
             }
             .encode()
             .expect("it encodes"),
-            &["negotiate_pull_request.at"],
+            &[
+                "negotiate_pull_request.at",
+                "negotiate_pull_request.checkpoint",
+            ],
             Some(Box::new(|bytes: &[u8]| {
                 verdict(NegotiatePullRequest::decode(bytes))
             })),
@@ -2541,6 +2604,7 @@ fn notp_samples() -> Vec<Sample> {
                 r#ref: "main".into(),
                 at: None,
                 have: Vec::new(),
+                checkpoint: None,
             }
             .encode()
             .expect("it encodes"),
@@ -2559,6 +2623,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: Some("deflate".into()),
+                transfer_id,
+                ref_digest: ref_digest.clone(),
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2577,6 +2644,9 @@ fn notp_samples() -> Vec<Sample> {
                 max_batch_bytes: 8 << 20,
                 max_batch_objects: 512,
                 compression: None,
+                transfer_id,
+                ref_digest,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2590,6 +2660,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsRequest {
                 digests: missing.clone(),
                 accept_compression: Some("deflate".into()),
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2603,6 +2674,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsRequest {
                 digests: missing,
                 accept_compression: None,
+                transfer_id,
             }
             .encode()
             .expect("it encodes"),
@@ -2616,6 +2688,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsResponse {
                 objects: vec![object.clone()],
                 compression: Some("deflate".into()),
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),
@@ -2629,6 +2702,7 @@ fn notp_samples() -> Vec<Sample> {
             FetchObjectsResponse {
                 objects: vec![object],
                 compression: None,
+                expiry: 1_791_195_000,
             }
             .encode()
             .expect("it encodes"),

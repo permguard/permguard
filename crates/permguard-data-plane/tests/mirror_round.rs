@@ -92,6 +92,8 @@ mod plane {
         let module = permguard_control_plane::module();
         let registration = permguard_host::composition::Host::builder()
             .ring(permguard_host::composition::CONTROL_ATTEST, keys)
+            // Every head statement names its Host (WP-7.1): NOTP is served only with one.
+            .host_id([0x11; 16])
             // This suite is about mirroring, not about who may read the catalog.
             .authorization(Arc::new(
                 permguard_host::composition::Authorization::permissive(),

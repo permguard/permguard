@@ -216,6 +216,7 @@ check-vectors: ## Check that the golden vectors are what their independent gener
 	python3 contracts/vectors/audit.py | diff - contracts/vectors/audit.json
 	python3 contracts/vectors/plan.py | diff - contracts/vectors/plan.json
 	python3 contracts/vectors/stream.py | diff - contracts/vectors/stream.json
+	python3 contracts/vectors/notp.py | diff - contracts/vectors/notp.json
 
 notices: ## Regenerate THIRD_PARTY_NOTICES.md from the resolved dependency graph.
 	./scripts/third-party-notices.sh

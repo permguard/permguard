@@ -73,6 +73,8 @@ pub(crate) struct NotpFacade {
     pub(crate) keys:
         permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
     pub(crate) limits: EngineLimits,
+    /// The `host_id` of this Control Plane Host, the authority every head statement names (WP-7.1).
+    pub(crate) authority: [u8; 16],
     /// What this deployment has opted into among the provisional contracts, for the ingest gate.
     pub(crate) enabled: permguard_languages::registry::Enabled,
     /// Whether batches ride deflate-compressed — advertised at negotiation,
@@ -106,6 +108,7 @@ impl NotpFacade {
         catalog: Arc<dyn Catalog>,
         zones_root: PathBuf,
         keys: permguard_host::composition::Signer<permguard_host::composition::HeadStatementV1>,
+        authority: [u8; 16],
         limits: EngineLimits,
         enabled: permguard_languages::registry::Enabled,
         compression: bool,
@@ -119,6 +122,7 @@ impl NotpFacade {
             catalog,
             zones_root,
             keys,
+            authority,
             limits,
             enabled,
             compression,
@@ -286,6 +290,13 @@ impl NotpFacade {
         Engine {
             store,
             identity,
+            authority: self.authority,
+            // The ring in force, for the statement cache; a ring that names none matches no
+            // cached statement, and its signature is refused in the signer.
+            ring: self.keys.key_set().map_or_else(
+                |_| (0, permguard_objects::Digest::from_raw([0; 32])),
+                |set| (set.epoch, permguard_objects::Digest::from_raw(set.digest)),
+            ),
             limits: self.limits,
             enabled: self.enabled.clone(),
             clock: self,
@@ -323,7 +334,7 @@ impl NotpFacade {
         zone: &str,
         ledger: &str,
         name: &str,
-    ) -> Result<GetRef, crate::wire::Refusal> {
+    ) -> Result<GetRefResponse, crate::wire::Refusal> {
         self.authorize_read(actor, zone, ledger)?;
         let started = std::time::Instant::now();
         let result = (|| {
@@ -331,8 +342,9 @@ impl NotpFacade {
             let signer = self.signer();
             let engine = self.engine(identity, &store);
             let (state, statement) = engine.get_ref(name, &signer).map_err(api_error)?;
-            Ok(GetRef {
-                head: state.head.to_string(),
+            Ok(GetRefResponse {
+                ref_digest: crate::store::ref_digest(&state).map_err(|e| api_error(e.into()))?,
+                head: state.head,
                 counter: state.counter,
                 statement,
             })
@@ -521,10 +533,26 @@ impl NotpFacade {
                 let mut inflated_total = 0u64;
                 let mut objects = Vec::with_capacity(request.objects.len());
                 for bytes in &request.objects {
-                    let raw =
-                        compress::inflate(bytes, limits::MAX_OBJECT_BYTES).map_err(|error| {
-                            rejected(format!("a batch object does not decompress: {error}"))
-                        })?;
+                    // The ceiling holds while inflating: an object stops at the smaller of the
+                    // object bound and what the batch has left, one byte past it refused below.
+                    let left = self
+                        .limits
+                        .max_batch_bytes
+                        .saturating_sub(inflated_total)
+                        .saturating_add(1);
+                    let ceiling = usize::try_from(left)
+                        .unwrap_or(usize::MAX)
+                        .min(limits::MAX_OBJECT_BYTES);
+                    let raw = compress::inflate(bytes, ceiling).map_err(|error| match error {
+                        compress::CompressError::TooLarge { .. }
+                            if ceiling < limits::MAX_OBJECT_BYTES =>
+                        {
+                            rejected(
+                                "the batch inflates past the advertised batch limit".to_owned(),
+                            )
+                        }
+                        error => rejected(format!("a batch object does not decompress: {error}")),
+                    })?;
                     inflated_total += raw.len() as u64;
                     if inflated_total > self.limits.max_batch_bytes {
                         return Err(rejected(
@@ -536,6 +564,7 @@ impl NotpFacade {
                 Ok(UploadObjectsRequest {
                     objects,
                     compression: None,
+                    transfer_id: request.transfer_id,
                 })
             }
             Some(other) => Err(rejected(format!(
@@ -594,12 +623,6 @@ impl NotpFacade {
 }
 
 /// The advertised ref, shaped for both surfaces.
-pub(crate) struct GetRef {
-    pub(crate) head: String,
-    pub(crate) counter: u64,
-    pub(crate) statement: Vec<u8>,
-}
-
 fn internal(detail: impl std::fmt::Display) -> ApiError {
     ApiError::new(
         ErrorClass::Internal,
@@ -693,6 +716,13 @@ mod tests {
         fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
             Ok(vec![Jwk::okp("control", "Ed25519", "EdDSA", "x")])
         }
+        fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+            Ok(permguard_core::keys::KeySetView {
+                epoch: 1,
+                digest: [0x5a; 32],
+                algorithm: "EdDSA",
+            })
+        }
     }
 
     impl KeyManager for Ring {
@@ -734,6 +764,7 @@ mod tests {
             Arc::new(FileCatalog::new(root.join("zones"))),
             root.join("zones"),
             signer,
+            [0x11; 16],
             EngineLimits {
                 max_batch_bytes: 1024,
                 max_batch_objects: 10,
@@ -758,6 +789,10 @@ mod tests {
             digest: Digest::compute(b"commit"),
             counter: 1,
             signed_at: facade.now(),
+            authority_host_id: [0x11; 16],
+            ref_digest: Digest::compute(b"ref state"),
+            ring_epoch: 0,
+            key_set_digest: Digest::compute(b"key set"),
         };
         facade.signer()(&statement).expect("a sound clock signs");
 

@@ -39,6 +39,13 @@ impl PublicSet for Ring {
     fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
         Ok(vec![Jwk::okp(self.0, "Ed25519", "EdDSA", "x")])
     }
+    fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        Ok(permguard_core::keys::KeySetView {
+            epoch: 1,
+            digest: [0x5a; 32],
+            algorithm: "EdDSA",
+        })
+    }
 }
 
 impl KeyManager for Ring {
@@ -171,6 +178,10 @@ fn a_clock_anomaly_stops_the_control_planes_head_statements() {
         digest: Digest::compute(b"commit"),
         counter: 1,
         signed_at: START,
+        authority_host_id: [0x11; 16],
+        ref_digest: Digest::compute(b"ref state"),
+        ring_epoch: 0,
+        key_set_digest: Digest::compute(b"key set"),
     };
     // The typed signer signs the statement, never bytes (WP-3.2).
     let sign = |statement: &HeadStatement| signer.sign(statement);

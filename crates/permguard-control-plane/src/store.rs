@@ -5,7 +5,8 @@
 //!
 //! ```text
 //! <ledger>/objects/ab/cdef…   one file per object, digest-fanout, immutable
-//! <ledger>/refs/<name>        JSON: the head digest + the monotonic counter
+//! <ledger>/refs/<name>        JSON: the head digest, the monotonic counter and the previous
+//!                             state's `ref_digest`
 //! <ledger>/signatures/…       COSE_Sign1 head statements, a replaceable cache
 //! ```
 //!
@@ -32,6 +33,7 @@ use std::sync::{Mutex, OnceLock};
 
 use permguard_host::storage::write::{Published, publish_immutable};
 use permguard_host::storage::{Dir, StorageError};
+use permguard_notp::ExpectedRef;
 use permguard_objects::compress;
 use permguard_objects::digest::Digest;
 use permguard_objects::grammar::{self, GrammarError};
@@ -49,12 +51,9 @@ pub struct StoredObject {
     pub modified: std::time::SystemTime,
 }
 
-/// The state of one ref: what the specification calls `(head, counter)`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RefState {
-    pub head: Digest,
-    pub counter: u64,
-}
+/// The state of one ref: `(head, counter, previous_ref_digest)` (WP-7.1). A ref written before
+/// the previous digest existed reads as a state without one, and its next write names it.
+pub use permguard_objects::refstate::RefState;
 
 /// The outcome of a compare-and-swap ref update, per the idempotency table.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +73,7 @@ pub enum StoreError {
     Object(ObjectError),
     /// A name failed its grammar.
     Grammar(GrammarError),
-    /// The CAS found a different current head. Carries what is current, so
+    /// The CAS found a different current state. Carries what is current, so
     /// the caller can answer with the truth.
     Conflict { current: Option<RefState> },
     /// A stored object's bytes no longer hash to its name: detection, not
@@ -472,20 +471,21 @@ impl FileObjectStore {
         Ok(out)
     }
 
-    /// The idempotent compare-and-swap of the specification:
+    /// The idempotent compare-and-swap of the specification, over the ref state the caller
+    /// expects, `(counter, ref_digest)`:
     ///
-    /// | current head          | result                                   |
-    /// |-----------------------|------------------------------------------|
-    /// | `== new`              | `AlreadyCurrent`, counter untouched      |
-    /// | `== expected`         | update `(head, counter)` atomically      |
-    /// | anything else         | `Conflict`, carrying what is current     |
+    /// | current state                         | result                                  |
+    /// | ------------------------------------- | --------------------------------------- |
+    /// | head `== new`                         | `AlreadyCurrent`, counter untouched     |
+    /// | `(counter, ref_digest) == expected`   | the successor state, written atomically |
+    /// | anything else                         | `Conflict`, carrying what is current    |
     ///
     /// `expected = None` is the creation case: it succeeds only while the
     /// ref does not exist, and the counter starts at 1.
     pub fn update_ref(
         &self,
         name: &str,
-        expected: Option<&Digest>,
+        expected: Option<&ExpectedRef>,
         new: &Digest,
     ) -> Result<RefUpdate> {
         grammar::validate_ref_name(name)?;
@@ -505,19 +505,16 @@ impl FileObjectStore {
             return Ok(RefUpdate::AlreadyCurrent(state.clone()));
         }
 
-        let matches = match (expected, &current) {
-            (None, None) => true,
-            (Some(expected), Some(state)) => state.head == *expected,
-            _ => false,
-        };
-        if !matches {
-            return Err(StoreError::Conflict { current });
-        }
-
-        let counter = current.as_ref().map_or(1, |state| state.counter + 1);
-        let state = RefState {
-            head: new.clone(),
-            counter,
+        let state = match (expected, &current) {
+            (None, None) => RefState::first(new.clone()),
+            (Some(expected), Some(state))
+                if expected.counter == state.counter && expected.digest == ref_digest(state)? =>
+            {
+                state
+                    .successor(new.clone())
+                    .map_err(|error| backend("the next ref state", error))?
+            }
+            _ => return Err(StoreError::Conflict { current }),
         };
         write_durable(
             &self.root,
@@ -639,27 +636,54 @@ fn sweep_tree(dir: &Dir, older_than: std::time::Duration) -> Result<usize> {
     Ok(swept)
 }
 
+/// A state's `ref_digest`, which only a counter past `i64` could refuse.
+pub fn ref_digest(state: &RefState) -> Result<Digest> {
+    state
+        .ref_digest()
+        .map_err(|error| backend("the ref digest", error))
+}
+
 fn render_ref(state: &RefState) -> String {
-    format!(
-        "{{\"version\":1,\"head\":\"{}\",\"counter\":{}}}\n",
-        state.head, state.counter
-    )
+    match &state.previous_ref_digest {
+        Some(previous) => format!(
+            "{{\"version\":1,\"head\":\"{}\",\"counter\":{},\"previous\":\"{}\"}}\n",
+            state.head, state.counter, previous
+        ),
+        None => format!(
+            "{{\"version\":1,\"head\":\"{}\",\"counter\":{}}}\n",
+            state.head, state.counter
+        ),
+    }
 }
 
 /// Parse the ref record without a JSON dependency: the format is ours, one
-/// line, three fields, written only by `render_ref`.
+/// line, written only by `render_ref`; `previous` is absent at a first state and in a record
+/// written before it existed.
 fn parse_ref(text: &str) -> Option<RefState> {
-    let head_key = "\"head\":\"";
+    let quoted = |key: &str| -> Option<Option<Digest>> {
+        let Some(at) = text.find(key) else {
+            return Some(None);
+        };
+        let start = at + key.len();
+        let end = text[start..].find('"')? + start;
+        Digest::parse(&text[start..end]).ok().map(Some)
+    };
+    let head = quoted("\"head\":\"")??;
     let counter_key = "\"counter\":";
-    let head_start = text.find(head_key)? + head_key.len();
-    let head_end = text[head_start..].find('"')? + head_start;
-    let head = Digest::parse(&text[head_start..head_end]).ok()?;
     let counter_start = text.find(counter_key)? + counter_key.len();
     let counter_end = text[counter_start..]
         .find(|c: char| !c.is_ascii_digit())
         .map_or(text.len(), |i| i + counter_start);
     let counter: u64 = text[counter_start..counter_end].parse().ok()?;
-    Some(RefState { head, counter })
+    if counter == 0 {
+        return None;
+    }
+    let previous_ref_digest = quoted("\"previous\":\"")?;
+    Some(RefState {
+        head,
+        counter,
+        previous_ref_digest,
+    })
 }
 
 fn collect_refs(base: &Path, directory: &Path, out: &mut Vec<(String, RefState)>) -> Result<()> {
@@ -946,15 +970,10 @@ mod tests {
         let b = Digest::compute(b"b");
         let c = Digest::compute(b"c");
 
-        // Creation: expected None, counter starts at 1.
+        // Creation: expected None, counter starts at 1, no previous state.
         let created = store.update_ref("main", None, &a).unwrap();
-        assert_eq!(
-            created,
-            RefUpdate::Updated(RefState {
-                head: a.clone(),
-                counter: 1
-            })
-        );
+        let first = RefState::first(a.clone());
+        assert_eq!(created, RefUpdate::Updated(first.clone()));
 
         // Creating again against an existing ref: conflict.
         assert!(matches!(
@@ -962,41 +981,44 @@ mod tests {
             Err(StoreError::Conflict { .. })
         ));
 
-        // CAS a → b.
-        let updated = store.update_ref("main", Some(&a), &b).unwrap();
+        // CAS a → b, naming the first state by `(counter, ref_digest)`.
+        let expected = ExpectedRef {
+            counter: 1,
+            digest: first.ref_digest().unwrap(),
+        };
+        let updated = store.update_ref("main", Some(&expected), &b).unwrap();
+        let second = first.successor(b.clone()).unwrap();
+        assert_eq!(updated, RefUpdate::Updated(second.clone()));
         assert_eq!(
-            updated,
-            RefUpdate::Updated(RefState {
-                head: b.clone(),
-                counter: 2
-            })
+            second.previous_ref_digest,
+            Some(expected.digest.clone()),
+            "the new state names the one it follows"
         );
 
         // Lost-response retry: same target, already current — success, same counter.
-        let retried = store.update_ref("main", Some(&a), &b).unwrap();
-        assert_eq!(
-            retried,
-            RefUpdate::AlreadyCurrent(RefState {
-                head: b.clone(),
-                counter: 2
-            })
-        );
+        let retried = store.update_ref("main", Some(&expected), &b).unwrap();
+        assert_eq!(retried, RefUpdate::AlreadyCurrent(second.clone()));
 
         // Stale expectation: conflict carrying the current state.
-        match store.update_ref("main", Some(&a), &c) {
+        match store.update_ref("main", Some(&expected), &c) {
             Err(StoreError::Conflict {
                 current: Some(state),
-            }) => {
-                assert_eq!(
-                    state,
-                    RefState {
-                        head: b.clone(),
-                        counter: 2
-                    }
-                );
-            }
+            }) => assert_eq!(state, second),
             other => panic!("expected conflict, got {other:?}"),
         }
+
+        // The right counter under another digest is a conflict too: the digest is the state.
+        let forged = ExpectedRef {
+            counter: 2,
+            digest: first.ref_digest().unwrap(),
+        };
+        assert!(matches!(
+            store.update_ref("main", Some(&forged), &c),
+            Err(StoreError::Conflict { .. })
+        ));
+
+        // The record round-trips the previous digest.
+        assert_eq!(store.read_ref("main").unwrap().unwrap(), second);
 
         // Lockless read sees the latest snapshot.
         assert_eq!(store.read_ref("main").unwrap().unwrap().counter, 2);
@@ -1017,6 +1039,35 @@ mod tests {
         assert!(store.read_signature("main").unwrap().is_none());
         store.write_signature("main", b"envelope").unwrap();
         assert_eq!(store.read_signature("main").unwrap().unwrap(), b"envelope");
+    }
+
+    /// A ref record is read strictly: a counter of zero, a head or a previous digest that is no
+    /// digest is not a ref state, and is never guessed into one.
+    #[test]
+    fn a_ref_record_that_is_no_ref_state_is_refused() {
+        let store = FileObjectStore::new(scratch());
+        let a = Digest::compute(b"a");
+        store.update_ref("main", None, &a).unwrap();
+        let path = store.root().join("refs").join("main");
+        for broken in [
+            format!("{{\"version\":1,\"head\":\"{a}\",\"counter\":0}}\n"),
+            "{\"version\":1,\"head\":\"sha256:zz\",\"counter\":1}\n".to_owned(),
+            format!("{{\"version\":1,\"head\":\"{a}\",\"counter\":2,\"previous\":\"x\"}}\n"),
+        ] {
+            fs::write(&path, &broken).unwrap();
+            assert!(
+                matches!(store.read_ref("main"), Err(StoreError::Backend { .. })),
+                "{broken}"
+            );
+        }
+        // Today's record, with no previous digest, reads as a state without one.
+        fs::write(
+            &path,
+            format!("{{\"version\":1,\"head\":\"{a}\",\"counter\":3}}\n"),
+        )
+        .unwrap();
+        let legacy = store.read_ref("main").unwrap().unwrap();
+        assert_eq!((legacy.counter, legacy.previous_ref_digest), (3, None));
     }
 
     #[test]

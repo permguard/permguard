@@ -128,6 +128,7 @@ fn manifest() -> Manifest {
     partitions.insert(
         "governance".to_owned(),
         Partition {
+            interfaces: Vec::new(),
             runtime: permguard_languages::DOGWOOD.to_owned(),
             media_types,
             // A Dogwood partition states its contents by name: `schema: bool` cannot say which of
@@ -301,6 +302,7 @@ fn provision_with(
         &permguard_control_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
+            ref_digest: None,
         },
     )
     .expect("the checkpoint is written");
@@ -1280,6 +1282,7 @@ mod shipped_example {
             &permguard_control_client::checkpoint::Checkpoint {
                 head: commit_digest.to_string(),
                 counter: 1,
+                ref_digest: None,
             },
         )
         .expect("the checkpoint is written");

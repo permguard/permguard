@@ -188,6 +188,7 @@ fn manifest(partitions: &[(&str, &str, bool)], engine_range: &str) -> Manifest {
         declared.insert(
             (*name).to_owned(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: (*language).to_owned(),
                 media_types,
                 schema: *schema,
@@ -315,6 +316,7 @@ fn provision(
         &permguard_control_client::checkpoint::Checkpoint {
             head: commit_digest.to_string(),
             counter: 1,
+            ref_digest: None,
         },
     )
     .expect("the checkpoint is written");
@@ -857,8 +859,49 @@ async fn a_schema_less_cedar_partition_serves_only_below_production() {
     );
 
     let typed_root = scratch("floor-typed").join("mirrors");
-    let typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
     let schema = "entity user;\nentity document;\naction read appliesTo { principal: [user], resource: [document] };\n";
+
+    // A typed partition that names no interfaces relies on the inference, refused from
+    // `production` (`interfaces.explicit`, WP-7.1) and served below it.
+    let implicit_root = scratch("floor-implicit").join("mirrors");
+    provision(
+        &implicit_root,
+        "acme",
+        "main-ledger",
+        &manifest(&[("app", "cedar", true)], ">=0.0.0"),
+        &[("app", vec![&CEDAR_READ], Some(schema))],
+    );
+    let implicit = |profile| {
+        Decider::new(
+            implicit_root.clone(),
+            Arc::new(Cache::new(64, 8 * 1024 * 1024)),
+            Metrics::none(),
+            None,
+            256,
+        )
+        .with_profile(profile)
+    };
+    let refused = implicit(AssuranceProfile::Production)
+        .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+        .await
+        .expect_err("the inference is refused under production");
+    assert!(
+        refused.to_string().contains("interfaces.explicit"),
+        "{refused:?}"
+    );
+    assert!(
+        implicit(AssuranceProfile::Development)
+            .decide(&ask("acme", "main-ledger", "alice", "read"), None)
+            .await
+            .expect("development infers them")
+            .decision
+    );
+
+    let mut typed = manifest(&[("app", "cedar", true)], ">=0.0.0");
+    // From `production` a partition names its interfaces (`interfaces.explicit`, WP-7.1).
+    for partition in typed.partitions.values_mut() {
+        partition.interfaces = vec![permguard_objects::manifest::PROFILE_PDP_NATIVE_V1.to_owned()];
+    }
     provision(
         &typed_root,
         "acme",

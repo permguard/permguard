@@ -72,8 +72,8 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | --------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `objects.json`        | blob, tree and commit                              | `blob`, `tree`, `commit`                                                                           |
 | `manifest.json`       | ledger manifest blob payload                       | `manifest`                                                                                         |
-| `head-statement.json` | today's signed head statement                      | `cose_sign1`                                                                                       |
-| `notp.json`           | NOTP bodies and the `GET ref` answer               | one per message                                                                                    |
+| `head-statement.json` | the target signed head statement (WP-7.1)          | `cose_sign1`                                                                                       |
+| `notp.json`           | NOTP bodies, the `GET ref` answer, the ref state   | `ref_state`, then one per message                                                                  |
 | `sealed-key.json`     | sealed private key and its two sealing contexts    | `sealed_key`, `content_context`, `wrap_context`                                                    |
 | `key-set.json`        | key-set digest input                               | `key_set`                                                                                          |
 | `kdf.json`            | HKDF `info` tuples                                 | `host_local_info`, `zone_root_info`, `zone_use_info`                                               |
@@ -85,7 +85,8 @@ Forward compatibility is carried by versions, never by silently ignored fields.
 | `keys.json`           | key ring journal entry, view and binding payload   | `journal_entry`, `ring_view`, `ring_binding`                                                       |
 | `operation-plan.json` | plan receipt, approval and the plan body           | `plan_receipt`, `plan_approval`, `plan_body`                                                       |
 
-`notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body that the control plane writes inline and the client reads with a private closed decoder.
+`notp.json` also registers `ref_answer`, the `GET …/refs/{name}` body, and `ref_state`, the bytes a `ref_digest` is taken over, which never travel.
+Label 3 of `negotiate_push_request` and `commit_push_request`, today's `expected_old`, is retired by `expected_ref` and never reused.
 The `statement` members of the NOTP bodies are the COSE_Sign1 bytes that `head-statement.json` registers.
 
 ## Not frozen: blocked
@@ -104,6 +105,3 @@ Each one is owned by the phase that designs it, and WP-0.7 writes no golden vect
 | ledger export manifest                            | no byte shape                                                                                                                                                                        |
 | stream run                                        | no byte shape                                                                                                                                                                        |
 | audit checkpoint `permguard.audit.checkpoint.v1`  | member names only; no labels, types or cardinalities                                                                                                                                 |
-| target NOTP head statement                        | labels and types of the added `authority_host_id`, `ref_digest`, `ring_epoch` and `key_set_digest`, and whether the statement moves to a new content type                            |
-| `RefState`                                        | labels, types and cardinality of `head`, `counter` and `previous_ref_digest` inside `ref_digest`; today a ref is stored as JSON and has no CBOR form                                 |
-| manifest partition `interfaces`                   | the integer label of the new partition key and the type of its entries                                                                                                               |

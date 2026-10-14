@@ -133,6 +133,7 @@ fn manifest_bytes() -> Vec<u8> {
     partitions.insert(
         "cedar".to_owned(),
         Partition {
+            interfaces: Vec::new(),
             runtime: "cedar".to_owned(),
             media_types: vec!["application/vnd.permguard.policy.cedar".to_owned()],
             schema: false,

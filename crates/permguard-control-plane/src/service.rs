@@ -1035,12 +1035,23 @@ fn notp_facade(context: &PlaneContext<'_>) -> Option<crate::notp::NotpFacade> {
         );
         return None;
     };
+    // Every head statement names the Host that signs it (WP-7.1): without a `host_id` there is
+    // no authority to name, and the store is not served.
+    let Some(authority) = crate::handles::host_id(context) else {
+        tracing::warn!(
+            event.name = "notp.disabled",
+            component = COMPONENT,
+            "the git-like store is not served: no Host identity names the signing authority"
+        );
+        return None;
+    };
     let config = context.config();
 
     Some(crate::notp::NotpFacade::new(
         std::sync::Arc::clone(catalog),
         config.zones_directory(),
         keys,
+        authority,
         crate::engine::EngineLimits {
             max_batch_bytes: config.notp_max_batch_bytes(),
             max_batch_objects: config.notp_max_batch_objects(),

@@ -15,7 +15,6 @@
 | `merkle`          | RFC 6962 batch roots                                                | `permguard-decisions`, `-stream`   |
 | `cursor_v1`       | today's cursor and its filter digest                                | `permguard-stream`                 |
 | `pseudonym`       | today's audit pseudonym                                             | `permguard-std`                    |
-| `head_statement`  | today's signed NOTP head statement, COSE_Sign1                      | `permguard-objects`                |
 | `key_set_digest`  | a pointer to the WP-0.4 vectors in `permguard-objects`              | `permguard-objects`                |
 
 `identity.json` freezes the Host identity's records (WP-2.2): the identity document at epochs 1 and 2, the succession between them, `INIT`, its external witness and `BOOT`.
@@ -40,6 +39,11 @@ Since WP-4.7 it also freezes the `zone.secrets` records, a request and its task 
 
 `audit.json` freezes the audit's checkpoint records (WP-3.7): an audit record and its digest, the checkpoint sealing its day and an on-demand checkpoint of the next day chained to it, both COSE_Sign1 `permguard.audit.checkpoint.v1` under a `host.operations` key with their envelope digests, and the anchor naming the first.
 `audit.py` computes them under the owner decisions of 2026-10-07 and 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/audit_vectors.rs` reproduces them and verifies both envelopes with the published key.
+
+`notp.json` freezes the NOTP target records (WP-7.1): two ref states and their `ref_digest`, the head statement binding the authority, the ref digest and the ring's epoch and key set, its COSE_Sign1, the messages carrying them, and a manifest whose partition promises its interfaces.
+Beside them: the manifests a reader refuses, unsorted, duplicated, empty, not promising a profile's interface or carrying an unknown key, and today's `expected_old`, which the target reader refuses.
+`notp.py` computes them under the owner decisions of 2026-10-14, the signing key the RFC 8032 section 7.1 test 1 key; `crates/permguard-notp/tests/notp_vectors.rs` reproduces them, verifies the statement and checks the freshness verdicts over the ref digest.
+The head statement moved here from `evidence.json`: its target form replaces today's.
 
 `plan.json` freezes a destructive operation's plan records (WP-3.9): a key revocation's plan body and digest, the plan receipt naming it, COSE_Sign1 `permguard.operation.plan.v1`, and a second operator's approval, COSE_Sign1 `permguard.operation.approval.v1`, both under a `host.operations` key.
 `plan.py` computes them under the owner decisions of 2026-10-11, the `host.operations` key the RFC 8032 section 7.1 test 2 key; `crates/permguard-host/tests/plan_vectors.rs` reproduces them, verifies both envelopes with the published key and refuses each in the other's place.

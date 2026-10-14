@@ -140,3 +140,67 @@ pub(crate) fn bytes(value: &Value) -> Result<Vec<u8>> {
         _ => Err(WireError::Schema("expected byte string")),
     }
 }
+
+/// The ref state a replacement expects to find: its counter and its `ref_digest` (WP-7.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedRef {
+    pub counter: u64,
+    pub digest: Digest,
+}
+
+impl ExpectedRef {
+    pub(crate) fn value(&self) -> Result<Value> {
+        Ok(map(vec![
+            (1, uint_value(self.counter)?),
+            (2, Value::Text(self.digest.to_string())),
+        ]))
+    }
+
+    pub(crate) fn read(value: &Value) -> Result<Self> {
+        let pairs = closed(value, &[1, 2])?;
+        Ok(Self {
+            counter: uint(need(pairs, 1)?)?,
+            digest: digest(need(pairs, 2)?)?,
+        })
+    }
+}
+
+/// The 16 random bytes naming a transfer session.
+pub type TransferId = [u8; 16];
+
+/// The longest request id.
+pub const MAX_REQUEST_ID_BYTES: usize = 128;
+
+pub(crate) fn uint_value(n: u64) -> Result<Value> {
+    i64::try_from(n)
+        .map(Value::Int)
+        .map_err(|_| WireError::Schema("an integer out of range"))
+}
+
+pub(crate) fn transfer_id(value: &Value) -> Result<TransferId> {
+    match value {
+        Value::Bytes(bytes) => <[u8; 16]>::try_from(bytes.as_slice())
+            .map_err(|_| WireError::Schema("a transfer id is 16 bytes")),
+        _ => Err(WireError::Schema("a transfer id is bytes")),
+    }
+}
+
+/// Whether `id` is a request id: printable text of 1 to `MAX_REQUEST_ID_BYTES` bytes. Every
+/// framing asks this one predicate, so the REST and gRPC grammars cannot drift.
+pub fn is_request_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= MAX_REQUEST_ID_BYTES && !id.chars().any(char::is_control)
+}
+
+pub(crate) fn request_id(value: &Value) -> Result<String> {
+    let id = text(value)?;
+    if !is_request_id(&id) {
+        return Err(WireError::Schema(
+            "a request id is printable text of 1 to 128 bytes",
+        ));
+    }
+    Ok(id)
+}
+
+pub(crate) fn opt_expected(pairs: &[(Value, Value)], key: i64) -> Result<Option<ExpectedRef>> {
+    field(pairs, key).map(ExpectedRef::read).transpose()
+}

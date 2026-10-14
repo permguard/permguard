@@ -19,6 +19,15 @@ is cut.
 
 ### Added
 
+- **NOTP speaks its target messages: ref states, transfer sessions and a head statement bound to its authority.**
+  A ref's state is now `(head, counter, previous_ref_digest)`, and its `ref_digest` is SHA-256 over the deterministic CBOR of that state under `permguard.notp.ref-state.v1\n`; a ref written before reads as a state without a previous digest, and its next write names it.
+  A push names the state it replaces, `expected_ref {counter, digest}`, instead of the old head; the old head's label is retired and refused, and a state that is not the current one is a conflict before anything is checked.
+  A negotiation opens a transfer session, `transfer_id` with a reservation and an expiry, that every upload, commit and fetch names, and a negotiation and a commit carry a `request_id`; until sessions become durable the server issues them and does not yet enforce them.
+  The head statement adds the signing Host's `authority_host_id`, the `ref_digest` and the ring's epoch and key-set digest, under the content type `application/vnd.permguard.head.v1+cbor`, and is signed in the ring's suite; a six-field statement is refused.
+  Clients judge freshness over `(counter, ref_digest)`: the same head reached through another history is an equivocation, and a checkpoint written before the ref digest is judged on its head until the next pull records the digest.
+  A manifest partition may list the `interfaces` it promises; every profile's interface must be among them, and from `production` up a partition without them is refused at load (`interfaces.explicit`).
+  The gRPC messages carry the same members, with `expected_old` reserved; the vectors are in `contracts/vectors/notp.json`.
+
 - **Members ship their stream batches, each subscription acknowledged on its own.**
   The server's minute pass now ships what every active `decisions.ship` and `events.ship` task has due: one session per stream on its resource, batches sealed within the task's message bound, sent with the member's `data.attest` statement.
   Each subscription, a membership's ship task, keeps its own acknowledgement per run in `subscriptions/<membership>-<task>.cbor` beside the stream.

@@ -222,6 +222,9 @@ fn rest() -> Router {
                         max_batch_bytes: 8 * 1024 * 1024,
                         max_batch_objects: 1000,
                         compression: None,
+                        transfer_id: [0x7a; 16],
+                        reservation: 3,
+                        expiry: 1_800_000_000,
                     }
                     .encode()
                     .expect("it encodes"),
@@ -1027,8 +1030,9 @@ fn a_push_over_https_carries_the_operators_token() {
         .negotiate_push(&permguard_notp::NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: digest.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: vec![permguard_notp::ObjectClaim { digest, size: 3 }],
+            request_id: "push-1".into(),
         })
         .expect("the negotiation answers over TLS");
     assert_eq!(*seen.lock().unwrap(), vec![Some(format!("Bearer {TOKEN}"))]);

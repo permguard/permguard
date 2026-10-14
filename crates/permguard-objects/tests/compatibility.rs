@@ -30,6 +30,7 @@ fn fixture_manifest() -> Manifest {
     partitions.insert(
         "authz".to_owned(),
         Partition {
+            interfaces: Vec::new(),
             runtime: "cedar".to_owned(),
             media_types: vec!["application/vnd.cedar.policy".to_owned()],
             schema: false,

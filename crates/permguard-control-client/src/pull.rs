@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use permguard_notp::{FetchObjectsRequest, NegotiatePullRequest};
+use permguard_notp::{ExpectedRef, FetchObjectsRequest, NegotiatePullRequest};
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Object};
 
@@ -38,6 +38,8 @@ pub struct TrackedRef {
 pub struct VerifiedHead {
     pub head: Digest,
     pub counter: u64,
+    /// The digest of the verified ref state.
+    pub ref_digest: Digest,
     /// How many objects actually crossed the wire.
     pub fetched: usize,
 }
@@ -61,10 +63,23 @@ pub fn fetch_closure(
         ],
         None => Vec::new(),
     };
+    // The state last verified, when the checkpoint names its digest.
+    let held = match &checkpoint {
+        Some(Checkpoint {
+            counter,
+            ref_digest: Some(digest),
+            ..
+        }) => Some(ExpectedRef {
+            counter: *counter,
+            digest: Digest::parse(digest).map_err(|_| "the checkpoint is corrupt".to_owned())?,
+        }),
+        _ => None,
+    };
     let negotiated = remote.negotiate_pull(&NegotiatePullRequest {
         r#ref: tracked.r#ref.clone(),
         at: None,
         have,
+        checkpoint: held,
     })?;
 
     // Provenance and freshness before anything else moves.
@@ -77,6 +92,13 @@ pub fn fetch_closure(
         &tracked.r#ref,
         checkpoint.as_ref(),
     )?;
+    // The answer's state is the one the statement signs, or nothing moves.
+    if negotiated.head != statement.digest
+        || negotiated.counter != statement.counter
+        || negotiated.ref_digest != statement.ref_digest
+    {
+        return Err("the negotiated ref state is not the one its statement signs".to_owned());
+    }
 
     // Fetch in batches within the advertised limits.
     let mut fetched = 0usize;
@@ -91,6 +113,7 @@ pub fn fetch_closure(
             digests: chunk.to_vec(),
             // The transport states what it accepts and undoes it.
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         })?;
         for bytes in answer.objects {
             let digest = crate::objects::put(store, objects_root, &bytes)?;
@@ -108,6 +131,7 @@ pub fn fetch_closure(
     Ok(VerifiedHead {
         head,
         counter: statement.counter,
+        ref_digest: statement.ref_digest,
         fetched,
     })
 }
@@ -124,6 +148,7 @@ pub fn commit_checkpoint(
         &Checkpoint {
             head: verified.head.to_string(),
             counter: verified.counter,
+            ref_digest: Some(verified.ref_digest.to_string()),
         },
     )
 }

@@ -271,6 +271,16 @@ pub fn compile(
     let declared = head.manifest.partitions.get(partition).ok_or_else(|| {
         Refusal::Unknown(format!("this ledger declares no partition `{partition}`"))
     })?;
+    // `interfaces.explicit` (WP-7.1): from its floor up, a partition names the interfaces it
+    // promises; the inference a legacy manifest relies on is refused, never applied.
+    let explicit = permguard_core::assurance::Control::InterfacesExplicit;
+    if profile.at_least(explicit.floor()) && declared.interfaces.is_empty() {
+        return Err(Refusal::BelowFloor(format!(
+            "the partition `{partition}` lists no `interfaces`, which the `{}` assurance profile \
+             requires ({explicit})",
+            profile.as_str()
+        )));
+    }
     let runtime = head.manifest.runtimes.get(&declared.runtime).ok_or_else(|| {
         Refusal::Damaged(format!(
             "the partition `{partition}` names the runtime `{}`, which the manifest does not declare",

@@ -19,20 +19,24 @@ fn the_push_messages_round_trip() {
     let req = NegotiatePushRequest {
         r#ref: "main".into(),
         new_head: d1.clone(),
-        expected_old: Some(d2.clone()),
+        expected_ref: Some(ExpectedRef {
+            counter: 3,
+            digest: d2.clone(),
+        }),
         closure: vec![ObjectClaim {
             digest: d1.clone(),
             size: 42,
         }],
+        request_id: "push-1".into(),
     };
     assert_eq!(
         NegotiatePushRequest::decode(&req.encode().expect("it encodes")).unwrap(),
         req
     );
 
-    // The creation case: no expected old head, and the optional is omitted.
+    // The creation case: no expected ref, and the optional is omitted.
     let creation = NegotiatePushRequest {
-        expected_old: None,
+        expected_ref: None,
         ..req.clone()
     };
     assert_eq!(
@@ -45,6 +49,9 @@ fn the_push_messages_round_trip() {
         max_batch_bytes: 1,
         max_batch_objects: 2,
         compression: Some("deflate".into()),
+        transfer_id: [1; 16],
+        reservation: 4096,
+        expiry: 1_791_195_000,
     };
     assert_eq!(
         NegotiatePushResponse::decode(&resp.encode().expect("it encodes")).unwrap(),
@@ -54,6 +61,7 @@ fn the_push_messages_round_trip() {
     let up = UploadObjectsRequest {
         objects: vec![vec![1, 2], vec![]],
         compression: None,
+        transfer_id: [1; 16],
     };
     assert_eq!(
         UploadObjectsRequest::decode(&up.encode().expect("it encodes")).unwrap(),
@@ -62,6 +70,7 @@ fn the_push_messages_round_trip() {
 
     let upr = UploadObjectsResponse {
         received: vec![d1.clone(), d2.clone()],
+        remaining: 12,
     };
     assert_eq!(
         UploadObjectsResponse::decode(&upr.encode().expect("it encodes")).unwrap(),
@@ -71,7 +80,9 @@ fn the_push_messages_round_trip() {
     let commit = CommitPushRequest {
         r#ref: "main".into(),
         new_head: d1.clone(),
-        expected_old: None,
+        expected_ref: None,
+        transfer_id: [1; 16],
+        request_id: "commit-1".into(),
     };
     assert_eq!(
         CommitPushRequest::decode(&commit.encode().expect("it encodes")).unwrap(),
@@ -82,6 +93,7 @@ fn the_push_messages_round_trip() {
         head: d1,
         counter: 7,
         statement: vec![9],
+        ref_digest: d2,
     };
     assert_eq!(
         CommitPushResponse::decode(&committed.encode().expect("it encodes")).unwrap(),
@@ -98,6 +110,10 @@ fn the_pull_messages_round_trip() {
         r#ref: "main".into(),
         at: Some(d2.clone()),
         have: vec![d1.clone()],
+        checkpoint: Some(ExpectedRef {
+            counter: 2,
+            digest: d1.clone(),
+        }),
     };
     assert_eq!(
         NegotiatePullRequest::decode(&pull.encode().expect("it encodes")).unwrap(),
@@ -108,10 +124,13 @@ fn the_pull_messages_round_trip() {
         head: d1.clone(),
         counter: 3,
         statement: vec![1],
-        missing: vec![d2],
+        missing: vec![d2.clone()],
         max_batch_bytes: 10,
         max_batch_objects: 20,
         compression: Some("deflate".into()),
+        transfer_id: [2; 16],
+        ref_digest: d2,
+        expiry: 1_791_195_000,
     };
     assert_eq!(
         NegotiatePullResponse::decode(&answer.encode().expect("it encodes")).unwrap(),
@@ -121,6 +140,7 @@ fn the_pull_messages_round_trip() {
     let fetch = FetchObjectsRequest {
         digests: vec![d1],
         accept_compression: Some("deflate".into()),
+        transfer_id: [2; 16],
     };
     assert_eq!(
         FetchObjectsRequest::decode(&fetch.encode().expect("it encodes")).unwrap(),
@@ -130,6 +150,7 @@ fn the_pull_messages_round_trip() {
     let fetched = FetchObjectsResponse {
         objects: vec![vec![3, 4]],
         compression: None,
+        expiry: 1_791_195_000,
     };
     assert_eq!(
         FetchObjectsResponse::decode(&fetched.encode().expect("it encodes")).unwrap(),
@@ -149,6 +170,9 @@ fn malformed_bodies_are_refused() {
                 max_batch_bytes: 1,
                 max_batch_objects: 1,
                 compression: None,
+                transfer_id: [1; 16],
+                reservation: 1,
+                expiry: 1,
             }
             .encode()
             .expect("it encodes")

@@ -1,6 +1,6 @@
 {
   "comment": [
-    "Golden vectors of today's evidence, stream and statement formats (WP-0.7). Computed independently of the Rust codecs, from the published rules; every codec crate reproduces them.",
+    "Golden vectors of today's evidence and stream formats (WP-0.7); the head statement's are in notp.json (WP-7.1). Computed independently of the Rust codecs, from the published rules; every codec crate reproduces them.",
     "A vector changes only with a protocol version. Target formats are frozen by the packages that design them (status.md, Deferred format freezes).",
     "Signing key: RFC 8032 section 7.1 test 1 (`seed`), Ed25519, deterministic; `kid` is its RFC 7638 thumbprint (RFC 8037 appendix A.3)."
   ],
@@ -415,20 +415,6 @@
     },
     "body": "{\"v\":1,\"api\":\"events\",\"scope\":\"zone-a/ledger-1\",\"filters\":\"sha256:c97c3ba96feed61ff7065003747c71e27ebb7b6fa652a5a7309030958a85af5d\",\"positions\":{\"data-plane-7f3a\":{\"segment\":1,\"offset\":2}},\"frontier\":{\"v\":1,\"covered\":{\"data-plane-7f3a\":3}}}",
     "token": "eyJjIjoiZXlKMklqb3hMQ0poY0draU9pSmxkbVZ1ZEhNaUxDSnpZMjl3WlNJNklucHZibVV0WVM5c1pXUm5aWEl0TVNJc0ltWnBiSFJsY25NaU9pSnphR0V5TlRZNll6azNZek5pWVRrMlptVmxaRFl4Wm1ZM01EWTFNREF6TnpRM1l6Y3haVEkzWldKaU4ySTJabUUyTlRKaE5XRTNNekE1TURNd09UVTRZVGcxWVdZMVpDSXNJbkJ2YzJsMGFXOXVjeUk2ZXlKa1lYUmhMWEJzWVc1bExUZG1NMkVpT25zaWMyVm5iV1Z1ZENJNk1Td2liMlptYzJWMElqb3lmWDBzSW1aeWIyNTBhV1Z5SWpwN0luWWlPakVzSW1OdmRtVnlaV1FpT25zaVpHRjBZUzF3YkdGdVpTMDNaak5oSWpvemZYMTkiLCJtIjoidXJPalBYaVBJUFdHdklZQ0NMeGh0aDhlbk9mSmU4WVpwdUlNTVBHdEpEVSJ9"
-  },
-  "head_statement": {
-    "name": "today's signed head statement",
-    "zone": "zone-a",
-    "ledger": "ledger-1",
-    "ref": "refs/heads/main",
-    "digest": "sha256:9505cacb7c710ed17125fcc6cb3669e8ddca6c8cd8af6a31f6b3cd64604c3098",
-    "counter": 7,
-    "signed_at": 1791194400,
-    "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k",
-    "protected": "a2012704582b6b50724b5f716d7856576159564139777742463649756f3376567a7a37547848435477584279677253346b",
-    "payload": "a601667a6f6e652d6102686c65646765722d31036f726566732f68656164732f6d61696e0478477368613235363a393530356361636237633731306564313731323566636336636233363639653864646361366338636438616636613331663662336364363436303463333039380507061a6ac37520",
-    "sig_structure": "846a5369676e6174757265315831a2012704582b6b50724b5f716d7856576159564139777742463649756f3376567a7a37547848435477584279677253346b405876a601667a6f6e652d6102686c65646765722d31036f726566732f68656164732f6d61696e0478477368613235363a393530356361636237633731306564313731323566636336636233363639653864646361366338636438616636613331663662336364363436303463333039380507061a6ac37520",
-    "cose_sign1": "845831a2012704582b6b50724b5f716d7856576159564139777742463649756f3376567a7a37547848435477584279677253346ba05876a601667a6f6e652d6102686c65646765722d31036f726566732f68656164732f6d61696e0478477368613235363a393530356361636237633731306564313731323566636336636233363639653864646361366338636438616636613331663662336364363436303463333039380507061a6ac3752058405710f1d6a5c733c5a0dce94299b9d495f1c5923aa0e2c9ee5836c0483d972e46adcaf2d7c0b73b8c5e21f761c0c960134e3454ad4a4d9f42dfc7dfb24110cc06"
   },
   "key_set_digest": {
     "name": "frozen by WP-0.4; the vectors live with the rest of the cryptographic profile",

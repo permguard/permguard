@@ -130,21 +130,7 @@ async fn get_ref(
         .await
         .and_then(|answered| {
             // The advertised ref rides the same framing as everything else.
-            permguard_objects::cbor::encode(&permguard_objects::cbor::Value::Map(vec![
-                (
-                    permguard_objects::cbor::Value::Int(1),
-                    permguard_objects::cbor::Value::Text(answered.head),
-                ),
-                (
-                    permguard_objects::cbor::Value::Int(2),
-                    permguard_objects::cbor::Value::Int(answered.counter as i64),
-                ),
-                (
-                    permguard_objects::cbor::Value::Int(3),
-                    permguard_objects::cbor::Value::Bytes(answered.statement),
-                ),
-            ]))
-            .map_err(|error| unencodable(error).into())
+            answered.encode().map_err(|error| unencodable(error).into())
         });
     answer(&facade, outcome)
 }
@@ -321,6 +307,7 @@ mod tests {
             catalog,
             root.join("zones"),
             keys,
+            [0x11; 16],
             EngineLimits {
                 max_batch_bytes: 8 * 1024 * 1024,
                 max_batch_objects: 1000,
@@ -349,6 +336,7 @@ mod tests {
             r#ref: "main".to_owned(),
             at: None,
             have: Vec::new(),
+            checkpoint: None,
         }
         .encode()
         .expect("encodes");
@@ -424,6 +412,7 @@ mod tests {
             partitions: BTreeMap::from([(
                 "cedar".to_string(),
                 Partition {
+                    interfaces: Vec::new(),
                     runtime: "cedar".into(),
                     media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                     schema: false,
@@ -550,8 +539,9 @@ mod tests {
         let request = NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: build_commit().1,
-            expected_old: None,
+            expected_ref: None,
             closure: Vec::new(),
+            request_id: "push-1".into(),
         };
         let (status, _) = post(
             &routes,
@@ -573,7 +563,7 @@ mod tests {
         let request = NegotiatePushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: objects
                 .iter()
                 .map(|bytes| ObjectClaim {
@@ -581,6 +571,7 @@ mod tests {
                     size: bytes.len() as u64,
                 })
                 .collect(),
+            request_id: "push-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -596,6 +587,7 @@ mod tests {
         let upload = UploadObjectsRequest {
             objects: objects.clone(),
             compression: None,
+            transfer_id: negotiated.transfer_id,
         };
         let (status, body) = post(
             &routes,
@@ -616,7 +608,9 @@ mod tests {
         let commit = CommitPushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
+            transfer_id: [0x7a; 16],
+            request_id: "commit-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -629,6 +623,12 @@ mod tests {
         assert_eq!(committed.head, head);
         assert_eq!(committed.counter, 1);
         assert!(!committed.statement.is_empty());
+        let first = permguard_objects::refstate::RefState::first(head.clone());
+        assert_eq!(
+            committed.ref_digest,
+            first.ref_digest().expect("a ref digest"),
+            "the answer names the first state's digest"
+        );
 
         // The advertised ref answers.
         let request = HttpRequest::builder()
@@ -638,12 +638,28 @@ mod tests {
             .expect("a request builds");
         let answer = routes.clone().oneshot(request).await.expect("answers");
         assert_eq!(answer.status().as_u16(), 200);
+        let bytes = axum::body::to_bytes(answer.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+        let advertised = permguard_notp::GetRefResponse::decode(&bytes).expect("a ref answer");
+        assert_eq!(advertised.ref_digest, committed.ref_digest);
+        let statement = permguard_objects::statement::SignedHead::decode(&advertised.statement)
+            .expect("a statement")
+            .statement_unverified()
+            .expect("a payload");
+        assert_eq!(statement.ref_digest, committed.ref_digest);
+        assert_eq!(statement.authority_host_id, [0x11; 16]);
+        assert_eq!(
+            statement.ring_epoch, 1,
+            "the ring's epoch, bound by the signer"
+        );
 
         // Pull: full clone gets every object back, hash-verified.
         let pull = NegotiatePullRequest {
             r#ref: "main".into(),
             at: None,
             have: vec![],
+            checkpoint: None,
         };
         let (status, body) = post(
             &routes,
@@ -657,6 +673,7 @@ mod tests {
         let fetch = FetchObjectsRequest {
             digests: negotiated.missing.clone(),
             accept_compression: None,
+            transfer_id: negotiated.transfer_id,
         };
         let (status, body) = post(
             &routes,
@@ -707,6 +724,7 @@ mod tests {
         let upload = UploadObjectsRequest {
             objects,
             compression: None,
+            transfer_id: [0x7a; 16],
         };
         let (status, _) = post(
             &routes,
@@ -718,7 +736,9 @@ mod tests {
         let commit = CommitPushRequest {
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
+            transfer_id: [0x7a; 16],
+            request_id: "commit-1".into(),
         };
         let (status, body) = post(
             &routes,
@@ -779,6 +799,7 @@ mod tests {
         let bomb = UploadObjectsRequest {
             objects: vec![packed; 32],
             compression: Some("deflate".into()),
+            transfer_id: [0x7a; 16],
         };
 
         let (status, body) = post(
@@ -801,6 +822,7 @@ mod tests {
             r#ref: "main".into(),
             at: None,
             have: vec![],
+            checkpoint: None,
         };
         let (status, body) = post(
             &routes,

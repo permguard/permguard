@@ -2588,6 +2588,8 @@ dependencies = [
  "permguard-core",
  "permguard-objects",
  "proptest",
+ "ring",
+ "serde_json",
 ]
 
 [[package]]

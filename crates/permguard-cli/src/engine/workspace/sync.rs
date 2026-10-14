@@ -8,7 +8,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use permguard_notp::{CommitPushRequest, NegotiatePushRequest, ObjectClaim, UploadObjectsRequest};
+use permguard_notp::{
+    CommitPushRequest, ExpectedRef, NegotiatePushRequest, ObjectClaim, UploadObjectsRequest,
+};
 use permguard_objects::digest::Digest;
 use permguard_objects::object::{self, Kind, Object, Tree};
 use permguard_objects::policy_id::{ANNOTATION_POLICY_ALIAS, ANNOTATION_POLICY_ID};
@@ -101,6 +103,9 @@ impl Workspace<'_> {
         };
         let commit_bytes = commit.encode().map_err(|error| err(error.to_string()))?;
         let new_head = inventory::put(self.store, &commit_bytes).map_err(err)?;
+        let expected_ref = self.expected_ref(remote, ledger, &r#ref, checkpoint.as_ref())?;
+        // The new head names the request: a retry of this apply is the same request.
+        let request_id = new_head.to_string();
 
         // The delta closure: reachable from the new head, minus the old one.
         let stop = match &expected_old {
@@ -127,8 +132,9 @@ impl Workspace<'_> {
             .negotiate_push(&NegotiatePushRequest {
                 r#ref: r#ref.clone(),
                 new_head: new_head.clone(),
-                expected_old: expected_old.clone(),
+                expected_ref: expected_ref.clone(),
                 closure: claims,
+                request_id: request_id.clone(),
             })
             .map_err(err)?;
         let mut uploaded = 0usize;
@@ -152,6 +158,7 @@ impl Workspace<'_> {
                         objects: std::mem::take(&mut batch),
                         // Raw here: compression is the transport's concern.
                         compression: None,
+                        transfer_id: negotiated.transfer_id,
                     })
                     .map_err(err)?;
                 batch_bytes = 0;
@@ -165,6 +172,7 @@ impl Workspace<'_> {
                 .upload(&UploadObjectsRequest {
                     objects: batch,
                     compression: None,
+                    transfer_id: negotiated.transfer_id,
                 })
                 .map_err(err)?;
         }
@@ -174,7 +182,9 @@ impl Workspace<'_> {
             .commit_push(&CommitPushRequest {
                 r#ref: r#ref.clone(),
                 new_head: new_head.clone(),
-                expected_old,
+                expected_ref,
+                transfer_id: negotiated.transfer_id,
+                request_id,
             })
             .map_err(err)?;
 
@@ -191,10 +201,19 @@ impl Workspace<'_> {
                 .as_ref(),
         )
         .map_err(err)?;
+        if committed.head != statement.digest
+            || committed.counter != statement.counter
+            || committed.ref_digest != statement.ref_digest
+        {
+            return Err(err(
+                "the committed ref state is not the one its statement signs",
+            ));
+        }
 
         let checkpoint = Checkpoint {
             head: statement.digest.to_string(),
             counter: statement.counter,
+            ref_digest: Some(statement.ref_digest.to_string()),
         };
         config::write_checkpoint(self.store, &r#ref, &checkpoint).map_err(err)?;
         config::write_head(self.store, &r#ref).map_err(err)?;
@@ -203,6 +222,50 @@ impl Workspace<'_> {
             counter: checkpoint.counter,
             uploaded,
         })
+    }
+
+    /// The ref state an apply expects to replace: the checkpoint's, `None` before the first
+    /// apply. A checkpoint written before the ref digest names no digest: the server's
+    /// advertised state, verified against it, names the digest when its head is the one held.
+    fn expected_ref(
+        &self,
+        remote: &dyn Remote,
+        ledger: &config::LedgerConfig,
+        r#ref: &str,
+        checkpoint: Option<&Checkpoint>,
+    ) -> Result<Option<ExpectedRef>> {
+        let Some(held) = checkpoint else {
+            return Ok(None);
+        };
+        if let Some(digest) = &held.ref_digest {
+            return Ok(Some(ExpectedRef {
+                counter: held.counter,
+                digest: Digest::parse(digest).map_err(|_| err("the checkpoint is corrupt"))?,
+            }));
+        }
+        let answer = remote
+            .get_ref(r#ref)
+            .map_err(err)?
+            .ok_or_else(|| err(format!("the ref `{ref}` is gone from the server", ref = r#ref)))?;
+        let jwks = remote.keyring().map_err(err)?;
+        let statement = verify::verify_statement(
+            &jwks,
+            &answer.statement,
+            &ledger.zone_id,
+            &ledger.ledger_id,
+            r#ref,
+            Some(held),
+        )
+        .map_err(err)?;
+        if statement.digest.to_string() != held.head || statement.counter != held.counter {
+            return Err(err(
+                "the ref moved since this workspace last synchronized: pull first",
+            ));
+        }
+        Ok(Some(ExpectedRef {
+            counter: statement.counter,
+            digest: statement.ref_digest,
+        }))
     }
 
     /// Pull: the client's fetch-and-prove cycle, with the workspace's file

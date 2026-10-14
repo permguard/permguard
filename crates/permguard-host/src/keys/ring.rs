@@ -1702,6 +1702,17 @@ impl permguard_core::keys::PublicSet for Ring {
             .map(|(_, _, keys)| keys)
             .map_err(core_error)
     }
+
+    /// The epoch, the set's digest and the suite's algorithm, read together (WP-7.1).
+    fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        let state = self.read();
+        let (suite, digest, _) = state.statement(self.id).map_err(core_error)?;
+        Ok(permguard_core::keys::KeySetView {
+            epoch: state.epoch,
+            digest,
+            algorithm: jose_alg(suite),
+        })
+    }
 }
 
 impl permguard_core::KeyManager for Ring {

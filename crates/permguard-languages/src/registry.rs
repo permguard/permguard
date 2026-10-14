@@ -728,6 +728,7 @@ mod tests {
         partitions.insert(
             "p".to_owned(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: language.to_owned(),
                 media_types: Vec::new(),
                 schema: false,

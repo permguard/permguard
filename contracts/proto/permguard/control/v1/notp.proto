@@ -3,6 +3,11 @@
 
 // NOTP — the Negotiated Object Transfer Protocol — over gRPC. The same
 // messages the REST framing carries as CBOR; batches ride one message.
+//
+// The target messages (WP-7.1): a replacement names the ref state it expects,
+// `expected_ref {counter, digest}`, where `expected_old` named the old head
+// (field 5, reserved); a negotiation opens a transfer session that every later
+// message names; every answer naming a head names its `ref_digest`.
 
 syntax = "proto3";
 
@@ -33,6 +38,13 @@ message GetRefResponse {
   uint64 counter = 2;
   // COSE_Sign1 envelope of the head statement.
   bytes statement = 3;
+  string ref_digest = 4;
+}
+
+// The ref state a client expects or holds: its counter and its `ref_digest`.
+message ExpectedRef {
+  uint64 counter = 1;
+  string digest = 2;
 }
 
 message ObjectClaim {
@@ -45,9 +57,13 @@ message NegotiatePushRequest {
   string ledger = 2;
   string ref = 3;
   string new_head = 4;
-  // Empty means the creation case: the ref must not exist yet.
-  string expected_old = 5;
+  // Retired: the old head, replaced by `expected_ref`.
+  reserved 5;
+  reserved "expected_old";
   repeated ObjectClaim closure = 6;
+  // Absent means the creation case: the ref must not exist yet.
+  optional ExpectedRef expected_ref = 7;
+  string request_id = 8;
 }
 
 message NegotiatePushResponse {
@@ -56,6 +72,11 @@ message NegotiatePushResponse {
   uint64 max_batch_objects = 3;
   // Batch compression the server speaks ("deflate"); empty means raw.
   string compression = 4;
+  bytes transfer_id = 5;
+  // The bytes the session may land.
+  uint64 reservation = 6;
+  // When the session closes, in unix seconds.
+  uint64 expiry = 7;
 }
 
 message UploadObjectsRequest {
@@ -64,10 +85,13 @@ message UploadObjectsRequest {
   repeated bytes objects = 3;
   // How `objects` are encoded; empty means raw. Digests name the raw bytes.
   string compression = 4;
+  bytes transfer_id = 5;
 }
 
 message UploadObjectsResponse {
   repeated string received = 1;
+  // What the session's reservation has left.
+  uint64 remaining = 2;
 }
 
 message CommitPushRequest {
@@ -75,13 +99,19 @@ message CommitPushRequest {
   string ledger = 2;
   string ref = 3;
   string new_head = 4;
-  string expected_old = 5;
+  // Retired: the old head, replaced by `expected_ref`.
+  reserved 5;
+  reserved "expected_old";
+  optional ExpectedRef expected_ref = 6;
+  bytes transfer_id = 7;
+  string request_id = 8;
 }
 
 message CommitPushResponse {
   string head = 1;
   uint64 counter = 2;
   bytes statement = 3;
+  string ref_digest = 4;
 }
 
 message NegotiatePullRequest {
@@ -91,6 +121,8 @@ message NegotiatePullRequest {
   // Empty means the current head; otherwise a commit reachable from the ref.
   string at = 4;
   repeated string have = 5;
+  // The ref state the client last verified.
+  optional ExpectedRef checkpoint = 6;
 }
 
 message NegotiatePullResponse {
@@ -102,6 +134,10 @@ message NegotiatePullResponse {
   uint64 max_batch_objects = 6;
   // Batch compression the server speaks ("deflate"); empty means raw.
   string compression = 7;
+  bytes transfer_id = 8;
+  string ref_digest = 9;
+  // When the session closes, in unix seconds.
+  uint64 expiry = 10;
 }
 
 message FetchObjectsRequest {
@@ -110,12 +146,15 @@ message FetchObjectsRequest {
   repeated string digests = 3;
   // The compression the client accepts for the response batch; empty means raw only.
   string accept_compression = 4;
+  bytes transfer_id = 5;
 }
 
 message FetchObjectsResponse {
   repeated bytes objects = 1;
   // How `objects` are encoded; empty means raw.
   string compression = 2;
+  // When the session closes, in unix seconds.
+  uint64 expiry = 3;
 }
 
 message GetKeyRingRequest {}

@@ -55,7 +55,7 @@ def merkle_root(leaves):
 
 out = {
     "comment": [
-        "Golden vectors of today's evidence, stream and statement formats (WP-0.7). Computed independently of the Rust codecs, from the published rules; every codec crate reproduces them.",
+        "Golden vectors of today's evidence and stream formats (WP-0.7); the head statement's are in notp.json (WP-7.1). Computed independently of the Rust codecs, from the published rules; every codec crate reproduces them.",
         "A vector changes only with a protocol version. Target formats are frozen by the packages that design them (status.md, Deferred format freezes).",
         "Signing key: RFC 8032 section 7.1 test 1 (`seed`), Ed25519, deterministic; `kid` is its RFC 7638 thumbprint (RFC 8037 appendix A.3).",
     ],
@@ -187,36 +187,8 @@ out["cursor_v1"] = {"name": "today's cursor: HMAC over the encoded body, no pref
                     "key": cur_key.hex(), "filters": filters, "filter_digest": filter_digest,
                     "cursor": cursor, "body": cursor_json.decode(), "token": b64(sealed)}
 
-# ---- head statement (today) ----------------------------------------------------------------------
-def cbor_head(major, n):
-    if n < 24: return bytes([major << 5 | n])
-    if n < 256: return bytes([major << 5 | 24, n])
-    if n < 65536: return bytes([major << 5 | 25]) + n.to_bytes(2, "big")
-    if n < 2**32: return bytes([major << 5 | 26]) + n.to_bytes(4, "big")
-    return bytes([major << 5 | 27]) + n.to_bytes(8, "big")
-def cbor(v):
-    if isinstance(v, int):
-        return cbor_head(0, v) if v >= 0 else cbor_head(1, -1 - v)
-    if isinstance(v, str): b = v.encode(); return cbor_head(3, len(b)) + b
-    if isinstance(v, bytes): return cbor_head(2, len(v)) + v
-    if isinstance(v, list): return cbor_head(4, len(v)) + b"".join(cbor(x) for x in v)
-    if isinstance(v, dict):
-        items = sorted(((cbor(k), cbor(x)) for k, x in v.items()), key=lambda kv: kv[0])
-        return cbor_head(5, len(items)) + b"".join(k + x for k, x in items)
-    raise TypeError(v)
-statement = {1: "zone-a", 2: "ledger-1", 3: "refs/heads/main",
-             4: "sha256:" + hashlib.sha256(b"commit").hexdigest(), 5: 7, 6: 1791194400}
-kid_bytes = KID.encode()
-protected = cbor({1: -8, 4: kid_bytes})
-payload = cbor(statement)
-sig_structure = cbor(["Signature1", protected, b"", payload])
-signature = KEY.sign(sig_structure)
-sign1 = cbor([protected, {}, payload, signature])
-out["head_statement"] = {"name": "today's signed head statement",
-                         "zone": "zone-a", "ledger": "ledger-1", "ref": "refs/heads/main",
-                         "digest": statement[4], "counter": 7, "signed_at": 1791194400,
-                         "kid": KID, "protected": protected.hex(), "payload": payload.hex(),
-                         "sig_structure": sig_structure.hex(), "cose_sign1": sign1.hex()}
+# ---- head statement -------------------------------------------------------------------------------
+# The target statement and its vectors are notp.py's (WP-7.1); today's six-field statement is retired.
 
 out["key_set_digest"] = {
     "name": "frozen by WP-0.4; the vectors live with the rest of the cryptographic profile",

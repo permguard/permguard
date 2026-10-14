@@ -49,6 +49,9 @@ impl EngineRemote {
     fn engine(&self) -> Engine<'_> {
         Engine {
             store: &self.store,
+            authority: [0x11; 16],
+            // A test signer binds no ring: the engine names none.
+            ring: (0, permguard_objects::Digest::from_raw([0; 32])),
             identity: LedgerIdentity {
                 zone_id: "zone-guid".into(),
                 ledger_id: "ledger-guid".into(),
@@ -100,6 +103,7 @@ impl Remote for EngineRemote {
                 head: state.head.to_string(),
                 counter: state.counter,
                 statement,
+                ref_digest: state.ref_digest().map_err(|e| e.to_string())?.to_string(),
             })),
             Err(EngineError::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.to_string()),
@@ -156,6 +160,8 @@ enum Lie {
     WithholdObjects,
     /// Head statements are signed by a key the ring never published.
     ForeignSigner(Ed25519KeyPair),
+    /// The answers name a ref state other than the one their honest statement signs.
+    MisreportRefState,
 }
 
 struct HostileRemote {
@@ -164,6 +170,16 @@ struct HostileRemote {
 }
 
 impl HostileRemote {
+    fn misreport(
+        &self,
+        honest: permguard_objects::digest::Digest,
+    ) -> permguard_objects::digest::Digest {
+        match self.lie {
+            Lie::MisreportRefState => permguard_objects::digest::Digest::compute(b"another state"),
+            _ => honest,
+        }
+    }
+
     fn resign(&self, statement_bytes: &[u8]) -> Vec<u8> {
         // Decode the honest statement, re-sign it with the foreign key under
         // the published kid — the impersonation a stolen ring name enables.
@@ -212,6 +228,7 @@ impl Remote for HostileRemote {
         let answer = self.honest.commit_push(request)?;
         Ok(CommitPushResponse {
             statement: self.resign(&answer.statement),
+            ref_digest: self.misreport(answer.ref_digest),
             ..answer
         })
     }
@@ -223,6 +240,7 @@ impl Remote for HostileRemote {
         let answer = self.honest.negotiate_pull(request)?;
         Ok(NegotiatePullResponse {
             statement: self.resign(&answer.statement),
+            ref_digest: self.misreport(answer.ref_digest),
             ..answer
         })
     }
@@ -232,6 +250,7 @@ impl Remote for HostileRemote {
             Lie::WithholdObjects => Ok(FetchObjectsResponse {
                 objects: Vec::new(),
                 compression: None,
+                expiry: 0,
             }),
             Lie::SmuggleObject => {
                 let mut answer = self.honest.fetch(request)?;
@@ -244,7 +263,7 @@ impl Remote for HostileRemote {
                 answer.objects.push(smuggled);
                 Ok(answer)
             }
-            Lie::ForeignSigner(_) => self.honest.fetch(request),
+            Lie::ForeignSigner(_) | Lie::MisreportRefState => self.honest.fetch(request),
         }
     }
 }
@@ -311,6 +330,51 @@ fn advance_remote(remote: &EngineRemote) {
 }
 
 // ---- the attacks ----
+
+/// WP-7.1: an answer whose ref state is not the one its genuine statement signs moves nothing,
+/// on the pull and on the apply.
+#[test]
+fn a_ref_state_the_statement_does_not_sign_is_refused_and_the_checkpoint_stays() {
+    let honest = EngineRemote::new("misreport");
+    let (store, _) = seeded("misreport", &honest);
+    advance_remote(&honest);
+    let before = checkpoint_of(&store);
+    let hostile = HostileRemote {
+        honest,
+        lie: Lie::MisreportRefState,
+    };
+    let ws = Workspace::open(&store);
+
+    let error = ws
+        .pull(&hostile, false)
+        .expect_err("a misreported state must be refused");
+    assert!(
+        error.message.contains("not the one its statement signs"),
+        "{}",
+        error.message
+    );
+    assert_eq!(checkpoint_of(&store), before, "the pull moves nothing");
+
+    // The apply: brought up to date honestly, then an edit whose commit answer lies.
+    ws.pull(&hostile.honest, false).unwrap();
+    let synced = checkpoint_of(&store);
+    store
+        .write(
+            "cedar/rules.cedar",
+            "@alias(\"readers\")\npermit(principal, action == Action::\"list\", resource);\n"
+                .as_bytes(),
+        )
+        .unwrap();
+    let error = ws
+        .apply(&hostile, "tester", "lie")
+        .expect_err("a misreported commit answer must be refused");
+    assert!(
+        error.message.contains("not the one its statement signs"),
+        "{}",
+        error.message
+    );
+    assert_eq!(checkpoint_of(&store), synced, "the apply moves nothing");
+}
 
 #[test]
 fn an_object_nobody_asked_for_is_refused_and_the_checkpoint_stays() {

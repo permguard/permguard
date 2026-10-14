@@ -793,10 +793,25 @@ impl Payload for permguard_objects::statement::HeadStatement {
     type Signed = Vec<u8>;
 
     fn sign_with(&self, keys: &dyn SigningRing) -> permguard_core::keys::Result<Vec<u8>> {
+        // The ring's epoch and set, bound into the statement, and its suite (WP-7.1).
+        let set = keys.key_set()?;
+        let suite = permguard_objects::crypto::suite::Suite::from_jws_alg(set.algorithm)
+            .ok_or_else(|| {
+                permguard_core::KeyError::backend(format!(
+                    "the ring signs with `{}`, no suite of a head statement",
+                    set.algorithm
+                ))
+            })?;
+        let statement = permguard_objects::statement::HeadStatement {
+            ring_epoch: set.epoch,
+            key_set_digest: permguard_objects::digest::Digest::from_raw(set.digest),
+            ..self.clone()
+        };
         let kid = keys.active_key_id()?;
         let failed = std::cell::RefCell::new(None::<permguard_core::KeyError>);
         let signed = permguard_objects::statement::SignedHead::sign_with(
-            self,
+            &statement,
+            suite,
             kid.as_str().as_bytes(),
             |bytes| {
                 let signature = keys.sign(bytes).map_err(|error| {
@@ -807,6 +822,13 @@ impl Payload for permguard_objects::statement::HeadStatement {
                 if signature.key_id() != &kid {
                     return Err(permguard_objects::statement::StatementError::Signer(
                         "the signing key rotated mid-signature".to_owned(),
+                    ));
+                }
+                // The set the statement binds is the one in force once the signature is made:
+                // a ring that moved its epoch or set in between names another, refused.
+                if keys.key_set().ok() != Some(set) {
+                    return Err(permguard_objects::statement::StatementError::Signer(
+                        "the ring's key set moved mid-signature".to_owned(),
                     ));
                 }
                 Ok(signature.bytes().to_vec())
@@ -961,6 +983,10 @@ impl<T: Artifact> permguard_core::keys::PublicSet for Signer<T> {
     fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
         self.keys.public_keys()
     }
+
+    fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        self.keys.key_set()
+    }
 }
 
 /// A ring's public set: read, never signed with.
@@ -979,6 +1005,10 @@ impl std::fmt::Debug for PublicKeys {
 impl permguard_core::keys::PublicSet for PublicKeys {
     fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
         self.keys.public_keys()
+    }
+
+    fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+        self.keys.key_set()
     }
 }
 
@@ -1240,6 +1270,92 @@ mod tests {
             Ok(vec![Jwk::okp(self.0, "Ed25519", "EdDSA", "x")])
         }
     }
+    /// A ring whose key set reads epoch 5, or, `moving`, a later epoch at every read: a rotation
+    /// landing while a head statement is signed.
+    struct EpochRing {
+        moving: bool,
+        reads: std::sync::atomic::AtomicU64,
+    }
+
+    impl KeyManager for EpochRing {
+        fn name(&self) -> &'static str {
+            "epoch"
+        }
+        fn maintain(&self) -> permguard_core::keys::Result<Maintenance> {
+            Ok(Maintenance::default())
+        }
+    }
+
+    impl permguard_core::keys::Sign for EpochRing {
+        fn active_key_id(&self) -> permguard_core::keys::Result<KeyId> {
+            Ok(KeyId::new("control"))
+        }
+        fn sign(&self, _payload: &[u8]) -> permguard_core::keys::Result<Signature> {
+            Ok(Signature::new(KeyId::new("control"), "EdDSA", vec![0; 64]))
+        }
+    }
+
+    impl permguard_core::keys::PublicSet for EpochRing {
+        fn public_keys(&self) -> permguard_core::keys::Result<Vec<Jwk>> {
+            Ok(vec![Jwk::okp("control", "Ed25519", "EdDSA", "x")])
+        }
+        fn key_set(&self) -> permguard_core::keys::Result<permguard_core::keys::KeySetView> {
+            let read = self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(permguard_core::keys::KeySetView {
+                epoch: if self.moving { 5 + read } else { 5 },
+                digest: [0x5a; 32],
+                algorithm: "EdDSA",
+            })
+        }
+    }
+
+    /// WP-7.1: a head statement binds the epoch and set of the ring it is signed under, and a
+    /// ring whose set moves while it signs is refused rather than named wrongly.
+    #[test]
+    fn a_head_statement_binds_the_ring_and_refuses_one_that_moves_while_signing() {
+        let statement = permguard_objects::statement::HeadStatement {
+            zone: "zone".into(),
+            ledger: "ledger".into(),
+            r#ref: "main".into(),
+            digest: permguard_objects::digest::Digest::compute(b"head"),
+            counter: 1,
+            signed_at: 1_800_000_000,
+            authority_host_id: [1; 16],
+            ref_digest: permguard_objects::digest::Digest::compute(b"state"),
+            ring_epoch: 0,
+            key_set_digest: permguard_objects::digest::Digest::from_raw([0; 32]),
+        };
+        let signer = |moving| {
+            Host::builder()
+                .ring(
+                    CONTROL_ATTEST,
+                    Arc::new(EpochRing {
+                        moving,
+                        reads: std::sync::atomic::AtomicU64::new(0),
+                    }),
+                )
+                .build()
+                .register(Declaration::new("control").signs::<HeadStatementV1>())
+                .expect("registers")
+                .signer::<HeadStatementV1>()
+                .expect("declared")
+                .expect("composed")
+        };
+
+        let signed = signer(false).sign(&statement).expect("a steady ring signs");
+        let bound = permguard_objects::statement::SignedHead::decode(&signed)
+            .expect("decodes")
+            .statement_unverified()
+            .expect("a statement");
+        assert_eq!(bound.ring_epoch, 5);
+        assert_eq!(*bound.key_set_digest.raw(), [0x5a; 32]);
+
+        assert!(
+            signer(true).sign(&statement).is_err(),
+            "a ring that moved mid-signature is refused"
+        );
+    }
+
     /// A payload of `T` whose signed form is the raw signature over its bytes, for the tests.
     struct Probe<T>(&'static [u8], PhantomData<T>);
 

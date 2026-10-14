@@ -43,6 +43,7 @@ fn cedar_manifest() -> Manifest {
         partitions: BTreeMap::from([(
             "cedar".to_string(),
             Partition {
+                interfaces: Vec::new(),
                 runtime: "cedar".into(),
                 media_types: vec![MEDIA_TYPE_POLICY_CEDAR.to_string()],
                 schema: false,
@@ -62,6 +63,7 @@ fn cedar_manifest() -> Manifest {
 }
 use permguard_control_plane::store::FileObjectStore;
 use permguard_notp::*;
+use permguard_objects::crypto::suite::Suite;
 use permguard_objects::object::{Blob, Commit, Kind, Tree, TreeEntry};
 use permguard_objects::policy_id::derive_policy_id;
 use permguard_objects::statement::SignedHead;
@@ -99,6 +101,9 @@ impl Fixture {
     fn engine(&self) -> Engine<'_> {
         Engine {
             store: &self.store,
+            authority: [0x11; 16],
+            // A test signer binds no ring: the engine names none.
+            ring: (0, permguard_objects::Digest::from_raw([0; 32])),
             identity: LedgerIdentity {
                 zone_id: "zone-1".into(),
                 ledger_id: "ledger-1".into(),
@@ -212,6 +217,22 @@ fn build_commit_with_id(
     )
 }
 
+/// The ref state a push that read `old` as the head names: the current one when its head is
+/// `old`, a state that is not current otherwise, and none for a creation.
+fn expected(fixture: &Fixture, old: Option<&Digest>) -> Option<ExpectedRef> {
+    let old = old?;
+    match fixture.store.read_ref("main").unwrap() {
+        Some(state) if state.head == *old => Some(ExpectedRef {
+            counter: state.counter,
+            digest: state.ref_digest().unwrap(),
+        }),
+        current => Some(ExpectedRef {
+            counter: current.map_or(1, |state| state.counter),
+            digest: Digest::compute(old.to_string().as_bytes()),
+        }),
+    }
+}
+
 fn push(
     fixture: &Fixture,
     objects: &[Vec<u8>],
@@ -228,9 +249,10 @@ fn push(
         .collect();
     let negotiated = engine
         .negotiate_push(&NegotiatePushRequest {
+            request_id: "push-1".into(),
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: expected_old.clone(),
+            expected_ref: expected(fixture, expected_old.as_ref()),
             closure: claims,
         })
         .unwrap();
@@ -241,6 +263,7 @@ fn push(
         .collect();
     engine
         .upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             objects: to_send,
             compression: None,
         })
@@ -249,9 +272,11 @@ fn push(
     engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old,
+                expected_ref: expected(fixture, expected_old.as_ref()),
             },
             &signer,
         )
@@ -268,7 +293,9 @@ fn push_then_pull_round_trips_the_worked_example() {
     assert_eq!(committed.head, head);
     assert_eq!(committed.counter, 1);
     let envelope = SignedHead::decode(&committed.statement).unwrap();
-    let statement = envelope.verify(fixture.key.public_key().as_ref()).unwrap();
+    let statement = envelope
+        .verify(Suite::Ed25519Sha256V1, fixture.key.public_key().as_ref())
+        .unwrap();
     assert_eq!(statement.digest, head);
     assert_eq!(statement.counter, 1);
     assert_eq!(statement.r#ref, "main");
@@ -279,9 +306,11 @@ fn push_then_pull_round_trips_the_worked_example() {
     let retried = engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
@@ -302,6 +331,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     let pulled = engine
         .negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: None,
                 have: vec![],
@@ -314,6 +344,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     assert!(pulled.missing.contains(&head2));
     let fetched = engine
         .fetch(&FetchObjectsRequest {
+            transfer_id: [0x7a; 16],
             accept_compression: None,
             digests: pulled.missing.clone(),
         })
@@ -327,6 +358,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     let incremental = engine
         .negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: None,
                 have: vec![head.clone()],
@@ -341,6 +373,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     let pinned = engine
         .negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: Some(head.clone()),
                 have: vec![],
@@ -356,6 +389,7 @@ fn push_then_pull_round_trips_the_worked_example() {
     assert!(matches!(
         engine.negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: Some(stranger),
                 have: vec![]
@@ -382,6 +416,7 @@ fn the_refusals_hold() {
     for bytes in &objects2 {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -390,9 +425,11 @@ fn the_refusals_hold() {
     assert!(matches!(
         engine.commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head2.clone(),
-                expected_old: None
+                expected_ref: None
             },
             &signer,
         ),
@@ -410,6 +447,7 @@ fn the_refusals_hold() {
     for bytes in &objects3 {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -418,9 +456,11 @@ fn the_refusals_hold() {
     assert!(matches!(
         engine.commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head3,
-                expected_old: Some(head.clone())
+                expected_ref: expected(&fixture, Some(&head.clone()))
             },
             &signer,
         ),
@@ -438,9 +478,11 @@ fn the_refusals_hold() {
     assert!(matches!(
         engine.commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: absent_head,
-                expected_old: Some(head.clone())
+                expected_ref: expected(&fixture, Some(&head.clone()))
             },
             &signer,
         ),
@@ -456,6 +498,7 @@ fn the_refusals_hold() {
     .unwrap();
     assert!(matches!(
         engine.upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             compression: None,
             objects: vec![alien]
         }),
@@ -469,6 +512,7 @@ fn the_refusals_hold() {
     assert!(matches!(
         engine.negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "ghost".into(),
                 at: None,
                 have: vec![]
@@ -491,9 +535,11 @@ fn branching_at_an_existing_commit_is_free() {
     let branched = engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "feature/login".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
@@ -506,7 +552,7 @@ fn branching_at_an_existing_commit_is_free() {
     assert_eq!(state.head, head);
     let statement = SignedHead::decode(&envelope)
         .unwrap()
-        .verify(fixture.key.public_key().as_ref())
+        .verify(Suite::Ed25519Sha256V1, fixture.key.public_key().as_ref())
         .unwrap();
     assert_eq!(statement.r#ref, "feature/login");
 }
@@ -576,6 +622,7 @@ fn policy_identity_is_recomputed_and_enforced() {
     for bytes in &objects {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -584,9 +631,11 @@ fn policy_identity_is_recomputed_and_enforced() {
     assert!(matches!(
         engine.commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head,
-                expected_old: None
+                expected_ref: None
             },
             &signer,
         ),
@@ -673,6 +722,7 @@ fn policy_identity_is_recomputed_and_enforced() {
     for bytes in &objects2 {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -681,9 +731,11 @@ fn policy_identity_is_recomputed_and_enforced() {
     let committed = engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "declared".into(),
                 new_head: head2,
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
@@ -710,9 +762,10 @@ fn multi_batch_transfer_lifecycle() {
         .collect();
     let negotiated = engine
         .negotiate_push(&NegotiatePushRequest {
+            request_id: "push-1".into(),
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: claims.clone(),
         })
         .unwrap();
@@ -726,6 +779,7 @@ fn multi_batch_transfer_lifecycle() {
     // the ref: the server verifies completeness on disk, not client claims.
     engine
         .upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             compression: None,
             objects: batches[0].to_vec(),
         })
@@ -733,9 +787,11 @@ fn multi_batch_transfer_lifecycle() {
     assert!(matches!(
         engine.commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None
+                expected_ref: None
             },
             &signer,
         ),
@@ -750,9 +806,10 @@ fn multi_batch_transfer_lifecycle() {
     // legal (stateless) and now reports fewer missing objects.
     let renegotiated = engine
         .negotiate_push(&NegotiatePushRequest {
+            request_id: "push-1".into(),
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: claims.clone(),
         })
         .unwrap();
@@ -764,6 +821,7 @@ fn multi_batch_transfer_lifecycle() {
     for batch in &batches[1..] {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: batch.to_vec(),
             })
@@ -771,6 +829,7 @@ fn multi_batch_transfer_lifecycle() {
     }
     engine
         .upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             compression: None,
             objects: batches[0].to_vec(),
         })
@@ -779,9 +838,10 @@ fn multi_batch_transfer_lifecycle() {
     // missing = [] now: the client proceeds straight to CommitPush.
     let done = engine
         .negotiate_push(&NegotiatePushRequest {
+            request_id: "push-1".into(),
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
             closure: claims,
         })
         .unwrap();
@@ -791,9 +851,11 @@ fn multi_batch_transfer_lifecycle() {
     let committed = engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
@@ -805,6 +867,7 @@ fn multi_batch_transfer_lifecycle() {
     let pulled = engine
         .negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: None,
                 have: vec![],
@@ -817,6 +880,7 @@ fn multi_batch_transfer_lifecycle() {
     for chunk in pulled.missing.chunks(2) {
         let fetched = engine
             .fetch(&FetchObjectsRequest {
+                transfer_id: [0x7a; 16],
                 accept_compression: None,
                 digests: chunk.to_vec(),
             })
@@ -835,6 +899,7 @@ fn multi_batch_transfer_lifecycle() {
     let nothing = engine
         .negotiate_pull(
             &NegotiatePullRequest {
+                checkpoint: None,
                 r#ref: "main".into(),
                 at: None,
                 have: vec![head.clone()],
@@ -858,6 +923,7 @@ fn tampered_uploads_are_rejected() {
     tampered.push(0x00);
     assert!(matches!(
         engine.upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             compression: None,
             objects: vec![tampered]
         }),
@@ -870,6 +936,7 @@ fn tampered_uploads_are_rejected() {
     assert!(
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: garbage_last.clone()
             })
@@ -879,6 +946,7 @@ fn tampered_uploads_are_rejected() {
     garbage_last.pop();
     engine
         .upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             compression: None,
             objects: garbage_last,
         })
@@ -970,6 +1038,7 @@ fn alias_carries_identity_across_renames() {
     for bytes in &objects {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -978,9 +1047,11 @@ fn alias_carries_identity_across_renames() {
     engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
@@ -992,6 +1063,7 @@ fn alias_carries_identity_across_renames() {
     for bytes in &objects2 {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -1000,9 +1072,11 @@ fn alias_carries_identity_across_renames() {
     let committed = engine
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head2,
-                expected_old: Some(head),
+                expected_ref: expected(&fixture, Some(&head)),
             },
             &signer,
         )
@@ -1110,6 +1184,7 @@ fn try_push(
     for bytes in objects {
         engine
             .upload(&UploadObjectsRequest {
+                transfer_id: [0x7a; 16],
                 compression: None,
                 objects: vec![bytes.clone()],
             })
@@ -1118,9 +1193,11 @@ fn try_push(
     let signer = fixture.signer();
     engine.commit_push(
         &CommitPushRequest {
+            request_id: "commit-1".into(),
+            transfer_id: [0x7a; 16],
             r#ref: "main".into(),
             new_head: head.clone(),
-            expected_old: None,
+            expected_ref: None,
         },
         &signer,
     )
@@ -1192,16 +1269,18 @@ fn a_retried_commit_whose_statement_was_lost_is_signed_again() {
         .engine()
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
         .unwrap();
     let statement = SignedHead::decode(&retried.statement)
         .unwrap()
-        .verify(fixture.key.public_key().as_ref())
+        .verify(Suite::Ed25519Sha256V1, fixture.key.public_key().as_ref())
         .unwrap();
     assert_eq!((statement.digest, statement.counter), (head, 1));
     assert!(
@@ -1290,6 +1369,7 @@ fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
     let engine = fixture.engine();
     engine
         .upload(&UploadObjectsRequest {
+            transfer_id: [0x7a; 16],
             objects: objects.clone(),
             compression: None,
         })
@@ -1305,9 +1385,11 @@ fn a_commit_flushes_the_objects_it_reaches_before_writing_the_ref() {
             engine
                 .commit_push(
                     &CommitPushRequest {
+                        request_id: "commit-1".into(),
+                        transfer_id: [0x7a; 16],
                         r#ref: "main".into(),
                         new_head: head.clone(),
-                        expected_old: None,
+                        expected_ref: None,
                     },
                     &signer,
                 )
@@ -1341,9 +1423,11 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
                 .engine()
                 .commit_push(
                     &CommitPushRequest {
+                        request_id: "commit-1".into(),
+                        transfer_id: [0x7a; 16],
                         r#ref: "main".into(),
                         new_head: head.clone(),
-                        expected_old: None,
+                        expected_ref: None,
                     },
                     &signer,
                 )
@@ -1356,12 +1440,101 @@ fn a_retried_commit_is_answered_only_after_its_ref_is_flushed() {
         .engine()
         .commit_push(
             &CommitPushRequest {
+                request_id: "commit-1".into(),
+                transfer_id: [0x7a; 16],
                 r#ref: "main".into(),
                 new_head: head.clone(),
-                expected_old: None,
+                expected_ref: None,
             },
             &signer,
         )
         .expect("answered once the flush succeeds");
     assert_eq!((retried.head, retried.counter), (head, 1));
+}
+
+/// WP-7.1: the statement cache serves only a statement of the ring in force; after a rotation
+/// the same ref state is signed again, naming the new epoch and set.
+#[test]
+fn a_cached_statement_of_another_ring_is_signed_again() {
+    let fixture = Fixture::new("ring-moved");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let signer = fixture.signer();
+    let (_, first) = fixture.engine().get_ref("main", &signer).unwrap();
+    let (_, again) = fixture.engine().get_ref("main", &signer).unwrap();
+    assert_eq!(first, again, "the cache serves the same ring's statement");
+
+    // The epoch alone moves, then the set alone: each is a ring no longer in force.
+    let zeros = Digest::from_raw([0; 32]);
+    for ring in [(1, zeros.clone()), (0, Digest::compute(b"rotated set"))] {
+        // The cache holds the statement of the ring the fixture names, so only one part differs.
+        fixture.engine().get_ref("main", &signer).unwrap();
+        let rotated = Engine {
+            ring: ring.clone(),
+            ..fixture.engine()
+        };
+        let (_, resigned) = rotated.get_ref("main", &signer).unwrap();
+        let statement = SignedHead::decode(&resigned)
+            .unwrap()
+            .statement_unverified()
+            .unwrap();
+        assert_eq!((statement.ring_epoch, statement.key_set_digest), ring);
+        assert_eq!(statement.digest, head, "the same ref state");
+    }
+
+    // The same head and counter under another ref state, a record rewritten beside the
+    // engine: the statement names the state, so it is signed again. The cache first holds the
+    // statement of the ring in force, so only the state differs.
+    fixture.engine().get_ref("main", &signer).unwrap();
+    let state = fixture.store.read_ref("main").unwrap().unwrap();
+    let previous = Digest::compute(b"another history");
+    std::fs::write(
+        fixture.store.root().join("refs").join("main"),
+        format!(
+            "{{\"version\":1,\"head\":\"{}\",\"counter\":{},\"previous\":\"{previous}\"}}\n",
+            state.head, state.counter
+        ),
+    )
+    .unwrap();
+    let (moved, resigned) = fixture.engine().get_ref("main", &signer).unwrap();
+    let statement = SignedHead::decode(&resigned)
+        .unwrap()
+        .statement_unverified()
+        .unwrap();
+    assert_eq!(statement.ref_digest, moved.ref_digest().unwrap());
+    assert_ne!(statement.ref_digest, state.ref_digest().unwrap());
+}
+
+/// WP-7.1: a negotiation naming a state that is not the current one conflicts before anything
+/// is uploaded; a creation over an existing ref too; a retry of the head that landed does not.
+#[test]
+fn a_negotiation_naming_a_state_that_is_not_current_conflicts() {
+    let fixture = Fixture::new("negotiate-stale");
+    let (objects, head) = build_commit("permit(principal, action, resource);", vec![]);
+    push(&fixture, &objects, &head, None);
+    let (_, next) = build_commit("forbid(principal, action, resource);", vec![head.clone()]);
+    let negotiate = |new_head: &Digest, expected_ref: Option<ExpectedRef>| {
+        fixture.engine().negotiate_push(&NegotiatePushRequest {
+            r#ref: "main".into(),
+            new_head: new_head.clone(),
+            expected_ref,
+            closure: Vec::new(),
+            request_id: "push-2".into(),
+        })
+    };
+
+    let stale = ExpectedRef {
+        counter: 1,
+        digest: Digest::compute(b"not the state"),
+    };
+    assert!(matches!(
+        negotiate(&next, Some(stale)),
+        Err(EngineError::Conflict { current: Some(_) })
+    ));
+    assert!(matches!(
+        negotiate(&next, None),
+        Err(EngineError::Conflict { current: Some(_) })
+    ));
+    negotiate(&head, None).expect("a retry of the landed head negotiates");
+    negotiate(&next, expected(&fixture, Some(&head))).expect("the current state negotiates");
 }
