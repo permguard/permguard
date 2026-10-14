@@ -32,10 +32,12 @@ use super::state::State;
 use super::{Descriptor, RecordCodec, StreamError, StreamKey, hex, record_digest};
 
 mod seal;
+mod ship;
 
 pub use seal::{
     Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Sealing, Span, Spans, canonical_jwk,
 };
+pub use ship::{MAX_SUBSCRIPTION_BYTES, PressureBounds, Subscription, SubscriptionState};
 
 /// The frame kinds of a producer's journal.
 pub(crate) const RUN_OPEN: u16 = 1;
@@ -80,6 +82,8 @@ pub struct Producer<C> {
     streams: Mutex<BTreeMap<String, Arc<Physical>>>,
     /// The descriptor's ring, once the Host handed it: what batches are sealed under.
     signer: Option<Arc<Ring>>,
+    /// Each subscription backing off: its attempts and the second it waits until (WP-5.4).
+    backoff: Mutex<BTreeMap<String, (u32, u64)>>,
 }
 
 impl<C> std::fmt::Debug for Producer<C> {
@@ -100,6 +104,7 @@ impl<C: RecordCodec> Producer<C> {
             codec,
             streams: Mutex::new(BTreeMap::new()),
             signer: None,
+            backoff: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -121,14 +126,30 @@ impl<C: RecordCodec> Producer<C> {
     /// Seals the next batch of the stream of `resource`, at most `max_records` and never more
     /// than the descriptor's batch bound: answers it once its file is durable.
     pub fn seal(&self, resource: &Resource, max_records: u64) -> Result<Sealing, StreamError> {
+        self.seal_within(resource, max_records, usize::MAX)
+    }
+
+    /// [`Producer::seal`] with the batch's records within `max_record_bytes` as well: what a ship
+    /// task's message bound allows (WP-5.4).
+    pub fn seal_within(
+        &self,
+        resource: &Resource,
+        max_records: u64,
+        max_record_bytes: usize,
+    ) -> Result<Sealing, StreamError> {
         let Some(signer) = &self.signer else {
             return Err(StreamError::Sign(
                 "the producer was handed no ring to seal under".to_owned(),
             ));
         };
         let bound = max_records.min(u64::from(self.descriptor.max_batch_records));
-        self.physical(resource)?
-            .seal(&self.context, &self.descriptor, signer, bound)
+        self.physical(resource)?.seal(
+            &self.context,
+            &self.descriptor,
+            signer,
+            bound,
+            max_record_bytes,
+        )
     }
 
     /// The signer spans of the stream of `resource`.
@@ -885,6 +906,23 @@ impl Physical {
 }
 
 impl Writer {
+    /// Moves STATE's `acknowledged_seq` to `acknowledged`, the current run's `truncate_safe`,
+    /// never past `signed_seq` (WP-5.4).
+    fn keep_acknowledged(&mut self, acknowledged: u64) -> Result<(), StreamError> {
+        let Some(mut state) = self.state.clone() else {
+            return Ok(());
+        };
+        // Never backwards (after the review).
+        let acknowledged = acknowledged.min(state.signed_seq);
+        if acknowledged <= state.acknowledged_seq {
+            return Ok(());
+        }
+        state.acknowledged_seq = acknowledged;
+        replace_view(&self.dir, STATE_FILE, format::VIEW, &state.encode()?)?;
+        self.state = Some(state);
+        Ok(())
+    }
+
     /// Moves STATE's `signed_seq` to `signed`, the watermark the batch files of `run` cover.
     fn keep_signed(&mut self, run: &Run, signed: u64) -> Result<(), StreamError> {
         let Some(mut state) = self

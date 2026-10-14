@@ -64,3 +64,4 @@ Beside them: the genesis statement's digest, a run end, a group of records with 
 Under `batches` it also freezes two chained sealed batches of the genesis run (WP-5.2), signed under a `data.attest` key, the RFC 8032 section 7.1 test 1 key.
 Beside them: their envelopes, the signer spans naming that key, and a pending cutover; the Rust test builds both batches from the stream key, the fence and the records and requires the generator's bytes.
 Under `ingest` it freezes the ingest's records (WP-5.3): the ship message carrying the first batch, the answers `ok` and `out_of_order`, a consumer's STATE and a fork mark.
+Under `fanout` it freezes a producer's subscriptions, active, paused and stopped, and a pruned mark (WP-5.4).

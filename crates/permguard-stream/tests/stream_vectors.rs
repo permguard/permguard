@@ -315,3 +315,58 @@ fn the_ingest_records_are_the_bytes_the_independent_generator_computed() {
         mark
     );
 }
+
+/// WP-5.4: a producer's subscriptions, active, paused and stopped, are the bytes the independent
+/// generator computed.
+#[test]
+fn the_subscriptions_are_the_bytes_the_independent_generator_computed() {
+    use permguard_stream::engine::{Subscription, SubscriptionState};
+    let v = vectors();
+    let f = &v["fanout"];
+    let membership = id(&v["membership_id"]);
+    let run = id(&v["genesis"]["run_id"]);
+    for (name, subscription) in [
+        (
+            "subscription_active",
+            Subscription {
+                membership_id: membership,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: vec![(run, 2)],
+                state: SubscriptionState::Active,
+            },
+        ),
+        (
+            "subscription_paused",
+            Subscription {
+                membership_id: membership,
+                task_id: "decisions".to_owned(),
+                required: false,
+                runs: Vec::new(),
+                state: SubscriptionState::Paused { epoch: 4 },
+            },
+        ),
+        (
+            "subscription_stopped",
+            Subscription {
+                membership_id: membership,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: Vec::new(),
+                state: SubscriptionState::Stopped {
+                    reason: "fork".to_owned(),
+                },
+            },
+        ),
+    ] {
+        assert_eq!(
+            subscription.encode().expect("encodes"),
+            hex(&f[name]),
+            "{name}"
+        );
+        assert_eq!(
+            Subscription::decode(&hex(&f[name])).expect("decodes"),
+            subscription
+        );
+    }
+}

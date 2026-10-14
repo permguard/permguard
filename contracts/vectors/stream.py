@@ -1,7 +1,7 @@
 # Copyright (c) 2022 Nitro Agility S.r.l.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Independent generator for contracts/vectors/stream.json (WP-5.1, WP-5.2, WP-5.3).
+"""Independent generator for contracts/vectors/stream.json (WP-5.1 to WP-5.4).
 
 Computes the stream engine's records from the owner decisions of 2026-10-13 (the label tables in
 status.md) with Python's standard library and `cryptography`, never by calling the Rust codecs, so
@@ -150,7 +150,16 @@ ingest = {"ship": cbor({1: first_file, 2: STATEMENT}).hex(),
           "consumer_state": cbor({1: 2, 2: 1}).hex(),
           "fork_mark": cbor({1: RUN_ID, 2: 3}).hex()}
 
-out = {"comment": "Stream engine records (WP-5.1, WP-5.2, WP-5.3); see README.md and stream.py",
+# WP-5.4: fan-out.
+fanout = {"subscription_active": cbor({1: MEMBERSHIP, 2: "decisions", 3: True,
+                                       4: [{1: RUN_ID, 2: 2}], 5: 0}).hex(),
+          "subscription_paused": cbor({1: MEMBERSHIP, 2: "decisions", 3: False, 4: [], 5: 1,
+                                       6: 4}).hex(),
+          "subscription_stopped": cbor({1: MEMBERSHIP, 2: "decisions", 3: True, 4: [], 5: 2,
+                                        7: "fork"}).hex(),
+          "pruned_mark": cbor({1: 2}).hex()}
+
+out = {"comment": "Stream engine records (WP-5.1 to WP-5.4); see README.md and stream.py",
        "operations_public": OPERATIONS_PUB.hex(), "kid": KID.decode(),
        "producer_host_id": PRODUCER.hex(), "producer_boot_id": BOOT.hex(), "resource": RESOURCE,
        "membership_id": MEMBERSHIP.hex(),
@@ -168,7 +177,7 @@ out = {"comment": "Stream engine records (WP-5.1, WP-5.2, WP-5.3); see README.md
                    "first": {"envelope": first_envelope, "file": first_file.decode()},
                    "second": {"envelope": second_envelope, "file": second_file.decode()},
                    "signers": signers.hex(), "cutover": cutover.hex(), "stream": STREAM},
-       "ingest": ingest}
+       "ingest": ingest, "fanout": fanout}
 
 json.dump(out, sys.stdout, indent=2, ensure_ascii=False)
 sys.stdout.write("\n")

@@ -1112,6 +1112,62 @@ pub trait StreamCutovers: Send + Sync {
     fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String>;
 }
 
+/// One subscription a member ships under: its membership's task, as the manifest holds it
+/// (WP-5.4, owner decision).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Subscribed<'a> {
+    pub membership_id: [u8; 16],
+    pub task_type: crate::membership::record::TaskType,
+    pub task_id: &'a str,
+    /// Whether the manifest makes it required: only a required subscription blocks deletion.
+    pub required: bool,
+    /// The membership's epoch: a subscription paused on `unverifiable` resumes once it moves.
+    pub epoch: u64,
+}
+
+/// A message the engine has ready to ship, and what it ships.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shipment {
+    /// Fresh for each delivery, so a resend is answered afresh.
+    pub request_id: String,
+    pub body: Vec<u8>,
+    pub run: [u8; 16],
+    pub first_seq: u64,
+    pub last_seq: u64,
+}
+
+/// What shipping a stream's batches to a coordinator needs of the engine (WP-5.4, owner
+/// decision): the member's pass drives the task sessions, the engine keeps the subscriptions.
+pub trait StreamShipping: Send + Sync {
+    /// The resources of the streams `subscription` ships now: a paused subscription whose epoch
+    /// moved resumes; one backing off or stopped is not due.
+    fn due(&self, subscription: &Subscribed<'_>) -> Result<Vec<String>, String>;
+
+    /// The next message to ship on `resource`, within `max_bytes`; `None` when nothing is due.
+    fn next(
+        &self,
+        subscription: &Subscribed<'_>,
+        resource: &str,
+        max_bytes: u64,
+    ) -> Result<Option<Shipment>, String>;
+
+    /// The coordinator answered `answer` to `shipment`: whether to ship on.
+    fn answered(
+        &self,
+        subscription: &Subscribed<'_>,
+        resource: &str,
+        shipment: &Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String>;
+
+    /// The coordinator could not keep a batch now: the subscription backs off.
+    fn deferred(&self, subscription: &Subscribed<'_>, resource: &str) -> Result<(), String>;
+
+    /// The ship tasks `membership_id`'s manifest still holds: every other subscription of it
+    /// is dropped, which only a signed manifest revision does.
+    fn retain(&self, membership_id: &[u8; 16], task_ids: &[String]) -> Result<(), String>;
+}
+
 /// The Host's stream engine as composition reaches it (WP-5.1, interpretation): the engine lives
 /// in `permguard-stream`, which depends on this crate, so the server hands it in through this.
 pub trait StreamEngine: Send + Sync {

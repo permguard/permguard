@@ -1618,17 +1618,25 @@ fn a_member_sends_its_streams_cutover_from_the_engine() {
         .expect("a key");
     let stream = format!("data/decisions/{}/{}", key.resource_component(), hex(&run));
     assert_eq!(
-        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        permguard_host::composition::StreamCutovers::due(&fresh, &[5; 16], DATA_ATTEST, &rotated)
+            .expect("due"),
         vec![(stream.clone(), 2)]
     );
     assert_eq!(
-        fresh.due(&[5; 16], HOST_OPERATIONS, &rotated).expect("due"),
+        permguard_host::composition::StreamCutovers::due(
+            &fresh,
+            &[5; 16],
+            HOST_OPERATIONS,
+            &rotated
+        )
+        .expect("due"),
         Vec::new(),
         "another ring"
     );
     // Asked again, the same cutover.
     assert_eq!(
-        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        permguard_host::composition::StreamCutovers::due(&fresh, &[5; 16], DATA_ATTEST, &rotated)
+            .expect("due"),
         vec![(stream.clone(), 2)]
     );
     assert_eq!(
@@ -1653,7 +1661,8 @@ fn a_member_sends_its_streams_cutover_from_the_engine() {
     assert_eq!(first, 2);
     // Confirmed and sealed under the new key: named again only as journaled.
     assert_eq!(
-        fresh.due(&[5; 16], DATA_ATTEST, &rotated).expect("due"),
+        permguard_host::composition::StreamCutovers::due(&fresh, &[5; 16], DATA_ATTEST, &rotated)
+            .expect("due"),
         vec![(stream, 2)]
     );
     assert!(
@@ -3205,4 +3214,706 @@ fn the_ingest_refuses_what_its_task_does_not_pin() {
             .0,
         Answer::of(Outcome::Ok, 4)
     );
+}
+
+// ---- WP-5.4: fan-out acknowledgements ----
+
+use permguard_host::composition::{StreamShipping, Subscribed};
+
+fn subscribed(task_id: &str, required: bool, epoch: u64) -> Subscribed<'_> {
+    Subscribed {
+        membership_id: MEMBERSHIP,
+        task_type: TaskType::DecisionsShip,
+        task_id,
+        required,
+        epoch,
+    }
+}
+
+/// Ships `subscription`'s due batches of `ledger(1)` into `consumer` as a coordinator would, its
+/// pins `pins` at the lease's `epoch`: answers the outcomes, in order.
+fn pump(
+    producer: &Producer<Text>,
+    consumer: &Consumer<Text>,
+    member: &Host,
+    subscription: &Subscribed<'_>,
+    pins: Vec<permguard_host::membership::record::RingPin>,
+    epoch: u64,
+) -> Vec<Outcome> {
+    let mut outcomes = Vec::new();
+    let resource = ledger(1).to_string();
+    let due = producer.due(subscription).expect("due");
+    if !due.contains(&resource) {
+        return outcomes;
+    }
+    while let Some(shipment) = producer
+        .next(subscription, &resource, 448 * 1024)
+        .expect("next")
+    {
+        let (answer, _) =
+            ingest_at(consumer, member, &shipment.body, epoch, pins.clone()).expect("ingested");
+        outcomes.push(answer.outcome);
+        if !producer
+            .answered(
+                subscription,
+                &resource,
+                &shipment,
+                &answer.encode().expect("encodes"),
+            )
+            .expect("answered")
+        {
+            break;
+        }
+    }
+    outcomes
+}
+
+/// A member streaming `n` records on `ledger(1)` under the test fence, nothing sealed yet.
+fn streaming(host: &Host, n: usize) -> (Producer<Text>, [u8; 16]) {
+    let producer = host.sealer();
+    let run = producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened")
+        .run_id;
+    for at in 0..n {
+        producer
+            .append(&ledger(1), &format!("r{at}"))
+            .expect("appended");
+    }
+    (producer, run)
+}
+
+/// WP-5.4: each subscription keeps its own acknowledgement; `truncate_safe` is the least of the
+/// required ones; the batch files at or below it are deleted, never one beyond; sealing goes on
+/// after them.
+#[test]
+fn each_subscription_keeps_its_own_ack_and_truncate_safe_is_the_least_required() {
+    let host = Host::new("fanout");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 4);
+    let first = subscribed("decisions", true, 1);
+    let second = subscribed("decisions-copy", true, 1);
+    let optional = subscribed("decisions-tail", false, 1);
+    producer.due(&second).expect("due");
+    producer.due(&optional).expect("due");
+    // The first ships everything; the second and the optional nothing yet.
+    assert!(
+        pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1)
+            .iter()
+            .all(|outcome| *outcome == Outcome::Ok)
+    );
+    let ack = |task: &str| {
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, task)
+            .expect("read")
+            .expect("held")
+            .acked(&run)
+    };
+    assert_eq!(
+        (
+            ack("decisions"),
+            ack("decisions-copy"),
+            ack("decisions-tail")
+        ),
+        (4, 0, 0)
+    );
+    assert_eq!(
+        producer.truncate_safe(&ledger(1), &run).expect("safe"),
+        Some(0)
+    );
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    assert!(
+        batches.join("1-4.jws").exists(),
+        "nothing is deleted beyond truncate_safe"
+    );
+    // The second catches up: everything is acknowledged by every required one.
+    assert!(!pump(&producer, &consumer, &host, &second, vec![pin_of(&host)], 1).is_empty());
+    assert_eq!(
+        producer.truncate_safe(&ledger(1), &run).expect("safe"),
+        Some(4)
+    );
+    assert!(
+        !batches.join("1-4.jws").exists(),
+        "acknowledged by every required one"
+    );
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .acknowledged_seq,
+        4
+    );
+    // The optional one, behind, never blocked it, and now cannot be served what is deleted.
+    assert_eq!(ack("decisions-tail"), 0);
+    let resource = ledger(1).to_string();
+    assert!(producer.next(&optional, &resource, 448 * 1024).is_err());
+    // Sealing goes on after the deleted files.
+    producer
+        .append(&ledger(1), &"r4".to_owned())
+        .expect("appended");
+    assert_eq!(
+        pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(ack("decisions"), 5);
+}
+
+/// WP-5.4: a required subscription that stays silent still blocks deletion; it is dropped only
+/// when its task leaves the manifest.
+#[test]
+fn a_silent_required_subscription_still_blocks_until_its_task_leaves_the_manifest() {
+    let host = Host::new("fanout-silent");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 2);
+    let shipping = subscribed("decisions", true, 1);
+    let silent = subscribed("decisions-copy", true, 1);
+    producer.due(&silent).expect("due");
+    pump(
+        &producer,
+        &consumer,
+        &host,
+        &shipping,
+        vec![pin_of(&host)],
+        1,
+    );
+    assert_eq!(
+        producer.truncate_safe(&ledger(1), &run).expect("safe"),
+        Some(0)
+    );
+    producer
+        .retain(&MEMBERSHIP, &["decisions".to_owned()])
+        .expect("retained");
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions-copy")
+            .expect("read"),
+        None
+    );
+    assert_eq!(
+        producer.truncate_safe(&ledger(1), &run).expect("safe"),
+        Some(2)
+    );
+}
+
+/// WP-5.4, F-08: a producer the coordinator refuses (`unverifiable`: no pin of its key) pauses;
+/// once approved (its pin in a manifest at a later epoch) it resumes by itself on the next pass,
+/// no restart; `fork` and `gone` stop it, an acknowledgement beyond what it holds stops it as
+/// `ack_ahead`, a deferral backs it off.
+#[test]
+fn a_refused_producer_ships_once_approved_without_restart() {
+    let (host, wall, mono) = manual_host("fanout-f08");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 3);
+    let resource = ledger(1).to_string();
+    let refused = subscribed("decisions", true, 1);
+    // The other subscriptions exist from the start: a required one keeps every batch until it has
+    // it.
+    producer
+        .due(&subscribed("decisions-copy", true, 2))
+        .expect("due");
+    producer
+        .due(&subscribed("decisions-resend", true, 2))
+        .expect("due");
+    assert_eq!(
+        pump(&producer, &consumer, &host, &refused, Vec::new(), 1),
+        vec![Outcome::Unverifiable]
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(held.state, SubscriptionState::Paused { epoch: 1 });
+    // The same epoch: still paused, nothing due.
+    assert!(producer.due(&refused).expect("due").is_empty());
+    // Approved: the manifest moves to epoch 2 with the member's pin; the next pass ships.
+    let approved = subscribed("decisions", true, 2);
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &approved,
+            vec![pin_of(&host)],
+            2
+        ),
+        vec![Outcome::Ok]
+    );
+    assert_eq!(
+        consumer
+            .acked(&ledger(1), host.identity.host_id(), run)
+            .expect("acked"),
+        3
+    );
+    // A deferral backs the subscription off: not due until its wait passes.
+    producer
+        .append(&ledger(1), &"r3".to_owned())
+        .expect("appended");
+    producer.deferred(&approved, &resource).expect("deferred");
+    producer.deferred(&approved, &resource).expect("deferred");
+    let mut waited = 0;
+    while producer.due(&approved).expect("due").is_empty() {
+        wall.jump(1);
+        mono.advance(Duration::from_secs(1));
+        waited += 1;
+        assert!(waited <= 2, "a second deferral waits at most two seconds");
+    }
+    // An acknowledgement beyond what the producer holds stops it as `ack_ahead`.
+    let shipment = producer
+        .next(&approved, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let ahead = Answer::of(Outcome::Ok, 99).encode().expect("encodes");
+    assert!(
+        !producer
+            .answered(&approved, &resource, &shipment, &ahead)
+            .expect("answered")
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+            .expect("read")
+            .expect("held")
+            .state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::ACK_AHEAD.to_owned()
+        }
+    );
+    // Stopped: never due again, whatever the epoch.
+    assert!(
+        producer
+            .due(&subscribed("decisions", true, 9))
+            .expect("due")
+            .is_empty()
+    );
+    // A fork stops another subscription.
+    let other = subscribed("decisions-copy", true, 2);
+    producer.due(&other).expect("due");
+    let shipment = producer
+        .next(&other, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let fork = Answer::of(Outcome::Fork, 0).encode().expect("encodes");
+    assert!(
+        !producer
+            .answered(&other, &resource, &shipment, &fork)
+            .expect("answered")
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions-copy")
+            .expect("read")
+            .expect("held")
+            .state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::FORK.to_owned()
+        }
+    );
+    // `out_of_order` resends from the consumer's next sequence.
+    let resend = subscribed("decisions-resend", true, 2);
+    producer.due(&resend).expect("due");
+    let shipment = producer
+        .next(&resend, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let behind = Answer {
+        outcome: Outcome::OutOfOrder,
+        acked: 0,
+        expected_seq: Some(1),
+    }
+    .encode()
+    .expect("encodes");
+    assert!(
+        producer
+            .answered(&resend, &resource, &shipment, &behind)
+            .expect("answered")
+    );
+    let again = producer
+        .next(&resend, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    assert_eq!(again.first_seq, 1);
+    assert_ne!(again.request_id, shipment.request_id, "a fresh request id");
+}
+
+/// WP-5.4, F-11: pressure counts only what no required subscription acknowledged: a stream
+/// whose subscriptions acknowledged everything is neither full nor expired after 48 hours; one
+/// behind is full past its byte bound and expired past its age bound.
+#[test]
+fn pressure_counts_only_the_unacknowledged() {
+    let (host, wall, mono) = manual_host("fanout-f11");
+    let consumer = consumer_on(&host);
+    let (producer, _run) = streaming(&host, 3);
+    let bounds = PressureBounds {
+        max_bytes: 6,
+        max_age_secs: 3600,
+    };
+    // No subscription yet: nothing is owed.
+    assert_eq!(
+        producer.pressure(&ledger(1), bounds).expect("pressure"),
+        None
+    );
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    assert_eq!(
+        producer.pressure(&ledger(1), bounds).expect("pressure"),
+        Some(permguard_core::codes::stream::SPOOL_FULL)
+    );
+    let loose = PressureBounds {
+        max_bytes: 1 << 20,
+        max_age_secs: 3600,
+    };
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    assert_eq!(
+        producer.pressure(&ledger(1), loose).expect("pressure"),
+        None
+    );
+    wall.jump(3601);
+    mono.advance(Duration::from_secs(3601));
+    assert_eq!(
+        producer.pressure(&ledger(1), loose).expect("pressure"),
+        Some(permguard_core::codes::stream::AGE_EXPIRY)
+    );
+    // Shipped and acknowledged: then idle for 48 hours.
+    let pins = vec![pin_of(&host)];
+    assert_eq!(
+        pump(&producer, &consumer, &host, &shipping, pins, 1),
+        vec![Outcome::Ok]
+    );
+    wall.jump(48 * 3600);
+    mono.advance(Duration::from_secs(48 * 3600));
+    assert_eq!(
+        producer.pressure(&ledger(1), bounds).expect("pressure"),
+        None
+    );
+    assert_eq!(
+        producer.pressure(&ledger(1), loose).expect("pressure"),
+        None
+    );
+}
+
+/// WP-5.4, after the review: a crash between the pruned mark and the deletion of the files below
+/// it leaves files every reader skips, sealing and shipping go on, and the next truncation
+/// deletes them.
+#[test]
+fn files_a_crash_left_below_the_pruned_mark_are_skipped_then_deleted() {
+    let host = Host::new("fanout-crash");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 2);
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    // Seal and keep a copy of the batch the truncation will delete.
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let copy = std::fs::read(batches.join("1-2.jws")).expect("the batch");
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    assert!(!batches.join("1-2.jws").exists());
+    // The crash: the mark written, the file not yet deleted.
+    std::fs::write(batches.join("1-2.jws"), &copy).expect("restored");
+    drop(producer);
+    let producer = host.sealer();
+    producer
+        .append(&ledger(1), &"r2".to_owned())
+        .expect("appended");
+    assert_eq!(
+        pump(
+            &producer,
+            &consumer,
+            &host,
+            &shipping,
+            vec![pin_of(&host)],
+            1
+        ),
+        vec![Outcome::Ok]
+    );
+    assert!(
+        !batches.join("1-2.jws").exists(),
+        "the next truncation deleted it"
+    );
+    // A file straddling the mark is refused.
+    drop(producer);
+    std::fs::write(batches.join("3-4.jws"), &copy).expect("written");
+    assert!(matches!(
+        host.sealer().seal(&ledger(1), 10),
+        Err(StreamError::Corruption(_))
+    ));
+}
+
+/// WP-5.4, after the review: a run is blocked only by the required subscriptions of the membership
+/// fencing it, the only ones it is ever shipped to.
+#[test]
+fn only_the_fencing_memberships_subscriptions_block_a_run() {
+    let host = Host::new("fanout-fence");
+    let consumer = consumer_on(&host);
+    let (producer, first_run) = streaming(&host, 2);
+    let first = subscribed("decisions", true, 1);
+    producer.due(&first).expect("due");
+    pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1);
+    // The stream moves to another membership, whose required subscription never sees the first
+    // run.
+    let other_membership = [6; 16];
+    producer
+        .rollover(
+            &ledger(1),
+            Some(Fence {
+                membership_id: other_membership,
+                ..fence(1)
+            }),
+        )
+        .expect("rolled over");
+    producer
+        .append(&ledger(1), &"s0".to_owned())
+        .expect("appended");
+    let other = Subscribed {
+        membership_id: other_membership,
+        ..subscribed("decisions", true, 1)
+    };
+    producer.due(&other).expect("due");
+    assert_eq!(
+        producer
+            .truncate_safe(&ledger(1), &first_run)
+            .expect("safe"),
+        Some(2)
+    );
+}
+
+/// WP-5.4, after the review: an acknowledgement below the one recorded stops the subscription as
+/// `ack_behind` and moves nothing back; one beyond what was sealed is `ack_ahead`; one short of
+/// the batch sent ships no further this pass.
+#[test]
+fn an_acknowledgement_never_moves_back_nor_past_what_was_sealed() {
+    let host = Host::new("fanout-backwards");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 4);
+    let resource = ledger(1).to_string();
+    let shipping = subscribed("decisions", true, 1);
+    producer.due(&shipping).expect("due");
+    pump(
+        &producer,
+        &consumer,
+        &host,
+        &shipping,
+        vec![pin_of(&host)],
+        1,
+    );
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .acknowledged_seq,
+        4
+    );
+    producer
+        .append(&ledger(1), &"r4".to_owned())
+        .expect("appended");
+    let shipment = producer
+        .next(&shipping, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let behind = Answer {
+        outcome: Outcome::OutOfOrder,
+        acked: 1,
+        expected_seq: Some(2),
+    }
+    .encode()
+    .expect("encodes");
+    assert!(
+        !producer
+            .answered(&shipping, &resource, &shipment, &behind)
+            .expect("answered")
+    );
+    let held = producer
+        .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+        .expect("read")
+        .expect("held");
+    assert_eq!(
+        held.state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::ACK_BEHIND.to_owned()
+        }
+    );
+    assert_eq!(held.acked(&run), 4);
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .acknowledged_seq,
+        4
+    );
+    // Beyond what was sealed, though within the records: `ack_ahead`.
+    let ahead = subscribed("decisions-ahead", true, 1);
+    let fresh = Host::new("fanout-ahead");
+    let (producer, _run) = streaming(&fresh, 4);
+    producer.due(&ahead).expect("due");
+    sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    let shipment = producer
+        .next(&ahead, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    let past = Answer::of(Outcome::Ok, 3).encode().expect("encodes");
+    assert!(
+        !producer
+            .answered(&ahead, &resource, &shipment, &past)
+            .expect("answered")
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions-ahead")
+            .expect("read")
+            .expect("held")
+            .state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::ACK_AHEAD.to_owned()
+        }
+    );
+    // Short of the batch sent: no further this pass, the ack kept.
+    let short = subscribed("decisions-short", true, 1);
+    producer.due(&short).expect("due");
+    let shipment = producer
+        .next(&short, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    assert_eq!((shipment.first_seq, shipment.last_seq), (1, 2));
+    let partial = Answer::of(Outcome::Ok, 1).encode().expect("encodes");
+    assert!(
+        !producer
+            .answered(&short, &resource, &shipment, &partial)
+            .expect("answered")
+    );
+}
+
+/// WP-5.4, after the review: an immutable batch sealed for a wider bound than a subscription's
+/// task allows stops that subscription as `unshippable` instead of failing every pass.
+#[test]
+fn a_batch_over_a_subscriptions_bound_stops_it_as_unshippable() {
+    let host = Host::new("fanout-oversized");
+    let producer = host.sealer();
+    producer
+        .open_run(&ledger(1), Some(fence(1)))
+        .expect("opened");
+    for n in 0..3 {
+        producer
+            .append(&ledger(1), &format!("{n}").repeat(3000))
+            .expect("appended");
+    }
+    let narrow = subscribed("decisions", true, 1);
+    producer.due(&narrow).expect("due");
+    sealed(producer.seal(&ledger(1), 10).expect("sealed"));
+    let resource = ledger(1).to_string();
+    assert_eq!(
+        producer.next(&narrow, &resource, 8 * 1024).expect("next"),
+        None
+    );
+    assert_eq!(
+        producer
+            .subscription(&ledger(1), &MEMBERSHIP, "decisions")
+            .expect("read")
+            .expect("held")
+            .state,
+        SubscriptionState::Stopped {
+            reason: permguard_core::codes::stream::UNSHIPPABLE.to_owned()
+        }
+    );
+}
+
+/// WP-5.4, after the mutants: deletion stops at `truncate_safe` exactly; STATE's acknowledgement
+/// never moves back when a required subscription joins; a subscription held off is not due; a
+/// stream waiting for a cutover, or fenced by another membership, is not due.
+#[test]
+fn the_bounds_of_what_is_due_and_deleted_are_exact() {
+    let (host, wall, mono) = manual_host("fanout-exact");
+    let consumer = consumer_on(&host);
+    let (producer, run) = streaming(&host, 3);
+    let resource = ledger(1).to_string();
+    let first = subscribed("decisions", true, 1);
+    let second = subscribed("decisions-copy", true, 1);
+    producer.due(&first).expect("due");
+    producer.due(&second).expect("due");
+    sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    sealed(producer.seal(&ledger(1), 2).expect("sealed"));
+    pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1);
+    // The second takes only the first batch: `truncate_safe` is 2, and 3-3 stays.
+    let shipment = producer
+        .next(&second, &resource, 448 * 1024)
+        .expect("next")
+        .expect("a batch");
+    assert_eq!(shipment.last_seq, 2);
+    let ok = Answer::of(Outcome::Ok, 2).encode().expect("encodes");
+    producer
+        .answered(&second, &resource, &shipment, &ok)
+        .expect("answered");
+    let batches = host
+        .producer_dir(&ledger(1))
+        .join("batches")
+        .join(hex(&run));
+    assert!(!batches.join("1-2.jws").exists());
+    assert!(
+        batches.join("3-3.jws").exists(),
+        "one past truncate_safe stays"
+    );
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .acknowledged_seq,
+        2
+    );
+    // A required subscription joins: nothing moves back.
+    producer
+        .due(&subscribed("decisions-late", true, 1))
+        .expect("due");
+    producer
+        .append(&ledger(1), &"r3".to_owned())
+        .expect("appended");
+    pump(&producer, &consumer, &host, &first, vec![pin_of(&host)], 1);
+    assert_eq!(
+        producer
+            .state(&ledger(1))
+            .expect("state")
+            .expect("held")
+            .acknowledged_seq,
+        2
+    );
+    // Held off: not due until the wait passes.
+    let now = host.time.now_secs();
+    producer.hold_off(&resource, &second, now + 10);
+    assert!(producer.due(&second).expect("due").is_empty());
+    wall.jump(11);
+    mono.advance(Duration::from_secs(11));
+    assert_eq!(producer.due(&second).expect("due"), vec![resource.clone()]);
+    // Another membership's subscription: the stream is not fenced by it.
+    let foreign = Subscribed {
+        membership_id: [6; 16],
+        ..subscribed("decisions", true, 1)
+    };
+    assert!(producer.due(&foreign).expect("due").is_empty());
+    // A new key waiting for its cutover: nothing is due.
+    rotate_attest(&host, &wall, &mono);
+    producer
+        .append(&ledger(1), &"r4".to_owned())
+        .expect("appended");
+    assert!(matches!(
+        producer.seal(&ledger(1), 10).expect("waits"),
+        Sealing::AwaitingCutover { .. }
+    ));
+    assert!(producer.due(&first).expect("due").is_empty());
 }

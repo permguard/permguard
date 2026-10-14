@@ -914,6 +914,13 @@ pub(crate) mod protocol {
                 )
                 .into_bytes());
             }
+            // A store the handler cannot reach now (WP-5.4).
+            if body == b"unavailable?" {
+                return Err(crate::session::Refusal {
+                    code: permguard_core::codes::stream::STORE_UNAVAILABLE,
+                    reason: "the store cannot answer now".to_owned(),
+                });
+            }
             Ok([b"echo:".as_slice(), body].concat())
         }
 
@@ -1234,6 +1241,7 @@ pub(crate) mod protocol {
             declared_assurance: AssuranceProfile::Production,
             time: &side.context.time,
             streams: None,
+            shipping: None,
         }
     }
 

@@ -8,7 +8,8 @@ use libfuzzer_sys::fuzz_target;
 use permguard_stream::engine::batch::SealedBatch;
 use permguard_stream::engine::ingest::{Answer, Ship};
 use permguard_stream::engine::{
-    self, ConsumerState, Cutover, ForkMark, RunEnd, RunStatement, Spans, State, encode_group,
+    self, ConsumerState, Cutover, ForkMark, RunEnd, RunStatement, Spans, State, Subscription,
+    encode_group,
 };
 
 fuzz_target!(|data: &[u8]| {
@@ -48,5 +49,9 @@ fuzz_target!(|data: &[u8]| {
     }
     if let Ok(mark) = ForkMark::decode(data) {
         assert_eq!(mark.encode().ok().as_deref(), Some(data));
+    }
+    // A producer stream's subscription (WP-5.4).
+    if let Ok(subscription) = Subscription::decode(data) {
+        assert_eq!(subscription.encode().ok().as_deref(), Some(data));
     }
 });

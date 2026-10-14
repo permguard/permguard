@@ -847,6 +847,7 @@ pub(crate) mod testing {
                 appraisal: crate::membership::appraisal::tests::appraisal(),
                 live: Arc::default(),
                 streams: None,
+                shipping: None,
             })),
         });
         (api, store, volume)

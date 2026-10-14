@@ -75,6 +75,8 @@ pub struct MembershipService {
     /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
     /// signs none.
     pub streams: Option<Arc<dyn crate::composition::StreamCutovers>>,
+    /// The streams this Host ships over its ship tasks (WP-5.4); without an engine it ships none.
+    pub shipping: Option<Arc<dyn crate::composition::StreamShipping>>,
 }
 
 /// One open task session of a membership, as an operator reads it (WP-4.3).
@@ -2051,6 +2053,21 @@ impl HostApi {
             .await
     }
 
+    /// Ships what this Host's ship tasks have due (WP-5.4): the server's periodic pass.
+    pub async fn ship_due(&self) -> usize {
+        let Ok((memberships, connector)) = self.member_side() else {
+            return 0;
+        };
+        let Ok(member) = self.acting_member(memberships, connector) else {
+            return 0;
+        };
+        member
+            .ship_due(crate::operations::journal::Initiator::System(
+                "host".to_owned(),
+            ))
+            .await
+    }
+
     pub(super) fn acting_member<'a>(
         &'a self,
         memberships: &'a MembershipService,
@@ -2066,6 +2083,7 @@ impl HostApi {
             declared_assurance: self.declared_assurance()?,
             time: &self.time,
             streams: memberships.streams.as_deref(),
+            shipping: memberships.shipping.as_deref(),
         })
     }
 

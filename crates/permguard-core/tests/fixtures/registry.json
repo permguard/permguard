@@ -404,6 +404,7 @@
     "storage.CLAIM_BEHIND_DATA": "storage_claim_behind_data",
     "storage.STALE_WRITER": "storage_stale_writer",
     "stream.ACK_AHEAD": "ack_ahead",
+    "stream.ACK_BEHIND": "ack_behind",
     "stream.AGE_EXPIRY": "age_expiry",
     "stream.BATCH_REJECTED": "batch_rejected",
     "stream.BATCH_UNATTRIBUTABLE": "batch_unattributable",

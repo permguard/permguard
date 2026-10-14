@@ -1824,3 +1824,135 @@ async fn a_watch_ends_with_its_lease() {
     let ended = task.next_event().await.expect_err("expired");
     assert_eq!(code_of(&ended), codes::host::LEASE_EXPIRED);
 }
+
+/// The stream engine a member's ship pass drives: one batch due, the answers it was given.
+#[derive(Default)]
+struct Shipping {
+    /// The body shipped; `batch` when empty.
+    body: Vec<u8>,
+    deferred: std::sync::Mutex<usize>,
+    shipped: std::sync::Mutex<bool>,
+    answers: std::sync::Mutex<Vec<(String, Vec<u8>)>>,
+    retained: std::sync::Mutex<Vec<Vec<String>>>,
+}
+
+impl crate::composition::StreamShipping for Shipping {
+    fn due(
+        &self,
+        subscription: &crate::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        assert_eq!(subscription.task_id, "decisions");
+        Ok(if *self.shipped.lock().expect("lock") {
+            Vec::new()
+        } else {
+            vec![RESOURCE.to_owned()]
+        })
+    }
+
+    fn next(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        resource: &str,
+        max_bytes: u64,
+    ) -> Result<Option<crate::composition::Shipment>, String> {
+        assert_eq!(resource, RESOURCE);
+        assert!(max_bytes > 0, "the lease's bound");
+        let mut shipped = self.shipped.lock().expect("lock");
+        if *shipped {
+            return Ok(None);
+        }
+        *shipped = true;
+        Ok(Some(crate::composition::Shipment {
+            request_id: "ship-1".to_owned(),
+            body: if self.body.is_empty() {
+                b"batch".to_vec()
+            } else {
+                self.body.clone()
+            },
+            run: [1; 16],
+            first_seq: 1,
+            last_seq: 1,
+        }))
+    }
+
+    fn answered(
+        &self,
+        _: &crate::composition::Subscribed<'_>,
+        _: &str,
+        shipment: &crate::composition::Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String> {
+        self.answers
+            .lock()
+            .expect("lock")
+            .push((shipment.request_id.clone(), answer.to_vec()));
+        Ok(true)
+    }
+
+    fn deferred(&self, _: &crate::composition::Subscribed<'_>, _: &str) -> Result<(), String> {
+        *self.deferred.lock().expect("lock") += 1;
+        Ok(())
+    }
+
+    fn retain(&self, _: &[u8; 16], task_ids: &[String]) -> Result<(), String> {
+        self.retained.lock().expect("lock").push(task_ids.to_vec());
+        Ok(())
+    }
+}
+
+/// WP-5.4: the member's ship pass keeps the subscriptions to the manifest's ship tasks, opens a
+/// session on each due stream's resource, sends what the engine has ready and hands the engine
+/// each answer; nothing due, nothing opened.
+#[tokio::test]
+async fn the_ship_pass_sends_what_the_engine_has_due_and_hands_back_the_answers() {
+    let (c, m) = (Side::new("ship-c", true), Side::new("ship-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping::default();
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert_eq!(acting.ship_due(who()).await, 1);
+    assert_eq!(
+        engine.answers.lock().expect("lock").clone(),
+        vec![("ship-1".to_owned(), b"echo:batch".to_vec())]
+    );
+    assert!(
+        engine
+            .retained
+            .lock()
+            .expect("lock")
+            .iter()
+            .all(|tasks| tasks.contains(&"decisions".to_owned()))
+    );
+    assert_eq!(acting.ship_due(who()).await, 0, "nothing due");
+    let _ = id;
+}
+
+/// WP-5.4, after the mutants: a store the coordinator cannot reach now backs the subscription off;
+/// a membership the member revoked drops its subscriptions.
+#[tokio::test]
+async fn a_deferral_backs_off_and_an_ended_membership_drops_its_subscriptions() {
+    let (c, m) = (Side::new("ship2-c", true), Side::new("ship2-m", false));
+    let id = active(&c, &m, None).await;
+    let connector = loopback(&m, &c);
+    let engine = Shipping {
+        body: b"unavailable?".to_vec(),
+        ..Shipping::default()
+    };
+    let acting = Member {
+        shipping: Some(&engine),
+        ..member(&m, &connector)
+    };
+    assert_eq!(acting.ship_due(who()).await, 0);
+    assert_eq!(*engine.deferred.lock().expect("lock"), 1);
+    assert!(engine.answers.lock().expect("lock").is_empty());
+    acting.revoke(who(), &id).await.expect("revoked");
+    engine.retained.lock().expect("lock").clear();
+    acting.ship_due(who()).await;
+    assert_eq!(
+        engine.retained.lock().expect("lock").clone(),
+        vec![Vec::<String>::new()]
+    );
+}

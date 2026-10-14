@@ -62,8 +62,9 @@ use sha2::{Digest as _, Sha256};
 
 pub use consumer::{Consumer, ConsumerState, ForkMark, MAX_VIEW_BYTES};
 pub use producer::{
-    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, Producer, Receipt, Sealing, Span, Spans,
-    canonical_jwk, decode_group, encode_group,
+    Cutover, MAX_CUTOVER_BYTES, MAX_SIGNERS_BYTES, MAX_SUBSCRIPTION_BYTES, PressureBounds,
+    Producer, Receipt, Sealing, Span, Spans, Subscription, SubscriptionState, canonical_jwk,
+    decode_group, encode_group,
 };
 pub use run::{Fence, RunEnd, RunStatement};
 pub use state::State;
@@ -531,6 +532,7 @@ pub struct Served {
     producers:
         std::collections::BTreeMap<String, Arc<dyn permguard_host::composition::StreamAppender>>,
     cutovers: Vec<Arc<dyn permguard_host::composition::StreamCutovers>>,
+    shipping: Vec<Arc<dyn permguard_host::composition::StreamShipping>>,
 }
 
 impl fmt::Debug for Served {
@@ -545,13 +547,16 @@ impl Served {
     where
         P: permguard_host::composition::StreamAppender
             + permguard_host::composition::StreamCutovers
+            + permguard_host::composition::StreamShipping
             + 'static,
     {
         self.producers.insert(
             name.to_owned(),
             Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamAppender>,
         );
-        self.cutovers.push(producer);
+        self.cutovers
+            .push(Arc::clone(&producer) as Arc<dyn permguard_host::composition::StreamCutovers>);
+        self.shipping.push(producer);
         self
     }
 
@@ -587,6 +592,65 @@ impl permguard_host::composition::StreamCutovers for Served {
     fn journaled(&self, ring: &str, kid: &str, streams: &[(String, u64)]) -> Result<(), String> {
         for producer in &self.cutovers {
             producer.journaled(ring, kid, streams)?;
+        }
+        Ok(())
+    }
+}
+
+impl permguard_host::composition::StreamShipping for Served {
+    fn due(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+    ) -> Result<Vec<String>, String> {
+        let mut due = Vec::new();
+        for producer in &self.shipping {
+            due.extend(producer.due(subscription)?);
+        }
+        Ok(due)
+    }
+
+    fn next(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+        max_bytes: u64,
+    ) -> Result<Option<permguard_host::composition::Shipment>, String> {
+        for producer in &self.shipping {
+            if let Some(shipment) = producer.next(subscription, resource, max_bytes)? {
+                return Ok(Some(shipment));
+            }
+        }
+        Ok(None)
+    }
+
+    fn answered(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+        shipment: &permguard_host::composition::Shipment,
+        answer: &[u8],
+    ) -> Result<bool, String> {
+        let mut go_on = false;
+        for producer in &self.shipping {
+            go_on |= producer.answered(subscription, resource, shipment, answer)?;
+        }
+        Ok(go_on)
+    }
+
+    fn deferred(
+        &self,
+        subscription: &permguard_host::composition::Subscribed<'_>,
+        resource: &str,
+    ) -> Result<(), String> {
+        for producer in &self.shipping {
+            producer.deferred(subscription, resource)?;
+        }
+        Ok(())
+    }
+
+    fn retain(&self, membership_id: &[u8; 16], task_ids: &[String]) -> Result<(), String> {
+        for producer in &self.shipping {
+            producer.retain(membership_id, task_ids)?;
         }
         Ok(())
     }

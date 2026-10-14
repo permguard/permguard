@@ -2070,6 +2070,10 @@ impl App {
                     streams: streams.clone().map(|engine| {
                         engine as Arc<dyn permguard_host::composition::StreamCutovers>
                     }),
+                    // The batches its ship tasks deliver (WP-5.4).
+                    shipping: streams.clone().map(|engine| {
+                        engine as Arc<dyn permguard_host::composition::StreamShipping>
+                    }),
                 })),
             });
             let api = Arc::new(api);

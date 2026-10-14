@@ -577,18 +577,51 @@ impl Spool {
         Ok(total)
     }
 
-    /// Whether the spool has reached a bound and its stream must end.
+    /// Whether the spool has reached a bound and its stream must end: measured over the segments
+    /// holding a record the receiver has not acknowledged, so a spool that shipped everything is
+    /// neither full nor expired however long it idles (WP-5.4, owner decision).
     pub fn pressure(&self) -> Result<Option<&'static str>, SpoolError> {
-        if self.bytes()? >= self.bounds.bytes {
+        let unacknowledged = self.unacknowledged()?;
+        let mut bytes = 0;
+        let mut oldest: Option<SystemTime> = None;
+        for path in &unacknowledged {
+            let meta =
+                fs::metadata(path).map_err(|error| SpoolError::io("measuring a segment", error))?;
+            bytes += meta.len();
+            let modified = meta
+                .modified()
+                .map_err(|error| SpoolError::io("measuring a segment", error))?;
+            oldest = Some(oldest.map_or(modified, |held| held.min(modified)));
+        }
+        if !unacknowledged.is_empty() && bytes >= self.bounds.bytes {
             return Ok(Some(permguard_core::codes::stream::SPOOL_FULL));
         }
-        if let Some(oldest) = self.oldest_modified()?
+        if let Some(oldest) = oldest
             && oldest.elapsed().unwrap_or_default() >= self.bounds.age
         {
             return Ok(Some(permguard_core::codes::stream::AGE_EXPIRY));
         }
 
         Ok(None)
+    }
+
+    /// The segments holding a record past `acked`: none when everything written was
+    /// acknowledged.
+    fn unacknowledged(&self) -> Result<Vec<PathBuf>, SpoolError> {
+        if self.seq <= self.state.acked {
+            return Ok(Vec::new());
+        }
+        let segments = self.segments()?;
+        Ok(segments
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| match segments.get(index + 1) {
+                // A segment ends where the next starts.
+                Some((next, _)) => *next > self.state.acked + 1,
+                None => true,
+            })
+            .map(|(_, (_, path))| path.clone())
+            .collect())
     }
 
     /// Ends the live stream and starts its successor.
@@ -808,21 +841,6 @@ impl Spool {
         }
 
         Ok(())
-    }
-
-    fn oldest_modified(&self) -> Result<Option<SystemTime>, SpoolError> {
-        let mut oldest: Option<SystemTime> = None;
-        for (_, path) in self.segments()? {
-            let modified = fs::metadata(&path)
-                .and_then(|meta| meta.modified())
-                .map_err(|error| SpoolError::io("measuring a segment", error))?;
-            oldest = Some(match oldest {
-                Some(current) if current < modified => current,
-                _ => modified,
-            });
-        }
-
-        Ok(oldest)
     }
 }
 

@@ -251,8 +251,28 @@ pub(super) fn keep_cutover(dir: &Dir, cutover: &Cutover) -> Result<(), StreamErr
     Ok(())
 }
 
-/// The batch files of one run: `(first, last, name)`, in order and contiguous from 1.
-pub(super) fn batches_of(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
+/// The view naming the last sequence of a run's batch files deleted because every required
+/// subscription acknowledged them (WP-5.4).
+pub(super) const PRUNED: &str = "PRUNED";
+
+/// The last sequence of `dir`'s batch files deleted, 0 when none was.
+pub(super) fn pruned_of(dir: &Dir) -> Result<u64, StreamError> {
+    let Some(bytes) = read_view(dir, PRUNED, format::VIEW)? else {
+        return Ok(0);
+    };
+    if bytes.len() > 16 {
+        return Err(StreamError::Invalid(
+            "a pruned mark is out of its bound".to_owned(),
+        ));
+    }
+    let mut map = Map::read(&bytes, "a pruned mark")?;
+    let through = map.uint(1)?;
+    map.finish()?;
+    Ok(through)
+}
+
+/// Every batch file of `dir`: `(first, last, name)`, unordered.
+fn batch_files(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
     let mut found = Vec::new();
     for name in dir.names()? {
         let Some(range) = name.strip_suffix(".jws") else {
@@ -271,8 +291,32 @@ pub(super) fn batches_of(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamErr
         };
         found.push((first, last, name));
     }
+    Ok(found)
+}
+
+/// The batch files at or below the pruned mark a crash left before deleting them: what the next
+/// truncation deletes (after the review).
+pub(super) fn below_mark(dir: &Dir) -> Result<Vec<String>, StreamError> {
+    let pruned = pruned_of(dir)?;
+    Ok(batch_files(dir)?
+        .into_iter()
+        .filter(|(_, last, _)| *last <= pruned)
+        .map(|(_, _, name)| name)
+        .collect())
+}
+
+/// The batch files of one run: `(first, last, name)`, in order and contiguous from the sequence
+/// after the last pruned, 1 when none was. A file wholly at or below the pruned mark is one a
+/// crash left before its deletion, skipped; one straddling the mark is refused (after the
+/// review).
+pub(super) fn batches_of(dir: &Dir) -> Result<Vec<(u64, u64, String)>, StreamError> {
+    let pruned = pruned_of(dir)?;
+    let mut found: Vec<(u64, u64, String)> = batch_files(dir)?
+        .into_iter()
+        .filter(|(_, last, _)| *last > pruned)
+        .collect();
     found.sort();
-    let mut sealed = 0;
+    let mut sealed = pruned;
     for (first, last, name) in &found {
         if *first != sealed + 1 {
             return Err(StreamError::Corruption(format!(
@@ -310,6 +354,10 @@ struct Held {
     open_frame: u64,
     last_seq: u64,
 }
+
+/// A run as the shipper reads it: its id, its fence's membership, its last sequence, its sealed
+/// watermark.
+pub(super) type RunView = ([u8; 16], Option<[u8; 16]>, u64, u64);
 
 /// The name a cutover gives a stream: its plane, type, resource digest and run.
 fn stream_name(physical: &Physical, run: &[u8; 16]) -> String {
@@ -402,7 +450,9 @@ impl Physical {
         descriptor: &Descriptor,
         signer: &Ring,
         max_records: u64,
+        max_record_bytes: usize,
     ) -> Result<Sealing, StreamError> {
+        let budget = BATCH_RECORD_BYTES.min(max_record_bytes);
         let mut writer = self.writer();
         // Taken out: it goes back only when everything below succeeded.
         let Some(mut next) = self.next(&mut writer, signer, descriptor)? else {
@@ -445,7 +495,7 @@ impl Physical {
                         // records it carries, base64url and quoted, beside the envelope (after
                         // the review).
                         let grown = size + bytes.len().div_ceil(3) * 4 + 3;
-                        if !records.is_empty() && grown > BATCH_RECORD_BYTES {
+                        if !records.is_empty() && grown > budget {
                             last = seq - 1;
                             from_frame = Some(frame.index);
                             break 'frames;
@@ -541,6 +591,36 @@ impl Physical {
         })
     }
 
+    /// Every run of the stream: its id, its fence's membership, its last sequence (WP-5.4).
+    pub(super) fn runs(
+        &self,
+        signer: &Ring,
+        descriptor: &Descriptor,
+    ) -> Result<Vec<RunView>, StreamError> {
+        let mut writer = self.writer();
+        let Some(next) = self.next(&mut writer, signer, descriptor)? else {
+            return Ok(Vec::new());
+        };
+        let runs = next
+            .runs
+            .iter()
+            .zip(&next.sealed)
+            .map(|(run, sealed)| {
+                (
+                    run.statement.run_id,
+                    run.statement
+                        .fence
+                        .as_ref()
+                        .map(|fence| fence.membership_id),
+                    run.last_seq,
+                    *sealed,
+                )
+            })
+            .collect();
+        writer.next = Some(next);
+        Ok(runs)
+    }
+
     /// Where the next seal starts, taken from the writer: the one kept while its run is current,
     /// or computed again. `None` when the stream holds no run.
     fn next(
@@ -632,7 +712,10 @@ impl Physical {
                     )?;
                 }
             }
-            let sealed = batches.last().map_or(0, |(_, last, _)| *last);
+            let sealed = match batches.last() {
+                Some((_, last, _)) => *last,
+                None => pruned_of(&dir)?,
+            };
             if sealed > run.last_seq {
                 return Err(StreamError::Corruption(format!(
                     "a batch of run {} seals sequence {sealed}, past its records",

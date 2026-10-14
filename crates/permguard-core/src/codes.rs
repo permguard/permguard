@@ -206,6 +206,9 @@ pub mod stream {
     pub const UNSUPPORTED: &str = "unsupported";
     pub const CLOSED: &str = "closed";
     pub const ACK_AHEAD: &str = "ack_ahead";
+    /// A consumer acknowledged less than it had: its durable store lost acknowledged records, an
+    /// incident; the subscription stops (WP-5.4).
+    pub const ACK_BEHIND: &str = "ack_behind";
     pub const UNSHIPPABLE: &str = "unshippable";
     pub const DECISION_NOT_FOUND: &str = "decision_not_found";
     pub const EVENT_NOT_FOUND: &str = "event_not_found";
@@ -598,6 +601,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         stream::UNSUPPORTED,
         stream::CLOSED,
         stream::ACK_AHEAD,
+        stream::ACK_BEHIND,
         stream::UNSHIPPABLE,
         stream::DECISION_NOT_FOUND,
         stream::EVENT_NOT_FOUND,

@@ -1069,6 +1069,16 @@
       "limit": "`engine::MAX_VIEW_BYTES`, checked by the decoder before it parses: a consumer's FORKED mark (WP-5.3)",
       "enforced_at_decoder": true,
       "fuzz": "stream_engine"
+    },
+    {
+      "crate": "permguard-stream",
+      "source": "crates/permguard-stream/src/engine/producer/ship.rs",
+      "item": "Subscription::decode",
+      "entry": "permguard_stream::engine::Subscription::decode",
+      "max_input_bytes": 65536,
+      "limit": "`engine::MAX_SUBSCRIPTION_BYTES`, checked by the decoder before it parses: a producer stream's subscription (WP-5.4)",
+      "enforced_at_decoder": true,
+      "fuzz": "stream_engine"
     }
   ],
   "trusted": [

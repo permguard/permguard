@@ -1765,7 +1765,7 @@ fn stream_samples() -> Vec<Sample> {
     use permguard_stream::engine::ingest::{Answer, Outcome, Ship};
     use permguard_stream::engine::{
         ConsumerState, Cutover, Fence, ForkMark, RunEnd, RunStatement, Span, Spans, State,
-        StreamKey,
+        StreamKey, Subscription, SubscriptionState,
     };
 
     let key = StreamKey::new(
@@ -1971,6 +1971,58 @@ fn stream_samples() -> Vec<Sample> {
             &[],
             Some(Box::new(|bytes: &[u8]| verdict(ForkMark::decode(bytes)))),
         ),
+        // WP-5.4: a producer's subscriptions, active, paused and stopped, and a pruned mark.
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: vec![([3; 16], 4), ([6; 16], 1)],
+                state: SubscriptionState::Active,
+            }
+            .encode()
+            .expect("encodes"),
+            &[],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: false,
+                runs: Vec::new(),
+                state: SubscriptionState::Paused { epoch: 2 },
+            }
+            .encode()
+            .expect("encodes"),
+            &["subscription.paused_epoch"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample(
+            "subscription",
+            Subscription {
+                membership_id: SCOPE_ID,
+                task_id: "decisions".to_owned(),
+                required: true,
+                runs: Vec::new(),
+                state: SubscriptionState::Stopped {
+                    reason: "fork".to_owned(),
+                },
+            }
+            .encode()
+            .expect("encodes"),
+            &["subscription.reason"],
+            Some(Box::new(|bytes: &[u8]| {
+                verdict(Subscription::decode(bytes))
+            })),
+        ),
+        sample("pruned_mark", vec![0xa1, 0x01, 0x04], &[], None),
     ]
 }
 

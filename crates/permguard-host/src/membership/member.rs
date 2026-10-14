@@ -278,6 +278,9 @@ pub struct Member<'a> {
     /// The streams this Host signs, as a re-pin cuts them over (WP-5.2); without an engine it
     /// signs none.
     pub streams: Option<&'a dyn crate::composition::StreamCutovers>,
+    /// The streams this Host ships, as its ship tasks deliver them (WP-5.4); without an engine
+    /// it ships none.
+    pub shipping: Option<&'a dyn crate::composition::StreamShipping>,
 }
 
 fn remote(refusal: Refusal) -> MembershipError {
@@ -829,6 +832,161 @@ impl Member<'_> {
             }
         }
         done
+    }
+
+    /// Ships what every active ship task of this Host's memberships has due (WP-5.4, owner
+    /// decision): per stream, a session on its resource, batches until the engine has none or an
+    /// answer stops it. A store the coordinator cannot reach now backs the subscription off.
+    /// Answers how many batches were answered.
+    pub async fn ship_due(&self, initiator: Initiator) -> usize {
+        let Some(engine) = self.shipping else {
+            return 0;
+        };
+        let mut shipped = 0;
+        for (id, held) in self.store.memberships() {
+            if held.role != Role::Member {
+                continue;
+            }
+            // A membership that ended, a signed change, leaves its subscriptions: they stop
+            // blocking deletion (after the review). A suspended one keeps them, to resume.
+            if matches!(
+                held.status,
+                Status::Revoked | Status::Rejected | Status::Expired | Status::Orphaned
+            ) {
+                if let Err(error) = engine.retain(&id, &[]) {
+                    tracing::warn!(
+                        event.name = "host.membership.ship_failed",
+                        component = "host",
+                        membership_id = %uuid_text(&id),
+                        error = %error,
+                        "the subscriptions of an ended membership could not be dropped"
+                    );
+                }
+                continue;
+            }
+            if held.status != Status::Active {
+                continue;
+            }
+            let Some((manifest, ..)) = &held.manifest else {
+                continue;
+            };
+            let tasks: Vec<&super::record::Task> = manifest
+                .tasks
+                .iter()
+                .filter(|task| {
+                    matches!(
+                        task.task_type,
+                        super::record::TaskType::DecisionsShip
+                            | super::record::TaskType::EventsShip
+                    )
+                })
+                .collect();
+            let ids: Vec<String> = tasks.iter().map(|task| task.task_id.clone()).collect();
+            if let Err(error) = engine.retain(&id, &ids) {
+                tracing::warn!(
+                    event.name = "host.membership.ship_failed",
+                    component = "host",
+                    membership_id = %uuid_text(&id),
+                    error = %error,
+                    "the subscriptions of a membership could not be kept to its manifest"
+                );
+            }
+            for task in tasks {
+                let subscription = crate::composition::Subscribed {
+                    membership_id: id,
+                    task_type: task.task_type,
+                    task_id: &task.task_id,
+                    required: task.required,
+                    epoch: manifest.epoch,
+                };
+                let resources = match engine.due(&subscription) {
+                    Ok(resources) => resources,
+                    Err(error) => {
+                        tracing::warn!(
+                            event.name = "host.membership.ship_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            task = %task.task_id,
+                            error = %error,
+                            "a ship task's streams could not be read: the next pass tries again"
+                        );
+                        continue;
+                    }
+                };
+                for resource in resources {
+                    match self
+                        .ship_stream(&initiator, &subscription, &resource, engine)
+                        .await
+                    {
+                        Ok(count) => shipped += count,
+                        Err(error) => tracing::warn!(
+                            event.name = "host.membership.ship_failed",
+                            component = "host",
+                            membership_id = %uuid_text(&id),
+                            task = %task.task_id,
+                            error = %error,
+                            "a stream could not be shipped: the next pass tries again"
+                        ),
+                    }
+                }
+            }
+        }
+        shipped
+    }
+
+    /// Ships `resource`'s stream on one session of `subscription`'s task.
+    async fn ship_stream(
+        &self,
+        initiator: &Initiator,
+        subscription: &crate::composition::Subscribed<'_>,
+        resource: &str,
+        engine: &dyn crate::composition::StreamShipping,
+    ) -> Result<usize, MembershipError> {
+        let storage = MembershipError::Storage;
+        let mut session = self
+            .open_task(
+                initiator.clone(),
+                &subscription.membership_id,
+                subscription.task_id,
+                resource,
+                Vec::new(),
+            )
+            .await?;
+        let max_bytes = session.lease.limits.max_body_bytes;
+        // The lease's epoch: a revision the session took is the one a pause is set at (after the
+        // review).
+        let subscription = &crate::composition::Subscribed {
+            epoch: session.lease.epoch,
+            ..*subscription
+        };
+        let mut count = 0;
+        while let Some(shipment) = engine
+            .next(subscription, resource, max_bytes)
+            .map_err(storage)?
+        {
+            match session
+                .send(&shipment.request_id, shipment.body.clone())
+                .await
+            {
+                Ok(answer) => {
+                    count += 1;
+                    if !engine
+                        .answered(subscription, resource, &shipment, &answer)
+                        .map_err(storage)?
+                    {
+                        break;
+                    }
+                }
+                Err(MembershipError::Remote { code, .. })
+                    if code == permguard_core::codes::stream::STORE_UNAVAILABLE =>
+                {
+                    engine.deferred(subscription, resource).map_err(storage)?;
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(count)
     }
 
     /// The active key of `ring` and the streams of membership `id` it cuts over, in order.

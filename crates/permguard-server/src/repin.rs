@@ -4,6 +4,9 @@
 //! The ring re-pin pass (WP-4.5): every minute, the memberships this Host coordinates are revised
 //! when its own rings moved, and its rings that its memberships as a member pin at an older epoch
 //! are re-pinned on a task session. The rings' activation gate waits for both.
+//!
+//! The same pass ships what this Host's ship tasks have due (WP-5.4, owner decision): a batch
+//! waits at most one pass, and a deferred one its subscription's backoff.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,6 +62,15 @@ pub fn drive(coordinating: Arc<Coordinating>, api: Arc<HostApi>) -> Repinning {
                 ),
             }
             let repinned = api.repin_due().await + api.cutover_due().await;
+            let shipped = api.ship_due().await;
+            if shipped > 0 {
+                tracing::debug!(
+                    event.name = "host.membership.shipped",
+                    component = "host",
+                    batches = shipped,
+                    "this Host's ship tasks delivered their batches"
+                );
+            }
             if repinned > 0 {
                 tracing::info!(
                     event.name = "host.membership.member_repinned",

@@ -1,6 +1,6 @@
 {
-  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), and the ingest's message, answer, consumer STATE and fork mark (WP-5.3)",
-  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs, producer/seal.rs, consumer.rs and ingest.rs",
+  "artifact": "The Host stream engine's records (WP-5.1): a run statement, the payload of a COSE_Sign1 permguard.stream.run.v1 under the producer's host.operations key, its fence and the end of a run, the group of records a RECORDS frame holds, a producer stream's STATE, its signer spans and pending cutover (WP-5.2), the ingest's message, answer, consumer STATE and fork mark (WP-5.3), and a producer's subscription and pruned mark (WP-5.4)",
+  "authority": "1-architecture/6-architecture-server-host-streams.md#run-lifecycle-and-fencing and #crash-safety, owner decisions of 2026-10-13 (labels, the key, the layout); crates/permguard-stream/src/engine/run.rs, state.rs, producer.rs, producer/seal.rs, consumer.rs, ingest.rs and producer/ship.rs",
   "encoding": "deterministic CBOR (RFC 8949 core deterministic), integers in the signed 64-bit range",
   "maps": {
     "run_statement": {
@@ -116,8 +116,33 @@
         { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes: the run the fork was found in" },
         { "label": 2, "name": "at_seq", "type": "uint", "occurs": "required", "note": "the first sequence that differed" }
       ]
+    },
+    "subscription": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "membership_id", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "task_id", "type": "text", "occurs": "required", "note": "the membership's ship task: lowercase letters, digits and inner hyphens" },
+        { "label": 3, "name": "required", "type": "bool", "occurs": "required", "note": "from the manifest's task: only a required subscription blocks deletion" },
+        { "label": 4, "name": "runs", "type": "array<map:subscription_run>", "occurs": "required", "note": "the acknowledgement per run, each run once" },
+        { "label": 5, "name": "state", "type": "uint", "occurs": "required", "note": "0 active, 1 paused on `unverifiable`, 2 stopped" },
+        { "label": 6, "name": "paused_epoch", "type": "uint", "occurs": "optional", "note": "with state 1 only: the membership epoch it paused at" },
+        { "label": 7, "name": "reason", "type": "text", "occurs": "optional", "note": "with state 2 only: `fork`, `gone`, `closed` or `ack_ahead`; at most 64 KiB in all" }
+      ]
+    },
+    "subscription_run": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "run", "type": "bytes", "occurs": "required", "note": "16 bytes" },
+        { "label": 2, "name": "acked", "type": "uint", "occurs": "required", "note": "the highest contiguous sequence the consumer acknowledged" }
+      ]
+    },
+    "pruned_mark": {
+      "keys": "int",
+      "fields": [
+        { "label": 1, "name": "through", "type": "uint", "occurs": "required", "note": "the last sequence of a run's batch files deleted after every required subscription acknowledged them" }
+      ]
     }
   },
   "arrays": {},
-  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover", "ship_message", "ingest_answer", "consumer_state", "fork_mark"]
+  "root": ["run_statement", "run_end", "records_group", "stream_state", "stream_signers", "stream_cutover", "ship_message", "ingest_answer", "consumer_state", "fork_mark", "subscription", "pruned_mark"]
 }

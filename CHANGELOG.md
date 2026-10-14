@@ -19,6 +19,12 @@ is cut.
 
 ### Added
 
+- **Members ship their stream batches, each subscription acknowledged on its own.**
+  The server's minute pass now ships what every active `decisions.ship` and `events.ship` task has due: one session per stream on its resource, batches sealed within the task's message bound, sent with the member's `data.attest` statement.
+  Each subscription, a membership's ship task, keeps its own acknowledgement per run in `subscriptions/<membership>-<task>.cbor` beside the stream.
+  `truncate_safe` is the least acknowledgement of the required subscriptions, kept as STATE's `acknowledged_seq`; the batch files every required subscription holds are deleted, never one beyond, and an optional subscription never blocks.
+  `out_of_order` resends from the coordinator's next sequence, `store_unavailable` backs the subscription off from one second to five minutes with full jitter, `unverifiable` pauses it until the membership's epoch moves, so an approval or a re-pin resumes it without a restart, and `fork`, `gone` or an acknowledgement beyond what the producer holds stops it.
+
 - **The coordinator ingests shipped stream batches.**
   A coordinator now serves `decisions.ship` and `events.ship` version 1: a member ships a sealed batch with its `data.attest` ring statement, and the Host's stream engine keeps it under `consumer/` per producer run.
   The batch is checked in the documented order: its producer's fork mark, the statement against the member's pin, the key in the pinned set, the signature and commitments, the task the batch names, the records' codec, then its range against what is held.
@@ -455,6 +461,9 @@ is cut.
 - An identity rotation destroys every retired private key past its grace that the custody still holds, so a key a previous rotation could not destroy is tried again; a key kept is reported as `host.identity_key_kept`, and the public keys and successions stay.
 
 ### Fixed
+
+- **An idle decision spool is neither full nor expired.**
+  The spool's pressure counted every segment it held, the last one acknowledged included, so a plane that had shipped everything ended its stream for `age_expiry` after a quiet day; it now measures only the segments holding a record the receiver has not acknowledged.
 
 - `admin.tls.allow` is refused whenever the file states it; the check used to run only when `realms_from` was set.
 - An object is never overwritten (H-06).

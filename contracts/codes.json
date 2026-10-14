@@ -1443,6 +1443,11 @@
       "contract": "6-contracts/5-contract-stream-common.md",
       "kind": "log"
     },
+    "stream.ACK_BEHIND": {
+      "code": "ack_behind",
+      "contract": "6-contracts/5-contract-stream-common.md",
+      "kind": "log"
+    },
     "stream.AGE_EXPIRY": {
       "code": "age_expiry",
       "contract": "6-contracts/3-contract-evidence-decisions.md",
