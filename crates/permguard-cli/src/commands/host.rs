@@ -1712,6 +1712,8 @@ impl Report for IdentityReport {
 
 #[cfg(test)]
 mod wp_4_8_tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
 
     #[test]

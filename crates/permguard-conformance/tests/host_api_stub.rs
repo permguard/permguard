@@ -156,6 +156,11 @@ const SHAPED: &[&str] = &[
     "RunIdentityResetResponse",
     "ResetEnded",
     "ResetOrphaned",
+    // A peer's identity verified and a member's proof asked for (WP-4.8).
+    "VerifyIdentityRequest",
+    "VerifyIdentityResponse",
+    "VerifyMemberRequest",
+    "VerifyMemberResponse",
 ];
 
 /// Every message outside [`SHAPED`] is empty: no field number is assigned ahead of the contract.
